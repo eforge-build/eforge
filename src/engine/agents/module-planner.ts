@@ -49,8 +49,8 @@ export async function* runModulePlanner(
   });
 
   for await (const event of mapSDKMessages(q, 'module-planner')) {
-    // Always yield agent:result for tracing; gate streaming on verbose
-    if (event.type === 'agent:result' || options.verbose) {
+    // Always yield agent:result + tool events for tracing; gate streaming text on verbose
+    if (event.type === 'agent:result' || event.type === 'agent:tool_use' || event.type === 'agent:tool_result' || options.verbose) {
       yield event;
     }
   }

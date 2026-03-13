@@ -3,6 +3,7 @@ import type {
   SDKAssistantMessage,
   SDKPartialAssistantMessage,
   SDKResultMessage,
+  SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { SCOPE_ASSESSMENTS } from '../events.js';
 import type { ForgeEvent, AgentRole, AgentResultData, ClarificationQuestion, ScopeAssessment, ExpeditionModule } from '../events.js';
@@ -17,6 +18,9 @@ export async function* mapSDKMessages(
   agent: AgentRole,
   planId?: string,
 ): AsyncGenerator<ForgeEvent> {
+  // Track toolUseId → toolName for resolving tool results
+  const toolNameMap = new Map<string, string>();
+
   for await (const msg of messages) {
     switch (msg.type) {
       case 'assistant': {
@@ -25,15 +29,44 @@ export async function* mapSDKMessages(
           if (block.type === 'text') {
             yield { type: 'agent:message', planId, agent, content: block.text };
           } else if (block.type === 'tool_use') {
+            toolNameMap.set(block.id, block.name);
             yield {
               type: 'agent:tool_use',
               planId,
               agent,
               tool: block.name,
+              toolUseId: block.id,
               input: block.input,
             };
           }
         }
+        break;
+      }
+
+      case 'user': {
+        const userMsg = msg as SDKUserMessage;
+        // Skip replay messages and non-tool-result user messages
+        if (
+          ('isReplay' in userMsg && (userMsg as SDKUserMessage & { isReplay?: boolean }).isReplay) ||
+          !userMsg.parent_tool_use_id ||
+          userMsg.tool_use_result === undefined
+        ) {
+          break;
+        }
+
+        const toolName = toolNameMap.get(userMsg.parent_tool_use_id) ?? 'unknown';
+        const rawOutput = typeof userMsg.tool_use_result === 'string'
+          ? userMsg.tool_use_result
+          : JSON.stringify(userMsg.tool_use_result);
+
+        yield {
+          type: 'agent:tool_result',
+          planId,
+          agent,
+          tool: toolName,
+          toolUseId: userMsg.parent_tool_use_id,
+          output: truncateOutput(rawOutput, 4096),
+        };
         break;
       }
 
@@ -62,10 +95,19 @@ export async function* mapSDKMessages(
       }
 
       default:
-        // Other SDK message types (system, user, hooks, etc.) are not mapped
+        // Other SDK message types (system, hooks, etc.) are not mapped
         break;
     }
   }
+}
+
+/**
+ * Truncate tool output to prevent bloated traces.
+ * Exported for testing.
+ */
+export function truncateOutput(output: string, maxLength: number): string {
+  if (output.length <= maxLength) return output;
+  return output.slice(0, maxLength) + `... [truncated from ${output.length} chars]`;
 }
 
 /**

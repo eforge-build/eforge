@@ -26,7 +26,7 @@ import type {
 import type { ForgeConfig } from './config.js';
 import type { PlannerOptions } from './agents/planner.js';
 import { loadConfig } from './config.js';
-import { createTracingContext, type SpanHandle, type TracingContext } from './tracing.js';
+import { createTracingContext, type SpanHandle, type ToolCallHandle, type TracingContext } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
 import { runModulePlanner } from './agents/module-planner.js';
 import { builderImplement, builderEvaluate } from './agents/builder.js';
@@ -123,6 +123,7 @@ export class ForgeEngine {
       let scopeAssessment: ScopeAssessment | undefined;
       let expeditionModules: ExpeditionModule[] = [];
 
+      const plannerTracker = createToolTracker(span);
       try {
         for await (const event of runPlanner(source, plannerOptions)) {
           // Track scope assessment
@@ -139,9 +140,7 @@ export class ForgeEngine {
             }
           }
 
-          if (event.type === 'agent:result' && event.agent === 'planner') {
-            populateSpan(span, event.result);
-          }
+          plannerTracker.handleEvent(event);
 
           // Suppress planner's plan:complete in expedition mode (compilation emits the real one)
           if (event.type === 'plan:complete' && scopeAssessment === 'expedition' && expeditionModules.length > 0) {
@@ -150,12 +149,14 @@ export class ForgeEngine {
 
           yield event;
         }
+        plannerTracker.cleanup();
         span.end();
 
         if (scopeAssessment === 'complete') {
           summary = 'Nothing to plan — source is fully implemented';
         }
       } catch (err) {
+        plannerTracker.cleanup();
         status = 'failed';
         summary = (err as Error).message;
         span.error(err as Error);
@@ -225,6 +226,7 @@ export class ForgeEngine {
       const modSpan = tracing.createSpan('module-planner', { moduleId: mod.id });
       modSpan.setInput({ moduleId: mod.id, description: mod.description });
 
+      const modTracker = createToolTracker(modSpan);
       try {
         for await (const event of runModulePlanner({
           cwd,
@@ -237,14 +239,14 @@ export class ForgeEngine {
           verbose: options.verbose,
           onClarification: this.onClarification,
         })) {
-          if (event.type === 'agent:result' && event.agent === 'module-planner') {
-            populateSpan(modSpan, event.result);
-          }
+          modTracker.handleEvent(event);
           yield event;
         }
+        modTracker.cleanup();
         modSpan.end();
       } catch (err) {
         // Module planning failure is non-fatal — continue with other modules
+        modTracker.cleanup();
         modSpan.error(err as Error);
       }
     }
@@ -318,33 +320,36 @@ export class ForgeEngine {
         // Phase 1: Implement
         const implSpan = tracing.createSpan('builder', { planId, phase: 'implement' });
         implSpan.setInput({ planId, phase: 'implement' });
+        const implTracker = createToolTracker(implSpan);
         let implFailed = false;
 
         try {
           for await (const event of builderImplement(planFile, { cwd: worktreePath, verbose })) {
-            if (event.type === 'agent:result' && event.agent === 'builder') {
-              populateSpan(implSpan, event.result);
-            }
+            implTracker.handleEvent(event);
             yield event;
             if (event.type === 'build:failed') {
               implFailed = true;
             }
           }
         } catch (err) {
+          implTracker.cleanup();
           implSpan.error(err as Error);
           yield { type: 'build:failed', planId, error: (err as Error).message };
           return;
         }
 
         if (implFailed) {
+          implTracker.cleanup();
           implSpan.error('Implementation failed');
           return; // Skip review/evaluate
         }
+        implTracker.cleanup();
         implSpan.end();
 
         // Phase 2: Review
         const reviewSpan = tracing.createSpan('reviewer', { planId });
         reviewSpan.setInput({ planId });
+        const reviewTracker = createToolTracker(reviewSpan);
         try {
           for await (const event of runReview({
             planContent: planFile.body,
@@ -353,14 +358,14 @@ export class ForgeEngine {
             cwd: worktreePath,
             verbose,
           })) {
-            if (event.type === 'agent:result' && event.agent === 'reviewer') {
-              populateSpan(reviewSpan, event.result);
-            }
+            reviewTracker.handleEvent(event);
             yield event;
           }
+          reviewTracker.cleanup();
           reviewSpan.end();
         } catch (err) {
           // Review failure is non-fatal — implementation preserved
+          reviewTracker.cleanup();
           reviewSpan.error(err as Error);
           yield { type: 'build:complete', planId };
           return;
@@ -371,16 +376,17 @@ export class ForgeEngine {
         if (hasUnstaged) {
           const evalSpan = tracing.createSpan('evaluator', { planId });
           evalSpan.setInput({ planId });
+          const evalTracker = createToolTracker(evalSpan);
           try {
             for await (const event of builderEvaluate(planFile, { cwd: worktreePath, verbose })) {
-              if (event.type === 'agent:result' && event.agent === 'evaluator') {
-                populateSpan(evalSpan, event.result);
-              }
+              evalTracker.handleEvent(event);
               yield event;
             }
+            evalTracker.cleanup();
             evalSpan.end();
           } catch (err) {
             // Evaluate failure is non-fatal
+            evalTracker.cleanup();
             evalSpan.error(err as Error);
           }
         }
@@ -444,6 +450,7 @@ export class ForgeEngine {
       for (const plan of orchConfig.plans) {
         const span = tracing.createSpan('reviewer', { planId: plan.id });
         span.setInput({ planId: plan.id });
+        const tracker = createToolTracker(span);
         try {
           const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
           for await (const event of runReview({
@@ -453,14 +460,14 @@ export class ForgeEngine {
             cwd,
             verbose: options.verbose,
           })) {
-            if (event.type === 'agent:result' && event.agent === 'reviewer') {
-              populateSpan(span, event.result);
-            }
+            tracker.handleEvent(event);
             yield event;
           }
+          tracker.cleanup();
           span.end();
         } catch (err) {
           // Review failures are non-fatal — continue to next plan
+          tracker.cleanup();
           span.error(err as Error);
         }
       }
@@ -531,6 +538,39 @@ function mergeConfig(base: ForgeConfig, overrides: Partial<ForgeConfig>): ForgeC
 }
 
 /**
+ * Create a tool call tracker for a span.
+ * Intercepts tool_use/tool_result/result events and manages Langfuse sub-spans.
+ */
+function createToolTracker(span: SpanHandle) {
+  const activeTools = new Map<string, ToolCallHandle>();
+
+  return {
+    handleEvent(event: ForgeEvent): void {
+      if (event.type === 'agent:tool_use') {
+        const handle = span.addToolCall(event.toolUseId, event.tool, event.input);
+        activeTools.set(event.toolUseId, handle);
+      }
+      if (event.type === 'agent:tool_result') {
+        const handle = activeTools.get(event.toolUseId);
+        if (handle) {
+          handle.end(event.output);
+          activeTools.delete(event.toolUseId);
+        }
+      }
+      if (event.type === 'agent:result') {
+        populateSpan(span, event.result);
+      }
+    },
+    cleanup(): void {
+      for (const [, handle] of activeTools) {
+        handle.error('Agent completed with tool call still active');
+      }
+      activeTools.clear();
+    },
+  };
+}
+
+/**
  * Populate a Langfuse span/generation with SDK result data.
  */
 function populateSpan(span: SpanHandle, data: AgentResultData): void {
@@ -564,5 +604,12 @@ function populateSpan(span: SpanHandle, data: AgentResultData): void {
     ...Object.fromEntries(
       Object.entries(data.modelUsage).map(([model, mu]) => [model, mu.costUSD]),
     ),
+  });
+
+  // Capture duration and turn count as metadata
+  span.setMetadata({
+    durationMs: data.durationMs,
+    durationApiMs: data.durationApiMs,
+    numTurns: data.numTurns,
   });
 }

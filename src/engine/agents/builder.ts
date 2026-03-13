@@ -54,7 +54,7 @@ export async function* builderImplement(
 
   try {
     for await (const event of mapSDKMessages(q, 'builder', plan.id)) {
-      if (event.type === 'agent:result' || options.verbose) {
+      if (event.type === 'agent:result' || event.type === 'agent:tool_use' || event.type === 'agent:tool_result' || options.verbose) {
         yield event;
       }
     }
@@ -97,7 +97,7 @@ export async function* builderEvaluate(
   let fullText = '';
   try {
     for await (const event of mapSDKMessages(q, 'evaluator', plan.id)) {
-      if (event.type === 'agent:result' || options.verbose) {
+      if (event.type === 'agent:result' || event.type === 'agent:tool_use' || event.type === 'agent:tool_result' || options.verbose) {
         yield event;
       }
       if (event.type === 'agent:message' && event.content) {

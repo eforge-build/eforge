@@ -103,8 +103,8 @@ export async function* runPlanner(
       }
     }
 
-    // Always yield agent:result (carries tracing data); gate streaming events on verbose
-    if (event.type === 'agent:result' || options.verbose) {
+    // Always yield agent:result + tool events (for tracing); gate streaming text on verbose
+    if (event.type === 'agent:result' || event.type === 'agent:tool_use' || event.type === 'agent:tool_result' || options.verbose) {
       yield event;
     }
   }

@@ -156,7 +156,7 @@ export async function* runReview(
   });
 
   for await (const event of mapSDKMessages(q, 'reviewer', planId)) {
-    if (event.type === 'agent:result' || verbose) {
+    if (event.type === 'agent:result' || event.type === 'agent:tool_use' || event.type === 'agent:tool_result' || verbose) {
       yield event;
     }
     if (event.type === 'agent:message' && event.content) {

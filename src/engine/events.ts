@@ -149,8 +149,8 @@ export type ForgeEvent =
 
   // Agent-level (verbose streaming)
   | { type: 'agent:message'; planId?: string; agent: AgentRole; content: string }
-  | { type: 'agent:tool_use'; planId?: string; agent: AgentRole; tool: string; input: unknown }
-  | { type: 'agent:tool_result'; planId?: string; agent: AgentRole; tool: string; output: string }
+  | { type: 'agent:tool_use'; planId?: string; agent: AgentRole; tool: string; toolUseId: string; input: unknown }
+  | { type: 'agent:tool_result'; planId?: string; agent: AgentRole; tool: string; toolUseId: string; output: string }
   | { type: 'agent:result'; planId?: string; agent: AgentRole; result: AgentResultData }
 
   // User interaction

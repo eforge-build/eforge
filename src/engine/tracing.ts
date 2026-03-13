@@ -2,6 +2,11 @@ import Langfuse from 'langfuse';
 import type { AgentRole } from './events.js';
 import type { ForgeConfig } from './config.js';
 
+export interface ToolCallHandle {
+  end(output?: string): void;
+  error(err: string): void;
+}
+
 export interface SpanHandle {
   setInput(input: unknown): void;
   setOutput(output: unknown): void;
@@ -9,6 +14,8 @@ export interface SpanHandle {
   setUsage(usage: { input: number; output: number; total: number }): void;
   setUsageDetails(details: Record<string, number>): void;
   setCostDetails(details: Record<string, number>): void;
+  setMetadata(metadata: Record<string, unknown>): void;
+  addToolCall(toolUseId: string, tool: string, input: unknown): ToolCallHandle;
   end(): void;
   error(err: Error | string): void;
 }
@@ -24,6 +31,11 @@ export interface TracingContext {
  * Create a no-op tracing context. All methods are safe stubs with no side effects.
  */
 export function createNoopTracingContext(): TracingContext {
+  const noopToolCallHandle: ToolCallHandle = {
+    end() {},
+    error() {},
+  };
+
   const noopSpan: SpanHandle = {
     setInput() {},
     setOutput() {},
@@ -31,6 +43,8 @@ export function createNoopTracingContext(): TracingContext {
     setUsage() {},
     setUsageDetails() {},
     setCostDetails() {},
+    setMetadata() {},
+    addToolCall() { return noopToolCallHandle; },
     end() {},
     error() {},
   };
@@ -106,6 +120,25 @@ export function createTracingContext(
         },
         setCostDetails(details: Record<string, number>) {
           pending.costDetails = details;
+        },
+        setMetadata(metadata: Record<string, unknown>) {
+          pending.metadata = { ...(pending.metadata as Record<string, unknown> ?? {}), ...metadata };
+        },
+        addToolCall(toolUseId: string, tool: string, input: unknown): ToolCallHandle {
+          const toolSpan = gen.span({
+            name: `tool:${tool}`,
+            input,
+            metadata: { toolUseId },
+          });
+
+          return {
+            end(output?: string) {
+              toolSpan.end(output !== undefined ? { output } : undefined);
+            },
+            error(err: string) {
+              toolSpan.end({ output: err, level: 'ERROR', statusMessage: err });
+            },
+          };
         },
         end() {
           gen.end({ ...pending, level: 'DEFAULT' });
