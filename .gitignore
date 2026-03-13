@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.env.local
+.forge-state.json
+.forge-logs/
+.mcp.json
