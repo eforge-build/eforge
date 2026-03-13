@@ -3,6 +3,7 @@ import type {
   SDKAssistantMessage,
   SDKPartialAssistantMessage,
   SDKResultMessage,
+  SDKUserMessage,
   SDKToolUseSummaryMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { SCOPE_ASSESSMENTS } from '../events.js';
@@ -40,6 +41,40 @@ export async function* mapSDKMessages(
             };
           }
         }
+        break;
+      }
+
+      case 'user': {
+        // Extract tool results from user messages. This complements the tool_use_summary
+        // path below: user messages carry per-tool results while summaries batch them.
+        // The SDK may send one or both depending on preserveToolUseResults config.
+        //
+        // Skip replay messages — the SDK union sends both SDKUserMessage and
+        // SDKUserMessageReplay under type 'user'.
+        if ('isReplay' in msg && msg.isReplay) break;
+
+        const userMsg = msg as SDKUserMessage;
+        if (!userMsg.parent_tool_use_id) break;
+
+        // SDK strips tool_use_result for built-in tools (preserveToolUseResults=false by default).
+        // Prefer tool_use_result when available, fall back to message.content tool_result blocks.
+        const rawOutput = userMsg.tool_use_result !== undefined
+          ? (typeof userMsg.tool_use_result === 'string' ? userMsg.tool_use_result : JSON.stringify(userMsg.tool_use_result))
+          : extractToolResultContent(userMsg.message, userMsg.parent_tool_use_id);
+
+        if (rawOutput === undefined) {
+          break;
+        }
+
+        const toolName = toolNameMap.get(userMsg.parent_tool_use_id) ?? 'unknown';
+        yield {
+          type: 'agent:tool_result',
+          planId,
+          agent,
+          tool: toolName,
+          toolUseId: userMsg.parent_tool_use_id,
+          output: truncateOutput(rawOutput, 4096),
+        };
         break;
       }
 
@@ -100,6 +135,34 @@ export async function* mapSDKMessages(
 export function truncateOutput(output: string, maxLength: number): string {
   if (output.length <= maxLength) return output;
   return output.slice(0, maxLength) + `... [truncated from ${output.length} chars]`;
+}
+
+/**
+ * Extract tool result content from a user message's content blocks.
+ * The SDK's message.content contains tool_result blocks with the actual output.
+ */
+function extractToolResultContent(
+  message: { content?: unknown },
+  toolUseId: string,
+): string | undefined {
+  const content = message?.content;
+  if (!Array.isArray(content)) return undefined;
+
+  for (const block of content) {
+    if (typeof block !== 'object' || block === null) continue;
+    const b = block as Record<string, unknown>;
+    if (b.type !== 'tool_result' || b.tool_use_id !== toolUseId) continue;
+
+    if (typeof b.content === 'string') return b.content;
+    if (Array.isArray(b.content)) {
+      return (b.content as Array<Record<string, unknown>>)
+        .filter((c) => c.type === 'text')
+        .map((c) => String(c.text ?? ''))
+        .join('\n');
+    }
+    return ''; // tool_result present but no content
+  }
+  return undefined;
 }
 
 /**
