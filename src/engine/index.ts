@@ -43,6 +43,8 @@ export { builderImplement, builderEvaluate, parseEvaluationBlock } from './agent
 export type { BuilderOptions, EvaluationVerdict } from './agents/builder.js';
 
 // --- reviewer ---
+export { runReview, parseReviewIssues, composeReviewPrompt } from './agents/reviewer.js';
+export type { ReviewerOptions } from './agents/reviewer.js';
 
 // --- orchestration ---
 
