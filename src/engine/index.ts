@@ -39,6 +39,8 @@ export { loadState, saveState, updatePlanStatus, isResumable } from './state.js'
 // --- builder ---
 
 // --- reviewer ---
+export { runReview, parseReviewIssues, composeReviewPrompt } from './agents/reviewer.js';
+export type { ReviewerOptions } from './agents/reviewer.js';
 
 // --- orchestration ---
 
