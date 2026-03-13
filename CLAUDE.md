@@ -17,8 +17,10 @@ pnpm test             # Run tests (vitest)
 pnpm test:watch       # Watch mode
 pnpm run type-check   # Type check without emitting
 
+# Run with Langfuse tracing (dev)
+pnpm dev:trace -- plan docs/init-prd.md --verbose
 # Run built CLI with Langfuse tracing
-source .env && node dist/cli.js plan docs/init-prd.md --verbose
+node --env-file=.env dist/cli.js plan docs/init-prd.md --verbose
 ```
 
 ## Architecture

@@ -17,7 +17,14 @@ export function renderLangfuseStatus(config: ForgeConfig): void {
   if (config.langfuse.enabled) {
     console.log(chalk.dim(`  Langfuse: enabled → ${config.langfuse.host}`));
   } else {
-    console.log(chalk.dim('  Langfuse: disabled'));
+    const missing: string[] = [];
+    if (!config.langfuse.publicKey) missing.push('LANGFUSE_PUBLIC_KEY');
+    if (!config.langfuse.secretKey) missing.push('LANGFUSE_SECRET_KEY');
+    if (missing.length > 0) {
+      console.log(chalk.dim(`  Langfuse: disabled (missing ${missing.join(', ')})`));
+    } else {
+      console.log(chalk.dim('  Langfuse: disabled'));
+    }
   }
 }
 
