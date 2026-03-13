@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/cli.ts",
+    "dev:trace": "set -a && . ./.env && set +a && tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit"
