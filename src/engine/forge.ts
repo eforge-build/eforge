@@ -17,11 +17,12 @@ import type {
   ReviewOptions,
   PlanFile,
   ClarificationQuestion,
+  AgentResultData,
 } from './events.js';
 import type { ForgeConfig } from './config.js';
 import type { PlannerOptions } from './agents/planner.js';
 import { loadConfig } from './config.js';
-import { createTracingContext } from './tracing.js';
+import { createTracingContext, type SpanHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
 import { builderImplement, builderEvaluate } from './agents/builder.js';
 import { runReview } from './agents/reviewer.js';
@@ -105,6 +106,9 @@ export class ForgeEngine {
 
       try {
         for await (const event of runPlanner(source, plannerOptions)) {
+          if (event.type === 'agent:result' && event.agent === 'planner') {
+            populateSpan(span, event.result);
+          }
           yield event;
         }
         span.end();
@@ -187,6 +191,9 @@ export class ForgeEngine {
 
         try {
           for await (const event of builderImplement(planFile, { cwd: worktreePath, verbose })) {
+            if (event.type === 'agent:result' && event.agent === 'builder') {
+              populateSpan(implSpan, event.result);
+            }
             yield event;
             if (event.type === 'build:failed') {
               implFailed = true;
@@ -214,6 +221,9 @@ export class ForgeEngine {
             cwd: worktreePath,
             verbose,
           })) {
+            if (event.type === 'agent:result' && event.agent === 'reviewer') {
+              populateSpan(reviewSpan, event.result);
+            }
             yield event;
           }
           reviewSpan.end();
@@ -230,6 +240,9 @@ export class ForgeEngine {
           const evalSpan = tracing.createSpan('evaluator', { planId });
           try {
             for await (const event of builderEvaluate(planFile, { cwd: worktreePath, verbose })) {
+              if (event.type === 'agent:result' && event.agent === 'evaluator') {
+                populateSpan(evalSpan, event.result);
+              }
               yield event;
             }
             evalSpan.end();
@@ -303,6 +316,9 @@ export class ForgeEngine {
             cwd,
             verbose: options.verbose,
           })) {
+            if (event.type === 'agent:result' && event.agent === 'reviewer') {
+              populateSpan(span, event.result);
+            }
             yield event;
           }
           span.end();
@@ -374,4 +390,36 @@ function mergeConfig(base: ForgeConfig, overrides: Partial<ForgeConfig>): ForgeC
     build: overrides.build ? { ...base.build, ...overrides.build } : base.build,
     plan: overrides.plan ? { ...base.plan, ...overrides.plan } : base.plan,
   };
+}
+
+/**
+ * Populate a Langfuse span/generation with SDK result data.
+ */
+function populateSpan(span: SpanHandle, data: AgentResultData): void {
+  // Set the primary model (first key in modelUsage)
+  const models = Object.keys(data.modelUsage);
+  if (models.length > 0) {
+    span.setModel(models[0]);
+  }
+
+  span.setUsage(data.usage);
+
+  // Build detailed usage breakdown from per-model data
+  const usageDetails: Record<string, number> = {
+    input: data.usage.input,
+    output: data.usage.output,
+    total: data.usage.total,
+  };
+  for (const [model, mu] of Object.entries(data.modelUsage)) {
+    usageDetails[`${model}:input`] = mu.inputTokens;
+    usageDetails[`${model}:output`] = mu.outputTokens;
+  }
+  span.setUsageDetails(usageDetails);
+
+  span.setCostDetails({
+    total: data.totalCostUsd,
+    ...Object.fromEntries(
+      Object.entries(data.modelUsage).map(([model, mu]) => [model, mu.costUSD]),
+    ),
+  });
 }

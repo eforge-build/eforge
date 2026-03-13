@@ -252,6 +252,10 @@ export function renderEvent(event: ForgeEvent): void {
       );
       break;
 
+    case 'agent:result':
+      // Tracing-only event — no CLI output needed
+      break;
+
     // User interaction
     case 'approval:needed':
       stopAllSpinners();

@@ -62,6 +62,16 @@ export interface ForgeState {
   completedPlans: string[];
 }
 
+export interface AgentResultData {
+  durationMs: number;
+  durationApiMs: number;
+  numTurns: number;
+  totalCostUsd: number;
+  usage: { input: number; output: number; total: number };
+  /** Per-model token and cost breakdown, keyed by model name */
+  modelUsage: Record<string, { inputTokens: number; outputTokens: number; costUSD: number }>;
+}
+
 export interface PlanOptions {
   auto?: boolean;
   verbose?: boolean;
@@ -124,6 +134,7 @@ export type ForgeEvent =
   | { type: 'agent:message'; planId?: string; agent: AgentRole; content: string }
   | { type: 'agent:tool_use'; planId?: string; agent: AgentRole; tool: string; input: unknown }
   | { type: 'agent:tool_result'; planId?: string; agent: AgentRole; tool: string; output: string }
+  | { type: 'agent:result'; planId?: string; agent: AgentRole; result: AgentResultData }
 
   // User interaction
   | { type: 'approval:needed'; planId?: string; action: string; details: string }

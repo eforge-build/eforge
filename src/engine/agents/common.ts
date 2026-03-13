@@ -5,11 +5,12 @@ import type {
   SDKResultMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { ORCHESTRATION_MODES } from '../events.js';
-import type { ForgeEvent, AgentRole, ClarificationQuestion, OrchestrationConfig } from '../events.js';
+import type { ForgeEvent, AgentRole, AgentResultData, ClarificationQuestion, OrchestrationConfig } from '../events.js';
 
 /**
  * Map an async iterable of SDK messages to ForgeEvents.
  * Bridges the SDK's message stream to the engine's typed event system.
+ * Yields an `agent:result` event with usage/cost/model data when the SDK query completes.
  */
 export async function* mapSDKMessages(
   messages: AsyncIterable<SDKMessage>,
@@ -49,9 +50,12 @@ export async function* mapSDKMessages(
         const result = msg as SDKResultMessage;
         if (result.subtype === 'success') {
           yield { type: 'agent:message', planId, agent, content: result.result };
+          yield { type: 'agent:result', planId, agent, result: extractResultData(result) };
         } else {
           const errorResult = result as SDKResultMessage & { errors?: string[] };
           const errorMsg = errorResult.errors?.join('; ') ?? `Agent ${agent} failed: ${result.subtype}`;
+          // Yield result data even on error (usage is still tracked)
+          yield { type: 'agent:result', planId, agent, result: extractResultData(result) };
           throw new Error(errorMsg);
         }
         break;
@@ -62,6 +66,39 @@ export async function* mapSDKMessages(
         break;
     }
   }
+}
+
+/**
+ * Extract tracing-relevant data from an SDK result message.
+ * Defensive against missing fields (e.g. in test fixtures).
+ */
+function extractResultData(result: SDKResultMessage): AgentResultData {
+  const modelUsage: AgentResultData['modelUsage'] = {};
+  if (result.modelUsage) {
+    for (const [model, usage] of Object.entries(result.modelUsage)) {
+      modelUsage[model] = {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        costUSD: usage.costUSD,
+      };
+    }
+  }
+
+  const inputTokens = result.usage?.input_tokens ?? 0;
+  const outputTokens = result.usage?.output_tokens ?? 0;
+
+  return {
+    durationMs: result.duration_ms ?? 0,
+    durationApiMs: result.duration_api_ms ?? 0,
+    numTurns: result.num_turns ?? 0,
+    totalCostUsd: result.total_cost_usd ?? 0,
+    usage: {
+      input: inputTokens,
+      output: outputTokens,
+      total: inputTokens + outputTokens,
+    },
+    modelUsage,
+  };
 }
 
 /**

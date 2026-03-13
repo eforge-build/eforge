@@ -83,35 +83,76 @@ describe('mapSDKMessages', () => {
     });
   });
 
-  it('maps result success to agent:message', async () => {
+  it('maps result success to agent:message and agent:result', async () => {
     const messages = asyncIterableFrom([
       {
         type: 'result',
         subtype: 'success',
         result: 'Final result text',
+        duration_ms: 5000,
+        duration_api_ms: 4000,
+        num_turns: 3,
+        total_cost_usd: 0.05,
+        usage: { input_tokens: 100, output_tokens: 200 },
+        modelUsage: {
+          'claude-sonnet-4-20250514': {
+            inputTokens: 100,
+            outputTokens: 200,
+            costUSD: 0.05,
+          },
+        },
       },
     ]);
 
     const events = await collectEvents(mapSDKMessages(messages, 'planner'));
-    expect(events).toHaveLength(1);
+    expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
       type: 'agent:message',
       content: 'Final result text',
     });
+    expect(events[1]).toMatchObject({
+      type: 'agent:result',
+      agent: 'planner',
+      result: {
+        durationMs: 5000,
+        numTurns: 3,
+        totalCostUsd: 0.05,
+        usage: { input: 100, output: 200, total: 300 },
+      },
+    });
   });
 
-  it('throws on result error', async () => {
+  it('throws on result error after yielding agent:result', async () => {
     const messages = asyncIterableFrom([
       {
         type: 'result',
-        subtype: 'error',
+        subtype: 'error_during_execution',
         errors: ['Something failed', 'Another error'],
+        duration_ms: 1000,
+        duration_api_ms: 800,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        usage: { input_tokens: 50, output_tokens: 10 },
+        modelUsage: {},
       },
     ]);
 
-    await expect(
-      collectEvents(mapSDKMessages(messages, 'builder')),
-    ).rejects.toThrow('Something failed; Another error');
+    const gen = mapSDKMessages(messages, 'builder');
+    // First yield should be agent:result with usage data (even on error)
+    const first = await gen.next();
+    expect(first.done).toBe(false);
+    expect(first.value).toMatchObject({
+      type: 'agent:result',
+      agent: 'builder',
+      result: {
+        durationMs: 1000,
+        numTurns: 1,
+        totalCostUsd: 0.01,
+        usage: { input: 50, output: 10, total: 60 },
+      },
+    });
+    // Next iteration should throw
+    await expect(gen.next()).rejects.toThrow('Something failed; Another error');
   });
 
   it('ignores unknown message types', async () => {

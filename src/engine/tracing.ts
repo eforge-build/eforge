@@ -5,7 +5,10 @@ import type { ForgeConfig } from './config.js';
 export interface SpanHandle {
   setInput(input: unknown): void;
   setOutput(output: unknown): void;
+  setModel(model: string): void;
   setUsage(usage: { input: number; output: number; total: number }): void;
+  setUsageDetails(details: Record<string, number>): void;
+  setCostDetails(details: Record<string, number>): void;
   end(): void;
   error(err: Error | string): void;
 }
@@ -22,7 +25,10 @@ export function createNoopTracingContext(): TracingContext {
   const noopSpan: SpanHandle = {
     setInput() {},
     setOutput() {},
+    setModel() {},
     setUsage() {},
+    setUsageDetails() {},
+    setCostDetails() {},
     end() {},
     error() {},
   };
@@ -61,31 +67,40 @@ export function createTracingContext(
 
   return {
     createSpan(agent: AgentRole, metadata?: Record<string, unknown>): SpanHandle {
-      const span = trace.span({
+      const gen = trace.generation({
         name: agent,
         metadata,
       });
 
       return {
         setInput(input: unknown) {
-          span.update({ input });
+          gen.update({ input });
         },
         setOutput(output: unknown) {
-          span.update({ output });
+          gen.update({ output });
+        },
+        setModel(model: string) {
+          gen.update({ model });
         },
         setUsage(usage: { input: number; output: number; total: number }) {
-          span.update({
-            metadata: { ...metadata, usage },
+          gen.update({
+            usage: { input: usage.input, output: usage.output, total: usage.total, unit: 'TOKENS' },
           });
         },
+        setUsageDetails(details: Record<string, number>) {
+          gen.update({ usageDetails: details });
+        },
+        setCostDetails(details: Record<string, number>) {
+          gen.update({ costDetails: details });
+        },
         end() {
-          span.update({ level: 'DEFAULT' });
-          span.end();
+          gen.update({ level: 'DEFAULT' });
+          gen.end();
         },
         error(err: Error | string) {
           const message = typeof err === 'string' ? err : err.message;
-          span.update({ level: 'ERROR', statusMessage: message });
-          span.end();
+          gen.update({ level: 'ERROR', statusMessage: message });
+          gen.end();
         },
       };
     },
