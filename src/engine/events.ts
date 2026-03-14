@@ -4,7 +4,7 @@ export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as cons
 export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
 export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator';
 
 export interface ExpeditionModule {
   id: string;
@@ -87,6 +87,7 @@ export interface PlanOptions {
   verbose?: boolean;
   name?: string;
   cwd?: string;
+  abortController?: AbortController;
 }
 
 export interface BuildOptions {
@@ -94,12 +95,14 @@ export interface BuildOptions {
   verbose?: boolean;
   dryRun?: boolean;
   cwd?: string;
+  abortController?: AbortController;
 }
 
 export interface ReviewOptions {
   auto?: boolean;
   verbose?: boolean;
   cwd?: string;
+  abortController?: AbortController;
 }
 
 export interface ForgeStatus {
@@ -121,6 +124,12 @@ export type ForgeEvent =
   | { type: 'plan:clarification:answer'; answers: Record<string, string> }
   | { type: 'plan:progress'; message: string }
   | { type: 'plan:complete'; plans: PlanFile[] }
+
+  // Plan review (after planning phase)
+  | { type: 'plan:review:start' }
+  | { type: 'plan:review:complete'; issues: ReviewIssue[] }
+  | { type: 'plan:evaluate:start' }
+  | { type: 'plan:evaluate:complete'; accepted: number; rejected: number }
 
   // Building (per-plan)
   | { type: 'build:start'; planId: string }

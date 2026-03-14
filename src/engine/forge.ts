@@ -19,8 +19,8 @@ import type {
   PlanFile,
   ClarificationQuestion,
   AgentResultData,
+  AgentRole,
   ExpeditionModule,
-  OrchestrationConfig,
   ScopeAssessment,
 } from './events.js';
 import type { ForgeConfig } from './config.js';
@@ -31,8 +31,10 @@ import { runPlanner } from './agents/planner.js';
 import { runModulePlanner } from './agents/module-planner.js';
 import { builderImplement, builderEvaluate } from './agents/builder.js';
 import { runReview } from './agents/reviewer.js';
+import { runPlanReview } from './agents/plan-reviewer.js';
+import { runPlanEvaluate } from './agents/plan-evaluator.js';
 import { Orchestrator } from './orchestrator.js';
-import { parseOrchestrationConfig, parsePlanFile, parseExpeditionIndex, validatePlanSet } from './plan.js';
+import { parseOrchestrationConfig, parsePlanFile, validatePlanSet } from './plan.js';
 import { compileExpedition } from './compiler.js';
 import { parseModulesBlock } from './agents/common.js';
 import { loadState } from './state.js';
@@ -95,6 +97,12 @@ export class ForgeEngine {
     const planSet = options.name ?? source;
     const tracing = createTracingContext(this.config, runId, 'plan', planSet);
     const cwd = options.cwd ?? this.cwd;
+    const planSetName = options.name ?? source;
+
+    // Validate planSetName to prevent path traversal
+    if (planSetName.includes('..')) {
+      throw new Error(`Invalid plan set name (path traversal): ${planSetName}`);
+    }
 
     yield {
       type: 'forge:start',
@@ -109,6 +117,16 @@ export class ForgeEngine {
 
     tracing.setInput({ source, planSet });
 
+    // Resolve source content early — needed for plan review + evaluate
+    let sourceContent: string;
+    try {
+      const sourcePath = resolve(cwd, source);
+      const stats = await stat(sourcePath);
+      sourceContent = stats.isFile() ? await readFile(sourcePath, 'utf-8') : source;
+    } catch {
+      sourceContent = source;
+    }
+
     try {
       // Run planner agent (explores codebase, assesses scope, generates artifacts)
       const span = tracing.createSpan('planner', { source, planSet });
@@ -122,6 +140,7 @@ export class ForgeEngine {
 
       let scopeAssessment: ScopeAssessment | undefined;
       let expeditionModules: ExpeditionModule[] = [];
+      let finalPlans: PlanFile[] = [];
 
       const plannerTracker = createToolTracker(span);
       try {
@@ -147,6 +166,11 @@ export class ForgeEngine {
             continue;
           }
 
+          // Track final plans for review phase
+          if (event.type === 'plan:complete') {
+            finalPlans = event.plans;
+          }
+
           yield event;
         }
         plannerTracker.cleanup();
@@ -164,13 +188,52 @@ export class ForgeEngine {
       // If expedition scope with modules defined, continue with module planning + compilation
       if (status !== 'failed' && scopeAssessment === 'expedition' && expeditionModules.length > 0) {
         try {
-          yield* this.planExpeditionModules(source, expeditionModules, tracing, {
+          for await (const event of this.planExpeditionModules(source, expeditionModules, tracing, {
             ...options,
             cwd,
-          });
+            sourceContent,
+          })) {
+            // Track final plans from expedition compilation
+            if (event.type === 'plan:complete') {
+              finalPlans = event.plans;
+            }
+            yield event;
+          }
         } catch (err) {
           status = 'failed';
           summary = (err as Error).message;
+        }
+      }
+
+      // Plan review cycle: commit → blind review → evaluate
+      if (status !== 'failed' && finalPlans.length > 0) {
+        const planDir = resolve(cwd, 'plans', planSetName);
+        const verbose = options.verbose;
+        const abortController = options.abortController;
+
+        try {
+          // Commit plan artifacts so reviewer has a clean baseline
+          await exec('git', ['add', planDir], { cwd });
+          await exec('git', ['commit', '-m', `plan(${planSetName}): initial planning artifacts`], { cwd });
+
+          // Run review → evaluate cycle
+          yield* runReviewCycle({
+            tracing,
+            cwd,
+            reviewer: {
+              role: 'plan-reviewer',
+              metadata: { planSet: planSetName },
+              run: () => runPlanReview({ sourceContent, planSetName, cwd, verbose, abortController }),
+            },
+            evaluator: {
+              role: 'plan-evaluator',
+              metadata: { planSet: planSetName },
+              run: () => runPlanEvaluate({ planSetName, sourceContent, cwd, verbose, abortController }),
+            },
+          });
+        } catch (err) {
+          // Plan review failure is non-fatal — plan artifacts are preserved
+          yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
         }
       }
     } finally {
@@ -192,10 +255,11 @@ export class ForgeEngine {
     source: string,
     modules: ExpeditionModule[],
     tracing: TracingContext,
-    options: Partial<PlanOptions> & { cwd: string },
+    options: Partial<PlanOptions> & { cwd: string; sourceContent: string },
   ): AsyncGenerator<ForgeEvent> {
     const planSetName = options.name ?? source;
     const cwd = options.cwd;
+    const sourceContent = options.sourceContent;
     const planDir = resolve(cwd, 'plans', planSetName);
 
     // Read architecture content for module planners
@@ -204,20 +268,6 @@ export class ForgeEngine {
       architectureContent = await readFile(resolve(planDir, 'architecture.md'), 'utf-8');
     } catch {
       // Architecture file may not exist if planner didn't create it
-    }
-
-    // Resolve source content
-    let sourceContent: string;
-    try {
-      const sourcePath = resolve(cwd, source);
-      const stats = await stat(sourcePath);
-      if (stats.isFile()) {
-        sourceContent = await readFile(sourcePath, 'utf-8');
-      } else {
-        sourceContent = source;
-      }
-    } catch {
-      sourceContent = source;
     }
 
     // Run module planners sequentially
@@ -303,6 +353,7 @@ export class ForgeEngine {
       // Per-plan runner closure — sequences implement → review → evaluate
       const config = this.config;
       const verbose = options.verbose;
+      const abortController = options.abortController;
 
       const planRunner = async function* (
         planId: string,
@@ -323,7 +374,7 @@ export class ForgeEngine {
         let implFailed = false;
 
         try {
-          for await (const event of builderImplement(planFile, { cwd: worktreePath, verbose })) {
+          for await (const event of builderImplement(planFile, { cwd: worktreePath, verbose, abortController })) {
             implTracker.handleEvent(event);
             yield event;
             if (event.type === 'build:failed') {
@@ -345,50 +396,28 @@ export class ForgeEngine {
         implTracker.cleanup();
         implSpan.end();
 
-        // Phase 2: Review
-        const reviewSpan = tracing.createSpan('reviewer', { planId });
-        reviewSpan.setInput({ planId });
-        const reviewTracker = createToolTracker(reviewSpan);
-        try {
-          for await (const event of runReview({
-            planContent: planFile.body,
-            baseBranch: orchConfig.baseBranch,
-            planId,
-            cwd: worktreePath,
-            verbose,
-          })) {
-            reviewTracker.handleEvent(event);
-            yield event;
-          }
-          reviewTracker.cleanup();
-          reviewSpan.end();
-        } catch (err) {
-          // Review failure is non-fatal — implementation preserved
-          reviewTracker.cleanup();
-          reviewSpan.error(err as Error);
-          yield { type: 'build:complete', planId };
-          return;
-        }
-
-        // Phase 3: Evaluate (only if reviewer left unstaged changes)
-        const hasUnstaged = await hasUnstagedChanges(worktreePath);
-        if (hasUnstaged) {
-          const evalSpan = tracing.createSpan('evaluator', { planId });
-          evalSpan.setInput({ planId });
-          const evalTracker = createToolTracker(evalSpan);
-          try {
-            for await (const event of builderEvaluate(planFile, { cwd: worktreePath, verbose })) {
-              evalTracker.handleEvent(event);
-              yield event;
-            }
-            evalTracker.cleanup();
-            evalSpan.end();
-          } catch (err) {
-            // Evaluate failure is non-fatal
-            evalTracker.cleanup();
-            evalSpan.error(err as Error);
-          }
-        }
+        // Phase 2 + 3: Review → Evaluate cycle
+        yield* runReviewCycle({
+          tracing,
+          cwd: worktreePath,
+          reviewer: {
+            role: 'reviewer',
+            metadata: { planId },
+            run: () => runReview({
+              planContent: planFile.body,
+              baseBranch: orchConfig.baseBranch,
+              planId,
+              cwd: worktreePath,
+              verbose,
+              abortController,
+            }),
+          },
+          evaluator: {
+            role: 'evaluator',
+            metadata: { planId },
+            run: () => builderEvaluate(planFile, { cwd: worktreePath, verbose, abortController }),
+          },
+        });
 
         yield { type: 'build:complete', planId };
       };
@@ -458,6 +487,7 @@ export class ForgeEngine {
             planId: plan.id,
             cwd,
             verbose: options.verbose,
+            abortController: options.abortController,
           })) {
             tracker.handleEvent(event);
             yield event;
@@ -509,6 +539,67 @@ export class ForgeEngine {
       plans,
       completedPlans: state.completedPlans,
     };
+  }
+}
+
+/**
+ * Configuration for a review → evaluate cycle.
+ * Used by both plan() (plan review) and build() (code review).
+ */
+interface ReviewCycleConfig {
+  tracing: TracingContext;
+  cwd: string;
+  reviewer: {
+    role: AgentRole;
+    metadata: Record<string, unknown>;
+    run: () => AsyncGenerator<ForgeEvent>;
+  };
+  evaluator: {
+    role: AgentRole;
+    metadata: Record<string, unknown>;
+    run: () => AsyncGenerator<ForgeEvent>;
+  };
+}
+
+/**
+ * Run a review → evaluate cycle. The reviewer runs first (non-fatal on error).
+ * If the reviewer left unstaged changes, the evaluator runs to accept/reject them.
+ * Both phases are traced with Langfuse spans.
+ */
+async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator<ForgeEvent> {
+  // Phase: Review (non-fatal on error)
+  const reviewSpan = config.tracing.createSpan(config.reviewer.role, config.reviewer.metadata);
+  reviewSpan.setInput(config.reviewer.metadata);
+  const reviewTracker = createToolTracker(reviewSpan);
+  try {
+    for await (const event of config.reviewer.run()) {
+      reviewTracker.handleEvent(event);
+      yield event;
+    }
+    reviewTracker.cleanup();
+    reviewSpan.end();
+  } catch (err) {
+    reviewTracker.cleanup();
+    reviewSpan.error(err as Error);
+    return; // Review failed, skip evaluate
+  }
+
+  // Phase: Evaluate (only if reviewer left unstaged changes, non-fatal)
+  if (await hasUnstagedChanges(config.cwd)) {
+    const evalSpan = config.tracing.createSpan(config.evaluator.role, config.evaluator.metadata);
+    evalSpan.setInput(config.evaluator.metadata);
+    const evalTracker = createToolTracker(evalSpan);
+    try {
+      for await (const event of config.evaluator.run()) {
+        evalTracker.handleEvent(event);
+        yield event;
+      }
+      evalTracker.cleanup();
+      evalSpan.end();
+    } catch (err) {
+      evalTracker.cleanup();
+      evalSpan.error(err as Error);
+    }
   }
 }
 

@@ -27,12 +27,14 @@ node --env-file=.env dist/cli.js plan docs/init-prd.md --verbose
 
 **Design principle**: Engine emits, consumers render. The engine never writes to stdout — all communication flows through `ForgeEvent`s.
 
-**Three-agent loop**: planner → builder → reviewer, each wrapping an SDK `query()` call.
+**Agent loop**: planner → plan-reviewer → plan-evaluator → builder → reviewer → evaluator, each wrapping an SDK `query()` call. Planning and building both use a shared `runReviewCycle()` for the review→evaluate pattern.
 
 - **Planner** — one-shot query. Explores codebase, assesses scope, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities. For expeditions, also generates architecture + module list.
+- **Plan Reviewer** — one-shot query. Blind review of plan files against PRD for cohesion, completeness, correctness. Leaves fixes unstaged.
+- **Plan Evaluator** — one-shot query. Evaluates plan reviewer's unstaged fixes against planner's intent. Accepts/rejects.
 - **Module Planner** — one-shot query (expedition mode only). Writes detailed plan for a single module using architecture context.
 - **Builder** — multi-turn SDK client. Turn 1: implement plan. Turn 2: evaluate reviewer's unstaged fixes (accept/reject/review).
-- **Reviewer** — one-shot query. Blind review (no builder context), leaves fixes unstaged.
+- **Reviewer** — one-shot query. Blind code review (no builder context), leaves fixes unstaged.
 
 **Engine** (`src/engine/`): Pure library, no stdout. Agent implementations in `src/engine/agents/`, prompts in `src/engine/prompts/` (self-contained `.md` files, no runtime plugin dependencies).
 
@@ -54,7 +56,9 @@ src/
       planner.ts              # PRD → plan files (one-shot query)
       module-planner.ts       # Expedition module → detailed plan (one-shot query)
       builder.ts              # Plan → implementation (multi-turn)
-      reviewer.ts             # Blind review (one-shot query)
+      reviewer.ts             # Blind code review (one-shot query)
+      plan-reviewer.ts        # Blind plan review (one-shot query)
+      plan-evaluator.ts       # Plan fix evaluation (one-shot query)
       common.ts               # SDK message → ForgeEvent mapping
     plan.ts                   # Plan file parsing (YAML frontmatter)
     state.ts                  # .forge-state.json read/write
@@ -70,6 +74,8 @@ src/
       builder.md
       reviewer.md
       evaluator.md
+      plan-reviewer.md
+      plan-evaluator.md
     config.ts                 # forge.yaml loading
 
   cli/                        # CLI consumer (thin)

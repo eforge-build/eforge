@@ -141,6 +141,43 @@ export function renderEvent(event: ForgeEvent): void {
       }
       break;
 
+    // Plan review (after planning phase)
+    case 'plan:review:start':
+      startSpinner('plan-review', 'Reviewing plan files...');
+      break;
+
+    case 'plan:review:complete': {
+      const planIssues = event.issues;
+      if (planIssues.length === 0) {
+        succeedSpinner('plan-review', 'Plan review complete \u2014 no issues found');
+      } else {
+        const pCritical = planIssues.filter((i) => i.severity === 'critical').length;
+        const pWarnings = planIssues.filter((i) => i.severity === 'warning').length;
+        const pSuggestions = planIssues.filter((i) => i.severity === 'suggestion').length;
+        const pParts: string[] = [];
+        if (pCritical > 0) pParts.push(chalk.red(`${pCritical} critical`));
+        if (pWarnings > 0) pParts.push(chalk.yellow(`${pWarnings} warning`));
+        if (pSuggestions > 0) pParts.push(chalk.blue(`${pSuggestions} suggestion`));
+        succeedSpinner('plan-review', `Plan review: ${pParts.join(', ')}`);
+      }
+      break;
+    }
+
+    case 'plan:evaluate:start':
+      startSpinner('plan-evaluate', 'Evaluating plan review fixes...');
+      break;
+
+    case 'plan:evaluate:complete':
+      if (event.accepted === 0 && event.rejected === 0) {
+        succeedSpinner('plan-evaluate', 'Plan evaluation: no fixes to evaluate');
+      } else {
+        succeedSpinner(
+          'plan-evaluate',
+          `Plan evaluation: ${chalk.green(`${event.accepted} accepted`)}, ${chalk.red(`${event.rejected} rejected`)}`,
+        );
+      }
+      break;
+
     // Building (per-plan)
     case 'build:start':
       startSpinner(`build:${event.planId}`, `${chalk.cyan(event.planId)} \u2014 starting...`);

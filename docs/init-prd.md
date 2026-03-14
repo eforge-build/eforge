@@ -59,9 +59,12 @@ graph TD
     subgraph Engine["Engine (library)"]
         EventStream --> ForgeCore["Forge Core\n(orchestrate)"]
         ForgeCore --> Planner
+        ForgeCore --> ModulePlanner["Module Planner"]
+        ForgeCore --> PlanReviewer["Plan Reviewer"]
+        ForgeCore --> PlanEvaluator["Plan Evaluator"]
         ForgeCore --> Builder
-        ForgeCore --> Reviewer
-        Planner & Builder & Reviewer --> SDK["claude-agent-sdk\nquery()"]
+        ForgeCore --> Reviewer["Code Reviewer"]
+        Planner & ModulePlanner & PlanReviewer & PlanEvaluator & Builder & Reviewer --> SDK["claude-agent-sdk\nquery()"]
         PlanParser["Plan Parser"] ~~~ State
         State ~~~ Worktree
         Worktree ~~~ Prompts
@@ -82,10 +85,17 @@ type ForgeEvent =
 
   // Planning
   | { type: 'plan:start'; source: string }
+  | { type: 'plan:scope'; assessment: ScopeAssessment; justification: string }
   | { type: 'plan:clarification'; questions: ClarificationQuestion[] }
   | { type: 'plan:clarification:answer'; answers: Record<string, string> }
   | { type: 'plan:progress'; message: string }
   | { type: 'plan:complete'; plans: PlanFile[] }
+
+  // Plan review (after planning phase)
+  | { type: 'plan:review:start' }
+  | { type: 'plan:review:complete'; issues: ReviewIssue[] }
+  | { type: 'plan:evaluate:start' }
+  | { type: 'plan:evaluate:complete'; accepted: number; rejected: number }
 
   // Building (per-plan)
   | { type: 'build:start'; planId: string }
@@ -105,12 +115,20 @@ type ForgeEvent =
   | { type: 'merge:start'; planId: string }
   | { type: 'merge:complete'; planId: string }
 
-  // Agent-level (streaming SDK output)
-  | { type: 'agent:message'; planId?: string; agent: AgentRole; content: string }
-  | { type: 'agent:tool_use'; planId?: string; agent: AgentRole; tool: string; input: unknown }
-  | { type: 'agent:tool_result'; planId?: string; agent: AgentRole; tool: string; output: string }
+  // Expedition planning phases
+  | { type: 'expedition:architecture:complete'; modules: ExpeditionModule[] }
+  | { type: 'expedition:module:start'; moduleId: string }
+  | { type: 'expedition:module:complete'; moduleId: string }
+  | { type: 'expedition:compile:start' }
+  | { type: 'expedition:compile:complete'; plans: PlanFile[] }
 
-  // User interaction needed
+  // Agent-level (verbose streaming)
+  | { type: 'agent:message'; planId?: string; agent: AgentRole; content: string }
+  | { type: 'agent:tool_use'; planId?: string; agent: AgentRole; tool: string; toolUseId: string; input: unknown }
+  | { type: 'agent:tool_result'; planId?: string; agent: AgentRole; tool: string; toolUseId: string; output: string }
+  | { type: 'agent:result'; planId?: string; agent: AgentRole; result: AgentResultData }
+
+  // User interaction
   | { type: 'approval:needed'; planId?: string; action: string; details: string }
   | { type: 'approval:response'; approved: boolean }
 ```
@@ -130,7 +148,7 @@ interface PlanOptions {
   auto?: boolean;
   verbose?: boolean;
   cwd?: string;
-  onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
+  abortController?: AbortController;
 }
 
 interface BuildOptions {
@@ -138,8 +156,7 @@ interface BuildOptions {
   verbose?: boolean;
   dryRun?: boolean;
   cwd?: string;
-  parallelism?: number;
-  onApproval?: (action: string, details: string) => Promise<boolean>;
+  abortController?: AbortController;
 }
 ```
 
@@ -168,26 +185,63 @@ yield { type: 'plan:clarification:answer', answers };
 Self-contained prompts extracted into standalone `.md` files — no runtime plugin dependencies. Each agent wraps an SDK `query()` call and yields `ForgeEvent`s.
 
 1. **Planner** — `query()` one-shot. Gets full tool access to explore codebase. Writes plan files. Outputs `<clarification>` blocks when encountering ambiguity.
-2. **Builder** — Multi-turn (SDK `streamInput()`). Turn 1: implement plan → commit. After blind review completes, Turn 2: evaluate reviewer's unstaged fixes.
-3. **Reviewer** — `query()` one-shot. Blind (no builder context). Reviews committed code, leaves fixes unstaged.
+2. **Plan Reviewer** — `query()` one-shot. Blind (no planner context). Reviews committed plan files for cohesion, completeness, correctness. Leaves fixes unstaged.
+3. **Plan Evaluator** — `query()` one-shot. Evaluates plan reviewer's unstaged fixes against planner's intent. Accepts/rejects changes.
+4. **Builder** — `query()` one-shot. Implements plan and commits all changes. Separate from the code review cycle.
+5. **Code Reviewer** — `query()` one-shot. Blind (no builder context). Reviews committed code, leaves fixes unstaged.
+6. **Code Evaluator** — `query()` one-shot. Evaluates code reviewer's unstaged fixes against builder's implementation. Accepts/rejects changes.
 
-### Builder Multi-Turn Flow
+### Review Cycle (shared pattern)
+
+Both planning and building use the same review→evaluate cycle, coordinated by `runReviewCycle()`:
 
 ```
-Turn 1: Implement plan → commit
+Agent produces artifacts → commit
      ↓
-Spawn blind reviewer (separate query, no builder context)
+Spawn blind reviewer (separate query, no prior context)
      ↓
 Reviewer leaves fixes unstaged
      ↓
-git reset --soft HEAD~1 (staged=implementation, unstaged=reviewer fixes)
+git reset --soft HEAD~1 (staged=original, unstaged=reviewer fixes)
      ↓
-Turn 2: Evaluate fixes with full implementation context
-  - Accept: strict improvements (null checks, missing await, security fixes)
-  - Reject: intent-altering changes (refactors, removes features)
-  - Review: correct but debatable (naming, defensive checks)
+Evaluator inspects both diffs, applies verdicts:
+  - Accept: strict improvements (missing deps, wrong paths, null checks)
+  - Reject: intent-altering changes (restructuring, design changes)
+  - Review: correct but debatable → treated as reject (conservative)
      ↓
 Discard remaining unstaged → final commit
+```
+
+### Planner Review Flow
+
+```
+Planner explores codebase → writes plan files → commit
+     ↓
+Plan Reviewer (blind, fresh context):
+  - Reviews plan files against source/PRD
+  - Checks cohesion, completeness, correctness, feasibility
+  - Leaves fixes unstaged
+     ↓
+Plan Evaluator:
+  - Compares planner's plans (staged) vs reviewer's edits (unstaged)
+  - Accepts objective improvements, rejects design-altering changes
+  - Final commit with accepted fixes
+```
+
+### Builder Flow
+
+```
+Builder (one-shot query): Implement plan → commit
+     ↓
+Code Reviewer (blind, fresh context):
+  - Reviews committed code against plan
+  - Leaves fixes unstaged
+     ↓
+Code Evaluator (via runReviewCycle):
+  - git reset --soft HEAD~1
+  - Compares implementation (staged) vs reviewer fixes (unstaged)
+  - Accepts strict improvements, rejects intent-altering changes
+  - Final commit
 ```
 
 ## Orchestration Flow
@@ -237,7 +291,9 @@ src/
       planner.ts              # PRD → plan files (one-shot query)
       module-planner.ts       # Expedition module → detailed plan (one-shot query)
       builder.ts              # Plan → implementation (multi-turn)
-      reviewer.ts             # Blind review (one-shot query)
+      reviewer.ts             # Blind code review (one-shot query)
+      plan-reviewer.ts        # Blind plan review (one-shot query)
+      plan-evaluator.ts       # Plan fix evaluation (one-shot query)
       common.ts               # Shared: SDK message → ForgeEvent mapping
     plan.ts                   # Plan file parsing (YAML frontmatter)
     state.ts                  # .forge-state.json read/write
@@ -253,6 +309,8 @@ src/
       builder.md
       reviewer.md
       evaluator.md
+      plan-reviewer.md
+      plan-evaluator.md
     config.ts                 # forge.yaml loading
 
   cli/                        # CLI consumer (thin)
@@ -274,7 +332,9 @@ Source skills → aroh-forge components:
 | `orchestrate/skills/orchestration-coordinator/` | `engine/orchestrator.ts` + `engine/worktree.ts` | Wave execution, worktree management, merge strategy, state tracking |
 | `orchestrate/skills/plan-parser/` | `engine/plan.ts` | Frontmatter parsing, plan validation |
 | `review/skills/code-review/` + policies | `engine/prompts/reviewer.md` + `engine/agents/reviewer.ts` | Review criteria, severity levels, multi-policy review |
-| `review/skills/evaluate-fixes/` | `engine/prompts/evaluator.md` (used in builder turn 2) | Accept/reject/review hunk classification |
+| `review/skills/evaluate-fixes/` | `engine/prompts/evaluator.md` + `engine/prompts/plan-evaluator.md` | Accept/reject/review hunk classification |
+| *(novel)* | `engine/agents/plan-reviewer.ts` + `engine/prompts/plan-reviewer.md` | Plan review against PRD (new — not extracted from existing skills) |
+| *(novel)* | `engine/agents/plan-evaluator.ts` | Plan fix evaluation (reuses evaluator pattern) |
 
 ## Implementation Phases
 
@@ -284,12 +344,14 @@ Source skills → aroh-forge components:
 3. `engine/plan.ts` — parse plan files (YAML frontmatter)
 4. `engine/agents/common.ts` — SDK message → ForgeEvent mapping
 5. `engine/agents/planner.ts` — planner agent (one-shot query)
-6. `engine/forge.ts` — ForgeEngine with `plan()` method
-7. `cli/display.ts` — render plan events to stdout
-8. `cli/interactive.ts` — clarification prompts
-9. `cli/index.ts` — wire Commander → engine
-10. `prompts/planner.md` — extract from excursion-planner skill
-11. **Test**: `aroh-forge plan "Add a health check endpoint"` in a test repo
+6. `engine/agents/plan-reviewer.ts` — blind plan review (one-shot query)
+7. `engine/agents/plan-evaluator.ts` — plan fix evaluation (one-shot query)
+8. `engine/forge.ts` — ForgeEngine with `plan()` method, `runReviewCycle()` shared helper
+9. `cli/display.ts` — render plan events to stdout
+10. `cli/interactive.ts` — clarification prompts
+11. `cli/index.ts` — wire Commander → engine
+12. `prompts/planner.md`, `plan-reviewer.md`, `plan-evaluator.md`
+13. **Test**: `aroh-forge plan "Add a health check endpoint"` in a test repo
 
 ### Phase 2: Build Command (single plan)
 1. `engine/agents/builder.ts` — multi-turn builder

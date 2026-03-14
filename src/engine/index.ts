@@ -47,6 +47,14 @@ export type { BuilderOptions, EvaluationVerdict } from './agents/builder.js';
 export { runReview, parseReviewIssues, composeReviewPrompt } from './agents/reviewer.js';
 export type { ReviewerOptions } from './agents/reviewer.js';
 
+// --- plan-reviewer ---
+export { runPlanReview } from './agents/plan-reviewer.js';
+export type { PlanReviewerOptions } from './agents/plan-reviewer.js';
+
+// --- plan-evaluator ---
+export { runPlanEvaluate } from './agents/plan-evaluator.js';
+export type { PlanEvaluatorOptions } from './agents/plan-evaluator.js';
+
 // --- orchestration ---
 export { Orchestrator } from './orchestrator.js';
 export type { PlanRunner, OrchestratorOptions } from './orchestrator.js';
