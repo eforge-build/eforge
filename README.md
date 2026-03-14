@@ -69,6 +69,69 @@ eforge status
 | `--auto` | Bypass approval gates |
 | `--verbose` | Stream agent output |
 | `--dry-run` | Validate without executing |
+| `--no-monitor` | Disable web monitor |
+| `--no-plugins` | Disable plugin loading |
+
+## Configuration
+
+eforge is configured via `eforge.yaml` (searched upward from cwd), environment variables, and auto-discovered files.
+
+### `eforge.yaml`
+
+All fields are optional. Defaults are shown:
+
+```yaml
+plugins:
+  enabled: true               # Auto-discover Claude Code plugins
+  # include:                  # Allowlist — only load these (plugin identifiers)
+  #   - "git@schaake-cc-marketplace"
+  # exclude:                  # Denylist — skip these from auto-discovery
+  #   - "ui@schaake-cc-marketplace"
+  # paths:                    # Additional local plugin directories
+  #   - /path/to/custom-plugin
+
+agents:
+  maxTurns: 30                # Max agent turns before stopping
+  permissionMode: bypass      # 'bypass' or 'default'
+  settingSources:             # Which Claude Code settings to load
+    - project                 # Loads CLAUDE.md and project settings
+
+build:
+  parallelism: <cpu-count>    # Max parallel plan executions
+  # worktreeDir: /custom/path # Override worktree base directory
+  # postMergeCommands:        # Commands to run after each merge
+  #   - "pnpm install"
+
+plan:
+  outputDir: plans            # Where plan artifacts are written
+
+langfuse:
+  # publicKey: lf_pk_...      # Or set LANGFUSE_PUBLIC_KEY env var
+  # secretKey: lf_sk_...      # Or set LANGFUSE_SECRET_KEY env var
+  host: https://cloud.langfuse.com  # Or set LANGFUSE_BASE_URL env var
+```
+
+### MCP Servers
+
+MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). All agents receive the same MCP servers.
+
+```json
+{
+  "mcpServers": {
+    "brain": {
+      "command": "npx",
+      "args": ["brain-mcp-server"],
+      "env": { "BRAIN_DB": "/path/to/db" }
+    }
+  }
+}
+```
+
+### Plugins
+
+Plugins are auto-discovered from `~/.claude/plugins/installed_plugins.json`. Both user-scoped (global) and project-scoped plugins matching the working directory are loaded. Plugins provide skills, hooks, and MCP servers to eforge's agents.
+
+Use `plugins.include`/`plugins.exclude` in `eforge.yaml` to filter, or `--no-plugins` to disable entirely.
 
 ## Evaluation
 

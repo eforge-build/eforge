@@ -33,6 +33,8 @@ node --env-file=.env dist/cli.js plan docs/init-prd.md --verbose
 
 **MCP server propagation**: The engine auto-loads MCP servers from `.mcp.json` in the project root (same file Claude Code uses). All agents get the same MCP servers — no per-role filtering. MCP config is backend-specific: `ClaudeSDKBackend` accepts optional `mcpServers` in its constructor, and `EforgeEngineOptions.mcpServers` lets callers inject servers programmatically (overrides auto-loading). The `AgentBackend` interface has no MCP concept. Note: SDK subprocesses do NOT auto-discover MCP servers from settings files — explicit propagation is required.
 
+**Plugin propagation**: The engine auto-discovers Claude Code plugins from `~/.claude/plugins/installed_plugins.json`. Both user-scoped (global) and project-scoped plugins matching the cwd are loaded. Plugins provide skills, hooks, and MCP servers. Like MCP servers, plugins are backend-specific: `ClaudeSDKBackend` accepts `plugins` and `settingSources` in its constructor. The `AgentBackend` interface has no plugin concept. Configure via `eforge.yaml` `plugins` section or `--no-plugins` CLI flag.
+
 - **Planner** — one-shot query. Explores codebase, assesses scope, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities. For expeditions, also generates architecture + module list.
 - **Plan Reviewer** — one-shot query. Blind review of plan files against PRD for cohesion, completeness, correctness. Leaves fixes unstaged.
 - **Plan Evaluator** — one-shot query. Evaluates plan reviewer's unstaged fixes against planner's intent. Accepts/rejects.
@@ -144,6 +146,7 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 - Clarification uses engine-level events (parsed from agent XML output), not SDK's built-in `AskUserQuestion`
 - Langfuse tracing for all agent calls via `src/engine/tracing.ts` (env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`)
 - MCP servers auto-loaded from `.mcp.json` (gitignored, same format as Claude Code). Agents get full tool access to configured servers (brain, langfuse, etc.). Programmatic callers can override via `EforgeEngineOptions.mcpServers`.
+- Claude Code plugins auto-discovered from `~/.claude/plugins/installed_plugins.json`. Provides skills, hooks, and plugin-bundled MCP servers to agents via the SDK's `plugins` option. Configured via `eforge.yaml` `plugins` section. `settingSources: ['project']` enabled by default so agents load CLAUDE.md.
 
 ## CLI commands
 
@@ -155,7 +158,7 @@ eforge review <planSet>   # Review code against plans
 eforge status             # Check running builds
 ```
 
-Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--no-monitor` (disable web monitor)
+Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading)
 
 ## Roadmap
 

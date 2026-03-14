@@ -75,7 +75,7 @@ export {
 export { Semaphore, AsyncEventQueue } from './concurrency.js';
 
 // --- config ---
-export type { EforgeConfig } from './config.js';
+export type { EforgeConfig, PluginConfig } from './config.js';
 export { DEFAULT_CONFIG, findConfigFile, resolveConfig, loadConfig } from './config.js';
 export type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 export { createTracingContext, createNoopTracingContext } from './tracing.js';

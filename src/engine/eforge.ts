@@ -7,6 +7,7 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -23,9 +24,10 @@ import type {
   ExpeditionModule,
   ScopeAssessment,
 } from './events.js';
-import type { EforgeConfig } from './config.js';
+import type { EforgeConfig, PluginConfig } from './config.js';
 import type { AgentBackend } from './backend.js';
 import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
+import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
 import type { PlannerOptions } from './agents/planner.js';
 import { loadConfig } from './config.js';
 import { ClaudeSDKBackend } from './backends/claude-sdk.js';
@@ -53,6 +55,10 @@ export interface EforgeEngineOptions {
   backend?: AgentBackend;
   /** MCP servers to make available to agents (Claude SDK backend only, ignored if backend is provided) */
   mcpServers?: ClaudeSDKBackendOptions['mcpServers'];
+  /** Claude Code plugins to load (Claude SDK backend only, ignored if backend is provided) */
+  plugins?: SdkPluginConfig[];
+  /** Which settings sources to load — 'user', 'project', 'local' (Claude SDK backend only) */
+  settingSources?: SettingSource[];
   /** Clarification callback for interactive planning */
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Approval callback for build gates */
@@ -71,6 +77,8 @@ export class EforgeEngine {
     this.cwd = options.cwd ?? process.cwd();
     this.backend = options.backend ?? new ClaudeSDKBackend({
       mcpServers: options.mcpServers,
+      plugins: options.plugins,
+      settingSources: options.settingSources ?? config.agents.settingSources as SettingSource[] | undefined,
     });
     this.onClarification = options.onClarification;
     this.onApproval = options.onApproval;
@@ -98,6 +106,14 @@ export class EforgeEngine {
       const discovered = await loadMcpServers(cwd);
       if (discovered) {
         options = { ...options, mcpServers: discovered };
+      }
+    }
+
+    // Auto-load plugins from ~/.claude/plugins/ if not explicitly provided
+    if (!options.plugins && !options.backend) {
+      const discovered = await loadPlugins(cwd, config.plugins);
+      if (discovered) {
+        options = { ...options, plugins: discovered };
       }
     }
 
@@ -647,6 +663,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     agents: overrides.agents ? { ...base.agents, ...overrides.agents } : base.agents,
     build: overrides.build ? { ...base.build, ...overrides.build } : base.build,
     plan: overrides.plan ? { ...base.plan, ...overrides.plan } : base.plan,
+    plugins: overrides.plugins ? { ...base.plugins, ...overrides.plugins } : base.plugins,
   };
 }
 
@@ -751,4 +768,66 @@ async function loadMcpServers(cwd: string): Promise<ClaudeSDKBackendOptions['mcp
     process.stderr.write(`Warning: failed to parse ${mcpPath}, MCP servers not loaded\n`);
   }
   return undefined;
+}
+
+/**
+ * Discover Claude Code plugins from ~/.claude/plugins/installed_plugins.json.
+ * Loads user-scoped plugins (global) and project-scoped plugins matching the cwd.
+ * Applies include/exclude filters and appends manual paths from config.
+ */
+async function loadPlugins(cwd: string, pluginConfig: PluginConfig): Promise<SdkPluginConfig[] | undefined> {
+  if (!pluginConfig.enabled) return undefined;
+
+  const plugins: SdkPluginConfig[] = [];
+
+  // Auto-discover from installed_plugins.json
+  const installedPath = resolve(homedir(), '.claude/plugins/installed_plugins.json');
+  let installedContent: string | undefined;
+  try {
+    installedContent = await readFile(installedPath, 'utf-8');
+  } catch {
+    // No installed plugins file — fine, plugins are optional
+  }
+
+  if (installedContent) {
+    try {
+      const data = JSON.parse(installedContent);
+      if (data?.plugins && typeof data.plugins === 'object' && !Array.isArray(data.plugins)) {
+        for (const [id, entries] of Object.entries(data.plugins)) {
+          // Find first matching entry — plugins may have multiple entries (e.g., user + project scope)
+          if (!Array.isArray(entries)) continue;
+          for (const entry of entries as Array<Record<string, unknown>>) {
+            if (!entry || typeof entry.scope !== 'string' || typeof entry.installPath !== 'string') continue;
+
+            // Include user-scoped (global) and project-scoped plugins matching cwd
+            if (entry.scope === 'project') {
+              if (typeof entry.projectPath !== 'string') continue;
+              const normalizedProject = entry.projectPath.endsWith('/') ? entry.projectPath : entry.projectPath + '/';
+              if (cwd !== entry.projectPath && !cwd.startsWith(normalizedProject)) continue;
+            } else if (entry.scope !== 'user') {
+              continue;
+            }
+
+            // Apply include/exclude filters
+            if (pluginConfig.include && !pluginConfig.include.includes(id)) break;
+            if (pluginConfig.exclude?.includes(id)) break;
+
+            plugins.push({ type: 'local', path: entry.installPath as string });
+            break;
+          }
+        }
+      }
+    } catch {
+      process.stderr.write(`Warning: failed to parse ${installedPath}, plugins not loaded\n`);
+    }
+  }
+
+  // Append manual paths
+  if (pluginConfig.paths) {
+    for (const p of pluginConfig.paths) {
+      plugins.push({ type: 'local', path: p });
+    }
+  }
+
+  return plugins.length > 0 ? plugins : undefined;
 }

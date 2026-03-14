@@ -11,6 +11,8 @@ import type {
   SDKUserMessage,
   SDKToolUseSummaryMessage,
   McpServerConfig,
+  SdkPluginConfig,
+  SettingSource,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
 import type { AgentBackend, AgentRunOptions } from '../backend.js';
@@ -18,13 +20,21 @@ import type { AgentBackend, AgentRunOptions } from '../backend.js';
 export interface ClaudeSDKBackendOptions {
   /** MCP servers to make available to all agent runs. */
   mcpServers?: Record<string, McpServerConfig>;
+  /** Claude Code plugins to load (skills, hooks, plugin MCP servers). */
+  plugins?: SdkPluginConfig[];
+  /** Which settings to load: 'user', 'project', 'local'. */
+  settingSources?: SettingSource[];
 }
 
 export class ClaudeSDKBackend implements AgentBackend {
   private readonly mcpServers?: Record<string, McpServerConfig>;
+  private readonly plugins?: SdkPluginConfig[];
+  private readonly settingSources?: SettingSource[];
 
   constructor(options?: ClaudeSDKBackendOptions) {
     this.mcpServers = options?.mcpServers;
+    this.plugins = options?.plugins;
+    this.settingSources = options?.settingSources;
   }
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
@@ -39,6 +49,8 @@ export class ClaudeSDKBackend implements AgentBackend {
           ? { type: 'preset', preset: 'claude_code' }
           : undefined,
         mcpServers: this.mcpServers,
+        plugins: this.plugins,
+        settingSources: this.settingSources,
         abortController: options.abortSignal
           ? abortControllerFromSignal(options.abortSignal)
           : undefined,

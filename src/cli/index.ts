@@ -9,12 +9,20 @@ import {
   resolveDependencyGraph,
   validateRuntimeReadiness,
 } from '../engine/plan.js';
+import type { EforgeConfig } from '../engine/config.js';
 import type { EforgeEvent, PlanFile } from '../engine/events.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { createMonitor, type Monitor } from '../monitor/index.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
+
+function buildConfigOverrides(options: { parallelism?: number; plugins?: boolean }): Partial<EforgeConfig> | undefined {
+  const overrides: Partial<EforgeConfig> = {};
+  if (options.parallelism) overrides.build = { parallelism: options.parallelism } as EforgeConfig['build'];
+  if (options.plugins === false) overrides.plugins = { enabled: false };
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
 
 let activeMonitor: Monitor | undefined;
 
@@ -124,13 +132,15 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--verbose', 'Stream agent output')
     .option('--name <name>', 'Plan set name (inferred from source if omitted)')
     .option('--no-monitor', 'Disable web monitor')
+    .option('--no-plugins', 'Disable plugin loading')
     .action(
-      async (source: string, options: { auto?: boolean; verbose?: boolean; name?: string; monitor?: boolean }) => {
+      async (source: string, options: { auto?: boolean; verbose?: boolean; name?: string; monitor?: boolean; plugins?: boolean }) => {
         initDisplay({ verbose: options.verbose });
 
         const engine = await EforgeEngine.create({
           onClarification: createClarificationHandler(options.auto ?? false),
           onApproval: createApprovalHandler(options.auto ?? false),
+          ...(options.plugins === false && { config: { plugins: { enabled: false } } }),
         });
 
         await withMonitor(options.monitor === false, async (monitor) => {
@@ -158,6 +168,7 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
     .option('--dry-run', 'Plan only, then show execution plan without building')
     .option('--no-monitor', 'Disable web monitor')
+    .option('--no-plugins', 'Disable plugin loading')
     .action(
       async (
         source: string,
@@ -168,18 +179,17 @@ export function createProgram(abortController?: AbortController): Command {
           parallelism?: number;
           dryRun?: boolean;
           monitor?: boolean;
+          plugins?: boolean;
         },
       ) => {
         initDisplay({ verbose: options.verbose });
 
-        const configOverrides = options.parallelism
-          ? { build: { parallelism: options.parallelism } }
-          : undefined;
+        const configOverrides = buildConfigOverrides(options);
 
         const engine = await EforgeEngine.create({
           onClarification: createClarificationHandler(options.auto ?? false),
           onApproval: createApprovalHandler(options.auto ?? false),
-          config: configOverrides,
+          ...(configOverrides && { config: configOverrides }),
         });
 
         await withMonitor(options.monitor === false, async (monitor) => {
@@ -239,10 +249,11 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--dry-run', 'Validate and show execution plan without running')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
     .option('--no-monitor', 'Disable web monitor')
+    .option('--no-plugins', 'Disable plugin loading')
     .action(
       async (
         planSet: string,
-        options: { auto?: boolean; verbose?: boolean; dryRun?: boolean; parallelism?: number; monitor?: boolean },
+        options: { auto?: boolean; verbose?: boolean; dryRun?: boolean; parallelism?: number; monitor?: boolean; plugins?: boolean },
       ) => {
         initDisplay({ verbose: options.verbose });
 
@@ -250,14 +261,12 @@ export function createProgram(abortController?: AbortController): Command {
           await showDryRun(planSet);
         }
 
-        const configOverrides = options.parallelism
-          ? { build: { parallelism: options.parallelism } }
-          : undefined;
+        const configOverrides = buildConfigOverrides(options);
 
         const engine = await EforgeEngine.create({
           onClarification: createClarificationHandler(options.auto ?? false),
           onApproval: createApprovalHandler(options.auto ?? false),
-          config: configOverrides,
+          ...(configOverrides && { config: configOverrides }),
         });
 
         await withMonitor(options.monitor === false, async (monitor) => {
@@ -281,12 +290,14 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--auto', 'Run without approval gates')
     .option('--verbose', 'Stream agent output')
     .option('--no-monitor', 'Disable web monitor')
-    .action(async (planSet: string, options: { auto?: boolean; verbose?: boolean; monitor?: boolean }) => {
+    .option('--no-plugins', 'Disable plugin loading')
+    .action(async (planSet: string, options: { auto?: boolean; verbose?: boolean; monitor?: boolean; plugins?: boolean }) => {
       initDisplay({ verbose: options.verbose });
 
       const engine = await EforgeEngine.create({
         onClarification: createClarificationHandler(options.auto ?? false),
         onApproval: createApprovalHandler(options.auto ?? false),
+        ...(options.plugins === false && { config: { plugins: { enabled: false } } }),
       });
 
       await withMonitor(options.monitor === false, async (monitor) => {

@@ -3,18 +3,30 @@ import { resolve, dirname } from 'node:path';
 import { availableParallelism } from 'node:os';
 import { parse as parseYaml } from 'yaml';
 
+export interface PluginConfig {
+  enabled: boolean;
+  /** Plugin identifiers to include (e.g. "git@schaake-cc-marketplace"). If set, only these load. */
+  include?: string[];
+  /** Plugin identifiers to exclude from auto-discovery. */
+  exclude?: string[];
+  /** Additional local plugin directory paths (always appended). */
+  paths?: string[];
+}
+
 export interface EforgeConfig {
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
-  agents: { maxTurns: number; permissionMode: 'bypass' | 'default' };
+  agents: { maxTurns: number; permissionMode: 'bypass' | 'default'; settingSources?: string[] };
   build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[] };
   plan: { outputDir: string };
+  plugins: PluginConfig;
 }
 
 export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
-  agents: Object.freeze({ maxTurns: 30, permissionMode: 'bypass' as const }),
+  agents: Object.freeze({ maxTurns: 30, permissionMode: 'bypass' as const, settingSources: ['project'] as string[] }),
   build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined }),
   plan: Object.freeze({ outputDir: 'plans' }),
+  plugins: Object.freeze({ enabled: true }),
 });
 
 /**
@@ -64,6 +76,7 @@ export function resolveConfig(
     agents: Object.freeze({
       maxTurns: fileConfig.agents?.maxTurns ?? DEFAULT_CONFIG.agents.maxTurns,
       permissionMode: fileConfig.agents?.permissionMode ?? DEFAULT_CONFIG.agents.permissionMode,
+      settingSources: fileConfig.agents?.settingSources ?? DEFAULT_CONFIG.agents.settingSources,
     }),
     build: Object.freeze({
       parallelism: fileConfig.build?.parallelism ?? DEFAULT_CONFIG.build.parallelism,
@@ -72,6 +85,12 @@ export function resolveConfig(
     }),
     plan: Object.freeze({
       outputDir: fileConfig.plan?.outputDir ?? DEFAULT_CONFIG.plan.outputDir,
+    }),
+    plugins: Object.freeze({
+      enabled: fileConfig.plugins?.enabled ?? DEFAULT_CONFIG.plugins.enabled,
+      include: fileConfig.plugins?.include,
+      exclude: fileConfig.plugins?.exclude,
+      paths: fileConfig.plugins?.paths,
     }),
   });
 }
@@ -95,12 +114,18 @@ function parseRawConfig(data: Record<string, unknown>): Partial<EforgeConfig> {
 
   if (data.agents && typeof data.agents === 'object') {
     const ag = data.agents as Record<string, unknown>;
+    const VALID_SETTING_SOURCES = ['user', 'project', 'local'];
+    const settingSources =
+      Array.isArray(ag.settingSources)
+        ? ag.settingSources.filter((s: unknown) => typeof s === 'string' && VALID_SETTING_SOURCES.includes(s)) as string[]
+        : undefined;
     result.agents = {
       maxTurns: typeof ag.maxTurns === 'number' && ag.maxTurns > 0 ? ag.maxTurns : DEFAULT_CONFIG.agents.maxTurns,
       permissionMode:
         ag.permissionMode === 'bypass' || ag.permissionMode === 'default'
           ? ag.permissionMode
           : DEFAULT_CONFIG.agents.permissionMode,
+      settingSources,
     };
   }
 
@@ -124,6 +149,28 @@ function parseRawConfig(data: Record<string, unknown>): Partial<EforgeConfig> {
     const pl = data.plan as Record<string, unknown>;
     result.plan = {
       outputDir: typeof pl.outputDir === 'string' ? pl.outputDir : DEFAULT_CONFIG.plan.outputDir,
+    };
+  }
+
+  if (data.plugins && typeof data.plugins === 'object' && !Array.isArray(data.plugins)) {
+    const pg = data.plugins as Record<string, unknown>;
+    const include =
+      Array.isArray(pg.include) && pg.include.every((s: unknown) => typeof s === 'string')
+        ? (pg.include as string[])
+        : undefined;
+    const exclude =
+      Array.isArray(pg.exclude) && pg.exclude.every((s: unknown) => typeof s === 'string')
+        ? (pg.exclude as string[])
+        : undefined;
+    const paths =
+      Array.isArray(pg.paths) && pg.paths.every((s: unknown) => typeof s === 'string')
+        ? (pg.paths as string[])
+        : undefined;
+    result.plugins = {
+      enabled: typeof pg.enabled === 'boolean' ? pg.enabled : DEFAULT_CONFIG.plugins.enabled,
+      include,
+      exclude,
+      paths,
     };
   }
 
