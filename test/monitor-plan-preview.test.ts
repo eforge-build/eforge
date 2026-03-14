@@ -1,0 +1,104 @@
+import { describe, it, expect } from 'vitest';
+import { splitPlanContent, parseFrontmatterFields } from '../src/monitor/ui/src/lib/plan-content';
+
+describe('splitPlanContent', () => {
+  it('splits standard plan file with YAML frontmatter and markdown body', () => {
+    const input = `---
+id: plan-01
+name: My Plan
+depends_on:
+  - plan-00
+branch: feature/plan-01
+---
+
+# Plan Title
+
+Some markdown body content.`;
+
+    const result = splitPlanContent(input);
+    expect(result.frontmatter).toBe(
+      'id: plan-01\nname: My Plan\ndepends_on:\n  - plan-00\nbranch: feature/plan-01',
+    );
+    expect(result.body).toBe('# Plan Title\n\nSome markdown body content.');
+  });
+
+  it('returns null frontmatter for content without frontmatter', () => {
+    const input = '# Just Markdown\n\nNo frontmatter here.';
+    const result = splitPlanContent(input);
+    expect(result.frontmatter).toBeNull();
+    expect(result.body).toBe(input);
+  });
+
+  it('handles plan file with empty body (frontmatter only)', () => {
+    const input = `---
+id: plan-01
+name: Frontmatter Only
+---`;
+
+    const result = splitPlanContent(input);
+    expect(result.frontmatter).toBe('id: plan-01\nname: Frontmatter Only');
+    expect(result.body).toBe('');
+  });
+
+  it('handles multiple --- delimiters in the body (only first pair delimits frontmatter)', () => {
+    const input = `---
+id: plan-01
+name: My Plan
+---
+
+# Title
+
+Some content with a --- horizontal rule.
+
+---
+
+More content after the rule.`;
+
+    const result = splitPlanContent(input);
+    expect(result.frontmatter).toBe('id: plan-01\nname: My Plan');
+    expect(result.body).toContain('--- horizontal rule');
+    expect(result.body).toContain('More content after the rule.');
+  });
+
+  it('returns null frontmatter and empty body for empty string', () => {
+    const result = splitPlanContent('');
+    expect(result.frontmatter).toBeNull();
+    expect(result.body).toBe('');
+  });
+});
+
+describe('parseFrontmatterFields', () => {
+  it('parses all standard fields', () => {
+    const yaml = `id: plan-01-foundation
+name: Foundation module
+depends_on:
+  - plan-00-setup
+  - plan-02-config
+branch: feature/foundation`;
+
+    const result = parseFrontmatterFields(yaml);
+    expect(result.id).toBe('plan-01-foundation');
+    expect(result.name).toBe('Foundation module');
+    expect(result.dependsOn).toEqual(['plan-00-setup', 'plan-02-config']);
+    expect(result.branch).toBe('feature/foundation');
+  });
+
+  it('returns empty arrays and strings for missing fields', () => {
+    const yaml = 'id: minimal-plan';
+    const result = parseFrontmatterFields(yaml);
+    expect(result.id).toBe('minimal-plan');
+    expect(result.name).toBe('');
+    expect(result.dependsOn).toEqual([]);
+    expect(result.branch).toBe('');
+    expect(result.migrations).toEqual([]);
+  });
+
+  it('handles no dependencies', () => {
+    const yaml = `id: plan-01
+name: No Deps
+branch: main`;
+
+    const result = parseFrontmatterFields(yaml);
+    expect(result.dependsOn).toEqual([]);
+  });
+});

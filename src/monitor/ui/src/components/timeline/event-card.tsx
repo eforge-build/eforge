@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { EforgeEvent } from '@/lib/types';
 import { formatDuration, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { usePlanPreview } from '@/components/preview';
 
 interface EventCardProps {
   event: EforgeEvent;
@@ -113,10 +114,19 @@ function eventDetail(event: EforgeEvent): string | null {
   }
 }
 
+function getEventPlanId(event: EforgeEvent): string | undefined {
+  if ('planId' in event && typeof (event as { planId?: string }).planId === 'string') {
+    return (event as { planId: string }).planId;
+  }
+  return undefined;
+}
+
 export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { openPreview } = usePlanPreview();
   const typeInfo = classifyEvent(event.type, event);
   const isVerbose = event.type.startsWith('agent:');
+  const planId = getEventPlanId(event);
 
   // Hide verbose events when toggle is off
   if (isVerbose && !showVerbose) return null;
@@ -154,7 +164,20 @@ export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
         {typeInfo.label}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="text-xs text-foreground">{summary}</div>
+        <div className="text-xs text-foreground">
+          {summary}
+          {planId && (
+            <>
+              {' '}
+              <span
+                className="text-blue cursor-pointer hover:underline font-mono text-[11px]"
+                onClick={() => openPreview(planId)}
+              >
+                {planId}
+              </span>
+            </>
+          )}
+        </div>
         {detail && (
           <>
             <button

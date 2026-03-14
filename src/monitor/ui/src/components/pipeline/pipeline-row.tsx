@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { usePlanPreview } from '@/components/preview';
 import type { PipelineStage } from '@/lib/types';
 
 const STAGES: PipelineStage[] = ['implement', 'review', 'evaluate', 'complete'];
@@ -9,11 +10,14 @@ interface PipelineRowProps {
 }
 
 export function PipelineRow({ planId, currentStage }: PipelineRowProps) {
+  const { openPreview } = usePlanPreview();
+
   return (
     <div className="flex items-center gap-1 mb-1 text-[11px]">
       <span
-        className="w-[120px] text-text-dim overflow-hidden text-ellipsis whitespace-nowrap"
+        className="w-[120px] text-text-dim overflow-hidden text-ellipsis whitespace-nowrap cursor-pointer hover:text-foreground hover:underline"
         title={planId}
+        onClick={() => openPreview(planId)}
       >
         {planId}
       </span>

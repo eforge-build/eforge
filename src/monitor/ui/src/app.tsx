@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { SummaryCards } from '@/components/common/summary-cards';
 import { Pipeline } from '@/components/pipeline/pipeline';
 import { Timeline } from '@/components/timeline/timeline';
+import { PlanPreviewProvider, PlanPreviewPanel } from '@/components/preview';
 import { useEforgeEvents } from '@/hooks/use-eforge-events';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { getSummaryStats } from '@/lib/reducer';
@@ -78,42 +79,46 @@ export function App() {
   }, [runState.startTime, runState.isComplete]);
 
   return (
-    <AppLayout
-      header={<Header connectionStatus={connectionStatus} />}
-      sidebar={
-        <Sidebar
-          currentRunId={currentRunId}
-          onSelectRun={handleSelectRun}
-          refreshTrigger={sidebarRefresh}
-        />
-      }
-    >
-      <main
-        ref={containerRef}
-        className="overflow-y-auto p-4 flex flex-col gap-4"
+    <PlanPreviewProvider>
+      <AppLayout
+        header={<Header connectionStatus={connectionStatus} />}
+        sidebar={
+          <Sidebar
+            currentRunId={currentRunId}
+            onSelectRun={handleSelectRun}
+            refreshTrigger={sidebarRefresh}
+          />
+        }
       >
-        {!hasEvents ? (
-          <div className="flex items-center justify-center h-full text-text-dim text-sm">
-            Waiting for events...
-          </div>
-        ) : (
-          <>
-            <SummaryCards {...stats} />
-            <Pipeline planStatuses={runState.planStatuses} />
-            <Timeline events={runState.events} startTime={runState.startTime} />
-          </>
-        )}
-      </main>
-
-      {/* Auto-scroll button */}
-      {!autoScroll && hasEvents && (
-        <button
-          onClick={enableAutoScroll}
-          className="fixed bottom-4 right-4 bg-bg-tertiary border border-border rounded-md px-3 py-1.5 text-[11px] text-text-dim cursor-pointer hover:text-foreground"
+        <main
+          ref={containerRef}
+          className="overflow-y-auto p-4 flex flex-col gap-4"
         >
-          ↓ Auto-scroll
-        </button>
-      )}
-    </AppLayout>
+          {!hasEvents ? (
+            <div className="flex items-center justify-center h-full text-text-dim text-sm">
+              Waiting for events...
+            </div>
+          ) : (
+            <>
+              <SummaryCards {...stats} />
+              <Pipeline planStatuses={runState.planStatuses} />
+              <Timeline events={runState.events} startTime={runState.startTime} />
+            </>
+          )}
+        </main>
+
+        {/* Auto-scroll button */}
+        {!autoScroll && hasEvents && (
+          <button
+            onClick={enableAutoScroll}
+            className="fixed bottom-4 right-4 bg-bg-tertiary border border-border rounded-md px-3 py-1.5 text-[11px] text-text-dim cursor-pointer hover:text-foreground"
+          >
+            ↓ Auto-scroll
+          </button>
+        )}
+
+        <PlanPreviewPanel runId={currentRunId} />
+      </AppLayout>
+    </PlanPreviewProvider>
   );
 }
