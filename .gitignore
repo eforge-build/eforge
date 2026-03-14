@@ -6,3 +6,6 @@ dist/
 .forge-logs/
 .mcp.json
 .schaake-os-track
+
+# Eval
+eval/results/

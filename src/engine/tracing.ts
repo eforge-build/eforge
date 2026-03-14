@@ -78,11 +78,14 @@ export function createTracingContext(
     baseUrl: config.langfuse.host,
   });
 
+  const tags = (process.env.FORGE_TRACE_TAGS ?? '').split(',').filter(Boolean);
+
   const trace = langfuse.trace({
     id: runId,
     name: `forge:${command}`,
     sessionId,
     metadata: { command },
+    tags: tags.length > 0 ? tags : undefined,
   });
 
   return {

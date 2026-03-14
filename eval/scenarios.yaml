@@ -1,0 +1,22 @@
+# Forge AI evaluation scenarios
+# Each scenario defines a fixture + PRD to run forgeai against.
+# Fixtures live in eval/fixtures/<fixture>/ as plain project files (no .git).
+
+scenarios:
+  - id: todo-api-health-check
+    fixture: todo-api
+    prd: docs/add-health-check.md
+    validate:
+      - pnpm install
+      - pnpm type-check
+      - pnpm test
+    description: "Add GET /health endpoint to Express API"
+
+  - id: todo-api-auth
+    fixture: todo-api
+    prd: docs/add-jwt-auth.md
+    validate:
+      - pnpm install
+      - pnpm type-check
+      - pnpm test
+    description: "Add JWT auth middleware + protected routes"
