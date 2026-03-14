@@ -45,7 +45,7 @@ Key constraints:
 3. **Git diff scoping** — review only changed files via `git diff` against base branch.
 4. **Fixes left unstaged** — agent writes fixes to files but never stages them.
 5. **Categories from code-review-policy** — Bugs, Security, Error Handling, Edge Cases, Types, DRY, Performance, Maintainability.
-6. **Dual invocation** — inline during build (per-plan in worktree) and standalone via `aroh-forge review`.
+6. **Dual invocation** — inline during build (per-plan in worktree) and standalone via `forge review`.
 7. **`maxTurns: 30`** — enough for file exploration, issue identification, and optional fix writing.
 
 ### Reviewer Agent Flow

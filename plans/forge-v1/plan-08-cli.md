@@ -43,7 +43,7 @@ sequenceDiagram
     participant Display as cli/display.ts
     participant Interactive as cli/interactive.ts
 
-    User->>CLI: aroh-forge plan docs/prd.md --verbose
+    User->>CLI: forge plan docs/prd.md --verbose
     CLI->>Interactive: createClarificationHandler(auto=false)
     CLI->>Interactive: createApprovalHandler(auto=false)
     CLI->>Engine: ForgeEngine.create({ cwd, onClarification, onApproval, verbose: true })

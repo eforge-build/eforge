@@ -1,8 +1,8 @@
-# aroh-forge: Standalone CLI Tool
+# forge: Standalone CLI Tool
 
 ## Context
 
-Mark's schaake-cc-marketplace plugins (EEE, orchestrate, review) implement a complete plan-build-review loop for autonomous code generation. Chandra proved the concept overnight with a 12-hour multi-agent pipeline build. The goal is to extract this workflow into a standalone TypeScript CLI (`aroh-forge`) built on `@anthropic-ai/claude-agent-sdk`, so it works outside of Claude Code as an independent developer tool.
+Mark's schaake-cc-marketplace plugins (EEE, orchestrate, review) implement a complete plan-build-review loop for autonomous code generation. Chandra proved the concept overnight with a 12-hour multi-agent pipeline build. The goal is to extract this workflow into a standalone TypeScript CLI (`forge`) built on `@anthropic-ai/claude-agent-sdk`, so it works outside of Claude Code as an independent developer tool.
 
 This is primarily an **extraction and repackaging** exercise — the skill logic, plan formats, orchestration patterns, and review policies already exist and are battle-tested.
 
@@ -15,10 +15,10 @@ This is primarily an **extraction and repackaging** exercise — the skill logic
 ## CLI Shape
 
 ```
-aroh-forge plan <prd-or-prompt>    # PRD → execution plans
-aroh-forge build <plan-set>        # Execute plans (implement + review)
-aroh-forge review <plan-set>       # Review code against plans
-aroh-forge status                  # Check running builds
+forge plan <prd-or-prompt>    # PRD → execution plans
+forge build <plan-set>        # Execute plans (implement + review)
+forge review <plan-set>       # Review code against plans
+forge status                  # Check running builds
 ```
 
 Flags: `--auto` (bypass approval gates), `--verbose` (stream agent output), `--dry-run` (validate without executing)
@@ -323,9 +323,9 @@ src/
 
 ## Extraction Map
 
-Source skills → aroh-forge components:
+Source skills → forge components:
 
-| Source (schaake-cc-marketplace) | Target (aroh-forge) | What to extract |
+| Source (schaake-cc-marketplace) | Target (forge) | What to extract |
 |---|----|---|
 | `eee/skills/excursion-planner/` | `engine/prompts/planner.md` + `engine/agents/planner.ts` | Plan generation logic, format spec, codebase exploration strategy |
 | `eee/skills/expedition-compiler/` | `engine/plan.ts` | orchestration.yaml + plan file format, dependency resolution |
@@ -351,7 +351,7 @@ Source skills → aroh-forge components:
 10. `cli/interactive.ts` — clarification prompts
 11. `cli/index.ts` — wire Commander → engine
 12. `prompts/planner.md`, `plan-reviewer.md`, `plan-evaluator.md`
-13. **Test**: `aroh-forge plan "Add a health check endpoint"` in a test repo
+13. **Test**: `forge plan "Add a health check endpoint"` in a test repo
 
 ### Phase 2: Build Command (single plan)
 1. `engine/agents/builder.ts` — multi-turn builder
@@ -359,7 +359,7 @@ Source skills → aroh-forge components:
 3. `engine/state.ts` — build state tracking
 4. `engine/forge.ts` — add `build()` method
 5. `prompts/builder.md`, `reviewer.md`, `evaluator.md`
-6. **Test**: `aroh-forge build <plan-set>` with a single plan
+6. **Test**: `forge build <plan-set>` with a single plan
 
 ### Phase 3: Parallel Orchestration
 1. `engine/orchestrator.ts` — dependency graph, wave execution
@@ -429,27 +429,27 @@ function withRecording(
 
 ## Telemetry
 
-Langfuse tracing for all agent SDK calls. Dogfoods the aroh observability story — forge becomes the first "customer" of the diagnosis flywheel.
+Langfuse tracing for all agent SDK calls. Dogfoods the observability story — forge becomes the first "customer" of the diagnosis flywheel.
 
 - **SDK**: `langfuse` npm package (JS SDK)
 - **Config**: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` from env or forge.yaml
-- **Trace structure**: one trace per `aroh-forge` invocation, spans per agent call (planner, builder, reviewer, evaluator)
+- **Trace structure**: one trace per `forge` invocation, spans per agent call (planner, builder, reviewer, evaluator)
 - **Captured**: model, token usage, wall-clock duration, success/failure, plan metadata
 
 ## Repo
 
-Separate repo at `~/projects/aroh/forge/` (GitHub: `aroh-ai/forge`). Bring into flywheel monorepo via `git subtree add` once baked. Zero code dependencies on flywheel — connects via MCP only.
+Separate repo (GitHub: `schaakesolutionsllc/forge`). Zero code dependencies on other projects — connects via MCP only.
 
 ## Verification
 
-1. `aroh-forge plan "Add a health check endpoint"` → emits plan events, produces plan files
-2. `aroh-forge plan "Add auth" --auto` → no prompts, proceeds with best guesses
-3. `aroh-forge build <plan-set>` → implement → review → evaluate → clean commits
-4. `aroh-forge build <plan-set> --verbose` → streams agent output
+1. `forge plan "Add a health check endpoint"` → emits plan events, produces plan files
+2. `forge plan "Add auth" --auto` → no prompts, proceeds with best guesses
+3. `forge build <plan-set>` → implement → review → evaluate → clean commits
+4. `forge build <plan-set> --verbose` → streams agent output
 5. Multi-plan with deps → correct wave ordering, parallel execution, clean merge
-6. Interrupted build → `aroh-forge status` shows state, re-run resumes
+6. Interrupted build → `forge status` shows state, re-run resumes
 
 ## Open Questions (deferred)
 
 - **Package publishing**: npm? GitHub package? Private for now?
-- **MCP integration**: Should forge optionally connect to aroh flywheel MCP to receive findings as input to plan generation?
+- **MCP integration**: Should forge optionally connect to external MCP servers to receive findings as input to plan generation?

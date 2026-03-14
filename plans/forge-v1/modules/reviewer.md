@@ -21,7 +21,7 @@ Key constraints from architecture:
 - Review issue XML parser — extract `<review-issues>` blocks from assistant message text into typed `ReviewIssue[]`
 - Integration with foundation's `mapSDKMessages()` for agent-level event streaming
 - Integration with foundation's `loadPrompt()` for prompt loading and variable substitution
-- Support for standalone `aroh-forge review <planSet>` command (review existing code against plans without building)
+- Support for standalone `forge review <planSet>` command (review existing code against plans without building)
 - Support for inline review during build (called by orchestrator after builder Turn 1 commits)
 
 ### Out of Scope
@@ -67,7 +67,7 @@ Two files: the reviewer agent implementation and its prompt. The agent is a sing
 
 6. **Dual invocation paths** — The reviewer agent function supports two call patterns:
    - **Inline** (during build): receives `planId`, `worktreePath`, `baseBranch` — reviews changes in a worktree
-   - **Standalone** (via `aroh-forge review`): receives `planSet` path, iterates all plans, reviews each against its branch
+   - **Standalone** (via `forge review`): receives `planSet` path, iterates all plans, reviews each against its branch
 
 7. **`maxTurns` set to 30** — Matches architecture spec. The reviewer needs enough turns to explore files, read code, identify issues, and optionally write fixes. One-shot in terms of prompt (no multi-turn conversation), but the SDK may use multiple tool-use turns internally.
 

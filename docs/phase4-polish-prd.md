@@ -2,7 +2,7 @@
 
 ## Context
 
-aroh-forge's core engine (Phases 1–3) is complete and functional: plan/build/review commands, parallel wave orchestration, Langfuse tracing, and interactive clarification all work end-to-end. However, the orchestration pipeline has robustness gaps that surface under failure conditions — concurrent state writes can corrupt `.forge-state.json`, merge conflicts leave the repo in a dirty state, SIGINT doesn't propagate cancellation to running agents, and there's no post-merge validation step. This work hardens the engine for real-world use.
+forge's core engine (Phases 1–3) is complete and functional: plan/build/review commands, parallel wave orchestration, Langfuse tracing, and interactive clarification all work end-to-end. However, the orchestration pipeline has robustness gaps that surface under failure conditions — concurrent state writes can corrupt `.forge-state.json`, merge conflicts leave the repo in a dirty state, SIGINT doesn't propagate cancellation to running agents, and there's no post-merge validation step. This work hardens the engine for real-world use.
 
 ## Goals
 
@@ -106,8 +106,8 @@ Units A and B have no dependencies and can be done first (or in parallel). Unit 
 
 - [ ] `pnpm test` passes with all new tests
 - [ ] `pnpm run type-check` passes
-- [ ] Corrupt `.forge-state.json` → `aroh-forge status` returns gracefully (no crash)
-- [ ] `aroh-forge build <planSet> --dry-run` shows runtime warnings for dirty git / existing branches
+- [ ] Corrupt `.forge-state.json` → `forge status` returns gracefully (no crash)
+- [ ] `forge build <planSet> --dry-run` shows runtime warnings for dirty git / existing branches
 - [ ] `forge.yaml` with `postMergeCommands` → build runs validation commands after merge, fails on non-zero exit
-- [ ] SIGINT during `aroh-forge build` saves state and cleans up worktrees within 5 seconds
+- [ ] SIGINT during `forge build` saves state and cleans up worktrees within 5 seconds
 - [ ] Merge conflict during merge phase → repo left clean (no lingering conflict state), dependent merges skipped

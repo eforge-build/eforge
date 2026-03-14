@@ -35,7 +35,7 @@ Key constraints from architecture:
 - Config loading — config module handles `forge.yaml` resolution; CLI passes `cwd` and any overrides
 - TUI/web UI rendering — future consumers of the same engine
 - Event persistence / recording middleware — future enhancement (CLI just iterates the stream)
-- `init` command (`aroh-forge init`) — future CLI command that scaffolds `forge.yaml`
+- `init` command (`forge init`) — future CLI command that scaffolds `forge.yaml`
 - Plugin system / extensibility — out of scope for v1
 
 ## Dependencies
@@ -100,7 +100,7 @@ sequenceDiagram
     participant Display as cli/display.ts
     participant Interactive as cli/interactive.ts
 
-    User->>CLI: aroh-forge plan docs/prd.md --verbose
+    User->>CLI: forge plan docs/prd.md --verbose
     CLI->>Interactive: createClarificationHandler(auto=false)
     CLI->>Interactive: createApprovalHandler(auto=false)
     CLI->>Engine: ForgeEngine.create({ cwd, onClarification, onApproval, verbose: true })
@@ -524,7 +524,7 @@ The `forge:start` event renders a minimal banner:
 function renderForgeStart(event: ForgeEvent & { type: 'forge:start' }): void {
   const shortRunId = event.runId.slice(0, 8);
   console.log();
-  console.log(chalk.bold(`aroh-forge ${event.command}`));
+  console.log(chalk.bold(`forge ${event.command}`));
   if (event.planSet) {
     console.log(chalk.dim(`Plan set: ${event.planSet}`));
   }

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is this?
 
-aroh-forge is a standalone CLI tool that extracts plan-build-review workflows from the schaake-cc-marketplace Claude Code plugins into a portable TypeScript library + CLI built on `@anthropic-ai/claude-agent-sdk`. It runs outside Claude Code as an independent developer tool.
+forge is a standalone CLI tool that extracts plan-build-review workflows from the schaake-cc-marketplace Claude Code plugins into a portable TypeScript library + CLI built on `@anthropic-ai/claude-agent-sdk`. It runs outside Claude Code as an independent developer tool.
 
 The architecture is **library-first**: a pure, event-driven engine (`src/engine/`) that yields typed `ForgeEvent`s via `AsyncGenerator`, consumed by thin surface layers (CLI today, TUI/headless/web UI in the future).
 
@@ -122,11 +122,11 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 ## CLI commands
 
 ```
-aroh-forge plan <source>      # PRD file or prompt → plan files
-aroh-forge forge <source>     # Plan + build in one step
-aroh-forge build <planSet>    # Execute plans (implement + review)
-aroh-forge review <planSet>   # Review code against plans
-aroh-forge status             # Check running builds
+forge plan <source>      # PRD file or prompt → plan files
+forge forge <source>     # Plan + build in one step
+forge build <planSet>    # Execute plans (implement + review)
+forge review <planSet>   # Review code against plans
+forge status             # Check running builds
 ```
 
 Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--no-monitor` (disable web monitor)

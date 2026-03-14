@@ -1,8 +1,8 @@
-# aroh-forge
+# forge
 
 Autonomous plan-build-review CLI for code generation, built on the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk).
 
-aroh-forge extracts battle-tested workflows from Claude Code plugins into a standalone tool that runs independently — no Claude Code required.
+forge extracts battle-tested workflows from Claude Code plugins into a standalone tool that runs independently — no Claude Code required.
 
 ## Architecture
 
@@ -46,17 +46,17 @@ pnpm run build
 
 ```bash
 # Generate plans from a PRD or description
-aroh-forge plan docs/my-feature.md
-aroh-forge plan "Add a health check endpoint"
+forge plan docs/my-feature.md
+forge plan "Add a health check endpoint"
 
 # Execute plans (implement + review loop)
-aroh-forge build my-plan-set
+forge build my-plan-set
 
 # Review existing code against plans
-aroh-forge review my-plan-set
+forge review my-plan-set
 
 # Check running builds
-aroh-forge status
+forge status
 ```
 
 ### Flags

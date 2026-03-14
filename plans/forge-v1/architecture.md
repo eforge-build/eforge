@@ -2,7 +2,7 @@
 
 ## Vision
 
-aroh-forge is a standalone CLI tool that extracts the plan-build-review autonomous coding loop from schaake-cc-marketplace Claude Code plugins into a portable TypeScript library + CLI. The architecture separates a pure, event-driven engine (the library) from thin consumer layers (CLI, future TUI/headless/web UI), enabling the same orchestration logic to power multiple invocation surfaces.
+forge is a standalone CLI tool that extracts the plan-build-review autonomous coding loop from schaake-cc-marketplace Claude Code plugins into a portable TypeScript library + CLI. The architecture separates a pure, event-driven engine (the library) from thin consumer layers (CLI, future TUI/headless/web UI), enabling the same orchestration logic to power multiple invocation surfaces.
 
 ## Core Principles
 

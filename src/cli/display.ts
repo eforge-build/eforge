@@ -75,7 +75,7 @@ export function renderEvent(event: ForgeEvent): void {
     // Lifecycle
     case 'forge:start':
       console.log('');
-      console.log(chalk.bold(`\u2692 aroh-forge ${event.command}`));
+      console.log(chalk.bold(`\u2692 forge ${event.command}`));
       console.log(chalk.dim(`  Run: ${event.runId}`));
       if (event.planSet) console.log(chalk.dim(`  Plan set: ${chalk.cyan(event.planSet)}`));
       console.log('');

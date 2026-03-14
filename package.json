@@ -1,10 +1,10 @@
 {
-  "name": "aroh-forge",
+  "name": "forge",
   "version": "0.1.0",
   "description": "Autonomous plan-build-review CLI for code generation",
   "type": "module",
   "bin": {
-    "aroh-forge": "./dist/cli.js"
+    "forge": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsup",
@@ -20,7 +20,7 @@
     "code-generation",
     "claude"
   ],
-  "author": "Aroh AI",
+  "author": "Schaake Solutions LLC",
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.26.0",
   "pnpm": {

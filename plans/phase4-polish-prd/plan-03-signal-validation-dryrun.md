@@ -70,7 +70,7 @@ This plan builds on atomic state writes (plan-01) and merge robustness (plan-02)
 
 ## Verification
 
-- [ ] SIGINT during `aroh-forge build` saves state and cleans up worktrees within 5 seconds
+- [ ] SIGINT during `forge build` saves state and cleans up worktrees within 5 seconds
 - [ ] `forge.yaml` with `postMergeCommands` causes commands to run after all plans merge
 - [ ] Post-merge validation stops on first non-zero exit code
 - [ ] Validation events render correctly in CLI display

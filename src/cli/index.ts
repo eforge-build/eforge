@@ -113,7 +113,7 @@ export function createProgram(abortController?: AbortController): Command {
   const program = new Command();
 
   program
-    .name('aroh-forge')
+    .name('forge')
     .description('Autonomous plan-build-review CLI for code generation')
     .version('0.1.0');
 

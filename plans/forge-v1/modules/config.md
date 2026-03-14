@@ -63,7 +63,7 @@ Two focused files: `config.ts` for configuration loading and `tracing.ts` for La
 ### `forge.yaml` Schema
 
 ```yaml
-# forge.yaml — project-level configuration for aroh-forge
+# forge.yaml — project-level configuration for forge
 
 # Langfuse tracing (optional — env vars override these)
 langfuse:
