@@ -99,6 +99,16 @@ src/
     interactive.ts            # Clarification prompts, approval gates
 
   cli.ts                      # Entry point (shebang, imports cli/index)
+
+eval/                           # End-to-end evaluation harness
+  scenarios.yaml                # Manifest: fixture + PRD + validation per scenario
+  run.sh                        # Main runner (bash)
+  lib/
+    run-scenario.sh             # Single-scenario runner (sourced by run.sh)
+    build-result.mjs            # Parse forge output → result.json
+  fixtures/                     # Embedded test projects (no .git)
+    todo-api/                   # Express + TypeScript API with 2 PRDs
+  results/                      # Gitignored — timestamped run output
 ```
 
 ## Testing
@@ -111,6 +121,10 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 - **Helpers colocated.** Test helpers (e.g., `makeState()`, `asyncIterableFrom()`) live in the test file that uses them. No shared test utils unless reuse spans 3+ files.
 - **Agent wiring tests use `StubBackend`** (`test/stub-backend.ts`). Test the logic between backend calls and ForgeEvents: clarification loops, XML parsing → event synthesis, error propagation. See `test/agent-wiring.test.ts`.
 - **Don't test backend implementations or infra.** `ClaudeSDKBackend`, `ForgeEngine` orchestration, worktree/git ops, and tracing are integration-level — don't unit test them.
+
+## Evaluation
+
+`eval/` contains an end-to-end eval harness. `eval/scenarios.yaml` defines scenarios (fixture + PRD + validation commands). Fixtures in `eval/fixtures/` are plain project files copied into disposable git repos per run. Results are gitignored and auto-pruned. Run `./eval/run.sh --help` or read `eval/run.sh` for usage.
 
 ## Conventions
 
