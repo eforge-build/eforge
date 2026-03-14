@@ -239,6 +239,10 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
+    case 'build:files_changed':
+      console.log(chalk.dim(`  ${chalk.cyan(event.planId)} — ${event.files.length} file(s) changed`));
+      break;
+
     case 'build:complete':
       succeedSpinner(`build:${event.planId}`, `${chalk.cyan(event.planId)} \u2014 complete`);
       break;

@@ -429,6 +429,17 @@ export class EforgeEngine {
         implTracker.cleanup();
         implSpan.end();
 
+        // Emit files changed by implementation (non-critical)
+        try {
+          const { stdout } = await exec('git', ['diff', '--name-only', `${orchConfig.baseBranch}...HEAD`], { cwd: worktreePath });
+          const files = stdout.trim().split('\n').filter(Boolean);
+          if (files.length > 0) {
+            yield { type: 'build:files_changed', planId, files };
+          }
+        } catch {
+          // Non-critical — skip silently
+        }
+
         // Phase 2 + 3: Review → Evaluate cycle
         yield* runReviewCycle({
           tracing,

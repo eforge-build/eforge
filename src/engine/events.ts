@@ -130,6 +130,7 @@ export type EforgeEvent =
   | { type: 'build:implement:start'; planId: string }
   | { type: 'build:implement:progress'; planId: string; message: string }
   | { type: 'build:implement:complete'; planId: string }
+  | { type: 'build:files_changed'; planId: string; files: string[] }
   | { type: 'build:review:start'; planId: string }
   | { type: 'build:review:complete'; planId: string; issues: ReviewIssue[] }
   | { type: 'build:evaluate:start'; planId: string }
