@@ -11,7 +11,7 @@ import {
 } from '../engine/plan.js';
 import type { ForgeEvent, PlanFile } from '../engine/events.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, stopAllSpinners } from './display.js';
-import { createClarificationHandler, createApprovalHandler, confirmBuild } from './interactive.js';
+import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { createMonitor, type Monitor } from '../monitor/index.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
@@ -214,15 +214,6 @@ export function createProgram(abortController?: AbortController): Command {
           // Handle --dry-run: show execution plan and exit
           if (options.dryRun) {
             await showDryRun(planSetName);
-          }
-
-          // Approval gate: confirm before building
-          if (!options.auto) {
-            const approved = await confirmBuild(planFiles);
-            if (!approved) {
-              console.log('\nBuild skipped.');
-              process.exit(0);
-            }
           }
 
           // Phase 2: Build
