@@ -32,7 +32,7 @@ run_scenario() {
   local workspace
   workspace="$(mktemp -d -t "eforge-eval-${id}-XXXXXX")"
   echo "  Copying fixture '$fixture' to workspace..."
-  cp -r "$fixture_dir" "$workspace"
+  cp -r "$fixture_dir/." "$workspace/"
   # Record workspace path for debugging
   echo "$workspace" > "$scenario_dir/workspace-path.txt"
 
