@@ -63,7 +63,7 @@ function processEvent(
     state.startTime = new Date(event.timestamp).getTime();
   }
 
-  if (event.type === 'phase:end') {
+  if (event.type === 'session:end') {
     state.isComplete = true;
     if ('result' in event && event.result) {
       state.resultStatus = (event.result as { status: 'completed' | 'failed' }).status;
@@ -74,6 +74,13 @@ function processEvent(
     state.tokensIn += event.result.usage?.input || 0;
     state.tokensOut += event.result.usage?.output || 0;
     state.totalCost += event.result.totalCostUsd || 0;
+  }
+
+  if (event.type === 'plan:complete' && 'plans' in event) {
+    const plans = (event as { plans: Array<{ id: string }> }).plans;
+    for (const plan of plans) {
+      state.planStatuses[plan.id] = 'plan';
+    }
   }
 
   const planId = 'planId' in event ? (event as { planId?: string }).planId : undefined;

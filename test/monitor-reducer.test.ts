@@ -52,7 +52,22 @@ describe('eforgeReducer', () => {
     expect(result.startTime).toBe(new Date('2024-01-01T00:00:00Z').getTime());
   });
 
-  it('marks complete on phase:end', () => {
+  it('marks complete on session:end', () => {
+    const event: EforgeEvent = {
+      type: 'session:end',
+      sessionId: 'session-1',
+      result: { status: 'completed', summary: 'All done' },
+      timestamp: '2024-01-01T00:01:00Z',
+    };
+    const result = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: '2',
+    });
+    expect(result.isComplete).toBe(true);
+  });
+
+  it('does not mark complete on phase:end', () => {
     const event: EforgeEvent = {
       type: 'phase:end',
       runId: 'run-1',
@@ -64,7 +79,42 @@ describe('eforgeReducer', () => {
       event,
       eventId: '2',
     });
+    expect(result.isComplete).toBe(false);
+  });
+
+  it('sets resultStatus from session:end result', () => {
+    const event: EforgeEvent = {
+      type: 'session:end',
+      sessionId: 'session-1',
+      result: { status: 'failed', summary: 'Build failed' },
+      timestamp: '2024-01-01T00:01:00Z',
+    };
+    const result = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: '3',
+    });
     expect(result.isComplete).toBe(true);
+    expect(result.resultStatus).toBe('failed');
+  });
+
+  it('initializes planStatuses from plan:complete', () => {
+    const event: EforgeEvent = {
+      type: 'plan:complete',
+      plans: [
+        { id: 'plan-a', description: 'First plan', dependsOn: [] },
+        { id: 'plan-b', description: 'Second plan', dependsOn: ['plan-a'] },
+      ],
+    };
+    const result = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: '4',
+    });
+    expect(result.planStatuses).toEqual({
+      'plan-a': 'plan',
+      'plan-b': 'plan',
+    });
   });
 
   it('accumulates tokens and cost from agent:result', () => {

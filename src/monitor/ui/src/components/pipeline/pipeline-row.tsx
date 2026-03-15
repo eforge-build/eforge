@@ -4,9 +4,10 @@ import { usePlanPreview } from '@/components/preview';
 import type { PipelineStage, ReviewIssue } from '@/lib/types';
 import { ReviewGauge } from './review-gauge';
 
-const STAGES: PipelineStage[] = ['implement', 'review', 'evaluate', 'complete'];
+const STAGES: PipelineStage[] = ['plan', 'implement', 'review', 'evaluate', 'complete'];
 
 const STAGE_COLORS: Record<string, { bg: string; text: string; glow: string }> = {
+  plan: { bg: 'bg-yellow/20', text: 'text-yellow', glow: 'rgba(227,179,65,0.4)' },
   implement: { bg: 'bg-blue/20', text: 'text-blue', glow: 'rgba(88,166,255,0.4)' },
   review: { bg: 'bg-purple/20', text: 'text-purple', glow: 'rgba(188,140,255,0.4)' },
   evaluate: { bg: 'bg-cyan/20', text: 'text-cyan', glow: 'rgba(57,210,192,0.4)' },

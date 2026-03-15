@@ -62,10 +62,10 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
         dispatch({ type: 'BATCH_LOAD', events: parsed });
         setConnectionStatus('connected');
 
-        const sessionStatus = data.status;
         const lastEventId = data.events.length > 0 ? data.events[data.events.length - 1].id : 0;
+        const hasSessionEnd = parsed.some((ev) => ev.event.type === 'session:end');
 
-        if (sessionStatus === 'completed' || sessionStatus === 'failed') {
+        if (hasSessionEnd) {
           // Session is done — cache it and skip SSE
           const finalState = parsed.reduce(
             (st, ev) => eforgeReducer(st, { type: 'ADD_EVENT', ...ev }),
