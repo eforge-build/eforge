@@ -166,8 +166,9 @@ eforge loads config from two levels, merged together:
 | `EFORGE_EVENT_TYPE` | Event type string (e.g., `eforge:start`, `plan:complete`) |
 | `EFORGE_CWD` | Working directory for the eforge run |
 | `EFORGE_GIT_REMOTE` | Git origin remote URL (empty string if not a git repo or no origin) |
+| `EFORGE_RUN_ID` | Run ID (UUID) captured from the first lifecycle event with a `runId` |
 
-`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event.
+`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_RUN_ID` is captured from `eforge:start` and available for all subsequent hooks.
 
 ## Conventions
 

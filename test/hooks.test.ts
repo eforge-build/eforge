@@ -133,4 +133,31 @@ describe('withHooks', () => {
       await rm(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('passes EFORGE_RUN_ID from eforge:start to subsequent hooks', async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-hook-test-'));
+    const outFile = join(tmpDir, 'runid-out.txt');
+
+    try {
+      const hooks: HookConfig[] = [
+        {
+          event: 'plan:start',
+          command: `echo "RUNID=$EFORGE_RUN_ID" > "${outFile}"`,
+          timeout: 5000,
+        },
+      ];
+
+      const events: EforgeEvent[] = [
+        { type: 'eforge:start', runId: 'test-run-42', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
+        { type: 'plan:start', source: 'test.md' },
+      ];
+
+      await collectEvents(withHooks(asyncIterableFrom(events), hooks, tmpDir));
+
+      const content = await readFile(outFile, 'utf-8');
+      expect(content).toContain('RUNID=test-run-42');
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

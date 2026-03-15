@@ -138,6 +138,11 @@ export async function* withHooks(
 
   try {
     for await (const event of events) {
+      // Capture runId from lifecycle events (eforge:start fires first)
+      if (event.type === 'eforge:start' || event.type === 'eforge:end') {
+        hookEnv.EFORGE_RUN_ID = event.runId;
+      }
+
       // Fire matching hooks (non-blocking)
       for (const { regex, hook } of compiled) {
         if (regex.test(event.type)) {
