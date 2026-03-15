@@ -126,7 +126,7 @@ run_validations() {
 
     # Derive a short name from the command, prefixed with index to avoid collisions
     local name
-    name="${cmd_index}-$(echo "$cmd" | awk '{print $NF}')"
+    name="${cmd_index}-$(echo "$cmd" | awk '{print $NF}' | tr '/' '-')"
 
     echo "    Running: $cmd" >&2
     local exit_code=0
