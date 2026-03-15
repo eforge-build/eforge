@@ -314,7 +314,9 @@ export function createProgram(abortController?: AbortController): Command {
       console.log(chalk.bold(`Monitor: ${monitor.server.url}`));
       console.log(chalk.dim('Press Ctrl+C to exit'));
 
-      // Keep process alive until Ctrl+C
+      // Signal handlers don't keep the event loop alive — use a timer
+      const keepAlive = setInterval(() => {}, 1 << 30);
+
       await new Promise<void>((resolveWait) => {
         const handler = async () => {
           process.removeListener('SIGINT', handler);
@@ -349,6 +351,7 @@ export function createProgram(abortController?: AbortController): Command {
             }
           } catch {}
 
+          clearInterval(keepAlive);
           resolveWait();
         };
 
