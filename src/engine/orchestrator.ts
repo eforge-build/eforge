@@ -163,7 +163,7 @@ export class Orchestrator {
     // Non-resumable existing state — emit end and return
     if (state.status !== 'running') {
       yield {
-        type: 'eforge:end',
+        type: 'phase:end',
         runId: '',
         result: { status: 'failed', summary: `Non-resumable state: ${state.status}` },
         timestamp: new Date().toISOString(),

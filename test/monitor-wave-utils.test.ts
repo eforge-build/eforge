@@ -15,7 +15,7 @@ function makeStoredEvent(event: EforgeEvent, eventId: string): StoredEvent {
 describe('partitionEventsByWave', () => {
   it('puts all events in preWave when no waves exist', () => {
     const events: StoredEvent[] = [
-      makeStoredEvent({ type: 'eforge:start', runId: 'r1', planSet: 'test', command: 'build', timestamp: '2024-01-01T00:00:00Z' }, '1'),
+      makeStoredEvent({ type: 'phase:start', runId: 'r1', planSet: 'test', command: 'build', timestamp: '2024-01-01T00:00:00Z' }, '1'),
       makeStoredEvent({ type: 'plan:start', source: 'test.md' }, '2'),
       makeStoredEvent({ type: 'plan:complete', plans: [] }, '3'),
     ];
@@ -30,7 +30,7 @@ describe('partitionEventsByWave', () => {
     const waves: WaveInfo[] = [{ wave: 1, planIds: ['plan-01', 'plan-02'] }];
 
     const events: StoredEvent[] = [
-      makeStoredEvent({ type: 'eforge:start', runId: 'r1', planSet: 'test', command: 'build', timestamp: '2024-01-01T00:00:00Z' }, '1'),
+      makeStoredEvent({ type: 'phase:start', runId: 'r1', planSet: 'test', command: 'build', timestamp: '2024-01-01T00:00:00Z' }, '1'),
       makeStoredEvent({ type: 'plan:complete', plans: [] }, '2'),
       makeStoredEvent({ type: 'wave:start', wave: 1, planIds: ['plan-01', 'plan-02'] }, '3'),
       makeStoredEvent({ type: 'build:start', planId: 'plan-01' }, '4'),
@@ -44,9 +44,9 @@ describe('partitionEventsByWave', () => {
 
     const result = partitionEventsByWave(events, waves);
 
-    // Pre-wave: eforge:start, plan:complete
+    // Pre-wave: phase:start, plan:complete
     expect(result.preWave).toHaveLength(2);
-    expect(result.preWave[0].event.type).toBe('eforge:start');
+    expect(result.preWave[0].event.type).toBe('phase:start');
     expect(result.preWave[1].event.type).toBe('plan:complete');
 
     // Wave 1: wave:start, 2x build:start, 2x build:complete, wave:complete + 2 merge events
@@ -77,7 +77,7 @@ describe('partitionEventsByWave', () => {
       makeStoredEvent({ type: 'build:complete', planId: 'plan-03' }, '10'),
       makeStoredEvent({ type: 'wave:complete', wave: 2 }, '11'),
       makeStoredEvent({ type: 'validation:start', commands: ['pnpm test'] }, '12'),
-      makeStoredEvent({ type: 'eforge:end', runId: 'r1', result: { status: 'completed', summary: 'done' }, timestamp: '2024-01-01T00:01:00Z' }, '13'),
+      makeStoredEvent({ type: 'phase:end', runId: 'r1', result: { status: 'completed', summary: 'done' }, timestamp: '2024-01-01T00:01:00Z' }, '13'),
     ];
 
     const result = partitionEventsByWave(events, waves);
@@ -94,10 +94,10 @@ describe('partitionEventsByWave', () => {
     const wave2 = result.waveEvents.get(2)!;
     expect(wave2).toHaveLength(6);
 
-    // Post-wave: validation:start + eforge:end
+    // Post-wave: validation:start + phase:end
     expect(result.postWave).toHaveLength(2);
     expect(result.postWave[0].event.type).toBe('validation:start');
-    expect(result.postWave[1].event.type).toBe('eforge:end');
+    expect(result.postWave[1].event.type).toBe('phase:end');
   });
 
   it('assigns events without planId to pre-wave when before first wave', () => {

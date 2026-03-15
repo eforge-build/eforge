@@ -79,12 +79,12 @@ export function App() {
     return () => clearInterval(interval);
   }, []); // Run once on mount — no dependency on currentRunId
 
-  // Refresh sidebar when eforge:start or eforge:end events arrive
+  // Refresh sidebar when phase:start or phase:end events arrive
   useEffect(() => {
     const lastEvent = runState.events[runState.events.length - 1];
     if (lastEvent) {
       const type = lastEvent.event.type;
-      if (type === 'eforge:start' || type === 'eforge:end') {
+      if (type === 'phase:start' || type === 'phase:end') {
         setSidebarRefresh((c) => c + 1);
       }
     }

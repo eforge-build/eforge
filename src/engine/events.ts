@@ -118,10 +118,14 @@ export interface EforgeStatus {
   completedPlans: string[];
 }
 
-export type EforgeEvent =
-  // Lifecycle
-  | { type: 'eforge:start'; runId: string; planSet: string; command: 'plan' | 'build' | 'adopt'; timestamp: string }
-  | { type: 'eforge:end'; runId: string; result: EforgeResult; timestamp: string }
+export type EforgeEvent = { sessionId?: string } & (
+  // Session lifecycle (one per eforge invocation, wraps all phases)
+  | { type: 'session:start'; sessionId: string; timestamp: string }
+  | { type: 'session:end'; sessionId: string; result: EforgeResult; timestamp: string }
+
+  // Phase lifecycle (one per plan/build/adopt phase)
+  | { type: 'phase:start'; runId: string; planSet: string; command: 'plan' | 'build' | 'adopt'; timestamp: string }
+  | { type: 'phase:end'; runId: string; result: EforgeResult; timestamp: string }
 
   // Planning
   | { type: 'plan:start'; source: string }
@@ -189,4 +193,5 @@ export type EforgeEvent =
 
   // User interaction
   | { type: 'approval:needed'; planId?: string; action: string; details: string }
-  | { type: 'approval:response'; approved: boolean };
+  | { type: 'approval:response'; approved: boolean }
+);

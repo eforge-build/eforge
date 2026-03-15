@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 
 import { EforgeEngine } from '../engine/eforge.js';
@@ -12,6 +13,7 @@ import {
 import type { EforgeConfig, HookConfig } from '../engine/config.js';
 import type { EforgeEvent, PlanFile } from '../engine/events.js';
 import { withHooks } from '../engine/hooks.js';
+import { withSessionId } from '../engine/session.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { ensureMonitor, type Monitor } from '../monitor/index.js';
@@ -71,8 +73,9 @@ function wrapEvents(
   events: AsyncGenerator<EforgeEvent>,
   monitor: Monitor | undefined,
   hooks: readonly HookConfig[],
+  sessionOpts?: import('../engine/session.js').SessionOptions,
 ): AsyncGenerator<EforgeEvent> {
-  let wrapped = events;
+  let wrapped = withSessionId(events, sessionOpts);
   if (hooks.length > 0) {
     wrapped = withHooks(wrapped, hooks, process.cwd());
   }
@@ -86,10 +89,10 @@ async function consumeEvents(
   let result: 'completed' | 'failed' = 'completed';
   for await (const event of events) {
     renderEvent(event);
-    if (event.type === 'eforge:start' && opts?.afterStart) {
+    if (event.type === 'phase:start' && opts?.afterStart) {
       opts.afterStart();
     }
-    if (event.type === 'eforge:end') {
+    if (event.type === 'phase:end') {
       result = event.result.status;
     }
   }
@@ -205,6 +208,9 @@ export function createProgram(abortController?: AbortController): Command {
         });
 
         await withMonitor(options.monitor === false, async (monitor) => {
+          // Shared sessionId across plan+build so tracking sees one session
+          const sessionId = randomUUID();
+
           // Phase 1: Plan or Adopt
           let planSetName: string | undefined;
           let planFiles: PlanFile[] = [];
@@ -224,16 +230,16 @@ export function createProgram(abortController?: AbortController): Command {
                 abortController,
               });
 
-          for await (const event of wrapEvents(phase1Events, monitor, engine.resolvedConfig.hooks)) {
+          for await (const event of wrapEvents(phase1Events, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: false })) {
             renderEvent(event);
-            if (event.type === 'eforge:start') {
+            if (event.type === 'phase:start') {
               renderLangfuseStatus(engine.resolvedConfig);
               planSetName = event.planSet;
             }
             if (event.type === 'plan:complete') {
               planFiles = event.plans;
             }
-            if (event.type === 'eforge:end') {
+            if (event.type === 'phase:end') {
               planResult = event.result.status;
             }
           }
@@ -247,14 +253,14 @@ export function createProgram(abortController?: AbortController): Command {
             await showDryRun(planSetName);
           }
 
-          // Phase 2: Build
+          // Phase 2: Build (same sessionId as phase 1)
           const buildResult = await consumeEvents(
             wrapEvents(engine.build(planSetName, {
               auto: options.auto,
               verbose: options.verbose,
               cleanup: options.cleanup,
               abortController,
-            }), monitor, engine.resolvedConfig.hooks),
+            }), monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: false, emitSessionEnd: true }),
             { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
           );
 

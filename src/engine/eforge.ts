@@ -139,7 +139,7 @@ export class EforgeEngine {
     const cwd = options.cwd ?? this.cwd;
 
     yield {
-      type: 'eforge:start',
+      type: 'phase:start',
       runId,
       planSet: planSetName,
       command: 'plan',
@@ -304,7 +304,7 @@ export class EforgeEngine {
     } finally {
       tracing.setOutput({ status, summary });
       yield {
-        type: 'eforge:end',
+        type: 'phase:end',
         runId,
         result: { status, summary },
         timestamp: new Date().toISOString(),
@@ -338,7 +338,7 @@ export class EforgeEngine {
     const tracing = createTracingContext(this.config, runId, 'adopt', planSetName);
 
     yield {
-      type: 'eforge:start',
+      type: 'phase:start',
       runId,
       planSet: planSetName,
       command: 'adopt',
@@ -422,7 +422,7 @@ export class EforgeEngine {
     } finally {
       tracing.setOutput({ status, summary });
       yield {
-        type: 'eforge:end',
+        type: 'phase:end',
         runId,
         result: { status, summary },
         timestamp: new Date().toISOString(),
@@ -501,7 +501,7 @@ export class EforgeEngine {
     const cwd = options.cwd ?? this.cwd;
 
     yield {
-      type: 'eforge:start',
+      type: 'phase:start',
       runId,
       planSet,
       command: 'build',
@@ -683,7 +683,7 @@ export class EforgeEngine {
     } finally {
       tracing.setOutput({ status, summary });
       yield {
-        type: 'eforge:end',
+        type: 'phase:end',
         runId,
         result: { status, summary },
         timestamp: new Date().toISOString(),

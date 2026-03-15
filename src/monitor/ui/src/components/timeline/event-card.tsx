@@ -11,8 +11,8 @@ interface EventCardProps {
 }
 
 function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: string } {
-  if (type === 'eforge:start') return { cls: 'start', label: type };
-  if (type === 'eforge:end') {
+  if (type === 'phase:start') return { cls: 'start', label: type };
+  if (type === 'phase:end') {
     const status = 'result' in event ? (event as { result?: { status?: string } }).result?.status : undefined;
     return { cls: status === 'failed' ? 'failed' : 'complete', label: type };
   }
@@ -27,8 +27,8 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
 
 function eventSummary(event: EforgeEvent): string {
   switch (event.type) {
-    case 'eforge:start': return `Run started: ${event.command} "${event.planSet}"`;
-    case 'eforge:end': return `Run ${event.result?.status}: ${event.result?.summary || ''}`;
+    case 'phase:start': return `Run started: ${event.command} "${event.planSet}"`;
+    case 'phase:end': return `Run ${event.result?.status}: ${event.result?.summary || ''}`;
     case 'plan:start': return `Planning from: ${event.source}`;
     case 'plan:scope': return `Scope: ${event.assessment} — ${event.justification}`;
     case 'plan:clarification': return `${event.questions?.length || 0} clarification question(s)`;
@@ -103,7 +103,7 @@ function eventDetail(event: EforgeEvent): string | null {
     }
     case 'build:failed':
       return event.error;
-    case 'eforge:end':
+    case 'phase:end':
       return event.result?.summary ?? null;
     case 'expedition:architecture:complete':
       return event.modules?.map((m) => `${m.id}: ${m.description}${m.dependsOn?.length ? ' (depends: ' + m.dependsOn.join(', ') + ')' : ''}`).join('\n') ?? null;

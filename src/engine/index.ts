@@ -90,6 +90,10 @@ export {
 } from './worktree.js';
 export { Semaphore, AsyncEventQueue } from './concurrency.js';
 
+// --- session ---
+export { withSessionId } from './session.js';
+export type { SessionOptions } from './session.js';
+
 // --- hooks ---
 export type { HookConfig } from './config.js';
 export { withHooks, matchesPattern } from './hooks.js';

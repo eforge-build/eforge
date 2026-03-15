@@ -56,11 +56,11 @@ function processEvent(
     fileChanges: Map<string, string[]>;
   },
 ): void {
-  if (event.type === 'eforge:start' && 'timestamp' in event) {
+  if (event.type === 'phase:start' && 'timestamp' in event) {
     state.startTime = new Date(event.timestamp).getTime();
   }
 
-  if (event.type === 'eforge:end') {
+  if (event.type === 'phase:end') {
     state.isComplete = true;
     if ('result' in event && event.result) {
       state.resultStatus = (event.result as { status: 'completed' | 'failed' }).status;

@@ -138,8 +138,11 @@ export async function* withHooks(
 
   try {
     for await (const event of events) {
-      // Capture runId from lifecycle events (eforge:start fires first)
-      if (event.type === 'eforge:start' || event.type === 'eforge:end') {
+      // Capture session and run IDs from lifecycle events
+      if (event.sessionId) {
+        hookEnv.EFORGE_SESSION_ID = event.sessionId;
+      }
+      if (event.type === 'phase:start' || event.type === 'phase:end') {
         hookEnv.EFORGE_RUN_ID = event.runId;
       }
 

@@ -15,10 +15,11 @@ export async function* withRecording(
   let runId: string | undefined;
 
   for await (const event of events) {
-    if (event.type === 'eforge:start') {
+    if (event.type === 'phase:start') {
       runId = event.runId;
       db.insertRun({
         id: event.runId,
+        sessionId: event.sessionId,
         planSet: event.planSet,
         command: event.command,
         status: 'running',
@@ -39,7 +40,7 @@ export async function* withRecording(
       });
     }
 
-    if (event.type === 'eforge:end' && runId) {
+    if (event.type === 'phase:end' && runId) {
       db.updateRunStatus(runId, event.result.status, event.timestamp);
     }
 

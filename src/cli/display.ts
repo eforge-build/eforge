@@ -73,7 +73,13 @@ function elapsed(): string {
 export function renderEvent(event: EforgeEvent): void {
   switch (event.type) {
     // Lifecycle
-    case 'eforge:start':
+    case 'session:start':
+      break;
+
+    case 'session:end':
+      break;
+
+    case 'phase:start':
       console.log('');
       console.log(chalk.bold(`\u2692 eforge ${event.command}`));
       console.log(chalk.dim(`  Run: ${event.runId}`));
@@ -81,7 +87,7 @@ export function renderEvent(event: EforgeEvent): void {
       console.log('');
       break;
 
-    case 'eforge:end': {
+    case 'phase:end': {
       stopAllSpinners();
       const icon = event.result.status === 'completed' ? chalk.green('\u2713') : chalk.red('\u2717');
       console.log('');

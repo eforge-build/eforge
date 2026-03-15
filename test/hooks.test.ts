@@ -71,10 +71,10 @@ describe('withHooks', () => {
   }
 
   const sampleEvents: EforgeEvent[] = [
-    { type: 'eforge:start', runId: '1', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
+    { type: 'phase:start', runId: '1', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
     { type: 'plan:start', source: 'test.md' },
     { type: 'plan:complete', plans: [] },
-    { type: 'eforge:end', runId: '1', result: { status: 'completed', summary: 'done' }, timestamp: new Date().toISOString() },
+    { type: 'phase:end', runId: '1', result: { status: 'completed', summary: 'done' }, timestamp: new Date().toISOString() },
   ];
 
   it('yields all events unchanged with empty hooks array', async () => {
@@ -97,7 +97,7 @@ describe('withHooks', () => {
   it('yields all events unchanged (identity) even when hooks match', async () => {
     const hooks: HookConfig[] = [
       { event: 'plan:*', command: 'true', timeout: 5000 },
-      { event: 'eforge:*', command: 'true', timeout: 5000 },
+      { event: 'phase:*', command: 'true', timeout: 5000 },
     ];
     const events = await collectEvents(
       withHooks(asyncIterableFrom(sampleEvents), hooks, '/tmp'),
@@ -112,14 +112,14 @@ describe('withHooks', () => {
     try {
       const hooks: HookConfig[] = [
         {
-          event: 'eforge:start',
+          event: 'phase:start',
           command: `echo "CWD=$EFORGE_CWD" > "${outFile}" && echo "REMOTE=$EFORGE_GIT_REMOTE" >> "${outFile}" && echo "TYPE=$EFORGE_EVENT_TYPE" >> "${outFile}"`,
           timeout: 5000,
         },
       ];
 
       const events: EforgeEvent[] = [
-        { type: 'eforge:start', runId: '1', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
+        { type: 'phase:start', runId: '1', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
       ];
 
       // Consume all events so hooks fire and drain
@@ -128,13 +128,13 @@ describe('withHooks', () => {
       const content = await readFile(outFile, 'utf-8');
       expect(content).toContain(`CWD=${tmpDir}`);
       expect(content).toContain('REMOTE=');
-      expect(content).toContain('TYPE=eforge:start');
+      expect(content).toContain('TYPE=phase:start');
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it('passes EFORGE_RUN_ID from eforge:start to subsequent hooks', async () => {
+  it('passes EFORGE_RUN_ID from phase:start to subsequent hooks', async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-hook-test-'));
     const outFile = join(tmpDir, 'runid-out.txt');
 
@@ -148,7 +148,7 @@ describe('withHooks', () => {
       ];
 
       const events: EforgeEvent[] = [
-        { type: 'eforge:start', runId: 'test-run-42', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
+        { type: 'phase:start', runId: 'test-run-42', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
         { type: 'plan:start', source: 'test.md' },
       ];
 

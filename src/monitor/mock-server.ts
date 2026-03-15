@@ -70,7 +70,7 @@ db.insertRun({
 });
 db.updateRunStatus(RUN1_ID, 'completed', makeTimestamp(120_000));
 
-insertEvent(RUN1_ID, { type: 'eforge:start', runId: RUN1_ID, planSet: RUN1_PLAN_SET, command: 'plan', timestamp: makeTimestamp(0) }, 0);
+insertEvent(RUN1_ID, { type: 'phase:start', runId: RUN1_ID, planSet: RUN1_PLAN_SET, command: 'plan', timestamp: makeTimestamp(0) }, 0);
 insertEvent(RUN1_ID, { type: 'plan:start', source: 'docs/add-health-check.md' }, 1000);
 insertEvent(RUN1_ID, { type: 'plan:scope', assessment: 'errand', justification: 'Single endpoint addition with no dependencies' }, 5000);
 insertEvent(RUN1_ID, { type: 'plan:progress', message: 'Exploring codebase structure...' }, 10000);
@@ -134,7 +134,7 @@ insertEvent(RUN1_ID, { type: 'validation:command:complete', command: 'pnpm type-
 insertEvent(RUN1_ID, { type: 'validation:command:start', command: 'pnpm test' }, 113000);
 insertEvent(RUN1_ID, { type: 'validation:command:complete', command: 'pnpm test', exitCode: 0, output: 'Tests: 12 passed' }, 118000);
 insertEvent(RUN1_ID, { type: 'validation:complete', passed: true }, 119000);
-insertEvent(RUN1_ID, { type: 'eforge:end', runId: RUN1_ID, result: { status: 'completed', summary: '1 plan completed, all validation passed' }, timestamp: makeTimestamp(120000) }, 120000);
+insertEvent(RUN1_ID, { type: 'phase:end', runId: RUN1_ID, result: { status: 'completed', summary: '1 plan completed, all validation passed' }, timestamp: makeTimestamp(120000) }, 120000);
 
 // ── Run 2: Completed multi-plan (excursion) with waves ──
 
@@ -150,7 +150,7 @@ db.insertRun({
 });
 db.updateRunStatus(RUN2_ID, 'completed', makeTimestamp(500_000));
 
-insertEvent(RUN2_ID, { type: 'eforge:start', runId: RUN2_ID, planSet: RUN2_PLAN_SET, command: 'plan', timestamp: makeTimestamp(200000) }, 200000);
+insertEvent(RUN2_ID, { type: 'phase:start', runId: RUN2_ID, planSet: RUN2_PLAN_SET, command: 'plan', timestamp: makeTimestamp(200000) }, 200000);
 insertEvent(RUN2_ID, { type: 'plan:start', source: 'docs/add-jwt-auth.md' }, 201000);
 insertEvent(RUN2_ID, { type: 'plan:scope', assessment: 'excursion', justification: 'Multi-file auth middleware + protected routes + tests' }, 210000);
 insertEvent(RUN2_ID, agentResult('planner'), 240000);
@@ -297,7 +297,7 @@ insertEvent(RUN2_ID, { type: 'validation:command:complete', command: 'pnpm type-
 insertEvent(RUN2_ID, { type: 'validation:command:start', command: 'pnpm test' }, 431000);
 insertEvent(RUN2_ID, { type: 'validation:command:complete', command: 'pnpm test', exitCode: 0, output: 'Tests: 24 passed' }, 445000);
 insertEvent(RUN2_ID, { type: 'validation:complete', passed: true }, 446000);
-insertEvent(RUN2_ID, { type: 'eforge:end', runId: RUN2_ID, result: { status: 'completed', summary: '3 plans completed, all validation passed' }, timestamp: makeTimestamp(500000) }, 500000);
+insertEvent(RUN2_ID, { type: 'phase:end', runId: RUN2_ID, result: { status: 'completed', summary: '3 plans completed, all validation passed' }, timestamp: makeTimestamp(500000) }, 500000);
 
 // ── Run 3: Failed build ──
 
@@ -313,7 +313,7 @@ db.insertRun({
 });
 db.updateRunStatus(RUN3_ID, 'failed', makeTimestamp(700_000));
 
-insertEvent(RUN3_ID, { type: 'eforge:start', runId: RUN3_ID, planSet: RUN3_PLAN_SET, command: 'plan', timestamp: makeTimestamp(600000) }, 600000);
+insertEvent(RUN3_ID, { type: 'phase:start', runId: RUN3_ID, planSet: RUN3_PLAN_SET, command: 'plan', timestamp: makeTimestamp(600000) }, 600000);
 insertEvent(RUN3_ID, { type: 'plan:start', source: 'docs/add-rate-limiting.md' }, 601000);
 insertEvent(RUN3_ID, { type: 'plan:scope', assessment: 'errand', justification: 'Single middleware addition' }, 610000);
 insertEvent(RUN3_ID, agentResult('planner'), 630000);
@@ -347,7 +347,7 @@ insertEvent(RUN3_ID, { type: 'build:start', planId: 'plan-01-rate-limiter' }, 66
 insertEvent(RUN3_ID, { type: 'build:implement:start', planId: 'plan-01-rate-limiter' }, 661000);
 insertEvent(RUN3_ID, { type: 'build:implement:progress', planId: 'plan-01-rate-limiter', message: 'Installing express-rate-limit...' }, 665000);
 insertEvent(RUN3_ID, { type: 'build:failed', planId: 'plan-01-rate-limiter', error: 'Agent exceeded maximum turns (10). The implementation was not completed.' }, 690000);
-insertEvent(RUN3_ID, { type: 'eforge:end', runId: RUN3_ID, result: { status: 'failed', summary: 'Build failed: plan-01-rate-limiter — agent exceeded max turns' }, timestamp: makeTimestamp(700000) }, 700000);
+insertEvent(RUN3_ID, { type: 'phase:end', runId: RUN3_ID, result: { status: 'failed', summary: 'Build failed: plan-01-rate-limiter — agent exceeded max turns' }, timestamp: makeTimestamp(700000) }, 700000);
 
 // ── Run 4: Currently running (simulated) ──
 
@@ -365,7 +365,7 @@ db.insertRun({
 const now = Date.now();
 function runTs(ms: number): string { return new Date(now - 60_000 + ms).toISOString(); }
 
-db.insertEvent({ runId: RUN4_ID, type: 'eforge:start', data: JSON.stringify({ type: 'eforge:start', runId: RUN4_ID, planSet: RUN4_PLAN_SET, command: 'plan', timestamp: runTs(0) }), timestamp: runTs(0) });
+db.insertEvent({ runId: RUN4_ID, type: 'phase:start', data: JSON.stringify({ type: 'phase:start', runId: RUN4_ID, planSet: RUN4_PLAN_SET, command: 'plan', timestamp: runTs(0) }), timestamp: runTs(0) });
 db.insertEvent({ runId: RUN4_ID, type: 'plan:start', data: JSON.stringify({ type: 'plan:start', source: 'docs/add-pagination.md' }), timestamp: runTs(2000) });
 db.insertEvent({ runId: RUN4_ID, type: 'plan:scope', data: JSON.stringify({ type: 'plan:scope', assessment: 'excursion', justification: 'Pagination touches list routes + query parsing + tests' }), timestamp: runTs(8000) });
 db.insertEvent({ runId: RUN4_ID, type: 'plan:progress', data: JSON.stringify({ type: 'plan:progress', message: 'Exploring existing route patterns and query handling...' }), timestamp: runTs(15000) });

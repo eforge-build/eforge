@@ -90,6 +90,7 @@ src/
     concurrency.ts            # Semaphore + AsyncEventQueue for parallel plans
     worktree.ts               # Git worktree lifecycle
     compiler.ts               # Expedition compiler (modules → plan files + orchestration.yaml)
+    session.ts                # Session ID middleware (withSessionId)
     hooks.ts                  # Event hook middleware (withHooks, compilePattern, matchesPattern)
     tracing.ts                # Langfuse tracing (noop when disabled)
     prompts.ts                # Load/template .md prompt files
@@ -163,12 +164,13 @@ eforge loads config from two levels, merged together:
 
 | Env var | Description |
 |---------|-------------|
-| `EFORGE_EVENT_TYPE` | Event type string (e.g., `eforge:start`, `plan:complete`) |
+| `EFORGE_SESSION_ID` | Session ID - stable across plan+build in `run` mode. Preferred identifier for session tracking. |
+| `EFORGE_RUN_ID` | Per-phase run ID (UUID). Changes between plan and build phases. |
+| `EFORGE_EVENT_TYPE` | Event type string (e.g., `session:start`, `phase:start`, `plan:complete`) |
 | `EFORGE_CWD` | Working directory for the eforge run |
 | `EFORGE_GIT_REMOTE` | Git origin remote URL (empty string if not a git repo or no origin) |
-| `EFORGE_RUN_ID` | Run ID (UUID) captured from the first lifecycle event with a `runId` |
 
-`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_RUN_ID` is captured from `eforge:start` and available for all subsequent hooks.
+`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events. For `eforge run`, `EFORGE_SESSION_ID` is shared across both phases while `EFORGE_RUN_ID` is unique per phase. For standalone commands, both values are the same.
 
 ## Conventions
 

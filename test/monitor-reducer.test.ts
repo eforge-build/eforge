@@ -36,9 +36,9 @@ describe('eforgeReducer', () => {
     expect(result.events).toEqual([]);
   });
 
-  it('tracks start time from eforge:start', () => {
+  it('tracks start time from phase:start', () => {
     const event: EforgeEvent = {
-      type: 'eforge:start',
+      type: 'phase:start',
       runId: 'run-1',
       planSet: 'test',
       command: 'build',
@@ -52,9 +52,9 @@ describe('eforgeReducer', () => {
     expect(result.startTime).toBe(new Date('2024-01-01T00:00:00Z').getTime());
   });
 
-  it('marks complete on eforge:end', () => {
+  it('marks complete on phase:end', () => {
     const event: EforgeEvent = {
-      type: 'eforge:end',
+      type: 'phase:end',
       runId: 'run-1',
       result: { status: 'completed', summary: 'All done' },
       timestamp: '2024-01-01T00:01:00Z',

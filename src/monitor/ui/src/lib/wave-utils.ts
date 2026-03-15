@@ -86,7 +86,7 @@ export function partitionEventsByWave(
       continue;
     }
 
-    // Post-wave events: merge, validation, eforge:end after all waves complete
+    // Post-wave events: merge, validation, phase:end after all waves complete
     if (lastWaveCompleteSeen) {
       postWave.push(storedEvent);
       continue;
