@@ -17,3 +17,13 @@
 - **Provider abstraction** — Second `AgentBackend` implementation for non-SDK environments
 - **npm distribution** — Publish CLI + library to npm, configure exports and files field
 - **Plugin consolidation** — Deprecate orchestrate + EEE plugins, migration guide
+
+---
+
+## Marketing Site (eforge.run)
+
+**Goal**: Public-facing site for docs, demos, and project visibility.
+
+- **Next.js app** — `web/` directory, deployed to Vercel at eforge.run
+- **Landing page** — Value prop, feature overview, getting-started guide
+- **Documentation** — Usage docs, configuration reference, examples
