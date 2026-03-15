@@ -1,5 +1,5 @@
 import type { AgentBackend } from '../backend.js';
-import type { EforgeEvent } from '../events.js';
+import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface ValidationFixerOptions {
@@ -45,12 +45,7 @@ export async function* runValidationFixer(
       },
       'validation-fixer',
     )) {
-      if (
-        event.type === 'agent:result' ||
-        event.type === 'agent:tool_use' ||
-        event.type === 'agent:tool_result' ||
-        options.verbose
-      ) {
+      if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
       }
     }

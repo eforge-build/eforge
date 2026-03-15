@@ -432,6 +432,11 @@ export function renderEvent(event: EforgeEvent): void {
       succeedSpinner('cleanup', `Plan files removed for ${chalk.cyan(event.planSet)}`);
       break;
 
+    // Agent lifecycle (consumed by hooks, monitor, tracing — no CLI display)
+    case 'agent:start':
+    case 'agent:stop':
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

@@ -82,6 +82,7 @@ See `src/engine/events.ts` for the full `EforgeEvent` type definition. The main 
 - `build:*` - Build phase events (per-plan)
 - `wave:*` / `merge:*` - Orchestration events
 - `expedition:*` - Expedition architecture, module planning, compilation
+- `agent:start` / `agent:stop` - Agent lifecycle (one pair per agent invocation, carries `agentId` UUID and `agent` role)
 - `agent:*` - Agent-level streaming (tool use, messages, results)
 - `validation:*` - Post-merge validation
 - `cleanup:*` - Plan file cleanup

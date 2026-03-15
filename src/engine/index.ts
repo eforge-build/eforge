@@ -1,6 +1,7 @@
 // Foundation barrel — re-exports all shared types and utilities
 
 // --- events ---
+export { isAlwaysYieldedAgentEvent } from './events.js';
 export type {
   EforgeEvent,
   AgentRole,

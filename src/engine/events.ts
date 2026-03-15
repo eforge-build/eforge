@@ -175,6 +175,10 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'expedition:compile:start' }
   | { type: 'expedition:compile:complete'; plans: PlanFile[] }
 
+  // Agent lifecycle (emitted by backend for every agent invocation)
+  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole }
+  | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string }
+
   // Agent-level (verbose streaming)
   | { type: 'agent:message'; planId?: string; agent: AgentRole; content: string }
   | { type: 'agent:tool_use'; planId?: string; agent: AgentRole; tool: string; toolUseId: string; input: unknown }
@@ -197,3 +201,12 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'approval:needed'; planId?: string; action: string; details: string }
   | { type: 'approval:response'; approved: boolean }
 );
+
+/** Agent event types that runners always yield (not gated on verbose). */
+export function isAlwaysYieldedAgentEvent(event: EforgeEvent): boolean {
+  return event.type === 'agent:start'
+    || event.type === 'agent:stop'
+    || event.type === 'agent:result'
+    || event.type === 'agent:tool_use'
+    || event.type === 'agent:tool_result';
+}

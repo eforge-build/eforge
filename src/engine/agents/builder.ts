@@ -1,5 +1,5 @@
 import type { AgentBackend } from '../backend.js';
-import type { EforgeEvent, PlanFile } from '../events.js';
+import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 /**
@@ -70,7 +70,7 @@ export async function* builderImplement(
       'builder',
       plan.id,
     )) {
-      if (event.type === 'agent:result' || event.type === 'agent:tool_use' || event.type === 'agent:tool_result' || options.verbose) {
+      if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
       }
     }
@@ -106,7 +106,7 @@ export async function* builderEvaluate(
       'evaluator',
       plan.id,
     )) {
-      if (event.type === 'agent:result' || event.type === 'agent:tool_use' || event.type === 'agent:tool_result' || options.verbose) {
+      if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
       }
       if (event.type === 'agent:message' && event.content) {

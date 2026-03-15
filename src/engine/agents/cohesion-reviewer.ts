@@ -1,5 +1,5 @@
 import type { AgentBackend } from '../backend.js';
-import type { EforgeEvent } from '../events.js';
+import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
 
@@ -55,7 +55,7 @@ export async function* runCohesionReview(
     { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal },
     'cohesion-reviewer',
   )) {
-    if (event.type === 'agent:result' || event.type === 'agent:tool_use' || event.type === 'agent:tool_result' || verbose) {
+    if (isAlwaysYieldedAgentEvent(event) || verbose) {
       yield event;
     }
     if (event.type === 'agent:message' && event.content) {

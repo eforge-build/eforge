@@ -2,7 +2,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AgentBackend } from '../backend.js';
-import type { EforgeEvent, PlanOptions, ClarificationQuestion, PlanFile } from '../events.js';
+import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
 import { parseClarificationBlocks, parseScopeBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
 import { parsePlanFile, deriveNameFromSource } from '../plan.js';
@@ -140,7 +140,7 @@ export async function* runPlanner(
       }
 
       // Always yield agent:result + tool events (for tracing); gate streaming text on verbose
-      if (event.type === 'agent:result' || event.type === 'agent:tool_use' || event.type === 'agent:tool_result' || options.verbose) {
+      if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
       }
     }

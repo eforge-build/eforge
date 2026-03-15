@@ -64,29 +64,40 @@ export class StubBackend implements AgentBackend {
     this.prompts.push(options.prompt);
     this.calls.push(options);
 
-    const response = this.responses[this.callIndex++];
-    if (!response) {
-      throw new Error(`StubBackend: no response at index ${this.callIndex - 1} (only ${this.responses.length} responses provided)`);
-    }
+    const agentId = crypto.randomUUID();
+    yield { type: 'agent:start', planId, agent, agentId };
 
-    if (response.error) {
-      throw response.error;
-    }
-
-    // Emit tool calls
-    if (response.toolCalls) {
-      for (const tc of response.toolCalls) {
-        yield { type: 'agent:tool_use', planId, agent, tool: tc.tool, toolUseId: tc.toolUseId, input: tc.input };
-        yield { type: 'agent:tool_result', planId, agent, tool: tc.tool, toolUseId: tc.toolUseId, output: tc.output };
+    let error: string | undefined;
+    try {
+      const response = this.responses[this.callIndex++];
+      if (!response) {
+        throw new Error(`StubBackend: no response at index ${this.callIndex - 1} (only ${this.responses.length} responses provided)`);
       }
-    }
 
-    // Emit text as agent:message
-    if (response.text) {
-      yield { type: 'agent:message', planId, agent, content: response.text };
-    }
+      if (response.error) {
+        throw response.error;
+      }
 
-    // Always emit agent:result to match real backend behavior
-    yield { type: 'agent:result', planId, agent, result: STUB_RESULT };
+      // Emit tool calls
+      if (response.toolCalls) {
+        for (const tc of response.toolCalls) {
+          yield { type: 'agent:tool_use', planId, agent, tool: tc.tool, toolUseId: tc.toolUseId, input: tc.input };
+          yield { type: 'agent:tool_result', planId, agent, tool: tc.tool, toolUseId: tc.toolUseId, output: tc.output };
+        }
+      }
+
+      // Emit text as agent:message
+      if (response.text) {
+        yield { type: 'agent:message', planId, agent, content: response.text };
+      }
+
+      // Always emit agent:result to match real backend behavior
+      yield { type: 'agent:result', planId, agent, result: STUB_RESULT };
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      throw err;
+    } finally {
+      yield { type: 'agent:stop', planId, agent, agentId, error };
+    }
   }
 }

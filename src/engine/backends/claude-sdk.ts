@@ -38,26 +38,37 @@ export class ClaudeSDKBackend implements AgentBackend {
   }
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
-    const q = sdkQuery({
-      prompt: options.prompt,
-      options: {
-        cwd: options.cwd,
-        maxTurns: options.maxTurns,
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
-        tools: options.tools === 'coding'
-          ? { type: 'preset', preset: 'claude_code' }
-          : undefined,
-        mcpServers: this.mcpServers,
-        plugins: this.plugins,
-        settingSources: this.settingSources,
-        abortController: options.abortSignal
-          ? abortControllerFromSignal(options.abortSignal)
-          : undefined,
-      },
-    });
+    const agentId = crypto.randomUUID();
+    yield { type: 'agent:start', planId, agent, agentId };
 
-    yield* mapSDKMessages(q, agent, planId);
+    let error: string | undefined;
+    try {
+      const q = sdkQuery({
+        prompt: options.prompt,
+        options: {
+          cwd: options.cwd,
+          maxTurns: options.maxTurns,
+          permissionMode: 'bypassPermissions',
+          allowDangerouslySkipPermissions: true,
+          tools: options.tools === 'coding'
+            ? { type: 'preset', preset: 'claude_code' }
+            : undefined,
+          mcpServers: this.mcpServers,
+          plugins: this.plugins,
+          settingSources: this.settingSources,
+          abortController: options.abortSignal
+            ? abortControllerFromSignal(options.abortSignal)
+            : undefined,
+        },
+      });
+
+      yield* mapSDKMessages(q, agent, planId);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      throw err;
+    } finally {
+      yield { type: 'agent:stop', planId, agent, agentId, error };
+    }
   }
 }
 
