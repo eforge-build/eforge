@@ -42,6 +42,7 @@ import { runCohesionReview } from './agents/cohesion-reviewer.js';
 import { runCohesionEvaluate } from './agents/cohesion-evaluator.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runAssessor } from './agents/assessor.js';
+import { runParallel, type ParallelTask } from './concurrency.js';
 import { Orchestrator, type ValidationFixer } from './orchestrator.js';
 import { deriveNameFromSource, deriveNameFromContent, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName, extractPlanTitle, detectValidationCommands, writePlanArtifacts } from './plan.js';
 import { compileExpedition } from './compiler.js';
@@ -613,36 +614,43 @@ export class EforgeEngine {
       // Architecture file may not exist if planner didn't create it
     }
 
-    // Run module planners sequentially
-    for (const mod of modules) {
-      const modSpan = tracing.createSpan('module-planner', { moduleId: mod.id });
-      modSpan.setInput({ moduleId: mod.id, description: mod.description });
+    // Run module planners in parallel
+    const backend = this.backend;
+    const onClarification = this.onClarification;
+    const moduleTasks: ParallelTask<EforgeEvent>[] = modules.map((mod) => ({
+      id: mod.id,
+      run: async function* () {
+        const modSpan = tracing.createSpan('module-planner', { moduleId: mod.id });
+        modSpan.setInput({ moduleId: mod.id, description: mod.description });
 
-      const modTracker = createToolTracker(modSpan);
-      try {
-        for await (const event of runModulePlanner({
-          backend: this.backend,
-          cwd,
-          planSetName,
-          moduleId: mod.id,
-          moduleDescription: mod.description,
-          moduleDependsOn: mod.dependsOn,
-          architectureContent,
-          sourceContent,
-          verbose: options.verbose,
-          onClarification: this.onClarification,
-        })) {
-          modTracker.handleEvent(event);
-          yield event;
+        const modTracker = createToolTracker(modSpan);
+        try {
+          for await (const event of runModulePlanner({
+            backend,
+            cwd,
+            planSetName,
+            moduleId: mod.id,
+            moduleDescription: mod.description,
+            moduleDependsOn: mod.dependsOn,
+            architectureContent,
+            sourceContent,
+            verbose: options.verbose,
+            onClarification,
+          })) {
+            modTracker.handleEvent(event);
+            yield event;
+          }
+          modTracker.cleanup();
+          modSpan.end();
+        } catch (err) {
+          // Module planning failure is non-fatal — continue with other modules
+          modTracker.cleanup();
+          modSpan.error(err as Error);
         }
-        modTracker.cleanup();
-        modSpan.end();
-      } catch (err) {
-        // Module planning failure is non-fatal — continue with other modules
-        modTracker.cleanup();
-        modSpan.error(err as Error);
-      }
-    }
+      },
+    }));
+
+    yield* runParallel(moduleTasks);
 
     // Compile modules into plan files + orchestration.yaml
     yield { type: 'expedition:compile:start' };
