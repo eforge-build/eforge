@@ -1,0 +1,13 @@
+name: fix-monitor-port-fallback-reports-wrong-port
+description: "Fix: Monitor port fallback reports wrong port"
+created: 2026-03-15
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-fix-monitor-port-fallback-reports-wrong-port
+    name: "Fix: Monitor port fallback reports wrong port"
+    depends_on: []
+    branch: fix-monitor-port-fallback-reports-wrong-port/main
