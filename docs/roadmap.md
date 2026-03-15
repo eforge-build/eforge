@@ -15,4 +15,5 @@
 
 - **Headless/CI** — `--json` CLI output flag, webhook notifications
 - **Provider abstraction** — Second `AgentBackend` implementation for non-SDK environments
+- **npm distribution** — Publish CLI + library to npm, configure exports and files field
 - **Plugin consolidation** — Deprecate orchestrate + EEE plugins, migration guide
