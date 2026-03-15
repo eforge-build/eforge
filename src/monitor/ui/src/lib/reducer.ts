@@ -8,10 +8,7 @@ export interface StoredEvent {
   eventId: string;
 }
 
-export interface WaveInfo {
-  wave: number;
-  planIds: string[];
-}
+export type { WaveInfo } from './wave-utils';
 
 export interface RunState {
   events: StoredEvent[];
@@ -23,7 +20,6 @@ export interface RunState {
   totalCost: number;
   isComplete: boolean;
   fileChanges: Map<string, string[]>;
-  waves: WaveInfo[];
 }
 
 export const initialRunState: RunState = {
@@ -36,7 +32,6 @@ export const initialRunState: RunState = {
   totalCost: 0,
   isComplete: false,
   fileChanges: new Map(),
-  waves: [],
 };
 
 export type RunAction =
@@ -70,14 +65,6 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         newState.tokensIn = state.tokensIn + (event.result.usage?.input || 0);
         newState.tokensOut = state.tokensOut + (event.result.usage?.output || 0);
         newState.totalCost = state.totalCost + (event.result.totalCostUsd || 0);
-      }
-
-      // Track waves
-      if (event.type === 'wave:start') {
-        newState.waves = [
-          ...state.waves,
-          { wave: event.wave, planIds: event.planIds },
-        ];
       }
 
       // Track plan statuses
