@@ -4,7 +4,7 @@ export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as cons
 export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
 export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'validation-fixer';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer';
 
 export interface ExpeditionModule {
   id: string;
@@ -124,6 +124,12 @@ export type EforgeEvent =
   | { type: 'plan:review:complete'; issues: ReviewIssue[] }
   | { type: 'plan:evaluate:start' }
   | { type: 'plan:evaluate:complete'; accepted: number; rejected: number }
+
+  // Cohesion review (expedition cross-module validation)
+  | { type: 'plan:cohesion:start' }
+  | { type: 'plan:cohesion:complete'; issues: ReviewIssue[] }
+  | { type: 'plan:cohesion:evaluate:start' }
+  | { type: 'plan:cohesion:evaluate:complete'; accepted: number; rejected: number }
 
   // Building (per-plan)
   | { type: 'build:start'; planId: string }

@@ -61,6 +61,14 @@ export type { PlanReviewerOptions } from './agents/plan-reviewer.js';
 export { runPlanEvaluate } from './agents/plan-evaluator.js';
 export type { PlanEvaluatorOptions } from './agents/plan-evaluator.js';
 
+// --- cohesion-reviewer ---
+export { runCohesionReview } from './agents/cohesion-reviewer.js';
+export type { CohesionReviewerOptions } from './agents/cohesion-reviewer.js';
+
+// --- cohesion-evaluator ---
+export { runCohesionEvaluate } from './agents/cohesion-evaluator.js';
+export type { CohesionEvaluatorOptions } from './agents/cohesion-evaluator.js';
+
 // --- validation-fixer ---
 export { runValidationFixer } from './agents/validation-fixer.js';
 export type { ValidationFixerOptions } from './agents/validation-fixer.js';

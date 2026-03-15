@@ -178,6 +178,43 @@ export function renderEvent(event: EforgeEvent): void {
       }
       break;
 
+    // Cohesion review (expedition cross-module validation)
+    case 'plan:cohesion:start':
+      startSpinner('cohesion-review', 'Reviewing cross-module cohesion...');
+      break;
+
+    case 'plan:cohesion:complete': {
+      const cohesionIssues = event.issues;
+      if (cohesionIssues.length === 0) {
+        succeedSpinner('cohesion-review', 'Cohesion review complete \u2014 no issues found');
+      } else {
+        const cCritical = cohesionIssues.filter((i) => i.severity === 'critical').length;
+        const cWarnings = cohesionIssues.filter((i) => i.severity === 'warning').length;
+        const cSuggestions = cohesionIssues.filter((i) => i.severity === 'suggestion').length;
+        const cParts: string[] = [];
+        if (cCritical > 0) cParts.push(chalk.red(`${cCritical} critical`));
+        if (cWarnings > 0) cParts.push(chalk.yellow(`${cWarnings} warning`));
+        if (cSuggestions > 0) cParts.push(chalk.blue(`${cSuggestions} suggestion`));
+        succeedSpinner('cohesion-review', `Cohesion review: ${cParts.join(', ')}`);
+      }
+      break;
+    }
+
+    case 'plan:cohesion:evaluate:start':
+      startSpinner('cohesion-evaluate', 'Evaluating cohesion review fixes...');
+      break;
+
+    case 'plan:cohesion:evaluate:complete':
+      if (event.accepted === 0 && event.rejected === 0) {
+        succeedSpinner('cohesion-evaluate', 'Cohesion evaluation: no fixes to evaluate');
+      } else {
+        succeedSpinner(
+          'cohesion-evaluate',
+          `Cohesion evaluation: ${chalk.green(`${event.accepted} accepted`)}, ${chalk.red(`${event.rejected} rejected`)}`,
+        );
+      }
+      break;
+
     // Building (per-plan)
     case 'build:start':
       startSpinner(`build:${event.planId}`, `${chalk.cyan(event.planId)} \u2014 starting...`);

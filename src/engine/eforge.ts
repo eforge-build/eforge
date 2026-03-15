@@ -37,6 +37,8 @@ import { builderImplement, builderEvaluate } from './agents/builder.js';
 import { runReview } from './agents/reviewer.js';
 import { runPlanReview } from './agents/plan-reviewer.js';
 import { runPlanEvaluate } from './agents/plan-evaluator.js';
+import { runCohesionReview } from './agents/cohesion-reviewer.js';
+import { runCohesionEvaluate } from './agents/cohesion-evaluator.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { Orchestrator, type ValidationFixer } from './orchestrator.js';
 import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
@@ -245,6 +247,37 @@ export class EforgeEngine {
 
         await exec('git', ['add', planDir], { cwd });
         await exec('git', ['commit', '-m', `plan(${planSetName}): initial planning artifacts`], { cwd });
+
+        // Cohesion review cycle: cross-module validation (expedition only, non-fatal)
+        if (scopeAssessment === 'expedition') {
+          try {
+            // Read architecture content for cohesion reviewer
+            let architectureContent = '';
+            try {
+              architectureContent = await readFile(resolve(cwd, 'plans', planSetName, 'architecture.md'), 'utf-8');
+            } catch {
+              // Architecture file may not exist
+            }
+
+            yield* runReviewCycle({
+              tracing,
+              cwd,
+              reviewer: {
+                role: 'cohesion-reviewer',
+                metadata: { planSet: planSetName },
+                run: () => runCohesionReview({ backend: this.backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
+              },
+              evaluator: {
+                role: 'cohesion-evaluator',
+                metadata: { planSet: planSetName },
+                run: () => runCohesionEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
+              },
+            });
+          } catch (err) {
+            // Cohesion review failure is non-fatal — plan artifacts are already committed
+            yield { type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
+          }
+        }
 
         // Plan review cycle: blind review → evaluate (non-fatal)
         try {
