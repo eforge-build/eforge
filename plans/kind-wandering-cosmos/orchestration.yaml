@@ -1,0 +1,13 @@
+name: kind-wandering-cosmos
+description: Add scope assessment to adopt flow + fix semantic naming
+created: 2026-03-15
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-kind-wandering-cosmos
+    name: Add scope assessment to adopt flow + fix semantic naming
+    depends_on: []
+    branch: kind-wandering-cosmos/main
