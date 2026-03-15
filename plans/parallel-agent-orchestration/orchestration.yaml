@@ -1,0 +1,25 @@
+name: parallel-agent-orchestration
+description: Extract runParallel helper, parallelize expedition module planning, and add multi-perspective build review with heuristic-based file categorization and specialist reviewer agents
+created: 2026-03-15
+compiled: 2026-03-15
+mode: excursion
+base_branch: main
+
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+
+plans:
+  - id: plan-01-run-parallel
+    name: DRY runParallel Helper
+    depends_on: []
+    branch: parallel-agent-orchestration/run-parallel
+  - id: plan-02-expedition-modules
+    name: Parallel Expedition Module Planning
+    depends_on: [plan-01-run-parallel]
+    branch: parallel-agent-orchestration/expedition-modules
+  - id: plan-03-parallel-review
+    name: Multi-Perspective Build Review
+    depends_on: [plan-01-run-parallel]
+    branch: parallel-agent-orchestration/parallel-review
