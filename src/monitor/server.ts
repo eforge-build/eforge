@@ -344,6 +344,7 @@ function listen(server: Server, port: number, maxRetries = 10): Promise<number> 
 
     function tryListen(p: number): void {
       const onError = (err: NodeJS.ErrnoException) => {
+        server.removeListener('listening', onListening);
         if (err.code === 'EADDRINUSE' && attempts < maxRetries) {
           attempts++;
           tryListen(p + 1);
@@ -351,11 +352,13 @@ function listen(server: Server, port: number, maxRetries = 10): Promise<number> 
           reject(err);
         }
       };
-      server.once('error', onError);
-      server.listen(p, '127.0.0.1', () => {
+      const onListening = () => {
         server.removeListener('error', onError);
         resolve(p);
-      });
+      };
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(p, '127.0.0.1');
     }
 
     tryListen(port);
