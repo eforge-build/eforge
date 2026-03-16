@@ -82,7 +82,7 @@ function processEvent(
     earlyOrchestration: OrchestrationConfig | null;
   },
 ): void {
-  if (event.type === 'phase:start' && 'timestamp' in event) {
+  if (event.type === 'phase:start' && 'timestamp' in event && state.startTime === null) {
     state.startTime = new Date(event.timestamp).getTime();
   }
 
