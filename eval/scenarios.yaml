@@ -23,12 +23,12 @@ scenarios:
       - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add JWT auth middleware + protected routes"
 
-  - id: workspace-api-collaboration
+  - id: workspace-api-engagement
     fixture: workspace-api
-    prd: docs/add-collaboration-platform.md
+    prd: docs/add-engagement-features.md
     validate:
       - pnpm install
       - pnpm type-check
       - pnpm test
       - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
-    description: "Add auth, permissions, events, audit, and search to workspace API (expedition)"
+    description: "Add reactions, threads, and pins to workspace API (expedition, parallel modules)"

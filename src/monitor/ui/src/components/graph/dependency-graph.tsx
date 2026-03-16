@@ -10,6 +10,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { OrchestrationConfig, PipelineStage } from '@/lib/types';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useGraphLayout } from './use-graph-layout';
 import { DagNode } from './dag-node';
 import { DagEdge } from './dag-edge';
@@ -174,33 +175,35 @@ export function DependencyGraph({
   }
 
   return (
-    <div className="w-full h-full" style={{ minHeight: 400 }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onNodeClick={onNodeClick}
-        onPaneClick={onPaneClick}
-        fitView
-        fitViewOptions={{ padding: 0.4, maxZoom: 0.9 }}
-        proOptions={{ hideAttribution: true }}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        minZoom={0.3}
-        maxZoom={2}
-      >
-        <Background color="var(--color-border)" gap={20} size={1} />
-        <Controls
-          showInteractive={false}
-          style={{
-            background: 'var(--color-card)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '6px',
-          }}
-        />
-      </ReactFlow>
-    </div>
+    <TooltipProvider delayDuration={0}>
+      <div className="w-full h-full" style={{ minHeight: 400 }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
+          fitView
+          fitViewOptions={{ padding: 0.4, maxZoom: 0.9 }}
+          proOptions={{ hideAttribution: true }}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          minZoom={0.3}
+          maxZoom={2}
+        >
+          <Background color="var(--color-border)" gap={20} size={1} />
+          <Controls
+            showInteractive={false}
+            style={{
+              background: 'var(--color-card)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '6px',
+            }}
+          />
+        </ReactFlow>
+      </div>
+    </TooltipProvider>
   );
 }
