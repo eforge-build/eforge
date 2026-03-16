@@ -500,4 +500,58 @@ describe('runModulePlanner wiring', () => {
 
     expect(filterEvents(events, 'agent:message').length).toBeGreaterThan(0);
   });
+
+  it('includes dependencyPlanContent in prompt when provided', async () => {
+    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+    const depContent = '# Foundation\n\nCreates auth tables and user model.';
+
+    await collectEvents(runModulePlanner({
+      backend,
+      cwd: '/tmp',
+      planSetName: 'my-expedition',
+      moduleId: 'auth',
+      moduleDescription: 'Auth',
+      moduleDependsOn: ['foundation'],
+      architectureContent: '',
+      sourceContent: 'PRD',
+      dependencyPlanContent: depContent,
+    }));
+
+    expect(backend.prompts[0]).toContain(depContent);
+  });
+
+  it('uses fallback text when dependencyPlanContent is omitted', async () => {
+    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+
+    await collectEvents(runModulePlanner({
+      backend,
+      cwd: '/tmp',
+      planSetName: 'my-expedition',
+      moduleId: 'foundation',
+      moduleDescription: 'Foundation',
+      moduleDependsOn: [],
+      architectureContent: '',
+      sourceContent: 'PRD',
+    }));
+
+    expect(backend.prompts[0]).toContain('No dependencies');
+  });
+
+  it('uses fallback text when dependencyPlanContent is undefined', async () => {
+    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+
+    await collectEvents(runModulePlanner({
+      backend,
+      cwd: '/tmp',
+      planSetName: 'my-expedition',
+      moduleId: 'foundation',
+      moduleDescription: 'Foundation',
+      moduleDependsOn: [],
+      architectureContent: '',
+      sourceContent: 'PRD',
+      dependencyPlanContent: undefined,
+    }));
+
+    expect(backend.prompts[0]).toContain('No dependencies');
+  });
 });
