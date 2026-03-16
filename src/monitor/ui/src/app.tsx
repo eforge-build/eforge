@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 import { AppLayout } from '@/components/layout/app-layout';
 import { Header } from '@/components/layout/header';
@@ -15,7 +15,7 @@ import { useEforgeEvents } from '@/hooks/use-eforge-events';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { getSummaryStats } from '@/lib/reducer';
 import { fetchLatestSessionId, fetchOrchestration } from '@/lib/api';
-import type { OrchestrationConfig } from '@/lib/types';
+import type { OrchestrationConfig, PipelineStage } from '@/lib/types';
 
 type ContentTab = 'plans' | 'timeline' | 'graph' | 'heatmap';
 
@@ -117,9 +117,27 @@ export function App() {
     });
   }, [runState.events.length]);
 
-  const hasOrchestration = orchestration !== null && orchestration.plans.length > 0;
+  // Use early orchestration (from expedition:architecture:complete) until server-fetched data arrives
+  const effectiveOrchestration = orchestration ?? runState.earlyOrchestration;
+  const hasOrchestration = effectiveOrchestration !== null && effectiveOrchestration.plans.length > 0;
   const graphEnabled = hasOrchestration;
   const heatmapEnabled = isMultiPlan;
+
+  // During compile phase, map module statuses to pipeline stages so the graph
+  // can reuse its existing node color system before real orchestration data arrives.
+  // 'planning' → 'implement' gives an animated blue node (active work).
+  // 'complete' → 'plan' gives a static completed-plan look.
+  // 'pending' is intentionally unmapped — the graph treats missing keys as pending.
+  const isCompilePhase = orchestration === null;
+  const graphPlanStatuses = useMemo((): Record<string, PipelineStage> => {
+    if (!isCompilePhase) return runState.planStatuses;
+    const synthetic: Record<string, PipelineStage> = { ...runState.planStatuses };
+    for (const [moduleId, status] of Object.entries(runState.moduleStatuses)) {
+      if (status === 'planning') synthetic[moduleId] = 'implement';
+      else if (status === 'complete') synthetic[moduleId] = 'plan';
+    }
+    return synthetic;
+  }, [isCompilePhase, runState.planStatuses, runState.moduleStatuses]);
 
   // Reset active tab if its feature becomes unavailable
   useEffect(() => {
@@ -213,8 +231,8 @@ export function App() {
               ) : activeTab === 'graph' && graphEnabled ? (
                 <div className="flex-1" style={{ minHeight: 400 }}>
                   <DependencyGraph
-                    orchestration={orchestration}
-                    planStatuses={runState.planStatuses}
+                    orchestration={effectiveOrchestration}
+                    planStatuses={graphPlanStatuses}
                     mergedPlanIds={mergedPlanIds}
                   />
                 </div>

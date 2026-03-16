@@ -1,7 +1,9 @@
-import type { EforgeEvent, ReviewIssue } from './types';
+import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, ReviewIssue } from './types';
 import type { PipelineStage } from './types';
 import type { WaveInfo } from './wave-utils';
 import { formatDuration } from './format';
+
+export type ModuleStatus = 'pending' | 'planning' | 'complete';
 
 export interface StoredEvent {
   event: EforgeEvent;
@@ -32,6 +34,9 @@ export interface RunState {
   fileChanges: Map<string, string[]>;
   reviewIssues: Record<string, ReviewIssue[]>;
   agentThreads: AgentThread[];
+  expeditionModules: ExpeditionModule[];
+  moduleStatuses: Record<string, ModuleStatus>;
+  earlyOrchestration: OrchestrationConfig | null;
 }
 
 export const initialRunState: RunState = {
@@ -47,6 +52,9 @@ export const initialRunState: RunState = {
   fileChanges: new Map(),
   reviewIssues: {},
   agentThreads: [],
+  expeditionModules: [],
+  moduleStatuses: {},
+  earlyOrchestration: null,
 };
 
 export type RunAction =
@@ -69,6 +77,9 @@ function processEvent(
     fileChanges: Map<string, string[]>;
     reviewIssues: Record<string, ReviewIssue[]>;
     agentThreads: AgentThread[];
+    expeditionModules: ExpeditionModule[];
+    moduleStatuses: Record<string, ModuleStatus>;
+    earlyOrchestration: OrchestrationConfig | null;
   },
 ): void {
   if (event.type === 'phase:start' && 'timestamp' in event) {
@@ -134,6 +145,36 @@ function processEvent(
     }
   }
 
+  // Expedition module tracking — synthesize early orchestration from architecture
+  if (event.type === 'expedition:architecture:complete') {
+    state.expeditionModules = event.modules;
+    state.moduleStatuses = {};
+    for (const mod of event.modules) {
+      state.moduleStatuses[mod.id] = 'pending';
+    }
+    state.earlyOrchestration = {
+      name: '',
+      description: '',
+      created: '',
+      mode: 'expedition',
+      baseBranch: '',
+      plans: event.modules.map((mod) => ({
+        id: mod.id,
+        name: mod.description,
+        dependsOn: mod.dependsOn,
+        branch: '',
+      })),
+    };
+  }
+
+  if (event.type === 'expedition:module:start') {
+    state.moduleStatuses[event.moduleId] = 'planning';
+  }
+
+  if (event.type === 'expedition:module:complete') {
+    state.moduleStatuses[event.moduleId] = 'complete';
+  }
+
   // Agent thread tracking
   if (event.type === 'agent:start' && 'timestamp' in event && event.timestamp) {
     state.agentThreads.push({
@@ -170,7 +211,7 @@ function processEvent(
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), waves: [], reviewIssues: {}, agentThreads: [] };
+      return { ...initialRunState, fileChanges: new Map(), waves: [], reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -185,6 +226,9 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         fileChanges: new Map<string, string[]>(),
         reviewIssues: {} as Record<string, ReviewIssue[]>,
         agentThreads: [] as AgentThread[],
+        expeditionModules: [] as ExpeditionModule[],
+        moduleStatuses: {} as Record<string, ModuleStatus>,
+        earlyOrchestration: null as OrchestrationConfig | null,
       };
 
       for (const { event } of action.events) {
@@ -208,6 +252,9 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         fileChanges: new Map(state.fileChanges),
         reviewIssues: { ...state.reviewIssues },
         agentThreads: [...state.agentThreads],
+        expeditionModules: state.expeditionModules,
+        moduleStatuses: { ...state.moduleStatuses },
+        earlyOrchestration: state.earlyOrchestration,
       };
 
       processEvent(event, newState);

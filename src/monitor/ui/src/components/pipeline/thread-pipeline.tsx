@@ -66,7 +66,11 @@ export function ThreadPipeline({ agentThreads, startTime, planStatuses, reviewIs
     return map;
   }, [agentThreads]);
 
-  if (entries.length === 0) return null;
+  const globalThreads = threadsByPlan.get('__global__') ?? EMPTY_THREADS;
+  const hasGlobalThreads = globalThreads.length > 0;
+
+  // Show nothing if there are no threads at all
+  if (entries.length === 0 && !hasGlobalThreads) return null;
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -76,11 +80,21 @@ export function ThreadPipeline({ agentThreads, startTime, planStatuses, reviewIs
           Pipeline
         </h3>
         <div className="flex flex-col gap-1.5">
+          {hasGlobalThreads && (
+            <PlanRow
+              key="__compile__"
+              planId="Compile"
+              threads={globalThreads}
+              sessionStart={sessionStart}
+              totalSpan={totalSpan}
+              disablePreview
+            />
+          )}
           {entries.map(([planId]) => (
             <PlanRow
               key={planId}
               planId={planId}
-              threads={threadsByPlan.get(planId) ?? threadsByPlan.get('__global__') ?? EMPTY_THREADS}
+              threads={threadsByPlan.get(planId) ?? EMPTY_THREADS}
               sessionStart={sessionStart}
               totalSpan={totalSpan}
               reviewIssues={reviewIssues?.[planId]}
@@ -98,9 +112,10 @@ interface PlanRowProps {
   sessionStart: number;
   totalSpan: number;
   reviewIssues?: ReviewIssue[];
+  disablePreview?: boolean;
 }
 
-function PlanRow({ planId, threads, sessionStart, totalSpan, reviewIssues }: PlanRowProps) {
+function PlanRow({ planId, threads, sessionStart, totalSpan, reviewIssues, disablePreview }: PlanRowProps) {
   const { openPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -114,8 +129,8 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, reviewIssues }: Pla
         <Tooltip>
           <TooltipTrigger asChild>
             <span
-              className="w-[140px] shrink-0 mt-0.5 text-text-dim overflow-hidden text-ellipsis whitespace-nowrap cursor-pointer hover:text-foreground hover:underline font-mono text-[11px]"
-              onClick={() => openPreview(planId)}
+              className={`w-[140px] shrink-0 mt-0.5 text-text-dim overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] ${disablePreview ? '' : 'cursor-pointer hover:text-foreground hover:underline'}`}
+              onClick={disablePreview ? undefined : () => openPreview(planId)}
             >
               {planId}
             </span>
