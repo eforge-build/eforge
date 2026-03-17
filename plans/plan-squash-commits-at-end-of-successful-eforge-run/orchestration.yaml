@@ -1,0 +1,17 @@
+name: plan-squash-commits-at-end-of-successful-eforge-run
+description: Squash intermediate commits from successful eforge runs into one content commit and one cleanup commit
+created: 2026-03-17
+compiled: 2026-03-17
+mode: errand
+base_branch: main
+
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+
+plans:
+  - id: plan-01-squash-run-commits
+    name: Squash Run Commits
+    depends_on: []
+    branch: plan-squash-commits-at-end-of-successful-eforge-run/squash-run-commits
