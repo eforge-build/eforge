@@ -489,6 +489,14 @@ export function renderEvent(event: EforgeEvent): void {
       succeedSpinner('cleanup', `Plan files removed for ${chalk.cyan(event.planSet)}`);
       break;
 
+    case 'squash:start':
+      startSpinner('squash', `Squashing ${event.commitCount} commits...`);
+      break;
+
+    case 'squash:complete':
+      succeedSpinner('squash', `Squashed to ${chalk.cyan(event.shortHash)}`);
+      break;
+
     case 'plan:profile': {
       const profileColors: Record<string, (s: string) => string> = {
         errand: chalk.green,
