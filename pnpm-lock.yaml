@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.76
-        version: 0.2.76(zod@4.3.6)
+        specifier: ^0.2.77
+        version: 0.2.77(zod@4.3.6)
       better-sqlite3:
         specifier: ^12.8.0
         version: 12.8.0
@@ -134,8 +134,8 @@ packages:
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
 
-  '@anthropic-ai/claude-agent-sdk@0.2.76':
-    resolution: {integrity: sha512-HZxvnT8ZWkzCnQygaYCA0dl8RSUzuVbxE1YG4ecy6vh4nQbTT36CxUxBy+QVdR12pPQluncC0mCOLhI2918Eaw==}
+  '@anthropic-ai/claude-agent-sdk@0.2.77':
+    resolution: {integrity: sha512-t+R1BW3ahCFMNM7/8WJq7+Gw9KPA9Cl7UUK8fWPokJZ75cf/xwEd9MqB+MVNoQT45dJiom/wxybT7tqYPkCqyg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       zod: ^4.0.0
@@ -1963,8 +1963,8 @@ packages:
   napi-build-utils@2.0.0:
     resolution: {integrity: sha512-GEbrYkbfF7MoNaoh2iGG84Mnf/WZfB0GdGEsM8wz7Expx/LlWf5U8t9nvJKXSp3qr5IsEbK04cBGhol/KwOsWA==}
 
-  node-abi@3.88.0:
-    resolution: {integrity: sha512-At6b4UqIEVudaqPsXjmUO1r/N5BUr4yhDGs5PkBE8/oG5+TfLPhFechiskFsnT6Ql0VfUXbalUUCbfXxtj7K+w==}
+  node-abi@3.89.0:
+    resolution: {integrity: sha512-6u9UwL0HlAl21+agMN3YAMXcKByMqwGx+pq+P76vii5f7hTPtKDp08/H9py6DY+cfDw7kQNTGEj/rly3IgbNQA==}
     engines: {node: '>=10'}
 
   node-releases@2.0.36:
@@ -2465,7 +2465,7 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
-  '@anthropic-ai/claude-agent-sdk@0.2.76(zod@4.3.6)':
+  '@anthropic-ai/claude-agent-sdk@0.2.77(zod@4.3.6)':
     dependencies:
       zod: 4.3.6
     optionalDependencies:
@@ -4015,7 +4015,7 @@ snapshots:
 
   napi-build-utils@2.0.0: {}
 
-  node-abi@3.88.0:
+  node-abi@3.89.0:
     dependencies:
       semver: 7.7.4
 
@@ -4092,7 +4092,7 @@ snapshots:
       minimist: 1.2.8
       mkdirp-classic: 0.5.3
       napi-build-utils: 2.0.0
-      node-abi: 3.88.0
+      node-abi: 3.89.0
       pump: 3.0.4
       rc: 1.2.8
       simple-get: 4.0.1
