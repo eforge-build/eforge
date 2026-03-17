@@ -135,13 +135,53 @@ export function createProgram(abortController?: AbortController): Command {
     .version('0.1.0');
 
   program
-    .command('run <source>')
+    .command('enqueue <source>')
+    .description('Normalize input and add it to the PRD queue')
+    .option('--name <name>', 'Override the inferred PRD title')
+    .option('--verbose', 'Stream agent output')
+    .option('--no-monitor', 'Disable web monitor')
+    .option('--no-plugins', 'Disable plugin loading')
+    .action(
+      async (
+        source: string,
+        options: {
+          name?: string;
+          verbose?: boolean;
+          monitor?: boolean;
+          plugins?: boolean;
+        },
+      ) => {
+        initDisplay({ verbose: options.verbose });
+
+        const configOverrides = buildConfigOverrides(options);
+
+        const engine = await EforgeEngine.create({
+          ...(configOverrides && { config: configOverrides }),
+        });
+
+        await withMonitor(options.monitor === false, async (monitor) => {
+          const sessionId = randomUUID();
+
+          const enqueueEvents = engine.enqueue(source, {
+            name: options.name,
+            verbose: options.verbose,
+            abortController,
+          });
+
+          await consumeEvents(
+            wrapEvents(enqueueEvents, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: true }),
+          );
+        });
+      },
+    );
+
+  program
+    .command('run [source]')
     .description('Compile + build + validate in one step')
     .option('--auto', 'Run without approval gates')
     .option('--verbose', 'Stream agent output')
     .option('--name <name>', 'Plan set name (inferred from source if omitted)')
-    .option('--adopt', 'Adopt source as an existing plan (skip planner agent)')
-    .option('--no-review', 'Skip plan review (only applies with --adopt)')
+    .option('--queue', 'Process all PRDs from the queue')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
     .option('--dry-run', 'Compile only, then show execution plan without building')
     .option('--no-cleanup', 'Keep plan files after successful build')
@@ -151,13 +191,12 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--generate-profile', 'Let the planner generate a custom workflow profile')
     .action(
       async (
-        source: string,
+        source: string | undefined,
         options: {
           auto?: boolean;
           verbose?: boolean;
           name?: string;
-          adopt?: boolean;
-          review?: boolean;
+          queue?: boolean;
           cleanup?: boolean;
           parallelism?: number;
           dryRun?: boolean;
@@ -167,6 +206,45 @@ export function createProgram(abortController?: AbortController): Command {
           generateProfile?: boolean;
         },
       ) => {
+        // --queue mode: delegate to engine.runQueue()
+        if (options.queue) {
+          initDisplay({ verbose: options.verbose });
+
+          const configOverrides = buildConfigOverrides(options);
+
+          const engine = await EforgeEngine.create({
+            onClarification: createClarificationHandler(options.auto ?? false),
+            onApproval: createApprovalHandler(options.auto ?? false),
+            ...(configOverrides && { config: configOverrides }),
+          });
+
+          await withMonitor(options.monitor === false, async (monitor) => {
+            const sessionId = randomUUID();
+
+            const queueEvents = engine.runQueue({
+              name: options.name,
+              all: true,
+              auto: options.auto,
+              verbose: options.verbose,
+              abortController,
+            });
+
+            const result = await consumeEvents(
+              wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: true }),
+              { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
+            );
+
+            process.exit(result === 'completed' ? 0 : 1);
+          });
+          return;
+        }
+
+        // Normal mode: source is required
+        if (!source) {
+          console.error(chalk.red('Error: <source> is required unless --queue is specified'));
+          process.exit(1);
+        }
+
         initDisplay({ verbose: options.verbose });
 
         const configOverrides = buildConfigOverrides(options);
@@ -202,16 +280,36 @@ export function createProgram(abortController?: AbortController): Command {
         });
 
         await withMonitor(options.monitor === false, async (monitor) => {
-          // Shared sessionId across compile+build so tracking sees one session
+          // Shared sessionId across enqueue+compile+build so tracking sees one session
           const sessionId = randomUUID();
 
-          // Phase 1: Compile or Adopt
+          // Phase 0: Enqueue — format and add to queue, capture file path
+          let enqueuedFilePath: string | undefined;
+          const enqueueEvents = engine.enqueue(source, {
+            name: options.name,
+            verbose: options.verbose,
+            abortController,
+          });
+
+          for await (const event of wrapEvents(enqueueEvents, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: false })) {
+            renderEvent(event);
+            if (event.type === 'enqueue:complete') {
+              enqueuedFilePath = event.filePath;
+            }
+          }
+
+          if (!enqueuedFilePath) {
+            console.error(chalk.red('Enqueue failed — no file path returned'));
+            process.exit(1);
+          }
+
+          // Phase 1: Compile from the enqueued file
           let planSetName: string | undefined;
           let planFiles: PlanFile[] = [];
           let planResult: 'completed' | 'failed' = 'completed';
           let scopeComplete = false;
 
-          const phase1Events = engine.compile(source, {
+          const phase1Events = engine.compile(enqueuedFilePath, {
                 auto: options.auto,
                 verbose: options.verbose,
                 name: options.name,
@@ -219,7 +317,7 @@ export function createProgram(abortController?: AbortController): Command {
                 abortController,
               });
 
-          for await (const event of wrapEvents(phase1Events, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: false })) {
+          for await (const event of wrapEvents(phase1Events, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: false, emitSessionEnd: false })) {
             renderEvent(event);
             if (event.type === 'phase:start') {
               renderLangfuseStatus(engine.resolvedConfig);
@@ -250,7 +348,7 @@ export function createProgram(abortController?: AbortController): Command {
             await showDryRun(planSetName);
           }
 
-          // Phase 2: Build (same sessionId as phase 1)
+          // Phase 2: Build (same sessionId as previous phases)
           const buildResult = await consumeEvents(
             wrapEvents(engine.build(planSetName, {
               auto: options.auto,

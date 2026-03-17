@@ -30,7 +30,9 @@ This workflow was battle-tested as Claude Code plugins before being packaged int
 flowchart TD
     Start["PRD, prompt, or plan file"]
 
-    Start --> Planner
+    Start --> Formatter["Formatter"]
+    Formatter --> Queue["Queue"]
+    Queue --> Planner
 
     subgraph plan ["Planning"]
         Planner["Planner"] --> PC["Commit plans"]
@@ -92,18 +94,22 @@ Once installed, the primary entrypoint is `/eforge:run` - it takes a PRD or prom
 
 | Skill | Description |
 |-------|-------------|
-| `/eforge:run` | Compile + build + validate in one step |
+| `/eforge:enqueue` | Normalize input and add to queue |
+| `/eforge:run` | Enqueue + compile + build + validate in one step |
 | `/eforge:status` | Check build progress |
 
 ### CLI Usage
 
 ```bash
-# Compile + build + validate in one step
+# Normalize input and add to the PRD queue
+eforge enqueue docs/my-feature.md
+
+# Enqueue + compile + build + validate in one step
 eforge run docs/my-feature.md
 eforge run "Add a health check endpoint"
 
-# Adopt an existing plan (skip planner agent)
-eforge run docs/my-feature.md --adopt
+# Process all PRDs from the queue
+eforge run --queue
 
 # Check running builds
 eforge status
@@ -119,6 +125,7 @@ Each command supports `--help` for the full list of options. Common flags:
 | `--auto` | Bypass approval gates |
 | `--verbose` | Stream agent output |
 | `--dry-run` | Validate without executing |
+| `--queue` | Process all PRDs from the queue |
 | `--no-monitor` | Disable web monitor |
 | `--no-plugins` | Disable plugin loading |
 

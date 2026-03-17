@@ -550,11 +550,11 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     case 'enqueue:start':
-      console.log(chalk.cyan('Enqueuing: ') + chalk.dim(event.source));
+      startSpinner('enqueue', `Enqueuing from ${chalk.cyan(event.source)}...`);
       break;
 
     case 'enqueue:complete':
-      console.log(chalk.green('Enqueued: ') + chalk.bold(event.title) + chalk.dim(` → ${event.filePath}`));
+      succeedSpinner('enqueue', `Enqueued: ${chalk.cyan(event.title)} -> ${chalk.dim(event.filePath)}`);
       break;
 
     default: {

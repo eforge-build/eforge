@@ -5,7 +5,7 @@ disable-model-invocation: true
 
 # /eforge:status
 
-Quick inline status check — reads `.eforge/state.json` directly without invoking the eforge CLI.
+Quick inline status check - reads `.eforge/state.json` directly without invoking the eforge CLI.
 
 ## Workflow
 
@@ -19,7 +19,7 @@ cat .eforge/state.json
 
 If the file doesn't exist, report:
 
-> No active eforge builds. Run `/eforge:run` to plan and build, or `/eforge:plan` to create a PRD first.
+> No active eforge builds. Run `/eforge:run` to plan and build, or `/eforge:enqueue` to create a PRD first.
 
 **Stop here** if no state file exists.
 
@@ -44,7 +44,21 @@ Status values: `pending`, `running`, `completed`, `failed`, `blocked`, `merged`
 
 Completed plans count: `{completedPlans.length}` / `{total plans}`
 
-### Step 3: Monitor Link
+### Step 3: Queue State
+
+Check for pending PRDs in the queue directory. Use the Glob tool to find PRD files:
+
+```
+docs/prd-queue/*.md
+```
+
+If PRD files are found, read each file and parse the YAML frontmatter. Display a summary:
+
+**Queue**: `{pendingCount}` pending PRD(s)
+
+For each pending PRD, show the title. If there are more than 5, show the first 5 and a count of remaining.
+
+### Step 4: Monitor Link
 
 If the overall status is `running`, show:
 
@@ -60,6 +74,6 @@ If the status is `completed` or `failed`, omit the monitor link and show a summa
 
 | Condition | Action |
 |-----------|--------|
-| `.eforge/state.json` missing | Report no active builds, suggest `/eforge:plan` |
+| `.eforge/state.json` missing | Report no active builds, suggest `/eforge:enqueue` |
 | State file is malformed JSON | Report parse error, suggest running `eforge status` CLI directly |
 | State file exists but empty | Treat as missing state |
