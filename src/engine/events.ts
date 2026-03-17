@@ -101,6 +101,8 @@ export interface BuildOptions {
   cleanup?: boolean;
   cwd?: string;
   abortController?: AbortController;
+  squashBaseHash?: string;
+  prdFilePath?: string;
 }
 
 export interface EnqueueOptions {
@@ -201,6 +203,10 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'validation:complete'; passed: boolean }
   | { type: 'validation:fix:start'; attempt: number; maxAttempts: number }
   | { type: 'validation:fix:complete'; attempt: number }
+
+  // Squash (post-build, before cleanup)
+  | { type: 'squash:start'; commitCount: number }
+  | { type: 'squash:complete'; shortHash: string }
 
   // Cleanup (post-build)
   | { type: 'cleanup:start'; planSet: string }

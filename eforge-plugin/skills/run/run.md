@@ -70,6 +70,7 @@ Tell the user:
 > 6. **Code review** - blind code review of the implementation
 > 7. **Merging** - merges completed plans back to the base branch
 > 8. **Validation** - post-merge review/fix loop (type-check, tests, lint)
+> 9. **Squash** - collapses all intermediate commits into a single content commit
 >
 > Use `/eforge:status` for a quick inline status check.
 

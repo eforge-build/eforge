@@ -85,5 +85,6 @@ See `src/engine/events.ts` for the full `EforgeEvent` type definition. The main 
 - `agent:start` / `agent:stop` - Agent lifecycle (one pair per agent invocation, carries `agentId` UUID and `agent` role)
 - `agent:*` - Agent-level streaming (tool use, messages, results)
 - `validation:*` - Post-merge validation
+- `squash:*` - Commit squashing on successful runs
 - `cleanup:*` - Plan file cleanup
 - `approval:*` - User interaction gates
