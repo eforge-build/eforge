@@ -41,11 +41,14 @@ const reviewProfileConfigSchema = z.object({
   evaluatorStrictness: z.enum(STRICTNESS),
 });
 
+/** A build stage spec: either a single stage name or an array of stage names to run in parallel. */
+const buildStageSpecSchema = z.union([z.string(), z.array(z.string())]);
+
 const partialProfileConfigSchema = z.object({
   description: z.string().optional(),
   extends: z.string().optional(),
   compile: z.array(z.string()).optional(),
-  build: z.array(z.string()).optional(),
+  build: z.array(buildStageSpecSchema).optional(),
   agents: z.partialRecord(agentRoleSchema, agentProfileConfigSchema).optional(),
   review: reviewProfileConfigSchema.partial().optional(),
 });
@@ -53,7 +56,7 @@ const partialProfileConfigSchema = z.object({
 const resolvedProfileConfigSchema = z.object({
   description: z.string().min(1),
   compile: z.array(z.string()).nonempty(),
-  build: z.array(z.string()).nonempty(),
+  build: z.array(buildStageSpecSchema).nonempty(),
   agents: z.partialRecord(agentRoleSchema, agentProfileConfigSchema),
   review: reviewProfileConfigSchema,
 });
@@ -113,6 +116,8 @@ export type AgentProfileConfig = z.output<typeof agentProfileConfigSchema>;
 export type ReviewProfileConfig = z.output<typeof reviewProfileConfigSchema>;
 export type PartialProfileConfig = z.output<typeof partialProfileConfigSchema>;
 export type ResolvedProfileConfig = z.output<typeof resolvedProfileConfigSchema>;
+/** A single build stage name or an array of names to run in parallel. */
+export type BuildStageSpec = string | string[];
 /** Alias kept for barrel re-export convenience. */
 export type ProfileConfig = ResolvedProfileConfig;
 export type HookConfig = z.output<typeof hookConfigSchema>;
@@ -609,7 +614,8 @@ export function validateProfileConfig(
     }
   }
   if (buildStageNames) {
-    for (const name of config.build) {
+    const flatBuildStages = config.build.flatMap((spec) => Array.isArray(spec) ? spec : [spec]);
+    for (const name of flatBuildStages) {
       if (!buildStageNames.has(name)) {
         errors.push(`unknown build stage: "${name}"`);
       }

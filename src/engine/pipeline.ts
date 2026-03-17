@@ -841,16 +841,44 @@ export async function* runCompilePipeline(
 }
 
 /**
- * Run the build pipeline stages in sequence for a single plan.
+ * Run the build pipeline stages for a single plan.
+ * Each entry in `profile.build` is either a single stage name (run sequentially)
+ * or an array of stage names (run concurrently via `runParallel`).
+ * After a parallel group completes, any uncommitted changes are auto-committed.
  */
 export async function* runBuildPipeline(
   ctx: BuildStageContext,
 ): AsyncGenerator<EforgeEvent> {
   yield { type: 'build:start', planId: ctx.planId };
 
-  for (const stageName of ctx.profile.build) {
-    const stage = getBuildStage(stageName);
-    yield* stage(ctx);
+  for (const spec of ctx.profile.build) {
+    if (Array.isArray(spec)) {
+      // Parallel group — run all stages concurrently
+      const tasks: ParallelTask<EforgeEvent>[] = spec.map((stageName) => {
+        const stage = getBuildStage(stageName);
+        return {
+          id: stageName,
+          run: () => stage(ctx),
+        };
+      });
+      yield* runParallel(tasks);
+
+      // After parallel group, commit any uncommitted changes (e.g., from doc-update)
+      try {
+        const { stdout: statusOut } = await exec('git', ['status', '--porcelain'], { cwd: ctx.worktreePath });
+        if (statusOut.trim().length > 0) {
+          await exec('git', ['add', '-A'], { cwd: ctx.worktreePath });
+          await exec('git', ['commit', '-m', `chore(${ctx.planId}): post-parallel-group auto-commit`], { cwd: ctx.worktreePath });
+        }
+      } catch (err) {
+        // Non-critical — best-effort commit, but yield a warning so it's observable
+        yield { type: 'plan:progress', message: `post-parallel-group auto-commit failed: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    } else {
+      // Sequential stage
+      const stage = getBuildStage(spec);
+      yield* stage(ctx);
+    }
 
     // Stop pipeline if a stage signaled failure (e.g., implement stage)
     if (ctx.buildFailed) return;

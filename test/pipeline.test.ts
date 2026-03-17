@@ -445,6 +445,112 @@ describe('agent config threading', () => {
 // Default Profile Behavior Tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Parallel Stage Group Tests
+// ---------------------------------------------------------------------------
+
+describe('runBuildPipeline parallel stage groups', () => {
+  it('parallel group runs both stages and yields events from both', async () => {
+    const stagesRun: string[] = [];
+
+    registerBuildStage('test-par-a', async function* (ctx) {
+      stagesRun.push('a');
+      yield { type: 'plan:progress', message: 'par-a' };
+    });
+    registerBuildStage('test-par-b', async function* (ctx) {
+      stagesRun.push('b');
+      yield { type: 'plan:progress', message: 'par-b' };
+    });
+
+    const profile: ResolvedProfileConfig = {
+      ...BUILTIN_PROFILES['excursion'],
+      build: [['test-par-a', 'test-par-b']],
+    };
+
+    const ctx = makeBuildCtx({ profile });
+    const events = await collect(runBuildPipeline(ctx));
+
+    // Both stages ran
+    expect(stagesRun).toContain('a');
+    expect(stagesRun).toContain('b');
+
+    // build:start + 2 stage events + build:complete = 4
+    const progressEvents = events.filter((e) => e.type === 'plan:progress');
+    expect(progressEvents).toHaveLength(2);
+    expect(events[0]).toEqual({ type: 'build:start', planId: 'plan-01' });
+    expect(events[events.length - 1]).toEqual({ type: 'build:complete', planId: 'plan-01' });
+  });
+
+  it('mixed config [["a", "b"], "c"] runs a+b in parallel then c sequentially', async () => {
+    const order: string[] = [];
+
+    registerBuildStage('test-mix-a', async function* () {
+      order.push('a');
+      yield { type: 'plan:progress', message: 'mix-a' };
+    });
+    registerBuildStage('test-mix-b', async function* () {
+      order.push('b');
+      yield { type: 'plan:progress', message: 'mix-b' };
+    });
+    registerBuildStage('test-mix-c', async function* () {
+      order.push('c');
+      yield { type: 'plan:progress', message: 'mix-c' };
+    });
+
+    const profile: ResolvedProfileConfig = {
+      ...BUILTIN_PROFILES['excursion'],
+      build: [['test-mix-a', 'test-mix-b'], 'test-mix-c'],
+    };
+
+    const ctx = makeBuildCtx({ profile });
+    const events = await collect(runBuildPipeline(ctx));
+
+    // a and b ran (order among them is nondeterministic), c ran after both
+    expect(order).toContain('a');
+    expect(order).toContain('b');
+    expect(order.indexOf('c')).toBe(2); // c is always last
+
+    const progressEvents = events.filter((e) => e.type === 'plan:progress');
+    expect(progressEvents).toHaveLength(3);
+    expect(events[0].type).toBe('build:start');
+    expect(events[events.length - 1].type).toBe('build:complete');
+  });
+
+  it('buildFailed set during parallel group stops pipeline after group completes', async () => {
+    const stagesRun: string[] = [];
+
+    registerBuildStage('test-fail-par-a', async function* (ctx) {
+      stagesRun.push('a');
+      ctx.buildFailed = true;
+      yield { type: 'plan:progress', message: 'fail-par-a' };
+    });
+    registerBuildStage('test-fail-par-b', async function* () {
+      stagesRun.push('b');
+      yield { type: 'plan:progress', message: 'fail-par-b' };
+    });
+    registerBuildStage('test-fail-after', async function* () {
+      stagesRun.push('after');
+      yield { type: 'plan:progress', message: 'after' };
+    });
+
+    const profile: ResolvedProfileConfig = {
+      ...BUILTIN_PROFILES['excursion'],
+      build: [['test-fail-par-a', 'test-fail-par-b'], 'test-fail-after'],
+    };
+
+    const ctx = makeBuildCtx({ profile });
+    const events = await collect(runBuildPipeline(ctx));
+
+    // Both parallel stages ran, but the sequential stage after did not
+    expect(stagesRun).toContain('a');
+    expect(stagesRun).toContain('b');
+    expect(stagesRun).not.toContain('after');
+
+    // No build:complete because pipeline was stopped
+    expect(events.find((e) => e.type === 'build:complete')).toBeUndefined();
+  });
+});
+
 describe('default profile behavior', () => {
   it('excursion profile build stages match today\'s hardcoded sequence', () => {
     const excursion = BUILTIN_PROFILES['excursion'];

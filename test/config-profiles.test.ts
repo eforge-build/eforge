@@ -8,6 +8,7 @@ import {
   mergePartialConfigs,
   BUILTIN_PROFILES,
   parseProfilesFile,
+  validateProfileConfig,
 } from '../src/engine/config.js';
 import type {
   PartialProfileConfig,
@@ -318,6 +319,58 @@ agents:
     const result = await parseProfilesFile(path);
     expect(result).toEqual({});
     await rm(tmpDir, { recursive: true });
+  });
+});
+
+// --- nested array (parallel stage group) schema validation ---
+
+describe('nested array schema validation for build field', () => {
+  it('partial profile config accepts nested arrays in build', () => {
+    const partials: Record<string, PartialProfileConfig> = {
+      custom: {
+        description: 'Custom profile with parallel groups',
+        build: [['implement', 'doc-update'], 'review'],
+      },
+    };
+    const result = resolveProfileExtensions(partials);
+    expect(result.custom.build).toEqual([['implement', 'doc-update'], 'review']);
+  });
+
+  it('resolved profile config accepts nested arrays in build', () => {
+    const profile: ResolvedProfileConfig = {
+      ...BUILTIN_PROFILES.excursion,
+      build: [['implement', 'doc-update'], 'review', 'evaluate'],
+    };
+    const buildStages = new Set(['implement', 'doc-update', 'review', 'evaluate']);
+    const { valid, errors } = validateProfileConfig(profile, undefined, buildStages);
+    expect(errors).toEqual([]);
+    expect(valid).toBe(true);
+  });
+
+  it('validateProfileConfig catches unknown stages inside nested arrays', () => {
+    const profile: ResolvedProfileConfig = {
+      ...BUILTIN_PROFILES.excursion,
+      build: [['implement', 'nonexistent'], 'review'],
+    };
+    const buildStages = new Set(['implement', 'review']);
+    const { valid, errors } = validateProfileConfig(profile, undefined, buildStages);
+    expect(valid).toBe(false);
+    expect(errors).toContain('unknown build stage: "nonexistent"');
+  });
+
+  it('resolveConfig round-trip preserves nested arrays in build', () => {
+    const config = resolveConfig(
+      {
+        profiles: {
+          parallel: {
+            description: 'Parallel test',
+            build: [['implement', 'doc-update'], 'review'],
+          },
+        },
+      },
+      {},
+    );
+    expect(config.profiles.parallel.build).toEqual([['implement', 'doc-update'], 'review']);
   });
 });
 
