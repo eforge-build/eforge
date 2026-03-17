@@ -139,7 +139,6 @@ export function createProgram(abortController?: AbortController): Command {
     .description('Normalize input and add it to the PRD queue')
     .option('--name <name>', 'Override the inferred PRD title')
     .option('--verbose', 'Stream agent output')
-    .option('--no-monitor', 'Disable web monitor')
     .option('--no-plugins', 'Disable plugin loading')
     .action(
       async (
@@ -147,7 +146,6 @@ export function createProgram(abortController?: AbortController): Command {
         options: {
           name?: string;
           verbose?: boolean;
-          monitor?: boolean;
           plugins?: boolean;
         },
       ) => {
@@ -159,7 +157,7 @@ export function createProgram(abortController?: AbortController): Command {
           ...(configOverrides && { config: configOverrides }),
         });
 
-        await withMonitor(options.monitor === false, async (monitor) => {
+        await withMonitor(true, async (monitor) => {
           const sessionId = randomUUID();
 
           const enqueueEvents = engine.enqueue(source, {

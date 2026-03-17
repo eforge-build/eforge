@@ -1,6 +1,10 @@
-# Model Tier Abstraction
+---
+title: Model Tier Abstraction
+created: 2026-03-17
+status: pending
+---
 
-## Problem
+## Problem / Motivation
 
 `AgentProfileConfig.model` and `AgentRunOptions.model` both exist as `string` fields, but nothing connects them through the pipeline. The config parser reads the value from YAML and then it gets dropped before reaching any agent. Beyond the wiring gap, raw model names in config couple profiles to a specific backend - if you switch from Claude SDK to something else, every profile breaks.
 
@@ -8,15 +12,15 @@
 
 A backend-agnostic model tier system where profiles declare intent (`powerful`, `balanced`, `fast`) and backends resolve those tiers to concrete models. Each agent declares its own default tier. The pipeline threads the resolved model through to every `backend.run()` call.
 
-## Tiers
+## Approach
 
-Three tiers - `powerful | balanced | fast` - expressed as a `ModelTier` union type.
+### Model tiers
+
+Three tiers expressed as a `ModelTier` union type: `powerful | balanced | fast`.
 
 - `powerful` - strongest available model. The default for most agents - planning, building, reviewing, and evaluating all benefit from the best reasoning available.
 - `balanced` - good judgment and coding ability. For agents where speed or cost matters more than peak quality.
 - `fast` - quick, cheap, low-stakes utility tasks only. Not suitable for evaluation, planning, reviewing, or building. No built-in agent defaults to this tier.
-
-## Design
 
 ### Agent-owned defaults
 
@@ -97,3 +101,16 @@ profiles:
 - New backends (OpenRouter, etc.)
 - Per-run model override CLI flags
 - Model cost tracking or budget limits
+
+## Acceptance Criteria
+
+- A `ModelTier` union type (`powerful | balanced | fast`) is defined in `backend.ts` and re-exported from the engine barrel.
+- `AgentBackend` interface includes a `resolveModel(tier: ModelTier): string` method.
+- `ClaudeSDKBackend` implements `resolveModel()` with default mapping `{ powerful: 'claude-sonnet-4-20250514', balanced: 'claude-sonnet-4-20250514', fast: 'claude-haiku-3-5-20241022' }` and accepts an optional `modelMap` constructor override.
+- `StubBackend` implements `resolveModel()`.
+- Each agent file exports a `DEFAULT_MODEL_TIER` constant matching the table above.
+- `AgentProfileConfig.model` is typed as `ModelTier` instead of `string`, and the config parser validates tier values.
+- The resolution chain (`profile override → agent default → backend.resolveModel() → AgentRunOptions.model`) is implemented in the pipeline layer.
+- Every `backend.run()` call in the pipeline receives the resolved concrete model string.
+- `AgentRunOptions.model` remains `string | undefined` (concrete model name, not tier).
+- Tests cover tier parsing/validation, resolution chain logic (profile override vs. agent default), and model wiring through pipeline stages.
