@@ -119,6 +119,10 @@ export { DEFAULT_CONFIG, BUILTIN_PROFILES, findConfigFile, resolveConfig, loadCo
 export type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 export { createTracingContext, createNoopTracingContext } from './tracing.js';
 
+// --- pipeline ---
+export type { PipelineContext, BuildStageContext, CompileStage, BuildStage } from './pipeline.js';
+export { getCompileStage, getBuildStage, registerCompileStage, registerBuildStage, runCompilePipeline, runBuildPipeline } from './pipeline.js';
+
 // --- eforge-core ---
 export { EforgeEngine } from './eforge.js';
 export type { EforgeEngineOptions } from './eforge.js';

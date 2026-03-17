@@ -19,36 +19,21 @@ import type {
   AdoptOptions,
   PlanFile,
   ClarificationQuestion,
-  AgentResultData,
-  AgentRole,
-  ExpeditionModule,
   ScopeAssessment,
 } from './events.js';
-import type { EforgeConfig, PluginConfig } from './config.js';
+import type { EforgeConfig, PluginConfig, PartialProfileConfig } from './config.js';
 import type { AgentBackend } from './backend.js';
 import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
-import type { PlannerOptions } from './agents/planner.js';
-import { loadConfig } from './config.js';
+import { loadConfig, resolveProfileExtensions } from './config.js';
 import { ClaudeSDKBackend } from './backends/claude-sdk.js';
-import { createTracingContext, type SpanHandle, type ToolCallHandle, type TracingContext } from './tracing.js';
-import { runPlanner } from './agents/planner.js';
-import { runModulePlanner } from './agents/module-planner.js';
-import { builderImplement, builderEvaluate } from './agents/builder.js';
-import { runParallelReview } from './agents/parallel-reviewer.js';
-import { runReviewFixer } from './agents/review-fixer.js';
-import { runPlanReview } from './agents/plan-reviewer.js';
-import { runPlanEvaluate } from './agents/plan-evaluator.js';
-import { runCohesionReview } from './agents/cohesion-reviewer.js';
-import { runCohesionEvaluate } from './agents/cohesion-evaluator.js';
+import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runAssessor } from './agents/assessor.js';
-import { runParallel, type ParallelTask } from './concurrency.js';
 import { Orchestrator, type ValidationFixer } from './orchestrator.js';
-import { deriveNameFromSource, deriveNameFromContent, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName, extractPlanTitle, detectValidationCommands, writePlanArtifacts, resolveDependencyGraph } from './plan.js';
-import { compileExpedition } from './compiler.js';
-import { parseModulesBlock } from './agents/common.js';
+import { deriveNameFromSource, deriveNameFromContent, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName, extractPlanTitle, detectValidationCommands, writePlanArtifacts } from './plan.js';
 import { loadState } from './state.js';
+import { runCompilePipeline, runBuildPipeline, createToolTracker, type PipelineContext, type BuildStageContext } from './pipeline.js';
 
 const exec = promisify(execFile);
 
@@ -69,6 +54,8 @@ export interface EforgeEngineOptions {
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Approval callback for build gates */
   onApproval?: (action: string, details: string) => Promise<boolean>;
+  /** Additional profiles to add to the palette (from --profiles files) */
+  profileOverrides?: Record<string, PartialProfileConfig>;
 }
 
 export class EforgeEngine {
@@ -105,6 +92,12 @@ export class EforgeEngine {
 
     if (options.config) {
       config = mergeConfig(config, options.config);
+    }
+
+    // Merge profile overrides from --profiles files
+    if (options.profileOverrides) {
+      const mergedProfiles = resolveProfileExtensions(options.profileOverrides, config.profiles);
+      config = { ...config, profiles: mergedProfiles };
     }
 
     // Auto-load MCP servers from .mcp.json if not explicitly provided
@@ -165,115 +158,40 @@ export class EforgeEngine {
     }
 
     try {
-      // Run planner agent (explores codebase, assesses scope, generates artifacts)
-      const span = tracing.createSpan('planner', { source, planSet: planSetName });
-      span.setInput({ source, planSet: planSetName });
+      // Resolve profile - default to excursion (profile selection pre-step will
+      // update this when the planner emits plan:profile in future iterations)
+      const selectedProfile = this.config.profiles['excursion'];
 
-      const plannerOptions: PlannerOptions = {
-        ...options,
-        cwd,
+      const ctx: PipelineContext = {
         backend: this.backend,
+        config: this.config,
+        profile: selectedProfile,
+        tracing,
+        cwd,
+        planSetName,
+        sourceContent,
+        verbose: options.verbose,
+        auto: options.auto,
+        abortController: options.abortController,
         onClarification: this.onClarification,
+        plans: [],
+        expeditionModules: [],
       };
 
-      let scopeAssessment: ScopeAssessment | undefined;
-      let expeditionModules: ExpeditionModule[] = [];
-      let finalPlans: PlanFile[] = [];
+      // Run compile pipeline
+      yield* runCompilePipeline(ctx);
 
-      const plannerTracker = createToolTracker(span);
-      try {
-        for await (const event of runPlanner(source, plannerOptions)) {
-          // Track scope assessment
-          if (event.type === 'plan:scope') {
-            scopeAssessment = event.assessment;
-          }
-
-          // Detect <modules> block in agent messages (expedition mode, first match only)
-          if (event.type === 'agent:message' && event.agent === 'planner' && expeditionModules.length === 0) {
-            const modules = parseModulesBlock(event.content);
-            if (modules.length > 0) {
-              expeditionModules = modules;
-              yield { type: 'expedition:architecture:complete', modules };
-            }
-          }
-
-          plannerTracker.handleEvent(event);
-
-          // Suppress planner's plan:complete in expedition mode (compilation emits the real one)
-          if (event.type === 'plan:complete' && scopeAssessment === 'expedition' && expeditionModules.length > 0) {
-            continue;
-          }
-
-          // Track final plans for review phase
-          if (event.type === 'plan:complete') {
-            finalPlans = event.plans;
-          }
-
-          yield event;
-        }
-        plannerTracker.cleanup();
-        span.end();
-
-        // No custom summary needed for 'complete' scope — plan:complete
-        // already conveys "Nothing to plan" to the display layer.
-      } catch (err) {
-        plannerTracker.cleanup();
-        status = 'failed';
-        summary = (err as Error).message;
-        span.error(err as Error);
-      }
-
-      // If expedition scope with modules defined, continue with module planning + compilation
-      if (status !== 'failed' && scopeAssessment === 'expedition' && expeditionModules.length > 0) {
-        try {
-          for await (const event of this.planExpeditionModules(planSetName, expeditionModules, tracing, {
-            ...options,
-            cwd,
-            sourceContent,
-          })) {
-            // Track final plans from expedition compilation
-            if (event.type === 'plan:complete') {
-              finalPlans = event.plans;
-            }
-            yield event;
-          }
-        } catch (err) {
-          status = 'failed';
-          summary = (err as Error).message;
-        }
-      }
-
-      // Commit plan artifacts (required for worktree-based builds)
-      if (status !== 'failed' && finalPlans.length > 0) {
+      // If compile pipeline didn't produce plans and there's no plan-review-cycle
+      // in the compile stages, commit artifacts here
+      // (runCompilePipeline handles the commit before plan-review-cycle when present)
+      if (ctx.plans.length > 0 && !ctx.profile.compile.includes('plan-review-cycle')) {
         const planDir = resolve(cwd, 'plans', planSetName);
-        const verbose = options.verbose;
-        const abortController = options.abortController;
-
         await exec('git', ['add', planDir], { cwd });
         await exec('git', ['commit', '-m', `plan(${planSetName}): initial planning artifacts`], { cwd });
-
-        // Plan review cycle: blind review → evaluate (non-fatal)
-        // (Cohesion review already ran inside planExpeditionModules, before compilation)
-        try {
-          yield* runReviewCycle({
-            tracing,
-            cwd,
-            reviewer: {
-              role: 'plan-reviewer',
-              metadata: { planSet: planSetName },
-              run: () => runPlanReview({ backend: this.backend, sourceContent, planSetName, cwd, verbose, abortController }),
-            },
-            evaluator: {
-              role: 'plan-evaluator',
-              metadata: { planSet: planSetName },
-              run: () => runPlanEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
-            },
-          });
-        } catch (err) {
-          // Plan review failure is non-fatal — plan artifacts are already committed
-          yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
-        }
       }
+    } catch (err) {
+      status = 'failed';
+      summary = (err as Error).message;
     } finally {
       tracing.setOutput({ status, summary });
       yield {
@@ -404,120 +322,82 @@ export class EforgeEngine {
 
         yield { type: 'plan:complete', plans: [planFile] };
 
-        // Plan review cycle (non-fatal, skippable)
+        // Plan review cycle (non-fatal, skippable) — uses the errand profile's compile pipeline
         if (!options.skipReview) {
-          try {
-            yield* runReviewCycle({
-              tracing,
-              cwd,
-              reviewer: {
-                role: 'plan-reviewer',
-                metadata: { planSet: planSetName },
-                run: () => runPlanReview({ backend: this.backend, sourceContent, planSetName, cwd, verbose, abortController }),
-              },
-              evaluator: {
-                role: 'plan-evaluator',
-                metadata: { planSet: planSetName },
-                run: () => runPlanEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
-              },
-            });
-          } catch (err) {
-            yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
-          }
-        }
-      } else {
-        // excursion or expedition — delegate to the full planner
-        yield { type: 'plan:progress', message: `Scope is ${scopeAssessment} — running planner...` };
+          const errandProfile = this.config.profiles['errand'];
+          const reviewCtx: PipelineContext = {
+            backend: this.backend,
+            config: this.config,
+            profile: errandProfile,
+            tracing,
+            cwd,
+            planSetName,
+            sourceContent,
+            verbose,
+            abortController,
+            onClarification: this.onClarification,
+            plans: [planFile],
+            expeditionModules: [],
+          };
 
-        let expeditionModules: ExpeditionModule[] = [];
-        let finalPlans: PlanFile[] = [];
-
-        for await (const event of runPlanner(source, {
-          cwd,
-          name: planSetName,
-          auto: options.auto,
-          backend: this.backend,
-          onClarification: this.onClarification,
-          verbose,
-          abortController,
-        })) {
-          // Suppress duplicate plan:start (adopt already emitted one)
-          if (event.type === 'plan:start') continue;
-          // Suppress duplicate plan:scope yield, but track the planner's assessment
-          // (planner may upgrade scope, e.g., assessor says excursion → planner determines expedition)
-          if (event.type === 'plan:scope') {
-            scopeAssessment = event.assessment;
-            continue;
-          }
-
-          // Detect <modules> block in agent messages (expedition mode, first match only)
-          if (event.type === 'agent:message' && event.agent === 'planner' && expeditionModules.length === 0) {
-            const modules = parseModulesBlock(event.content);
-            if (modules.length > 0) {
-              expeditionModules = modules;
-              yield { type: 'expedition:architecture:complete', modules };
-            }
-          }
-
-          // Suppress planner's plan:complete in expedition mode (compilation emits the real one)
-          if (event.type === 'plan:complete' && scopeAssessment === 'expedition' && expeditionModules.length > 0) {
-            continue;
-          }
-
-          // Track final plans
-          if (event.type === 'plan:complete') {
-            finalPlans = event.plans;
-          }
-
-          yield event;
-        }
-
-        // Expedition module planning (if needed)
-        if (scopeAssessment === 'expedition' && expeditionModules.length > 0) {
-          try {
-            for await (const event of this.planExpeditionModules(planSetName, expeditionModules, tracing, {
-              ...options,
-              cwd,
-              sourceContent,
-            })) {
-              if (event.type === 'plan:complete') {
-                finalPlans = event.plans;
-              }
-              yield event;
-            }
-          } catch (err) {
-            status = 'failed';
-            summary = (err as Error).message;
-          }
-        }
-
-        // Commit plan artifacts
-        if (status !== 'failed' && finalPlans.length > 0) {
-          const planDir = resolve(cwd, 'plans', planSetName);
-          await exec('git', ['add', planDir], { cwd });
-          await exec('git', ['commit', '-m', `plan(${planSetName}): adopt existing implementation plan`], { cwd });
-
-          // Plan review cycle (non-fatal, skippable)
-          // (Cohesion review already ran inside planExpeditionModules, before compilation)
-          if (!options.skipReview) {
+          // Run only the plan-review-cycle stage if it exists in the profile
+          if (errandProfile.compile.includes('plan-review-cycle')) {
+            const { getCompileStage } = await import('./pipeline.js');
             try {
-              yield* runReviewCycle({
-                tracing,
-                cwd,
-                reviewer: {
-                  role: 'plan-reviewer',
-                  metadata: { planSet: planSetName },
-                  run: () => runPlanReview({ backend: this.backend, sourceContent, planSetName, cwd, verbose, abortController }),
-                },
-                evaluator: {
-                  role: 'plan-evaluator',
-                  metadata: { planSet: planSetName },
-                  run: () => runPlanEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
-                },
-              });
+              yield* getCompileStage('plan-review-cycle')(reviewCtx);
             } catch (err) {
               yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
             }
+          }
+        }
+      } else {
+        // excursion or expedition — delegate to the full planner via compile pipeline
+        yield { type: 'plan:progress', message: `Scope is ${scopeAssessment} — running planner...` };
+
+        // Resolve profile based on scope assessment
+        const selectedProfile = this.config.profiles[scopeAssessment] ?? this.config.profiles['excursion'];
+
+        const ctx: PipelineContext = {
+          backend: this.backend,
+          config: this.config,
+          profile: selectedProfile,
+          tracing,
+          cwd,
+          planSetName,
+          sourceContent,
+          verbose,
+          auto: options.auto,
+          abortController,
+          onClarification: this.onClarification,
+          plans: [],
+          expeditionModules: [],
+        };
+
+        // Run compile pipeline (planner + expedition stages as needed)
+        // Filter out plan:start (adopt already emitted one) and plan:scope
+        // (assessor already emitted scope — planner may upgrade it but we
+        // suppress the duplicate yield; scope is still tracked on ctx)
+        for await (const event of runCompilePipeline(ctx)) {
+          if (event.type === 'plan:start') continue;
+          if (event.type === 'plan:scope') continue;
+          yield event;
+        }
+
+        // Commit plan artifacts
+        if (ctx.plans.length > 0 && !selectedProfile.compile.includes('plan-review-cycle')) {
+          const planDir = resolve(cwd, 'plans', planSetName);
+          await exec('git', ['add', planDir], { cwd });
+          await exec('git', ['commit', '-m', `plan(${planSetName}): adopt existing implementation plan`], { cwd });
+        }
+
+        // Plan review cycle (non-fatal, skippable) — run separately if not in compile pipeline
+        // Plan artifacts were already committed above, so plan review can read them.
+        if (!options.skipReview && !selectedProfile.compile.includes('plan-review-cycle') && ctx.plans.length > 0) {
+          const { getCompileStage } = await import('./pipeline.js');
+          try {
+            yield* getCompileStage('plan-review-cycle')(ctx);
+          } catch (err) {
+            yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
           }
         }
       }
@@ -534,143 +414,6 @@ export class EforgeEngine {
       };
       await tracing.flush();
     }
-  }
-
-  /**
-   * Run module planners in dependency waves, cohesion review, then compile to plan files.
-   *
-   * Flow mirrors the EEE plugin's expedition workflow:
-   * 1. Compute dependency waves from module graph
-   * 2. Plan each wave (parallel within wave, sequential across waves)
-   * 3. Cohesion review on module plans (before compilation)
-   * 4. Compile modules into plan files + orchestration.yaml
-   */
-  private async *planExpeditionModules(
-    planSetName: string,
-    modules: ExpeditionModule[],
-    tracing: TracingContext,
-    options: Partial<CompileOptions> & { cwd: string; sourceContent: string },
-  ): AsyncGenerator<EforgeEvent> {
-    const cwd = options.cwd;
-    const sourceContent = options.sourceContent;
-    const verbose = options.verbose;
-    const abortController = options.abortController;
-    const planDir = resolve(cwd, 'plans', planSetName);
-
-    // Read architecture content for module planners
-    let architectureContent = '';
-    try {
-      architectureContent = await readFile(resolve(planDir, 'architecture.md'), 'utf-8');
-    } catch {
-      // Architecture file may not exist if planner didn't create it
-    }
-
-    // 1. Compute dependency waves via topological sort
-    const plansForGraph = modules.map((mod) => ({
-      id: mod.id,
-      name: mod.id,
-      dependsOn: mod.dependsOn,
-      branch: mod.id,
-    }));
-    const { waves } = resolveDependencyGraph(plansForGraph);
-    const moduleMap = new Map(modules.map((m) => [m.id, m]));
-    const completedPlans = new Map<string, string>(); // moduleId → plan file content
-
-    // 2. Plan each wave (parallel within wave, sequential across waves)
-    const backend = this.backend;
-    const onClarification = this.onClarification;
-
-    for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
-      const waveModuleIds = waves[waveIdx];
-      yield { type: 'expedition:wave:start', wave: waveIdx + 1, moduleIds: waveModuleIds };
-
-      const waveTasks: ParallelTask<EforgeEvent>[] = waveModuleIds.map((modId) => {
-        const mod = moduleMap.get(modId)!;
-
-        // Gather completed dependency plan content from earlier waves
-        const depContent = mod.dependsOn
-          .map((depId) => completedPlans.get(depId))
-          .filter((c): c is string => c !== undefined);
-        const dependencyPlanContent = depContent.length > 0
-          ? depContent.join('\n\n---\n\n')
-          : undefined;
-
-        return {
-          id: mod.id,
-          run: async function* () {
-            const modSpan = tracing.createSpan('module-planner', { moduleId: mod.id });
-            modSpan.setInput({ moduleId: mod.id, description: mod.description });
-
-            const modTracker = createToolTracker(modSpan);
-            try {
-              for await (const event of runModulePlanner({
-                backend,
-                cwd,
-                planSetName,
-                moduleId: mod.id,
-                moduleDescription: mod.description,
-                moduleDependsOn: mod.dependsOn,
-                architectureContent,
-                sourceContent,
-                dependencyPlanContent,
-                verbose,
-                onClarification,
-                abortController,
-              })) {
-                modTracker.handleEvent(event);
-                yield event;
-              }
-              modTracker.cleanup();
-              modSpan.end();
-            } catch (err) {
-              // Module planning failure is non-fatal — continue with other modules
-              modTracker.cleanup();
-              modSpan.error(err as Error);
-            }
-          },
-        };
-      });
-
-      yield* runParallel(waveTasks);
-
-      // Read completed module plan files for this wave (context for later waves)
-      for (const modId of waveModuleIds) {
-        try {
-          const content = await readFile(resolve(planDir, 'modules', `${modId}.md`), 'utf-8');
-          completedPlans.set(modId, content);
-        } catch {
-          // Module planner may have failed — skip
-        }
-      }
-
-      yield { type: 'expedition:wave:complete', wave: waveIdx + 1 };
-    }
-
-    // 3. Cohesion review on module plans (before compilation, non-fatal)
-    try {
-      yield* runReviewCycle({
-        tracing,
-        cwd,
-        reviewer: {
-          role: 'cohesion-reviewer',
-          metadata: { planSet: planSetName },
-          run: () => runCohesionReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
-        },
-        evaluator: {
-          role: 'cohesion-evaluator',
-          metadata: { planSet: planSetName },
-          run: () => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController }),
-        },
-      });
-    } catch (err) {
-      yield { type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
-    }
-
-    // 4. Compile modules into plan files + orchestration.yaml
-    yield { type: 'expedition:compile:start' };
-    const plans = await compileExpedition(cwd, planSetName);
-    yield { type: 'expedition:compile:complete', plans };
-    yield { type: 'plan:complete', plans };
   }
 
   /**
@@ -717,11 +460,14 @@ export class EforgeEngine {
         planFileMap.set(plan.id, planFile);
       }
 
-      // Per-plan runner closure — sequences implement → review → evaluate
+      // Per-plan runner closure — iterates build stages from the resolved profile
       const config = this.config;
       const backend = this.backend;
       const verbose = options.verbose;
       const abortController = options.abortController;
+
+      // Default to excursion profile for build (matches today's hardcoded sequence)
+      const buildProfile = config.profiles['excursion'];
 
       const planRunner = async function* (
         planId: string,
@@ -733,121 +479,26 @@ export class EforgeEngine {
           return;
         }
 
-        yield { type: 'build:start', planId };
+        const buildCtx: BuildStageContext = {
+          backend,
+          config,
+          profile: buildProfile,
+          tracing,
+          cwd: worktreePath,
+          planSetName: planSet,
+          sourceContent: '', // Not needed for build stages
+          verbose,
+          abortController,
+          plans: Array.from(planFileMap.values()),
+          expeditionModules: [],
+          planId,
+          worktreePath,
+          planFile,
+          orchConfig,
+          reviewIssues: [],
+        };
 
-        // Phase 1: Implement
-        const implSpan = tracing.createSpan('builder', { planId, phase: 'implement' });
-        implSpan.setInput({ planId, phase: 'implement' });
-        const implTracker = createToolTracker(implSpan);
-        let implFailed = false;
-
-        try {
-          for await (const event of builderImplement(planFile, { backend, cwd: worktreePath, verbose, abortController })) {
-            implTracker.handleEvent(event);
-            yield event;
-            if (event.type === 'build:failed') {
-              implFailed = true;
-            }
-          }
-        } catch (err) {
-          implTracker.cleanup();
-          implSpan.error(err as Error);
-          yield { type: 'build:failed', planId, error: (err as Error).message };
-          return;
-        }
-
-        if (implFailed) {
-          implTracker.cleanup();
-          implSpan.error('Implementation failed');
-          return; // Skip review/evaluate
-        }
-        implTracker.cleanup();
-        implSpan.end();
-
-        // Emit files changed by implementation (non-critical)
-        try {
-          const { stdout } = await exec('git', ['diff', '--name-only', `${orchConfig.baseBranch}...HEAD`], { cwd: worktreePath });
-          const files = stdout.trim().split('\n').filter(Boolean);
-          if (files.length > 0) {
-            yield { type: 'build:files_changed', planId, files };
-          }
-        } catch {
-          // Non-critical — skip silently
-        }
-
-        // Phase 2: Parallel review (handles parallel-or-single decision internally)
-        const reviewSpan = tracing.createSpan('reviewer', { planId, phase: 'review' });
-        reviewSpan.setInput({ planId, phase: 'review' });
-        const reviewTracker = createToolTracker(reviewSpan);
-        let reviewIssues: import('./events.js').ReviewIssue[] = [];
-
-        try {
-          for await (const event of runParallelReview({
-            backend,
-            planContent: planFile.body,
-            baseBranch: orchConfig.baseBranch,
-            planId,
-            cwd: worktreePath,
-            verbose,
-            abortController,
-          })) {
-            reviewTracker.handleEvent(event);
-            yield event;
-            if (event.type === 'build:review:complete') {
-              reviewIssues = event.issues;
-            }
-          }
-          reviewTracker.cleanup();
-          reviewSpan.end();
-        } catch (err) {
-          reviewTracker.cleanup();
-          reviewSpan.error(err as Error);
-        }
-
-        // Phase 2.5: If parallel review found issues, run review fixer
-        if (reviewIssues.length > 0) {
-          const fixerSpan = tracing.createSpan('review-fixer', { planId });
-          fixerSpan.setInput({ planId, issueCount: reviewIssues.length });
-          const fixerTracker = createToolTracker(fixerSpan);
-          try {
-            for await (const event of runReviewFixer({
-              backend,
-              planId,
-              cwd: worktreePath,
-              issues: reviewIssues,
-              verbose,
-              abortController,
-            })) {
-              fixerTracker.handleEvent(event);
-              yield event;
-            }
-            fixerTracker.cleanup();
-            fixerSpan.end();
-          } catch (err) {
-            fixerTracker.cleanup();
-            fixerSpan.error(err as Error);
-          }
-        }
-
-        // Phase 3: Evaluate (only if there are unstaged changes from review/fixer)
-        if (await hasUnstagedChanges(worktreePath)) {
-          const evalSpan = tracing.createSpan('evaluator', { planId });
-          evalSpan.setInput({ planId });
-          const evalTracker = createToolTracker(evalSpan);
-          try {
-            for await (const event of builderEvaluate(planFile, { backend, cwd: worktreePath, verbose, abortController })) {
-              evalTracker.handleEvent(event);
-              yield event;
-            }
-            evalTracker.cleanup();
-            evalSpan.end();
-          } catch (err) {
-            evalTracker.cleanup();
-            evalSpan.error(err as Error);
-          }
-        }
-
-        yield { type: 'build:complete', planId };
+        yield* runBuildPipeline(buildCtx);
       };
 
       // Create validation fixer closure
@@ -951,79 +602,6 @@ export class EforgeEngine {
 }
 
 /**
- * Configuration for a review → evaluate cycle.
- * Used by both plan() (plan review) and build() (code review).
- */
-interface ReviewCycleConfig {
-  tracing: TracingContext;
-  cwd: string;
-  reviewer: {
-    role: AgentRole;
-    metadata: Record<string, unknown>;
-    run: () => AsyncGenerator<EforgeEvent>;
-  };
-  evaluator: {
-    role: AgentRole;
-    metadata: Record<string, unknown>;
-    run: () => AsyncGenerator<EforgeEvent>;
-  };
-}
-
-/**
- * Run a review → evaluate cycle. The reviewer runs first (non-fatal on error).
- * If the reviewer left unstaged changes, the evaluator runs to accept/reject them.
- * Both phases are traced with Langfuse spans.
- */
-async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator<EforgeEvent> {
-  // Phase: Review (non-fatal on error)
-  const reviewSpan = config.tracing.createSpan(config.reviewer.role, config.reviewer.metadata);
-  reviewSpan.setInput(config.reviewer.metadata);
-  const reviewTracker = createToolTracker(reviewSpan);
-  try {
-    for await (const event of config.reviewer.run()) {
-      reviewTracker.handleEvent(event);
-      yield event;
-    }
-    reviewTracker.cleanup();
-    reviewSpan.end();
-  } catch (err) {
-    reviewTracker.cleanup();
-    reviewSpan.error(err as Error);
-    return; // Review failed, skip evaluate
-  }
-
-  // Phase: Evaluate (only if reviewer left unstaged changes, non-fatal)
-  if (await hasUnstagedChanges(config.cwd)) {
-    const evalSpan = config.tracing.createSpan(config.evaluator.role, config.evaluator.metadata);
-    evalSpan.setInput(config.evaluator.metadata);
-    const evalTracker = createToolTracker(evalSpan);
-    try {
-      for await (const event of config.evaluator.run()) {
-        evalTracker.handleEvent(event);
-        yield event;
-      }
-      evalTracker.cleanup();
-      evalSpan.end();
-    } catch (err) {
-      evalTracker.cleanup();
-      evalSpan.error(err as Error);
-    }
-  }
-}
-
-/**
- * Check if there are unstaged changes in a directory.
- */
-async function hasUnstagedChanges(cwd: string): Promise<boolean> {
-  try {
-    const { stdout } = await exec('git', ['diff', '--name-only'], { cwd });
-    return stdout.trim().length > 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Remove plan files after a successful build and commit the removal.
  */
 async function* cleanupPlanFiles(cwd: string, planSet: string): AsyncGenerator<EforgeEvent> {
@@ -1067,83 +645,6 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     hooks: overrides.hooks ?? base.hooks,
     profiles: overrides.profiles ?? base.profiles,
   };
-}
-
-/**
- * Create a tool call tracker for a span.
- * Intercepts tool_use/tool_result/result events and manages Langfuse sub-spans.
- */
-function createToolTracker(span: SpanHandle) {
-  const activeTools = new Map<string, ToolCallHandle>();
-
-  return {
-    handleEvent(event: EforgeEvent): void {
-      if (event.type === 'agent:tool_use') {
-        const handle = span.addToolCall(event.toolUseId, event.tool, event.input);
-        activeTools.set(event.toolUseId, handle);
-      }
-      if (event.type === 'agent:tool_result') {
-        const handle = activeTools.get(event.toolUseId);
-        if (handle) {
-          handle.end(event.output);
-          activeTools.delete(event.toolUseId);
-        }
-      }
-      if (event.type === 'agent:result') {
-        populateSpan(span, event.result);
-      }
-    },
-    cleanup(): void {
-      for (const [, handle] of activeTools) {
-        handle.end();
-      }
-      activeTools.clear();
-    },
-  };
-}
-
-/**
- * Populate a Langfuse span/generation with SDK result data.
- */
-function populateSpan(span: SpanHandle, data: AgentResultData): void {
-  // Set the primary model (first key in modelUsage)
-  const models = Object.keys(data.modelUsage);
-  if (models.length > 0) {
-    span.setModel(models[0]);
-  }
-
-  // Set generation output from agent result text
-  if (data.resultText) {
-    span.setOutput(data.resultText);
-  }
-
-  span.setUsage(data.usage);
-
-  // Build detailed usage breakdown from per-model data
-  const usageDetails: Record<string, number> = {
-    input: data.usage.input,
-    output: data.usage.output,
-    total: data.usage.total,
-  };
-  for (const [model, mu] of Object.entries(data.modelUsage)) {
-    usageDetails[`${model}:input`] = mu.inputTokens;
-    usageDetails[`${model}:output`] = mu.outputTokens;
-  }
-  span.setUsageDetails(usageDetails);
-
-  span.setCostDetails({
-    total: data.totalCostUsd,
-    ...Object.fromEntries(
-      Object.entries(data.modelUsage).map(([model, mu]) => [model, mu.costUSD]),
-    ),
-  });
-
-  // Capture duration and turn count as metadata
-  span.setMetadata({
-    durationMs: data.durationMs,
-    durationApiMs: data.durationApiMs,
-    numTurns: data.numTurns,
-  });
 }
 
 /**
