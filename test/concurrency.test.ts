@@ -156,6 +156,47 @@ describe('AsyncEventQueue', () => {
     expect(events).toEqual(['a1', 'a2', 'b1', 'b2']);
   });
 
+  it('drainAvailable returns buffered items and empties queue', () => {
+    const queue = new AsyncEventQueue<number>();
+    queue.addProducer();
+    queue.push(1);
+    queue.push(2);
+    queue.push(3);
+
+    const drained = queue.drainAvailable();
+    expect(drained).toEqual([1, 2, 3]);
+
+    // Second drain returns empty
+    expect(queue.drainAvailable()).toEqual([]);
+  });
+
+  it('drainAvailable returns empty array on empty queue', () => {
+    const queue = new AsyncEventQueue<number>();
+    queue.addProducer();
+    expect(queue.drainAvailable()).toEqual([]);
+  });
+
+  it('drained items are not available to async iterator', async () => {
+    const queue = new AsyncEventQueue<number>();
+    queue.addProducer();
+    queue.push(1);
+    queue.push(2);
+
+    // Drain first item batch
+    const drained = queue.drainAvailable();
+    expect(drained).toEqual([1, 2]);
+
+    // Push more and finish
+    queue.push(3);
+    queue.removeProducer();
+
+    const iterated: number[] = [];
+    for await (const item of queue) {
+      iterated.push(item);
+    }
+    expect(iterated).toEqual([3]);
+  });
+
   it('empty queue terminates immediately', async () => {
     const queue = new AsyncEventQueue<number>();
     queue.addProducer();

@@ -1,6 +1,5 @@
 import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, ReviewIssue } from './types';
 import type { PipelineStage } from './types';
-import type { WaveInfo } from './wave-utils';
 import { formatDuration } from './format';
 
 export type ModuleStatus = 'pending' | 'planning' | 'complete';
@@ -19,13 +18,10 @@ export interface AgentThread {
   durationMs: number | null; // from agent:result
 }
 
-export type { WaveInfo } from './wave-utils';
-
 export interface RunState {
   events: StoredEvent[];
   startTime: number | null;
   planStatuses: Record<string, PipelineStage>;
-  waves: WaveInfo[];
   tokensIn: number;
   tokensOut: number;
   totalCost: number;
@@ -44,7 +40,6 @@ export const initialRunState: RunState = {
   events: [],
   startTime: null,
   planStatuses: {},
-  waves: [],
   tokensIn: 0,
   tokensOut: 0,
   totalCost: 0,
@@ -76,7 +71,6 @@ function processEvent(
     tokensOut: number;
     totalCost: number;
     planStatuses: Record<string, PipelineStage>;
-    waves: WaveInfo[];
     fileChanges: Map<string, string[]>;
     reviewIssues: Record<string, ReviewIssue[]>;
     agentThreads: AgentThread[];
@@ -144,11 +138,8 @@ function processEvent(
     state.fileChanges.set(event.planId, event.files);
   }
 
-  if (event.type === 'wave:start' && 'wave' in event && 'planIds' in event) {
-    const existing = state.waves.find((w) => w.wave === event.wave);
-    if (!existing) {
-      state.waves.push({ wave: event.wave, planIds: event.planIds });
-    }
+  if (event.type === 'merge:complete' && planId) {
+    state.planStatuses[planId] = 'complete';
   }
 
   // Expedition module tracking — synthesize early orchestration from architecture
@@ -217,7 +208,7 @@ function processEvent(
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), waves: [], reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -229,7 +220,6 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         tokensOut: 0,
         totalCost: 0,
         planStatuses: {} as Record<string, PipelineStage>,
-        waves: [] as WaveInfo[],
         fileChanges: new Map<string, string[]>(),
         reviewIssues: {} as Record<string, ReviewIssue[]>,
         agentThreads: [] as AgentThread[],
@@ -255,7 +245,6 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         events: [...state.events, { event, eventId }],
         resultStatus: state.resultStatus,
         planStatuses: { ...state.planStatuses },
-        waves: [...state.waves],
         fileChanges: new Map(state.fileChanges),
         reviewIssues: { ...state.reviewIssues },
         agentThreads: [...state.agentThreads],

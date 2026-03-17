@@ -46,7 +46,7 @@ export function FileHeatmap({ runState }: FileHeatmapProps) {
             <div
               key={plan.id}
               className="w-6 text-[9px] text-text-dim text-center overflow-hidden"
-              title={`${plan.id} (wave ${plan.waveIndex})`}
+              title={plan.id}
             >
               <div className="truncate" style={{ writingMode: 'vertical-lr', height: '60px', transform: 'rotate(180deg)' }}>
                 {plan.id}

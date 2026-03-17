@@ -11,8 +11,7 @@ interface HeatmapCellProps {
 const riskLabels: Record<RiskLevel, string> = {
   'none': 'Not touched',
   'single': 'Single plan',
-  'cross-wave': 'Cross-wave overlap',
-  'same-wave': 'Same-wave overlap (high risk)',
+  'overlap': 'Overlap (multiple plans)',
 };
 
 export function HeatmapCell({ touched, riskLevel, filePath, planName }: HeatmapCellProps) {
@@ -22,8 +21,7 @@ export function HeatmapCell({ touched, riskLevel, filePath, planName }: HeatmapC
         'w-6 h-6 rounded-sm border border-border/50 cursor-default relative group',
         !touched && 'bg-bg-tertiary/30',
         riskLevel === 'single' && 'bg-blue/25',
-        riskLevel === 'cross-wave' && 'bg-yellow/40',
-        riskLevel === 'same-wave' && 'bg-red/50',
+        riskLevel === 'overlap' && 'bg-yellow/40',
       )}
       title={`${filePath}\n${planName}: ${riskLabels[riskLevel]}`}
     >

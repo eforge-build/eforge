@@ -5,42 +5,11 @@ import type { OrchestrationConfig } from '@/lib/types';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 60;
-const WAVE_PADDING = 30;
-const WAVE_LABEL_HEIGHT = 24;
 
 export interface GraphLayoutResult {
   nodes: Node[];
   edges: Edge[];
   isLayoutReady: boolean;
-}
-
-/** Compute wave assignments from the orchestration plan list */
-function computeWaves(plans: OrchestrationConfig['plans']): Map<string, number> {
-  const waveMap = new Map<string, number>();
-  const planMap = new Map(plans.map((p) => [p.id, p]));
-  const visiting = new Set<string>();
-
-  function getWave(planId: string): number {
-    if (waveMap.has(planId)) return waveMap.get(planId)!;
-    if (visiting.has(planId)) return 0; // Break cycle — treat as root
-    const plan = planMap.get(planId);
-    if (!plan || plan.dependsOn.length === 0) {
-      waveMap.set(planId, 0);
-      return 0;
-    }
-    visiting.add(planId);
-    const depWave = Math.max(...plan.dependsOn.map((d) => getWave(d)));
-    visiting.delete(planId);
-    const wave = depWave + 1;
-    waveMap.set(planId, wave);
-    return wave;
-  }
-
-  for (const plan of plans) {
-    getWave(plan.id);
-  }
-
-  return waveMap;
 }
 
 export function computeGraphLayout(
@@ -50,11 +19,8 @@ export function computeGraphLayout(
     return { nodes: [], edges: [] };
   }
 
-  const waveMap = computeWaves(plans);
-  const maxWave = Math.max(...waveMap.values());
-
   // Create dagre graph
-  const g = new dagre.graphlib.Graph({ compound: true });
+  const g = new dagre.graphlib.Graph();
   g.setGraph({
     rankdir: 'TB',
     nodesep: 60,
@@ -69,7 +35,6 @@ export function computeGraphLayout(
     g.setNode(plan.id, {
       width: NODE_WIDTH,
       height: NODE_HEIGHT,
-      wave: waveMap.get(plan.id) ?? 0,
     });
   }
 
@@ -87,85 +52,21 @@ export function computeGraphLayout(
   const rfNodes: Node[] = [];
   const rfEdges: Edge[] = [];
 
-  // Compute wave group bounds
-  const waveBounds = new Map<number, { minX: number; maxX: number; minY: number; maxY: number }>();
+  // Create plan nodes
   for (const plan of plans) {
     const nodeData = g.node(plan.id);
     if (!nodeData) continue;
-    const wave = waveMap.get(plan.id) ?? 0;
-    const bounds = waveBounds.get(wave) ?? {
-      minX: Infinity,
-      maxX: -Infinity,
-      minY: Infinity,
-      maxY: -Infinity,
-    };
-    bounds.minX = Math.min(bounds.minX, nodeData.x - NODE_WIDTH / 2);
-    bounds.maxX = Math.max(bounds.maxX, nodeData.x + NODE_WIDTH / 2);
-    bounds.minY = Math.min(bounds.minY, nodeData.y - NODE_HEIGHT / 2);
-    bounds.maxY = Math.max(bounds.maxY, nodeData.y + NODE_HEIGHT / 2);
-    waveBounds.set(wave, bounds);
-  }
-
-  // Compute uniform width across all wave groups
-  let globalMinX = Infinity;
-  let globalMaxX = -Infinity;
-  for (const bounds of waveBounds.values()) {
-    globalMinX = Math.min(globalMinX, bounds.minX);
-    globalMaxX = Math.max(globalMaxX, bounds.maxX);
-  }
-  const uniformWidth = globalMaxX - globalMinX + WAVE_PADDING * 2;
-
-  // Create wave group nodes (background)
-  for (let w = 0; w <= maxWave; w++) {
-    const bounds = waveBounds.get(w);
-    if (!bounds) continue;
-
-    const waveHeight = bounds.maxY - bounds.minY + WAVE_PADDING * 2 + WAVE_LABEL_HEIGHT;
-
-    rfNodes.push({
-      id: `wave-${w}`,
-      type: 'waveGroup',
-      position: {
-        x: globalMinX - WAVE_PADDING,
-        y: bounds.minY - WAVE_PADDING - WAVE_LABEL_HEIGHT,
-      },
-      data: { label: `Wave ${w + 1}` },
-      style: {
-        width: uniformWidth,
-        height: waveHeight,
-        backgroundColor: 'rgba(48, 54, 61, 0.25)',
-        borderRadius: '10px',
-        border: '1px solid rgba(48, 54, 61, 0.6)',
-        padding: '0',
-        fontSize: '0',
-        color: 'transparent',
-      },
-    });
-  }
-
-  // Create plan nodes positioned relative to their wave group parent
-  for (const plan of plans) {
-    const nodeData = g.node(plan.id);
-    if (!nodeData) continue;
-
-    const wave = waveMap.get(plan.id) ?? 0;
-    const waveBound = waveBounds.get(wave)!;
-    const groupX = globalMinX - WAVE_PADDING;
-    const groupY = waveBound.minY - WAVE_PADDING - WAVE_LABEL_HEIGHT;
 
     rfNodes.push({
       id: plan.id,
       type: 'dagNode',
       position: {
-        x: nodeData.x - NODE_WIDTH / 2 - groupX,
-        y: nodeData.y - NODE_HEIGHT / 2 - groupY,
+        x: nodeData.x - NODE_WIDTH / 2,
+        y: nodeData.y - NODE_HEIGHT / 2,
       },
-      parentId: `wave-${wave}`,
-      extent: 'parent' as const,
       data: {
         planId: plan.id,
         planName: plan.name,
-        wave: wave + 1,
         status: 'pending',
         highlighted: null, // null = normal, true = highlighted, false = dimmed
       },

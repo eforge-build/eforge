@@ -263,8 +263,6 @@ export function App() {
                 <Timeline
                   events={runState.events}
                   startTime={runState.startTime}
-                  waves={runState.waves}
-                  planStatuses={runState.planStatuses}
                 />
               )}
             </>

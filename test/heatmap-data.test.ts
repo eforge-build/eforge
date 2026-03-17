@@ -1,28 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { computeHeatmapData, type RiskLevel } from '../src/monitor/ui/src/components/heatmap/use-heatmap-data';
+import { computeHeatmapData } from '../src/monitor/ui/src/components/heatmap/use-heatmap-data';
 
 describe('computeHeatmapData', () => {
   it('returns empty data for empty inputs', () => {
-    const result = computeHeatmapData(new Map(), []);
+    const result = computeHeatmapData(new Map());
     expect(result.files).toEqual([]);
     expect(result.plans).toEqual([]);
     expect(result.matrix.size).toBe(0);
-    expect(result.stats).toEqual({ totalFiles: 0, overlappingFiles: 0, sameWaveOverlaps: 0 });
+    expect(result.stats).toEqual({ totalFiles: 0, overlappingFiles: 0 });
   });
 
   it('single plan, no overlaps — all files single risk', () => {
     const fileChanges = new Map([
       ['plan-01', ['src/a.ts', 'src/b.ts']],
     ]);
-    const waves = [{ wave: 1, planIds: ['plan-01'] }];
 
-    const result = computeHeatmapData(fileChanges, waves);
+    const result = computeHeatmapData(fileChanges);
 
     expect(result.files).toHaveLength(2);
     expect(result.plans).toHaveLength(1);
     expect(result.stats.totalFiles).toBe(2);
     expect(result.stats.overlappingFiles).toBe(0);
-    expect(result.stats.sameWaveOverlaps).toBe(0);
 
     // All files should be 'single' risk
     for (const file of result.files) {
@@ -35,23 +33,21 @@ describe('computeHeatmapData', () => {
     expect(result.matrix.get('src/b.ts')?.get('plan-01')).toBe('single');
   });
 
-  it('two plans in the same wave sharing files — same-wave risk', () => {
+  it('two plans sharing files — overlap risk', () => {
     const fileChanges = new Map([
       ['plan-01', ['src/shared.ts', 'src/a.ts']],
       ['plan-02', ['src/shared.ts', 'src/b.ts']],
     ]);
-    const waves = [{ wave: 1, planIds: ['plan-01', 'plan-02'] }];
 
-    const result = computeHeatmapData(fileChanges, waves);
+    const result = computeHeatmapData(fileChanges);
 
     expect(result.stats.totalFiles).toBe(3);
     expect(result.stats.overlappingFiles).toBe(1);
-    expect(result.stats.sameWaveOverlaps).toBe(1);
 
-    // The shared file should be same-wave risk
+    // The shared file should be overlap risk
     const sharedFile = result.files.find((f) => f.path === 'src/shared.ts');
     expect(sharedFile).toBeDefined();
-    expect(sharedFile!.maxRisk).toBe('same-wave');
+    expect(sharedFile!.maxRisk).toBe('overlap');
     expect(sharedFile!.overlapCount).toBe(2);
 
     // Non-shared files should be single risk
@@ -59,54 +55,44 @@ describe('computeHeatmapData', () => {
     expect(fileA!.maxRisk).toBe('single');
   });
 
-  it('two plans in different waves sharing files — cross-wave risk', () => {
+  it('multiple plans sharing files — overlap risk', () => {
     const fileChanges = new Map([
       ['plan-01', ['src/shared.ts', 'src/a.ts']],
       ['plan-02', ['src/shared.ts', 'src/b.ts']],
     ]);
-    const waves = [
-      { wave: 1, planIds: ['plan-01'] },
-      { wave: 2, planIds: ['plan-02'] },
-    ];
 
-    const result = computeHeatmapData(fileChanges, waves);
+    const result = computeHeatmapData(fileChanges);
 
     expect(result.stats.overlappingFiles).toBe(1);
-    expect(result.stats.sameWaveOverlaps).toBe(0);
 
     const sharedFile = result.files.find((f) => f.path === 'src/shared.ts');
-    expect(sharedFile!.maxRisk).toBe('cross-wave');
+    expect(sharedFile!.maxRisk).toBe('overlap');
     expect(sharedFile!.overlapCount).toBe(2);
 
-    // Matrix: both plans show cross-wave for the shared file
-    expect(result.matrix.get('src/shared.ts')?.get('plan-01')).toBe('cross-wave');
-    expect(result.matrix.get('src/shared.ts')?.get('plan-02')).toBe('cross-wave');
+    // Matrix: both plans show overlap for the shared file
+    expect(result.matrix.get('src/shared.ts')?.get('plan-01')).toBe('overlap');
+    expect(result.matrix.get('src/shared.ts')?.get('plan-02')).toBe('overlap');
   });
 
-  it('mixed scenario with same-wave and cross-wave overlaps', () => {
+  it('mixed scenario with overlapping and non-overlapping files', () => {
     const fileChanges = new Map([
-      ['plan-01', ['src/shared-same.ts', 'src/shared-cross.ts', 'src/only-01.ts']],
-      ['plan-02', ['src/shared-same.ts', 'src/only-02.ts']],
-      ['plan-03', ['src/shared-cross.ts', 'src/only-03.ts']],
+      ['plan-01', ['src/shared-a.ts', 'src/shared-b.ts', 'src/only-01.ts']],
+      ['plan-02', ['src/shared-a.ts', 'src/only-02.ts']],
+      ['plan-03', ['src/shared-b.ts', 'src/only-03.ts']],
     ]);
-    const waves = [
-      { wave: 1, planIds: ['plan-01', 'plan-02'] },
-      { wave: 2, planIds: ['plan-03'] },
-    ];
 
-    const result = computeHeatmapData(fileChanges, waves);
+    const result = computeHeatmapData(fileChanges);
 
     expect(result.stats.totalFiles).toBe(5);
     expect(result.stats.overlappingFiles).toBe(2);
-    expect(result.stats.sameWaveOverlaps).toBe(1);
 
-    // shared-same.ts: plan-01 and plan-02 in same wave
-    const sameFile = result.files.find((f) => f.path === 'src/shared-same.ts');
-    expect(sameFile!.maxRisk).toBe('same-wave');
+    // shared-a.ts: plan-01 and plan-02
+    const sharedA = result.files.find((f) => f.path === 'src/shared-a.ts');
+    expect(sharedA!.maxRisk).toBe('overlap');
 
-    // shared-cross.ts: plan-01 (wave 1) and plan-03 (wave 2)
-    const crossFile = result.files.find((f) => f.path === 'src/shared-cross.ts');
-    expect(crossFile!.maxRisk).toBe('cross-wave');
+    // shared-b.ts: plan-01 and plan-03
+    const sharedB = result.files.find((f) => f.path === 'src/shared-b.ts');
+    expect(sharedB!.maxRisk).toBe('overlap');
   });
 
   it('sorts files by overlap count descending', () => {
@@ -115,13 +101,8 @@ describe('computeHeatmapData', () => {
       ['plan-02', ['src/b.ts', 'src/c.ts']],
       ['plan-03', ['src/c.ts']],
     ]);
-    const waves = [
-      { wave: 1, planIds: ['plan-01'] },
-      { wave: 2, planIds: ['plan-02'] },
-      { wave: 3, planIds: ['plan-03'] },
-    ];
 
-    const result = computeHeatmapData(fileChanges, waves);
+    const result = computeHeatmapData(fileChanges);
 
     expect(result.files[0].path).toBe('src/c.ts');
     expect(result.files[0].overlapCount).toBe(3);
@@ -131,33 +112,26 @@ describe('computeHeatmapData', () => {
     expect(result.files[2].overlapCount).toBe(1);
   });
 
-  it('orders plans by wave index then alphabetical', () => {
+  it('orders plans alphabetically', () => {
     const fileChanges = new Map([
       ['plan-c', ['src/a.ts']],
       ['plan-a', ['src/a.ts']],
       ['plan-b', ['src/a.ts']],
     ]);
-    const waves = [
-      { wave: 2, planIds: ['plan-c'] },
-      { wave: 1, planIds: ['plan-a', 'plan-b'] },
-    ];
 
-    const result = computeHeatmapData(fileChanges, waves);
+    const result = computeHeatmapData(fileChanges);
 
     expect(result.plans.map((p) => p.id)).toEqual(['plan-a', 'plan-b', 'plan-c']);
   });
 
-  it('handles plans without wave assignment (defaults to wave 0)', () => {
+  it('handles single plan with no overlaps', () => {
     const fileChanges = new Map([
       ['plan-01', ['src/a.ts']],
     ]);
-    // No waves defined yet
-    const waves: { wave: number; planIds: string[] }[] = [];
 
-    const result = computeHeatmapData(fileChanges, waves);
+    const result = computeHeatmapData(fileChanges);
 
     expect(result.plans).toHaveLength(1);
-    expect(result.plans[0].waveIndex).toBe(0);
     expect(result.files).toHaveLength(1);
     expect(result.files[0].maxRisk).toBe('single');
   });

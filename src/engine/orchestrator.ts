@@ -284,113 +284,137 @@ export class Orchestrator {
       // 3. Start all zero-dependency plans
       startReadyPlans('no dependencies');
 
-      // 4. Completion-driven loop: wait for any running plan to finish,
-      // merge it, then check for newly unblocked plans.
-      while (running.size > 0) {
-        if (signal?.aborted) {
-          saveState(stateDir, state);
-          break;
+      // Keep the queue alive while the orchestrator is active (plans add/remove
+      // themselves as producers; this extra producer prevents premature termination
+      // between the last plan finishing and new plans starting).
+      eventQueue.addProducer();
+      let sentinelActive = true;
+      const removeSentinel = () => {
+        if (sentinelActive) {
+          sentinelActive = false;
+          eventQueue.removeProducer();
         }
+      };
 
-        // Wait for any running plan to complete
-        await Promise.race(running.values());
-
-        // Find which plans just completed and process them
-        const justCompleted: string[] = [];
-        for (const [planId] of running) {
-          const ps = state.plans[planId];
-          if (ps && ps.status !== 'running') {
-            justCompleted.push(planId);
-          }
-        }
-
-        for (const planId of justCompleted) {
-          running.delete(planId);
-        }
-
-        // 5. Merge completed plans immediately (serialized — one at a time)
-        for (const planId of justCompleted) {
-          if (signal?.aborted) break;
-
-          const planState = state.plans[planId];
-          if (!planState || planState.status !== 'completed') continue;
-
-          const skipReason = shouldSkipMerge(planId, config.plans, failedMerges);
-          if (skipReason) {
-            failedMerges.add(planId);
-            updatePlanStatus(state, planId, 'failed');
-            state.plans[planId].error = skipReason;
-            saveState(stateDir, state);
-            eventQueue.push({ type: 'build:failed', planId, error: skipReason });
-
-            const failureEvents = propagateFailure(state, planId, config.plans);
-            saveState(stateDir, state);
-            for (const e of failureEvents) eventQueue.push(e);
-            continue;
-          }
-
-          eventQueue.push({ type: 'merge:start', planId });
-
-          try {
-            const plan = planMap.get(planId)!;
-
-            // Wrap mergeResolver to inject plan context into MergeConflictInfo
-            const baseResolver = this.options.mergeResolver;
-            const contextResolver: MergeResolver | undefined = baseResolver
-              ? async (repoRoot, conflict) => {
-                  // Enrich conflict info with plan context
-                  conflict.planName = plan.name;
-
-                  // Find the most recently merged plan as the likely conflict source
-                  if (recentlyMergedIds.length > 0) {
-                    const lastMergedId = recentlyMergedIds[recentlyMergedIds.length - 1];
-                    const otherPlan = planMap.get(lastMergedId);
-                    if (otherPlan) {
-                      conflict.otherPlanName = otherPlan.name;
-                    }
-                  }
-
-                  return baseResolver(repoRoot, conflict);
-                }
-              : undefined;
-
-            await mergeWorktree(repoRoot, plan.branch, config.baseBranch, contextResolver);
-
-            updatePlanStatus(state, planId, 'merged');
-            planState.merged = true;
-            recentlyMergedIds.push(planId);
-            saveState(stateDir, state);
-
-            eventQueue.push({ type: 'merge:complete', planId });
-          } catch (err) {
-            failedMerges.add(planId);
-            updatePlanStatus(state, planId, 'failed');
-            state.plans[planId].error = `Merge failed: ${(err as Error).message}`;
-            saveState(stateDir, state);
-
-            eventQueue.push({
-              type: 'build:failed',
-              planId,
-              error: `Merge failed: ${(err as Error).message}`,
-            });
-
-            // Propagate to transitive dependents
-            const failureEvents = propagateFailure(state, planId, config.plans);
-            saveState(stateDir, state);
-            for (const e of failureEvents) eventQueue.push(e);
-          }
-        }
-
-        // 6. After merges, check for newly unblocked plans and start them
-        if (!signal?.aborted) {
-          startReadyPlans('dependencies merged');
-        }
+      // Guard: if no plans were launched (all have unmet dependencies on resume),
+      // remove sentinel immediately to avoid hanging.
+      if (running.size === 0) {
+        removeSentinel();
       }
 
-      // Drain any remaining events from the queue
-      // (all producers have finished at this point since running is empty)
-      for await (const event of eventQueue) {
-        yield event;
+      // 4. Event-driven loop: yield events in real-time as plan runners push them.
+      // After each event, check if any plans completed and process merges inline.
+      try {
+        for await (const event of eventQueue) {
+          if (signal?.aborted) {
+            saveState(stateDir, state);
+            break;
+          }
+
+          yield event;
+
+          // Check if any running plans just finished (completed or failed — NOT pending,
+          // which is the initial state before the async plan runner updates it to running)
+          const justCompleted: string[] = [];
+          for (const [planId] of running) {
+            const ps = state.plans[planId];
+            if (ps && (ps.status === 'completed' || ps.status === 'failed')) {
+              justCompleted.push(planId);
+            }
+          }
+
+          if (justCompleted.length === 0) continue;
+
+          for (const planId of justCompleted) {
+            running.delete(planId);
+          }
+
+          // 5. Merge completed plans immediately (serialized — one at a time)
+          for (const planId of justCompleted) {
+            if (signal?.aborted) break;
+
+            const planState = state.plans[planId];
+            if (!planState || planState.status !== 'completed') continue;
+
+            const skipReason = shouldSkipMerge(planId, config.plans, failedMerges);
+            if (skipReason) {
+              failedMerges.add(planId);
+              updatePlanStatus(state, planId, 'failed');
+              state.plans[planId].error = skipReason;
+              saveState(stateDir, state);
+              yield { type: 'build:failed', planId, error: skipReason };
+
+              const failureEvents = propagateFailure(state, planId, config.plans);
+              saveState(stateDir, state);
+              for (const e of failureEvents) yield e;
+              continue;
+            }
+
+            yield { type: 'merge:start', planId };
+
+            try {
+              const plan = planMap.get(planId)!;
+
+              // Wrap mergeResolver to inject plan context into MergeConflictInfo
+              const baseResolver = this.options.mergeResolver;
+              const contextResolver: MergeResolver | undefined = baseResolver
+                ? async (repoRoot, conflict) => {
+                    // Enrich conflict info with plan context
+                    conflict.planName = plan.name;
+
+                    // Find the most recently merged plan as the likely conflict source
+                    if (recentlyMergedIds.length > 0) {
+                      const lastMergedId = recentlyMergedIds[recentlyMergedIds.length - 1];
+                      const otherPlan = planMap.get(lastMergedId);
+                      if (otherPlan) {
+                        conflict.otherPlanName = otherPlan.name;
+                      }
+                    }
+
+                    return baseResolver(repoRoot, conflict);
+                  }
+                : undefined;
+
+              await mergeWorktree(repoRoot, plan.branch, config.baseBranch, contextResolver);
+
+              updatePlanStatus(state, planId, 'merged');
+              planState.merged = true;
+              recentlyMergedIds.push(planId);
+              saveState(stateDir, state);
+
+              yield { type: 'merge:complete', planId };
+            } catch (err) {
+              failedMerges.add(planId);
+              updatePlanStatus(state, planId, 'failed');
+              state.plans[planId].error = `Merge failed: ${(err as Error).message}`;
+              saveState(stateDir, state);
+
+              yield {
+                type: 'build:failed',
+                planId,
+                error: `Merge failed: ${(err as Error).message}`,
+              };
+
+              // Propagate to transitive dependents
+              const failureEvents = propagateFailure(state, planId, config.plans);
+              saveState(stateDir, state);
+              for (const e of failureEvents) yield e;
+            }
+          }
+
+          // 6. After merges, check for newly unblocked plans and start them
+          if (!signal?.aborted) {
+            startReadyPlans('dependencies merged');
+          }
+
+          // If no more running plans, terminate the queue
+          if (running.size === 0) {
+            removeSentinel();
+          }
+        }
+      } finally {
+        // Ensure sentinel is removed on abort or unexpected exit
+        removeSentinel();
       }
 
       // 7. Post-merge validation commands (with optional fix cycle)

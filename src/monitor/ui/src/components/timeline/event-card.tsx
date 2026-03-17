@@ -52,8 +52,8 @@ function eventSummary(event: EforgeEvent): string {
     case 'build:evaluate:complete': return `[${event.planId}] Accepted ${event.accepted}, rejected ${event.rejected}`;
     case 'build:complete': return `Build complete: ${event.planId}`;
     case 'build:failed': return `Build FAILED: ${event.planId} — ${event.error}`;
-    case 'wave:start': return `Wave ${event.wave}: ${event.planIds?.join(', ')}`;
-    case 'wave:complete': return `Wave ${event.wave} complete`;
+    case 'schedule:start': return `Scheduling: ${event.planIds?.join(', ')}`;
+    case 'schedule:ready': return `Ready: ${event.planId} (${event.reason})`;
     case 'merge:start': return `Merging: ${event.planId}`;
     case 'merge:complete': return `Merged: ${event.planId}`;
     case 'expedition:architecture:complete': return `Architecture: ${event.modules?.length || 0} module(s)`;

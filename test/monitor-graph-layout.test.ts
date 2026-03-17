@@ -15,22 +15,18 @@ describe('computeGraphLayout', () => {
     expect(edges).toEqual([]);
   });
 
-  it('single plan (errand): 1 plan node, 0 edges, 1 wave group', () => {
+  it('single plan (errand): 1 plan node, 0 edges', () => {
     const plans = [makePlan('p1', 'Plan One')];
     const { nodes, edges } = computeGraphLayout(plans);
 
-    const waveNodes = nodes.filter((n) => n.type === 'waveGroup');
     const planNodes = nodes.filter((n) => n.type === 'dagNode');
 
-    expect(waveNodes).toHaveLength(1);
-    expect(waveNodes[0].id).toBe('wave-0');
     expect(planNodes).toHaveLength(1);
     expect(planNodes[0].id).toBe('p1');
-    expect(planNodes[0].parentId).toBe('wave-0');
     expect(edges).toHaveLength(0);
   });
 
-  it('three independent plans (excursion): 3 nodes, 0 edges, 1 wave group', () => {
+  it('three independent plans (excursion): 3 nodes, 0 edges', () => {
     const plans = [
       makePlan('p1', 'Plan One'),
       makePlan('p2', 'Plan Two'),
@@ -38,20 +34,13 @@ describe('computeGraphLayout', () => {
     ];
     const { nodes, edges } = computeGraphLayout(plans);
 
-    const waveNodes = nodes.filter((n) => n.type === 'waveGroup');
     const planNodes = nodes.filter((n) => n.type === 'dagNode');
 
-    expect(waveNodes).toHaveLength(1);
     expect(planNodes).toHaveLength(3);
     expect(edges).toHaveLength(0);
-
-    // All nodes should be in wave 0
-    for (const node of planNodes) {
-      expect(node.parentId).toBe('wave-0');
-    }
   });
 
-  it('linear dependency chain (A → B → C): 3 nodes, 2 edges, 3 wave groups', () => {
+  it('linear dependency chain (A -> B -> C): 3 nodes, 2 edges', () => {
     const plans = [
       makePlan('a', 'Plan A'),
       makePlan('b', 'Plan B', ['a']),
@@ -59,27 +48,17 @@ describe('computeGraphLayout', () => {
     ];
     const { nodes, edges } = computeGraphLayout(plans);
 
-    const waveNodes = nodes.filter((n) => n.type === 'waveGroup');
     const planNodes = nodes.filter((n) => n.type === 'dagNode');
 
-    expect(waveNodes).toHaveLength(3);
     expect(planNodes).toHaveLength(3);
     expect(edges).toHaveLength(2);
-
-    // Verify wave assignments
-    const planA = planNodes.find((n) => n.id === 'a')!;
-    const planB = planNodes.find((n) => n.id === 'b')!;
-    const planC = planNodes.find((n) => n.id === 'c')!;
-    expect(planA.parentId).toBe('wave-0');
-    expect(planB.parentId).toBe('wave-1');
-    expect(planC.parentId).toBe('wave-2');
 
     // Verify edges
     expect(edges.find((e) => e.source === 'a' && e.target === 'b')).toBeDefined();
     expect(edges.find((e) => e.source === 'b' && e.target === 'c')).toBeDefined();
   });
 
-  it('diamond pattern (A → B, A → C, B → D, C → D): 4 nodes, 4 edges, 3 wave groups', () => {
+  it('diamond pattern (A -> B, A -> C, B -> D, C -> D): 4 nodes, 4 edges', () => {
     const plans = [
       makePlan('a', 'Plan A'),
       makePlan('b', 'Plan B', ['a']),
@@ -88,21 +67,13 @@ describe('computeGraphLayout', () => {
     ];
     const { nodes, edges } = computeGraphLayout(plans);
 
-    const waveNodes = nodes.filter((n) => n.type === 'waveGroup');
     const planNodes = nodes.filter((n) => n.type === 'dagNode');
 
-    expect(waveNodes).toHaveLength(3);
     expect(planNodes).toHaveLength(4);
     expect(edges).toHaveLength(4);
-
-    // Verify wave assignments
-    expect(planNodes.find((n) => n.id === 'a')!.parentId).toBe('wave-0');
-    expect(planNodes.find((n) => n.id === 'b')!.parentId).toBe('wave-1');
-    expect(planNodes.find((n) => n.id === 'c')!.parentId).toBe('wave-1');
-    expect(planNodes.find((n) => n.id === 'd')!.parentId).toBe('wave-2');
   });
 
-  it('nodes have non-zero positions', () => {
+  it('nodes have positions', () => {
     const plans = [
       makePlan('a', 'Plan A'),
       makePlan('b', 'Plan B', ['a']),
@@ -111,9 +82,8 @@ describe('computeGraphLayout', () => {
     const planNodes = nodes.filter((n) => n.type === 'dagNode');
 
     for (const node of planNodes) {
-      // Positions are relative to parent, so they should be non-negative
-      expect(node.position.x).toBeGreaterThanOrEqual(0);
-      expect(node.position.y).toBeGreaterThanOrEqual(0);
+      expect(node.position.x).toBeDefined();
+      expect(node.position.y).toBeDefined();
     }
   });
 
@@ -132,7 +102,7 @@ describe('computeGraphLayout', () => {
     }
   });
 
-  it('plan node data includes correct wave number and plan name', () => {
+  it('plan node data includes correct plan name', () => {
     const plans = [
       makePlan('p1', 'My Plan'),
       makePlan('p2', 'Dep Plan', ['p1']),
@@ -143,8 +113,6 @@ describe('computeGraphLayout', () => {
     const p2 = nodes.find((n) => n.id === 'p2')!;
 
     expect(p1.data.planName).toBe('My Plan');
-    expect(p1.data.wave).toBe(1); // wave 0 displayed as 1
     expect(p2.data.planName).toBe('Dep Plan');
-    expect(p2.data.wave).toBe(2); // wave 1 displayed as 2
   });
 });

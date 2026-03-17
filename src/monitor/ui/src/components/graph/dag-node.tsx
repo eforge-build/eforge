@@ -6,7 +6,6 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 export interface DagNodeData {
   planId: string;
   planName: string;
-  wave: number;
   status: GraphNodeStatus;
   highlighted: boolean | null; // null = normal, true = highlighted, false = dimmed
   [key: string]: unknown;
@@ -57,7 +56,7 @@ function DagNodeComponent({ data }: NodeProps) {
             <TooltipContent side="bottom">{nodeData.planName}</TooltipContent>
           </Tooltip>
           <span className="text-[9px]" style={{ color: 'var(--color-text-dim)' }}>
-            Wave {nodeData.wave} · {nodeData.status}
+            {nodeData.status}
           </span>
         </div>
       </div>

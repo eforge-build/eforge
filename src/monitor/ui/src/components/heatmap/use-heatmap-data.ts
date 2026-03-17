@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import type { RunState, WaveInfo } from '@/lib/reducer';
+import type { RunState } from '@/lib/reducer';
 
-export type RiskLevel = 'none' | 'single' | 'cross-wave' | 'same-wave';
+export type RiskLevel = 'none' | 'single' | 'overlap';
 
 export interface HeatmapFile {
   path: string;
@@ -12,7 +12,6 @@ export interface HeatmapFile {
 export interface HeatmapPlan {
   id: string;
   name: string;
-  waveIndex: number;
 }
 
 export interface HeatmapData {
@@ -22,37 +21,26 @@ export interface HeatmapData {
   stats: {
     totalFiles: number;
     overlappingFiles: number;
-    sameWaveOverlaps: number;
   };
 }
 
 /**
- * Compute heatmap data from fileChanges and waves.
+ * Compute heatmap data from fileChanges.
  * Exported separately for testability.
  */
 export function computeHeatmapData(
   fileChanges: Map<string, string[]>,
-  waves: WaveInfo[],
 ): HeatmapData {
-  // Build plan → wave index lookup
-  const planWaveIndex = new Map<string, number>();
-  for (const w of waves) {
-    for (const pid of w.planIds) {
-      planWaveIndex.set(pid, w.wave);
-    }
-  }
-
-  // Collect all plan IDs from fileChanges (even if no wave info yet)
+  // Collect all plan IDs from fileChanges
   const allPlanIds = new Set<string>(fileChanges.keys());
 
-  // Build plans list ordered by wave index, then alphabetical
+  // Build plans list ordered alphabetically
   const plans: HeatmapPlan[] = Array.from(allPlanIds)
     .map((id) => ({
       id,
       name: id,
-      waveIndex: planWaveIndex.get(id) ?? 0,
     }))
-    .sort((a, b) => a.waveIndex - b.waveIndex || a.id.localeCompare(b.id));
+    .sort((a, b) => a.id.localeCompare(b.id));
 
   // Invert: file → set of planIds that touched it
   const fileToPlanIds = new Map<string, Set<string>>();
@@ -69,7 +57,6 @@ export function computeHeatmapData(
 
   // Determine risk for each file-plan pair
   const matrix = new Map<string, Map<string, RiskLevel>>();
-  let sameWaveOverlaps = 0;
   let overlappingFiles = 0;
 
   const files: HeatmapFile[] = [];
@@ -84,41 +71,16 @@ export function computeHeatmapData(
       overlappingFiles++;
     }
 
-    // Check if any pair of touching plans is in the same wave
-    const touchingArray = Array.from(touchingPlanIds);
-    let hasSameWave = false;
-
-    if (isOverlapping) {
-      for (let i = 0; i < touchingArray.length; i++) {
-        for (let j = i + 1; j < touchingArray.length; j++) {
-          const waveA = planWaveIndex.get(touchingArray[i]);
-          const waveB = planWaveIndex.get(touchingArray[j]);
-          if (waveA !== undefined && waveB !== undefined && waveA === waveB) {
-            hasSameWave = true;
-            break;
-          }
-        }
-        if (hasSameWave) break;
-      }
-    }
-
-    if (hasSameWave) {
-      sameWaveOverlaps++;
-    }
-
     // Assign risk levels per plan for this file
     for (const planId of allPlanIds) {
       if (!touchingPlanIds.has(planId)) {
         planRisks.set(planId, 'none');
       } else if (!isOverlapping) {
         planRisks.set(planId, 'single');
-        if (riskOrder('single') > riskOrder(maxRisk)) maxRisk = 'single';
-      } else if (hasSameWave) {
-        planRisks.set(planId, 'same-wave');
-        if (riskOrder('same-wave') > riskOrder(maxRisk)) maxRisk = 'same-wave';
+        if (maxRisk === 'none') maxRisk = 'single';
       } else {
-        planRisks.set(planId, 'cross-wave');
-        if (riskOrder('cross-wave') > riskOrder(maxRisk)) maxRisk = 'cross-wave';
+        planRisks.set(planId, 'overlap');
+        maxRisk = 'overlap';
       }
     }
 
@@ -136,23 +98,13 @@ export function computeHeatmapData(
     stats: {
       totalFiles: files.length,
       overlappingFiles,
-      sameWaveOverlaps,
     },
   };
 }
 
-function riskOrder(level: RiskLevel): number {
-  switch (level) {
-    case 'none': return 0;
-    case 'single': return 1;
-    case 'cross-wave': return 2;
-    case 'same-wave': return 3;
-  }
-}
-
 export function useHeatmapData(runState: RunState): HeatmapData {
   return useMemo(
-    () => computeHeatmapData(runState.fileChanges, runState.waves),
-    [runState.fileChanges, runState.waves],
+    () => computeHeatmapData(runState.fileChanges),
+    [runState.fileChanges],
   );
 }

@@ -207,7 +207,7 @@ describe('eforgeReducer', () => {
   it('handles unknown event types gracefully', () => {
     const state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'wave:start', wave: 1, planIds: ['a', 'b'] },
+      event: { type: 'totally:unknown' } as unknown as import('../src/engine/events.js').EforgeEvent,
       eventId: '1',
     });
     expect(state.events).toHaveLength(1);
@@ -253,35 +253,20 @@ describe('eforgeReducer', () => {
     expect(state.fileChanges.size).toBe(1);
   });
 
-  it('tracks wave assignments from wave:start events', () => {
+  it('marks plan as complete on merge:complete', () => {
     let state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'wave:start', wave: 1, planIds: ['plan-01', 'plan-02'] },
+      event: { type: 'plan:complete', plans: [{ id: 'plan-01', name: 'Plan 1', branch: 'b', dependsOn: [], body: '', filePath: '' }] },
       eventId: '1',
     });
-    expect(state.waves).toEqual([{ wave: 1, planIds: ['plan-01', 'plan-02'] }]);
+    expect(state.planStatuses['plan-01']).toBe('plan');
 
     state = eforgeReducer(state, {
       type: 'ADD_EVENT',
-      event: { type: 'wave:start', wave: 2, planIds: ['plan-03'] },
+      event: { type: 'merge:complete', planId: 'plan-01' },
       eventId: '2',
     });
-    expect(state.waves).toHaveLength(2);
-    expect(state.waves[1]).toEqual({ wave: 2, planIds: ['plan-03'] });
-  });
-
-  it('does not duplicate waves on repeated wave:start', () => {
-    let state = eforgeReducer(initialRunState, {
-      type: 'ADD_EVENT',
-      event: { type: 'wave:start', wave: 1, planIds: ['plan-01'] },
-      eventId: '1',
-    });
-    state = eforgeReducer(state, {
-      type: 'ADD_EVENT',
-      event: { type: 'wave:start', wave: 1, planIds: ['plan-01'] },
-      eventId: '2',
-    });
-    expect(state.waves).toHaveLength(1);
+    expect(state.planStatuses['plan-01']).toBe('complete');
   });
 });
 

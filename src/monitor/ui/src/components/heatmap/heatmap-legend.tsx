@@ -8,11 +8,7 @@ export function HeatmapLegend() {
       </div>
       <div className="flex items-center gap-1.5">
         <div className="w-3 h-3 rounded-sm bg-yellow/40 border border-border/50" />
-        <span>Cross-wave overlap</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <div className="w-3 h-3 rounded-sm bg-red/50 border border-border/50" />
-        <span>Same-wave overlap</span>
+        <span>Overlap</span>
       </div>
       <div className="flex items-center gap-1.5">
         <div className="w-3 h-3 rounded-sm bg-bg-tertiary/30 border border-border/50" />

@@ -77,6 +77,16 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
     }
   }
 
+  /**
+   * Drain all currently-buffered events without blocking.
+   * Returns events that were queued but not yet consumed.
+   * Does NOT wait for new events — returns empty array if queue is empty.
+   */
+  drainAvailable(): T[] {
+    const items = this.queue.splice(0);
+    return items;
+  }
+
   [Symbol.asyncIterator](): AsyncIterator<T> {
     return {
       next: (): Promise<IteratorResult<T>> => {

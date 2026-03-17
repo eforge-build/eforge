@@ -69,7 +69,7 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
           // Session is done — cache it and skip SSE
           const finalState = parsed.reduce(
             (st, ev) => eforgeReducer(st, { type: 'ADD_EVENT', ...ev }),
-            { ...initialRunState, fileChanges: new Map(), waves: [] } as RunState,
+            { ...initialRunState, fileChanges: new Map() } as RunState,
           );
           cacheRef.current.set(sessionId, finalState);
           return;

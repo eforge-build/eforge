@@ -1,7 +1,6 @@
 interface HeatmapSummaryProps {
   totalFiles: number;
   overlappingFiles: number;
-  sameWaveOverlaps: number;
 }
 
 function StatItem({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
@@ -15,12 +14,11 @@ function StatItem({ label, value, highlight }: { label: string; value: string; h
   );
 }
 
-export function HeatmapSummary({ totalFiles, overlappingFiles, sameWaveOverlaps }: HeatmapSummaryProps) {
+export function HeatmapSummary({ totalFiles, overlappingFiles }: HeatmapSummaryProps) {
   return (
     <div className="flex gap-6">
       <StatItem label="Files Changed" value={totalFiles.toString()} />
       <StatItem label="Overlapping" value={overlappingFiles.toString()} highlight={overlappingFiles > 0} />
-      <StatItem label="Same-Wave Conflicts" value={sameWaveOverlaps.toString()} highlight={sameWaveOverlaps > 0} />
     </div>
   );
 }

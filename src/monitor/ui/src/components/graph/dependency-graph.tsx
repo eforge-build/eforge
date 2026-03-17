@@ -14,14 +14,12 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useGraphLayout } from './use-graph-layout';
 import { DagNode } from './dag-node';
 import { DagEdge } from './dag-edge';
-import { WaveGroupNode } from './wave-group-node';
 import { resolveNodeStatus, type GraphNodeStatus } from './graph-status';
 
 const EMPTY_SET = new Set<string>();
 
 const nodeTypes: NodeTypes = {
   dagNode: DagNode,
-  waveGroup: WaveGroupNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -92,9 +90,6 @@ export function DependencyGraph({
   // Merge layout with live status and highlight state
   const nodes: Node[] = useMemo(() => {
     return layoutNodes.map((node) => {
-      // Skip wave group nodes — pass through unchanged
-      if (node.type === 'waveGroup') return node;
-
       const status: GraphNodeStatus = resolveNodeStatus(
         node.id,
         planStatuses[node.id],
@@ -145,9 +140,6 @@ export function DependencyGraph({
 
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      // Ignore clicks on wave group nodes
-      if (node.type === 'waveGroup') return;
-
       // Toggle selection: clicking same node clears, clicking different node selects
       setSelectedNodeId((prev) => (prev === node.id ? null : node.id));
     },
