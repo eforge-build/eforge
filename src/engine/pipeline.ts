@@ -236,6 +236,14 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
         ctx.scopeAssessment = event.assessment;
       }
 
+      // Update active profile when planner selects one
+      if (event.type === 'plan:profile') {
+        const resolved = ctx.config.profiles[event.profileName];
+        if (resolved) {
+          ctx.profile = resolved;
+        }
+      }
+
       // Detect <modules> block in agent messages (expedition mode, first match only)
       if (event.type === 'agent:message' && event.agent === 'planner' && ctx.expeditionModules.length === 0) {
         const modules = parseModulesBlock(event.content);

@@ -158,8 +158,8 @@ export class EforgeEngine {
     }
 
     try {
-      // Resolve profile - default to excursion (profile selection pre-step will
-      // update this when the planner emits plan:profile in future iterations)
+      // Default profile before planner selection — planner stage updates ctx.profile
+      // when it emits plan:profile. Excursion is a safe default (superset of errand stages).
       const selectedProfile = this.config.profiles['excursion'];
 
       const ctx: PipelineContext = {
