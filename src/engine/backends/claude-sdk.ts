@@ -48,6 +48,7 @@ export class ClaudeSDKBackend implements AgentBackend {
         options: {
           cwd: options.cwd,
           maxTurns: options.maxTurns,
+          model: options.model,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
           tools: options.tools === 'coding'

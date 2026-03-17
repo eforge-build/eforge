@@ -60,6 +60,29 @@ Use these concrete indicators alongside the source document:
 - Tests or docs accompany a feature - they belong in the same plan as the code they test/document
 - The only reason to split is "it's a lot of files" - plan scope is about dependency structure, not file count
 
+### Profile Selection
+
+{{profiles}}
+
+If profiles are listed above, select the profile that best matches the work described in the source document. Consider:
+- The type of work (migration, security, refactor, feature, etc.)
+- The risk profile and review needs
+- The scope indicators from your codebase exploration
+
+Emit a `<profile>` block declaring your selection:
+
+```xml
+<profile name="excursion">
+  Multi-file feature work adding a new API endpoint with frontend integration.
+  Cross-file changes across 8 files with no architectural impact.
+</profile>
+```
+
+Rules:
+- The `name` attribute must exactly match one of the profile names listed above
+- The body contains your rationale for selecting this profile
+- If no profiles are listed above, skip this section and proceed to Output
+
 ## Output
 
 After your assessment, emit exactly one `<scope>` block declaring your assessment:

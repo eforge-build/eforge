@@ -4,12 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { EforgeEvent } from '../src/engine/events.js';
 import { StubBackend } from './stub-backend.js';
-import { runPlanner } from '../src/engine/agents/planner.js';
+import { runPlanner, formatProfileDescriptions } from '../src/engine/agents/planner.js';
+import { runAssessor } from '../src/engine/agents/assessor.js';
 import { runReview } from '../src/engine/agents/reviewer.js';
 import { builderImplement, builderEvaluate } from '../src/engine/agents/builder.js';
 import { runPlanReview } from '../src/engine/agents/plan-reviewer.js';
 import { runPlanEvaluate } from '../src/engine/agents/plan-evaluator.js';
 import { runModulePlanner } from '../src/engine/agents/module-planner.js';
+import type { ResolvedProfileConfig } from '../src/engine/config.js';
 
 async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
   const events: EforgeEvent[] = [];
@@ -230,6 +232,191 @@ Do the thing.
     expect(complete!.plans).toHaveLength(1);
     expect(complete!.plans[0].id).toBe('feature');
     expect(complete!.plans[0].name).toBe('Add feature');
+  });
+});
+
+// --- Profile formatting ---
+
+const stubProfile: ResolvedProfileConfig = {
+  description: 'Small focused change',
+  compile: ['planner'],
+  build: ['builder', 'reviewer', 'evaluator'],
+  agents: {},
+  review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
+};
+
+describe('formatProfileDescriptions', () => {
+  it('returns empty string for empty profiles', () => {
+    expect(formatProfileDescriptions({})).toBe('');
+  });
+
+  it('returns a markdown table with one row', () => {
+    const result = formatProfileDescriptions({ errand: stubProfile });
+    expect(result).toContain('| Profile | Description |');
+    expect(result).toContain('| `errand` | Small focused change |');
+  });
+
+  it('returns a markdown table with multiple profiles', () => {
+    const result = formatProfileDescriptions({
+      errand: stubProfile,
+      migration: { ...stubProfile, description: 'Database migration work' },
+    });
+    expect(result).toContain('| `errand` |');
+    expect(result).toContain('| `migration` | Database migration work |');
+  });
+});
+
+// --- Planner profile emission ---
+
+describe('runPlanner profile emission', () => {
+  const tempDirs: string[] = [];
+
+  function makeTempDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'eforge-planner-profile-test-'));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    tempDirs.length = 0;
+  });
+
+  it('emits plan:profile when agent output contains a profile block', async () => {
+    const backend = new StubBackend([{
+      text: '<profile name="excursion">Multi-file feature work across 8 files.</profile>',
+    }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runPlanner('Build feature', {
+      backend,
+      cwd,
+      profiles: { excursion: stubProfile },
+    }));
+
+    const profile = findEvent(events, 'plan:profile');
+    expect(profile).toBeDefined();
+    expect(profile!.profileName).toBe('excursion');
+    expect(profile!.rationale).toBe('Multi-file feature work across 8 files.');
+  });
+
+  it('emits both plan:profile and plan:scope when profile name matches a built-in scope', async () => {
+    const backend = new StubBackend([{
+      text: '<profile name="excursion">Cross-cutting change.</profile>',
+    }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runPlanner('Build feature', {
+      backend,
+      cwd,
+      profiles: { excursion: stubProfile },
+    }));
+
+    const profile = findEvent(events, 'plan:profile');
+    expect(profile).toBeDefined();
+    expect(profile!.profileName).toBe('excursion');
+
+    const scope = findEvent(events, 'plan:scope');
+    expect(scope).toBeDefined();
+    expect(scope!.assessment).toBe('excursion');
+    expect(scope!.justification).toBe('Cross-cutting change.');
+  });
+
+  it('emits only plan:profile when profile name is a custom name', async () => {
+    const backend = new StubBackend([{
+      text: '<profile name="migration">Database migration work.</profile>',
+    }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runPlanner('Run migration', {
+      backend,
+      cwd,
+      profiles: { migration: { ...stubProfile, description: 'Migration profile' } },
+    }));
+
+    const profile = findEvent(events, 'plan:profile');
+    expect(profile).toBeDefined();
+    expect(profile!.profileName).toBe('migration');
+
+    // No plan:scope emitted for custom profile names
+    const scope = findEvent(events, 'plan:scope');
+    expect(scope).toBeUndefined();
+  });
+
+  it('emits only plan:scope when no profile block but scope block is present (backwards compatible)', async () => {
+    const backend = new StubBackend([{
+      text: '<scope assessment="errand">Small change — one file.</scope>',
+    }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runPlanner('Fix bug', {
+      backend,
+      cwd,
+    }));
+
+    const scope = findEvent(events, 'plan:scope');
+    expect(scope).toBeDefined();
+    expect(scope!.assessment).toBe('errand');
+
+    const profile = findEvent(events, 'plan:profile');
+    expect(profile).toBeUndefined();
+  });
+
+  it('includes profiles template variable in prompt when profiles are provided', async () => {
+    const backend = new StubBackend([{ text: 'Planning done.' }]);
+    const cwd = makeTempDir();
+
+    await collectEvents(runPlanner('Build feature', {
+      backend,
+      cwd,
+      profiles: { errand: stubProfile },
+    }));
+
+    expect(backend.prompts[0]).toContain('Small focused change');
+    expect(backend.prompts[0]).toContain('`errand`');
+  });
+});
+
+// --- Assessor profile emission ---
+
+describe('runAssessor profile emission', () => {
+  it('emits plan:profile when agent output contains a profile block', async () => {
+    const backend = new StubBackend([{
+      text: '<profile name="excursion">Multi-file work.</profile><scope assessment="excursion">Cross-cutting change.</scope>',
+    }]);
+
+    const events = await collectEvents(runAssessor({
+      backend,
+      sourceContent: 'test plan',
+      cwd: '/tmp',
+      profiles: { excursion: stubProfile },
+    }));
+
+    const profile = findEvent(events, 'plan:profile');
+    expect(profile).toBeDefined();
+    expect(profile!.profileName).toBe('excursion');
+    expect(profile!.rationale).toBe('Multi-file work.');
+  });
+
+  it('emits plan:scope without plan:profile when no profile block present (backwards compatible)', async () => {
+    const backend = new StubBackend([{
+      text: '<scope assessment="errand">Small change.</scope>',
+    }]);
+
+    const events = await collectEvents(runAssessor({
+      backend,
+      sourceContent: 'test plan',
+      cwd: '/tmp',
+    }));
+
+    const scope = findEvent(events, 'plan:scope');
+    expect(scope).toBeDefined();
+    expect(scope!.assessment).toBe('errand');
+
+    const profile = findEvent(events, 'plan:profile');
+    expect(profile).toBeUndefined();
   });
 });
 

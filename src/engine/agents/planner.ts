@@ -2,14 +2,17 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AgentBackend } from '../backend.js';
-import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
-import { parseClarificationBlocks, parseScopeBlock } from './common.js';
+import { isAlwaysYieldedAgentEvent, SCOPE_ASSESSMENTS, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile, type ScopeAssessment } from '../events.js';
+import { parseClarificationBlocks, parseScopeBlock, parseProfileBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
 import { parsePlanFile, deriveNameFromSource } from '../plan.js';
+import type { ResolvedProfileConfig } from '../config.js';
 
 export interface PlannerOptions extends CompileOptions {
   backend: AgentBackend;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
+  /** Available workflow profiles for profile selection. When provided, the planner selects a profile. */
+  profiles?: Record<string, ResolvedProfileConfig>;
 }
 
 /**
@@ -39,6 +42,20 @@ You previously asked the following clarifying questions and received answers. Us
 | Question | Answer |
 |----------|--------|
 ${rows.join('\n')}`;
+}
+
+/**
+ * Format profile descriptions into a markdown table for prompt injection.
+ * Returns empty string when no profiles are available.
+ */
+export function formatProfileDescriptions(profiles: Record<string, ResolvedProfileConfig>): string {
+  if (Object.keys(profiles).length === 0) return '';
+
+  const rows = Object.entries(profiles)
+    .map(([name, profile]) => `| \`${name}\` | ${profile.description} |`)
+    .join('\n');
+
+  return `| Profile | Description |\n|---------|-------------|\n${rows}`;
 }
 
 /**
@@ -89,10 +106,12 @@ export async function* runPlanner(
       planSetName,
       cwd,
       priorClarifications: formatPriorClarifications(allClarifications),
+      profiles: options.profiles ? formatProfileDescriptions(options.profiles) : '',
     });
   }
 
   let scopeEmitted = false;
+  let profileEmitted = false;
 
   // Main loop: run agent, collect clarifications, restart with answers baked in
   let iteration = 0;
@@ -121,6 +140,24 @@ export async function* runPlanner(
           if (scope) {
             scopeEmitted = true;
             yield { type: 'plan:scope', assessment: scope.assessment, justification: scope.justification };
+          }
+        }
+
+        if (!profileEmitted) {
+          const profile = parseProfileBlock(event.content);
+          if (profile) {
+            profileEmitted = true;
+            yield { type: 'plan:profile', profileName: profile.profileName, rationale: profile.rationale };
+
+            // Derive plan:scope if profile name matches a built-in scope
+            if (!scopeEmitted && (SCOPE_ASSESSMENTS as readonly string[]).includes(profile.profileName)) {
+              scopeEmitted = true;
+              yield {
+                type: 'plan:scope',
+                assessment: profile.profileName as ScopeAssessment,
+                justification: profile.rationale,
+              };
+            }
           }
         }
 

@@ -44,6 +44,30 @@ Your planning is **strictly bounded by the source document**. The source is your
 
 If the source is fully implemented (zero gaps), emit `<scope assessment="complete">` and do NOT write any plan files.
 
+### Profile Selection
+
+{{profiles}}
+
+If profiles are listed above, select the profile that best matches the work described in the source document. Consider:
+- The type of work (migration, security, refactor, feature, etc.)
+- The risk profile and review needs
+- The scope indicators from your codebase exploration
+
+Emit a `<profile>` block declaring your selection:
+
+```xml
+<profile name="excursion">
+  Multi-file feature work adding a new API endpoint with frontend integration.
+  Cross-file changes across 8 files with no architectural impact.
+</profile>
+```
+
+Rules:
+- The `name` attribute must exactly match one of the profile names listed above
+- The body contains your rationale for selecting this profile
+- If no profiles are listed above, skip this section and proceed to Scope Assessment
+- After selecting a profile, still emit the `<scope>` block in Phase 3 (both are required)
+
 ### Phase 3: Scope Assessment
 
 Based on your exploration, classify the **actual work remaining** (not the source's ambition):

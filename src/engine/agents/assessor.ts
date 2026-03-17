@@ -1,7 +1,9 @@
 import type { AgentBackend } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
-import { parseScopeBlock } from './common.js';
+import { parseScopeBlock, parseProfileBlock } from './common.js';
+import type { ResolvedProfileConfig } from '../config.js';
+import { formatProfileDescriptions } from './planner.js';
 
 /**
  * Options for the assessor agent.
@@ -17,6 +19,8 @@ export interface AssessorOptions {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Available workflow profiles for profile selection. */
+  profiles?: Record<string, ResolvedProfileConfig>;
 }
 
 /**
@@ -34,11 +38,12 @@ export interface AssessorOptions {
 export async function* runAssessor(
   options: AssessorOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, sourceContent, cwd, verbose, abortController } = options;
+  const { backend, sourceContent, cwd, verbose, abortController, profiles } = options;
 
   const prompt = await loadPrompt('assessor', {
     source: sourceContent,
     cwd,
+    profiles: profiles ? formatProfileDescriptions(profiles) : '',
   });
 
   let fullText = '';
@@ -54,6 +59,12 @@ export async function* runAssessor(
     if (event.type === 'agent:message' && event.content) {
       fullText += event.content;
     }
+  }
+
+  // Parse profile block from accumulated text
+  const profile = parseProfileBlock(fullText);
+  if (profile) {
+    yield { type: 'plan:profile', profileName: profile.profileName, rationale: profile.rationale };
   }
 
   // Parse scope block from accumulated text
