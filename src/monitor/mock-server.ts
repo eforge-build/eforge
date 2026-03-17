@@ -406,7 +406,7 @@ insertEvent(RUN2_ID, { type: 'approval:needed', action: 'build', details: '3 pla
 insertEvent(RUN2_ID, { type: 'approval:response', approved: true } as unknown as EforgeEvent, 278000);
 
 // Wave 1: auth middleware (no deps)
-insertEvent(RUN2_ID, { type: 'wave:start', wave: 1, planIds: ['plan-01-auth-middleware'] }, 280000);
+insertEvent(RUN2_ID, { type: 'schedule:start', planIds: ['plan-01-auth-middleware'] }, 280000);
 insertEvent(RUN2_ID, { type: 'build:start', planId: 'plan-01-auth-middleware' }, 281000);
 insertEvent(RUN2_ID, { type: 'build:implement:start', planId: 'plan-01-auth-middleware' }, 282000);
 insertAgentRun(RUN2_ID, 'builder', 283000, 310000, 'plan-01-auth-middleware');
@@ -421,10 +421,10 @@ insertEvent(RUN2_ID, { type: 'build:evaluate:complete', planId: 'plan-01-auth-mi
 insertEvent(RUN2_ID, { type: 'build:complete', planId: 'plan-01-auth-middleware' }, 335000);
 insertEvent(RUN2_ID, { type: 'merge:start', planId: 'plan-01-auth-middleware' }, 336000);
 insertEvent(RUN2_ID, { type: 'merge:complete', planId: 'plan-01-auth-middleware' }, 338000);
-insertEvent(RUN2_ID, { type: 'wave:complete', wave: 1 }, 339000);
+insertEvent(RUN2_ID, { type: 'wave:complete', wave: 1 } as unknown as EforgeEvent, 339000);
 
 // Wave 2: protected routes + login (both depend on auth middleware)
-insertEvent(RUN2_ID, { type: 'wave:start', wave: 2, planIds: ['plan-02-protected-routes', 'plan-03-login-endpoint'] }, 340000);
+insertEvent(RUN2_ID, { type: 'schedule:start', planIds: ['plan-02-protected-routes', 'plan-03-login-endpoint'] }, 340000);
 
 // Plan 2: protected routes — with parallel review + review fix
 insertEvent(RUN2_ID, { type: 'build:start', planId: 'plan-02-protected-routes' }, 341000);
@@ -477,7 +477,7 @@ insertEvent(RUN2_ID, { type: 'merge:start', planId: 'plan-02-protected-routes' }
 insertEvent(RUN2_ID, { type: 'merge:complete', planId: 'plan-02-protected-routes' }, 412000);
 insertEvent(RUN2_ID, { type: 'merge:start', planId: 'plan-03-login-endpoint' }, 413000);
 insertEvent(RUN2_ID, { type: 'merge:complete', planId: 'plan-03-login-endpoint' }, 415000);
-insertEvent(RUN2_ID, { type: 'wave:complete', wave: 2 }, 416000);
+insertEvent(RUN2_ID, { type: 'wave:complete', wave: 2 } as unknown as EforgeEvent, 416000);
 
 // Validation
 insertEvent(RUN2_ID, { type: 'validation:start', commands: ['pnpm type-check', 'pnpm test'] }, 420000);
@@ -746,7 +746,7 @@ db.updateRunStatus(RUN6B_ID, 'completed', makeTimestamp(1_400_000));
 insertEvent(RUN6B_ID, { type: 'phase:start', runId: RUN6B_ID, planSet: RUN6_PLAN_SET, command: 'build', timestamp: makeTimestamp(1210000) }, 1210000);
 
 // Wave 1: notification model
-insertEvent(RUN6B_ID, { type: 'wave:start', wave: 1, planIds: ['plan-01-notification-model'] }, 1215000);
+insertEvent(RUN6B_ID, { type: 'schedule:start', planIds: ['plan-01-notification-model'] }, 1215000);
 insertEvent(RUN6B_ID, { type: 'build:start', planId: 'plan-01-notification-model' }, 1216000);
 insertEvent(RUN6B_ID, { type: 'build:implement:start', planId: 'plan-01-notification-model' }, 1217000);
 insertAgentRun(RUN6B_ID, 'builder', 1218000, 1250000, 'plan-01-notification-model');
@@ -761,10 +761,10 @@ insertEvent(RUN6B_ID, { type: 'build:evaluate:complete', planId: 'plan-01-notifi
 insertEvent(RUN6B_ID, { type: 'build:complete', planId: 'plan-01-notification-model' }, 1275000);
 insertEvent(RUN6B_ID, { type: 'merge:start', planId: 'plan-01-notification-model' }, 1276000);
 insertEvent(RUN6B_ID, { type: 'merge:complete', planId: 'plan-01-notification-model' }, 1278000);
-insertEvent(RUN6B_ID, { type: 'wave:complete', wave: 1 }, 1279000);
+insertEvent(RUN6B_ID, { type: 'wave:complete', wave: 1 } as unknown as EforgeEvent, 1279000);
 
 // Wave 2: email provider + notification API (parallel)
-insertEvent(RUN6B_ID, { type: 'wave:start', wave: 2, planIds: ['plan-02-email-provider', 'plan-03-notification-api'] }, 1280000);
+insertEvent(RUN6B_ID, { type: 'schedule:start', planIds: ['plan-02-email-provider', 'plan-03-notification-api'] }, 1280000);
 
 // Plan 2: email provider
 insertEvent(RUN6B_ID, { type: 'build:start', planId: 'plan-02-email-provider' }, 1281000);
@@ -799,7 +799,7 @@ insertEvent(RUN6B_ID, { type: 'merge:start', planId: 'plan-02-email-provider' },
 insertEvent(RUN6B_ID, { type: 'merge:complete', planId: 'plan-02-email-provider' }, 1347000);
 insertEvent(RUN6B_ID, { type: 'merge:start', planId: 'plan-03-notification-api' }, 1348000);
 insertEvent(RUN6B_ID, { type: 'merge:complete', planId: 'plan-03-notification-api' }, 1350000);
-insertEvent(RUN6B_ID, { type: 'wave:complete', wave: 2 }, 1351000);
+insertEvent(RUN6B_ID, { type: 'wave:complete', wave: 2 } as unknown as EforgeEvent, 1351000);
 
 // Validation
 insertEvent(RUN6B_ID, { type: 'validation:start', commands: ['pnpm type-check', 'pnpm test'] }, 1355000);
@@ -887,7 +887,7 @@ const liveEvents: Array<{ delay: number; event: Record<string, unknown> }> = [
   { delay: 47000, event: { type: 'plan:evaluate:start' } },
   { delay: 53000, event: agentResult('plan-evaluator', 5000) },
   { delay: 54000, event: { type: 'plan:evaluate:complete', accepted: 0, rejected: 0 } },
-  { delay: 57000, event: { type: 'wave:start', wave: 1, planIds: ['plan-01-pagination-core'] } },
+  { delay: 57000, event: { type: 'schedule:start', planIds: ['plan-01-pagination-core'] } },
   { delay: 58000, event: { type: 'build:start', planId: 'plan-01-pagination-core' } },
   { delay: 59000, event: { type: 'build:implement:start', planId: 'plan-01-pagination-core' } },
   { delay: 70000, event: { type: 'build:implement:progress', planId: 'plan-01-pagination-core', message: 'Creating pagination utility...' } },

@@ -1,8 +1,8 @@
 /**
- * Orchestrator — dependency graph resolution, wave-based parallel execution,
+ * Orchestrator — greedy dependency-driven parallel execution,
  * git worktree lifecycle, and persistent state tracking.
  *
- * Yields EforgeEvents (wave:start, wave:complete, merge:start, merge:complete, build:*)
+ * Yields EforgeEvents (schedule:start, schedule:ready, merge:start, merge:complete, build:*)
  * as an AsyncGenerator. Agent execution is injected via PlanRunner callbacks.
  */
 
@@ -13,7 +13,6 @@ import { promisify } from 'node:util';
 const exec = promisify(execFile);
 import type { EforgeEvent, OrchestrationConfig, EforgeState, PlanState } from './events.js';
 import { loadState, saveState, updatePlanStatus, isResumable } from './state.js';
-import { resolveDependencyGraph } from './plan.js';
 import {
   computeWorktreeBase,
   createWorktree,
@@ -22,8 +21,7 @@ import {
   cleanupWorktrees,
   type MergeResolver,
 } from './worktree.js';
-import { runParallel } from './concurrency.js';
-import type { ParallelTask } from './concurrency.js';
+import { Semaphore, AsyncEventQueue } from './concurrency.js';
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -178,102 +176,140 @@ export class Orchestrator {
     }
 
     const worktreeBase = state.worktreeBase;
-
-    // 2. Resolve waves (merge happens inline after each wave)
-    const { waves } = resolveDependencyGraph(config.plans);
     const planMap = new Map(config.plans.map((p) => [p.id, p]));
     const failedMerges = new Set<string>();
 
+    // Track recently merged plans for merge resolver context enrichment
+    const recentlyMergedIds: string[] = [];
+
     try {
-      // 3. Wave loop
-      for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
-        // Check for abort signal at wave loop entry
+      // 2. Greedy scheduling loop
+      const allPlanIds = config.plans.map((p) => p.id);
+      yield { type: 'schedule:start', planIds: allPlanIds };
+
+      const semaphore = new Semaphore(parallelism);
+      const eventQueue = new AsyncEventQueue<EforgeEvent>();
+
+      // Track running plans: planId → Promise that resolves when the plan finishes
+      const running = new Map<string, Promise<void>>();
+
+      /**
+       * Check if a plan is ready to start: pending status and all deps merged.
+       */
+      const isReady = (planId: string): boolean => {
+        const ps = state.plans[planId];
+        if (!ps || ps.status !== 'pending') return false;
+        return ps.dependsOn.every((dep) => {
+          const depState = state.plans[dep];
+          return depState && depState.status === 'merged';
+        });
+      };
+
+      /**
+       * Launch a single plan: acquire semaphore, create worktree, run, update state.
+       * Pushes events into the shared eventQueue. Returns a promise that resolves
+       * when the plan run (and worktree cleanup) is finished.
+       */
+      const launchPlan = (planId: string): Promise<void> => {
+        eventQueue.addProducer();
+
+        const planPromise = (async () => {
+          const plan = planMap.get(planId)!;
+          let worktreePath: string | undefined;
+
+          try {
+            await semaphore.acquire();
+
+            // Create worktree
+            worktreePath = await createWorktree(
+              repoRoot,
+              worktreeBase,
+              plan.branch,
+              config.baseBranch,
+            );
+
+            state.plans[planId].worktreePath = worktreePath;
+            updatePlanStatus(state, planId, 'running');
+            saveState(stateDir, state);
+
+            // Delegate to injected plan runner
+            for await (const event of planRunner(planId, worktreePath, plan)) {
+              eventQueue.push(event);
+            }
+
+            updatePlanStatus(state, planId, 'completed');
+            saveState(stateDir, state);
+          } catch (err) {
+            // Handle all failures (worktree creation, plan runner, etc.)
+            if (state.plans[planId].status !== 'failed') {
+              updatePlanStatus(state, planId, 'failed');
+              state.plans[planId].error = (err as Error).message;
+              saveState(stateDir, state);
+            }
+
+            // Propagate failure to transitive dependents
+            const failureEvents = propagateFailure(state, planId, config.plans);
+            saveState(stateDir, state);
+            for (const e of failureEvents) eventQueue.push(e);
+          } finally {
+            semaphore.release();
+            if (worktreePath) {
+              try {
+                await removeWorktree(repoRoot, worktreePath);
+              } catch {
+                // Best-effort worktree cleanup
+              }
+            }
+            eventQueue.removeProducer();
+          }
+        })();
+
+        running.set(planId, planPromise);
+        return planPromise;
+      };
+
+      /**
+       * Find all ready plans, emit schedule:ready, and launch them.
+       */
+      const startReadyPlans = (reason: string): void => {
+        for (const planId of allPlanIds) {
+          if (running.has(planId)) continue;
+          if (!isReady(planId)) continue;
+
+          eventQueue.push({ type: 'schedule:ready', planId, reason });
+          launchPlan(planId);
+        }
+      };
+
+      // 3. Start all zero-dependency plans
+      startReadyPlans('no dependencies');
+
+      // 4. Completion-driven loop: wait for any running plan to finish,
+      // merge it, then check for newly unblocked plans.
+      while (running.size > 0) {
         if (signal?.aborted) {
           saveState(stateDir, state);
           break;
         }
 
-        const wave = waves[waveIdx];
+        // Wait for any running plan to complete
+        await Promise.race(running.values());
 
-        // Filter out completed/blocked/failed plans
-        const activePlans = wave.filter((id) => {
-          const ps = state.plans[id];
-          return (
-            ps &&
-            ps.status !== 'completed' &&
-            ps.status !== 'merged' &&
-            ps.status !== 'blocked' &&
-            ps.status !== 'failed'
-          );
-        });
-
-        // Run active plans (skip execution if none need it, but still merge below)
-        if (activePlans.length > 0) {
-          yield { type: 'wave:start', wave: waveIdx + 1, planIds: activePlans };
-
-          // Build parallel tasks — each wraps worktree lifecycle, plan runner,
-          // state updates, and failure propagation into a self-contained generator.
-          const tasks: ParallelTask<EforgeEvent>[] = activePlans.map((planId) => ({
-            id: planId,
-            async *run() {
-              const plan = planMap.get(planId)!;
-              let worktreePath: string | undefined;
-
-              try {
-                // Create worktree
-                worktreePath = await createWorktree(
-                  repoRoot,
-                  worktreeBase,
-                  plan.branch,
-                  config.baseBranch,
-                );
-
-                state.plans[planId].worktreePath = worktreePath;
-                updatePlanStatus(state, planId, 'running');
-                saveState(stateDir, state);
-
-                // Delegate to injected plan runner
-                for await (const event of planRunner(planId, worktreePath, plan)) {
-                  yield event;
-                }
-
-                updatePlanStatus(state, planId, 'completed');
-                saveState(stateDir, state);
-              } catch (err) {
-                // Handle all failures (worktree creation, plan runner, etc.)
-                if (state.plans[planId].status !== 'failed') {
-                  updatePlanStatus(state, planId, 'failed');
-                  state.plans[planId].error = (err as Error).message;
-                  saveState(stateDir, state);
-                }
-
-                // Propagate failure to transitive dependents
-                const failureEvents = propagateFailure(state, planId, config.plans);
-                saveState(stateDir, state);
-                for (const e of failureEvents) yield e;
-              } finally {
-                if (worktreePath) {
-                  try {
-                    await removeWorktree(repoRoot, worktreePath);
-                  } catch {
-                    // Best-effort worktree cleanup
-                  }
-                }
-              }
-            },
-          }));
-
-          // Run plans concurrently via runParallel
-          for await (const event of runParallel(tasks, { parallelism })) {
-            yield event;
+        // Find which plans just completed and process them
+        const justCompleted: string[] = [];
+        for (const [planId] of running) {
+          const ps = state.plans[planId];
+          if (ps && ps.status !== 'running') {
+            justCompleted.push(planId);
           }
-
-          yield { type: 'wave:complete', wave: waveIdx + 1 };
         }
 
-        // 4. Inter-wave merge — merge completed plans from this wave into baseBranch
-        // before starting the next wave, so later-wave worktrees see dependency changes.
-        for (const planId of wave) {
+        for (const planId of justCompleted) {
+          running.delete(planId);
+        }
+
+        // 5. Merge completed plans immediately (serialized — one at a time)
+        for (const planId of justCompleted) {
           if (signal?.aborted) break;
 
           const planState = state.plans[planId];
@@ -285,11 +321,15 @@ export class Orchestrator {
             updatePlanStatus(state, planId, 'failed');
             state.plans[planId].error = skipReason;
             saveState(stateDir, state);
-            yield { type: 'build:failed', planId, error: skipReason };
+            eventQueue.push({ type: 'build:failed', planId, error: skipReason });
+
+            const failureEvents = propagateFailure(state, planId, config.plans);
+            saveState(stateDir, state);
+            for (const e of failureEvents) eventQueue.push(e);
             continue;
           }
 
-          yield { type: 'merge:start', planId };
+          eventQueue.push({ type: 'merge:start', planId });
 
           try {
             const plan = planMap.get(planId)!;
@@ -301,11 +341,9 @@ export class Orchestrator {
                   // Enrich conflict info with plan context
                   conflict.planName = plan.name;
 
-                  // Find the most recently merged same-wave plan as the likely conflict source
-                  const mergedWavePlans = wave
-                    .filter((wId) => wId !== planId && state.plans[wId]?.status === 'merged');
-                  if (mergedWavePlans.length > 0) {
-                    const lastMergedId = mergedWavePlans[mergedWavePlans.length - 1];
+                  // Find the most recently merged plan as the likely conflict source
+                  if (recentlyMergedIds.length > 0) {
+                    const lastMergedId = recentlyMergedIds[recentlyMergedIds.length - 1];
                     const otherPlan = planMap.get(lastMergedId);
                     if (otherPlan) {
                       conflict.otherPlanName = otherPlan.name;
@@ -320,30 +358,42 @@ export class Orchestrator {
 
             updatePlanStatus(state, planId, 'merged');
             planState.merged = true;
+            recentlyMergedIds.push(planId);
             saveState(stateDir, state);
 
-            yield { type: 'merge:complete', planId };
+            eventQueue.push({ type: 'merge:complete', planId });
           } catch (err) {
             failedMerges.add(planId);
             updatePlanStatus(state, planId, 'failed');
             state.plans[planId].error = `Merge failed: ${(err as Error).message}`;
             saveState(stateDir, state);
 
-            yield {
+            eventQueue.push({
               type: 'build:failed',
               planId,
               error: `Merge failed: ${(err as Error).message}`,
-            };
+            });
 
-            // Propagate to transitive dependents so later waves don't attempt them
+            // Propagate to transitive dependents
             const failureEvents = propagateFailure(state, planId, config.plans);
             saveState(stateDir, state);
-            for (const e of failureEvents) yield e;
+            for (const e of failureEvents) eventQueue.push(e);
           }
+        }
+
+        // 6. After merges, check for newly unblocked plans and start them
+        if (!signal?.aborted) {
+          startReadyPlans('dependencies merged');
         }
       }
 
-      // 5. Post-merge validation commands (with optional fix cycle)
+      // Drain any remaining events from the queue
+      // (all producers have finished at this point since running is empty)
+      for await (const event of eventQueue) {
+        yield event;
+      }
+
+      // 7. Post-merge validation commands (with optional fix cycle)
       const allMerged = Object.values(state.plans).every((p) => p.status === 'merged');
       const { validateCommands, validationFixer } = this.options;
       const maxRetries = this.options.maxValidationRetries ?? 2;
@@ -414,7 +464,7 @@ export class Orchestrator {
       state.completedAt = new Date().toISOString();
       saveState(stateDir, state);
     } finally {
-      // 6. Cleanup — always runs, even on errors
+      // 8. Cleanup — always runs, even on errors
       try {
         await cleanupWorktrees(repoRoot, worktreeBase);
       } catch {

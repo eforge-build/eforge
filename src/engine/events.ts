@@ -172,8 +172,8 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'build:failed'; planId: string; error: string }
 
   // Orchestration
-  | { type: 'wave:start'; wave: number; planIds: string[] }
-  | { type: 'wave:complete'; wave: number }
+  | { type: 'schedule:start'; planIds: string[] }
+  | { type: 'schedule:ready'; planId: string; reason: string }
   | { type: 'merge:start'; planId: string }
   | { type: 'merge:complete'; planId: string }
   | { type: 'merge:resolve:start'; planId: string }

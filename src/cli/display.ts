@@ -325,16 +325,16 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     // Orchestration
-    case 'wave:start':
+    case 'schedule:start':
       console.log('');
       console.log(
-        chalk.magenta(`\u2501\u2501 Wave ${event.wave} \u2501\u2501`) +
+        chalk.magenta(`\u2501\u2501 Scheduling \u2501\u2501`) +
           chalk.dim(` [${event.planIds.join(', ')}]`),
       );
       break;
 
-    case 'wave:complete':
-      console.log(chalk.magenta(`\u2501\u2501 Wave ${event.wave} complete \u2501\u2501`));
+    case 'schedule:ready':
+      console.log(chalk.magenta(`  \u25b8 Ready: ${chalk.cyan(event.planId)}`) + chalk.dim(` (${event.reason})`));
       break;
 
     case 'merge:start':
