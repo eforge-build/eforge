@@ -39,7 +39,8 @@
     "commander": "^14.0.3",
     "langfuse": "^3.38.6",
     "ora": "^8.2.0",
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs } from '../src/engine/config.js';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig } from '../src/engine/config.js';
 import type { PartialEforgeConfig, HookConfig } from '../src/engine/config.js';
 
 describe('resolveConfig', () => {
@@ -213,5 +213,77 @@ describe('mergePartialConfigs', () => {
     const merged = mergePartialConfigs(global, project);
     expect(merged.build?.parallelism).toBe(8);
     expect(merged.build?.maxValidationRetries).toBe(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseRawConfig validation warnings (zod-backed)
+// ---------------------------------------------------------------------------
+
+describe('parseRawConfig validation warnings', () => {
+  // parseRawConfig is not exported, so we test it indirectly via loadConfig
+  // which calls parseRawConfig on the YAML data. We use resolveConfig with
+  // a PartialEforgeConfig that simulates what parseRawConfig would produce,
+  // plus direct stderr spy tests to verify warning output.
+
+  it('parseRawConfig with invalid maxTurns logs a warning containing "maxTurns"', async () => {
+    // We need to test parseRawConfig indirectly. The simplest way is to
+    // write a temp config file and load it, but we can also test via the
+    // config module internals. Since parseRawConfig is private, we test
+    // that the schema validation produces warnings by importing loadConfig
+    // with a temp file.
+    const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-warn-'));
+    const configPath = join(tmpDir, 'eforge.yaml');
+    await writeFile(configPath, 'agents:\n  maxTurns: "not-a-number"\n', 'utf-8');
+
+    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await loadConfig(tmpDir);
+      const warnings = stderrSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(warnings).toContain('maxTurns');
+    } finally {
+      stderrSpy.mockRestore();
+      await rm(tmpDir, { recursive: true });
+    }
+  });
+
+  it('parseRawConfig with invalid permissionMode logs a warning containing "permissionMode"', async () => {
+    const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-warn-'));
+    const configPath = join(tmpDir, 'eforge.yaml');
+    await writeFile(configPath, 'agents:\n  permissionMode: "skip"\n', 'utf-8');
+
+    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await loadConfig(tmpDir);
+      const warnings = stderrSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(warnings).toContain('permissionMode');
+    } finally {
+      stderrSpy.mockRestore();
+      await rm(tmpDir, { recursive: true });
+    }
+  });
+
+  it('merge-conflict-resolver is recognized as a valid agent role', () => {
+    const config = resolveConfig(
+      {
+        profiles: {
+          custom: {
+            description: 'Test',
+            extends: 'errand',
+            agents: { 'merge-conflict-resolver': { maxTurns: 5 } },
+          },
+        },
+      },
+      {},
+    );
+    expect(config.profiles.custom.agents['merge-conflict-resolver']).toEqual({ maxTurns: 5 });
   });
 });

@@ -2,63 +2,116 @@ import { readFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { availableParallelism, homedir } from 'node:os';
 import { parse as parseYaml } from 'yaml';
+import { z } from 'zod/v4';
 
 import type { AgentRole } from './events.js';
 
-export type ToolPresetConfig = 'coding' | 'none';
+// ---------------------------------------------------------------------------
+// Zod Schemas — single source of truth for config types
+// ---------------------------------------------------------------------------
 
-export interface AgentProfileConfig {
-  maxTurns?: number;
-  prompt?: string;
-  tools?: ToolPresetConfig;
-  model?: string;
-}
+/** Agent roles matching the AgentRole union in events.ts. */
+const AGENT_ROLES = [
+  'planner', 'builder', 'reviewer', 'evaluator', 'module-planner',
+  'plan-reviewer', 'plan-evaluator', 'cohesion-reviewer', 'cohesion-evaluator',
+  'validation-fixer', 'assessor', 'review-fixer', 'merge-conflict-resolver',
+] as const;
 
-export interface ReviewProfileConfig {
-  strategy: 'auto' | 'single' | 'parallel';
-  perspectives: string[];
-  maxRounds: number;
-  autoAcceptBelow?: 'suggestion' | 'warning';
-  evaluatorStrictness: 'strict' | 'standard' | 'lenient';
-}
+const agentRoleSchema = z.enum(AGENT_ROLES);
 
-/** Pre-resolution profile (from YAML parsing). */
-export interface PartialProfileConfig {
-  description?: string;
-  extends?: string;
-  compile?: string[];
-  build?: string[];
-  agents?: Partial<Record<AgentRole, AgentProfileConfig>>;
-  review?: Partial<ReviewProfileConfig>;
-}
+const toolPresetConfigSchema = z.enum(['coding', 'none']);
 
-/** After extension resolution - all required fields present. */
-export interface ResolvedProfileConfig {
-  description: string;
-  compile: string[];
-  build: string[];
-  agents: Partial<Record<AgentRole, AgentProfileConfig>>;
-  review: ReviewProfileConfig;
-}
+const agentProfileConfigSchema = z.object({
+  maxTurns: z.number().int().positive().optional(),
+  prompt: z.string().optional(),
+  tools: toolPresetConfigSchema.optional(),
+  model: z.string().optional(),
+});
 
+const STRATEGIES = ['auto', 'single', 'parallel'] as const;
+const STRICTNESS = ['strict', 'standard', 'lenient'] as const;
+const AUTO_ACCEPT = ['suggestion', 'warning'] as const;
+
+const reviewProfileConfigSchema = z.object({
+  strategy: z.enum(STRATEGIES),
+  perspectives: z.array(z.string()).nonempty(),
+  maxRounds: z.number().int().positive(),
+  autoAcceptBelow: z.enum(AUTO_ACCEPT).optional(),
+  evaluatorStrictness: z.enum(STRICTNESS),
+});
+
+const partialProfileConfigSchema = z.object({
+  description: z.string().optional(),
+  extends: z.string().optional(),
+  compile: z.array(z.string()).optional(),
+  build: z.array(z.string()).optional(),
+  agents: z.partialRecord(agentRoleSchema, agentProfileConfigSchema).optional(),
+  review: reviewProfileConfigSchema.partial().optional(),
+});
+
+const resolvedProfileConfigSchema = z.object({
+  description: z.string().min(1),
+  compile: z.array(z.string()).nonempty(),
+  build: z.array(z.string()).nonempty(),
+  agents: z.partialRecord(agentRoleSchema, agentProfileConfigSchema),
+  review: reviewProfileConfigSchema,
+});
+
+const hookConfigSchema = z.object({
+  event: z.string(),
+  command: z.string(),
+  timeout: z.number().positive().default(5000),
+});
+
+const pluginConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  include: z.array(z.string()).optional(),
+  exclude: z.array(z.string()).optional(),
+  paths: z.array(z.string()).optional(),
+});
+
+const SETTING_SOURCES = ['user', 'project', 'local'] as const;
+
+const eforgeConfigSchema = z.object({
+  langfuse: z.object({
+    enabled: z.boolean().optional(),
+    publicKey: z.string().optional(),
+    secretKey: z.string().optional(),
+    host: z.string().optional(),
+  }).optional(),
+  agents: z.object({
+    maxTurns: z.number().int().positive().optional(),
+    permissionMode: z.enum(['bypass', 'default']).optional(),
+    settingSources: z.array(z.enum(SETTING_SOURCES)).nonempty().optional(),
+  }).optional(),
+  build: z.object({
+    parallelism: z.number().int().positive().optional(),
+    worktreeDir: z.string().optional(),
+    postMergeCommands: z.array(z.string()).optional(),
+    maxValidationRetries: z.number().int().nonnegative().optional(),
+    cleanupPlanFiles: z.boolean().optional(),
+  }).optional(),
+  plan: z.object({
+    outputDir: z.string().optional(),
+  }).optional(),
+  plugins: pluginConfigSchema.optional(),
+  hooks: z.array(hookConfigSchema).optional(),
+  profiles: z.record(z.string(), partialProfileConfigSchema).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Derived TypeScript types — from schemas, not hand-written
+// ---------------------------------------------------------------------------
+
+export type ToolPresetConfig = z.output<typeof toolPresetConfigSchema>;
+export type AgentProfileConfig = z.output<typeof agentProfileConfigSchema>;
+export type ReviewProfileConfig = z.output<typeof reviewProfileConfigSchema>;
+export type PartialProfileConfig = z.output<typeof partialProfileConfigSchema>;
+export type ResolvedProfileConfig = z.output<typeof resolvedProfileConfigSchema>;
 /** Alias kept for barrel re-export convenience. */
 export type ProfileConfig = ResolvedProfileConfig;
-
-export interface HookConfig {
-  event: string;   // glob pattern on EforgeEvent.type (e.g. "build:*", "*")
-  command: string; // shell command or script path
-  timeout: number; // ms, default 5000
-}
-
-export interface PluginConfig {
-  enabled: boolean;
-  /** Plugin identifiers to include (e.g. "git@schaake-cc-marketplace"). If set, only these load. */
-  include?: string[];
-  /** Plugin identifiers to exclude from auto-discovery. */
-  exclude?: string[];
-  /** Additional local plugin directory paths (always appended). */
-  paths?: string[];
-}
+export type HookConfig = z.output<typeof hookConfigSchema>;
+export type PluginConfig = z.output<typeof pluginConfigSchema>;
 
 export interface EforgeConfig {
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
@@ -70,16 +123,8 @@ export interface EforgeConfig {
   profiles: Record<string, ResolvedProfileConfig>;
 }
 
-/** Deep-partial version of EforgeConfig used for parsing and merging. */
-export type PartialEforgeConfig = {
-  [K in keyof EforgeConfig]?: K extends 'hooks'
-    ? HookConfig[]
-    : K extends 'profiles'
-      ? Record<string, PartialProfileConfig>
-      : EforgeConfig[K] extends object
-        ? Partial<EforgeConfig[K]>
-        : EforgeConfig[K];
-};
+/** Deep-partial version of EforgeConfig used for parsing and merging — derived from the zod schema. */
+export type PartialEforgeConfig = z.output<typeof eforgeConfigSchema>;
 
 const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
   strategy: 'auto' as const,
@@ -200,174 +245,54 @@ export function resolveConfig(
 
 /**
  * Parse and validate a raw YAML object into a partial EforgeConfig.
- * Returns only the fields that are present and valid — no premature defaults.
+ * Uses zod schema for validation — invalid fields are dropped and
+ * a warning is logged to stderr so users get feedback on typos.
  */
 function parseRawConfig(data: Record<string, unknown>): PartialEforgeConfig {
+  const result = eforgeConfigSchema.safeParse(data);
+  if (result.success) {
+    return stripUndefinedSections(result.data);
+  }
+  // Log validation errors so users know about typos/invalid values
+  console.error('eforge config warning: some fields were invalid and will be ignored:\n' + z.prettifyError(result.error));
+  // Parse again with passthrough to salvage valid fields —
+  // safeParse is all-or-nothing per property, so re-parse each section independently
+  return parseRawConfigFallback(data);
+}
+
+/**
+ * Fallback parser: parse each top-level section independently so that
+ * one bad section doesn't nuke the rest. Mirrors the schema structure.
+ */
+function parseRawConfigFallback(data: Record<string, unknown>): PartialEforgeConfig {
   const result: PartialEforgeConfig = {};
-
-  if (data.langfuse && typeof data.langfuse === 'object') {
-    const lf = data.langfuse as Record<string, unknown>;
-    result.langfuse = {
-      ...(typeof lf.publicKey === 'string' ? { publicKey: lf.publicKey } : {}),
-      ...(typeof lf.secretKey === 'string' ? { secretKey: lf.secretKey } : {}),
-      ...(typeof lf.host === 'string' ? { host: lf.host } : {}),
-    };
-  }
-
-  if (data.agents && typeof data.agents === 'object') {
-    const ag = data.agents as Record<string, unknown>;
-    const VALID_SETTING_SOURCES = ['user', 'project', 'local'];
-    const settingSources =
-      Array.isArray(ag.settingSources)
-        ? ag.settingSources.filter((s: unknown) => typeof s === 'string' && VALID_SETTING_SOURCES.includes(s)) as string[]
-        : undefined;
-    // Empty array after filtering means all entries were invalid — treat as absent so defaults apply
-    const hasSettingSources = settingSources && settingSources.length > 0;
-    result.agents = {
-      ...(typeof ag.maxTurns === 'number' && ag.maxTurns > 0 ? { maxTurns: ag.maxTurns } : {}),
-      ...(ag.permissionMode === 'bypass' || ag.permissionMode === 'default'
-        ? { permissionMode: ag.permissionMode }
-        : {}),
-      ...(hasSettingSources ? { settingSources } : {}),
-    };
-  }
-
-  if (data.build && typeof data.build === 'object') {
-    const bd = data.build as Record<string, unknown>;
-    const postMergeCommands =
-      Array.isArray(bd.postMergeCommands) && bd.postMergeCommands.every((c: unknown) => typeof c === 'string')
-        ? (bd.postMergeCommands as string[])
-        : undefined;
-    result.build = {
-      ...(typeof bd.parallelism === 'number' && bd.parallelism > 0
-        ? { parallelism: bd.parallelism }
-        : {}),
-      ...(typeof bd.worktreeDir === 'string' ? { worktreeDir: bd.worktreeDir } : {}),
-      ...(postMergeCommands ? { postMergeCommands } : {}),
-      ...(typeof bd.maxValidationRetries === 'number' && bd.maxValidationRetries >= 0
-        ? { maxValidationRetries: bd.maxValidationRetries }
-        : {}),
-      ...(typeof bd.cleanupPlanFiles === 'boolean' ? { cleanupPlanFiles: bd.cleanupPlanFiles } : {}),
-    };
-  }
-
-  if (data.plan && typeof data.plan === 'object') {
-    const pl = data.plan as Record<string, unknown>;
-    result.plan = {
-      ...(typeof pl.outputDir === 'string' ? { outputDir: pl.outputDir } : {}),
-    };
-  }
-
-  if (data.plugins && typeof data.plugins === 'object' && !Array.isArray(data.plugins)) {
-    const pg = data.plugins as Record<string, unknown>;
-    const include =
-      Array.isArray(pg.include) && pg.include.every((s: unknown) => typeof s === 'string')
-        ? (pg.include as string[])
-        : undefined;
-    const exclude =
-      Array.isArray(pg.exclude) && pg.exclude.every((s: unknown) => typeof s === 'string')
-        ? (pg.exclude as string[])
-        : undefined;
-    const paths =
-      Array.isArray(pg.paths) && pg.paths.every((s: unknown) => typeof s === 'string')
-        ? (pg.paths as string[])
-        : undefined;
-    result.plugins = {
-      ...(typeof pg.enabled === 'boolean' ? { enabled: pg.enabled } : {}),
-      ...(include ? { include } : {}),
-      ...(exclude ? { exclude } : {}),
-      ...(paths ? { paths } : {}),
-    };
-  }
-
-  if (Array.isArray(data.hooks)) {
-    const validHooks: HookConfig[] = [];
-    for (const entry of data.hooks) {
-      if (
-        entry &&
-        typeof entry === 'object' &&
-        typeof (entry as Record<string, unknown>).event === 'string' &&
-        typeof (entry as Record<string, unknown>).command === 'string'
-      ) {
-        const e = entry as Record<string, unknown>;
-        const timeout = typeof e.timeout === 'number' && e.timeout > 0 ? e.timeout : 5000;
-        validHooks.push({ event: e.event as string, command: e.command as string, timeout });
-      }
+  const sections = ['langfuse', 'agents', 'build', 'plan', 'plugins', 'hooks', 'profiles'] as const;
+  for (const key of sections) {
+    if (data[key] === undefined) continue;
+    const sectionSchema = eforgeConfigSchema.shape[key];
+    const parsed = sectionSchema.safeParse(data[key]);
+    if (parsed.success) {
+      (result as Record<string, unknown>)[key] = parsed.data;
     }
-    result.hooks = validHooks;
+    // If a section fails, it's silently dropped (warning already logged above)
   }
+  return stripUndefinedSections(result);
+}
 
-  if (data.profiles && typeof data.profiles === 'object' && !Array.isArray(data.profiles)) {
-    const profiles: Record<string, PartialProfileConfig> = {};
-    const VALID_STRATEGIES = ['auto', 'single', 'parallel'];
-    const VALID_TOOLS: string[] = ['coding', 'none'];
-    const VALID_STRICTNESS = ['strict', 'standard', 'lenient'];
-    const VALID_AUTO_ACCEPT = ['suggestion', 'warning'];
-    const VALID_AGENT_ROLES = new Set([
-      'planner', 'builder', 'reviewer', 'evaluator', 'module-planner',
-      'plan-reviewer', 'plan-evaluator', 'cohesion-reviewer', 'cohesion-evaluator',
-      'validation-fixer', 'assessor', 'review-fixer',
-    ]);
-
-    for (const [name, value] of Object.entries(data.profiles as Record<string, unknown>)) {
-      if (!value || typeof value !== 'object') continue;
-      const raw = value as Record<string, unknown>;
-      const partial: PartialProfileConfig = {};
-
-      if (typeof raw.description === 'string') partial.description = raw.description;
-      if (typeof raw.extends === 'string') partial.extends = raw.extends;
-      if (Array.isArray(raw.compile) && raw.compile.every((s: unknown) => typeof s === 'string')) {
-        partial.compile = raw.compile as string[];
-      }
-      if (Array.isArray(raw.build) && raw.build.every((s: unknown) => typeof s === 'string')) {
-        partial.build = raw.build as string[];
-      }
-
-      // Parse agents
-      if (raw.agents && typeof raw.agents === 'object' && !Array.isArray(raw.agents)) {
-        const agents: Partial<Record<AgentRole, AgentProfileConfig>> = {};
-        for (const [role, agentRaw] of Object.entries(raw.agents as Record<string, unknown>)) {
-          if (!VALID_AGENT_ROLES.has(role)) continue;
-          if (!agentRaw || typeof agentRaw !== 'object') continue;
-          const ar = agentRaw as Record<string, unknown>;
-          const agentConfig: AgentProfileConfig = {};
-          if (typeof ar.maxTurns === 'number' && ar.maxTurns > 0) agentConfig.maxTurns = ar.maxTurns;
-          if (typeof ar.prompt === 'string') agentConfig.prompt = ar.prompt;
-          if (typeof ar.tools === 'string' && VALID_TOOLS.includes(ar.tools)) agentConfig.tools = ar.tools as ToolPresetConfig;
-          if (typeof ar.model === 'string') agentConfig.model = ar.model;
-          if (Object.keys(agentConfig).length > 0) {
-            agents[role as AgentRole] = agentConfig;
-          }
-        }
-        if (Object.keys(agents).length > 0) partial.agents = agents;
-      }
-
-      // Parse review
-      if (raw.review && typeof raw.review === 'object' && !Array.isArray(raw.review)) {
-        const rv = raw.review as Record<string, unknown>;
-        const review: Partial<ReviewProfileConfig> = {};
-        if (typeof rv.strategy === 'string' && VALID_STRATEGIES.includes(rv.strategy)) {
-          review.strategy = rv.strategy as ReviewProfileConfig['strategy'];
-        }
-        if (Array.isArray(rv.perspectives) && rv.perspectives.every((s: unknown) => typeof s === 'string')) {
-          review.perspectives = rv.perspectives as string[];
-        }
-        if (typeof rv.maxRounds === 'number' && rv.maxRounds > 0) review.maxRounds = rv.maxRounds;
-        if (typeof rv.autoAcceptBelow === 'string' && VALID_AUTO_ACCEPT.includes(rv.autoAcceptBelow)) {
-          review.autoAcceptBelow = rv.autoAcceptBelow as ReviewProfileConfig['autoAcceptBelow'];
-        }
-        if (typeof rv.evaluatorStrictness === 'string' && VALID_STRICTNESS.includes(rv.evaluatorStrictness)) {
-          review.evaluatorStrictness = rv.evaluatorStrictness as ReviewProfileConfig['evaluatorStrictness'];
-        }
-        if (Object.keys(review).length > 0) partial.review = review;
-      }
-
-      profiles[name] = partial;
-    }
-    result.profiles = profiles;
-  }
-
-  return result;
+/**
+ * Remove top-level keys that are undefined or empty objects so that
+ * mergePartialConfigs treats absent sections correctly.
+ */
+function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfig {
+  const out: PartialEforgeConfig = {};
+  if (config.langfuse !== undefined) out.langfuse = config.langfuse;
+  if (config.agents !== undefined) out.agents = config.agents;
+  if (config.build !== undefined) out.build = config.build;
+  if (config.plan !== undefined) out.plan = config.plan;
+  if (config.plugins !== undefined) out.plugins = config.plugins;
+  if (config.hooks !== undefined) out.hooks = config.hooks;
+  if (config.profiles !== undefined) out.profiles = config.profiles;
+  return out;
 }
 
 /**
@@ -598,20 +523,13 @@ export async function parseProfilesFile(
 // Profile Validation
 // ---------------------------------------------------------------------------
 
-const VALID_AGENT_ROLES_SET = new Set<string>([
-  'planner', 'builder', 'reviewer', 'evaluator', 'module-planner',
-  'plan-reviewer', 'plan-evaluator', 'cohesion-reviewer', 'cohesion-evaluator',
-  'validation-fixer', 'assessor', 'review-fixer', 'merge-conflict-resolver',
-]);
-
-const VALID_STRATEGIES_SET = new Set(['auto', 'single', 'parallel']);
-const VALID_STRICTNESS_SET = new Set(['strict', 'standard', 'lenient']);
-const VALID_AUTO_ACCEPT_SET = new Set(['suggestion', 'warning']);
-
 /**
  * Validate a ResolvedProfileConfig has valid stage names, required fields,
  * and allowed enum values. When stage registries are provided, validates
  * that all stage names exist in the registries.
+ *
+ * Uses zod schema for structural/enum validation, then applies runtime
+ * stage-name checks (registries aren't known at schema-definition time).
  */
 export function validateProfileConfig(
   config: ResolvedProfileConfig,
@@ -620,17 +538,54 @@ export function validateProfileConfig(
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  if (!config.description || typeof config.description !== 'string') {
-    errors.push('description is required and must be a non-empty string');
-  }
-  if (!Array.isArray(config.compile) || config.compile.length === 0) {
-    errors.push('compile must be a non-empty array of stage names');
-  }
-  if (!Array.isArray(config.build) || config.build.length === 0) {
-    errors.push('build must be a non-empty array of stage names');
+  // Schema-based validation for structure + enums
+  const result = resolvedProfileConfigSchema.safeParse(config);
+  if (!result.success) {
+    // Walk zod issues and produce human-readable error strings
+    // matching the existing format for backward compatibility
+    for (const issue of result.error.issues) {
+      const path = issue.path.map(String).join('.');
+      if (path === 'description') {
+        errors.push('description is required and must be a non-empty string');
+      } else if (path === 'compile') {
+        errors.push('compile must be a non-empty array of stage names');
+      } else if (path === 'build') {
+        errors.push('build must be a non-empty array of stage names');
+      } else if (path === 'review') {
+        errors.push('review config is required');
+      } else if (path === 'review.strategy') {
+        errors.push(`invalid review strategy: "${(config.review as Record<string, unknown>)?.strategy ?? ''}"`);
+      } else if (path === 'review.evaluatorStrictness') {
+        errors.push(`invalid evaluator strictness: "${(config.review as Record<string, unknown>)?.evaluatorStrictness ?? ''}"`);
+      } else if (path === 'review.maxRounds') {
+        errors.push('review.maxRounds must be a positive integer');
+      } else if (path === 'review.perspectives') {
+        errors.push('review.perspectives must be a non-empty array');
+      } else if (path === 'review.autoAcceptBelow') {
+        errors.push(`invalid autoAcceptBelow: "${(config.review as Record<string, unknown>)?.autoAcceptBelow ?? ''}"`);
+      } else {
+        errors.push(`${path}: ${issue.message}`);
+      }
+    }
   }
 
-  // Validate stage names against registries when provided
+  // Check for unknown agent roles (partialRecord allows unknown keys at runtime,
+  // so we validate manually)
+  if (config.agents) {
+    const validRoles = new Set<string>(AGENT_ROLES);
+    for (const role of Object.keys(config.agents)) {
+      if (!validRoles.has(role)) {
+        errors.push(`unknown agent role: "${role}"`);
+      }
+    }
+  }
+
+  // Check review missing entirely
+  if (!config.review && !errors.some((e) => e.includes('review'))) {
+    errors.push('review config is required');
+  }
+
+  // Runtime stage-name validation against registries
   if (compileStageNames) {
     for (const name of config.compile) {
       if (!compileStageNames.has(name)) {
@@ -646,39 +601,9 @@ export function validateProfileConfig(
     }
   }
 
-  // Validate agent roles
-  if (config.agents) {
-    for (const role of Object.keys(config.agents)) {
-      if (!VALID_AGENT_ROLES_SET.has(role)) {
-        errors.push(`unknown agent role: "${role}"`);
-      }
-    }
-  }
-
-  // Validate review config
-  if (config.review) {
-    if (!VALID_STRATEGIES_SET.has(config.review.strategy)) {
-      errors.push(`invalid review strategy: "${config.review.strategy}"`);
-    }
-    if (!VALID_STRICTNESS_SET.has(config.review.evaluatorStrictness)) {
-      errors.push(`invalid evaluator strictness: "${config.review.evaluatorStrictness}"`);
-    }
-    if (config.review.autoAcceptBelow && !VALID_AUTO_ACCEPT_SET.has(config.review.autoAcceptBelow)) {
-      errors.push(`invalid autoAcceptBelow: "${config.review.autoAcceptBelow}"`);
-    }
-    if (typeof config.review.maxRounds !== 'number' || !Number.isInteger(config.review.maxRounds) || config.review.maxRounds < 1) {
-      errors.push('review.maxRounds must be a positive integer');
-    }
-    if (!Array.isArray(config.review.perspectives) || config.review.perspectives.length === 0) {
-      errors.push('review.perspectives must be a non-empty array');
-    } else if (config.review.perspectives.some((p: unknown) => typeof p !== 'string')) {
-      errors.push('review.perspectives must contain only strings');
-    }
-  } else {
-    errors.push('review config is required');
-  }
-
-  return { valid: errors.length === 0, errors };
+  // Deduplicate errors (schema may produce multiple issues for the same field)
+  const uniqueErrors = [...new Set(errors)];
+  return { valid: uniqueErrors.length === 0, errors: uniqueErrors };
 }
 
 /**
