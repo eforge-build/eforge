@@ -544,6 +544,12 @@ export class EforgeEngine {
 
       for await (const event of orchestrator.execute(orchConfig)) {
         yield event;
+        if (event.type === 'build:failed') {
+          status = 'failed';
+          summary = event.error.startsWith('Merge failed')
+            ? `Merge failed for ${event.planId}`
+            : `Build failed for ${event.planId}`;
+        }
         if (event.type === 'validation:complete') {
           if (event.passed) {
             status = 'completed';

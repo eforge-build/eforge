@@ -20,6 +20,7 @@ import {
   removeWorktree,
   mergeWorktree,
   cleanupWorktrees,
+  type MergeResolver,
 } from './worktree.js';
 import { runParallel } from './concurrency.js';
 import type { ParallelTask } from './concurrency.js';
@@ -54,6 +55,7 @@ export interface OrchestratorOptions {
   validateCommands?: string[];
   validationFixer?: ValidationFixer;
   maxValidationRetries?: number;
+  mergeResolver?: MergeResolver;
 }
 
 /**
@@ -291,7 +293,7 @@ export class Orchestrator {
 
           try {
             const plan = planMap.get(planId)!;
-            await mergeWorktree(repoRoot, plan.branch, config.baseBranch);
+            await mergeWorktree(repoRoot, plan.branch, config.baseBranch, this.options.mergeResolver);
 
             updatePlanStatus(state, planId, 'merged');
             planState.merged = true;
@@ -309,6 +311,11 @@ export class Orchestrator {
               planId,
               error: `Merge failed: ${(err as Error).message}`,
             };
+
+            // Propagate to transitive dependents so later waves don't attempt them
+            const failureEvents = propagateFailure(state, planId, config.plans);
+            saveState(stateDir, state);
+            for (const e of failureEvents) yield e;
           }
         }
       }

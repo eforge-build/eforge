@@ -102,6 +102,7 @@ export {
   mergeWorktree,
   cleanupWorktrees,
 } from './worktree.js';
+export type { MergeResolver, MergeConflictInfo } from './worktree.js';
 export { Semaphore, AsyncEventQueue, runParallel } from './concurrency.js';
 export type { ParallelTask, RunParallelOptions } from './concurrency.js';
 

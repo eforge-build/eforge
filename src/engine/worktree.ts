@@ -65,13 +65,72 @@ export async function removeWorktree(repoRoot: string, worktreePath: string): Pr
 }
 
 /**
+ * Information about a merge conflict, provided to the MergeResolver callback.
+ */
+export interface MergeConflictInfo {
+  /** Branch being merged in */
+  branch: string;
+  /** Target branch (e.g., main) */
+  baseBranch: string;
+  /** List of files with conflicts */
+  conflictedFiles: string[];
+  /** Full diff showing conflict markers for each file */
+  conflictDiff: string;
+}
+
+/**
+ * Callback that attempts to resolve merge conflicts.
+ * Called with conflict details; should resolve files in the repo and stage them.
+ * Returns true if resolution succeeded (all conflicts resolved and staged),
+ * false if it couldn't resolve.
+ */
+export type MergeResolver = (
+  repoRoot: string,
+  conflict: MergeConflictInfo,
+) => Promise<boolean>;
+
+/**
+ * Gather conflict information from the current merge state.
+ */
+async function gatherConflictInfo(
+  repoRoot: string,
+  branch: string,
+  baseBranch: string,
+): Promise<MergeConflictInfo | null> {
+  try {
+    const { stdout: conflictOutput } = await exec(
+      'git', ['diff', '--name-only', '--diff-filter=U'],
+      { cwd: repoRoot },
+    );
+    const conflictedFiles = conflictOutput.trim().split('\n').filter(Boolean);
+
+    if (conflictedFiles.length === 0) return null;
+
+    // Get the full diff with conflict markers
+    let conflictDiff = '';
+    try {
+      const { stdout } = await exec('git', ['diff'], { cwd: repoRoot });
+      conflictDiff = stdout;
+    } catch {
+      // Non-critical
+    }
+
+    return { branch, baseBranch, conflictedFiles, conflictDiff };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Merge a branch into the base branch using --no-ff.
- * On conflict, aborts the merge to leave the repo clean, then re-throws.
+ * On conflict, invokes the optional mergeResolver callback to attempt resolution.
+ * If no resolver or resolution fails, aborts the merge and re-throws.
  */
 export async function mergeWorktree(
   repoRoot: string,
   branch: string,
   baseBranch: string,
+  mergeResolver?: MergeResolver,
 ): Promise<void> {
   await exec('git', ['checkout', baseBranch], { cwd: repoRoot });
   try {
@@ -81,6 +140,34 @@ export async function mergeWorktree(
       { cwd: repoRoot },
     );
   } catch (err) {
+    // Attempt resolution via callback if provided
+    if (mergeResolver) {
+      try {
+        const conflictInfo = await gatherConflictInfo(repoRoot, branch, baseBranch);
+        if (conflictInfo) {
+          const resolved = await mergeResolver(repoRoot, conflictInfo);
+          if (resolved) {
+            // Verify no remaining conflicts
+            try {
+              const { stdout } = await exec(
+                'git', ['diff', '--name-only', '--diff-filter=U'],
+                { cwd: repoRoot },
+              );
+              if (stdout.trim().length === 0) {
+                // All conflicts resolved — complete the merge commit
+                await exec('git', ['commit', '--no-edit'], { cwd: repoRoot });
+                return;
+              }
+            } catch {
+              // Fall through to abort
+            }
+          }
+        }
+      } catch {
+        // Resolver failed — fall through to abort
+      }
+    }
+
     try {
       await exec('git', ['merge', '--abort'], { cwd: repoRoot });
     } catch {

@@ -19,6 +19,16 @@
 
 ---
 
+## Parallel Execution Reliability
+
+**Goal**: Eliminate merge conflicts and verify requirement fulfillment in multi-plan builds.
+
+- **Edit region markers** — During expedition planning, detect shared files across modules and insert marker regions so each builder knows its edit boundaries. Prevents conflicts at the source rather than resolving them after the fact.
+- **Merge conflict resolver agent** — When conflicts do occur, an agent that reads both sides of the conflict, understands the intent from each plan, and makes an intelligent resolution (infrastructure already wired via `MergeResolver` callback).
+- **Acceptance validation agent** — Post-build agent that checks whether the implementation satisfies the original PRD requirements, not just mechanical correctness (type-check, tests). Closes the loop between what was asked for and what was built.
+
+---
+
 ## Integration & Maturity
 
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
