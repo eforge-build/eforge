@@ -29,7 +29,10 @@ function eventSummary(event: EforgeEvent): string {
   switch (event.type) {
     case 'phase:start': return `Run started: ${event.command} "${event.planSet}"`;
     case 'phase:end': return `Run ${event.result?.status}: ${event.result?.summary || ''}`;
-    case 'plan:start': return `Planning from: ${event.source}`;
+    case 'plan:start': {
+      const display = event.label ?? (event.source.length > 80 ? event.source.slice(0, 77) + '...' : event.source);
+      return `Planning from: ${display}`;
+    }
     case 'plan:scope': return `Scope: ${event.assessment} — ${event.justification}`;
     case 'plan:profile': return `Profile: ${event.profileName} — ${event.rationale}`;
     case 'plan:clarification': return `${event.questions?.length || 0} clarification question(s)`;
@@ -151,7 +154,7 @@ function getEventPlanId(event: EforgeEvent): string | undefined {
 
 export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { openPreview } = usePlanPreview();
+  const { openPreview, openContentPreview } = usePlanPreview();
   const typeInfo = classifyEvent(event.type, event);
   const isVerbose = event.type.startsWith('agent:');
   const planId = getEventPlanId(event);
@@ -202,6 +205,17 @@ export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
                 onClick={() => openPreview(planId)}
               >
                 {planId}
+              </span>
+            </>
+          )}
+          {event.type === 'plan:start' && event.source.includes('\n') && (
+            <>
+              {' '}
+              <span
+                className="text-blue cursor-pointer hover:underline text-[11px]"
+                onClick={() => openContentPreview(event.label ?? 'PRD Source', event.source)}
+              >
+                view source
               </span>
             </>
           )}

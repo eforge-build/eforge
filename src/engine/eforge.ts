@@ -272,7 +272,9 @@ export class EforgeEngine {
       const verbose = options.verbose;
       const abortController = options.abortController;
 
-      yield { type: 'plan:start', source };
+      const sourceLabel = extractPlanTitle(sourceContent)
+        ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
+      yield { type: 'plan:start', source, ...(sourceLabel && { label: sourceLabel }) };
 
       // Run assessor agent to determine scope
       const assessorSpan = tracing.createSpan('assessor', { planSet: planSetName });

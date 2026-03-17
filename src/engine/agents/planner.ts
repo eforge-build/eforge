@@ -5,7 +5,7 @@ import type { AgentBackend } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, SCOPE_ASSESSMENTS, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile, type ScopeAssessment } from '../events.js';
 import { parseClarificationBlocks, parseScopeBlock, parseProfileBlock, parseGeneratedProfileBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
-import { parsePlanFile, deriveNameFromSource } from '../plan.js';
+import { parsePlanFile, deriveNameFromSource, extractPlanTitle } from '../plan.js';
 import type { ResolvedProfileConfig } from '../config.js';
 import { validateProfileConfig, resolveGeneratedProfile } from '../config.js';
 
@@ -144,7 +144,9 @@ export async function* runPlanner(
   // Derive plan set name from options or source
   const planSetName = options.name ?? deriveNameFromSource(source);
 
-  yield { type: 'plan:start', source };
+  const sourceLabel = extractPlanTitle(source)
+    ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
+  yield { type: 'plan:start', source, ...(sourceLabel && { label: sourceLabel }) };
   yield { type: 'plan:progress', message: 'Loading planner prompt...' };
 
   // Track clarification Q&A across iterations

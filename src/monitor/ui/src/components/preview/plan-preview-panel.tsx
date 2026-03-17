@@ -12,10 +12,10 @@ interface PlanPreviewPanelProps {
 }
 
 export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
-  const { selectedPlanId, closePreview } = usePlanPreview();
-  const isOpen = selectedPlanId !== null;
+  const { selectedPlanId, contentPreview, closePreview } = usePlanPreview();
+  const isOpen = selectedPlanId !== null || contentPreview !== null;
   const { data: plans, loading, error } = useApi<PlanData[]>(
-    isOpen && sessionId ? `/api/plans/${sessionId}` : null,
+    selectedPlanId && sessionId ? `/api/plans/${sessionId}` : null,
   );
 
   // Find selected plan
@@ -91,7 +91,7 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
               </span>
             )}
             <h2 className="text-sm font-semibold text-foreground truncate">
-              {selectedPlan?.name ?? 'Plan Preview'}
+              {contentPreview?.title ?? selectedPlan?.name ?? 'Plan Preview'}
             </h2>
           </div>
           <button
@@ -105,26 +105,30 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {loading && (
+          {contentPreview && (
+            <PlanBodyHighlight content={contentPreview.content} />
+          )}
+
+          {!contentPreview && loading && (
             <div className="flex items-center gap-2 text-text-dim text-xs py-8 justify-center">
               <div className="w-4 h-4 border-2 border-text-dim border-t-transparent rounded-full animate-spin" />
               Loading plan data...
             </div>
           )}
 
-          {error && (
+          {!contentPreview && error && (
             <div className="text-red text-xs py-4 text-center">
               Failed to load plans: {error.message}
             </div>
           )}
 
-          {!loading && !error && !selectedPlan && selectedPlanId && (
+          {!contentPreview && !loading && !error && !selectedPlan && selectedPlanId && (
             <div className="text-text-dim text-xs py-4 text-center">
               Plan "{selectedPlanId}" not found.
             </div>
           )}
 
-          {!loading && !error && selectedPlan && (
+          {!contentPreview && !loading && !error && selectedPlan && (
             <>
               {metadata && <PlanMetadata {...metadata} />}
               <PlanBodyHighlight content={selectedPlan.body} />

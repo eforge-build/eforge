@@ -133,7 +133,7 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'phase:end'; runId: string; result: EforgeResult; timestamp: string }
 
   // Planning
-  | { type: 'plan:start'; source: string }
+  | { type: 'plan:start'; source: string; label?: string }
   | { type: 'plan:scope'; assessment: ScopeAssessment; justification: string }
   | { type: 'plan:profile'; profileName: string; rationale: string; config?: import('./config.js').ResolvedProfileConfig }
   | { type: 'plan:clarification'; questions: ClarificationQuestion[] }

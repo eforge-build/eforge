@@ -98,7 +98,7 @@ export function renderEvent(event: EforgeEvent): void {
 
     // Planning
     case 'plan:start':
-      startSpinner('plan', `Planning from ${chalk.cyan(event.source)}...`);
+      startSpinner('plan', `Planning from ${chalk.cyan(event.label ?? event.source)}...`);
       break;
 
     case 'plan:scope': {
