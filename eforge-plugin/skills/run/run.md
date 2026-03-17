@@ -1,63 +1,55 @@
 ---
-description: Validate source and launch eforge run (plan + build + validate, or adopt existing plans) as a background task with monitor dashboard
-argument-hint: "<source> [--adopt]"
+description: Validate source and launch eforge run (enqueue + plan + build + validate) as a background task with monitor dashboard
+argument-hint: "<source> [--queue]"
 disable-model-invocation: true
 ---
 
 # /eforge:run
 
-Launch `eforge run` to plan and build from a PRD file or description. This is a thin launcher — all orchestration, agent execution, and state management are handled by the eforge CLI.
+Launch `eforge run` to plan and build from a PRD file or description. This is a thin launcher - all orchestration, agent execution, and state management are handled by the eforge CLI.
 
 **Prerequisite**: `eforge` CLI must be installed and on PATH.
 
 ## Arguments
 
-- `source` — PRD file path, implementation plan file path, or inline description of what to build
-- `--adopt` — (optional) Explicitly adopt the source as an existing implementation plan, skipping the planner agent
+- `source` - PRD file path or inline description of what to build (required unless `--queue`)
+- `--queue` - (optional) Process all PRDs from the queue instead of a single source
 
 ## Workflow
 
-### Step 1: Validate Source and Detect Adopt Mode
+### Step 1: Validate Source
 
-Check that `$ARGUMENTS` is provided and the source is readable:
+**If `--queue` is in arguments:**
+Skip source validation. Will process the entire PRD queue.
+
+**Otherwise**, check that `$ARGUMENTS` is provided and the source is readable:
 
 - **File path**: Verify the file exists with the Read tool. Show a brief summary of what it describes.
 - **Inline description**: Note that eforge will use this directly as the source prompt.
-- **`--adopt` flag in arguments**: If present, strip it from the source path and set adopt mode.
-
-**Adopt inference** — automatically use `--adopt` when:
-1. The source path is under `~/.claude/plans/` (Claude Code's built-in `/plan` command output, not `/eforge:plan`)
-2. The source was auto-detected from a prior `/plan` session in the current conversation (see below)
-3. The user explicitly passes `--adopt` in arguments
 
 If no arguments provided:
-1. Check the current conversation for a plan file path from a prior `/plan` session (plan mode writes files to `~/.claude/plans/<name>.md` and the path appears in earlier conversation turns)
-2. If a plan file path is found in this session, read it with the Read tool, show a brief summary, and note that **adopt mode will be used** since this is an implementation plan (not a PRD)
+1. Check the current conversation for a PRD or plan file path from a prior session
+2. If found, read it with the Read tool and show a brief summary
 3. Ask the user to confirm before proceeding
-4. If no plan file is found in conversation context, suggest running `/eforge:plan` first to create a PRD
+4. If no file is found in conversation context, suggest running `/eforge:enqueue` first to create a PRD
 - **Stop here** if the user declines or no source is identified
-
-When adopting, the confirmation message should say:
-
-> Found implementation plan from your planning session. Will adopt it into eforge format and run build + review + validate (planner agent skipped).
 
 ### Step 2: Launch
 
 Run eforge as a background task:
 
 ```bash
-# Normal mode (PRD → plan → build → validate)
+# Normal mode (enqueue + plan + build + validate)
 eforge run $SOURCE --auto --verbose
 
-# Adopt mode (plan → build → validate, planner skipped)
-eforge run $SOURCE --adopt --auto --verbose
+# Queue mode (process all PRDs from the queue)
+eforge run --queue --auto --verbose
 ```
 
 Use `run_in_background: true` on the Bash tool call so the user gets notified when the build completes without blocking the conversation.
 
 - `--auto` bypasses approval gates (the user approved by invoking this skill)
 - `--verbose` streams detailed output for the completion notification
-- `--adopt` wraps the source into eforge plan format without running the planner agent
 
 ### Step 3: Monitor
 
@@ -70,27 +62,24 @@ Tell the user:
 > **Monitor**: http://localhost:4567
 >
 > The run executes the full lifecycle:
-> 1. **Planning** — generates plan files from your source
-> 2. **Building** — implements each plan in parallel on feature branches
-> 3. **Merging** — merges completed plans back to the base branch
-> 4. **Validation** — post-merge review/fix loop (type-check, tests, lint)
+> 1. **Enqueue** - formats and normalizes your source into a structured PRD
+> 2. **Profile selection** - analyzes scope to select a workflow profile
+> 3. **Planning** - generates plan files from your source
+> 4. **Plan review** - blind review of the plan artifacts
+> 5. **Building** - implements each plan in parallel on feature branches
+> 6. **Code review** - blind code review of the implementation
+> 7. **Merging** - merges completed plans back to the base branch
+> 8. **Validation** - post-merge review/fix loop (type-check, tests, lint)
 >
 > Use `/eforge:status` for a quick inline status check.
 
-**For adopt mode:**
+**For queue mode:**
 
-> Build launched. You'll be notified when it completes.
+> Queue processing launched. You'll be notified when it completes.
 >
 > **Monitor**: http://localhost:4567
 >
-> Your implementation plan was adopted into eforge format. The run executes:
-> 1. **Profile selection** — analyzes the plan against the codebase to select a workflow profile (errand/excursion/expedition, or custom profiles from eforge.yaml)
-> 2. **Adoption** — wraps your plan in eforge format (errands wrap as-is; larger profiles delegate to the planner for proper decomposition)
-> 3. **Plan review** — blind review of the plan artifacts
-> 4. **Building** — implements each plan on feature branches (parallel for multi-plan scopes)
-> 5. **Code review** — blind code review of the implementation
-> 6. **Merging** — merges back to the base branch
-> 7. **Validation** — post-merge validation (type-check, tests, lint)
+> Each queued PRD goes through the full lifecycle: enqueue formatting, planning, building, review, merging, and validation.
 >
 > Use `/eforge:status` for a quick inline status check.
 
@@ -99,7 +88,6 @@ Tell the user:
 | Error | Action |
 |-------|--------|
 | `eforge` not found | Tell user to install eforge CLI and ensure it's on PATH |
-| Source file not found | Check path, suggest `/eforge:plan` to create one |
-| No arguments provided | Check conversation for plan file from `/plan` session; if none found, suggest `/eforge:plan` |
-| Adopt fails (invalid plan format) | Show error, suggest removing `--adopt` to use normal planning mode |
+| Source file not found | Check path, suggest `/eforge:enqueue` to create one |
+| No arguments provided | Check conversation for plan file; if none found, suggest `/eforge:enqueue` |
 | Build fails on launch | Show error, check prerequisites |

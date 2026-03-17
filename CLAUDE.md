@@ -31,7 +31,7 @@ node --env-file=.env dist/cli.js run some-prd.md --verbose
 
 **Design principle**: Engine emits, consumers render. The engine never writes to stdout — all communication flows through `EforgeEvent`s.
 
-**Agent loop**: profile-selection → planner → plan-reviewer → plan-evaluator → builder → reviewer → evaluator, each consuming the `AgentBackend` interface. Profile selection is a pre-pipeline step where the planner picks the best workflow profile for the work. Planning and building both use a shared `runReviewCycle()` for the review→evaluate pattern.
+**Agent loop**: formatter → profile-selection → planner → plan-reviewer → plan-evaluator → builder → reviewer → evaluator, each consuming the `AgentBackend` interface. The formatter normalizes source input into a structured PRD. Profile selection is a pre-pipeline step where the planner picks the best workflow profile for the work. Planning and building both use a shared `runReviewCycle()` for the review→evaluate pattern.
 
 **Workflow profiles**: Pipeline behavior is config-driven through profiles. A profile declares which compile/build stages run and with what agent parameters. Built-in profiles (`errand`, `excursion`, `expedition`) encode the default behavior. Custom profiles can be defined in `eforge.yaml` or via `--profiles` files. Profile config lives in `DEFAULT_CONFIG.profiles` and participates in the standard merge chain.
 
@@ -43,6 +43,7 @@ node --env-file=.env dist/cli.js run some-prd.md --verbose
 
 **Plugin propagation**: The engine auto-discovers Claude Code plugins from `~/.claude/plugins/installed_plugins.json`. Both user-scoped (global) and project-scoped plugins matching the cwd are loaded. Plugins provide skills, hooks, and MCP servers. Like MCP servers, plugins are backend-specific: `ClaudeSDKBackend` accepts `plugins` and `settingSources` in its constructor. The `AgentBackend` interface has no plugin concept. Configure via `eforge.yaml` `plugins` section or `--no-plugins` CLI flag. The eforge Claude Code plugin itself lives in-repo at `eforge-plugin/` — this repo is also a Claude Code marketplace (see `.claude-plugin/marketplace.json`).
 
+- **Formatter** — one-shot query. Normalizes source input (PRD, prompt, rough notes) into a well-structured PRD with frontmatter for the queue.
 - **Planner** — one-shot query. Explores codebase, assesses scope, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities. For expeditions, also generates architecture + module list.
 - **Plan Reviewer** — one-shot query. Blind review of plan files against PRD for cohesion, completeness, correctness. Leaves fixes unstaged.
 - **Plan Evaluator** — one-shot query. Evaluates plan reviewer's unstaged fixes against planner's intent. Accepts/rejects.
@@ -66,7 +67,7 @@ node --env-file=.env dist/cli.js run some-prd.md --verbose
 ```
 .claude-plugin/
   marketplace.json                  # Claude Code marketplace manifest
-eforge-plugin/                      # Claude Code plugin (skills for plan, run, status, roadmap)
+eforge-plugin/                      # Claude Code plugin (skills for enqueue, run, status, roadmap)
   .claude-plugin/plugin.json
   skills/
 .mcp.json                           # MCP server config (gitignored, auto-loaded by engine)
@@ -199,11 +200,13 @@ eforge loads config from two levels, merged together:
 ## CLI commands
 
 ```
-eforge run <source>       # Compile + build + validate in one step
+eforge enqueue <source>   # Normalize input and add to PRD queue
+eforge run <source>       # Enqueue + compile + build + validate in one step
+eforge run --queue        # Process all PRDs from the queue
 eforge status             # Check running builds
 ```
 
-Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--adopt` (wrap existing plan), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading), `--profiles <path>` (add custom workflow profiles from a YAML file)
+Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--queue` (process all PRDs from the queue), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading), `--profiles <path>` (add custom workflow profiles from a YAML file)
 
 ## Roadmap
 
