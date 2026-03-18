@@ -138,13 +138,13 @@ eforge loads config from two levels, merged together:
 
 | Env var | Description |
 |---------|-------------|
-| `EFORGE_SESSION_ID` | Session ID - stable across compile+build in `run` mode. Preferred identifier for session tracking. |
+| `EFORGE_SESSION_ID` | Session ID - stable across compile+build per PRD. In queue mode, each PRD gets its own session ID. Preferred identifier for session tracking. |
 | `EFORGE_RUN_ID` | Per-phase run ID (UUID). Changes between compile and build phases. |
 | `EFORGE_EVENT_TYPE` | Event type string (e.g., `session:start`, `phase:start`, `plan:complete`) |
 | `EFORGE_CWD` | Working directory for the eforge run |
 | `EFORGE_GIT_REMOTE` | Git origin remote URL (empty string if not a git repo or no origin) |
 
-`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events. For `eforge run`, `EFORGE_SESSION_ID` is shared across both phases while `EFORGE_RUN_ID` is unique per phase.
+`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events. For `eforge run`, `EFORGE_SESSION_ID` is shared across both phases for each PRD while `EFORGE_RUN_ID` is unique per phase. In queue mode, each PRD gets a unique session ID - queue-level events carry no `EFORGE_SESSION_ID`.
 
 ## Conventions
 

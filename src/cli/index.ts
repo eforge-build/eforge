@@ -221,8 +221,6 @@ export function createProgram(abortController?: AbortController): Command {
           });
 
           await withMonitor(options.monitor === false, async (monitor) => {
-            const sessionId = randomUUID();
-
             const queueOpts = {
               name: options.name,
               all: true,
@@ -237,7 +235,7 @@ export function createProgram(abortController?: AbortController): Command {
               : engine.runQueue(queueOpts);
 
             const result = await consumeEvents(
-              wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: true }),
+              wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks, { emitSessionStart: false, emitSessionEnd: false }),
               { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
             );
 
@@ -491,8 +489,6 @@ export function createProgram(abortController?: AbortController): Command {
         });
 
         await withMonitor(options.monitor === false, async (monitor) => {
-          const sessionId = randomUUID();
-
           const queueOpts = {
             name,
             all: options.all,
@@ -507,7 +503,7 @@ export function createProgram(abortController?: AbortController): Command {
             : engine.runQueue(queueOpts);
 
           const result = await consumeEvents(
-            wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: true }),
+            wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks, { emitSessionStart: false, emitSessionEnd: false }),
             { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
           );
 

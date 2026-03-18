@@ -608,6 +608,14 @@ export class EforgeEngine {
       // Update status to running
       await updatePrdStatus(prd.filePath, 'running');
 
+      // Per-PRD session: each PRD gets its own sessionId for monitor grouping
+      const prdSessionId = randomUUID();
+      yield {
+        type: 'session:start',
+        sessionId: prdSessionId,
+        timestamp: new Date().toISOString(),
+      } as EforgeEvent;
+
       // Compile (plan) the PRD
       let compileFailed = false;
       const planSetName = options.name ?? prd.id;
@@ -619,7 +627,7 @@ export class EforgeEngine {
         cwd,
         abortController,
       })) {
-        yield event;
+        yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
           compileFailed = true;
         }
@@ -627,6 +635,12 @@ export class EforgeEngine {
 
       if (compileFailed) {
         await updatePrdStatus(prd.filePath, 'failed');
+        yield {
+          type: 'session:end',
+          sessionId: prdSessionId,
+          result: { status: 'failed' as const, summary: 'Compile failed' },
+          timestamp: new Date().toISOString(),
+        } as EforgeEvent;
         yield { type: 'queue:prd:complete', prdId: prd.id, status: 'failed' };
         processed++;
         continue;
@@ -641,7 +655,7 @@ export class EforgeEngine {
         abortController,
         prdFilePath: prd.filePath,
       })) {
-        yield event;
+        yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
           buildFailed = true;
         }
@@ -653,6 +667,12 @@ export class EforgeEngine {
         await updatePrdStatus(prd.filePath, finalStatus);
       }
 
+      yield {
+        type: 'session:end',
+        sessionId: prdSessionId,
+        result: { status: finalStatus, summary: finalStatus === 'completed' ? 'Build complete' : 'Build failed' },
+        timestamp: new Date().toISOString(),
+      } as EforgeEvent;
       yield { type: 'queue:prd:complete', prdId: prd.id, status: finalStatus };
       processed++;
     }

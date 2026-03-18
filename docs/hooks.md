@@ -42,7 +42,7 @@ Every hook receives these environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `EFORGE_SESSION_ID` | Session identifier - stable across compile+build when using `eforge run`. Use this for session tracking. |
+| `EFORGE_SESSION_ID` | Session identifier - stable across compile+build per PRD. In queue mode, each PRD gets its own session ID. Use this for session tracking. |
 | `EFORGE_RUN_ID` | Per-phase run identifier. Changes between compile and build phases. |
 | `EFORGE_EVENT_TYPE` | Event type string (e.g., `build:start`, `agent:tool_use`) |
 | `EFORGE_CWD` | Working directory for the eforge run |
@@ -50,7 +50,7 @@ Every hook receives these environment variables:
 
 `EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup. `EFORGE_EVENT_TYPE` is set per event. `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events.
 
-For `eforge run`, `EFORGE_SESSION_ID` stays the same across the compile and build phases while `EFORGE_RUN_ID` changes.
+For `eforge run`, `EFORGE_SESSION_ID` stays the same across the compile and build phases for each PRD while `EFORGE_RUN_ID` changes. In queue mode (`--queue`), each PRD gets a unique session ID - queue-level events (`queue:start`, `queue:complete`, etc.) carry no `EFORGE_SESSION_ID`.
 
 ## Event JSON on stdin
 
@@ -76,7 +76,7 @@ When both are present, hook arrays are **concatenated** - global hooks fire firs
 
 See `src/engine/events.ts` for the full `EforgeEvent` type definition. The main event categories:
 
-- `session:start` / `session:end` - Session lifecycle (one per invocation)
+- `session:start` / `session:end` - Session lifecycle (one per invocation, or one per PRD in queue mode)
 - `phase:start` / `phase:end` - Phase lifecycle (compile, build, adopt)
 - `plan:*` - Planning phase events
 - `queue:*` - Queue processing events (`queue:complete`, `queue:watch:waiting`, `queue:watch:poll`, `queue:watch:cycle`)
