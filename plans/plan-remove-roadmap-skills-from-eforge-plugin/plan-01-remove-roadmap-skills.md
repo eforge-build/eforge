@@ -30,6 +30,7 @@ Delete 4 roadmap skill directories and 1 spec file, then update plugin.json (com
 - Update `eforge-plugin/.claude-plugin/plugin.json`: remove 3 roadmap commands, update description, bump version to `1.6.0`
 - Update `CLAUDE.md` line 86: remove "roadmap" from the eforge-plugin comment
 - Update `docs/roadmap.md` line 34: remove the "Remove roadmap skills" bullet
+- Update `README.md`: remove 3 roadmap skill rows from the commands table
 
 ### Out of Scope
 - Moving roadmap skills to a separate plugin (not requested)
@@ -47,6 +48,7 @@ Delete 4 roadmap skill directories and 1 spec file, then update plugin.json (com
 - `eforge-plugin/.claude-plugin/plugin.json` — Remove 3 roadmap commands from `commands` array, update `description` to remove "roadmap management" language, bump `version` to `1.6.0`
 - `CLAUDE.md` — Change eforge-plugin comment from `(skills for enqueue, run, status, config, roadmap)` to `(skills for enqueue, run, status, config)`
 - `docs/roadmap.md` — Remove the "Remove roadmap skills" bullet (line 34)
+- `README.md` — Remove the 3 roadmap skill rows from the commands table (lines 102-104: `/eforge:roadmap`, `/eforge:roadmap-init`, `/eforge:roadmap-prune`)
 
 ## Verification
 
@@ -59,5 +61,6 @@ Delete 4 roadmap skill directories and 1 spec file, then update plugin.json (com
 - [ ] `grep -r "roadmap-policy\|roadmap-init\|roadmap-prune\|roadmap-skills-spec" eforge-plugin/` returns no results
 - [ ] `CLAUDE.md` line describing `eforge-plugin/` does not contain "roadmap"
 - [ ] `docs/roadmap.md` does not contain "Remove roadmap skills"
+- [ ] `README.md` does not contain `/eforge:roadmap-init`, `/eforge:roadmap-prune`, or `/eforge:roadmap` command table rows
 - [ ] Directories `eforge-plugin/skills/roadmap-policy/`, `eforge-plugin/skills/roadmap/`, `eforge-plugin/skills/roadmap-init/`, `eforge-plugin/skills/roadmap-prune/` do not exist
 - [ ] File `eforge-plugin/roadmap-skills-spec.md` does not exist
