@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { usePlanPreview } from '@/components/preview';
 import { formatDuration } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -76,11 +76,20 @@ const STAGE_STATUS_STYLES: Record<StageStatus, string> = {
 
 // --- Stage overview sub-components ---
 
-function StagePill({ stage, status = 'pending' }: { stage: string; status?: StageStatus }) {
+function StagePill({ stage, status = 'pending', hoveredStage, onStageHover }: {
+  stage: string;
+  status?: StageStatus;
+  hoveredStage: string | null;
+  onStageHover: (stage: string | null) => void;
+}) {
+  const isHighlighted = hoveredStage === stage;
+  const isDimmed = hoveredStage !== null && hoveredStage !== stage;
   return (
     <span
-      className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${STAGE_STATUS_STYLES[status]}`}
+      className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap transition-all duration-150 ${STAGE_STATUS_STYLES[status]}${isHighlighted ? ' ring-1 ring-foreground/40 brightness-125' : ''}${isDimmed ? ' opacity-40' : ''}`}
       style={status === 'active' ? { animation: 'pulse-opacity 2s ease-in-out infinite' } : undefined}
+      onMouseEnter={() => onStageHover(stage)}
+      onMouseLeave={() => onStageHover(null)}
     >
       {stage}
     </span>
@@ -105,18 +114,20 @@ function getStageStatus(stage: string, activeStages: Set<string>, completedStage
   return 'pending';
 }
 
-function StageOverview({ compile, build, activeStages, completedStages }: {
+function StageOverview({ compile, build, activeStages, completedStages, hoveredStage, onStageHover }: {
   compile: string[];
   build: BuildStageSpec[];
   activeStages: Set<string>;
   completedStages: Set<string>;
+  hoveredStage: string | null;
+  onStageHover: (stage: string | null) => void;
 }) {
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {compile.map((stage, i) => (
         <div key={`c-${i}`} className="flex items-center gap-1">
           {i > 0 && <Chevron />}
-          <StagePill stage={stage} status={getStageStatus(stage, activeStages, completedStages)} />
+          <StagePill stage={stage} status={getStageStatus(stage, activeStages, completedStages)} hoveredStage={hoveredStage} onStageHover={onStageHover} />
         </div>
       ))}
       <PhaseSeparator />
@@ -126,11 +137,11 @@ function StageOverview({ compile, build, activeStages, completedStages }: {
           {Array.isArray(stage) ? (
             <div className="flex flex-col gap-0.5 border-l-2 border-text-dim/20 pl-1.5">
               {stage.map((s) => (
-                <StagePill key={s} stage={s} status={getStageStatus(s, activeStages, completedStages)} />
+                <StagePill key={s} stage={s} status={getStageStatus(s, activeStages, completedStages)} hoveredStage={hoveredStage} onStageHover={onStageHover} />
               ))}
             </div>
           ) : (
-            <StagePill stage={stage} status={getStageStatus(stage, activeStages, completedStages)} />
+            <StagePill stage={stage} status={getStageStatus(stage, activeStages, completedStages)} hoveredStage={hoveredStage} onStageHover={onStageHover} />
           )}
         </div>
       ))}
@@ -207,10 +218,12 @@ function ReviewConfig({ review }: { review: ProfileInfo['config']['review'] }) {
   );
 }
 
-function ProfileHeader({ profileInfo, activeStages, completedStages }: {
+function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStage, onStageHover }: {
   profileInfo: ProfileInfo;
   activeStages: Set<string>;
   completedStages: Set<string>;
+  hoveredStage: string | null;
+  onStageHover: (stage: string | null) => void;
 }) {
   const tier = getTierColor(profileInfo.profileName);
   return (
@@ -228,7 +241,7 @@ function ProfileHeader({ profileInfo, activeStages, completedStages }: {
         </Tooltip>
         <span className="text-[11px] text-text-dim">{profileInfo.config.description}</span>
       </div>
-      <StageOverview compile={profileInfo.config.compile} build={profileInfo.config.build} activeStages={activeStages} completedStages={completedStages} />
+      <StageOverview compile={profileInfo.config.compile} build={profileInfo.config.build} activeStages={activeStages} completedStages={completedStages} hoveredStage={hoveredStage} onStageHover={onStageHover} />
       <ReviewConfig review={profileInfo.config.review} />
     </div>
   );
@@ -246,6 +259,7 @@ interface ThreadPipelineProps {
 }
 
 export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, profileInfo }: ThreadPipelineProps) {
+  const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const entries = Object.entries(planStatuses);
 
   // Compute the time span across all threads
@@ -323,7 +337,7 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
       <div className="bg-card border border-border rounded-lg px-4 py-3 shadow-sm shadow-black/20">
         {/* Header: profile badge + description, or fallback "Pipeline" label */}
         {profileInfo ? (
-          <ProfileHeader profileInfo={profileInfo} activeStages={activeStages} completedStages={completedStages} />
+          <ProfileHeader profileInfo={profileInfo} activeStages={activeStages} completedStages={completedStages} hoveredStage={hoveredStage} onStageHover={setHoveredStage} />
         ) : (
           <h3 className="text-[11px] uppercase tracking-wider text-text-dim mb-2 flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-blue" />
@@ -345,6 +359,8 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   totalSpan={totalSpan}
                   endTime={endTime}
                   disablePreview
+                  hoveredStage={hoveredStage}
+                  onStageHover={setHoveredStage}
                 />
               )}
               {entries.map(([planId]) => (
@@ -356,6 +372,8 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   totalSpan={totalSpan}
                   endTime={endTime}
                   issues={reviewIssues?.[planId]}
+                  hoveredStage={hoveredStage}
+                  onStageHover={setHoveredStage}
                 />
               ))}
             </div>
@@ -374,6 +392,8 @@ interface PlanRowProps {
   endTime: number | null;
   issues?: ReviewIssue[];
   disablePreview?: boolean;
+  hoveredStage: string | null;
+  onStageHover: (stage: string | null) => void;
 }
 
 function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -397,7 +417,7 @@ function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
   );
 }
 
-function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview }: PlanRowProps) {
+function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover }: PlanRowProps) {
   const { openPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -434,18 +454,23 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
               : isRunning
                 ? 'running...'
                 : formatDuration(threadEnd - threadStart);
+            const stripStage = AGENT_TO_STAGE[thread.agent];
+            const isStripHighlighted = hoveredStage !== null && hoveredStage === stripStage;
+            const isStripDimmed = hoveredStage !== null && hoveredStage !== stripStage;
 
             return (
               <div key={thread.agentId} className="relative h-4">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div
-                      className={`absolute inset-y-0 rounded-sm border ${color.bg} ${color.border} flex items-center overflow-hidden cursor-default`}
+                      className={`absolute inset-y-0 rounded-sm border transition-all duration-150 ${color.bg} ${color.border} flex items-center overflow-hidden cursor-default${isStripHighlighted ? ' brightness-150 ring-1 ring-foreground/30' : ''}${isStripDimmed ? ' opacity-30' : ''}`}
                       style={{
                         left: `${leftPercent}%`,
                         width: `max(2px, ${widthPercent}%)`,
                         animation: isRunning ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
                       }}
+                      onMouseEnter={() => onStageHover(stripStage ?? null)}
+                      onMouseLeave={() => onStageHover(null)}
                     >
                       <span className="text-[9px] truncate px-1 leading-4 text-foreground/70">
                         {thread.agent}
