@@ -1,7 +1,7 @@
 ---
 title: Plan: Add Watch Mode to `eforge run --queue`
 created: 2026-03-18
-status: pending
+status: running
 ---
 
 # Add Watch Mode to `eforge run --queue`

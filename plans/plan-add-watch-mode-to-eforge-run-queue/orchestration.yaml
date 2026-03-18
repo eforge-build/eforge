@@ -1,0 +1,33 @@
+name: plan-add-watch-mode-to-eforge-run-queue
+description: Add --watch flag to eforge run --queue for continuous polling of new PRDs
+created: 2026-03-18
+compiled: 2026-03-18
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-watch-mode
+    name: Add Watch Mode to Queue Processing
+    depends_on: []
+    branch: plan-add-watch-mode-to-eforge-run-queue/watch-mode
+profile:
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - planner
+    - plan-review-cycle
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
