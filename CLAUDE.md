@@ -31,11 +31,20 @@ node --env-file=.env dist/cli.js run some-prd.md --verbose
 
 **Design principle**: Engine emits, consumers render. The engine never writes to stdout — all communication flows through `EforgeEvent`s.
 
-**Agent loop**: formatter → profile-selection → planner → plan-reviewer → plan-evaluator → builder → reviewer → evaluator, each consuming the `AgentBackend` interface. The formatter normalizes source input into a structured PRD. Profile selection is a pre-pipeline step where the planner picks the best workflow profile for the work. Planning and building both use a shared `runReviewCycle()` for the review→evaluate pattern.
+**Agent pipeline**: The pipeline is stage-driven, not a fixed linear sequence. Compile and build stages are declared per-profile - each stage is an async generator registered in a stage registry. The formatter normalizes source input into a structured PRD as a pre-pipeline step. Profile selection (where the planner picks the best workflow profile) is also pre-pipeline. Planning and building both use review cycles composed from stages.
 
 **Workflow profiles**: Pipeline behavior is config-driven through profiles. A profile declares which compile/build stages run and with what agent parameters. Built-in profiles (`errand`, `excursion`, `expedition`) encode the default behavior. Custom profiles can be defined in `eforge.yaml` or via `--profiles` files. Profile config lives in `DEFAULT_CONFIG.profiles` and participates in the standard merge chain.
 
 **Pipeline stages**: Compile and build pipelines are composed of named stages registered in a stage registry (`src/engine/pipeline.ts`). Each stage is an async generator that accepts a `PipelineContext` and yields `EforgeEvent`s. The engine iterates the stage list from the resolved profile.
+
+Compile stages: `planner`, `plan-review-cycle`, `module-planning`, `cohesion-review-cycle`, `compile-expedition`
+
+Build stages: `implement`, `review`, `review-fix`, `evaluate`, `review-cycle`, `validate`, `doc-update`
+
+**Built-in profiles** (defined in `BUILTIN_PROFILES` in `src/engine/config.ts`):
+- **errand** — Small, self-contained changes. Compile: `[planner, plan-review-cycle]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
+- **excursion** — Multi-file feature work. Compile: `[planner, plan-review-cycle]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
+- **expedition** — Large cross-cutting work. Compile: `[planner, module-planning, cohesion-review-cycle, compile-expedition]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
 
 **Backend abstraction**: Agent runners never import the AI SDK directly. All LLM interaction goes through the `AgentBackend` interface (`src/engine/backend.ts`). The sole SDK adapter lives in `src/engine/backends/claude-sdk.ts`. New agents must accept an `AgentBackend` via their options — do not import `@anthropic-ai/claude-agent-sdk` outside of `src/engine/backends/`. The backend emits `agent:start`/`agent:stop` lifecycle events (with a UUID `agentId`) around every agent invocation — agent runners must pass these through via `isAlwaysYieldedAgentEvent()` from `events.ts`.
 
@@ -43,13 +52,21 @@ node --env-file=.env dist/cli.js run some-prd.md --verbose
 
 **Plugin propagation**: The engine auto-discovers Claude Code plugins from `~/.claude/plugins/installed_plugins.json`. Both user-scoped (global) and project-scoped plugins matching the cwd are loaded. Plugins provide skills, hooks, and MCP servers. Like MCP servers, plugins are backend-specific: `ClaudeSDKBackend` accepts `plugins` and `settingSources` in its constructor. The `AgentBackend` interface has no plugin concept. Configure via `eforge.yaml` `plugins` section or `--no-plugins` CLI flag. The eforge Claude Code plugin itself lives in-repo at `eforge-plugin/` — this repo is also a Claude Code marketplace (see `.claude-plugin/marketplace.json`).
 
+- **Assessor** — one-shot query. Evaluates PRD scope and complexity to recommend a workflow profile.
 - **Formatter** — one-shot query. Normalizes source input (PRD, prompt, rough notes) into a well-structured PRD with frontmatter for the queue.
 - **Planner** — one-shot query. Explores codebase, assesses scope, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities. For expeditions, also generates architecture + module list.
 - **Plan Reviewer** — one-shot query. Blind review of plan files against PRD for cohesion, completeness, correctness. Leaves fixes unstaged.
 - **Plan Evaluator** — one-shot query. Evaluates plan reviewer's unstaged fixes against planner's intent. Accepts/rejects.
 - **Module Planner** — one-shot query (expedition mode only). Writes detailed plan for a single module using architecture context.
+- **Cohesion Reviewer** — one-shot query (expedition mode only). Reviews cross-module plan cohesion for consistency and integration gaps.
+- **Cohesion Evaluator** — one-shot query (expedition mode only). Evaluates cohesion reviewer's fixes against module planner intent.
+- **Staleness Assessor** — one-shot query. Checks whether existing plans need regeneration based on codebase changes.
 - **Builder** — multi-turn agent. Turn 1: implement plan. Turn 2: evaluate reviewer's unstaged fixes (accept/reject/review).
 - **Reviewer** — one-shot query. Blind code review (no builder context), leaves fixes unstaged.
+- **Parallel Reviewer** — one-shot query. Multi-perspective code review that runs review perspectives in parallel.
+- **Review Fixer** — one-shot coding agent. Applies reviewer-suggested fixes as unstaged changes for evaluator judgment.
+- **Doc Updater** — one-shot coding agent. Updates documentation to reflect implementation changes, runs in parallel with the builder.
+- **Merge Conflict Resolver** — one-shot coding agent. Resolves git merge conflicts by understanding intent from each plan.
 - **Validation Fixer** — one-shot coding agent. Receives post-merge validation failures and makes minimal fixes.
 
 **Engine** (`src/engine/`): Pure library, no stdout. Agent implementations in `src/engine/agents/`, prompts in `src/engine/prompts/` (self-contained `.md` files, no runtime plugin dependencies).
@@ -65,76 +82,24 @@ node --env-file=.env dist/cli.js run some-prd.md --verbose
 ## Project structure
 
 ```
-.claude-plugin/
-  marketplace.json                  # Claude Code marketplace manifest
+.claude-plugin/marketplace.json     # Claude Code marketplace manifest
 eforge-plugin/                      # Claude Code plugin (skills for enqueue, run, status, config, roadmap)
-  .claude-plugin/plugin.json
-  skills/
 .mcp.json                           # MCP server config (gitignored, auto-loaded by engine)
 eforge.yaml                         # Optional engine config (langfuse, parallelism, etc.)
 src/
-  engine/                     # Library (no stdout, events only)
+  engine/                     # Library core (no stdout, events only)
     eforge.ts                 # EforgeEngine: compile(), build(), status()
     events.ts                 # EforgeEvent type definitions
-    index.ts                  # Barrel re-exports for engine public API
     backend.ts                # AgentBackend interface (provider abstraction)
-    pipeline.ts               # Pipeline context, stage registry, compile/build stage implementations
-    backends/
-      claude-sdk.ts           # Claude Agent SDK adapter (sole SDK import point)
-    agents/
-      planner.ts              # PRD → plan files (one-shot query)
-      module-planner.ts       # Expedition module → detailed plan (one-shot query)
-      builder.ts              # Plan → implementation (multi-turn)
-      reviewer.ts             # Blind code review (one-shot query)
-      plan-reviewer.ts        # Blind plan review (one-shot query)
-      plan-evaluator.ts       # Plan fix evaluation (one-shot query)
-      validation-fixer.ts     # Post-merge validation fix (one-shot coding agent)
-      common.ts               # Provider-agnostic XML parsers for agent output
-    plan.ts                   # Plan file parsing (YAML frontmatter)
-    state.ts                  # .eforge/state.json read/write
-    orchestrator.ts           # Dependency graph, wave execution
-    concurrency.ts            # Semaphore + AsyncEventQueue for parallel plans
-    worktree.ts               # Git worktree lifecycle
-    compiler.ts               # Expedition compiler (modules → plan files + orchestration.yaml)
-    session.ts                # Session ID middleware (withSessionId)
-    hooks.ts                  # Event hook middleware (withHooks, compilePattern, matchesPattern)
-    tracing.ts                # Langfuse tracing (noop when disabled)
-    prompts.ts                # Load/template .md prompt files
-    prompts/                  # Agent prompt files
-      planner.md
-      module-planner.md
-      builder.md
-      reviewer.md
-      evaluator.md
-      plan-reviewer.md
-      plan-evaluator.md
-      validation-fixer.md
-    config.ts                 # eforge.yaml + global config loading, merging & validation (exports eforgeConfigSchema, validateConfigFile)
-
-  monitor/                    # Web monitor (event persistence + dashboard)
-    db.ts                     # SQLite: open, schema, CRUD (better-sqlite3)
-    recorder.ts               # withRecording() async generator middleware
-    server.ts                 # node:http server, SSE endpoint
-    index.ts                  # Barrel + createMonitor() convenience
-    ui/
-      index.html              # Single-page monitor app (inline CSS + JS)
-
-  cli/                        # CLI consumer (thin)
-    index.ts                  # Commander setup, wires engine → display
-    display.ts                # EforgeEvent → stdout rendering
-    interactive.ts            # Clarification prompts, approval gates
-
+    pipeline.ts               # Stage registry, compile/build stage implementations
+    config.ts                 # Config loading, merging & validation
+    agents/                   # Agent implementations (16 agents — see agent list above)
+    backends/                 # SDK adapters (sole SDK import point)
+    prompts/                  # Agent prompt .md files (self-contained, no runtime plugin deps)
+  monitor/                    # Web monitor — SQLite event persistence + SSE dashboard
+  cli/                        # Thin CLI consumer — Commander setup, event rendering, interactive prompts
   cli.ts                      # Entry point (shebang, imports cli/index)
-
-eval/                           # End-to-end evaluation harness
-  scenarios.yaml                # Manifest: fixture + PRD + validation per scenario
-  run.sh                        # Main runner (bash)
-  lib/
-    run-scenario.sh             # Single-scenario runner (sourced by run.sh)
-    build-result.mjs            # Parse eforge output → result.json
-  fixtures/                     # Embedded test projects (no .git)
-    todo-api/                   # Express + TypeScript API with 2 PRDs
-  results/                      # Gitignored — timestamped run output
+eval/                           # End-to-end evaluation harness (scenarios, fixtures, runner)
 ```
 
 ## Testing
@@ -162,7 +127,7 @@ eforge loads config from two levels, merged together:
 **Priority chain** (lowest → highest): defaults → global config → project config → env vars → CLI overrides
 
 **Merge strategy**:
-- Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`): shallow merge per-field — project overrides global, global fields survive if project doesn't define them
+- Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`): shallow merge per-field — project overrides global, global fields survive if project doesn't define them. `prdQueue` has `dir` (queue directory path) and `autoRevise` (boolean) fields.
 - `hooks` array: **concatenate** (global hooks fire first, then project hooks)
 - Arrays inside objects (`postMergeCommands`, `plugins.include/exclude/paths`, `settingSources`): project replaces global
 
@@ -204,11 +169,14 @@ eforge enqueue <source>   # Normalize input and add to PRD queue
 eforge run <source>       # Enqueue + compile + build + validate in one step
 eforge run --queue        # Process all PRDs from the queue
 eforge status             # Check running builds
+eforge queue list         # Show PRDs in the queue
+eforge queue run [name]   # Process PRDs from the queue (optionally by name)
+eforge monitor            # Start or connect to the monitor dashboard
 eforge config validate    # Validate eforge.yaml (schema + profile stage names)
 eforge config show        # Print resolved config (all layers merged) as YAML
 ```
 
-Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--queue` (process all PRDs from the queue), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading), `--profiles <path>` (add custom workflow profiles from a YAML file)
+Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--queue` (process all PRDs from the queue), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading), `--profiles <path>` (add custom workflow profiles from a YAML file), `--generate-profile` (let the planner generate a custom workflow profile)
 
 ## Roadmap
 
@@ -224,5 +192,3 @@ Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run
 ## Key references
 
 - Roadmap: `docs/roadmap.md`
-- Architecture: `plans/forge-v1/architecture.md`
-- Expedition plan: `plans/forge-v1/index.yaml`

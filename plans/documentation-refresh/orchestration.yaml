@@ -1,0 +1,16 @@
+name: documentation-refresh
+description: Bring README.md, CLAUDE.md, and docs/roadmap.md into alignment with the current codebase - accurate agent inventory, CLI commands, pipeline stages, config fields, and roadmap reflecting only unshipped work.
+created: 2026-03-17
+compiled: 2026-03-17
+mode: errand
+base_branch: main
+
+validate:
+  - pnpm type-check
+  - pnpm test
+
+plans:
+  - id: plan-01-docs-refresh
+    name: Documentation Refresh
+    depends_on: []
+    branch: documentation-refresh/docs-refresh

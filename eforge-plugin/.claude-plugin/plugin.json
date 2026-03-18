@@ -1,7 +1,7 @@
 {
   "name": "eforge",
   "description": "Conversational planning, CLI delegation, and roadmap management for eforge — enqueue, run, monitor, and maintain project roadmaps from within Claude Code",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "commands": [
     "./skills/enqueue/enqueue.md",
     "./skills/run/run.md",

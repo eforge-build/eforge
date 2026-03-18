@@ -1,8 +1,8 @@
 # eforge
 
-Autonomous plan-build-review CLI for code generation.
+You plan, eforge builds - an autonomous plan-build-review CLI that handles the engineering methodology so you can focus on intent.
 
-The name combines **E** from the [Expedition-Excursion-Errand (EEE) methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) - a scope-aware planning framework that right-sizes AI workflows - with **forge**, reflecting the tool's role in shaping code from plans. eforge assesses your task's scope (errand, excursion, or expedition) and adapts its planning and execution strategy accordingly.
+The name combines **E** from the [Expedition-Excursion-Errand (EEE) methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) with **forge**, reflecting the tool's role in shaping code from plans. eforge assesses your task's scope (errand, excursion, or expedition) and adapts its planning and execution strategy accordingly.
 
 ## Status
 
@@ -12,17 +12,15 @@ I built eforge for my professional work and use it daily. The source is public s
 
 AI coding tools can produce code fast, but without structure the quality is unpredictable. A single agent that writes and reviews its own work is like a developer merging their own PRs without review - it works sometimes, but there's no systemic quality guarantee.
 
-Through extensive real-world use with Claude Code, a methodology evolved organically - first as hand-crafted skills, then as a set of battle-tested plugins:
+eforge codifies a methodology that evolved through extensive real-world use with Claude Code - first as hand-crafted skills, then as battle-tested plugins, now as a standalone engine:
 
 1. **Plan** - a detailed, scope-aware planning session with clarification for ambiguities
-2. **Implement** - execute the plan
+2. **Implement** - execute the plan, with documentation updates running in parallel
 3. **Blind review** - a fresh context reviews the work with zero knowledge of the builder's reasoning
-4. **Evaluate** - control returns to the implementer, who inspects each proposed fix independently. Only **strict improvements** are kept - objective bug fixes, missing null checks, security issues. Anything that alters design intent is rejected.
+4. **Fix & evaluate** - a fixer agent applies reviewer suggestions, then the evaluator applies per-hunk verdicts - accepting strict improvements while rejecting anything that alters intent
 5. **Validate** - verify against the original plan, fix any failures
 
-The core idea: **you focus on intent and planning; eforge handles the engineering methodology.** You bring the "what" and "why." eforge handles the "how" - structured, independent review cycles that produce consistently high-quality results.
-
-This workflow was battle-tested as Claude Code plugins before being packaged into eforge - a standalone engine and CLI that codifies the methodology. A Claude Code plugin provides integration on top of the CLI, and eforge is designed to work especially well in that context: plan interactively, then hand off to eforge for build, review, and validation. Agents inherit your project's plugins, skills, and MCP servers automatically, and git worktree isolation makes it safe to run multiple eforge builds in parallel on the same project. The engine is backend-flexible - the sole implementation today uses the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk), but the `AgentBackend` abstraction means it can be extended to support other systems.
+You bring the "what" and "why." eforge handles the "how" - structured, independent review cycles that produce consistently high-quality results. Plan interactively in Claude Code, then hand off to eforge for build, review, and validation. Agents inherit your project's plugins, skills, and MCP servers automatically, and git worktree isolation makes it safe to run multiple eforge builds in parallel on the same project. The engine is backend-flexible - the sole implementation today uses the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk), but the `AgentBackend` abstraction means it can be extended to support other systems.
 
 ## How It Works
 
@@ -44,10 +42,13 @@ flowchart TD
     PF --> Orch
 
     subgraph build ["Build"]
-        Orch["Orchestrator"] --> Builder["Builder"]
-        Builder --> BC["Commit implementation"]
+        Orch["Orchestrator"] --> Impl["Builder"]
+        Orch --> DocUpdate["doc-update"]
+        Impl --> BC["Commit implementation"]
+        DocUpdate --> BC
         BC --> CR["Code Reviewer (blind)"]
-        CR --> CE["Evaluator"]
+        CR --> RF["review-fix"]
+        RF --> CE["Evaluator"]
         CE --> BF["Final code commit"]
     end
 
@@ -98,6 +99,9 @@ Once installed, the primary entrypoint is `/eforge:run` - it takes a PRD or prom
 | `/eforge:run` | Enqueue + compile + build + validate in one step |
 | `/eforge:status` | Check build progress |
 | `/eforge:config` | Initialize or edit `eforge.yaml` with interactive guidance |
+| `/eforge:roadmap` | View and discuss the project roadmap |
+| `/eforge:roadmap-init` | Initialize a new `docs/roadmap.md` for the project |
+| `/eforge:roadmap-prune` | Remove shipped items from the roadmap |
 
 ### CLI Usage
 
@@ -114,6 +118,12 @@ eforge run --queue
 
 # Check running builds
 eforge status
+
+# List PRDs in the queue
+eforge queue list
+
+# Process specific PRD from the queue
+eforge queue run my-feature
 
 # Validate eforge.yaml configuration
 eforge config validate
@@ -135,6 +145,7 @@ Each command supports `--help` for the full list of options. Common flags:
 | `--queue` | Process all PRDs from the queue |
 | `--no-monitor` | Disable web monitor |
 | `--no-plugins` | Disable plugin loading |
+| `--generate-profile` | Let the planner generate a custom workflow profile |
 
 ## Configuration
 
@@ -172,6 +183,10 @@ build:
 
 plan:
   outputDir: plans            # Where plan artifacts are written
+
+prdQueue:
+  dir: docs/prd-queue          # Where queued PRDs are stored
+  autoRevise: false             # Auto-revise PRDs on enqueue
 
 langfuse:
   # publicKey: lf_pk_...      # Or set LANGFUSE_PUBLIC_KEY env var

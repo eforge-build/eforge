@@ -19,7 +19,7 @@ cat .eforge/state.json
 
 If the file doesn't exist, report:
 
-> No active eforge builds. Run `/eforge:run` to plan and build, or `/eforge:enqueue` to create a PRD first.
+> No active eforge builds. Start a planning conversation to create a plan, then use `/eforge:enqueue` to queue it or `/eforge:run` to execute immediately.
 
 **Stop here** if no state file exists.
 
@@ -74,6 +74,6 @@ If the status is `completed` or `failed`, omit the monitor link and show a summa
 
 | Condition | Action |
 |-----------|--------|
-| `.eforge/state.json` missing | Report no active builds, suggest `/eforge:enqueue` |
+| `.eforge/state.json` missing | Report no active builds, suggest starting a planning conversation |
 | State file is malformed JSON | Report parse error, suggest running `eforge status` CLI directly |
 | State file exists but empty | Treat as missing state |
