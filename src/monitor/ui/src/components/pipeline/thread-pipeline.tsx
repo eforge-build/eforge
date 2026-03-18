@@ -3,7 +3,7 @@ import { usePlanPreview } from '@/components/preview';
 import { formatDuration } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { AgentThread } from '@/lib/reducer';
-import type { PipelineStage, ReviewIssue } from '@/lib/types';
+import type { PipelineStage, ReviewIssue, ProfileInfo, BuildStageSpec } from '@/lib/types';
 
 const REVIEW_AGENTS = new Set([
   'reviewer', 'plan-reviewer', 'cohesion-reviewer',
@@ -21,6 +21,9 @@ const AGENT_COLORS: Record<string, { bg: string; border: string }> = {
   evaluator:           { bg: 'bg-purple/30',  border: 'border-purple/50' },
   'plan-evaluator':    { bg: 'bg-purple/30',  border: 'border-purple/50' },
   'cohesion-evaluator':{ bg: 'bg-purple/30',  border: 'border-purple/50' },
+  'review-fixer':      { bg: 'bg-purple/30',  border: 'border-purple/50' },
+  'parallel-reviewer': { bg: 'bg-green/30',   border: 'border-green/50' },
+  'doc-updater':       { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
   'validation-fixer':  { bg: 'bg-red/30',     border: 'border-red/50' },
 };
 
@@ -31,15 +34,218 @@ function getAgentColor(agent: string) {
   return AGENT_COLORS[agent] ?? FALLBACK_COLOR;
 }
 
+// --- Profile tier colors ---
+
+const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  errand: { bg: 'bg-[#3fb950]/15', text: 'text-[#3fb950]', border: 'border-[#3fb950]/30' },
+  excursion: { bg: 'bg-[#58a6ff]/15', text: 'text-[#58a6ff]', border: 'border-[#58a6ff]/30' },
+  expedition: { bg: 'bg-[#f0883e]/15', text: 'text-[#f0883e]', border: 'border-[#f0883e]/30' },
+};
+
+const DEFAULT_TIER = { bg: 'bg-[#bc8cff]/15', text: 'text-[#bc8cff]', border: 'border-[#bc8cff]/30' };
+
+function getTierColor(name: string) {
+  return TIER_COLORS[name] ?? DEFAULT_TIER;
+}
+
+// --- Agent role → profile stage mapping ---
+
+const AGENT_TO_STAGE: Record<string, string> = {
+  'planner': 'planner',
+  'plan-reviewer': 'plan-review-cycle',
+  'plan-evaluator': 'plan-review-cycle',
+  'module-planner': 'module-planning',
+  'cohesion-reviewer': 'cohesion-review-cycle',
+  'cohesion-evaluator': 'cohesion-review-cycle',
+  'builder': 'implement',
+  'doc-updater': 'doc-update',
+  'reviewer': 'review',
+  'parallel-reviewer': 'review',
+  'review-fixer': 'review-fix',
+  'evaluator': 'evaluate',
+  'validation-fixer': 'validate',
+};
+
+type StageStatus = 'pending' | 'active' | 'completed';
+
+const STAGE_STATUS_STYLES: Record<StageStatus, string> = {
+  pending: 'bg-bg-tertiary text-text-dim/80',
+  active: 'bg-primary/20 text-primary',
+  completed: 'bg-green/15 text-green/70',
+};
+
+// --- Stage overview sub-components ---
+
+function StagePill({ stage, status = 'pending' }: { stage: string; status?: StageStatus }) {
+  return (
+    <span
+      className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${STAGE_STATUS_STYLES[status]}`}
+      style={status === 'active' ? { animation: 'pulse-opacity 2s ease-in-out infinite' } : undefined}
+    >
+      {stage}
+    </span>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg className="w-3 h-3 text-text-dim/30 shrink-0" viewBox="0 0 12 12" fill="none">
+      <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PhaseSeparator() {
+  return <div className="w-px h-4 bg-text-dim/25 mx-1 shrink-0" />;
+}
+
+function getStageStatus(stage: string, activeStages: Set<string>, completedStages: Set<string>): StageStatus {
+  if (activeStages.has(stage)) return 'active';
+  if (completedStages.has(stage)) return 'completed';
+  return 'pending';
+}
+
+function StageOverview({ compile, build, activeStages, completedStages }: {
+  compile: string[];
+  build: BuildStageSpec[];
+  activeStages: Set<string>;
+  completedStages: Set<string>;
+}) {
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {compile.map((stage, i) => (
+        <div key={`c-${i}`} className="flex items-center gap-1">
+          {i > 0 && <Chevron />}
+          <StagePill stage={stage} status={getStageStatus(stage, activeStages, completedStages)} />
+        </div>
+      ))}
+      <PhaseSeparator />
+      {build.map((stage, i) => (
+        <div key={`b-${i}`} className="flex items-center gap-1">
+          {i > 0 && <Chevron />}
+          {Array.isArray(stage) ? (
+            <div className="flex flex-col gap-0.5 border-l-2 border-text-dim/20 pl-1.5">
+              {stage.map((s) => (
+                <StagePill key={s} stage={s} status={getStageStatus(s, activeStages, completedStages)} />
+              ))}
+            </div>
+          ) : (
+            <StagePill stage={stage} status={getStageStatus(stage, activeStages, completedStages)} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface ReviewOption { name: string; desc: string; active?: boolean }
+
+function ReviewConfigItem({ label, value, options }: { label: string; value: string; options: ReviewOption[] }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-default hover:text-foreground/70 transition-colors">
+          {label}: <span className="text-foreground/50">{value}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="start" className="max-w-xs">
+        <div className="flex flex-col gap-1.5 text-[11px]">
+          {options.map((opt) => (
+            <div key={opt.name} className="flex gap-2 items-baseline">
+              <span className={`font-mono shrink-0 px-1 py-px rounded text-[10px] ${opt.active ? 'bg-primary/20 text-primary' : 'bg-bg-tertiary text-text-dim'}`}>{opt.name}</span>
+              <span className="text-foreground/70">{opt.desc}</span>
+            </div>
+          ))}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ReviewConfig({ review }: { review: ProfileInfo['config']['review'] }) {
+  return (
+    <div className="flex items-center gap-1 text-[10px] text-text-dim flex-wrap">
+      <ReviewConfigItem
+        label="review"
+        value={review.strategy}
+        options={[
+          { name: 'auto', desc: 'Picks single or parallel per run', active: review.strategy === 'auto' },
+          { name: 'single', desc: 'One reviewer agent', active: review.strategy === 'single' },
+          { name: 'parallel', desc: 'Multiple perspective-based reviewers', active: review.strategy === 'parallel' },
+        ]}
+      />
+      <span className="opacity-30">·</span>
+      <ReviewConfigItem
+        label="perspectives"
+        value={review.perspectives.join(', ')}
+        options={[
+          { name: 'code', desc: 'Logic, correctness, quality', active: review.perspectives.includes('code') },
+          { name: 'security', desc: 'Vulnerabilities, injection, auth', active: review.perspectives.includes('security') },
+          { name: 'api', desc: 'Contract, breaking changes', active: review.perspectives.includes('api') },
+          { name: 'docs', desc: 'Documentation accuracy', active: review.perspectives.includes('docs') },
+        ]}
+      />
+      <span className="opacity-30">·</span>
+      <ReviewConfigItem
+        label="rounds"
+        value={String(review.maxRounds)}
+        options={[
+          { name: String(review.maxRounds), desc: 'Max review-fix-evaluate cycles', active: true },
+        ]}
+      />
+      <span className="opacity-30">·</span>
+      <ReviewConfigItem
+        label="strictness"
+        value={review.evaluatorStrictness}
+        options={[
+          { name: 'strict', desc: 'Accept almost all reviewer fixes', active: review.evaluatorStrictness === 'strict' },
+          { name: 'standard', desc: 'Balanced judgment', active: review.evaluatorStrictness === 'standard' },
+          { name: 'lenient', desc: 'Only accept clear improvements', active: review.evaluatorStrictness === 'lenient' },
+        ]}
+      />
+    </div>
+  );
+}
+
+function ProfileHeader({ profileInfo, activeStages, completedStages }: {
+  profileInfo: ProfileInfo;
+  activeStages: Set<string>;
+  completedStages: Set<string>;
+}) {
+  const tier = getTierColor(profileInfo.profileName);
+  return (
+    <div className="flex flex-col gap-2 mb-3">
+      <div className="flex items-center gap-3">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border cursor-default ${tier.bg} ${tier.text} ${tier.border}`}>
+              {profileInfo.profileName}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-xs">
+            {profileInfo.rationale}
+          </TooltipContent>
+        </Tooltip>
+        <span className="text-[11px] text-text-dim">{profileInfo.config.description}</span>
+      </div>
+      <StageOverview compile={profileInfo.config.compile} build={profileInfo.config.build} activeStages={activeStages} completedStages={completedStages} />
+      <ReviewConfig review={profileInfo.config.review} />
+    </div>
+  );
+}
+
+// --- Main component ---
+
 interface ThreadPipelineProps {
   agentThreads: AgentThread[];
   startTime: number | null;
   endTime: number | null;
   planStatuses: Record<string, PipelineStage>;
   reviewIssues?: Record<string, ReviewIssue[]>;
+  profileInfo?: ProfileInfo | null;
 }
 
-export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues }: ThreadPipelineProps) {
+export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, profileInfo }: ThreadPipelineProps) {
   const entries = Object.entries(planStatuses);
 
   // Compute the time span across all threads
@@ -73,41 +279,88 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
 
   const globalThreads = threadsByPlan.get('__global__') ?? EMPTY_THREADS;
   const hasGlobalThreads = globalThreads.length > 0;
+  const hasThreadContent = entries.length > 0 || hasGlobalThreads;
 
-  // Show nothing if there are no threads at all
-  if (entries.length === 0 && !hasGlobalThreads) return null;
+  // Derive active/completed stage sets from agent threads
+  const { activeStages, completedStages } = useMemo(() => {
+    const active = new Set<string>();
+    const seen = new Set<string>();
+    const running = new Set<string>();
+
+    for (const thread of agentThreads) {
+      const stage = AGENT_TO_STAGE[thread.agent];
+      if (!stage) continue;
+      seen.add(stage);
+      if (thread.endedAt === null) {
+        running.add(stage);
+      }
+    }
+
+    // A stage is active if any mapped thread is running
+    // A stage is completed if at least one thread mapped to it has been seen and none are running
+    const completed = new Set<string>();
+    for (const stage of seen) {
+      if (running.has(stage)) {
+        active.add(stage);
+      } else {
+        completed.add(stage);
+      }
+    }
+
+    // prd-passthrough has no agent — mark completed once any other stage is active/completed
+    if (profileInfo && profileInfo.config.compile[0] === 'prd-passthrough' && (active.size > 0 || completed.size > 0)) {
+      completed.add('prd-passthrough');
+    }
+
+    return { activeStages: active, completedStages: completed };
+  }, [agentThreads, profileInfo]);
+
+  // Show nothing if there are no threads and no profile info
+  if (!hasThreadContent && !profileInfo) return null;
 
   return (
     <TooltipProvider delayDuration={0}>
       <div className="bg-card border border-border rounded-lg px-4 py-3 shadow-sm shadow-black/20">
-        <h3 className="text-[11px] uppercase tracking-wider text-text-dim mb-2 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue" />
-          Pipeline
-        </h3>
-        <div className="flex flex-col gap-1.5">
-          {hasGlobalThreads && (
-            <PlanRow
-              key="__compile__"
-              planId="Compile"
-              threads={globalThreads}
-              sessionStart={sessionStart}
-              totalSpan={totalSpan}
-              endTime={endTime}
-              disablePreview
-            />
-          )}
-          {entries.map(([planId]) => (
-            <PlanRow
-              key={planId}
-              planId={planId}
-              threads={threadsByPlan.get(planId) ?? EMPTY_THREADS}
-              sessionStart={sessionStart}
-              totalSpan={totalSpan}
-              endTime={endTime}
-              issues={reviewIssues?.[planId]}
-            />
-          ))}
-        </div>
+        {/* Header: profile badge + description, or fallback "Pipeline" label */}
+        {profileInfo ? (
+          <ProfileHeader profileInfo={profileInfo} activeStages={activeStages} completedStages={completedStages} />
+        ) : (
+          <h3 className="text-[11px] uppercase tracking-wider text-text-dim mb-2 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue" />
+            Pipeline
+          </h3>
+        )}
+
+        {/* Thread timeline rows */}
+        {hasThreadContent && (
+          <>
+            {profileInfo && <div className="border-t border-border/50 mb-2" />}
+            <div className="flex flex-col gap-1.5">
+              {hasGlobalThreads && (
+                <PlanRow
+                  key="__compile__"
+                  planId="Compile"
+                  threads={globalThreads}
+                  sessionStart={sessionStart}
+                  totalSpan={totalSpan}
+                  endTime={endTime}
+                  disablePreview
+                />
+              )}
+              {entries.map(([planId]) => (
+                <PlanRow
+                  key={planId}
+                  planId={planId}
+                  threads={threadsByPlan.get(planId) ?? EMPTY_THREADS}
+                  sessionStart={sessionStart}
+                  totalSpan={totalSpan}
+                  endTime={endTime}
+                  issues={reviewIssues?.[planId]}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </TooltipProvider>
   );

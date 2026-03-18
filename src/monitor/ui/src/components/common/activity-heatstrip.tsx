@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { StoredEvent } from '@/lib/reducer';
 
 interface ActivityHeatstripProps {
@@ -60,29 +61,37 @@ export function ActivityHeatstrip({ events, startTime, endTime }: ActivityHeatst
   if (buckets.length === 0) return null;
 
   return (
-    <div className="bg-card border border-border rounded-lg px-4 py-2 shadow-sm shadow-black/20">
-      <h3 className="text-[10px] uppercase tracking-wider text-text-dim mb-1.5">Activity</h3>
-      <div className="relative">
-        <div className="flex gap-px items-end overflow-x-auto">
-          {buckets.map((bucket, i) => (
-            <div key={i} className="flex flex-col items-center">
-              <div
-                style={{
-                  width: CELL_WIDTH,
-                  height: CELL_HEIGHT,
-                  backgroundColor: bucket.color,
-                  borderRadius: 1,
-                  animation: bucket.isLast ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
-                }}
-                title={`${bucket.count} events (${bucket.minutes}m)`}
-              />
-              {bucket.showLabel && (
-                <span className="text-[8px] text-text-dim/50 mt-0.5">{bucket.minutes}m</span>
-              )}
-            </div>
-          ))}
+    <TooltipProvider delayDuration={0}>
+      <div className="bg-card border border-border rounded-lg px-4 py-2 shadow-sm shadow-black/20">
+        <h3 className="text-[10px] uppercase tracking-wider text-text-dim mb-1.5">Activity</h3>
+        <div className="relative">
+          <div className="flex gap-px items-end overflow-x-auto">
+            {buckets.map((bucket, i) => (
+              <div key={i} className="flex flex-col items-center">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      style={{
+                        width: CELL_WIDTH,
+                        height: CELL_HEIGHT,
+                        backgroundColor: bucket.color,
+                        borderRadius: 1,
+                        animation: bucket.isLast ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
+                      }}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {bucket.count} events ({bucket.minutes}m)
+                  </TooltipContent>
+                </Tooltip>
+                {bucket.showLabel && (
+                  <span className="text-[8px] text-text-dim/50 mt-0.5">{bucket.minutes}m</span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

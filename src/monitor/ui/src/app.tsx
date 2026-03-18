@@ -6,7 +6,6 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { ShutdownBanner } from '@/components/layout/shutdown-banner';
 import { SummaryCards } from '@/components/common/summary-cards';
 import { ActivityHeatstrip } from '@/components/common/activity-heatstrip';
-import { ProfileCard } from '@/components/common/profile-card';
 import { ThreadPipeline } from '@/components/pipeline/thread-pipeline';
 import { Timeline } from '@/components/timeline/timeline';
 import { PlanCards } from '@/components/plans/plan-cards';
@@ -209,8 +208,7 @@ export function App() {
             <>
               <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} />
               <ActivityHeatstrip events={runState.events} startTime={runState.startTime} endTime={runState.endTime} />
-              {runState.profileInfo && <ProfileCard profileInfo={runState.profileInfo} />}
-              <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} />
+              <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} profileInfo={runState.profileInfo} />
 
               {/* Content tabs */}
               <div className="flex gap-2 border-b border-border pb-px">
