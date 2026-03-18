@@ -278,7 +278,7 @@ export async function cleanupCompletedPrd(filePath: string, queueDir: string, cw
 
   // git rm (tracked files), fall back to fs rm (untracked)
   try {
-    await exec('git', ['rm', '--', filePath], { cwd });
+    await exec('git', ['rm', '-f', '--', filePath], { cwd });
   } catch {
     await rm(absFilePath);
   }
