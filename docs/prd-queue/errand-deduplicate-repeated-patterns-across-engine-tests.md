@@ -1,5 +1,5 @@
 ---
-title: Errand: Deduplicate repeated patterns across engine + tests
+title: Deduplicate repeated patterns across engine + tests
 created: 2026-03-18
 status: pending
 ---
