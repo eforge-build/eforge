@@ -1,6 +1,7 @@
 import type { AgentBackend } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { getReviewIssueSchemaYaml } from '../schemas.js';
 
 /**
  * Options for the reviewer agent.
@@ -32,6 +33,7 @@ export async function composeReviewPrompt(
   return loadPrompt('reviewer', {
     plan_content: planContent,
     base_branch: baseBranch,
+    review_issue_schema: getReviewIssueSchemaYaml(),
   });
 }
 

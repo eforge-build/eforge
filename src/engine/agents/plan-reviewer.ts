@@ -2,6 +2,7 @@ import type { AgentBackend } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
+import { getPlanReviewIssueSchemaYaml } from '../schemas.js';
 
 /**
  * Options for the plan reviewer agent.
@@ -43,6 +44,7 @@ export async function* runPlanReview(
   const prompt = await loadPrompt('plan-reviewer', {
     source_content: sourceContent,
     plan_set_name: planSetName,
+    review_issue_schema: getPlanReviewIssueSchemaYaml(),
   });
 
   let fullText = '';

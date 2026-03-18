@@ -2,6 +2,7 @@ import type { AgentBackend } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
+import { getPlanReviewIssueSchemaYaml } from '../schemas.js';
 
 /**
  * Options for the cohesion reviewer agent.
@@ -47,6 +48,7 @@ export async function* runCohesionReview(
     source_content: sourceContent,
     plan_set_name: planSetName,
     architecture_content: architectureContent,
+    review_issue_schema: getPlanReviewIssueSchemaYaml(),
   });
 
   let fullText = '';

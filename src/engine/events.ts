@@ -1,7 +1,9 @@
 // EforgeEvent discriminated union and all supporting types
 
+import type { z } from 'zod/v4';
 import type { ResolvedProfileConfig } from './config.js';
 import type { ReviewPerspective } from './review-heuristics.js';
+import type { reviewIssueSchema } from './schemas.js';
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 
@@ -23,14 +25,7 @@ export interface ClarificationQuestion {
   default?: string;
 }
 
-export interface ReviewIssue {
-  severity: 'critical' | 'warning' | 'suggestion';
-  category: string;
-  file: string;
-  line?: number;
-  description: string;
-  fix?: string;
-}
+export type ReviewIssue = z.output<typeof reviewIssueSchema>;
 
 export const SEVERITY_ORDER: Record<ReviewIssue['severity'], number> = {
   critical: 0,

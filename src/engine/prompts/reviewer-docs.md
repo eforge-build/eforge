@@ -56,6 +56,14 @@ When you identify an issue that has a clear, unambiguous fix:
 
 **Always attempt a fix for every issue you report**, regardless of severity. Pick the simplest, most minimal approach. Skip the fix only when it would require understanding builder intent or fundamentally change the approach.
 
+# Review Issue Schema
+
+The following YAML documents the fields and allowed values for each review issue:
+
+```yaml
+{{review_issue_schema}}
+```
+
 # Output Format
 
 After completing your review, output your findings in this exact XML format:

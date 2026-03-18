@@ -89,6 +89,7 @@ src/
   engine/                     # Library core (no stdout, events only)
     eforge.ts                 # EforgeEngine: compile(), build(), status(), watchQueue()
     events.ts                 # EforgeEvent type definitions + SEVERITY_ORDER constant
+    schemas.ts                # Zod schemas for structured agent output (review issues, evaluations, etc.) + getSchemaYaml() utility
     backend.ts                # AgentBackend interface (provider abstraction)
     pipeline.ts               # Stage registry, compile/build stage implementations
     config.ts                 # Config loading, merging & validation

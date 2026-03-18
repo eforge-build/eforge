@@ -68,6 +68,14 @@ Skip the fix only when:
 - The fix would require understanding builder intent that you cannot infer from the code
 - The fix would fundamentally change the architectural approach
 
+# Review Issue Schema
+
+The following YAML documents the fields and allowed values for each review issue:
+
+```yaml
+{{review_issue_schema}}
+```
+
 # Output Format
 
 After completing your review, output your findings in this exact XML format:

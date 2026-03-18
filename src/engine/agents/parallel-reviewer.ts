@@ -13,6 +13,12 @@ import { categorizeFiles, determineApplicableReviews, shouldParallelizeReview } 
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { loadPrompt } from '../prompts.js';
 import { runReview, parseReviewIssues } from './reviewer.js';
+import {
+  getCodeReviewIssueSchemaYaml,
+  getSecurityReviewIssueSchemaYaml,
+  getApiReviewIssueSchemaYaml,
+  getDocsReviewIssueSchemaYaml,
+} from '../schemas.js';
 
 const exec = promisify(execFile);
 
@@ -43,6 +49,14 @@ const PERSPECTIVE_PROMPTS: Record<ReviewPerspective, string> = {
   security: 'reviewer-security',
   api: 'reviewer-api',
   docs: 'reviewer-docs',
+};
+
+/** Map perspective names to schema YAML getters */
+const PERSPECTIVE_SCHEMA_YAML: Record<ReviewPerspective, () => string> = {
+  code: getCodeReviewIssueSchemaYaml,
+  security: getSecurityReviewIssueSchemaYaml,
+  api: getApiReviewIssueSchemaYaml,
+  docs: getDocsReviewIssueSchemaYaml,
 };
 
 /**
@@ -147,6 +161,7 @@ export async function* runParallelReview(
       const prompt = await loadPrompt(PERSPECTIVE_PROMPTS[perspective], {
         plan_content: planContent,
         base_branch: baseBranch,
+        review_issue_schema: PERSPECTIVE_SCHEMA_YAML[perspective](),
       });
 
       let fullText = '';

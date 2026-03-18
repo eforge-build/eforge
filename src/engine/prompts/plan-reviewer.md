@@ -57,6 +57,14 @@ A fix is NOT appropriate when:
 - The fix would alter the planner's chosen technical approach
 - The fix requires understanding why the planner made a particular decision
 
+# Review Issue Schema
+
+The following YAML documents the fields and allowed values for each review issue:
+
+```yaml
+{{review_issue_schema}}
+```
+
 # Output Format
 
 After completing your review, output your findings in this exact XML format:
