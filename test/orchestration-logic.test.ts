@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { propagateFailure, resumeState, shouldSkipMerge } from '../src/engine/orchestrator.js';
+import { propagateFailure, resumeState, shouldSkipMerge, initializeState } from '../src/engine/orchestrator.js';
+import { saveState } from '../src/engine/state.js';
+import { BUILTIN_PROFILES } from '../src/engine/config.js';
 import type { EforgeState, OrchestrationConfig, PlanState } from '../src/engine/events.js';
+import { useTempDir } from './test-tmpdir.js';
 
 // --- Helpers ---
 
@@ -299,5 +302,145 @@ describe('shouldSkipMerge', () => {
   it('returns null for unknown plan ID', () => {
     const plans = makePlans([{ id: 'a' }]);
     expect(shouldSkipMerge('nonexistent', plans, new Set(['a']))).toBeNull();
+  });
+});
+
+// --- initializeState helpers ---
+
+function makeConfig(
+  overrides?: Partial<OrchestrationConfig>,
+): OrchestrationConfig {
+  return {
+    name: 'test-set',
+    description: 'test',
+    created: '2026-01-01T00:00:00Z',
+    mode: 'excursion',
+    baseBranch: 'main',
+    profile: BUILTIN_PROFILES['excursion'],
+    plans: [
+      { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a' },
+      { id: 'plan-b', name: 'Plan B', dependsOn: ['plan-a'], branch: 'feature/plan-b' },
+    ],
+    ...overrides,
+  };
+}
+
+describe('initializeState', () => {
+  const makeTempDir = useTempDir();
+
+  it('creates fresh state when no existing state', () => {
+    const stateDir = makeTempDir();
+    const config = makeConfig();
+    const state = initializeState(stateDir, config, '/tmp/repo');
+
+    expect(state.status).toBe('running');
+    expect(state.setName).toBe('test-set');
+    expect(state.plans['plan-a'].status).toBe('pending');
+    expect(state.plans['plan-b'].status).toBe('pending');
+  });
+
+  it('creates fresh state when existing is failed', () => {
+    const stateDir = makeTempDir();
+    const config = makeConfig();
+
+    // Seed a failed state
+    const failedState: EforgeState = {
+      setName: 'test-set',
+      status: 'failed',
+      startedAt: '2026-01-01T00:00:00Z',
+      baseBranch: 'main',
+      worktreeBase: '/old/worktrees',
+      plans: {
+        'plan-a': { status: 'failed', branch: 'feature/plan-a', dependsOn: [], merged: false, error: 'boom' },
+        'plan-b': { status: 'blocked', branch: 'feature/plan-b', dependsOn: ['plan-a'], merged: false },
+      },
+      completedPlans: [],
+    };
+    saveState(stateDir, failedState);
+
+    const state = initializeState(stateDir, config, '/tmp/repo');
+
+    expect(state.status).toBe('running');
+    expect(state.plans['plan-a'].status).toBe('pending');
+    expect(state.plans['plan-b'].status).toBe('pending');
+  });
+
+  it('creates fresh state when existing is completed', () => {
+    const stateDir = makeTempDir();
+    const config = makeConfig();
+
+    // Seed a completed state
+    const completedState: EforgeState = {
+      setName: 'test-set',
+      status: 'completed',
+      startedAt: '2026-01-01T00:00:00Z',
+      completedAt: '2026-01-01T01:00:00Z',
+      baseBranch: 'main',
+      worktreeBase: '/old/worktrees',
+      plans: {
+        'plan-a': { status: 'merged', branch: 'feature/plan-a', dependsOn: [], merged: true },
+        'plan-b': { status: 'merged', branch: 'feature/plan-b', dependsOn: ['plan-a'], merged: true },
+      },
+      completedPlans: ['plan-a', 'plan-b'],
+    };
+    saveState(stateDir, completedState);
+
+    const state = initializeState(stateDir, config, '/tmp/repo');
+
+    expect(state.status).toBe('running');
+    expect(state.plans['plan-a'].status).toBe('pending');
+    expect(state.plans['plan-b'].status).toBe('pending');
+  });
+
+  it('resumes when existing state is resumable', () => {
+    const stateDir = makeTempDir();
+    const config = makeConfig();
+
+    // Seed a resumable state (running with incomplete plans)
+    const resumableState: EforgeState = {
+      setName: 'test-set',
+      status: 'running',
+      startedAt: '2026-01-01T00:00:00Z',
+      baseBranch: 'main',
+      worktreeBase: '/old/worktrees',
+      plans: {
+        'plan-a': { status: 'completed', branch: 'feature/plan-a', dependsOn: [], merged: false },
+        'plan-b': { status: 'pending', branch: 'feature/plan-b', dependsOn: ['plan-a'], merged: false },
+      },
+      completedPlans: ['plan-a'],
+    };
+    saveState(stateDir, resumableState);
+
+    const state = initializeState(stateDir, config, '/tmp/repo');
+
+    expect(state.status).toBe('running');
+    expect(state.plans['plan-a'].status).toBe('completed');
+    expect(state.plans['plan-b'].status).toBe('pending');
+  });
+
+  it('creates fresh state when setName differs', () => {
+    const stateDir = makeTempDir();
+    const config = makeConfig({ name: 'new-set' });
+
+    // Seed state with different setName
+    const oldState: EforgeState = {
+      setName: 'old-set',
+      status: 'running',
+      startedAt: '2026-01-01T00:00:00Z',
+      baseBranch: 'main',
+      worktreeBase: '/old/worktrees',
+      plans: {
+        'plan-a': { status: 'completed', branch: 'feature/plan-a', dependsOn: [], merged: false },
+      },
+      completedPlans: ['plan-a'],
+    };
+    saveState(stateDir, oldState);
+
+    const state = initializeState(stateDir, config, '/tmp/repo');
+
+    expect(state.status).toBe('running');
+    expect(state.setName).toBe('new-set');
+    expect(state.plans['plan-a'].status).toBe('pending');
+    expect(state.plans['plan-b'].status).toBe('pending');
   });
 });

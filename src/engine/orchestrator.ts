@@ -151,6 +151,54 @@ export function shouldSkipMerge(
   return null;
 }
 
+/**
+ * Load existing state or create fresh. On resume, resets running→pending
+ * and re-evaluates blocked plans. Non-resumable existing states (failed,
+ * completed) fall through to fresh state creation instead of returning stale state.
+ */
+export function initializeState(
+  stateDir: string,
+  config: OrchestrationConfig,
+  repoRoot: string,
+): EforgeState {
+  const existing = loadState(stateDir);
+
+  if (existing && existing.setName === config.name) {
+    if (isResumable(existing)) {
+      resumeState(existing);
+      saveState(stateDir, existing);
+      return existing;
+    }
+    // Non-resumable (failed/completed) — fall through to fresh state creation
+  }
+
+  // Create fresh state
+  const worktreeBase = computeWorktreeBase(repoRoot, config.name);
+
+  const plans: Record<string, PlanState> = {};
+  for (const plan of config.plans) {
+    plans[plan.id] = {
+      status: 'pending',
+      branch: plan.branch,
+      dependsOn: plan.dependsOn,
+      merged: false,
+    };
+  }
+
+  const state: EforgeState = {
+    setName: config.name,
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    baseBranch: config.baseBranch,
+    worktreeBase,
+    plans,
+    completedPlans: [],
+  };
+
+  saveState(stateDir, state);
+  return state;
+}
+
 export class Orchestrator {
   private readonly options: OrchestratorOptions;
 
@@ -519,49 +567,11 @@ export class Orchestrator {
   }
 
   /**
-   * Load existing state or create fresh. On resume, resets running→pending
-   * and re-evaluates blocked plans.
+   * Load existing state or create fresh. Delegates to the exported
+   * standalone `initializeState` function.
    */
   private initializeState(config: OrchestrationConfig, repoRoot: string): EforgeState {
-    const { stateDir } = this.options;
-
-    const existing = loadState(stateDir);
-
-    if (existing && existing.setName === config.name) {
-      if (isResumable(existing)) {
-        resumeState(existing);
-        saveState(stateDir, existing);
-        return existing;
-      }
-      // Non-resumable — return as-is (caller checks status)
-      return existing;
-    }
-
-    // Create fresh state
-    const worktreeBase = computeWorktreeBase(repoRoot, config.name);
-
-    const plans: Record<string, PlanState> = {};
-    for (const plan of config.plans) {
-      plans[plan.id] = {
-        status: 'pending',
-        branch: plan.branch,
-        dependsOn: plan.dependsOn,
-        merged: false,
-      };
-    }
-
-    const state: EforgeState = {
-      setName: config.name,
-      status: 'running',
-      startedAt: new Date().toISOString(),
-      baseBranch: config.baseBranch,
-      worktreeBase,
-      plans,
-      completedPlans: [],
-    };
-
-    saveState(stateDir, state);
-    return state;
+    return initializeState(this.options.stateDir, config, repoRoot);
   }
 
 }
