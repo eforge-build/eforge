@@ -35,9 +35,9 @@ export async function* withSessionId(
         sessionId = event.runId;
       }
 
-      // Emit session:start before the first phase:start
-      if (event.type === 'phase:start' && emitStart && sessionId && !sessionStartEmitted) {
-        yield { type: 'session:start', sessionId, timestamp: event.timestamp } as EforgeEvent;
+      // Emit session:start before the first event (once we have a sessionId)
+      if (emitStart && sessionId && !sessionStartEmitted) {
+        yield { type: 'session:start', sessionId, timestamp: ('timestamp' in event && event.timestamp) || new Date().toISOString() } as EforgeEvent;
         sessionStartEmitted = true;
       }
 

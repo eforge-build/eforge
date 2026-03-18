@@ -152,6 +152,68 @@ describe('withSessionId', () => {
     expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.status).toBe('failed');
   });
 
+  it('emits session:start before enqueue events (no phase:start needed)', async () => {
+    const events: EforgeEvent[] = [
+      { type: 'enqueue:start', source: 'test-prd.md' },
+      { type: 'enqueue:complete', id: 'prd-1', filePath: '/queue/test.md', title: 'Test PRD' },
+    ];
+
+    const result = await collect(withSessionId(asyncIterableFrom(events), {
+      sessionId: 'enqueue-session',
+      emitSessionStart: true,
+      emitSessionEnd: true,
+    }));
+
+    // session:start before the first event
+    expect(result[0].type).toBe('session:start');
+    expect(result[0].sessionId).toBe('enqueue-session');
+    // enqueue events stamped with sessionId
+    expect(result[1].type).toBe('enqueue:start');
+    expect(result[1].sessionId).toBe('enqueue-session');
+    expect(result[2].type).toBe('enqueue:complete');
+    expect(result[2].sessionId).toBe('enqueue-session');
+    // session:end at the end
+    expect(result[3].type).toBe('session:end');
+    expect(result[3].sessionId).toBe('enqueue-session');
+  });
+
+  it('run command: enqueue phase emits session:start, build phase emits session:end', async () => {
+    // Phase 0: enqueue (no phase:start events)
+    const enqueuePhase: EforgeEvent[] = [
+      { type: 'enqueue:start', source: 'test-prd.md' },
+      { type: 'enqueue:complete', id: 'prd-1', filePath: '/queue/test.md', title: 'Test PRD' },
+    ];
+    // Phase 2: build
+    const buildPhase: EforgeEvent[] = [
+      { type: 'phase:start', runId: 'run-2', planSet: 'test', command: 'build', timestamp: '2024-01-01T00:02:00Z' },
+      { type: 'phase:end', runId: 'run-2', result: { status: 'completed', summary: 'build done' }, timestamp: '2024-01-01T00:03:00Z' },
+    ];
+
+    const result0 = await collect(withSessionId(asyncIterableFrom(enqueuePhase), {
+      sessionId: 'run-session',
+      emitSessionStart: true,
+      emitSessionEnd: false,
+    }));
+
+    const result2 = await collect(withSessionId(asyncIterableFrom(buildPhase), {
+      sessionId: 'run-session',
+      emitSessionStart: false,
+      emitSessionEnd: true,
+    }));
+
+    // Enqueue phase: session:start + enqueue events, no session:end
+    expect(result0[0].type).toBe('session:start');
+    expect(result0.some((e) => e.type === 'session:end')).toBe(false);
+
+    // Build phase: phase events + session:end, no session:start
+    expect(result2.some((e) => e.type === 'session:start')).toBe(false);
+    expect(result2[result2.length - 1].type).toBe('session:end');
+
+    // All events share the same sessionId
+    const allEvents = [...result0, ...result2];
+    expect(allEvents.every((e) => e.sessionId === 'run-session')).toBe(true);
+  });
+
   it('preserves runIds on phase events', async () => {
     const events: EforgeEvent[] = [
       { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' },
