@@ -5,6 +5,8 @@ import { resolve, dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { PlanFile, OrchestrationConfig, ExpeditionModule } from './events.js';
+import type { ResolvedProfileConfig } from './config.js';
+import { resolvedProfileConfigSchema } from './config.js';
 
 const execAsync = promisify(execFile);
 
@@ -182,12 +184,22 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     ? (data.validate as unknown[]).filter((v): v is string => typeof v === 'string')
     : undefined;
 
+  // Parse and validate required profile field
+  if (!data.profile || typeof data.profile !== 'object') {
+    throw new Error(`Orchestration config missing required 'profile' field: ${absPath}`);
+  }
+  const profileResult = resolvedProfileConfigSchema.safeParse(data.profile);
+  if (!profileResult.success) {
+    throw new Error(`Orchestration config has malformed 'profile' field: ${absPath}`);
+  }
+
   return {
     name: data.name as string,
     description: (data.description as string) ?? '',
     created: (data.created as string) ?? '',
     mode: (data.mode as OrchestrationConfig['mode']) ?? 'errand',
     baseBranch: (data.base_branch as string) ?? 'main',
+    profile: profileResult.data,
     plans,
     ...(validate && validate.length > 0 && { validate }),
   };
@@ -435,6 +447,7 @@ export interface WritePlanArtifactsOptions {
   sourceContent: string;
   planName: string;
   baseBranch: string;
+  profile: ResolvedProfileConfig;
   validate?: string[];
   mode?: 'errand' | 'excursion';
 }
@@ -466,6 +479,7 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
     created: new Date().toISOString().split('T')[0],
     mode: options.mode ?? 'errand',
     base_branch: baseBranch,
+    profile: options.profile,
     ...(validate && validate.length > 0 && { validate }),
     plans: [{
       id: planId,
@@ -485,4 +499,20 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
     body: sourceContent,
     filePath: planPath,
   };
+}
+
+/**
+ * Inject a resolved profile into an existing orchestration.yaml.
+ * Reads the YAML, adds/replaces the `profile` field, and writes it back.
+ * Used by the pipeline after the planner agent writes orchestration.yaml.
+ */
+export async function injectProfileIntoOrchestrationYaml(
+  orchestrationYamlPath: string,
+  profile: ResolvedProfileConfig,
+): Promise<void> {
+  const absPath = resolve(orchestrationYamlPath);
+  const raw = await readFile(absPath, 'utf-8');
+  const data = parseYaml(raw) as Record<string, unknown>;
+  data.profile = profile;
+  await writeFile(absPath, stringifyYaml(data), 'utf-8');
 }

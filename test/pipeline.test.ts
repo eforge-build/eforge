@@ -70,6 +70,7 @@ function makeBuildCtx(overrides: Partial<BuildStageContext> = {}): BuildStageCon
     created: new Date().toISOString(),
     mode: 'errand',
     baseBranch: 'main',
+    profile: BUILTIN_PROFILES['excursion'],
     plans: [{ id: 'plan-01', name: 'Test Plan', dependsOn: [], branch: 'test/plan-01' }],
   };
 

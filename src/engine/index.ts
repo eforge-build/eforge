@@ -32,6 +32,7 @@ export {
   extractPlanTitle,
   detectValidationCommands,
   writePlanArtifacts,
+  injectProfileIntoOrchestrationYaml,
 } from './plan.js';
 export type { WritePlanArtifactsOptions } from './plan.js';
 
@@ -123,7 +124,7 @@ export { withHooks, matchesPattern } from './hooks.js';
 
 // --- config ---
 export type { EforgeConfig, PartialEforgeConfig, PluginConfig, ProfileConfig, ResolvedProfileConfig, AgentProfileConfig, ReviewProfileConfig, PartialProfileConfig, BuildStageSpec } from './config.js';
-export { DEFAULT_CONFIG, BUILTIN_PROFILES, AGENT_ROLES, eforgeConfigSchema, findConfigFile, resolveConfig, loadConfig, getUserConfigPath, mergePartialConfigs, resolveProfileExtensions, parseProfilesFile, validateProfileConfig, validateConfigFile, resolveGeneratedProfile } from './config.js';
+export { DEFAULT_CONFIG, BUILTIN_PROFILES, AGENT_ROLES, eforgeConfigSchema, resolvedProfileConfigSchema, findConfigFile, resolveConfig, loadConfig, getUserConfigPath, mergePartialConfigs, resolveProfileExtensions, parseProfilesFile, validateProfileConfig, validateConfigFile, resolveGeneratedProfile } from './config.js';
 export type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 export { createTracingContext, createNoopTracingContext } from './tracing.js';
 

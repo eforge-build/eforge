@@ -53,7 +53,7 @@ const partialProfileConfigSchema = z.object({
   review: reviewProfileConfigSchema.partial().optional(),
 });
 
-const resolvedProfileConfigSchema = z.object({
+export const resolvedProfileConfigSchema = z.object({
   description: z.string().min(1),
   compile: z.array(z.string()).nonempty(),
   build: z.array(buildStageSpecSchema).nonempty(),

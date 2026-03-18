@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { resolve } from 'node:path';
-import { parsePlanFile, parseOrchestrationConfig } from '../src/engine/plan.js';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { stringify as stringifyYaml } from 'yaml';
+import { parsePlanFile, parseOrchestrationConfig, injectProfileIntoOrchestrationYaml } from '../src/engine/plan.js';
+import { BUILTIN_PROFILES, type ResolvedProfileConfig } from '../src/engine/config.js';
 
 const fixturesDir = resolve(import.meta.dirname, 'fixtures');
 
@@ -46,7 +51,7 @@ describe('parsePlanFile', () => {
 });
 
 describe('parseOrchestrationConfig', () => {
-  it('parses valid config', async () => {
+  it('parses valid config with inline profile', async () => {
     const config = await parseOrchestrationConfig(
       resolve(fixturesDir, 'orchestration/valid.yaml'),
     );
@@ -62,11 +67,101 @@ describe('parseOrchestrationConfig', () => {
       branch: 'feature/core',
     });
     expect(config.plans[1].dependsOn).toEqual(['core']);
+
+    // Profile fields
+    expect(config.profile.description).toBe(
+      'Multi-file feature work or refactors that need planning and review but fit in a single plan.',
+    );
+    expect(config.profile.compile).toEqual(['planner', 'plan-review-cycle']);
+    expect(config.profile.build).toEqual([['implement', 'doc-update'], 'review', 'review-fix', 'evaluate']);
+    expect(config.profile.agents).toEqual({});
+    expect(config.profile.review).toEqual({
+      strategy: 'auto',
+      perspectives: ['code'],
+      maxRounds: 1,
+      evaluatorStrictness: 'standard',
+    });
   });
 
   it('throws on missing name', async () => {
     await expect(
       parseOrchestrationConfig(resolve(fixturesDir, 'orchestration/no-name.yaml')),
     ).rejects.toThrow(/name/i);
+  });
+
+  it('throws when YAML has no profile field', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eforge-orch-test-'));
+    const yamlPath = join(dir, 'orchestration.yaml');
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'test',
+      description: 'test',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1' }],
+    }));
+
+    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/profile/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('throws when profile field is malformed', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eforge-orch-test-'));
+    const yamlPath = join(dir, 'orchestration.yaml');
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'test',
+      description: 'test',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      profile: { description: '' }, // Missing required fields and empty description
+      plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1' }],
+    }));
+
+    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/profile/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('injectProfileIntoOrchestrationYaml', () => {
+  const tempDirs: string[] = [];
+
+  function makeTempDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'eforge-inject-profile-'));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    tempDirs.length = 0;
+  });
+
+  it('reads existing orchestration.yaml, adds profile, and writes it back', async () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+
+    // Write a minimal orchestration.yaml without profile
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'inject-test',
+      description: 'Test injection',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1' }],
+    }));
+
+    const profile: ResolvedProfileConfig = BUILTIN_PROFILES['errand'];
+    await injectProfileIntoOrchestrationYaml(yamlPath, profile);
+
+    // Parse the result to verify
+    const config = await parseOrchestrationConfig(yamlPath);
+    expect(config.name).toBe('inject-test');
+    expect(config.profile.description).toBe(profile.description);
+    expect(config.profile.compile).toEqual(profile.compile);
+    expect(config.profile.build).toEqual(profile.build);
+    expect(config.profile.review).toEqual(profile.review);
   });
 });

@@ -37,7 +37,7 @@ import { runCohesionReview } from './agents/cohesion-reviewer.js';
 import { runCohesionEvaluate } from './agents/cohesion-evaluator.js';
 import { parseModulesBlock } from './agents/common.js';
 import { compileExpedition } from './compiler.js';
-import { resolveDependencyGraph } from './plan.js';
+import { resolveDependencyGraph, injectProfileIntoOrchestrationYaml } from './plan.js';
 import { runParallel, type ParallelTask } from './concurrency.js';
 
 const exec = promisify(execFile);
@@ -326,9 +326,13 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
         continue;
       }
 
-      // Track final plans for review phase
+      // Track final plans for review phase and inject profile into orchestration.yaml
       if (event.type === 'plan:complete') {
         ctx.plans = event.plans;
+
+        // Inject the resolved profile into the planner-written orchestration.yaml
+        const orchYamlPath = resolve(ctx.cwd, 'plans', ctx.planSetName, 'orchestration.yaml');
+        await injectProfileIntoOrchestrationYaml(orchYamlPath, ctx.profile);
       }
 
       yield event;
@@ -530,7 +534,7 @@ registerCompileStage('compile-expedition', async function* compileExpeditionStag
   if (ctx.expeditionModules.length === 0) return;
 
   yield { type: 'expedition:compile:start' };
-  const plans = await compileExpedition(ctx.cwd, ctx.planSetName);
+  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.profile);
   yield { type: 'expedition:compile:complete', plans };
   yield { type: 'plan:complete', plans };
 

@@ -3,6 +3,24 @@ description: A test orchestration config
 created: "2026-01-01"
 mode: excursion
 base_branch: main
+profile:
+  description: Multi-file feature work or refactors that need planning and review but fit in a single plan.
+  compile:
+    - planner
+    - plan-review-cycle
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
 plans:
   - id: core
     name: Core Module

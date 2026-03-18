@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { extractPlanTitle, deriveNameFromContent, detectValidationCommands, writePlanArtifacts } from '../src/engine/plan.js';
 import { parsePlanFile, parseOrchestrationConfig } from '../src/engine/plan.js';
+import { BUILTIN_PROFILES } from '../src/engine/config.js';
 
 // --- extractPlanTitle ---
 
@@ -161,6 +162,7 @@ describe('writePlanArtifacts', () => {
       sourceContent,
       planName: 'Add Auth',
       baseBranch: 'main',
+      profile: BUILTIN_PROFILES['errand'],
       validate: ['pnpm type-check', 'pnpm test'],
     });
 
@@ -201,6 +203,7 @@ describe('writePlanArtifacts', () => {
       sourceContent: 'Plan content here',
       planName: 'My Plan',
       baseBranch: 'develop',
+      profile: BUILTIN_PROFILES['errand'],
     });
 
     expect(existsSync(resolve(dir, 'plans', 'my-plan'))).toBe(true);
@@ -215,6 +218,7 @@ describe('writePlanArtifacts', () => {
       sourceContent: '# Multi Plan\n\nContent',
       planName: 'Multi Plan',
       baseBranch: 'main',
+      profile: BUILTIN_PROFILES['excursion'],
       mode: 'excursion',
     });
 
@@ -233,6 +237,7 @@ describe('writePlanArtifacts', () => {
       sourceContent: 'Content',
       planName: 'Default Mode',
       baseBranch: 'main',
+      profile: BUILTIN_PROFILES['errand'],
     });
 
     const orch = await parseOrchestrationConfig(
@@ -250,6 +255,7 @@ describe('writePlanArtifacts', () => {
       sourceContent: 'Content',
       planName: 'No Validate',
       baseBranch: 'main',
+      profile: BUILTIN_PROFILES['errand'],
       validate: [],
     });
 

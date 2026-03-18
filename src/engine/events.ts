@@ -1,5 +1,6 @@
 // EforgeEvent discriminated union and all supporting types
 
+import type { ResolvedProfileConfig } from './config.js';
 import type { ReviewPerspective } from './review-heuristics.js';
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
@@ -49,6 +50,7 @@ export interface OrchestrationConfig {
   created: string;
   mode: (typeof ORCHESTRATION_MODES)[number];
   baseBranch: string;
+  profile: ResolvedProfileConfig;
   plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string }>;
   validate?: string[];
 }

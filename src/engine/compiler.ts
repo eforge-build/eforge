@@ -9,6 +9,7 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { stringify as stringifyYaml } from 'yaml';
 import type { PlanFile } from './events.js';
+import type { ResolvedProfileConfig } from './config.js';
 import { parseExpeditionIndex, resolveDependencyGraph } from './plan.js';
 
 const exec = promisify(execFile);
@@ -23,7 +24,7 @@ const exec = promisify(execFile);
  * 5. Generates orchestration.yaml
  * 6. Updates index.yaml status to compiled
  */
-export async function compileExpedition(cwd: string, planSetName: string): Promise<PlanFile[]> {
+export async function compileExpedition(cwd: string, planSetName: string, profile?: ResolvedProfileConfig): Promise<PlanFile[]> {
   const planDir = resolve(cwd, 'plans', planSetName);
   const indexPath = resolve(planDir, 'index.yaml');
   const modulesDir = resolve(planDir, 'modules');
@@ -121,6 +122,7 @@ export async function compileExpedition(cwd: string, planSetName: string): Promi
     compiled: new Date().toISOString().split('T')[0],
     mode: 'expedition',
     base_branch: baseBranch,
+    ...(profile && { profile }),
     ...(index.validate && index.validate.length > 0 && { validate: index.validate }),
     plans: planFiles.map((p) => ({
       id: p.id,

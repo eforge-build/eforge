@@ -334,8 +334,8 @@ export class EforgeEngine {
       const verbose = options.verbose;
       const abortController = options.abortController;
 
-      // Default to excursion profile for build (matches today's hardcoded sequence)
-      const buildProfile = config.profiles['excursion'];
+      // Use the profile persisted in orchestration.yaml during compile
+      const buildProfile = orchConfig.profile;
 
       const planRunner = async function* (
         planId: string,
