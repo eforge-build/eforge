@@ -9,15 +9,6 @@
 
 ---
 
-## Planning Intelligence
-
-**Goal**: Go from rough idea to refined, reviewed plans entirely within Claude Code.
-
-- **Plan iteration** — Review and refine generated plans in-conversation, re-run review cycle
-- **Plan templates** — Common patterns (API endpoint, migration, refactor, feature flag)
-
----
-
 ## Eval & Observability
 
 **Goal**: Use evaluation data and runtime observability to drive continuous improvement of workflow profiles and agent behavior.
@@ -38,7 +29,7 @@
 
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
 
-- **Provider abstraction** — Second `AgentBackend` implementation for non-SDK environments
+- **Codex backend** — `AgentBackend` implementation targeting OpenAI's Codex as the second provider, proving out the backend abstraction with a meaningfully different runtime
 - **npm distribution** — Publish CLI + library to npm, configure exports and files field
 
 ---
