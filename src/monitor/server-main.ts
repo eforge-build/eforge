@@ -18,9 +18,71 @@ const COUNTDOWN_WITH_SUBSCRIBERS_MS = 60_000;
 const COUNTDOWN_WITHOUT_SUBSCRIBERS_MS = 10_000;
 const IDLE_FALLBACK_MS = 10_000;
 
-type ServerState = 'WATCHING' | 'COUNTDOWN' | 'SHUTDOWN';
+export type ServerState = 'WATCHING' | 'COUNTDOWN' | 'SHUTDOWN';
+
+export interface StateCheckContext {
+  state: ServerState;
+  lastActivityTimestamp: number;
+  hasSeenActivity: boolean;
+  serverStartedAt: number;
+  getRunningRuns: () => { id: string }[];
+  getLatestEventTimestamp: () => string | undefined;
+  transitionToCountdown: () => void;
+  cancelCountdown: () => void;
+}
+
+/**
+ * Core state-check logic extracted for testability.
+ * Returns updated mutable fields (state, lastActivityTimestamp, hasSeenActivity).
+ */
+export function evaluateStateCheck(ctx: StateCheckContext): {
+  state: ServerState;
+  lastActivityTimestamp: number;
+  hasSeenActivity: boolean;
+} {
+  const runningRuns = ctx.getRunningRuns();
+  const hasRunning = runningRuns.length > 0;
+  let { state, lastActivityTimestamp, hasSeenActivity } = ctx;
+
+  if (hasRunning) {
+    lastActivityTimestamp = Date.now();
+    if (state === 'COUNTDOWN') {
+      ctx.cancelCountdown();
+      state = 'WATCHING';
+    }
+    return { state, lastActivityTimestamp, hasSeenActivity };
+  }
+
+  // No running runs
+  if (state === 'WATCHING') {
+    const latestTimestamp = ctx.getLatestEventTimestamp();
+    if (latestTimestamp) {
+      const eventTime = new Date(latestTimestamp).getTime();
+      if (eventTime > lastActivityTimestamp) {
+        lastActivityTimestamp = eventTime;
+      }
+      if (!hasSeenActivity && eventTime >= ctx.serverStartedAt) {
+        hasSeenActivity = true;
+      }
+    }
+
+    if (!hasSeenActivity) {
+      return { state, lastActivityTimestamp, hasSeenActivity };
+    }
+
+    const idleMs = Date.now() - lastActivityTimestamp;
+    if (idleMs >= IDLE_FALLBACK_MS) {
+      ctx.transitionToCountdown();
+      state = 'COUNTDOWN';
+    }
+    return { state, lastActivityTimestamp, hasSeenActivity };
+  }
+
+  return { state, lastActivityTimestamp, hasSeenActivity };
+}
 
 async function main(): Promise<void> {
+  const serverStartedAt = Date.now();
   const [dbPath, portStr, cwd] = process.argv.slice(2);
   if (!dbPath || !portStr || !cwd) {
     console.error('Usage: server-main <dbPath> <port> <cwd>');
@@ -53,6 +115,7 @@ async function main(): Promise<void> {
   let state: ServerState = 'WATCHING';
   let countdownStartedAt = 0;
   let lastActivityTimestamp = Date.now();
+  let hasSeenActivity = false;
 
   function countdownDurationMs(): number {
     return server.subscriberCount > 0
@@ -107,35 +170,19 @@ async function main(): Promise<void> {
   // State machine check loop
   const stateTimer = setInterval(() => {
     try {
-      const runningRuns = db.getRunningRuns();
-      const hasRunning = runningRuns.length > 0;
-
-      if (hasRunning) {
-        // Active runs — stay in or return to WATCHING
-        lastActivityTimestamp = Date.now();
-        if (state === 'COUNTDOWN') {
-          cancelCountdown();
-        }
-        return;
-      }
-
-      // No running runs
-      if (state === 'WATCHING') {
-        // Check idle time before transitioning
-        const latestTimestamp = db.getLatestEventTimestamp();
-        if (latestTimestamp) {
-          const eventTime = new Date(latestTimestamp).getTime();
-          if (eventTime > lastActivityTimestamp) {
-            lastActivityTimestamp = eventTime;
-          }
-        }
-
-        const idleMs = Date.now() - lastActivityTimestamp;
-        if (idleMs >= IDLE_FALLBACK_MS) {
-          transitionToCountdown();
-        }
-        return;
-      }
+      const result = evaluateStateCheck({
+        state,
+        lastActivityTimestamp,
+        hasSeenActivity,
+        serverStartedAt,
+        getRunningRuns: () => db.getRunningRuns(),
+        getLatestEventTimestamp: () => db.getLatestEventTimestamp(),
+        transitionToCountdown,
+        cancelCountdown,
+      });
+      state = result.state;
+      lastActivityTimestamp = result.lastActivityTimestamp;
+      hasSeenActivity = result.hasSeenActivity;
 
       if (state === 'COUNTDOWN') {
         const elapsed = Date.now() - countdownStartedAt;
@@ -143,7 +190,6 @@ async function main(): Promise<void> {
           state = 'SHUTDOWN';
           shutdown();
         }
-        return;
       }
     } catch {
       // DB might be closed during shutdown
@@ -183,7 +229,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('Monitor server failed:', err);
-  process.exit(1);
-});
+// Only auto-execute when run as an entry point (not when imported for testing)
+const isEntryPoint = process.argv[1] &&
+  (process.argv[1].endsWith('server-main.js') || process.argv[1].endsWith('server-main.ts'));
+if (isEntryPoint) {
+  main().catch((err) => {
+    console.error('Monitor server failed:', err);
+    process.exit(1);
+  });
+}
