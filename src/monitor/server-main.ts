@@ -28,7 +28,7 @@ async function main(): Promise<void> {
 
   let server: Awaited<ReturnType<typeof startServer>>;
   try {
-    server = await startServer(db, preferredPort);
+    server = await startServer(db, preferredPort, { cwd });
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       // Another server won the race — exit cleanly

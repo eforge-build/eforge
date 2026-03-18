@@ -44,7 +44,7 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean },
+  options?: { strictPort?: boolean; cwd?: string },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -325,6 +325,86 @@ export async function startServer(
     sendJson(res, allPlans);
   }
 
+  function parseQueueFrontmatter(content: string): Record<string, unknown> | null {
+    const match = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!match) return null;
+
+    const lines = match[1].split('\n');
+    const result: Record<string, unknown> = {};
+
+    for (const line of lines) {
+      const kvMatch = line.match(/^(\w[\w_]*)\s*:\s*(.*)/);
+      if (!kvMatch) continue;
+      const [, key, rawValue] = kvMatch;
+      const value = rawValue.trim();
+
+      if (value.startsWith('[') && value.endsWith(']')) {
+        const inner = value.slice(1, -1).trim();
+        result[key] = inner ? inner.split(',').map((s) => s.trim().replace(/^["']|["']$/g, '')) : [];
+      } else if (/^-?\d+$/.test(value)) {
+        result[key] = parseInt(value, 10);
+      } else if (value === 'true' || value === 'false') {
+        result[key] = value === 'true';
+      } else if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        result[key] = value.slice(1, -1);
+      } else {
+        result[key] = value;
+      }
+    }
+
+    return result;
+  }
+
+  async function serveQueue(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const cwd = options?.cwd;
+    if (!cwd) {
+      sendJson(res, []);
+      return;
+    }
+
+    const queueDir = resolve(cwd, 'docs/prd-queue');
+    let entries: string[];
+    try {
+      entries = await readdir(queueDir);
+    } catch {
+      sendJson(res, []);
+      return;
+    }
+
+    const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
+    const items: Array<{
+      id: string;
+      title: string;
+      status: string;
+      priority?: number;
+      created?: string;
+      dependsOn?: string[];
+    }> = [];
+
+    for (const file of mdFiles) {
+      try {
+        const content = await readFile(resolve(queueDir, file), 'utf-8');
+        const fm = parseQueueFrontmatter(content);
+        if (!fm || typeof fm.title !== 'string') continue;
+
+        const item: (typeof items)[number] = {
+          id: basename(file, '.md'),
+          title: fm.title,
+          status: typeof fm.status === 'string' ? fm.status : 'pending',
+        };
+        if (typeof fm.priority === 'number') item.priority = fm.priority;
+        if (typeof fm.created === 'string') item.created = fm.created;
+        if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
+
+        items.push(item);
+      } catch {
+        // skip unreadable files
+      }
+    }
+
+    sendJson(res, items);
+  }
+
   function sendJson(res: ServerResponse, data: unknown): void {
     res.writeHead(200, {
       'Content-Type': 'application/json',
@@ -338,6 +418,8 @@ export async function startServer(
 
     if (url === '/api/health') {
       serveHealth(req, res);
+    } else if (url === '/api/queue') {
+      await serveQueue(req, res);
     } else if (url === '/api/runs') {
       serveRuns(req, res);
     } else if (url === '/api/latest-run') {

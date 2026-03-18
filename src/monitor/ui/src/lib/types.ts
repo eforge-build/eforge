@@ -34,6 +34,15 @@ export interface PlanStatus {
 }
 
 
+export interface QueueItem {
+  id: string;
+  title: string;
+  status: string;
+  priority?: number;
+  created?: string;
+  dependsOn?: string[];
+}
+
 export interface RunInfo {
   id: string;
   planSet: string;

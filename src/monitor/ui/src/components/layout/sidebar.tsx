@@ -5,6 +5,7 @@ import { useApi } from '@/hooks/use-api';
 import { groupRunsBySessions, type SessionGroup } from '@/lib/session-utils';
 import { formatRelativeTime, formatRunDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { QueueSection } from './queue-section';
 
 interface SidebarProps {
   currentSessionId: string | null;
@@ -80,6 +81,7 @@ export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger }: S
 
   return (
     <aside className="bg-card border-r border-border overflow-y-auto px-3 py-3">
+      <QueueSection refreshTrigger={refreshTrigger} />
       <h2 className="text-[11px] uppercase tracking-wider text-text-dim px-2 py-1.5 mb-1">
         Sessions
       </h2>

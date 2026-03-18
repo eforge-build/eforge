@@ -1,4 +1,4 @@
-import type { RunInfo } from './types';
+import type { RunInfo, QueueItem } from './types';
 
 export async function fetchRuns(): Promise<RunInfo[]> {
   const res = await fetch('/api/runs');
@@ -29,5 +29,11 @@ export async function fetchOrchestration(runId: string): Promise<unknown> {
 export async function fetchPlans(runId: string): Promise<unknown[]> {
   const res = await fetch(`/api/plans/${runId}`);
   if (!res.ok) throw new Error(`Failed to fetch plans: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchQueue(): Promise<QueueItem[]> {
+  const res = await fetch('/api/queue');
+  if (!res.ok) throw new Error(`Failed to fetch queue: ${res.status}`);
   return res.json();
 }
