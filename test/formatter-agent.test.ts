@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '../src/engine/events.js';
 import { StubBackend } from './stub-backend.js';
+import { findEvent, filterEvents } from './test-events.js';
 import { runFormatter } from '../src/engine/agents/formatter.js';
 
 async function collectEventsAndResult(
@@ -13,20 +14,6 @@ async function collectEventsAndResult(
     iterResult = await gen.next();
   }
   return { events, result: iterResult.value };
-}
-
-function findEvent<T extends EforgeEvent['type']>(
-  events: EforgeEvent[],
-  type: T,
-): Extract<EforgeEvent, { type: T }> | undefined {
-  return events.find((e) => e.type === type) as Extract<EforgeEvent, { type: T }> | undefined;
-}
-
-function filterEvents<T extends EforgeEvent['type']>(
-  events: EforgeEvent[],
-  type: T,
-): Array<Extract<EforgeEvent, { type: T }>> {
-  return events.filter((e) => e.type === type) as Array<Extract<EforgeEvent, { type: T }>>;
 }
 
 describe('runFormatter wiring', () => {

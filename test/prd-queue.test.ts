@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { describe, it, expect } from 'vitest';
+import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { validatePrdFrontmatter, resolveQueueOrder, updatePrdStatus, type QueuedPrd } from '../src/engine/prd-queue.js';
+import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -189,20 +189,7 @@ describe('resolveQueueOrder', () => {
 // ---------------------------------------------------------------------------
 
 describe('updatePrdStatus', () => {
-  const tempDirs: string[] = [];
-
-  function makeTempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'eforge-prd-status-'));
-    tempDirs.push(dir);
-    return dir;
-  }
-
-  afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs.length = 0;
-  });
+  const makeTempDir = useTempDir('eforge-prd-status-');
 
   it('replaces existing status line', async () => {
     const dir = makeTempDir();

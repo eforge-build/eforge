@@ -1,9 +1,10 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { describe, it, expect } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EforgeEvent } from '../src/engine/events.js';
 import { StubBackend } from './stub-backend.js';
+import { collectEvents, findEvent, filterEvents } from './test-events.js';
+import { useTempDir } from './test-tmpdir.js';
 import { runPlanner, formatProfileDescriptions } from '../src/engine/agents/planner.js';
 import { runAssessor } from '../src/engine/agents/assessor.js';
 import { runReview } from '../src/engine/agents/reviewer.js';
@@ -13,45 +14,10 @@ import { runPlanEvaluate } from '../src/engine/agents/plan-evaluator.js';
 import { runModulePlanner } from '../src/engine/agents/module-planner.js';
 import type { ResolvedProfileConfig } from '../src/engine/config.js';
 
-async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
-  const events: EforgeEvent[] = [];
-  for await (const event of gen) {
-    events.push(event);
-  }
-  return events;
-}
-
-function findEvent<T extends EforgeEvent['type']>(
-  events: EforgeEvent[],
-  type: T,
-): Extract<EforgeEvent, { type: T }> | undefined {
-  return events.find((e) => e.type === type) as Extract<EforgeEvent, { type: T }> | undefined;
-}
-
-function filterEvents<T extends EforgeEvent['type']>(
-  events: EforgeEvent[],
-  type: T,
-): Array<Extract<EforgeEvent, { type: T }>> {
-  return events.filter((e) => e.type === type) as Array<Extract<EforgeEvent, { type: T }>>;
-}
-
 // --- Planner ---
 
 describe('runPlanner wiring', () => {
-  const tempDirs: string[] = [];
-
-  function makeTempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'eforge-planner-test-'));
-    tempDirs.push(dir);
-    return dir;
-  }
-
-  afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs.length = 0;
-  });
+  const makeTempDir = useTempDir('eforge-planner-test-');
 
   it('emits plan lifecycle events for a basic run', async () => {
     const backend = new StubBackend([{ text: 'Planning done.' }]);
@@ -269,20 +235,7 @@ describe('formatProfileDescriptions', () => {
 // --- Planner profile emission ---
 
 describe('runPlanner profile emission', () => {
-  const tempDirs: string[] = [];
-
-  function makeTempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'eforge-planner-profile-test-'));
-    tempDirs.push(dir);
-    return dir;
-  }
-
-  afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs.length = 0;
-  });
+  const makeTempDir = useTempDir('eforge-planner-profile-test-');
 
   it('emits plan:profile when agent output contains a profile block', async () => {
     const backend = new StubBackend([{

@@ -1,9 +1,9 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { updatePlanStatus, isResumable, loadState, saveState } from '../src/engine/state.js';
 import type { EforgeState } from '../src/engine/events.js';
-import { mkdtempSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { useTempDir } from './test-tmpdir.js';
 
 function makeState(overrides?: Partial<EforgeState>): EforgeState {
   return {
@@ -95,20 +95,7 @@ describe('isResumable', () => {
 });
 
 describe('loadState / saveState', () => {
-  const tempDirs: string[] = [];
-
-  function makeTempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'eforge-state-test-'));
-    tempDirs.push(dir);
-    return dir;
-  }
-
-  afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs.length = 0;
-  });
+  const makeTempDir = useTempDir('eforge-state-test-');
 
   it('roundtrips state through save and load', () => {
     const dir = makeTempDir();

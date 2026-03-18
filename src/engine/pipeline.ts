@@ -12,16 +12,17 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { parse as parseYaml } from 'yaml';
 
-import type {
-  EforgeEvent,
-  AgentRole,
-  AgentResultData,
-  PlanFile,
-  ClarificationQuestion,
-  ExpeditionModule,
-  ScopeAssessment,
-  ReviewIssue,
-  OrchestrationConfig,
+import {
+  SEVERITY_ORDER,
+  type EforgeEvent,
+  type AgentRole,
+  type AgentResultData,
+  type PlanFile,
+  type ClarificationQuestion,
+  type ExpeditionModule,
+  type ScopeAssessment,
+  type ReviewIssue,
+  type OrchestrationConfig,
 } from './events.js';
 import type { EforgeConfig, ResolvedProfileConfig } from './config.js';
 import type { AgentBackend } from './backend.js';
@@ -244,12 +245,6 @@ export function resolveAgentConfig(
 // ---------------------------------------------------------------------------
 // Issue severity filtering
 // ---------------------------------------------------------------------------
-
-const SEVERITY_ORDER: Record<ReviewIssue['severity'], number> = {
-  critical: 0,
-  warning: 1,
-  suggestion: 2,
-};
 
 /**
  * Filter review issues by severity threshold.

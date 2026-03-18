@@ -1,17 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
 import { mapSDKMessages, truncateOutput } from '../src/engine/backends/claude-sdk.js';
-
-/**
- * Helper: collect all events from an async generator into an array.
- */
-async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
-  const events: EforgeEvent[] = [];
-  for await (const event of gen) {
-    events.push(event);
-  }
-  return events;
-}
+import { collectEvents } from './test-events.js';
 
 /**
  * Helper: create an async iterable from an array of SDK messages.

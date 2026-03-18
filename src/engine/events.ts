@@ -34,6 +34,12 @@ export interface ReviewIssue {
   fix?: string;
 }
 
+export const SEVERITY_ORDER: Record<ReviewIssue['severity'], number> = {
+  critical: 0,
+  warning: 1,
+  suggestion: 2,
+};
+
 export interface PlanFile {
   id: string;
   name: string;

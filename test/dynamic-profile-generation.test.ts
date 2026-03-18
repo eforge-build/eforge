@@ -1,35 +1,11 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { EforgeEvent } from '../src/engine/events.js';
+import { describe, it, expect } from 'vitest';
 import type { ResolvedProfileConfig } from '../src/engine/config.js';
 import { validateProfileConfig, resolveGeneratedProfile, BUILTIN_PROFILES } from '../src/engine/config.js';
 import { parseGeneratedProfileBlock, type GeneratedProfileBlock } from '../src/engine/agents/common.js';
 import { runPlanner } from '../src/engine/agents/planner.js';
 import { StubBackend } from './stub-backend.js';
-
-async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
-  const events: EforgeEvent[] = [];
-  for await (const event of gen) {
-    events.push(event);
-  }
-  return events;
-}
-
-function findEvent<T extends EforgeEvent['type']>(
-  events: EforgeEvent[],
-  type: T,
-): Extract<EforgeEvent, { type: T }> | undefined {
-  return events.find((e) => e.type === type) as Extract<EforgeEvent, { type: T }> | undefined;
-}
-
-function filterEvents<T extends EforgeEvent['type']>(
-  events: EforgeEvent[],
-  type: T,
-): Array<Extract<EforgeEvent, { type: T }>> {
-  return events.filter((e) => e.type === type) as Array<Extract<EforgeEvent, { type: T }>>;
-}
+import { collectEvents, findEvent, filterEvents } from './test-events.js';
+import { useTempDir } from './test-tmpdir.js';
 
 function cloneProfile(name: keyof typeof BUILTIN_PROFILES): ResolvedProfileConfig {
   const src = BUILTIN_PROFILES[name];
@@ -288,20 +264,7 @@ describe('resolveGeneratedProfile', () => {
 // ---------------------------------------------------------------------------
 
 describe('runPlanner with generateProfile', () => {
-  const tempDirs: string[] = [];
-
-  function makeTempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'eforge-dynamic-profile-test-'));
-    tempDirs.push(dir);
-    return dir;
-  }
-
-  afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs.length = 0;
-  });
+  const makeTempDir = useTempDir('eforge-dynamic-profile-test-');
 
   const profiles = {
     errand: cloneProfile('errand'),

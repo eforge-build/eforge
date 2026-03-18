@@ -1,22 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { mapSDKMessages } from '../src/engine/backends/claude-sdk.js';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { EforgeEvent } from '../src/engine/events.js';
+import { collectEvents } from './test-events.js';
 
 /** Convert an array to an AsyncIterable of SDKMessages (cast through unknown) */
 async function* asyncIterableFrom(items: unknown[]): AsyncGenerator<SDKMessage> {
   for (const item of items) {
     yield item as SDKMessage;
   }
-}
-
-/** Collect all events from an async generator */
-async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
-  const events: EforgeEvent[] = [];
-  for await (const event of gen) {
-    events.push(event);
-  }
-  return events;
 }
 
 describe('mapSDKMessages', () => {

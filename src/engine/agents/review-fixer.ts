@@ -5,7 +5,7 @@
  */
 
 import type { AgentBackend } from '../backend.js';
-import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
+import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface ReviewFixerOptions {
@@ -27,12 +27,6 @@ export interface ReviewFixerOptions {
  * Format issues into a human-readable list for the prompt, sorted by severity.
  */
 function formatIssuesForPrompt(issues: ReviewIssue[]): string {
-  const SEVERITY_ORDER: Record<ReviewIssue['severity'], number> = {
-    critical: 0,
-    warning: 1,
-    suggestion: 2,
-  };
-
   const sorted = [...issues].sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
   );

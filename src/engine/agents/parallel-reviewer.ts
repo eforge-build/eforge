@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import type { AgentBackend } from '../backend.js';
-import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
+import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import type { ReviewPerspective } from '../review-heuristics.js';
 import { categorizeFiles, determineApplicableReviews, shouldParallelizeReview } from '../review-heuristics.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
@@ -191,11 +191,6 @@ export async function* runParallelReview(
  */
 export function deduplicateIssues(issues: ReviewIssue[]): ReviewIssue[] {
   const seen = new Map<string, ReviewIssue>();
-  const SEVERITY_ORDER: Record<ReviewIssue['severity'], number> = {
-    critical: 0,
-    warning: 1,
-    suggestion: 2,
-  };
 
   for (const issue of issues) {
     const key = `${issue.file}:${issue.line ?? ''}:${issue.description}`;

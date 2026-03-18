@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
-import type { EforgeEvent, EforgeStatus, OrchestrationConfig } from '../engine/events.js';
+import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from '../engine/events.js';
 import type { EforgeConfig } from '../engine/config.js';
 import type { QueuedPrd } from '../engine/prd-queue.js';
 
@@ -57,6 +57,17 @@ function failSpinner(key: string, text?: string): void {
     spinner.fail(text);
     spinners.delete(key);
   }
+}
+
+function formatIssueSummary(issues: ReviewIssue[]): string {
+  const critical = issues.filter((i) => i.severity === 'critical').length;
+  const warnings = issues.filter((i) => i.severity === 'warning').length;
+  const suggestions = issues.filter((i) => i.severity === 'suggestion').length;
+  const parts: string[] = [];
+  if (critical > 0) parts.push(chalk.red(`${critical} critical`));
+  if (warnings > 0) parts.push(chalk.yellow(`${warnings} warning`));
+  if (suggestions > 0) parts.push(chalk.blue(`${suggestions} suggestion`));
+  return parts.join(', ');
 }
 
 function elapsed(): string {
@@ -154,18 +165,10 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     case 'plan:review:complete': {
-      const planIssues = event.issues;
-      if (planIssues.length === 0) {
+      if (event.issues.length === 0) {
         succeedSpinner('plan-review', 'Plan review complete \u2014 no issues found');
       } else {
-        const pCritical = planIssues.filter((i) => i.severity === 'critical').length;
-        const pWarnings = planIssues.filter((i) => i.severity === 'warning').length;
-        const pSuggestions = planIssues.filter((i) => i.severity === 'suggestion').length;
-        const pParts: string[] = [];
-        if (pCritical > 0) pParts.push(chalk.red(`${pCritical} critical`));
-        if (pWarnings > 0) pParts.push(chalk.yellow(`${pWarnings} warning`));
-        if (pSuggestions > 0) pParts.push(chalk.blue(`${pSuggestions} suggestion`));
-        succeedSpinner('plan-review', `Plan review: ${pParts.join(', ')}`);
+        succeedSpinner('plan-review', `Plan review: ${formatIssueSummary(event.issues)}`);
       }
       break;
     }
@@ -191,18 +194,10 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     case 'plan:cohesion:complete': {
-      const cohesionIssues = event.issues;
-      if (cohesionIssues.length === 0) {
+      if (event.issues.length === 0) {
         succeedSpinner('cohesion-review', 'Cohesion review complete \u2014 no issues found');
       } else {
-        const cCritical = cohesionIssues.filter((i) => i.severity === 'critical').length;
-        const cWarnings = cohesionIssues.filter((i) => i.severity === 'warning').length;
-        const cSuggestions = cohesionIssues.filter((i) => i.severity === 'suggestion').length;
-        const cParts: string[] = [];
-        if (cCritical > 0) cParts.push(chalk.red(`${cCritical} critical`));
-        if (cWarnings > 0) cParts.push(chalk.yellow(`${cWarnings} warning`));
-        if (cSuggestions > 0) cParts.push(chalk.blue(`${cSuggestions} suggestion`));
-        succeedSpinner('cohesion-review', `Cohesion review: ${cParts.join(', ')}`);
+        succeedSpinner('cohesion-review', `Cohesion review: ${formatIssueSummary(event.issues)}`);
       }
       break;
     }
@@ -254,16 +249,8 @@ export function renderEvent(event: EforgeEvent): void {
     case 'build:review:complete': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 review complete`;
-      const issues = event.issues;
-      if (issues.length > 0) {
-        const critical = issues.filter((i) => i.severity === 'critical').length;
-        const warnings = issues.filter((i) => i.severity === 'warning').length;
-        const suggestions = issues.filter((i) => i.severity === 'suggestion').length;
-        const parts: string[] = [];
-        if (critical > 0) parts.push(chalk.red(`${critical} critical`));
-        if (warnings > 0) parts.push(chalk.yellow(`${warnings} warning`));
-        if (suggestions > 0) parts.push(chalk.blue(`${suggestions} suggestion`));
-        console.log(`  ${chalk.cyan(event.planId)} review: ${parts.join(', ')}`);
+      if (event.issues.length > 0) {
+        console.log(`  ${chalk.cyan(event.planId)} review: ${formatIssueSummary(event.issues)}`);
       }
       break;
     }

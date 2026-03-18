@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { describe, it, expect } from 'vitest';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { enqueuePrd, inferTitle } from '../src/engine/prd-queue.js';
+import { useTempDir } from './test-tmpdir.js';
 
 // --- inferTitle ---
 
@@ -35,20 +35,7 @@ describe('inferTitle', () => {
 // --- enqueuePrd ---
 
 describe('enqueuePrd', () => {
-  const tempDirs: string[] = [];
-
-  function makeTempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'eforge-enqueue-test-'));
-    tempDirs.push(dir);
-    return dir;
-  }
-
-  afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs.length = 0;
-  });
+  const makeTempDir = useTempDir('eforge-enqueue-test-');
 
   it('writes a PRD file with correct frontmatter', async () => {
     const cwd = makeTempDir();

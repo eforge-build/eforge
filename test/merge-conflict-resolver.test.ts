@@ -1,23 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
 import type { MergeConflictInfo } from '../src/engine/worktree.js';
 import { StubBackend } from './stub-backend.js';
+import { collectEvents, findEvent } from './test-events.js';
 import { runMergeConflictResolver } from '../src/engine/agents/merge-conflict-resolver.js';
-
-async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
-  const events: EforgeEvent[] = [];
-  for await (const event of gen) {
-    events.push(event);
-  }
-  return events;
-}
-
-function findEvent<T extends EforgeEvent['type']>(
-  events: EforgeEvent[],
-  type: T,
-): Extract<EforgeEvent, { type: T }> | undefined {
-  return events.find((e) => e.type === type) as Extract<EforgeEvent, { type: T }> | undefined;
-}
 
 function makeConflict(overrides?: Partial<MergeConflictInfo>): MergeConflictInfo {
   return {

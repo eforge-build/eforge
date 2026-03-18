@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { compilePattern, matchesPattern, withHooks } from '../src/engine/hooks.js';
 import type { EforgeEvent } from '../src/engine/events.js';
 import type { HookConfig } from '../src/engine/config.js';
+import { collectEvents } from './test-events.js';
 
 describe('compilePattern', () => {
   it('matches exact event type', () => {
@@ -60,14 +61,6 @@ describe('withHooks', () => {
     for (const event of events) {
       yield event;
     }
-  }
-
-  async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
-    const result: EforgeEvent[] = [];
-    for await (const event of gen) {
-      result.push(event);
-    }
-    return result;
   }
 
   const sampleEvents: EforgeEvent[] = [

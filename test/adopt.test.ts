@@ -1,10 +1,10 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { describe, it, expect } from 'vitest';
+import { writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { extractPlanTitle, deriveNameFromContent, detectValidationCommands, writePlanArtifacts } from '../src/engine/plan.js';
 import { parsePlanFile, parseOrchestrationConfig } from '../src/engine/plan.js';
 import { BUILTIN_PROFILES } from '../src/engine/config.js';
+import { useTempDir } from './test-tmpdir.js';
 
 // --- extractPlanTitle ---
 
@@ -69,20 +69,7 @@ describe('deriveNameFromContent', () => {
 // --- detectValidationCommands ---
 
 describe('detectValidationCommands', () => {
-  const tempDirs: string[] = [];
-
-  function makeTempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'eforge-adopt-test-'));
-    tempDirs.push(dir);
-    return dir;
-  }
-
-  afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs.length = 0;
-  });
+  const makeTempDir = useTempDir('eforge-adopt-test-');
 
   it('detects pnpm with type-check and test scripts', async () => {
     const dir = makeTempDir();
@@ -137,20 +124,7 @@ describe('detectValidationCommands', () => {
 // --- writePlanArtifacts ---
 
 describe('writePlanArtifacts', () => {
-  const tempDirs: string[] = [];
-
-  function makeTempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'eforge-adopt-artifacts-'));
-    tempDirs.push(dir);
-    return dir;
-  }
-
-  afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs.length = 0;
-  });
+  const makeTempDir = useTempDir('eforge-adopt-artifacts-');
 
   it('creates plan file with YAML frontmatter and orchestration.yaml', async () => {
     const dir = makeTempDir();

@@ -1,30 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent, ReviewIssue } from '../src/engine/events.js';
+import type { ReviewIssue } from '../src/engine/events.js';
 import { StubBackend } from './stub-backend.js';
+import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { deduplicateIssues } from '../src/engine/agents/parallel-reviewer.js';
 import { runReviewFixer } from '../src/engine/agents/review-fixer.js';
-
-async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
-  const events: EforgeEvent[] = [];
-  for await (const event of gen) {
-    events.push(event);
-  }
-  return events;
-}
-
-function findEvent<T extends EforgeEvent['type']>(
-  events: EforgeEvent[],
-  type: T,
-): Extract<EforgeEvent, { type: T }> | undefined {
-  return events.find((e) => e.type === type) as Extract<EforgeEvent, { type: T }> | undefined;
-}
-
-function filterEvents<T extends EforgeEvent['type']>(
-  events: EforgeEvent[],
-  type: T,
-): Array<Extract<EforgeEvent, { type: T }>> {
-  return events.filter((e) => e.type === type) as Array<Extract<EforgeEvent, { type: T }>>;
-}
 
 describe('deduplicateIssues', () => {
   it('removes exact duplicates keeping highest severity', () => {

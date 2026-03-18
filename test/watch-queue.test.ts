@@ -43,14 +43,6 @@ describe('abortableSleep', () => {
   });
 });
 
-async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
-  const events: EforgeEvent[] = [];
-  for await (const event of gen) {
-    events.push(event);
-  }
-  return events;
-}
-
 describe('watchQueue', () => {
   async function createTestEngine(): Promise<{ engine: EforgeEngine; cwd: string }> {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-watch-test-'));

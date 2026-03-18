@@ -89,7 +89,7 @@ eforge.yaml                         # Optional engine config (langfuse, parallel
 src/
   engine/                     # Library core (no stdout, events only)
     eforge.ts                 # EforgeEngine: compile(), build(), status(), watchQueue()
-    events.ts                 # EforgeEvent type definitions
+    events.ts                 # EforgeEvent type definitions + SEVERITY_ORDER constant
     backend.ts                # AgentBackend interface (provider abstraction)
     pipeline.ts               # Stage registry, compile/build stage implementations
     config.ts                 # Config loading, merging & validation
@@ -110,7 +110,7 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 - **Group by what's tested, not where it lives.** A source file may split across multiple test files (e.g., `plan.ts` → `dependency-graph.test.ts` + `plan-parsing.test.ts`) or multiple source files may merge into one test file (e.g., XML parsers from `common.ts`, `reviewer.ts`, `builder.ts` → `xml-parsers.test.ts`).
 - **No mocks.** Test real code. For SDK types, hand-craft data objects cast through `unknown` rather than mocking.
 - **Fixtures for I/O tests only.** File-reading tests use `test/fixtures/`; everything else constructs inputs inline.
-- **Helpers colocated.** Test helpers (e.g., `makeState()`, `asyncIterableFrom()`) live in the test file that uses them. No shared test utils unless reuse spans 3+ files.
+- **Helpers colocated.** Test helpers (e.g., `makeState()`, `asyncIterableFrom()`) live in the test file that uses them. No shared test utils unless reuse spans 3+ files. Shared helpers that cross the threshold: `test/test-events.ts` (`collectEvents`, `findEvent`, `filterEvents`), `test/test-tmpdir.ts` (`useTempDir`).
 - **Agent wiring tests use `StubBackend`** (`test/stub-backend.ts`). Test the logic between backend calls and EforgeEvents: clarification loops, XML parsing → event synthesis, error propagation. See `test/agent-wiring.test.ts`.
 - **Don't test backend implementations or infra.** `ClaudeSDKBackend`, `EforgeEngine` orchestration, worktree/git ops, and tracing are integration-level — don't unit test them.
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { parsePlanFile, parseOrchestrationConfig, injectProfileIntoOrchestrationYaml } from '../src/engine/plan.js';
 import { BUILTIN_PROFILES, type ResolvedProfileConfig } from '../src/engine/config.js';
+import { useTempDir } from './test-tmpdir.js';
 
 const fixturesDir = resolve(import.meta.dirname, 'fixtures');
 
@@ -124,20 +125,7 @@ describe('parseOrchestrationConfig', () => {
 });
 
 describe('injectProfileIntoOrchestrationYaml', () => {
-  const tempDirs: string[] = [];
-
-  function makeTempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'eforge-inject-profile-'));
-    tempDirs.push(dir);
-    return dir;
-  }
-
-  afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs.length = 0;
-  });
+  const makeTempDir = useTempDir('eforge-inject-profile-');
 
   it('reads existing orchestration.yaml, adds profile, and writes it back', async () => {
     const dir = makeTempDir();
