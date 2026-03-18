@@ -1,0 +1,34 @@
+name: fix-monitor-server-premature-shutdown-on-startup
+description: Prevent monitor server from shutting down before the CLI emits its
+  first event by gating WATCHING → COUNTDOWN on observed activity
+created: 2026-03-18
+compiled: 2026-03-18
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-has-seen-activity-gate
+    name: Add hasSeenActivity Gate to Prevent Premature Shutdown
+    depends_on: []
+    branch: fix-monitor-server-premature-shutdown-on-startup/has-seen-activity-gate
+profile:
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
