@@ -38,7 +38,7 @@ import { runCohesionReview } from './agents/cohesion-reviewer.js';
 import { runArchitectureReview } from './agents/architecture-reviewer.js';
 import { parseModulesBlock } from './agents/common.js';
 import { compileExpedition } from './compiler.js';
-import { resolveDependencyGraph, injectProfileIntoOrchestrationYaml, writePlanArtifacts, extractPlanTitle, detectValidationCommands } from './plan.js';
+import { resolveDependencyGraph, injectProfileIntoOrchestrationYaml, parseOrchestrationConfig, writePlanArtifacts, extractPlanTitle, detectValidationCommands } from './plan.js';
 import { runParallel, type ParallelTask } from './concurrency.js';
 import { forgeCommit } from './git.js';
 
@@ -244,6 +244,29 @@ export function resolveAgentConfig(
 }
 
 // ---------------------------------------------------------------------------
+// Dependency backfill
+// ---------------------------------------------------------------------------
+
+/**
+ * Enrich plan files with dependsOn from orchestration config.
+ * The planner writes depends_on only to orchestration.yaml, not to individual
+ * plan file frontmatter. This function cross-references the two sources.
+ */
+export function backfillDependsOn(
+  plans: PlanFile[],
+  orchConfig: OrchestrationConfig,
+): PlanFile[] {
+  const depsMap = new Map(orchConfig.plans.map((p) => [p.id, p.dependsOn]));
+  return plans.map((plan) => {
+    const deps = depsMap.get(plan.id);
+    if (deps && deps.length > 0 && plan.dependsOn.length === 0) {
+      return { ...plan, dependsOn: deps };
+    }
+    return plan;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Issue severity filtering
 // ---------------------------------------------------------------------------
 
@@ -404,11 +427,24 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
 
       // Track final plans for review phase and inject profile into orchestration.yaml
       if (event.type === 'plan:complete') {
-        ctx.plans = event.plans;
-
         // Inject the resolved profile into the planner-written orchestration.yaml
         const orchYamlPath = resolve(ctx.cwd, 'plans', ctx.planSetName, 'orchestration.yaml');
         await injectProfileIntoOrchestrationYaml(orchYamlPath, ctx.profile);
+
+        // Backfill dependsOn from orchestration.yaml into plan:complete events.
+        // The planner writes depends_on to orchestration.yaml but not to individual
+        // plan file frontmatter, so parsePlanFile() returns empty dependsOn arrays.
+        // Cross-reference orchestration.yaml to enrich the event.
+        try {
+          const orchConfig = await parseOrchestrationConfig(orchYamlPath);
+          const enrichedPlans = backfillDependsOn(event.plans, orchConfig);
+          ctx.plans = enrichedPlans;
+          yield { ...event, plans: enrichedPlans };
+          continue;
+        } catch {
+          // Graceful fallback — yield the original event unchanged
+          ctx.plans = event.plans;
+        }
       }
 
       yield event;
