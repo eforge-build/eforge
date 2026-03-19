@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseClarificationBlocks, parseSkipBlock, parseModulesBlock, parseProfileBlock, parseStalenessBlock } from '../src/engine/agents/common.js';
 import { parseReviewIssues } from '../src/engine/agents/reviewer.js';
-import { parseEvaluationBlock } from '../src/engine/agents/builder.js';
+import { parseEvaluationBlock } from '../src/engine/agents/common.js';
 import { formatPriorClarifications } from '../src/engine/agents/planner.js';
 
 describe('parseClarificationBlocks', () => {

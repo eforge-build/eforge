@@ -2,7 +2,32 @@ import type { AgentBackend } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
-import { parseEvaluationBlock } from './builder.js';
+import { parseEvaluationBlock } from './common.js';
+
+/**
+ * Evaluator mode: 'plan' for plan review evaluation, 'cohesion' for cohesion review evaluation.
+ */
+export type EvaluatorMode = 'plan' | 'cohesion';
+
+/**
+ * Options shared by both plan and cohesion evaluator agents.
+ */
+export interface PlanPhaseEvaluatorOptions {
+  /** Evaluator mode */
+  mode: EvaluatorMode;
+  /** Backend for running the agent */
+  backend: AgentBackend;
+  /** The plan set name */
+  planSetName: string;
+  /** The original source/PRD content for context */
+  sourceContent: string;
+  /** Working directory */
+  cwd: string;
+  /** Whether to emit verbose agent-level events */
+  verbose?: boolean;
+  /** AbortController for cancellation */
+  abortController?: AbortController;
+}
 
 /**
  * Options for the plan evaluator agent.
@@ -23,6 +48,98 @@ export interface PlanEvaluatorOptions {
 }
 
 /**
+ * Options for the cohesion evaluator agent.
+ */
+export type CohesionEvaluatorOptions = PlanEvaluatorOptions;
+
+// Mode-specific configuration
+const MODE_CONFIG = {
+  plan: {
+    startEvent: 'plan:evaluate:start' as const,
+    completeEvent: 'plan:evaluate:complete' as const,
+    promptName: 'plan-evaluator',
+    role: 'plan-evaluator' as const,
+    promptVars: {
+      evaluator_title: 'Plan Fix Evaluator',
+      evaluator_context: 'A planner agent generated plan files and committed them. A blind plan reviewer then reviewed the plan files and left fixes as unstaged changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.',
+      strict_improvement_bullet_1: 'It fixes a genuine, objective issue (missing dependency, incorrect file path, coverage gap, contradictory scope)',
+      accept_patterns_table: `| Missing dependency | Plan B uses types from Plan A but doesn't list A in \`depends_on\` |
+| Incorrect file path | Plan references \`src/utils/helper.ts\` but file is at \`src/lib/helper.ts\` |
+| Missing PRD coverage | Source requires auth but no plan covers it — reviewer adds coverage note |
+| Branch name mismatch | YAML frontmatter \`branch\` doesn't match orchestration.yaml |
+| Incorrect plan ID reference | \`depends_on\` references a plan ID that doesn't exist |
+| Missing verification step | Plan has no way to verify its own implementation |`,
+      reject_criteria_extra: '',
+    },
+  },
+  cohesion: {
+    startEvent: 'plan:cohesion:evaluate:start' as const,
+    completeEvent: 'plan:cohesion:evaluate:complete' as const,
+    promptName: 'plan-evaluator',
+    role: 'cohesion-evaluator' as const,
+    promptVars: {
+      evaluator_title: 'Cohesion Fix Evaluator',
+      evaluator_context: 'A planner agent generated module plans and committed them. A blind cohesion reviewer then reviewed the module plans for cross-module issues (file overlaps, integration contracts, dependency errors, vague criteria) and left fixes as unstaged changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.',
+      strict_improvement_bullet_1: 'It fixes a genuine, objective issue (missing dependency, file overlap conflict, uncovered integration contract, vague criterion)',
+      accept_patterns_table: `| Missing dependency | Plan B modifies a file that Plan A creates but doesn't list A in \`depends_on\` |
+| Vague criterion fix | "Tests pass properly" → "\`pnpm test\` exits with code 0" |
+| Integration gap | Architecture defines a contract but no plan covers the consumer side |
+| File overlap resolution | Two plans modify same file — reviewer adds dependency to sequence them |
+| Incorrect plan ID | \`depends_on\` references a plan ID that doesn't exist |`,
+      reject_criteria_extra: '\n4. **Module boundary change** — The change alters module boundaries from the architecture',
+    },
+  },
+} as const;
+
+/**
+ * Internal consolidated evaluator runner for both plan and cohesion evaluation.
+ *
+ * Yields:
+ * - `plan:evaluate:start` or `plan:cohesion:evaluate:start` at the beginning
+ * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
+ * - `plan:evaluate:complete` or `plan:cohesion:evaluate:complete` with accepted/rejected counts at the end
+ */
+async function* runEvaluate(
+  options: PlanPhaseEvaluatorOptions,
+): AsyncGenerator<EforgeEvent> {
+  const { mode, backend, planSetName, sourceContent, cwd, verbose, abortController } = options;
+  const config = MODE_CONFIG[mode];
+
+  yield { type: config.startEvent };
+
+  const prompt = await loadPrompt(config.promptName, {
+    plan_set_name: planSetName,
+    source_content: sourceContent,
+    evaluation_schema: getEvaluationSchemaYaml(),
+    ...config.promptVars,
+  });
+
+  let fullText = '';
+  try {
+    for await (const event of backend.run(
+      { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal },
+      config.role,
+    )) {
+      if (isAlwaysYieldedAgentEvent(event) || verbose) {
+        yield event;
+      }
+      if (event.type === 'agent:message' && event.content) {
+        fullText += event.content;
+      }
+    }
+  } catch (err) {
+    yield { type: config.completeEvent, accepted: 0, rejected: 0 };
+    throw err;
+  }
+
+  const verdicts = parseEvaluationBlock(fullText);
+  const accepted = verdicts.filter((v) => v.action === 'accept').length;
+  const rejected = verdicts.filter((v) => v.action === 'reject' || v.action === 'review').length;
+
+  yield { type: config.completeEvent, accepted, rejected };
+}
+
+/**
  * Evaluate the plan reviewer's unstaged fixes. Runs `git reset --soft HEAD~1`
  * to expose staged (planner's plans) vs unstaged (reviewer's fixes), applies
  * verdicts, and commits the final result.
@@ -35,37 +152,21 @@ export interface PlanEvaluatorOptions {
 export async function* runPlanEvaluate(
   options: PlanEvaluatorOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, planSetName, sourceContent, cwd, verbose, abortController } = options;
+  yield* runEvaluate({ ...options, mode: 'plan' });
+}
 
-  yield { type: 'plan:evaluate:start' };
-
-  const prompt = await loadPrompt('plan-evaluator', {
-    plan_set_name: planSetName,
-    source_content: sourceContent,
-    evaluation_schema: getEvaluationSchemaYaml(),
-  });
-
-  let fullText = '';
-  try {
-    for await (const event of backend.run(
-      { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal },
-      'plan-evaluator',
-    )) {
-      if (isAlwaysYieldedAgentEvent(event) || verbose) {
-        yield event;
-      }
-      if (event.type === 'agent:message' && event.content) {
-        fullText += event.content;
-      }
-    }
-  } catch (err) {
-    yield { type: 'plan:evaluate:complete', accepted: 0, rejected: 0 };
-    throw err;
-  }
-
-  const verdicts = parseEvaluationBlock(fullText);
-  const accepted = verdicts.filter((v) => v.action === 'accept').length;
-  const rejected = verdicts.filter((v) => v.action === 'reject' || v.action === 'review').length;
-
-  yield { type: 'plan:evaluate:complete', accepted, rejected };
+/**
+ * Evaluate the cohesion reviewer's unstaged fixes. Runs `git reset --soft HEAD~1`
+ * to expose staged (planner's plans) vs unstaged (reviewer's fixes), applies
+ * verdicts, and commits the final result.
+ *
+ * Yields:
+ * - `plan:cohesion:evaluate:start` at the beginning
+ * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
+ * - `plan:cohesion:evaluate:complete` with accepted/rejected counts at the end
+ */
+export async function* runCohesionEvaluate(
+  options: CohesionEvaluatorOptions,
+): AsyncGenerator<EforgeEvent> {
+  yield* runEvaluate({ ...options, mode: 'cohesion' });
 }

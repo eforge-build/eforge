@@ -55,10 +55,10 @@ Build stages: `implement`, `review`, `review-fix`, `evaluate`, `review-cycle`, `
 - **Formatter** — one-shot query. Normalizes source input (PRD, prompt, rough notes) into a well-structured PRD with frontmatter for the queue.
 - **Planner** — one-shot query. Explores codebase, selects a workflow profile, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities and `<skip>` blocks when work is already complete. For expeditions, also generates architecture + module list.
 - **Plan Reviewer** — one-shot query. Blind review of plan files against PRD for cohesion, completeness, correctness. Leaves fixes unstaged.
-- **Plan Evaluator** — one-shot query. Evaluates plan reviewer's unstaged fixes against planner's intent. Accepts/rejects.
+- **Plan Evaluator** — one-shot query. Evaluates plan reviewer's unstaged fixes against planner's intent. Accepts/rejects. Parameterized with `mode: 'plan' | 'cohesion'` - the same runner handles both plan evaluation and cohesion evaluation, dispatching different event types and prompts based on mode.
 - **Module Planner** — one-shot query (expedition mode only). Writes detailed plan for a single module using architecture context.
 - **Cohesion Reviewer** — one-shot query (expedition mode only). Reviews cross-module plan cohesion for consistency and integration gaps.
-- **Cohesion Evaluator** — one-shot query (expedition mode only). Evaluates cohesion reviewer's fixes against module planner intent.
+- **Cohesion Evaluator** — one-shot query (expedition mode only). Evaluates cohesion reviewer's fixes against module planner intent. Implemented as a thin wrapper around the plan evaluator with `mode: 'cohesion'`.
 - **Staleness Assessor** — one-shot query. Checks whether existing plans need regeneration based on codebase changes.
 - **Builder** — multi-turn agent. Turn 1: implement plan. Turn 2: evaluate reviewer's unstaged fixes (accept/reject/review).
 - **Reviewer** — one-shot query. Blind code review (no builder context), leaves fixes unstaged.
@@ -94,7 +94,7 @@ src/
     pipeline.ts               # Stage registry, compile/build stage implementations
     config.ts                 # Config loading, merging & validation
     git.ts                    # forgeCommit() helper — all engine commits go through here for attribution
-    agents/                   # Agent implementations (15 agents — see agent list above)
+    agents/                   # Agent implementations (14 agent files — see agent list above; plan evaluator and cohesion evaluator share one file)
     backends/                 # SDK adapters (sole SDK import point)
     prompts/                  # Agent prompt .md files (self-contained, no runtime plugin deps)
   monitor/                    # Web monitor — SQLite event persistence + SSE dashboard

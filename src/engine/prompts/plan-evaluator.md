@@ -1,12 +1,12 @@
-# Plan Fix Evaluator
+# {{evaluator_title}}
 
-You are evaluating fixes from a blind plan reviewer. Your job is to inspect the staged planning artifacts against the reviewer's unstaged fixes, apply verdicts, and produce a clean final commit.
+You are evaluating fixes from a blind reviewer. Your job is to inspect the staged planning artifacts against the reviewer's unstaged fixes, apply verdicts, and produce a clean final commit.
 
 ## Context
 
 - **Plan Set**: {{plan_set_name}}
 
-A planner agent generated plan files and committed them. A blind plan reviewer then reviewed the plan files and left fixes as unstaged changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.
+{{evaluator_context}}
 
 ## Source / PRD
 
@@ -39,7 +39,7 @@ For each file with unstaged changes, understand what the reviewer changed and wh
 
 A change is a **strict improvement** if and only if:
 
-1. It fixes a genuine, objective issue (missing dependency, incorrect file path, coverage gap, contradictory scope)
+1. {{strict_improvement_bullet_1}}
 2. It does NOT alter the planner's architectural decisions or technical approach
 3. It does NOT remove scope items the planner intentionally included
 4. It does NOT restructure or reorganize plans
@@ -66,12 +66,7 @@ Patterns that qualify as Accept:
 
 | Pattern | Example |
 |---------|---------|
-| Missing dependency | Plan B uses types from Plan A but doesn't list A in `depends_on` |
-| Incorrect file path | Plan references `src/utils/helper.ts` but file is at `src/lib/helper.ts` |
-| Missing PRD coverage | Source requires auth but no plan covers it — reviewer adds coverage note |
-| Branch name mismatch | YAML frontmatter `branch` doesn't match orchestration.yaml |
-| Incorrect plan ID reference | `depends_on` references a plan ID that doesn't exist |
-| Missing verification step | Plan has no way to verify its own implementation |
+{{accept_patterns_table}}
 
 ### Reject Criteria
 
@@ -79,7 +74,7 @@ Patterns that qualify as Accept:
 
 1. **Approach alteration** — The change modifies the planner's chosen technical strategy
 2. **Scope removal** — The change removes items the planner intentionally included
-3. **Plan restructuring** — The change splits, merges, or reorders plans
+3. **Plan restructuring** — The change splits, merges, or reorders plans{{reject_criteria_extra}}
 4. **Assumption-based** — The reviewer assumed context the planner may have had
 5. **Style-only** — The change only affects wording or formatting without fixing an issue
 

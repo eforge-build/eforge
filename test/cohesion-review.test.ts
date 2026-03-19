@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { runCohesionReview } from '../src/engine/agents/cohesion-reviewer.js';
-import { runCohesionEvaluate } from '../src/engine/agents/cohesion-evaluator.js';
+import { runCohesionEvaluate } from '../src/engine/agents/plan-evaluator.js';
 
 // --- Cohesion Reviewer ---
 

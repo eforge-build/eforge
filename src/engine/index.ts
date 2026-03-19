@@ -55,9 +55,13 @@ export { loadState, saveState, updatePlanStatus, isResumable } from './state.js'
 export { runPlanner, formatParallelLanes } from './agents/planner.js';
 export type { PlannerOptions } from './agents/planner.js';
 
+// --- agents/common (evaluation parsing) ---
+export { parseEvaluationBlock } from './agents/common.js';
+export type { EvaluationVerdict, EvaluationEvidence } from './agents/common.js';
+
 // --- builder ---
-export { builderImplement, builderEvaluate, parseEvaluationBlock, formatBuilderParallelNotice } from './agents/builder.js';
-export type { BuilderOptions, EvaluationVerdict, EvaluationEvidence } from './agents/builder.js';
+export { builderImplement, builderEvaluate, formatBuilderParallelNotice } from './agents/builder.js';
+export type { BuilderOptions } from './agents/builder.js';
 
 // --- reviewer ---
 export { runReview, parseReviewIssues, composeReviewPrompt } from './agents/reviewer.js';
@@ -80,16 +84,12 @@ export { runPlanReview } from './agents/plan-reviewer.js';
 export type { PlanReviewerOptions } from './agents/plan-reviewer.js';
 
 // --- plan-evaluator ---
-export { runPlanEvaluate } from './agents/plan-evaluator.js';
-export type { PlanEvaluatorOptions } from './agents/plan-evaluator.js';
+export { runPlanEvaluate, runCohesionEvaluate } from './agents/plan-evaluator.js';
+export type { PlanEvaluatorOptions, CohesionEvaluatorOptions } from './agents/plan-evaluator.js';
 
 // --- cohesion-reviewer ---
 export { runCohesionReview } from './agents/cohesion-reviewer.js';
 export type { CohesionReviewerOptions } from './agents/cohesion-reviewer.js';
-
-// --- cohesion-evaluator ---
-export { runCohesionEvaluate } from './agents/cohesion-evaluator.js';
-export type { CohesionEvaluatorOptions } from './agents/cohesion-evaluator.js';
 
 // --- validation-fixer ---
 export { runValidationFixer } from './agents/validation-fixer.js';
