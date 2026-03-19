@@ -1,0 +1,36 @@
+name: per-agent-token-usage-display
+description: Wire existing per-agent token usage data into monitor dashboard
+  Gantt bars and eval summary output
+created: 2026-03-19
+compiled: 2026-03-19
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-per-agent-tokens
+    name: Per-Agent Token Usage Display
+    depends_on: []
+    branch: per-agent-token-usage-display/per-agent-tokens
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors that need planning and review
+    but fit in a single plan. Use for medium-complexity tasks with cross-file
+    changes.
+  compile:
+    - planner
+    - plan-review-cycle
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
