@@ -4,23 +4,21 @@ You plan, eforge builds - a CLI that turns intent into reviewed, validated code 
 
 The name combines **E** from the [Expedition-Excursion-Errand (EEE) methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) with **forge** - shaping code from plans.
 
+<!-- TODO: Hero GIF - Claude Code planning → /eforge:run → monitor dashboard -->
+
 ## Why eforge?
 
 eforge is focused on one thing: converting intent into working code through reliable engineering workflows you don't have to supervise. It doesn't try to solve the planning side - no brainstorming, no specification guidance, no opinionated project structure. That's the highest-leverage work and eforge stays out of your way to do it however you see fit. You express intent - a PRD, a markdown file, a one-line prompt - and eforge handles the entire engineering workflow autonomously: implementation, review, validation, and merge. The developer stays at the planning layer, adding plan after plan while eforge works through the queue - on through the night if needed. Queued work is re-assessed before execution so changes from earlier builds are accounted for, not blindly applied to a codebase that has moved on.
-
-Two design choices make this work:
-
-**Scope-aware execution.** A typo fix and a multi-module feature shouldn't go through the same process. The planner reads the codebase and selects a workflow profile automatically - errand (1 plan), excursion (2-3 plans), expedition (4+). The pipeline adapts rather than forcing every task through a heavyweight process or requiring you to manually choose the right mode.
-
-**Independent review.** A single agent writing and reviewing its own work is a developer merging their own PRs. eforge separates building from review architecturally - the reviewer gets a fresh context with zero knowledge of the builder's reasoning, and an evaluator applies per-hunk verdicts on the resulting fixes, accepting only strict improvements.
 
 The methodology evolved through real-world use with Claude Code - first as hand-crafted skills, then as battle-tested plugins, now as a standalone engine:
 
 1. **Plan** - a detailed, profile-aware planning session with clarification for ambiguities
 2. **Implement** - execute the plan, with documentation updates running in parallel
-3. **Blind review** - a fresh context reviews the work with zero knowledge of the builder's reasoning
+3. **Blind review** - a single agent writing and reviewing its own work is a developer merging their own PRs. The reviewer gets a fresh context with zero knowledge of the builder's reasoning.
 4. **Fix & evaluate** - a fixer agent applies reviewer suggestions, then the evaluator applies per-hunk verdicts - accepting strict improvements while rejecting anything that alters intent
 5. **Validate** - verify against the original plan, fix any failures
+
+Every phase produces a git commit - `enqueue(feature-name)`, `plan(feature-name)`, `feat(plan-01-feature-name)` - so the full lifecycle is traceable in git history. After a successful build, plan files and the PRD are cleaned up so the repo stays clean, but the history preserves what was planned and why. Disable cleanup with `--no-cleanup` or `cleanupPlanFiles: false` to keep plan artifacts around.
 
 Plan interactively in Claude Code, then hand off to eforge. Or queue multiple PRDs and let eforge process them continuously. Agents inherit your project's plugins, skills, and MCP servers automatically, each build runs in an isolated git worktree for clean feature development, and the engine is backend-flexible - the sole implementation today uses the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk), but the `AgentBackend` abstraction means it can be extended to support other systems.
 
@@ -68,6 +66,8 @@ flowchart TD
 - **Building** - Each plan runs in an isolated git worktree. The builder implements the plan, a blind reviewer proposes fixes in a fresh context, and the evaluator applies per-hunk verdicts - accepting strict improvements while rejecting anything that alters intent.
 - **Validation** - Runs configured commands (type-check, tests, linting). If validation fails, a fixer agent attempts minimal repairs automatically.
 - **Orchestration** - Multi-plan sets are resolved into a dependency graph, executed in parallel waves, and merged in topological order.
+
+<!-- TODO: Monitor dashboard screenshot showing a build in progress -->
 
 ## Getting Started
 
