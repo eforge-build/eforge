@@ -1,0 +1,34 @@
+name: fix-graph-dependency-edges-not-showing-in-monitor
+description: Backfill dependsOn from orchestration.yaml into plan:complete
+  events so the monitor Graph tab renders dependency edges
+created: 2026-03-19
+compiled: 2026-03-19
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-backfill-depends-on
+    name: Backfill dependsOn from orchestration.yaml into plan:complete events
+    depends_on: []
+    branch: fix-graph-dependency-edges-not-showing-in-monitor/backfill-depends-on
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - implement
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
