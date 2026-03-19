@@ -94,6 +94,39 @@ print_summary() {
       const totalSecs = t.durationSeconds % 60;
       console.log('Totals: ' + totalTokens + ' tokens, ' + totalCache + ' cached, ' + totalCost + ' cost, ' + totalMins + 'm ' + totalSecs + 's');
     }
+    // Per-agent breakdown table
+    const agentAgg = {};
+    for (const r of s.scenarios) {
+      if (!r.metrics || !r.metrics.agents) continue;
+      for (const a of r.metrics.agents) {
+        if (!agentAgg[a.agent]) {
+          agentAgg[a.agent] = { count: 0, tokens: 0, inputTokens: 0, cacheRead: 0, costUsd: 0, durationMs: 0 };
+        }
+        const agg = agentAgg[a.agent];
+        agg.count += 1;
+        agg.tokens += a.usage ? a.usage.total || 0 : 0;
+        agg.inputTokens += a.usage ? a.usage.input || 0 : 0;
+        agg.cacheRead += a.usage ? a.usage.cacheRead || 0 : 0;
+        agg.costUsd += a.totalCostUsd || 0;
+        agg.durationMs += a.durationMs || 0;
+      }
+    }
+    const agentRows = Object.entries(agentAgg).sort((a, b) => b[1].tokens - a[1].tokens);
+    if (agentRows.length > 0) {
+      console.log('');
+      console.log('Per-Agent Breakdown:');
+      console.log(pad('Agent', 25) + pad('Count', 8) + pad('Tokens', 12) + pad('Cache', 10) + pad('Cost', 10) + 'Duration');
+      console.log('-'.repeat(80));
+      for (const [agent, d] of agentRows) {
+        const tokens = Math.round(d.tokens / 1000) + 'k';
+        const cache = d.inputTokens > 0 && d.cacheRead > 0 ? Math.round(d.cacheRead / d.inputTokens * 100) + '%' : '-';
+        const cost = '\$' + d.costUsd.toFixed(2);
+        const mins = Math.floor(d.durationMs / 1000 / 60);
+        const secs = Math.floor(d.durationMs / 1000) % 60;
+        const duration = mins + 'm ' + secs + 's';
+        console.log(pad(agent, 25) + pad(String(d.count), 8) + pad(tokens, 12) + pad(cache, 10) + pad(cost, 10) + duration);
+      }
+    }
   "
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
@@ -213,7 +246,7 @@ main() {
       if (fs.existsSync(rf)) scenarios.push(JSON.parse(fs.readFileSync(rf, 'utf8')));
     }
     // Aggregate totals across all scenarios
-    let totalInputTokens = 0, totalOutputTokens = 0, totalTokens = 0, totalCostUsd = 0, totalDurationSeconds = 0;
+    let totalInputTokens = 0, totalOutputTokens = 0, totalTokens = 0, totalCacheRead = 0, totalCostUsd = 0, totalDurationSeconds = 0;
     for (const r of scenarios) {
       totalDurationSeconds += r.durationSeconds || 0;
       if (r.metrics) {
@@ -221,6 +254,7 @@ main() {
           totalInputTokens += r.metrics.tokens.input || 0;
           totalOutputTokens += r.metrics.tokens.output || 0;
           totalTokens += r.metrics.tokens.total || 0;
+          totalCacheRead += r.metrics.tokens.cacheRead || 0;
         }
         totalCostUsd += r.metrics.costUsd || 0;
       }
@@ -233,7 +267,7 @@ main() {
       passed: $passed,
       scenarios,
       totals: {
-        tokens: { input: totalInputTokens, output: totalOutputTokens, total: totalTokens },
+        tokens: { input: totalInputTokens, output: totalOutputTokens, total: totalTokens, cacheRead: totalCacheRead },
         costUsd: totalCostUsd,
         durationSeconds: totalDurationSeconds
       }

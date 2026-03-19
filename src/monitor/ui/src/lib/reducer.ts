@@ -16,6 +16,12 @@ export interface AgentThread {
   startedAt: string;      // ISO from agent:start timestamp
   endedAt: string | null;  // ISO from agent:stop timestamp
   durationMs: number | null; // from agent:result
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  cacheRead: number | null;
+  costUsd: number | null;
+  numTurns: number | null;
 }
 
 export interface RunState {
@@ -201,6 +207,12 @@ function processEvent(
       startedAt: event.timestamp,
       endedAt: null,
       durationMs: null,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      cacheRead: null,
+      costUsd: null,
+      numTurns: null,
     });
   }
 
@@ -219,6 +231,12 @@ function processEvent(
       const thread = state.agentThreads[i];
       if (thread.agent === agentRole && thread.planId === eventPlanId && thread.durationMs === null) {
         thread.durationMs = event.result.durationMs;
+        thread.inputTokens = event.result.usage?.input ?? null;
+        thread.outputTokens = event.result.usage?.output ?? null;
+        thread.totalTokens = event.result.usage?.total ?? null;
+        thread.cacheRead = event.result.usage?.cacheRead ?? null;
+        thread.costUsd = event.result.totalCostUsd ?? null;
+        thread.numTurns = event.result.numTurns ?? null;
         break;
       }
     }

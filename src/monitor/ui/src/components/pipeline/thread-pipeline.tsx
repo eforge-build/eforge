@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePlanPreview } from '@/components/preview';
-import { formatDuration } from '@/lib/format';
+import { formatDuration, formatNumber } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { AgentThread } from '@/lib/reducer';
 import type { PipelineStage, ReviewIssue, ProfileInfo, BuildStageSpec } from '@/lib/types';
@@ -482,13 +482,24 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
                       onMouseLeave={() => onStageHover(null)}
                     >
                       <span className="text-[9px] truncate px-1 leading-4 text-foreground/70">
-                        {thread.agent}
+                        {thread.agent}{thread.totalTokens != null ? ` ${formatNumber(thread.totalTokens)}` : ''}
                       </span>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top">
                     <div className="font-medium">{thread.agent}</div>
                     <div className="opacity-70">{duration}</div>
+                    {thread.totalTokens != null && (
+                      <div className="opacity-70">
+                        {formatNumber(thread.totalTokens)} tokens
+                        {thread.cacheRead != null && thread.inputTokens != null && thread.inputTokens > 0 && (
+                          <span> ({Math.round(thread.cacheRead / thread.inputTokens * 100)}% cached)</span>
+                        )}
+                      </div>
+                    )}
+                    {thread.costUsd != null && thread.costUsd > 0 && (
+                      <div className="opacity-70">${thread.costUsd.toFixed(4)}</div>
+                    )}
                     {REVIEW_AGENTS.has(thread.agent) && issues && issues.length > 0 && (
                       <IssuesSummary issues={issues} />
                     )}
