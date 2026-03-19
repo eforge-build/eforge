@@ -25,6 +25,16 @@
 
 ---
 
+## Multimodal Input
+
+**Goal**: Let users attach images and PDFs alongside text to give agents richer context - wireframes, bug screenshots, design specs.
+
+- **CLI `--attach` support** - Accept image/PDF file paths on `eforge run` and `eforge enqueue`, save to temp dir, inject prompt hints so planner and builder agents read them
+- **Queue attachment storage** - Companion directory alongside PRD files so attachments persist through enqueue-then-run workflows
+- **Plugin skill forwarding** - Update `/eforge:run` and `/eforge:enqueue` skills to accept and forward `--attach` arguments
+
+---
+
 ## Integration & Maturity
 
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
