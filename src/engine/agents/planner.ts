@@ -111,9 +111,9 @@ Rules:
 
 Build stages control the post-implementation pipeline. You can add, remove, or reorder stages in your generated profile to match the work's needs.
 
-**Adding \`doc-update\`**: Include \`doc-update\` when the work changes public APIs, configuration, or user-facing behavior that documentation covers. Place it in a parallel group with \`implement\` so it runs concurrently: \`[["implement", "doc-update"], "review", "review-fix", "evaluate"]\`. The doc-updater agent runs alongside the builder and independently updates documentation files.
+**Adding \`doc-update\`**: Include \`doc-update\` when the work adds or changes user-facing surface area — new API endpoints, modified request/response contracts, CLI flags, configuration options, or behavioral changes that users or integrators would notice. This applies regardless of which base profile you extend. Place it in a parallel group with \`implement\`: \`[["implement", "doc-update"], "review", "review-fix", "evaluate"]\`.
 
-**Removing stages**: For small, low-risk changes (errands), \`doc-update\` is omitted by default because the overhead (~100k tokens) rarely produces meaningful updates. The errand base profile already excludes it — if you extend \`errand\`, you inherit \`["implement", "review", "review-fix", "evaluate"]\`.
+**Omitting \`doc-update\`**: Skip it for purely internal changes — refactors, bug fixes with no API surface change, test-only additions, or dependency updates. The overhead (~100k tokens) isn't justified when there's nothing user-facing to document.
 
 **Parallel groups**: Wrap stage names in an inner array to run them concurrently. Only stages with no data dependencies should be parallelized. Example: \`[["implement", "doc-update"], "review"]\` runs implement and doc-update in parallel, then review sequentially after both complete.`;
 
