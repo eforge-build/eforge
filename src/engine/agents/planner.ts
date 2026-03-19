@@ -105,7 +105,18 @@ Rules:
 - Give the profile a descriptive kebab-case name reflecting its purpose (e.g. "security-focused", "perf-tuning", "api-migration")
 - When a base profile fits with minor tweaks, use \`extends\` + \`overrides\`
 - Only override fields that differ from the base — omit fields you want to inherit
-- When the \`<generated-profile>\` block is present, skip the \`<profile>\` block`;
+- When the \`<generated-profile>\` block is present, skip the \`<profile>\` block
+
+### Stage Customization
+
+Build stages control the post-implementation pipeline. You can add, remove, or reorder stages in your generated profile to match the work's needs.
+
+**Adding \`doc-update\`**: Include \`doc-update\` when the work changes public APIs, configuration, or user-facing behavior that documentation covers. Place it in a parallel group with \`implement\` so it runs concurrently: \`[["implement", "doc-update"], "review", "review-fix", "evaluate"]\`. The doc-updater agent runs alongside the builder and independently updates documentation files.
+
+**Removing stages**: For small, low-risk changes (errands), \`doc-update\` is omitted by default because the overhead (~100k tokens) rarely produces meaningful updates. The errand base profile already excludes it — if you extend \`errand\`, you inherit \`["implement", "review", "review-fix", "evaluate"]\`.
+
+**Parallel groups**: Wrap stage names in an inner array to run them concurrently. Only stages with no data dependencies should be parallelized. Example: \`[["implement", "doc-update"], "review"]\` runs implement and doc-update in parallel, then review sequentially after both complete.`;
+
 }
 
 /**

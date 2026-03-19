@@ -42,7 +42,7 @@ Compile stages: `prd-passthrough`, `planner`, `plan-review-cycle`, `architecture
 Build stages: `implement`, `review`, `review-fix`, `evaluate`, `review-cycle`, `validate`, `doc-update`
 
 **Built-in profiles** (defined in `BUILTIN_PROFILES` in `src/engine/config.ts`):
-- **errand** — Small, self-contained changes. Compile: `[prd-passthrough]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
+- **errand** — Small, self-contained changes. Compile: `[prd-passthrough]`. Build: `[implement, review, review-fix, evaluate]`.
 - **excursion** — Multi-file feature work. Compile: `[planner, plan-review-cycle]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
 - **expedition** — Large cross-cutting work. Compile: `[planner, architecture-review-cycle, module-planning, cohesion-review-cycle, compile-expedition]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
 

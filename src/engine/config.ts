@@ -196,11 +196,15 @@ const DEFAULT_BUILD_STAGES = Object.freeze([
   Object.freeze(['implement', 'doc-update']), 'review', 'review-fix', 'evaluate',
 ]) as unknown as BuildStageSpec[];
 
+const ERRAND_BUILD_STAGES = Object.freeze([
+  'implement', 'review', 'review-fix', 'evaluate',
+]) as unknown as BuildStageSpec[];
+
 export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.freeze({
   errand: Object.freeze({
     description: 'Small, self-contained changes. Single file or a few lines. Low risk, no architectural impact.',
     compile: Object.freeze(['prd-passthrough']) as unknown as string[],
-    build: DEFAULT_BUILD_STAGES,
+    build: ERRAND_BUILD_STAGES,
     agents: Object.freeze({}),
     review: DEFAULT_REVIEW,
   }),
