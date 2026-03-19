@@ -98,16 +98,16 @@ print_summary() {
     const agentAgg = {};
     for (const r of s.scenarios) {
       if (!r.metrics || !r.metrics.agents) continue;
-      for (const a of r.metrics.agents) {
-        if (!agentAgg[a.agent]) {
-          agentAgg[a.agent] = { count: 0, tokens: 0, inputTokens: 0, cacheRead: 0, costUsd: 0, durationMs: 0 };
+      for (const [role, a] of Object.entries(r.metrics.agents)) {
+        if (!agentAgg[role]) {
+          agentAgg[role] = { count: 0, tokens: 0, inputTokens: 0, cacheRead: 0, costUsd: 0, durationMs: 0 };
         }
-        const agg = agentAgg[a.agent];
-        agg.count += 1;
-        agg.tokens += a.usage ? a.usage.total || 0 : 0;
-        agg.inputTokens += a.usage ? a.usage.input || 0 : 0;
-        agg.cacheRead += a.usage ? a.usage.cacheRead || 0 : 0;
-        agg.costUsd += a.totalCostUsd || 0;
+        const agg = agentAgg[role];
+        agg.count += a.count || 1;
+        agg.tokens += a.totalTokens || 0;
+        agg.inputTokens += a.inputTokens || 0;
+        agg.cacheRead += a.cacheRead || 0;
+        agg.costUsd += a.costUsd || 0;
         agg.durationMs += a.durationMs || 0;
       }
     }
