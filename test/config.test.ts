@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig } from '../src/engine/config.js';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, AGENT_ROLES } from '../src/engine/config.js';
 import type { PartialEforgeConfig, HookConfig } from '../src/engine/config.js';
 
 describe('resolveConfig', () => {
@@ -272,35 +272,11 @@ describe('parseRawConfig validation warnings', () => {
   });
 
   it('staleness-assessor is recognized as a valid agent role', () => {
-    const config = resolveConfig(
-      {
-        profiles: {
-          custom: {
-            description: 'Test',
-            extends: 'errand',
-            agents: { 'staleness-assessor': { maxTurns: 10 } },
-          },
-        },
-      },
-      {},
-    );
-    expect(config.profiles.custom.agents['staleness-assessor']).toEqual({ maxTurns: 10 });
+    expect(AGENT_ROLES).toContain('staleness-assessor');
   });
 
   it('merge-conflict-resolver is recognized as a valid agent role', () => {
-    const config = resolveConfig(
-      {
-        profiles: {
-          custom: {
-            description: 'Test',
-            extends: 'errand',
-            agents: { 'merge-conflict-resolver': { maxTurns: 5 } },
-          },
-        },
-      },
-      {},
-    );
-    expect(config.profiles.custom.agents['merge-conflict-resolver']).toEqual({ maxTurns: 5 });
+    expect(AGENT_ROLES).toContain('merge-conflict-resolver');
   });
 });
 

@@ -174,32 +174,26 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
 
   const plans = Array.isArray(data.plans)
     ? (data.plans as Array<Record<string, unknown>>).map((p) => {
-        const entry: OrchestrationConfig['plans'][number] = {
-          id: typeof p.id === 'string' ? p.id : String(p.id ?? ''),
+        const id = typeof p.id === 'string' ? p.id : String(p.id ?? '');
+
+        // Parse required per-plan build/review
+        const buildResult = z.array(buildStageSpecSchema).safeParse(p.build);
+        if (!buildResult.success) {
+          throw new Error(`Plan '${id}' has invalid or missing 'build' field: ${buildResult.error.message}`);
+        }
+        const reviewResult = reviewProfileConfigSchema.safeParse(p.review);
+        if (!reviewResult.success) {
+          throw new Error(`Plan '${id}' has invalid or missing 'review' field: ${reviewResult.error.message}`);
+        }
+
+        return {
+          id,
           name: typeof p.name === 'string' ? p.name : String(p.name ?? ''),
           dependsOn: Array.isArray(p.depends_on) ? (p.depends_on as string[]) : [],
           branch: typeof p.branch === 'string' ? p.branch : '',
+          build: buildResult.data,
+          review: reviewResult.data,
         };
-
-        // Parse optional per-plan build/review
-        if (p.build !== undefined) {
-          const buildResult = z.array(buildStageSpecSchema).safeParse(p.build);
-          if (buildResult.success) {
-            entry.build = buildResult.data;
-          } else {
-            throw new Error(`Plan '${entry.id}' has invalid 'build' config: ${buildResult.error.message}`);
-          }
-        }
-        if (p.review !== undefined) {
-          const reviewResult = reviewProfileConfigSchema.safeParse(p.review);
-          if (reviewResult.success) {
-            entry.review = reviewResult.data;
-          } else {
-            throw new Error(`Plan '${entry.id}' has invalid 'review' config: ${reviewResult.error.message}`);
-          }
-        }
-
-        return entry;
       })
     : [];
 
@@ -233,7 +227,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
  * and a merge order (topological — dependencies merge first, dependents last).
  */
 export function resolveDependencyGraph(
-  plans: OrchestrationConfig['plans'],
+  plans: Array<{ id: string; dependsOn: string[] }>,
 ): { waves: string[][]; mergeOrder: string[] } {
   const ids = new Set(plans.map((p) => p.id));
   const inDegree = new Map<string, number>();

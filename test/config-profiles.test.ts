@@ -7,6 +7,7 @@ import {
   resolveConfig,
   mergePartialConfigs,
   BUILTIN_PROFILES,
+  AGENT_ROLES,
   parseProfilesFile,
   validateProfileConfig,
 } from '../src/engine/config.js';
@@ -14,9 +15,7 @@ import type {
   PartialProfileConfig,
   PartialEforgeConfig,
   ResolvedProfileConfig,
-  AgentProfileConfig,
 } from '../src/engine/config.js';
-import type { AgentRole } from '../src/engine/events.js';
 
 // --- resolveProfileExtensions ---
 
@@ -39,8 +38,6 @@ describe('resolveProfileExtensions', () => {
     const result = resolveProfileExtensions(partials);
     expect(result.migration.description).toBe('Database migration only');
     expect(result.migration.compile).toEqual(BUILTIN_PROFILES.errand.compile);
-    expect(result.migration.build).toEqual(BUILTIN_PROFILES.errand.build);
-    expect(result.migration.review).toEqual(BUILTIN_PROFILES.errand.review);
   });
 
   it('resolves a chain: A extends B extends C', () => {
@@ -48,7 +45,6 @@ describe('resolveProfileExtensions', () => {
       base: {
         extends: 'errand',
         description: 'Base custom',
-        build: ['implement', 'validate'],
       },
       child: {
         extends: 'base',
@@ -57,7 +53,6 @@ describe('resolveProfileExtensions', () => {
     };
     const result = resolveProfileExtensions(partials);
     expect(result.child.description).toBe('Child custom');
-    expect(result.child.build).toEqual(['implement', 'validate']); // inherited from base
     expect(result.child.compile).toEqual(BUILTIN_PROFILES.errand.compile); // inherited from errand via base
   });
 
@@ -90,49 +85,43 @@ describe('resolveProfileExtensions', () => {
     const result = resolveProfileExtensions(partials);
     expect(result.custom.description).toBe('Custom profile');
     expect(result.custom.compile).toEqual(BUILTIN_PROFILES.excursion.compile);
-    expect(result.custom.build).toEqual(BUILTIN_PROFILES.excursion.build);
-    expect(result.custom.review).toEqual(BUILTIN_PROFILES.excursion.review);
   });
 
-  it('built-in override: user redefines errand with custom build', () => {
+  it('built-in override: user redefines errand with custom compile', () => {
     const partials: Record<string, PartialProfileConfig> = {
-      errand: { build: ['implement'] },
+      errand: { compile: ['prd-passthrough'] },
     };
     const result = resolveProfileExtensions(partials);
-    expect(result.errand.build).toEqual(['implement']);
-    expect(result.errand.compile).toEqual(BUILTIN_PROFILES.errand.compile); // inherited from built-in
+    expect(result.errand.compile).toEqual(['prd-passthrough']);
+    expect(result.errand.description).toBe(BUILTIN_PROFILES.errand.description); // inherited from built-in
   });
 
-  it('agent config merges per-agent', () => {
+  it('compile config overrides per profile', () => {
     const builtins: Record<string, ResolvedProfileConfig> = {
       base: {
         description: 'Base',
         compile: ['planner'],
-        build: ['implement'],
-        agents: { builder: { maxTurns: 50 } },
-        review: BUILTIN_PROFILES.excursion.review,
       },
     };
     const partials: Record<string, PartialProfileConfig> = {
       child: {
         extends: 'base',
-        agents: { builder: { prompt: 'custom' } },
+        compile: ['prd-passthrough'],
       },
     };
     const result = resolveProfileExtensions(partials, builtins);
-    expect(result.child.agents.builder).toEqual({ maxTurns: 50, prompt: 'custom' });
+    expect(result.child.compile).toEqual(['prd-passthrough']);
   });
 
-  it('review config shallow-merges', () => {
+  it('description inherits from base when not overridden', () => {
     const partials: Record<string, PartialProfileConfig> = {
       custom: {
         extends: 'excursion',
-        review: { maxRounds: 2 },
       },
     };
     const result = resolveProfileExtensions(partials);
-    expect(result.custom.review.maxRounds).toBe(2);
-    expect(result.custom.review.strategy).toBe('auto'); // inherited from excursion
+    expect(result.custom.description).toBe(BUILTIN_PROFILES.excursion.description);
+    expect(result.custom.compile).toEqual(BUILTIN_PROFILES.excursion.compile);
   });
 });
 
@@ -172,7 +161,6 @@ describe('mergePartialConfigs with profiles', () => {
           description: 'Global desc',
           extends: 'errand',
           compile: ['planner'],
-          build: ['implement'],
         },
       },
     };
@@ -180,53 +168,51 @@ describe('mergePartialConfigs with profiles', () => {
       profiles: {
         shared: {
           description: 'Project desc',
-          build: ['implement', 'review'],
+          compile: ['prd-passthrough'],
         },
       },
     };
     const merged = mergePartialConfigs(global, project);
     expect(merged.profiles?.shared?.description).toBe('Project desc');
-    expect(merged.profiles?.shared?.build).toEqual(['implement', 'review']);
+    expect(merged.profiles?.shared?.compile).toEqual(['prd-passthrough']);
   });
 
-  it('same profile name: agents merge per-agent', () => {
+  it('same profile name: project compile overrides global compile', () => {
     const global: PartialEforgeConfig = {
       profiles: {
         shared: {
-          agents: { reviewer: { maxTurns: 10 } },
+          compile: ['planner'],
         },
       },
     };
     const project: PartialEforgeConfig = {
       profiles: {
         shared: {
-          agents: { builder: { maxTurns: 20 } },
+          compile: ['prd-passthrough'],
         },
       },
     };
     const merged = mergePartialConfigs(global, project);
-    expect(merged.profiles?.shared?.agents?.reviewer).toEqual({ maxTurns: 10 });
-    expect(merged.profiles?.shared?.agents?.builder).toEqual({ maxTurns: 20 });
+    expect(merged.profiles?.shared?.compile).toEqual(['prd-passthrough']);
   });
 
-  it('same profile name: review fields merge shallowly', () => {
+  it('same profile name: description from project overrides global', () => {
     const global: PartialEforgeConfig = {
       profiles: {
         shared: {
-          review: { strategy: 'parallel' },
+          description: 'Global description',
         },
       },
     };
     const project: PartialEforgeConfig = {
       profiles: {
         shared: {
-          review: { maxRounds: 3 },
+          description: 'Project description',
         },
       },
     };
     const merged = mergePartialConfigs(global, project);
-    expect(merged.profiles?.shared?.review?.strategy).toBe('parallel');
-    expect(merged.profiles?.shared?.review?.maxRounds).toBe(3);
+    expect(merged.profiles?.shared?.description).toBe('Project description');
   });
 
   it('only global has profiles - they survive', () => {
@@ -294,13 +280,13 @@ profiles:
   quick:
     description: Quick change
     extends: errand
-    build:
-      - implement
+    compile:
+      - prd-passthrough
 `);
     const result = await parseProfilesFile(path);
     expect(result.quick?.description).toBe('Quick change');
     expect(result.quick?.extends).toBe('errand');
-    expect(result.quick?.build).toEqual(['implement']);
+    expect(result.quick?.compile).toEqual(['prd-passthrough']);
     await rm(tmpDir, { recursive: true });
   });
 
@@ -325,66 +311,49 @@ agents:
 // --- doc-updater agent role validation ---
 
 describe('doc-updater agent role', () => {
-  it('doc-updater is accepted as a valid agent role in profile config', () => {
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES.excursion,
-      agents: { 'doc-updater': { maxTurns: 15 } },
-    };
-    const { valid, errors } = validateProfileConfig(profile);
-    expect(errors).toEqual([]);
-    expect(valid).toBe(true);
+  it('doc-updater is accepted as a valid agent role in AGENT_ROLES', () => {
+    expect(AGENT_ROLES).toContain('doc-updater');
   });
 });
 
 // --- nested array (parallel stage group) schema validation ---
 
-describe('nested array schema validation for build field', () => {
-  it('partial profile config accepts nested arrays in build', () => {
+describe('profile compile field schema validation', () => {
+  it('partial profile config accepts compile array', () => {
     const partials: Record<string, PartialProfileConfig> = {
       custom: {
-        description: 'Custom profile with parallel groups',
-        build: [['implement', 'doc-update'], 'review'],
+        description: 'Custom profile',
+        compile: ['planner', 'plan-review-cycle'],
       },
     };
     const result = resolveProfileExtensions(partials);
-    expect(result.custom.build).toEqual([['implement', 'doc-update'], 'review']);
+    expect(result.custom.compile).toEqual(['planner', 'plan-review-cycle']);
   });
 
-  it('resolved profile config accepts nested arrays in build', () => {
+  it('validateProfileConfig catches unknown compile stages', () => {
     const profile: ResolvedProfileConfig = {
       ...BUILTIN_PROFILES.excursion,
-      build: [['implement', 'doc-update'], 'review', 'evaluate'],
+      compile: ['planner', 'nonexistent'],
     };
-    const buildStages = new Set(['implement', 'doc-update', 'review', 'evaluate']);
-    const { valid, errors } = validateProfileConfig(profile, undefined, buildStages);
-    expect(errors).toEqual([]);
-    expect(valid).toBe(true);
-  });
-
-  it('validateProfileConfig catches unknown stages inside nested arrays', () => {
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES.excursion,
-      build: [['implement', 'nonexistent'], 'review'],
-    };
-    const buildStages = new Set(['implement', 'review']);
-    const { valid, errors } = validateProfileConfig(profile, undefined, buildStages);
+    const compileStages = new Set(['planner', 'plan-review-cycle']);
+    const { valid, errors } = validateProfileConfig(profile, compileStages);
     expect(valid).toBe(false);
-    expect(errors).toContain('unknown build stage: "nonexistent"');
+    expect(errors.some((e) => e.includes('unknown compile stage') && e.includes('nonexistent'))).toBe(true);
   });
 
-  it('resolveConfig round-trip preserves nested arrays in build', () => {
+  it('resolveConfig round-trip preserves compile array', () => {
     const config = resolveConfig(
       {
         profiles: {
-          parallel: {
-            description: 'Parallel test',
-            build: [['implement', 'doc-update'], 'review'],
+          custom: {
+            description: 'Custom test',
+            compile: ['planner', 'plan-review-cycle'],
           },
         },
       },
       {},
     );
-    expect(config.profiles.parallel.build).toEqual([['implement', 'doc-update'], 'review']);
+    expect(config.profiles.custom.compile).toEqual(['planner', 'plan-review-cycle']);
   });
 });
 

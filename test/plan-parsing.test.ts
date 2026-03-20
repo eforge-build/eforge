@@ -66,6 +66,13 @@ describe('parseOrchestrationConfig', () => {
       name: 'Core Module',
       dependsOn: [],
       branch: 'feature/core',
+      build: [['implement', 'doc-update'], 'review-cycle'],
+      review: {
+        strategy: 'auto',
+        perspectives: ['code'],
+        maxRounds: 1,
+        evaluatorStrictness: 'standard',
+      },
     });
     expect(config.plans[1].dependsOn).toEqual(['core']);
 
@@ -74,14 +81,6 @@ describe('parseOrchestrationConfig', () => {
       'Multi-file feature work or refactors that need planning and review but fit in a single plan.',
     );
     expect(config.profile.compile).toEqual(['planner', 'plan-review-cycle']);
-    expect(config.profile.build).toEqual([['implement', 'doc-update'], 'review', 'review-fix', 'evaluate']);
-    expect(config.profile.agents).toEqual({});
-    expect(config.profile.review).toEqual({
-      strategy: 'auto',
-      perspectives: ['code'],
-      maxRounds: 1,
-      evaluatorStrictness: 'standard',
-    });
   });
 
   it('throws on missing name', async () => {
@@ -99,7 +98,7 @@ describe('parseOrchestrationConfig', () => {
       created: '2026-01-01',
       mode: 'errand',
       base_branch: 'main',
-      plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1' }],
+      plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
 
     await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/profile/i);
@@ -116,7 +115,7 @@ describe('parseOrchestrationConfig', () => {
       mode: 'errand',
       base_branch: 'main',
       profile: { description: '' }, // Missing required fields and empty description
-      plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1' }],
+      plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
 
     await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/profile/i);
@@ -138,7 +137,7 @@ describe('injectProfileIntoOrchestrationYaml', () => {
       created: '2026-01-01',
       mode: 'errand',
       base_branch: 'main',
-      plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1' }],
+      plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
 
     const profile: ResolvedProfileConfig = BUILTIN_PROFILES['errand'];
@@ -149,7 +148,5 @@ describe('injectProfileIntoOrchestrationYaml', () => {
     expect(config.name).toBe('inject-test');
     expect(config.profile.description).toBe(profile.description);
     expect(config.profile.compile).toEqual(profile.compile);
-    expect(config.profile.build).toEqual(profile.build);
-    expect(config.profile.review).toEqual(profile.review);
   });
 });

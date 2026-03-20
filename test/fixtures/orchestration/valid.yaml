@@ -8,25 +8,32 @@ profile:
   compile:
     - planner
     - plan-review-cycle
-  build:
-    - - implement
-      - doc-update
-    - review
-    - review-fix
-    - evaluate
-  agents: {}
-  review:
-    strategy: auto
-    perspectives:
-      - code
-    maxRounds: 1
-    evaluatorStrictness: standard
 plans:
   - id: core
     name: Core Module
     branch: feature/core
+    build:
+      - - implement
+        - doc-update
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
   - id: cli
     name: CLI Module
     branch: feature/cli
     depends_on:
       - core
+    build:
+      - - implement
+        - doc-update
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard

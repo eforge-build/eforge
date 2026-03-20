@@ -13,9 +13,6 @@ function cloneProfile(name: keyof typeof BUILTIN_PROFILES): ResolvedProfileConfi
   return {
     description: src.description,
     compile: [...src.compile],
-    build: [...src.build],
-    agents: { ...src.agents },
-    review: { ...src.review },
   };
 }
 
@@ -58,14 +55,6 @@ describe('validateProfileConfig', () => {
     expect(result.errors.some((e) => e.includes('compile'))).toBe(true);
   });
 
-  it('returns error for empty build array', () => {
-    const config = cloneProfile('excursion');
-    config.build = [];
-    const result = validateProfileConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('build'))).toBe(true);
-  });
-
   it('returns error for unknown compile stage name when registry provided', () => {
     const config = cloneProfile('excursion');
     config.compile = ['nonexistent'];
@@ -74,77 +63,12 @@ describe('validateProfileConfig', () => {
     expect(result.errors.some((e) => e.includes('unknown compile stage') && e.includes('nonexistent'))).toBe(true);
   });
 
-  it('returns error for unknown build stage name when registry provided', () => {
-    const config = cloneProfile('excursion');
-    config.build = ['nonexistent'];
-    const result = validateProfileConfig(config, undefined, new Set(['implement', 'review']));
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('unknown build stage') && e.includes('nonexistent'))).toBe(true);
-  });
-
   it('returns no stage-name errors when registries are omitted', () => {
     const config = cloneProfile('excursion');
     config.compile = ['made-up-stage'];
-    config.build = ['another-fake'];
     const result = validateProfileConfig(config);
     // Should have no stage-related errors (no registries to check against)
-    expect(result.errors.filter((e) => e.includes('unknown compile stage') || e.includes('unknown build stage'))).toEqual([]);
-  });
-
-  it('returns error for unknown agent role', () => {
-    const config = cloneProfile('excursion');
-    (config.agents as Record<string, unknown>)['wizard'] = { maxTurns: 5 };
-    const result = validateProfileConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('unknown agent role') && e.includes('wizard'))).toBe(true);
-  });
-
-  it('returns error for invalid review strategy', () => {
-    const config = cloneProfile('excursion');
-    (config.review as { strategy: string }).strategy = 'turbo';
-    const result = validateProfileConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('invalid review strategy'))).toBe(true);
-  });
-
-  it('returns error for invalid evaluator strictness', () => {
-    const config = cloneProfile('excursion');
-    (config.review as { evaluatorStrictness: string }).evaluatorStrictness = 'extreme';
-    const result = validateProfileConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('invalid evaluator strictness'))).toBe(true);
-  });
-
-  it('returns error for review.maxRounds: 0', () => {
-    const config = cloneProfile('excursion');
-    config.review.maxRounds = 0;
-    const result = validateProfileConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('positive integer'))).toBe(true);
-  });
-
-  it('returns error for review.maxRounds: -1', () => {
-    const config = cloneProfile('excursion');
-    config.review.maxRounds = -1;
-    const result = validateProfileConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('positive integer'))).toBe(true);
-  });
-
-  it('returns error for empty review.perspectives array', () => {
-    const config = cloneProfile('excursion');
-    config.review.perspectives = [];
-    const result = validateProfileConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('perspectives'))).toBe(true);
-  });
-
-  it('returns error when review config is missing entirely', () => {
-    const config = cloneProfile('excursion');
-    (config as { review: unknown }).review = undefined as unknown;
-    const result = validateProfileConfig(config);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('review config is required'))).toBe(true);
+    expect(result.errors.filter((e) => e.includes('unknown compile stage'))).toEqual([]);
   });
 });
 
@@ -166,14 +90,6 @@ describe('parseGeneratedProfileBlock', () => {
     const fullConfig: ResolvedProfileConfig = {
       description: 'Custom profile',
       compile: ['planner'],
-      build: ['implement', 'review'],
-      agents: {},
-      review: {
-        strategy: 'auto',
-        perspectives: ['code'],
-        maxRounds: 1,
-        evaluatorStrictness: 'standard',
-      },
     };
     const text = `<generated-profile>{"config":${JSON.stringify(fullConfig)}}</generated-profile>`;
     const result = parseGeneratedProfileBlock(text);
@@ -210,12 +126,11 @@ describe('resolveGeneratedProfile', () => {
   it('extends mode: merges overrides onto base', () => {
     const generated: GeneratedProfileBlock = {
       extends: 'errand',
-      overrides: { review: { maxRounds: 3 } },
+      overrides: { description: 'Custom errand' },
     };
     const result = resolveGeneratedProfile(generated, profiles);
-    expect(result.review.maxRounds).toBe(3);
-    expect(result.review.strategy).toBe('auto'); // inherited from errand base
-    expect(result.description).toBe(profiles.errand.description);
+    expect(result.description).toBe('Custom errand');
+    expect(result.compile).toEqual(profiles.errand.compile); // inherited from errand base
   });
 
   it('extends mode with description override', () => {
@@ -231,14 +146,6 @@ describe('resolveGeneratedProfile', () => {
     const fullConfig: ResolvedProfileConfig = {
       description: 'Full custom',
       compile: ['planner'],
-      build: ['implement'],
-      agents: {},
-      review: {
-        strategy: 'parallel',
-        perspectives: ['security'],
-        maxRounds: 2,
-        evaluatorStrictness: 'strict',
-      },
     };
     const generated: GeneratedProfileBlock = { config: fullConfig };
     const result = resolveGeneratedProfile(generated, profiles);
@@ -252,11 +159,11 @@ describe('resolveGeneratedProfile', () => {
 
   it('defaults to excursion when extends is missing', () => {
     const generated: GeneratedProfileBlock = {
-      overrides: { review: { maxRounds: 5 } },
+      overrides: { description: 'Custom' },
     };
     const result = resolveGeneratedProfile(generated, profiles);
-    expect(result.description).toBe(profiles.excursion.description);
-    expect(result.review.maxRounds).toBe(5);
+    expect(result.description).toBe('Custom');
+    expect(result.compile).toEqual(profiles.excursion.compile);
   });
 });
 
@@ -276,7 +183,7 @@ describe('runPlanner with generateProfile', () => {
   it('parses <generated-profile> and emits plan:profile with inline config when generateProfile is true', async () => {
     const generatedJson = JSON.stringify({
       extends: 'excursion',
-      overrides: { review: { maxRounds: 2, perspectives: ['code', 'security'] } },
+      overrides: { description: 'Custom excursion' },
     });
     const backend = new StubBackend([{
       text: `<generated-profile>${generatedJson}</generated-profile>\n<scope assessment="errand">Small change.</scope>`,
@@ -293,8 +200,8 @@ describe('runPlanner with generateProfile', () => {
     const profileEvent = findEvent(events, 'plan:profile');
     expect(profileEvent).toBeDefined();
     expect(profileEvent!.config).toBeDefined();
-    expect(profileEvent!.config!.review.maxRounds).toBe(2);
-    expect(profileEvent!.config!.review.perspectives).toEqual(['code', 'security']);
+    expect(profileEvent!.config!.description).toBe('Custom excursion');
+    expect(profileEvent!.config!.compile).toEqual(profiles.excursion.compile);
     expect(profileEvent!.profileName).toBe('excursion'); // from extends
   });
 
@@ -323,7 +230,7 @@ describe('runPlanner with generateProfile', () => {
   it('generated-profile takes precedence when both blocks present', async () => {
     const generatedJson = JSON.stringify({
       extends: 'errand',
-      overrides: { review: { maxRounds: 3 } },
+      overrides: { description: 'Custom errand' },
     });
     const backend = new StubBackend([{
       text: `<generated-profile>${generatedJson}</generated-profile>\n<profile name="expedition">Multi-module work.</profile>\n<scope assessment="errand">Small.</scope>`,
@@ -339,7 +246,7 @@ describe('runPlanner with generateProfile', () => {
 
     const profileEvents = filterEvents(events, 'plan:profile');
     expect(profileEvents).toHaveLength(1);
-    expect(profileEvents[0].config!.review.maxRounds).toBe(3);
+    expect(profileEvents[0].config!.description).toBe('Custom errand');
     expect(profileEvents[0].profileName).toBe('errand'); // from extends
   });
 
@@ -393,7 +300,7 @@ describe('runPlanner with generateProfile', () => {
     const generatedJson = JSON.stringify({
       extends: 'excursion',
       name: 'security-focused',
-      overrides: { review: { maxRounds: 2, perspectives: ['code', 'security'] } },
+      overrides: { description: 'Security-focused excursion' },
     });
     const backend = new StubBackend([{
       text: `<generated-profile>${generatedJson}</generated-profile>\n<scope assessment="excursion">Security review.</scope>`,
@@ -411,7 +318,7 @@ describe('runPlanner with generateProfile', () => {
     expect(profileEvent).toBeDefined();
     expect(profileEvent!.profileName).toBe('security-focused');
     expect(profileEvent!.config).toBeDefined();
-    expect(profileEvent!.config!.review.maxRounds).toBe(2);
+    expect(profileEvent!.config!.description).toBe('Security-focused excursion');
   });
 
   it('emits plan:progress warning when generated profile fails validation', async () => {
@@ -420,14 +327,6 @@ describe('runPlanner with generateProfile', () => {
       config: {
         description: 'Bad profile',
         compile: [],
-        build: ['implement'],
-        agents: {},
-        review: {
-          strategy: 'auto',
-          perspectives: ['code'],
-          maxRounds: 1,
-          evaluatorStrictness: 'standard',
-        },
       },
     });
     const backend = new StubBackend([{
@@ -470,9 +369,6 @@ describe('getProfileSchemaYaml', () => {
     expect(props).toBeDefined();
     expect(props.description).toBeDefined();
     expect(props.compile).toBeDefined();
-    expect(props.build).toBeDefined();
-    expect(props.agents).toBeDefined();
-    expect(props.review).toBeDefined();
   });
 
   it('caching returns the same string reference', () => {
@@ -505,14 +401,6 @@ describe('parseGeneratedProfileBlock name capture', () => {
     const fullConfig: ResolvedProfileConfig = {
       description: 'Full custom',
       compile: ['planner'],
-      build: ['implement'],
-      agents: {},
-      review: {
-        strategy: 'auto',
-        perspectives: ['code'],
-        maxRounds: 1,
-        evaluatorStrictness: 'standard',
-      },
     };
     const text = `<generated-profile>${JSON.stringify({
       config: fullConfig,

@@ -3,7 +3,7 @@ import { writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { extractPlanTitle, deriveNameFromContent, detectValidationCommands, writePlanArtifacts } from '../src/engine/plan.js';
 import { parsePlanFile, parseOrchestrationConfig } from '../src/engine/plan.js';
-import { BUILTIN_PROFILES } from '../src/engine/config.js';
+import { BUILTIN_PROFILES, DEFAULT_BUILD, DEFAULT_REVIEW } from '../src/engine/config.js';
 import { useTempDir } from './test-tmpdir.js';
 
 // --- extractPlanTitle ---
@@ -138,6 +138,8 @@ describe('writePlanArtifacts', () => {
       baseBranch: 'main',
       profile: BUILTIN_PROFILES['errand'],
       validate: ['pnpm type-check', 'pnpm test'],
+      build: DEFAULT_BUILD,
+      review: DEFAULT_REVIEW,
     });
 
     // Verify PlanFile return value
@@ -178,6 +180,8 @@ describe('writePlanArtifacts', () => {
       planName: 'My Plan',
       baseBranch: 'develop',
       profile: BUILTIN_PROFILES['errand'],
+      build: DEFAULT_BUILD,
+      review: DEFAULT_REVIEW,
     });
 
     expect(existsSync(resolve(dir, 'plans', 'my-plan'))).toBe(true);
@@ -194,6 +198,8 @@ describe('writePlanArtifacts', () => {
       baseBranch: 'main',
       profile: BUILTIN_PROFILES['excursion'],
       mode: 'excursion',
+      build: DEFAULT_BUILD,
+      review: DEFAULT_REVIEW,
     });
 
     const orch = await parseOrchestrationConfig(
@@ -212,6 +218,8 @@ describe('writePlanArtifacts', () => {
       planName: 'Default Mode',
       baseBranch: 'main',
       profile: BUILTIN_PROFILES['errand'],
+      build: DEFAULT_BUILD,
+      review: DEFAULT_REVIEW,
     });
 
     const orch = await parseOrchestrationConfig(
@@ -231,6 +239,8 @@ describe('writePlanArtifacts', () => {
       baseBranch: 'main',
       profile: BUILTIN_PROFILES['errand'],
       validate: [],
+      build: DEFAULT_BUILD,
+      review: DEFAULT_REVIEW,
     });
 
     const orch = await parseOrchestrationConfig(

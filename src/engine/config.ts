@@ -52,18 +52,12 @@ const partialProfileConfigSchema = z.object({
   description: z.string().optional(),
   extends: z.string().optional(),
   compile: z.array(z.string()).optional(),
-  build: z.array(buildStageSpecSchema).optional(),
-  agents: z.partialRecord(agentRoleSchema, agentProfileConfigSchema).optional(),
-  review: reviewProfileConfigSchema.partial().optional(),
 });
 
 export const resolvedProfileConfigSchema = z.object({
   description: z.string().min(1).describe('Human-readable description of what this profile is for'),
   extends: z.string().optional().describe('Name of the base profile this profile extends'),
   compile: z.array(z.string()).nonempty().describe('Ordered list of compile stage names to run'),
-  build: z.array(buildStageSpecSchema).nonempty().describe('Ordered list of build stages; arrays within denote parallel execution'),
-  agents: z.partialRecord(agentRoleSchema, agentProfileConfigSchema).describe('Per-agent configuration overrides keyed by agent role'),
-  review: reviewProfileConfigSchema.describe('Review cycle configuration'),
 });
 
 // ---------------------------------------------------------------------------
@@ -248,35 +242,18 @@ export const DEFAULT_BUILD_WITH_DOCS: BuildStageSpec[] = Object.freeze([
   Object.freeze(['implement', 'doc-update']), 'review-cycle',
 ]) as unknown as BuildStageSpec[];
 
-const DEFAULT_BUILD_STAGES = Object.freeze([
-  Object.freeze(['implement', 'doc-update']), 'review', 'review-fix', 'evaluate',
-]) as unknown as BuildStageSpec[];
-
-const ERRAND_BUILD_STAGES = Object.freeze([
-  'implement', 'review', 'review-fix', 'evaluate',
-]) as unknown as BuildStageSpec[];
-
 export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.freeze({
   errand: Object.freeze({
     description: 'Small, self-contained changes. Single file or a few lines. Low risk, no architectural impact.',
     compile: Object.freeze(['prd-passthrough']) as unknown as string[],
-    build: ERRAND_BUILD_STAGES,
-    agents: Object.freeze({}),
-    review: DEFAULT_REVIEW,
   }),
   excursion: Object.freeze({
     description: 'Multi-file feature work or refactors. Use when changes touch many files but are tightly coupled - e.g., type signature changes that cascade to consumers, interface refactors, rename-and-update-all-callers. The key test: can every piece pass type-check independently? If not, use excursion.',
     compile: Object.freeze(['planner', 'plan-review-cycle']) as unknown as string[],
-    build: DEFAULT_BUILD_STAGES,
-    agents: Object.freeze({}),
-    review: DEFAULT_REVIEW,
   }),
   expedition: Object.freeze({
     description: 'Large work that decomposes into independently buildable modules. Each module must be able to pass type-check and tests on its own branch before merging. Use only when modules have genuinely independent scopes - not when a single type change ripples across many files.',
     compile: Object.freeze(['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition']) as unknown as string[],
-    build: DEFAULT_BUILD_STAGES,
-    agents: Object.freeze({}),
-    review: DEFAULT_REVIEW,
   }),
 });
 
@@ -481,22 +458,8 @@ export function mergePartialConfigs(
       const g = global.profiles?.[name];
       const p = project.profiles?.[name];
       if (g && p) {
-        // Shallow merge per profile, with agents merged per-agent
-        const mergedAgents: Partial<Record<AgentRole, AgentProfileConfig>> = {
-          ...g.agents,
-        };
-        if (p.agents) {
-          for (const [role, config] of Object.entries(p.agents)) {
-            const base = mergedAgents[role as AgentRole];
-            mergedAgents[role as AgentRole] = base ? { ...base, ...config } : config;
-          }
-        }
-        merged[name] = {
-          ...g,
-          ...p,
-          agents: Object.keys(mergedAgents).length > 0 ? mergedAgents : undefined,
-          review: g.review || p.review ? { ...g.review, ...p.review } : undefined,
-        };
+        // Shallow merge per profile: description, compile, extends
+        merged[name] = { ...g, ...p };
       } else {
         merged[name] = (p ?? g)!;
       }
@@ -594,23 +557,6 @@ export function resolveProfileExtensions(
       base = builtins['excursion']; // fallback for custom profiles with no extends
     }
 
-    // Shallow merge per-agent
-    const mergedAgents: Partial<Record<AgentRole, AgentProfileConfig>> = { ...base.agents };
-    if (partial.agents) {
-      for (const [role, agentConfig] of Object.entries(partial.agents)) {
-        const baseAgent = mergedAgents[role as AgentRole];
-        mergedAgents[role as AgentRole] = baseAgent
-          ? { ...baseAgent, ...agentConfig }
-          : agentConfig;
-      }
-    }
-
-    // Shallow merge review
-    const mergedReview: ReviewProfileConfig = {
-      ...base.review,
-      ...(partial.review ?? {}),
-    } as ReviewProfileConfig;
-
     // Determine the extends value for the resolved config
     const extendsValue = partial.extends
       ? partial.extends
@@ -622,9 +568,6 @@ export function resolveProfileExtensions(
       description: partial.description ?? base.description,
       ...(extendsValue ? { extends: extendsValue } : {}),
       compile: partial.compile ?? base.compile,
-      build: partial.build ?? base.build,
-      agents: mergedAgents,
-      review: mergedReview,
     };
 
     resolving.delete(name);
@@ -671,55 +614,22 @@ export async function parseProfilesFile(
 export function validateProfileConfig(
   config: ResolvedProfileConfig,
   compileStageNames?: Set<string>,
-  buildStageNames?: Set<string>,
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
   // Schema-based validation for structure + enums
   const result = resolvedProfileConfigSchema.safeParse(config);
   if (!result.success) {
-    // Walk zod issues and produce human-readable error strings
-    // matching the existing format for backward compatibility
     for (const issue of result.error.issues) {
       const path = issue.path.map(String).join('.');
       if (path === 'description') {
         errors.push('description is required and must be a non-empty string');
       } else if (path === 'compile') {
         errors.push('compile must be a non-empty array of stage names');
-      } else if (path === 'build') {
-        errors.push('build must be a non-empty array of stage names');
-      } else if (path === 'review') {
-        errors.push('review config is required');
-      } else if (path === 'review.strategy') {
-        errors.push(`invalid review strategy: "${(config.review as Record<string, unknown>)?.strategy ?? ''}"`);
-      } else if (path === 'review.evaluatorStrictness') {
-        errors.push(`invalid evaluator strictness: "${(config.review as Record<string, unknown>)?.evaluatorStrictness ?? ''}"`);
-      } else if (path === 'review.maxRounds') {
-        errors.push('review.maxRounds must be a positive integer');
-      } else if (path === 'review.perspectives') {
-        errors.push('review.perspectives must be a non-empty array');
-      } else if (path === 'review.autoAcceptBelow') {
-        errors.push(`invalid autoAcceptBelow: "${(config.review as Record<string, unknown>)?.autoAcceptBelow ?? ''}"`);
       } else {
         errors.push(`${path}: ${issue.message}`);
       }
     }
-  }
-
-  // Check for unknown agent roles (partialRecord allows unknown keys at runtime,
-  // so we validate manually)
-  if (config.agents) {
-    const validRoles = new Set<string>(AGENT_ROLES);
-    for (const role of Object.keys(config.agents)) {
-      if (!validRoles.has(role)) {
-        errors.push(`unknown agent role: "${role}"`);
-      }
-    }
-  }
-
-  // Check review missing entirely
-  if (!config.review && !errors.some((e) => e.includes('review'))) {
-    errors.push('review config is required');
   }
 
   // Runtime stage-name validation against registries
@@ -727,14 +637,6 @@ export function validateProfileConfig(
     for (const name of config.compile) {
       if (!compileStageNames.has(name)) {
         errors.push(`unknown compile stage: "${name}"`);
-      }
-    }
-  }
-  if (buildStageNames) {
-    const flatBuildStages = config.build.flatMap((spec) => Array.isArray(spec) ? spec : [spec]);
-    for (const name of flatBuildStages) {
-      if (!buildStageNames.has(name)) {
-        errors.push(`unknown build stage: "${name}"`);
       }
     }
   }
@@ -769,9 +671,6 @@ export function resolveGeneratedProfile(
     extends: baseName,
     description: overrides.description ?? base.description,
     compile: overrides.compile ?? base.compile,
-    build: overrides.build ?? base.build,
-    agents: { ...base.agents, ...(overrides.agents as Partial<Record<AgentRole, AgentProfileConfig>> ?? {}) },
-    review: { ...base.review, ...(overrides.review ?? {}) } as ReviewProfileConfig,
   };
 }
 
@@ -787,7 +686,7 @@ export function resolveGeneratedProfile(
 export async function validateConfigFile(
   cwd?: string,
 ): Promise<{ valid: boolean; errors: string[] }> {
-  const { getCompileStageNames, getBuildStageNames } = await import('./pipeline.js');
+  const { getCompileStageNames } = await import('./pipeline.js');
   const errors: string[] = [];
 
   const startDir = cwd ?? process.cwd();
@@ -827,12 +726,11 @@ export async function validateConfigFile(
   const parsed = result.success ? result.data : {};
   if (parsed.profiles) {
     const compileStageNames = getCompileStageNames();
-    const buildStageNames = getBuildStageNames();
 
     try {
       const resolved = resolveProfileExtensions(parsed.profiles, BUILTIN_PROFILES);
       for (const [name, profile] of Object.entries(resolved)) {
-        const profileResult = validateProfileConfig(profile, compileStageNames, buildStageNames);
+        const profileResult = validateProfileConfig(profile, compileStageNames);
         for (const err of profileResult.errors) {
           errors.push(`profile "${name}": ${err}`);
         }

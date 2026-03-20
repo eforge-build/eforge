@@ -160,9 +160,6 @@ export interface GeneratedProfileBlock {
   overrides?: Partial<{
     description: string;
     compile: string[];
-    build: string[];
-    agents: Record<string, unknown>;
-    review: Partial<ReviewProfileConfig>;
   }>;
   config?: ResolvedProfileConfig;
 }

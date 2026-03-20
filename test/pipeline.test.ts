@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '../src/engine/events.js';
 import type { EforgeConfig, ResolvedProfileConfig } from '../src/engine/config.js';
 import type { AgentBackend } from '../src/engine/backend.js';
-import { BUILTIN_PROFILES, DEFAULT_CONFIG, DEFAULT_REVIEW } from '../src/engine/config.js';
+import { BUILTIN_PROFILES, DEFAULT_CONFIG, DEFAULT_REVIEW, DEFAULT_BUILD, DEFAULT_BUILD_WITH_DOCS } from '../src/engine/config.js';
 import { createNoopTracingContext } from '../src/engine/tracing.js';
 import {
   getCompileStage,
@@ -72,7 +72,7 @@ function makeBuildCtx(overrides: Partial<BuildStageContext> = {}): BuildStageCon
     mode: 'errand',
     baseBranch: 'main',
     profile: BUILTIN_PROFILES['excursion'],
-    plans: [{ id: 'plan-01', name: 'Test Plan', dependsOn: [], branch: 'test/plan-01' }],
+    plans: [{ id: 'plan-01', name: 'Test Plan', dependsOn: [], branch: 'test/plan-01', build: DEFAULT_BUILD, review: DEFAULT_REVIEW }],
   };
 
   const profile = overrides?.profile ?? BUILTIN_PROFILES['excursion'];
@@ -93,8 +93,8 @@ function makeBuildCtx(overrides: Partial<BuildStageContext> = {}): BuildStageCon
     planFile,
     orchConfig,
     reviewIssues: [],
-    build: overrides?.build ?? profile.build,
-    review: overrides?.review ?? profile.review,
+    build: overrides?.build ?? DEFAULT_BUILD,
+    review: overrides?.review ?? DEFAULT_REVIEW,
     ...overrides,
   };
 }
@@ -237,12 +237,7 @@ describe('runBuildPipeline', () => {
       yield { type: 'build:implement:complete', planId: ctx.planId };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      build: ['test-impl'],
-    };
-
-    const ctx = makeBuildCtx({ profile });
+    const ctx = makeBuildCtx({ build: ['test-impl'] });
     const events = await collect(runBuildPipeline(ctx));
 
     expect(events[0]).toEqual({ type: 'build:start', planId: 'plan-01' });
@@ -269,12 +264,7 @@ describe('runBuildPipeline', () => {
       yield { type: 'plan:progress', message: 'eval' };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      build: ['test-b-impl', 'test-b-review', 'test-b-fix', 'test-b-eval'],
-    };
-
-    const ctx = makeBuildCtx({ profile });
+    const ctx = makeBuildCtx({ build: ['test-b-impl', 'test-b-review', 'test-b-fix', 'test-b-eval'] });
     const events = await collect(runBuildPipeline(ctx));
 
     expect(order).toEqual(['implement', 'review', 'review-fix', 'evaluate']);
@@ -285,12 +275,7 @@ describe('runBuildPipeline', () => {
   });
 
   it('throws for unknown stage name in build list', async () => {
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      build: ['unknown-build-stage-xyz'],
-    };
-
-    const ctx = makeBuildCtx({ profile });
+    const ctx = makeBuildCtx({ build: ['unknown-build-stage-xyz'] });
 
     await expect(collect(runBuildPipeline(ctx))).rejects.toThrow('Unknown build stage');
   });
@@ -303,12 +288,7 @@ describe('runBuildPipeline', () => {
       yield { type: 'plan:progress', message: 'validate' };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      build: ['test-custom-impl', 'test-custom-validate'],
-    };
-
-    const ctx = makeBuildCtx({ profile });
+    const ctx = makeBuildCtx({ build: ['test-custom-impl', 'test-custom-validate'] });
     const events = await collect(runBuildPipeline(ctx));
 
     expect(events[0].type).toBe('build:start');
@@ -361,26 +341,10 @@ describe('PipelineContext mutable state', () => {
 // ---------------------------------------------------------------------------
 
 describe('agent config threading', () => {
-  it('profile agents config is accessible in stage context', async () => {
-    let observedMaxTurns: number | undefined;
-
-    registerBuildStage('test-config-read', async function* (ctx) {
-      observedMaxTurns = ctx.profile.agents.builder?.maxTurns;
-      yield { type: 'plan:progress', message: 'config-read' };
-    });
-
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      build: ['test-config-read'],
-      agents: {
-        builder: { maxTurns: 25 },
-      },
-    };
-
-    const ctx = makeBuildCtx({ profile });
-    await collect(runBuildPipeline(ctx));
-
-    expect(observedMaxTurns).toBe(25);
+  it('resolveAgentConfig uses role default for builder', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(75); // builder role default
   });
 
   it('resolveAgentConfig returns role default when no profile config set', async () => {
@@ -431,12 +395,7 @@ describe('runBuildPipeline parallel stage groups', () => {
       yield { type: 'plan:progress', message: 'par-b' };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      build: [['test-par-a', 'test-par-b']],
-    };
-
-    const ctx = makeBuildCtx({ profile });
+    const ctx = makeBuildCtx({ build: [['test-par-a', 'test-par-b']] });
     const events = await collect(runBuildPipeline(ctx));
 
     // Both stages ran
@@ -466,12 +425,7 @@ describe('runBuildPipeline parallel stage groups', () => {
       yield { type: 'plan:progress', message: 'mix-c' };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      build: [['test-mix-a', 'test-mix-b'], 'test-mix-c'],
-    };
-
-    const ctx = makeBuildCtx({ profile });
+    const ctx = makeBuildCtx({ build: [['test-mix-a', 'test-mix-b'], 'test-mix-c'] });
     const events = await collect(runBuildPipeline(ctx));
 
     // a and b ran (order among them is nondeterministic), c ran after both
@@ -502,12 +456,7 @@ describe('runBuildPipeline parallel stage groups', () => {
       yield { type: 'plan:progress', message: 'after' };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      build: [['test-fail-par-a', 'test-fail-par-b'], 'test-fail-after'],
-    };
-
-    const ctx = makeBuildCtx({ profile });
+    const ctx = makeBuildCtx({ build: [['test-fail-par-a', 'test-fail-par-b'], 'test-fail-after'] });
     const events = await collect(runBuildPipeline(ctx));
 
     // Both parallel stages ran, but the sequential stage after did not
@@ -521,9 +470,9 @@ describe('runBuildPipeline parallel stage groups', () => {
 });
 
 describe('default profile behavior', () => {
-  it('excursion profile build stages match today\'s hardcoded sequence', () => {
+  it('excursion profile compile stages match today\'s hardcoded sequence', () => {
     const excursion = BUILTIN_PROFILES['excursion'];
-    expect(excursion.build).toEqual([['implement', 'doc-update'], 'review', 'review-fix', 'evaluate']);
+    expect(excursion.compile).toEqual(['planner', 'plan-review-cycle']);
   });
 
   it('errand profile compile stages use prd-passthrough', () => {
@@ -555,12 +504,12 @@ describe('EforgeEngineOptions.profileOverrides type', () => {
       profileOverrides: {
         'custom-profile': {
           description: 'Custom profile',
-          build: ['implement', 'validate'],
+          compile: ['planner', 'plan-review-cycle'],
         },
       },
     };
     expect(opts.profileOverrides).toBeDefined();
-    expect(opts.profileOverrides!['custom-profile'].build).toEqual(['implement', 'validate']);
+    expect(opts.profileOverrides!['custom-profile'].compile).toEqual(['planner', 'plan-review-cycle']);
   });
 });
 

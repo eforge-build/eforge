@@ -380,10 +380,10 @@ export class EforgeEngine {
           return;
         }
 
-        // Resolve per-plan build/review from orchestration.yaml plan entry, falling back to profile
-        const planEntry = orchConfig.plans.find((p) => p.id === planId);
-        const planBuild: BuildStageSpec[] = planEntry?.build ?? buildProfile.build;
-        const planReview: ReviewProfileConfig = planEntry?.review ?? buildProfile.review;
+        // Read per-plan build/review from orchestration.yaml plan entry (required fields)
+        const planEntry = orchConfig.plans.find((p) => p.id === planId)!;
+        const planBuild: BuildStageSpec[] = planEntry.build;
+        const planReview: ReviewProfileConfig = planEntry.review;
 
         const buildCtx: BuildStageContext = {
           backend,

@@ -75,7 +75,7 @@ describe('parseOrchestrationConfig per-plan build/review', () => {
     const yamlPath = resolve(dir, 'orchestration.yaml');
     await writeFile(yamlPath, orchYaml, 'utf-8');
 
-    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow("invalid 'build' config");
+    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/invalid or missing 'build'/);
   });
 
   it('throws on invalid per-plan review config', async () => {
@@ -93,6 +93,7 @@ describe('parseOrchestrationConfig per-plan build/review', () => {
           name: 'Bad plan',
           depends_on: [],
           branch: 'test-set/bad',
+          build: ['implement', 'review-cycle'],
           review: { strategy: 'invalid' },
         },
       ],
@@ -101,7 +102,7 @@ describe('parseOrchestrationConfig per-plan build/review', () => {
     const yamlPath = resolve(dir, 'orchestration.yaml');
     await writeFile(yamlPath, orchYaml, 'utf-8');
 
-    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow("invalid 'review' config");
+    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/invalid or missing 'review'/);
   });
 });
 
@@ -130,6 +131,12 @@ describe('validatePlanSet per-plan stage name validation', () => {
           depends_on: [],
           branch: 'test/branch',
           build: ['implement', 'nonexistent-stage'],
+          review: {
+            strategy: 'auto',
+            perspectives: ['code'],
+            maxRounds: 1,
+            evaluatorStrictness: 'standard',
+          },
         },
       ],
     });

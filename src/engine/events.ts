@@ -40,7 +40,7 @@ export interface OrchestrationConfig {
   mode: (typeof ORCHESTRATION_MODES)[number];
   baseBranch: string;
   profile: ResolvedProfileConfig;
-  plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string; build?: BuildStageSpec[]; review?: ReviewProfileConfig }>;
+  plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string; build: BuildStageSpec[]; review: ReviewProfileConfig }>;
   validate?: string[];
 }
 
