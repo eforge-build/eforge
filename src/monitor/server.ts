@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve, dirname, extname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
@@ -445,6 +446,31 @@ export async function startServer(
     return null;
   }
 
+  async function resolvePlanBranch(
+    sessionId: string,
+    planId: string,
+  ): Promise<{ branch: string; baseBranch: string } | null> {
+    // Get cwd and planSet from the session's run records
+    const sessionRuns = db.getSessionRuns(sessionId);
+    const run = [...sessionRuns].reverse().find((r) => r.cwd && r.planSet);
+    if (!run) return null;
+
+    // Read orchestration.yaml
+    try {
+      const orchPath = resolve(run.cwd, 'plans', run.planSet, 'orchestration.yaml');
+      const content = await readFile(orchPath, 'utf-8');
+      const orch = parseYaml(content);
+      if (!orch?.base_branch || !Array.isArray(orch.plans)) return null;
+
+      const plan = orch.plans.find((p: { id: string }) => p.id === planId);
+      if (!plan?.branch) return null;
+
+      return { branch: plan.branch, baseBranch: orch.base_branch };
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Resolve the working directory from the run's DB record for git operations.
    */
@@ -465,9 +491,81 @@ export async function startServer(
     }
 
     const commitSha = await resolveCommitSha(sessionId, planId, cwd);
+
     if (!commitSha) {
-      res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: 'Commit not found' }));
+      // Fallback: branch-based diffing for pre-merge builds
+      const branchInfo = await resolvePlanBranch(sessionId, planId);
+      if (!branchInfo) {
+        res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'Commit not found' }));
+        return;
+      }
+
+      const diffRef = `${branchInfo.baseBranch}..${branchInfo.branch}`;
+
+      if (file) {
+        // Single-file branch diff
+        try {
+          const { stdout } = await execAsync('git', ['diff', diffRef, '--', file], { cwd, maxBuffer: MAX_DIFF_SIZE + 1024 });
+
+          if (stdout.includes('Binary file') && stdout.includes('differ')) {
+            sendJson(res, { diff: null, binary: true, branch: branchInfo.branch });
+            return;
+          }
+
+          if (Buffer.byteLength(stdout, 'utf-8') > MAX_DIFF_SIZE) {
+            sendJson(res, { diff: null, tooLarge: true, branch: branchInfo.branch });
+            return;
+          }
+
+          sendJson(res, { diff: stdout, branch: branchInfo.branch });
+        } catch (err) {
+          if (err instanceof Error && err.message.includes('maxBuffer')) {
+            sendJson(res, { diff: null, tooLarge: true, branch: branchInfo.branch });
+          } else {
+            res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: 'Commit not found' }));
+          }
+        }
+        return;
+      }
+
+      // Bulk branch diff
+      try {
+        const { stdout: nameOutput } = await execAsync('git', ['diff', diffRef, '--name-only'], { cwd });
+        const filePaths = nameOutput.trim().split('\n').filter(Boolean);
+
+        const files: Array<{ path: string; diff: string | null; tooLarge?: boolean; binary?: boolean }> = [];
+
+        for (const fp of filePaths) {
+          try {
+            const { stdout: diffOutput } = await execAsync('git', ['diff', diffRef, '--', fp], { cwd, maxBuffer: MAX_DIFF_SIZE + 1024 });
+
+            if (diffOutput.includes('Binary file') && diffOutput.includes('differ')) {
+              files.push({ path: fp, diff: null, binary: true });
+              continue;
+            }
+
+            if (Buffer.byteLength(diffOutput, 'utf-8') > MAX_DIFF_SIZE) {
+              files.push({ path: fp, diff: null, tooLarge: true });
+              continue;
+            }
+
+            files.push({ path: fp, diff: diffOutput });
+          } catch (err) {
+            if (err instanceof Error && err.message.includes('maxBuffer')) {
+              files.push({ path: fp, diff: null, tooLarge: true });
+            } else {
+              files.push({ path: fp, diff: null });
+            }
+          }
+        }
+
+        sendJson(res, { files, branch: branchInfo.branch });
+      } catch {
+        res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'Commit not found' }));
+      }
       return;
     }
 
