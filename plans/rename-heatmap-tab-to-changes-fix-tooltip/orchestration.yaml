@@ -1,0 +1,30 @@
+name: rename-heatmap-tab-to-changes-fix-tooltip
+description: Rename Heatmap tab to Changes, fix enable condition to check file
+  modifications, update disabled tooltip
+created: 2026-03-20
+compiled: 2026-03-20
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-rename-changes-tab
+    name: Rename Heatmap Tab to Changes and Fix Enable Condition
+    depends_on: []
+    branch: rename-heatmap-tab-to-changes-fix-tooltip/rename-changes-tab
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
