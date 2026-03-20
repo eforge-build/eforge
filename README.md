@@ -1,6 +1,6 @@
 # eforge
 
-An autonomous build engine with blind review. Express intent, eforge plans, implements, reviews, and validates - no supervision required.
+An autonomous build engine with blind review. Express intent, `eforge` plans, implements, reviews, and validates - no supervision required.
 
 ![eforge invoked from Claude Code](docs/images/claude-code-handoff.png)
 
@@ -17,7 +17,7 @@ An autonomous build engine with blind review. Express intent, eforge plans, impl
 /plugin install eforge@eforge
 ```
 
-The first invocation downloads eforge automatically via npx - no global install needed. Plan interactively in Claude Code, then hand off to eforge for build, review, and validation.
+The first invocation downloads `eforge` automatically via npx - no global install needed. Plan interactively in Claude Code, then hand off to `eforge` for build, review, and validation.
 
 | Skill | Description |
 |-------|-------------|
@@ -36,14 +36,14 @@ Or install globally with `npm install -g eforge`.
 
 ## Quick Start
 
-Give eforge a prompt, a markdown file, or a full PRD - it handles the rest:
+Give `eforge` a prompt, a markdown file, or a full PRD - it handles the rest:
 
 ```bash
 eforge run "Add a health check endpoint"
 eforge run docs/my-feature.md
 ```
 
-eforge plans the work, builds it in an isolated worktree, runs a blind code review with a fresh-context agent, evaluates the reviewer's suggestions, merges, and validates. Every phase produces a git commit so the full lifecycle is traceable in history.
+`eforge` plans the work, builds it in an isolated worktree, runs a blind code review with a fresh-context agent, evaluates the reviewer's suggestions, merges, and validates. Every phase produces a git commit so the full lifecycle is traceable in history.
 
 ## How It Works
 
@@ -94,11 +94,11 @@ flowchart TD
 
 ## Why Blind Review?
 
-A single agent writing and reviewing its own work is a developer merging their own PRs. eforge enforces separation - the builder and reviewer are independent agents with no shared context. The reviewer can't be primed by the builder's reasoning, so it catches what a self-reviewing agent won't.
+A single agent writing and reviewing its own work is a developer merging their own PRs. `eforge` enforces separation - the builder and reviewer are independent agents with no shared context. The reviewer can't be primed by the builder's reasoning, so it catches what a self-reviewing agent won't.
 
 ## Status
 
-eforge is a personal tool - source is public so you can read, learn from, and fork it. Not accepting issues or PRs.
+`eforge` is a personal tool - source is public so you can read, learn from, and fork it. Not accepting issues or PRs.
 
 ## CLI Usage
 
@@ -154,7 +154,7 @@ Each command supports `--help` for the full list of options. Common flags:
 
 ## Configuration
 
-eforge is configured via `eforge.yaml` (searched upward from cwd), environment variables, and auto-discovered files.
+`eforge` is configured via `eforge.yaml` (searched upward from cwd), environment variables, and auto-discovered files.
 
 ### `eforge.yaml`
 
@@ -192,7 +192,7 @@ prdQueue:
 
 ### MCP Servers
 
-MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). All agents receive the same MCP servers.
+MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). All `eforge` agents receive the same MCP servers.
 
 ### Plugins
 
@@ -200,11 +200,11 @@ Plugins are auto-discovered from `~/.claude/plugins/installed_plugins.json`. Bot
 
 ### Hooks
 
-Hooks are fire-and-forget shell commands triggered by eforge events - useful for logging, notifications, and external system integration. They do not block or influence the pipeline. See [docs/hooks.md](docs/hooks.md) for configuration and details.
+Hooks are fire-and-forget shell commands triggered by `eforge` events - useful for logging, notifications, and external system integration. They do not block or influence the pipeline. See [docs/hooks.md](docs/hooks.md) for configuration and details.
 
 ## Architecture
 
-eforge is **library-first**. The engine (`src/engine/`) is a pure TypeScript library that communicates exclusively through typed `EforgeEvent`s via `AsyncGenerator` - it never writes to stdout. The CLI and web monitor are thin consumers that iterate the event stream and render.
+`eforge` is **library-first**. The engine (`src/engine/`) is a pure TypeScript library that communicates exclusively through typed `EforgeEvent`s via `AsyncGenerator` - it never writes to stdout. The CLI and web monitor are thin consumers that iterate the event stream and render.
 
 Agent runners use the `AgentBackend` interface - all SDK interaction is isolated behind a single adapter (`src/engine/backends/claude-sdk.ts`). New surfaces (CI, TUI, web) consume the same event stream.
 
@@ -212,7 +212,7 @@ A real-time web monitor records all events to SQLite and serves a dashboard over
 
 ## Evaluation
 
-An end-to-end eval harness lives in `eval/`. It runs eforge against embedded fixture projects and validates the output compiles and tests pass.
+An end-to-end eval harness lives in `eval/`. It runs `eforge` against embedded fixture projects and validates the output compiles and tests pass.
 
 ```bash
 ./eval/run.sh                        # Run all scenarios
