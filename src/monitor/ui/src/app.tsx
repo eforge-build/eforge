@@ -18,7 +18,7 @@ import { getSummaryStats } from '@/lib/reducer';
 import { fetchLatestSessionId, fetchOrchestration } from '@/lib/api';
 import type { OrchestrationConfig, PipelineStage } from '@/lib/types';
 
-type ContentTab = 'plans' | 'timeline' | 'graph' | 'heatmap';
+type ContentTab = 'plans' | 'timeline' | 'graph' | 'changes';
 
 export function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -142,7 +142,7 @@ export function App() {
   const hasOrchestration = effectiveOrchestration !== null && effectiveOrchestration.plans.length > 0;
   const hasDependencyEdges = effectiveOrchestration !== null && effectiveOrchestration.plans.some((p) => p.dependsOn && p.dependsOn.length > 0);
   const graphEnabled = hasOrchestration && hasDependencyEdges;
-  const heatmapEnabled = isMultiPlan;
+  const changesEnabled = runState.fileChanges.size > 0;
 
   // During compile phase, map module statuses to pipeline stages so the graph
   // can reuse its existing node color system before real orchestration data arrives.
@@ -163,8 +163,8 @@ export function App() {
   // Reset active tab if its feature becomes unavailable
   useEffect(() => {
     if (activeTab === 'graph' && !graphEnabled) setActiveTab('timeline');
-    if (activeTab === 'heatmap' && !heatmapEnabled) setActiveTab('timeline');
-  }, [graphEnabled, heatmapEnabled, activeTab]);
+    if (activeTab === 'changes' && !changesEnabled) setActiveTab('timeline');
+  }, [graphEnabled, changesEnabled, activeTab]);
 
   // Update duration every second while running
   const [, setTick] = useState(0);
@@ -217,12 +217,12 @@ export function App() {
                   Timeline
                 </button>
                 <button
-                  onClick={() => setActiveTab('heatmap')}
-                  disabled={!heatmapEnabled}
-                  className={tabClass('heatmap', heatmapEnabled)}
-                  title={heatmapEnabled ? undefined : 'Available for multi-plan runs'}
+                  onClick={() => setActiveTab('changes')}
+                  disabled={!changesEnabled}
+                  className={tabClass('changes', changesEnabled)}
+                  title={changesEnabled ? undefined : 'Available after files are modified'}
                 >
-                  Heatmap
+                  Changes
                 </button>
                 <button onClick={() => setActiveTab('plans')} className={tabClass('plans')}>
                   Plans
@@ -260,7 +260,7 @@ export function App() {
                     mergedPlanIds={mergedPlanIds}
                   />
                 </div>
-              ) : activeTab === 'heatmap' && heatmapEnabled ? (
+              ) : activeTab === 'changes' && changesEnabled ? (
                 <FileHeatmap runState={runState} sessionId={currentSessionId} />
               ) : (
                 <Timeline
