@@ -2,7 +2,7 @@
 
 An autonomous build engine with blind review. Express intent, eforge plans, implements, reviews, and validates - no supervision required.
 
-eforge builds itself.
+![eforge invoked from Claude Code](docs/images/claude-code-handoff.png)
 
 ![eforge monitor - full pipeline](docs/images/monitor-full-pipeline.png)
 
@@ -44,8 +44,6 @@ eforge run docs/my-feature.md
 ```
 
 eforge plans the work, builds it in an isolated worktree, runs a blind code review with a fresh-context agent, evaluates the reviewer's suggestions, merges, and validates. Every phase produces a git commit so the full lifecycle is traceable in history.
-
-![eforge invoked from Claude Code](docs/images/claude-code-handoff.png)
 
 ## How It Works
 
