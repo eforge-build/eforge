@@ -68,6 +68,8 @@ export interface PipelineContext {
   plans: PlanFile[];
   expeditionModules: ExpeditionModule[];
   moduleBuildConfigs: Map<string, { build: BuildStageSpec[]; review: ReviewProfileConfig }>;
+  /** Set by planner stage when plan:skip is emitted — halts further compile stages. */
+  skipped?: boolean;
 }
 
 /** Context for build stages, extends PipelineContext with per-plan fields. */
@@ -425,6 +427,11 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
       }
 
       tracker.handleEvent(event);
+
+      // Track skip — halts further compile stages
+      if (event.type === 'plan:skip') {
+        ctx.skipped = true;
+      }
 
       // Suppress planner's plan:complete in expedition mode (compilation emits the real one)
       if (event.type === 'plan:complete' && ctx.expeditionModules.length > 0) {
@@ -1158,6 +1165,7 @@ export async function* runCompilePipeline(
     }
     const stage = getCompileStage(stageName);
     yield* stage(ctx);
+    if (ctx.skipped) break;
     i++;
   }
 }

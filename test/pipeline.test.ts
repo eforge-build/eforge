@@ -194,6 +194,32 @@ describe('runCompilePipeline', () => {
     expect(events).toHaveLength(0);
   });
 
+  it('skipped flag halts pipeline after the stage that sets it', async () => {
+    const stagesRun: string[] = [];
+
+    registerCompileStage('test-skip-planner', async function* (ctx) {
+      stagesRun.push('planner');
+      ctx.skipped = true;
+      yield { type: 'plan:skip', reason: 'Already done' };
+    });
+    registerCompileStage('test-skip-review', async function* () {
+      stagesRun.push('review');
+      yield { type: 'plan:progress', message: 'review' };
+    });
+
+    const profile: ResolvedProfileConfig = {
+      ...BUILTIN_PROFILES['excursion'],
+      compile: ['test-skip-planner', 'test-skip-review'],
+    };
+
+    const ctx = makePipelineCtx({ profile });
+    const events = await collect(runCompilePipeline(ctx));
+
+    expect(stagesRun).toEqual(['planner']);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({ type: 'plan:skip', reason: 'Already done' });
+  });
+
   it('throws for unknown stage name in compile list', async () => {
     const profile: ResolvedProfileConfig = {
       ...BUILTIN_PROFILES['excursion'],
