@@ -83,10 +83,6 @@ flowchart TD
 
 ![eforge monitor - timeline view](docs/images/monitor-timeline.png)
 
-## Why Blind Review?
-
-A single agent writing and reviewing its own work is a developer merging their own PRs. `eforge` enforces separation - the builder and reviewer are independent agents with no shared context. The reviewer can't be primed by the builder's reasoning, so it catches what a self-reviewing agent won't.
-
 ## Status
 
 `eforge` is a personal tool - source is public so you can read, learn from, and fork it. Not accepting issues or PRs.
