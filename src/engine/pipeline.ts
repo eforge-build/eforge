@@ -37,7 +37,8 @@ import { runPlanReview } from './agents/plan-reviewer.js';
 import { runPlanEvaluate, runCohesionEvaluate, runArchitectureEvaluate } from './agents/plan-evaluator.js';
 import { runCohesionReview } from './agents/cohesion-reviewer.js';
 import { runArchitectureReview } from './agents/architecture-reviewer.js';
-import { parseModulesBlock, parseBuildConfigBlock } from './agents/common.js';
+import { parseModulesBlock, parseBuildConfigBlock, testIssueToReviewIssue } from './agents/common.js';
+import { runTestWriter, runTester } from './agents/tester.js';
 import { compileExpedition } from './compiler.js';
 import { resolveDependencyGraph, injectProfileIntoOrchestrationYaml, parseOrchestrationConfig, writePlanArtifacts, extractPlanTitle, detectValidationCommands } from './plan.js';
 import { runParallel, type ParallelTask } from './concurrency.js';
@@ -713,6 +714,14 @@ registerCompileStage('compile-expedition', async function* compileExpeditionStag
 // Built-in Build Stages
 // ---------------------------------------------------------------------------
 
+/** Check whether any build stage in the spec list starts with 'test'. */
+function hasTestStages(build: BuildStageSpec[]): boolean {
+  return build.some((spec) => {
+    if (Array.isArray(spec)) return spec.some((s) => s.startsWith('test'));
+    return spec.startsWith('test');
+  });
+}
+
 registerBuildStage('implement', async function* implementStage(ctx) {
   const agentConfig = resolveAgentConfig('builder', ctx.config);
   const maxTurns = agentConfig.maxTurns;
@@ -726,6 +735,8 @@ registerBuildStage('implement', async function* implementStage(ctx) {
   const parallelStages = ctx.build
     .filter((spec): spec is string[] => Array.isArray(spec));
 
+  const verificationScope = hasTestStages(ctx.build) ? 'build-only' : 'full';
+
   try {
     for await (const event of builderImplement(ctx.planFile, {
       backend: ctx.backend,
@@ -734,6 +745,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
       abortController: ctx.abortController,
       maxTurns,
       parallelStages,
+      verificationScope,
     })) {
       implTracker.handleEvent(event);
       yield event;
@@ -950,6 +962,108 @@ registerBuildStage('doc-update', async function* docUpdateStage(ctx) {
     // Re-throw abort errors so the pipeline can respect cancellation
     if (err instanceof Error && err.name === 'AbortError') throw err;
     // Doc-update failure is non-fatal — don't propagate
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Test Build Stages
+// ---------------------------------------------------------------------------
+
+registerBuildStage('test-write', async function* testWriteStage(ctx) {
+  const agentConfig = resolveAgentConfig('test-writer', ctx.config);
+  const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
+  span.setInput({ planId: ctx.planId });
+  const tracker = createToolTracker(span);
+
+  // Get implementation diff for post-implementation context
+  let implementationContext = '';
+  try {
+    const { stdout } = await exec('git', ['diff', `${ctx.orchConfig.baseBranch}...HEAD`], { cwd: ctx.worktreePath });
+    implementationContext = stdout;
+  } catch {
+    // No diff available (TDD mode) — that's fine
+  }
+
+  try {
+    for await (const event of runTestWriter({
+      backend: ctx.backend,
+      cwd: ctx.worktreePath,
+      planId: ctx.planId,
+      planContent: ctx.planFile.body,
+      implementationContext: implementationContext || undefined,
+      verbose: ctx.verbose,
+      abortController: ctx.abortController,
+      maxTurns: agentConfig.maxTurns,
+    })) {
+      tracker.handleEvent(event);
+      yield event;
+    }
+    tracker.cleanup();
+    span.end();
+  } catch (err) {
+    tracker.cleanup();
+    span.error(err as Error);
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+  }
+});
+
+registerBuildStage('test', async function* testStage(ctx) {
+  yield* testStageInner(ctx);
+});
+
+async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
+  const agentConfig = resolveAgentConfig('tester', ctx.config);
+  const span = ctx.tracing.createSpan('tester', { planId: ctx.planId });
+  span.setInput({ planId: ctx.planId });
+  const tracker = createToolTracker(span);
+
+  try {
+    for await (const event of runTester({
+      backend: ctx.backend,
+      cwd: ctx.worktreePath,
+      planId: ctx.planId,
+      planContent: ctx.planFile.body,
+      verbose: ctx.verbose,
+      abortController: ctx.abortController,
+      maxTurns: agentConfig.maxTurns,
+    })) {
+      tracker.handleEvent(event);
+      yield event;
+
+      // Convert test issues to review issues for evaluate stage consumption
+      if (event.type === 'build:test:complete') {
+        ctx.reviewIssues = event.productionIssues.map(testIssueToReviewIssue);
+      }
+    }
+    tracker.cleanup();
+    span.end();
+  } catch (err) {
+    tracker.cleanup();
+    span.error(err as Error);
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+  }
+}
+
+registerBuildStage('test-fix', async function* testFixStage(ctx) {
+  yield* reviewFixStageInner(ctx);
+});
+
+registerBuildStage('test-cycle', async function* testCycleStage(ctx) {
+  const maxRounds = ctx.review.maxRounds;
+  const strictness = ctx.review.evaluatorStrictness;
+
+  for (let round = 0; round < maxRounds; round++) {
+    // 1. Test
+    yield* testStageInner(ctx);
+
+    // 2. Break if no production issues
+    if (ctx.reviewIssues.length === 0) break;
+
+    // 3. Test-fix (reuses review-fix plumbing)
+    yield* reviewFixStageInner(ctx);
+
+    // 4. Evaluate
+    yield* evaluateStageInner(ctx, { strictness });
   }
 });
 

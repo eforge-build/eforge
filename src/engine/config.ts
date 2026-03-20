@@ -243,6 +243,16 @@ export const DEFAULT_BUILD_WITH_DOCS: BuildStageSpec[] = Object.freeze([
   Object.freeze(['implement', 'doc-update']), 'review-cycle',
 ]) as unknown as BuildStageSpec[];
 
+/** Default build stages with test cycle (build-then-test). */
+export const DEFAULT_BUILD_WITH_TESTS: BuildStageSpec[] = Object.freeze([
+  'implement', 'test-cycle', 'review-cycle',
+]) as unknown as BuildStageSpec[];
+
+/** Default build stages for TDD workflow. */
+export const DEFAULT_BUILD_TDD: BuildStageSpec[] = Object.freeze([
+  'test-write', 'implement', 'test-cycle',
+]) as unknown as BuildStageSpec[];
+
 export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.freeze({
   errand: Object.freeze({
     description: 'Small, self-contained changes. Single file or a few lines. Low risk, no architectural impact.',

@@ -23,6 +23,8 @@ export interface BuilderOptions {
   strictness?: 'strict' | 'standard' | 'lenient';
   /** Parallel stage groups from the profile build config — used for lane awareness */
   parallelStages?: string[][];
+  /** Verification scope: 'full' runs all checks, 'build-only' skips tests (handled by test stages) */
+  verificationScope?: 'full' | 'build-only';
 }
 
 /**
@@ -61,6 +63,21 @@ export const STRICTNESS_BLOCKS: Record<string, string> = {
   lenient: `\n### Strictness: Lenient\n\nApply a low bar for acceptance. Accept fixes unless they clearly damage the implementation's intent or remove functionality. When in doubt, accept. Treat "review" verdicts as accepts.\n`,
 };
 
+const VERIFICATION_FULL = `Before committing, run the verification commands specified in the plan's "Verification" section. If the plan specifies:
+- Type checking (e.g., \`pnpm type-check\`) — run it and fix any errors
+- Build (e.g., \`pnpm build\`) — run it and fix any errors
+- Tests — run them and fix any failures
+
+Fix any issues that arise from verification. Only proceed to commit when all verification passes.`;
+
+const VERIFICATION_BUILD_ONLY = `Before committing, run type checking and build commands from the plan's "Verification" section:
+- Type checking (e.g., \`pnpm type-check\`) — run it and fix any errors
+- Build (e.g., \`pnpm build\`) — run it and fix any errors
+
+Do NOT run tests — test verification is handled by dedicated test stages in the pipeline.
+
+Fix any issues that arise from verification. Only proceed to commit when all verification passes.`;
+
 /**
  * Turn 1: Implement a plan. The agent reads the plan, implements it,
  * runs verification, and commits all changes in a single commit.
@@ -75,12 +92,17 @@ export async function* builderImplement(
     ? formatBuilderParallelNotice(options.parallelStages)
     : '';
 
+  const verificationScopeText = options.verificationScope === 'build-only'
+    ? VERIFICATION_BUILD_ONLY
+    : VERIFICATION_FULL;
+
   const prompt = await loadPrompt('builder', {
     plan_id: plan.id,
     plan_name: plan.name,
     plan_content: plan.body,
     plan_branch: plan.branch,
     parallelLanes,
+    verification_scope: verificationScopeText,
   });
 
   try {

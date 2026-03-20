@@ -341,9 +341,19 @@ Important:
 
 Each plan entry in orchestration.yaml carries its own `build` and `review` fields. These determine how the plan is built after merge — the profile only controls compile stages.
 
-**`build`** — array of stage specs. Each element is either a stage name (string) or an array of stage names (parallel group). Available stages: `implement`, `doc-update`, `review`, `review-fix`, `evaluate`, `validate`, `review-cycle`.
+**`build`** — array of stage specs. Each element is either a stage name (string) or an array of stage names (parallel group). Available stages: `implement`, `doc-update`, `test-write`, `test`, `test-fix`, `test-cycle`, `review`, `review-fix`, `evaluate`, `validate`, `review-cycle`.
 
 **`review-cycle`** is a composite stage that expands to `[review, review-fix, evaluate]`. Use it as shorthand instead of listing the three stages individually.
+
+**`test-cycle`** is a composite stage that expands to `[test, test-fix, evaluate]`. Use it when the plan has testable behavior. The tester agent runs tests, fixes test bugs, and reports production issues. `test-fix` and `evaluate` handle production fix application and judgment.
+
+**`test-write`** runs before `implement` in TDD mode — it writes tests from the plan spec that initially fail. After `implement`, a `test-cycle` validates the implementation.
+
+**Test stage guidance:**
+- Plans with testable behavior: `build: [implement, test-cycle, review-cycle]`
+- TDD for well-specified features: `build: [test-write, implement, test-cycle]`
+- Config changes, simple refactors, doc-only work: omit test stages
+- Time-optimized: `build: [implement, [test-cycle, review-cycle]]` (parallel test + review)
 
 **`review`** — object with the following fields:
 - `strategy` — `auto`, `single`, or `parallel`. `auto` picks single or parallel per run.
