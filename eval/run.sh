@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURES_DIR="$SCRIPT_DIR/fixtures"
 RESULTS_DIR="$SCRIPT_DIR/results"
 SCENARIOS_FILE="$SCRIPT_DIR/scenarios.yaml"
-MAX_RUNS=5  # Keep only the most recent N runs; older ones are pruned automatically
+MAX_RUNS=50  # Keep only the most recent N runs; older ones are pruned automatically
 
 # Source the scenario runner
 source "$SCRIPT_DIR/lib/run-scenario.sh"
