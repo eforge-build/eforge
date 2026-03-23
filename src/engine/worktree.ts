@@ -9,6 +9,8 @@ import { basename, resolve, join } from 'node:path';
 import { mkdir, rm } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
+import { retryOnLock } from './git.js';
+
 const exec = promisify(execFile);
 
 /**
@@ -142,10 +144,10 @@ export async function mergeWorktree(
   commitMessage: string,
   mergeResolver?: MergeResolver,
 ): Promise<void> {
-  await exec('git', ['checkout', baseBranch], { cwd: repoRoot });
+  await retryOnLock(() => exec('git', ['checkout', baseBranch], { cwd: repoRoot }), repoRoot);
   try {
-    await exec('git', ['merge', '--squash', branch], { cwd: repoRoot });
-    await exec('git', ['commit', '-m', commitMessage], { cwd: repoRoot });
+    await retryOnLock(() => exec('git', ['merge', '--squash', branch], { cwd: repoRoot }), repoRoot);
+    await retryOnLock(() => exec('git', ['commit', '-m', commitMessage], { cwd: repoRoot }), repoRoot);
   } catch (err) {
     // Attempt resolution via callback if provided
     if (mergeResolver) {
@@ -162,7 +164,7 @@ export async function mergeWorktree(
               );
               if (stdout.trim().length === 0) {
                 // All conflicts resolved — commit the squash-merge
-                await exec('git', ['commit', '-m', commitMessage], { cwd: repoRoot });
+                await retryOnLock(() => exec('git', ['commit', '-m', commitMessage], { cwd: repoRoot }), repoRoot);
                 return;
               }
             } catch {
@@ -176,7 +178,7 @@ export async function mergeWorktree(
     }
 
     try {
-      await exec('git', ['reset', '--merge'], { cwd: repoRoot });
+      await retryOnLock(() => exec('git', ['reset', '--merge'], { cwd: repoRoot }), repoRoot);
     } catch {
       // Best-effort reset
     }
