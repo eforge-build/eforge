@@ -27,9 +27,11 @@
 
 ## Daemon & MCP Server
 
-**Goal**: Evolve the monitor into a persistent per-project daemon with MCP server interface for multi-session coordination and build control.
+**Goal**: Make the daemon the single orchestration authority. Everything flows through the queue; the daemon watches and auto-builds; the web UI is the control surface.
 
-- **Control plane** — Build cancellation via MCP tool and web UI, queue priority/reordering
+- **Queue-first architecture** — `eforge run` becomes enqueue + daemon auto-build. The daemon starts in watch mode by default, polling the queue and building PRDs as they arrive. No more foreground CLI builds — the daemon owns all execution.
+- **Auto-build toggle** — Auto-build is on by default. Users can pause/resume via web UI toggle or MCP tool. When paused, PRDs accumulate in the queue until resumed.
+- **Web UI control plane** — Dashboard controls for: auto-build on/off, build cancellation, queue reordering/priority, session status. The web UI becomes the primary management interface alongside MCP tools.
 - **Re-guidance** — Build interruption with amended context, daemon-to-worker IPC for mid-build guidance changes
 
 ---
