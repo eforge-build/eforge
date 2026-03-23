@@ -126,12 +126,12 @@ export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, dae
 
   return (
     <aside className="bg-card border-r border-border overflow-y-auto px-3 py-3">
-      <QueueSection refreshTrigger={refreshTrigger} />
       <EnqueueSection
         groups={enqueueGroups}
         currentSessionId={currentSessionId}
         onSelectSession={onSelectSession}
       />
+      <QueueSection refreshTrigger={refreshTrigger} />
       {sessionGroups.map((group, index) => (
         <div key={group.key}>
           {index > 0 && <div className="border-t border-border/40 my-0.5" />}
