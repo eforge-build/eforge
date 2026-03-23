@@ -171,8 +171,9 @@ export function createProgram(abortController?: AbortController): Command {
       },
     );
 
-  program
-    .command('run [source]')
+  const buildCmd = program
+    .command('build [source]')
+    .alias('run')
     .description('Compile + build + validate in one step')
     .option('--auto', 'Run without approval gates')
     .option('--verbose', 'Stream agent output')
@@ -180,6 +181,7 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--queue', 'Process all PRDs from the queue')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
     .option('--dry-run', 'Compile only, then show execution plan without building')
+    .option('--foreground', 'Run in-process instead of delegating to daemon')
     .option('--no-cleanup', 'Keep plan files after successful build')
     .option('--no-monitor', 'Disable web monitor')
     .option('--no-plugins', 'Disable plugin loading')
@@ -198,6 +200,7 @@ export function createProgram(abortController?: AbortController): Command {
           cleanup?: boolean;
           parallelism?: number;
           dryRun?: boolean;
+          foreground?: boolean;
           monitor?: boolean;
           plugins?: boolean;
           profiles?: string[];
@@ -242,6 +245,30 @@ export function createProgram(abortController?: AbortController): Command {
             process.exit(options.watch ? 0 : (result === 'completed' ? 0 : 1));
           });
           return;
+        }
+
+        // Default path: delegate to daemon when source is provided and no special flags
+        if (source && !options.foreground && !options.queue && !options.dryRun) {
+          try {
+            const { ensureDaemon, daemonRequest } = await import('./daemon-client.js');
+            const cwd = process.cwd();
+            await ensureDaemon(cwd);
+            const result = await daemonRequest(cwd, 'POST', '/api/enqueue', { source }) as { sessionId?: string };
+            const sessionId = result?.sessionId ?? 'unknown';
+            console.log(chalk.green(`PRD enqueued (session: ${sessionId}). Daemon will auto-build.`));
+
+            // Show monitor URL if daemon is running
+            const lock = readLockfile(cwd);
+            if (lock) {
+              console.log(chalk.dim(`  Monitor: http://localhost:${lock.port}`));
+            }
+
+            process.exit(0);
+          } catch (err) {
+            console.error(chalk.yellow(`⚠ Daemon unavailable, falling back to foreground execution`));
+            console.error(chalk.dim(err instanceof Error ? err.message : String(err)));
+            // Fall through to in-process execution
+          }
         }
 
         // Normal mode: source is required

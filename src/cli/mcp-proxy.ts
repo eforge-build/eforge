@@ -49,40 +49,20 @@ export { ensureDaemon, daemonRequest };
 export async function runMcpProxy(cwd: string): Promise<void> {
   const server = new McpServer({
     name: 'eforge',
-    version: '0.4.0',
+    version: '0.5.0',
   });
 
-  // Tool: eforge_run
+  // Tool: eforge_build
   server.tool(
-    'eforge_run',
-    'Launch an eforge run (enqueue + compile + build + validate) from a PRD source, or process the queue with --queue flag. Returns a sessionId to track progress.',
+    'eforge_build',
+    'Enqueue a PRD source for the eforge daemon to build. Returns a sessionId and autoBuild status.',
     {
       source: z
         .string()
-        .optional()
-        .describe('PRD file path or inline description. Omit when using --queue flag.'),
-      flags: z
-        .array(z.string())
-        .optional()
-        .describe('Optional CLI flags (e.g. ["--queue", "--watch"])'),
+        .describe('PRD file path or inline description to enqueue for building'),
     },
-    async ({ source, flags }) => {
-      const sanitized = sanitizeFlags(flags);
-      const isQueueMode = sanitized?.includes('--queue');
-      if (isQueueMode) {
-        const queueFlags = sanitized!.filter((f) => f !== '--queue');
-        const result = await daemonRequest(cwd, 'POST', '/api/queue/run', {
-          flags: queueFlags.length > 0 ? queueFlags : undefined,
-        });
-        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
-      }
-      if (!source) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify({ error: 'source is required unless --queue flag is provided' }, null, 2) }],
-          isError: true,
-        };
-      }
-      const result = await daemonRequest(cwd, 'POST', '/api/run', { source, flags: sanitized });
+    async ({ source }) => {
+      const result = await daemonRequest(cwd, 'POST', '/api/enqueue', { source });
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     },
   );
@@ -97,6 +77,31 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
     async ({ source, flags }) => {
       const result = await daemonRequest(cwd, 'POST', '/api/enqueue', { source, flags: sanitizeFlags(flags) });
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  // Tool: eforge_auto_build
+  server.tool(
+    'eforge_auto_build',
+    'Get or set the daemon auto-build state. When enabled, the daemon automatically builds PRDs as they are enqueued.',
+    {
+      action: z.enum(['get', 'set']).describe("'get' returns current auto-build state, 'set' updates it"),
+      enabled: z.boolean().optional().describe('Required when action is "set". Whether auto-build should be enabled.'),
+    },
+    async ({ action, enabled }) => {
+      if (action === 'get') {
+        const result = await daemonRequest(cwd, 'GET', '/api/auto-build');
+        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      }
+      // action === 'set'
+      if (enabled === undefined) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: '"enabled" is required when action is "set"' }, null, 2) }],
+          isError: true,
+        };
+      }
+      const result = await daemonRequest(cwd, 'POST', '/api/auto-build', { enabled });
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     },
   );
