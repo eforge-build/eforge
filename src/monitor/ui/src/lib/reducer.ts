@@ -233,11 +233,14 @@ function processEvent(
       created: '',
       mode: 'expedition',
       baseBranch: '',
+      profile: { description: '', compile: [] },
       plans: event.modules.map((mod) => ({
         id: mod.id,
         name: mod.description,
         dependsOn: mod.dependsOn,
         branch: '',
+        build: [] as import('./types').BuildStageSpec[],
+        review: { strategy: 'auto' as const, perspectives: [], maxRounds: 1, evaluatorStrictness: 'standard' as const },
       })),
     };
   }

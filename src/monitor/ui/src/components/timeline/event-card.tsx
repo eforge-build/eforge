@@ -99,7 +99,7 @@ function eventDetail(event: EforgeEvent): string | null {
       {
         const c = event.config;
         parts.push(`Compile: ${c.compile?.join(' → ') ?? '—'}`);
-        const agents = Object.entries(c.agents ?? {});
+        const agents = Object.entries((c as Record<string, unknown>)['agents'] as Record<string, Record<string, unknown>> ?? {});
         if (agents.length > 0) {
           parts.push('Agents:');
           for (const [role, cfg] of agents) {

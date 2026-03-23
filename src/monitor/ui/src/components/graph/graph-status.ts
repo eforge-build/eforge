@@ -65,6 +65,24 @@ const STATUS_STYLES: Record<GraphNodeStatus, StatusStyle> = {
     icon: '✓',
     animated: false,
   },
+  test: {
+    color: 'var(--color-cyan)',
+    bgColor: 'rgba(57, 210, 192, 0.15)',
+    icon: '◌',
+    animated: true,
+  },
+  plan: {
+    color: 'var(--color-blue)',
+    bgColor: 'rgba(88, 166, 255, 0.15)',
+    icon: '◌',
+    animated: true,
+  },
+  'doc-update': {
+    color: 'var(--color-purple)',
+    bgColor: 'rgba(188, 140, 255, 0.15)',
+    icon: '◌',
+    animated: true,
+  },
 };
 
 const FALLBACK_STYLE: StatusStyle = {
