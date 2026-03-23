@@ -1,6 +1,7 @@
 import type { AutoBuildState } from '@/lib/api';
 import type { ConnectionStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 
 interface HeaderProps {
   connectionStatus: ConnectionStatus;
@@ -15,24 +16,14 @@ export function Header({ connectionStatus, autoBuildState, autoBuildToggling, on
       <h1 className="text-base font-bold text-text-bright tracking-tight">eforge monitor</h1>
       <div className="ml-auto text-xs flex items-center gap-2">
         {autoBuildState !== null && (
-          <button
-            onClick={onToggleAutoBuild}
-            disabled={autoBuildToggling}
-            title={`Auto-build: ${autoBuildState.enabled ? 'ON' : 'OFF'}`}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors cursor-pointer',
-              'hover:bg-bg-tertiary',
-              autoBuildToggling && 'opacity-50 cursor-not-allowed',
-            )}
-          >
-            <div
-              className={cn(
-                'w-2 h-2 rounded-full',
-                autoBuildState.enabled ? 'bg-green-500' : 'bg-zinc-600',
-              )}
+          <label className={cn('flex items-center gap-1.5 text-text-dim', autoBuildToggling ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
+            <span>Auto-build</span>
+            <Switch
+              checked={autoBuildState.enabled}
+              onCheckedChange={onToggleAutoBuild}
+              disabled={autoBuildToggling}
             />
-            <span className="text-text-dim">Auto-build</span>
-          </button>
+          </label>
         )}
         <div
           className={cn(
