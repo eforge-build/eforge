@@ -1,0 +1,33 @@
+name: plan-feature-branch-orchestration
+description: Merge plans to a feature branch first, then fast-forward merge to
+  main only after all plans and validation pass
+created: 2026-03-23
+compiled: 2026-03-23
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-feature-branch-orchestration
+    name: Feature Branch Orchestration
+    depends_on: []
+    branch: plan-feature-branch-orchestration/feature-branch-orchestration
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
