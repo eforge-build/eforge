@@ -229,6 +229,17 @@
   font-weight: 600;
 }
 
+/* Resize handle styling for dark theme */
+[data-panel-resize-handle-id] {
+  background: var(--color-border);
+  transition: background 150ms ease;
+}
+
+[data-panel-resize-handle-id]:hover,
+[data-resize-handle-active] {
+  background: var(--color-primary);
+}
+
 @layer base {
   /* ReactFlow overrides for dark theme */
   .react-flow__controls button {

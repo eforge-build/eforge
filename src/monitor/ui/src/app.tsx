@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { usePanelRef, useDefaultLayout } from 'react-resizable-panels';
 
 import { AppLayout } from '@/components/layout/app-layout';
 import { Header } from '@/components/layout/header';
@@ -12,6 +13,8 @@ import { PlanCards } from '@/components/plans/plan-cards';
 import { DependencyGraph } from '@/components/graph';
 import { FileHeatmap } from '@/components/heatmap';
 import { PlanPreviewProvider, PlanPreviewPanel } from '@/components/preview';
+import { ConsolePanel } from '@/components/console/console-panel';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { useEforgeEvents } from '@/hooks/use-eforge-events';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useAutoBuild } from '@/hooks/use-auto-build';
@@ -19,19 +22,27 @@ import { getSummaryStats } from '@/lib/reducer';
 import { fetchLatestSessionId, fetchOrchestration } from '@/lib/api';
 import type { OrchestrationConfig, PipelineStage } from '@/lib/types';
 
-type ContentTab = 'plans' | 'timeline' | 'graph' | 'changes';
+type ContentTab = 'plans' | 'graph' | 'changes';
 
 export function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
-  const [activeTab, setActiveTab] = useState<ContentTab>('timeline');
+  const [activeTab, setActiveTab] = useState<ContentTab>('plans');
   const [orchestration, setOrchestration] = useState<OrchestrationConfig | null>(null);
   const [mergedPlanIds, setMergedPlanIds] = useState<Set<string>>(new Set());
+  const [showVerbose, setShowVerbose] = useState(false);
+  const [consoleCollapsed, setConsoleCollapsed] = useState(false);
+  const consolePanelRef = usePanelRef();
   const knownLatestRef = useRef<string | null>(null);
   const userSelectedRef = useRef<string | null>(null);
   const { runState, connectionStatus, shutdownCountdown } = useEforgeEvents(currentSessionId);
   const { containerRef, autoScroll, enableAutoScroll } = useAutoScroll([runState.events.length]);
   const { state: autoBuildState, toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild();
+
+  // Persist panel layout to localStorage
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: 'monitor-console',
+  });
 
   const stats = getSummaryStats(runState);
   const hasEvents = runState.events.length > 0;
@@ -172,8 +183,8 @@ export function App() {
 
   // Reset active tab if its feature becomes unavailable
   useEffect(() => {
-    if (activeTab === 'graph' && !graphEnabled) setActiveTab('timeline');
-    if (activeTab === 'changes' && !changesEnabled) setActiveTab('timeline');
+    if (activeTab === 'graph' && !graphEnabled) setActiveTab('plans');
+    if (activeTab === 'changes' && !changesEnabled) setActiveTab('plans');
   }, [graphEnabled, changesEnabled, activeTab]);
 
   // Update duration every second while running
@@ -194,6 +205,27 @@ export function App() {
           : 'border-transparent text-text-dim/40 cursor-default'
     }`;
 
+  const handleToggleConsole = useCallback(() => {
+    const panel = consolePanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  }, [consolePanelRef]);
+
+  // Detect collapse/expand via onResize
+  const handleConsolePanelResize = useCallback(
+    (panelSize: { asPercentage: number }) => {
+      const panel = consolePanelRef.current;
+      if (panel) {
+        setConsoleCollapsed(panel.isCollapsed());
+      }
+    },
+    [consolePanelRef],
+  );
+
   return (
     <PlanPreviewProvider>
       <AppLayout
@@ -208,90 +240,103 @@ export function App() {
         }
       >
         {shutdownCountdown !== null && <ShutdownBanner countdown={shutdownCountdown} />}
-        <main
-          ref={containerRef}
-          className="overflow-y-auto px-6 py-5 flex flex-col gap-4 flex-1"
-        >
-          {!hasEvents ? (
-            <div className="flex items-center justify-center h-full text-text-dim text-sm">
-              Waiting for events...
-            </div>
-          ) : (
-            <>
-              <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} />
-              <ActivityHeatstrip events={runState.events} startTime={runState.startTime} endTime={runState.endTime} />
-              <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} profileInfo={runState.profileInfo} />
-
-              {/* Content tabs */}
-              <div className="flex gap-2 border-b border-border pb-px">
-                <button onClick={() => setActiveTab('timeline')} className={tabClass('timeline')}>
-                  Timeline
-                </button>
-                <button
-                  onClick={() => setActiveTab('changes')}
-                  disabled={!changesEnabled}
-                  className={tabClass('changes', changesEnabled)}
-                  title={changesEnabled ? undefined : 'Available after files are modified'}
-                >
-                  Changes
-                </button>
-                <button onClick={() => setActiveTab('plans')} className={tabClass('plans')}>
-                  Plans
-                </button>
-                <button
-                  onClick={() => setActiveTab('graph')}
-                  disabled={!graphEnabled}
-                  className={tabClass('graph', graphEnabled)}
-                  title={graphEnabled ? undefined : 'Available when plans have dependency edges'}
-                >
-                  Graph
-                </button>
-              </div>
-
-              {/* Tab content */}
-              {activeTab === 'plans' ? (
-                hasAnyPlanContent ? (
-                  <PlanCards
-                    sessionId={currentSessionId}
-                    planStatuses={runState.planStatuses}
-                    fileChanges={runState.fileChanges}
-                    moduleStatuses={runState.moduleStatuses}
-                    refetchTrigger={expeditionRefetchTrigger}
-                  />
-                ) : (
-                  <div className="text-text-dim text-xs py-8 text-center">
-                    Plans will appear here once generated...
-                  </div>
-                )
-              ) : activeTab === 'graph' && graphEnabled ? (
-                <div className="flex-1" style={{ minHeight: 400 }}>
-                  <DependencyGraph
-                    orchestration={effectiveOrchestration}
-                    planStatuses={graphPlanStatuses}
-                    mergedPlanIds={mergedPlanIds}
-                  />
+        <ResizablePanelGroup orientation="vertical" defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
+          {/* Upper panel: summary + tabs */}
+          <ResizablePanel id="upper" defaultSize={65} minSize={30}>
+            <main className="overflow-y-auto px-6 py-5 flex flex-col gap-4 h-full">
+              {!hasEvents ? (
+                <div className="flex items-center justify-center h-full text-text-dim text-sm">
+                  Waiting for events...
                 </div>
-              ) : activeTab === 'changes' && changesEnabled ? (
-                <FileHeatmap runState={runState} sessionId={currentSessionId} />
               ) : (
-                <Timeline
-                  events={runState.events}
-                  startTime={runState.startTime}
-                />
-              )}
-            </>
-          )}
-        </main>
+                <>
+                  <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} />
+                  <ActivityHeatstrip events={runState.events} startTime={runState.startTime} endTime={runState.endTime} />
+                  <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} profileInfo={runState.profileInfo} />
 
-        {/* Auto-scroll button */}
-        {!autoScroll && hasEvents && (
-          <button
-            onClick={enableAutoScroll}
-            className="fixed bottom-4 right-4 bg-bg-tertiary border border-border rounded-md px-3 py-1.5 text-[11px] text-text-dim cursor-pointer hover:text-foreground"
+                  {/* Content tabs */}
+                  <div className="flex gap-2 border-b border-border pb-px">
+                    <button
+                      onClick={() => setActiveTab('changes')}
+                      disabled={!changesEnabled}
+                      className={tabClass('changes', changesEnabled)}
+                      title={changesEnabled ? undefined : 'Available after files are modified'}
+                    >
+                      Changes
+                    </button>
+                    <button onClick={() => setActiveTab('plans')} className={tabClass('plans')}>
+                      Plans
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('graph')}
+                      disabled={!graphEnabled}
+                      className={tabClass('graph', graphEnabled)}
+                      title={graphEnabled ? undefined : 'Available when plans have dependency edges'}
+                    >
+                      Graph
+                    </button>
+                  </div>
+
+                  {/* Tab content */}
+                  {activeTab === 'plans' ? (
+                    hasAnyPlanContent ? (
+                      <PlanCards
+                        sessionId={currentSessionId}
+                        planStatuses={runState.planStatuses}
+                        fileChanges={runState.fileChanges}
+                        moduleStatuses={runState.moduleStatuses}
+                        refetchTrigger={expeditionRefetchTrigger}
+                      />
+                    ) : (
+                      <div className="text-text-dim text-xs py-8 text-center">
+                        Plans will appear here once generated...
+                      </div>
+                    )
+                  ) : activeTab === 'graph' && graphEnabled ? (
+                    <div className="flex-1" style={{ minHeight: 400 }}>
+                      <DependencyGraph
+                        orchestration={effectiveOrchestration}
+                        planStatuses={graphPlanStatuses}
+                        mergedPlanIds={mergedPlanIds}
+                      />
+                    </div>
+                  ) : activeTab === 'changes' && changesEnabled ? (
+                    <FileHeatmap runState={runState} sessionId={currentSessionId} />
+                  ) : null}
+                </>
+              )}
+            </main>
+          </ResizablePanel>
+
+          <ResizableHandle withHandle />
+
+          {/* Lower panel: Console (Timeline) */}
+          <ResizablePanel
+            id="console"
+            panelRef={consolePanelRef}
+            defaultSize={35}
+            minSize={5}
+            collapsible
+            collapsedSize={5}
+            onResize={handleConsolePanelResize}
           >
-            ↓ Auto-scroll
-          </button>
-        )}
+            <ConsolePanel
+              showVerbose={showVerbose}
+              onToggleVerbose={setShowVerbose}
+              collapsed={consoleCollapsed}
+              onToggleCollapse={handleToggleConsole}
+              scrollRef={containerRef}
+              autoScroll={autoScroll}
+              onEnableAutoScroll={enableAutoScroll}
+            >
+              <Timeline
+                events={runState.events}
+                startTime={runState.startTime}
+                showVerbose={showVerbose}
+              />
+            </ConsolePanel>
+          </ResizablePanel>
+        </ResizablePanelGroup>
 
         <PlanPreviewPanel sessionId={currentSessionId} />
       </AppLayout>
