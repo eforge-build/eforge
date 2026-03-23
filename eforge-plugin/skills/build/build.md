@@ -22,10 +22,11 @@ Check that `$ARGUMENTS` is provided:
 - **Inline description**: Note that eforge will use this directly as the source prompt.
 
 If no arguments provided:
-1. Check the current conversation for a PRD or plan file path from a prior session
-2. If found, read it with the Read tool and show a brief summary
+1. Check if a **plan file** exists for the current conversation (e.g., under `~/.claude/plans/`). The plan file is the ideal source — it already has a title heading and structured content that the formatter and planner can work with cleanly. Pass its **file path** to the MCP tool.
+2. If a plan file is found, read it with the Read tool and show a brief summary
 3. Ask the user to confirm before proceeding
-4. If no file is found in conversation context, suggest creating a PRD file first
+4. If no plan file is found, check the conversation for a PRD file path from a prior session
+5. If no file is found at all, suggest creating a PRD file first
 - **Stop here** if the user declines or no source is identified
 
 ### Step 2: Enqueue for Build
