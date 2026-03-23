@@ -8,15 +8,20 @@ export interface LockfileData {
   startedAt: string;
 }
 
-const LOCKFILE_NAME = 'monitor.lock';
+export const LOCKFILE_NAME = 'daemon.lock';
+const LEGACY_LOCKFILE_NAME = 'monitor.lock';
 
 export function lockfilePath(cwd: string): string {
   return resolve(cwd, '.eforge', LOCKFILE_NAME);
 }
 
-export function readLockfile(cwd: string): LockfileData | null {
+function legacyLockfilePath(cwd: string): string {
+  return resolve(cwd, '.eforge', LEGACY_LOCKFILE_NAME);
+}
+
+function tryReadLockfileAt(path: string): LockfileData | null {
   try {
-    const raw = readFileSync(lockfilePath(cwd), 'utf-8');
+    const raw = readFileSync(path, 'utf-8');
     const data = JSON.parse(raw);
     if (
       typeof data.pid === 'number' &&
@@ -31,19 +36,30 @@ export function readLockfile(cwd: string): LockfileData | null {
   }
 }
 
+export function readLockfile(cwd: string): LockfileData | null {
+  // Try daemon.lock first, fall back to legacy monitor.lock
+  return tryReadLockfileAt(lockfilePath(cwd)) ?? tryReadLockfileAt(legacyLockfilePath(cwd));
+}
+
 export function writeLockfile(cwd: string, data: LockfileData): void {
   const target = lockfilePath(cwd);
   mkdirSync(dirname(target), { recursive: true });
 
   // Atomic write: write to temp file then rename
-  const tmpFile = resolve(dirname(target), `.monitor.lock.${randomBytes(4).toString('hex')}.tmp`);
+  const tmpFile = resolve(dirname(target), `.daemon.lock.${randomBytes(4).toString('hex')}.tmp`);
   writeFileSync(tmpFile, JSON.stringify(data, null, 2) + '\n', 'utf-8');
   renameSync(tmpFile, target);
 }
 
 export function removeLockfile(cwd: string): void {
+  // Remove both daemon.lock and legacy monitor.lock
   try {
     unlinkSync(lockfilePath(cwd));
+  } catch {
+    // Already removed or never existed
+  }
+  try {
+    unlinkSync(legacyLockfilePath(cwd));
   } catch {
     // Already removed or never existed
   }

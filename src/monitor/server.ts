@@ -43,6 +43,11 @@ export interface MonitorServer {
   stop(): Promise<void>;
 }
 
+export interface WorkerTracker {
+  spawnWorker(command: string, args: string[]): { sessionId: string; pid: number };
+  cancelWorker(sessionId: string): boolean;
+}
+
 interface SSESubscriber {
   res: ServerResponse;
   sessionId: string;
@@ -52,7 +57,7 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string },
+  options?: { strictPort?: boolean; cwd?: string; workerTracker?: WorkerTracker },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -636,6 +641,41 @@ export async function startServer(
     }
   }
 
+  const MAX_BODY_SIZE = 1024 * 1024; // 1MB
+
+  function parseJsonBody(req: IncomingMessage): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      let totalSize = 0;
+      req.on('data', (chunk: Buffer) => {
+        totalSize += chunk.length;
+        if (totalSize > MAX_BODY_SIZE) {
+          req.destroy();
+          reject(new Error('Request body too large'));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      req.on('end', () => {
+        try {
+          const body = Buffer.concat(chunks).toString('utf-8');
+          resolve(body ? JSON.parse(body) : {});
+        } catch (err) {
+          reject(err);
+        }
+      });
+      req.on('error', reject);
+    });
+  }
+
+  function sendJsonError(res: ServerResponse, status: number, error: string): void {
+    res.writeHead(status, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify({ error }));
+  }
+
   function sendJson(res: ServerResponse, data: unknown): void {
     res.writeHead(200, {
       'Content-Type': 'application/json',
@@ -659,6 +699,17 @@ export async function startServer(
   const server = createServer(async (req, res) => {
     const url = req.url ?? '/';
 
+    // Handle CORS preflight for all POST endpoints
+    if (req.method === 'OPTIONS' && url.startsWith('/api/')) {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      });
+      res.end();
+      return;
+    }
+
     if (req.method === 'POST' && url === '/api/keep-alive') {
       if (keepAliveCallback) keepAliveCallback();
       res.writeHead(200, {
@@ -669,19 +720,100 @@ export async function startServer(
       return;
     }
 
-    // Handle CORS preflight for POST endpoints
-    if (req.method === 'OPTIONS' && url === '/api/keep-alive') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      });
-      res.end();
+    // --- Control-plane POST routes (daemon mode) ---
+    if (req.method === 'POST' && url === '/api/run') {
+      if (!options?.workerTracker) {
+        sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      try {
+        const body = await parseJsonBody(req) as { source?: string; flags?: string[] };
+        if (!body.source || typeof body.source !== 'string') {
+          sendJsonError(res, 400, 'Missing required field: source');
+          return;
+        }
+        const args = [body.source, ...(body.flags ?? [])];
+        const result = options.workerTracker.spawnWorker('run', args);
+        sendJson(res, { sessionId: result.sessionId, pid: result.pid });
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === '/api/enqueue') {
+      if (!options?.workerTracker) {
+        sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      try {
+        const body = await parseJsonBody(req) as { source?: string; flags?: string[] };
+        if (!body.source || typeof body.source !== 'string') {
+          sendJsonError(res, 400, 'Missing required field: source');
+          return;
+        }
+        const args = [body.source, ...(body.flags ?? [])];
+        const result = options.workerTracker.spawnWorker('enqueue', args);
+        sendJson(res, { sessionId: result.sessionId, pid: result.pid });
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === '/api/queue/run') {
+      if (!options?.workerTracker) {
+        sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      try {
+        const body = await parseJsonBody(req) as { flags?: string[] };
+        const args = ['--queue', ...(body.flags ?? [])];
+        const result = options.workerTracker.spawnWorker('run', args);
+        sendJson(res, { sessionId: result.sessionId, pid: result.pid });
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url.startsWith('/api/cancel/')) {
+      if (!options?.workerTracker) {
+        sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      const sessionId = url.slice('/api/cancel/'.length);
+      if (!sessionId || !/^[\w-]+$/.test(sessionId)) {
+        sendJsonError(res, 400, 'Invalid sessionId');
+        return;
+      }
+      const cancelled = options.workerTracker.cancelWorker(sessionId);
+      if (cancelled) {
+        sendJson(res, { status: 'cancelled', sessionId });
+      } else {
+        sendJsonError(res, 404, `No active worker found for sessionId: ${sessionId}`);
+      }
       return;
     }
 
     if (url === '/api/health') {
       serveHealth(req, res);
+    } else if (url === '/api/config/show') {
+      try {
+        const { loadConfig } = await import('../engine/config.js');
+        const resolved = await loadConfig(options?.cwd);
+        sendJson(res, resolved);
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load config');
+      }
+    } else if (url === '/api/config/validate') {
+      try {
+        const { validateConfigFile } = await import('../engine/config.js');
+        const result = await validateConfigFile(options?.cwd);
+        sendJson(res, result);
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to validate config');
+      }
     } else if (url === '/api/queue') {
       await serveQueue(req, res);
     } else if (url === '/api/runs') {

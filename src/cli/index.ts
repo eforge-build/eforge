@@ -17,6 +17,7 @@ import { withSessionId, runSession } from '../engine/session.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '../monitor/index.js';
+import { readLockfile, isServerAlive, isPidAlive, lockfilePath, removeLockfile } from '../monitor/lockfile.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -567,6 +568,201 @@ export function createProgram(abortController?: AbortController): Command {
       const { stringify } = await import('yaml');
       const resolved = await loadConfig();
       console.log(stringify(resolved));
+    });
+
+  // Daemon commands
+  const daemon = program
+    .command('daemon')
+    .description('Manage persistent daemon server');
+
+  daemon
+    .command('start')
+    .description('Start the persistent daemon server')
+    .option('--port <port>', 'Preferred port', parseInt)
+    .action(async (options: { port?: number }) => {
+      const cwd = process.cwd();
+      const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+      const preferredPort = options.port ?? 4567;
+
+      // Check if daemon is already running
+      const existingLock = readLockfile(cwd);
+      if (existingLock) {
+        const alive = await isServerAlive(existingLock);
+        if (alive) {
+          console.log(chalk.yellow(`Daemon already running at http://localhost:${existingLock.port} (PID ${existingLock.pid})`));
+          process.exit(0);
+        }
+        // Stale lockfile — clean it up
+        removeLockfile(cwd);
+      }
+
+      // Spawn detached server-main with --persistent flag
+      const { accessSync } = await import('node:fs');
+      const { dirname: dirnameFn } = await import('node:path');
+      const { fileURLToPath: fileURLToPathFn } = await import('node:url');
+      const { fork } = await import('node:child_process');
+
+      // Resolve server-main entry point
+      const __dirname = dirnameFn(fileURLToPathFn(import.meta.url));
+      let serverMainPath: string;
+      const jsPath = resolve(__dirname, '..', 'monitor', 'server-main.js');
+      const tsPath = resolve(__dirname, '..', 'monitor', 'server-main.ts');
+
+      // In bundled mode, server-main.js is alongside cli.js in dist/
+      const bundledPath = resolve(__dirname, 'server-main.js');
+
+      try {
+        accessSync(bundledPath);
+        serverMainPath = bundledPath;
+      } catch {
+        try {
+          accessSync(jsPath);
+          serverMainPath = jsPath;
+        } catch {
+          try {
+            accessSync(tsPath);
+            serverMainPath = tsPath;
+          } catch {
+            console.error(chalk.red('Could not find server-main entry point'));
+            process.exit(1);
+          }
+        }
+      }
+
+      const child = fork(serverMainPath, [dbPath, String(preferredPort), cwd, '--persistent'], {
+        detached: true,
+        stdio: 'ignore',
+        execArgv: [...process.execArgv, '--disable-warning=ExperimentalWarning'],
+      });
+
+      child.on('error', (err) => {
+        console.error(chalk.red(`Failed to start daemon: ${err.message}`));
+        process.exit(1);
+      });
+
+      child.unref();
+      child.disconnect?.();
+
+      // Wait for lockfile to appear
+      const maxRetries = 40;
+      const retryInterval = 250;
+      let lock: Awaited<ReturnType<typeof readLockfile>> = null;
+
+      for (let i = 0; i < maxRetries; i++) {
+        await new Promise((r) => setTimeout(r, retryInterval));
+        lock = readLockfile(cwd);
+        if (lock) {
+          const alive = await isServerAlive(lock);
+          if (alive) break;
+          lock = null;
+        }
+      }
+
+      if (!lock) {
+        console.error(chalk.red('Daemon failed to start within timeout'));
+        process.exit(1);
+      }
+
+      console.log(chalk.green(`Daemon started at http://localhost:${lock.port} (PID ${lock.pid})`));
+    });
+
+  daemon
+    .command('stop')
+    .description('Stop the persistent daemon server')
+    .action(async () => {
+      const cwd = process.cwd();
+      const lock = readLockfile(cwd);
+
+      if (!lock) {
+        console.log(chalk.yellow('Daemon is not running'));
+        process.exit(0);
+      }
+
+      if (!isPidAlive(lock.pid)) {
+        // Stale lockfile
+        removeLockfile(cwd);
+        console.log(chalk.yellow('Daemon was not running (stale lockfile removed)'));
+        process.exit(0);
+      }
+
+      // Send SIGTERM
+      try {
+        process.kill(lock.pid, 'SIGTERM');
+      } catch {
+        removeLockfile(cwd);
+        console.log(chalk.yellow('Daemon process not found (lockfile removed)'));
+        process.exit(0);
+      }
+
+      // Wait for lockfile removal (daemon's shutdown handler removes it)
+      const maxRetries = 20;
+      const retryInterval = 250;
+
+      for (let i = 0; i < maxRetries; i++) {
+        await new Promise((r) => setTimeout(r, retryInterval));
+        const stillExists = readLockfile(cwd);
+        if (!stillExists) {
+          console.log(chalk.green('Daemon stopped'));
+          process.exit(0);
+        }
+      }
+
+      console.log(chalk.yellow('Daemon may still be shutting down (lockfile still present)'));
+      process.exit(0);
+    });
+
+  daemon
+    .command('status')
+    .description('Show daemon status')
+    .action(async () => {
+      const cwd = process.cwd();
+      const lock = readLockfile(cwd);
+
+      if (!lock) {
+        console.log(chalk.dim('Daemon is not running'));
+        process.exit(0);
+      }
+
+      const alive = await isServerAlive(lock);
+      if (!alive) {
+        removeLockfile(cwd);
+        console.log(chalk.yellow('Daemon is not running (stale lockfile removed)'));
+        process.exit(0);
+      }
+
+      const startedAt = new Date(lock.startedAt);
+      const uptimeMs = Date.now() - startedAt.getTime();
+      const uptimeSec = Math.floor(uptimeMs / 1000);
+      const uptimeMin = Math.floor(uptimeSec / 60);
+      const uptimeHr = Math.floor(uptimeMin / 60);
+
+      let uptimeStr: string;
+      if (uptimeHr > 0) {
+        uptimeStr = `${uptimeHr}h ${uptimeMin % 60}m`;
+      } else if (uptimeMin > 0) {
+        uptimeStr = `${uptimeMin}m ${uptimeSec % 60}s`;
+      } else {
+        uptimeStr = `${uptimeSec}s`;
+      }
+
+      // Check running builds via DB
+      let runningCount = 0;
+      try {
+        const { openDatabase } = await import('../monitor/db.js');
+        const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+        const db = openDatabase(dbPath);
+        runningCount = db.getRunningRuns().length;
+        db.close();
+      } catch {
+        // DB may not exist
+      }
+
+      console.log(chalk.bold('Daemon Status'));
+      console.log(`  Port:    ${lock.port}`);
+      console.log(`  PID:     ${lock.pid}`);
+      console.log(`  URL:     http://localhost:${lock.port}`);
+      console.log(`  Uptime:  ${uptimeStr}`);
+      console.log(`  Builds:  ${runningCount} running`);
     });
 
   return program;
