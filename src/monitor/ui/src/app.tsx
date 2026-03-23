@@ -301,7 +301,9 @@ export function App() {
                       />
                     </div>
                   ) : activeTab === 'changes' && changesEnabled ? (
-                    <FileHeatmap runState={runState} sessionId={currentSessionId} />
+                    <div className="flex-1 min-h-0">
+                      <FileHeatmap runState={runState} sessionId={currentSessionId} />
+                    </div>
                   ) : null}
                 </>
               )}

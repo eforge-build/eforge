@@ -77,7 +77,7 @@ export function FileHeatmap({ runState, sessionId }: FileHeatmapProps) {
   const hasMore = files.length > DEFAULT_FILE_LIMIT;
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3 h-full">
       {/* Heatmap grid */}
       <div className={`bg-card border border-border rounded-lg px-4 py-3 flex flex-col gap-3 ${selectedFile ? 'min-w-[400px]' : 'flex-1'}`}>
         {/* Header */}
