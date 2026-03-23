@@ -123,7 +123,12 @@ async function main(): Promise<void> {
     return {
       spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
         const sessionId = `daemon-${Date.now()}-${randomBytes(6).toString('hex')}`;
-        const child = spawn('eforge', [command, ...args, '--no-monitor'], {
+        const commandArgs = [command, ...args];
+        // Only append --no-monitor for commands that support it (build/run, not enqueue)
+        if (command !== 'enqueue') {
+          commandArgs.push('--no-monitor');
+        }
+        const child = spawn('eforge', commandArgs, {
           cwd,
           detached: true,
           stdio: 'ignore',
