@@ -33,11 +33,11 @@ function sortQueueItems(items: QueueItem[]): QueueItem[] {
     const bOrder = STATUS_ORDER[b.status] ?? 2;
     if (aOrder !== bOrder) return aOrder - bOrder;
 
-    // Within same status group: priority ascending, nulls last
+    // Within same status group: priority descending (next-to-process at bottom), nulls last
     const aPri = a.priority;
     const bPri = b.priority;
     if (aPri !== undefined && bPri !== undefined) {
-      if (aPri !== bPri) return aPri - bPri;
+      if (aPri !== bPri) return bPri - aPri;
     } else if (aPri !== undefined) {
       return -1;
     } else if (bPri !== undefined) {
@@ -71,13 +71,14 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
     }
   }, [refreshTrigger, refetch]);
 
-  const sorted = useMemo(() => sortQueueItems(items ?? []), [items]);
-  const pendingCount = useMemo(
-    () => sorted.filter((i) => i.status === 'pending' || i.status === 'running').length,
-    [sorted],
+  const pendingItems = useMemo(
+    () => (items ?? []).filter((i) => i.status !== 'running'),
+    [items],
   );
+  const sorted = useMemo(() => sortQueueItems(pendingItems), [pendingItems]);
+  const pendingCount = pendingItems.length;
 
-  if (!items || items.length === 0) return null;
+  if (pendingCount === 0) return null;
 
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} className="mb-3">
@@ -93,11 +94,9 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
             Queue
           </span>
         </div>
-        {pendingCount > 0 && (
-          <span className="text-[10px] text-text-dim/70 bg-bg-tertiary px-1.5 py-0.5 rounded-sm">
-            {pendingCount}
-          </span>
-        )}
+        <span className="text-[10px] text-text-dim/70 bg-bg-tertiary px-1.5 py-0.5 rounded-sm">
+          {pendingCount}
+        </span>
       </Collapsible.Trigger>
       <Collapsible.Content>
         {sorted.map((item) => (
