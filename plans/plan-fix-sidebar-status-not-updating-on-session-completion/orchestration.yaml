@@ -1,0 +1,30 @@
+name: plan-fix-sidebar-status-not-updating-on-session-completion
+description: Fix monitor sidebar not updating status when a session completes
+  due to React 18 batching
+created: 2026-03-23
+compiled: 2026-03-23
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-sidebar-refresh-on-complete
+    name: Sidebar Refresh on Session Completion
+    depends_on: []
+    branch: plan-fix-sidebar-status-not-updating-on-session-completion/sidebar-refresh-on-complete
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
