@@ -1,0 +1,35 @@
+name: simplify-mcp-tool-surface-fix-status-response-size
+description: Remove 3 redundant MCP tools (eforge_events, eforge_plans,
+  eforge_diff) and replace the full event stream in eforge_status with a compact
+  server-side summary endpoint
+created: 2026-03-23
+compiled: 2026-03-23
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-simplify-mcp-tools
+    name: Simplify MCP Tool Surface and Fix Status Response Size
+    depends_on: []
+    branch: simplify-mcp-tool-surface-fix-status-response-size/simplify-mcp-tools
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
