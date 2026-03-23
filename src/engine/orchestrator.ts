@@ -190,6 +190,7 @@ export function initializeState(
     status: 'running',
     startedAt: new Date().toISOString(),
     baseBranch: config.baseBranch,
+    featureBranch: `eforge/${config.name}`,
     worktreeBase,
     plans,
     completedPlans: [],
@@ -227,11 +228,34 @@ export class Orchestrator {
     const worktreeBase = state.worktreeBase;
     const planMap = new Map(config.plans.map((p) => [p.id, p]));
     const failedMerges = new Set<string>();
+    const featureBranch = state.featureBranch ?? `eforge/${config.name}`;
 
     // Track recently merged plans for merge resolver context enrichment
     const recentlyMergedIds: string[] = [];
 
+    // Track whether the feature branch was successfully merged to baseBranch
+    let featureBranchMerged = false;
+
     try {
+      // Create the feature branch from baseBranch (if it doesn't already exist from a resume)
+      try {
+        await exec('git', ['checkout', '-b', featureBranch, config.baseBranch], { cwd: repoRoot });
+        // Immediately switch back to baseBranch — the feature branch is just a merge target
+        await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
+      } catch (branchErr) {
+        // Verify the branch exists — if it does, this is a resume; if not, propagate the real error
+        try {
+          await exec('git', ['rev-parse', '--verify', featureBranch], { cwd: repoRoot });
+        } catch {
+          throw new Error(`Failed to create feature branch '${featureBranch}': ${(branchErr as Error).message}`);
+        }
+        // Branch exists (resume case) — ensure we're on baseBranch
+        try {
+          await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
+        } catch {
+          // Best-effort — may already be on baseBranch
+        }
+      }
       // 2. Greedy scheduling loop
       const allPlanIds = config.plans.map((p) => p.id);
       yield { type: 'schedule:start', planIds: allPlanIds };
@@ -426,7 +450,7 @@ export class Orchestrator {
 
               const prefix = config.mode === 'errand' ? 'fix' : 'feat';
               const commitMessage = `${prefix}(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}`;
-              await mergeWorktree(repoRoot, plan.branch, config.baseBranch, commitMessage, contextResolver);
+              await mergeWorktree(repoRoot, plan.branch, featureBranch, commitMessage, contextResolver);
 
               // Capture the squash-merge commit SHA for diff retrieval
               const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
@@ -491,6 +515,9 @@ export class Orchestrator {
       ];
 
       if (allMerged && allValidationCommands.length > 0 && !signal?.aborted) {
+        // Checkout feature branch for validation — all plan merges landed there
+        await exec('git', ['checkout', featureBranch], { cwd: repoRoot });
+
         let passed = false;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -538,6 +565,9 @@ export class Orchestrator {
         }
 
         if (!passed) {
+          // Validation failed — checkout baseBranch and leave feature branch for inspection
+          await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
+          yield { type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Validation failed' };
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
           saveState(stateDir, state);
@@ -545,12 +575,56 @@ export class Orchestrator {
         }
       }
 
-      // Determine final status
-      state.status = allMerged ? 'completed' : 'failed';
+      // 8. Final merge of feature branch to baseBranch
+      if (allMerged && !signal?.aborted) {
+        yield { type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
+
+        try {
+          // Ensure we're on baseBranch for the final merge
+          await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
+
+          // Try fast-forward merge first; fall back to regular merge
+          try {
+            await exec('git', ['merge', '--ff-only', featureBranch], { cwd: repoRoot });
+          } catch {
+            // baseBranch may have advanced — fall back to regular merge
+            await exec('git', ['merge', featureBranch, '-m', `Merge ${featureBranch} into ${config.baseBranch}\n\n${ATTRIBUTION}`], { cwd: repoRoot });
+          }
+
+          const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
+          const commitSha = shaOut.trim();
+
+          featureBranchMerged = true;
+          yield { type: 'merge:finalize:complete', featureBranch, baseBranch: config.baseBranch, commitSha };
+        } catch (err) {
+          yield { type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: `Final merge failed: ${(err as Error).message}` };
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
+          saveState(stateDir, state);
+          return;
+        }
+      } else if (!allMerged) {
+        // Not all plans merged — skip finalize, leave feature branch for inspection
+        yield { type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
+      } else if (signal?.aborted) {
+        // Aborted before finalize — leave feature branch for inspection
+        yield { type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
+      }
+
+      // Determine final status — only completed if feature branch was merged to baseBranch
+      state.status = featureBranchMerged ? 'completed' : 'failed';
       state.completedAt = new Date().toISOString();
       saveState(stateDir, state);
     } finally {
-      // 8. Cleanup — always runs, even on errors
+      // 9. Cleanup — always runs, even on errors
+
+      // Ensure baseBranch is checked out regardless of success/failure
+      try {
+        await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
+      } catch {
+        // Best-effort — may already be on baseBranch
+      }
+
       try {
         await cleanupWorktrees(repoRoot, worktreeBase);
       } catch {
@@ -563,6 +637,15 @@ export class Orchestrator {
           await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot });
         } catch {
           // Best-effort — branch may already be deleted or never created
+        }
+      }
+
+      // Delete feature branch on success; leave for inspection on failure
+      if (featureBranchMerged) {
+        try {
+          await exec('git', ['branch', '-D', featureBranch], { cwd: repoRoot });
+        } catch {
+          // Best-effort — branch may already be deleted
         }
       }
 

@@ -69,6 +69,7 @@ export interface EforgeState {
   startedAt: string;
   completedAt?: string;
   baseBranch: string;
+  featureBranch?: string;
   worktreeBase: string;
   plans: Record<string, PlanState>;
   completedPlans: string[];
@@ -186,6 +187,9 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'merge:complete'; planId: string; commitSha?: string }
   | { type: 'merge:resolve:start'; planId: string }
   | { type: 'merge:resolve:complete'; planId: string; resolved: boolean }
+  | { type: 'merge:finalize:start'; featureBranch: string; baseBranch: string }
+  | { type: 'merge:finalize:complete'; featureBranch: string; baseBranch: string; commitSha?: string }
+  | { type: 'merge:finalize:skipped'; featureBranch: string; baseBranch: string; reason: string }
 
   // Expedition planning phases
   | { type: 'expedition:architecture:complete'; modules: ExpeditionModule[] }

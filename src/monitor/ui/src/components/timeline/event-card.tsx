@@ -19,6 +19,7 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type.endsWith(':start')) return { cls: 'start', label: type };
   if (type.endsWith(':complete')) return { cls: 'complete', label: type };
   if (type.endsWith(':failed')) return { cls: 'failed', label: type };
+  if (type.endsWith(':skipped')) return { cls: 'info', label: type };
   if (type.endsWith(':progress')) return { cls: 'progress', label: type };
   if (type.startsWith('agent:')) return { cls: 'agent', label: type };
   if (type === 'plan:skip' || type === 'plan:profile' || type === 'plan:clarification') return { cls: 'info', label: type };
@@ -64,6 +65,9 @@ function eventSummary(event: EforgeEvent): string {
     case 'schedule:ready': return `Ready: ${event.planId} (${event.reason})`;
     case 'merge:start': return `Merging: ${event.planId}`;
     case 'merge:complete': return `Merged: ${event.planId}`;
+    case 'merge:finalize:start': return `Finalizing: ${event.featureBranch} → ${event.baseBranch}`;
+    case 'merge:finalize:complete': return `Finalized: ${event.featureBranch} → ${event.baseBranch}`;
+    case 'merge:finalize:skipped': return `Finalize skipped: ${event.reason}`;
     case 'expedition:architecture:complete': return `Architecture: ${event.modules?.length || 0} module(s)`;
     case 'expedition:module:start': return `Module planning: ${event.moduleId}`;
     case 'expedition:module:complete': return `Module complete: ${event.moduleId}`;

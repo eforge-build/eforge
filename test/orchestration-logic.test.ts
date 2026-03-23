@@ -26,6 +26,7 @@ function makeState(
     status: 'running',
     startedAt: '2026-01-01T00:00:00Z',
     baseBranch: 'main',
+    featureBranch: overrides?.featureBranch ?? 'eforge/test-set',
     worktreeBase: '/tmp/worktrees',
     plans: fullPlans,
     completedPlans: [],
@@ -337,6 +338,14 @@ describe('initializeState', () => {
     expect(state.setName).toBe('test-set');
     expect(state.plans['plan-a'].status).toBe('pending');
     expect(state.plans['plan-b'].status).toBe('pending');
+  });
+
+  it('initializes featureBranch from config name', () => {
+    const stateDir = makeTempDir();
+    const config = makeConfig({ name: 'my-feature' });
+    const state = initializeState(stateDir, config, '/tmp/repo');
+
+    expect(state.featureBranch).toBe('eforge/my-feature');
   });
 
   it('creates fresh state when existing is failed', () => {

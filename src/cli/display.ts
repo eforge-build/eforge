@@ -400,6 +400,19 @@ export function renderEvent(event: EforgeEvent): void {
       succeedSpinner(`merge:${event.planId}`, `Merged ${chalk.cyan(event.planId)}`);
       break;
 
+    case 'merge:finalize:start':
+      startSpinner('merge-finalize', `Merging ${chalk.cyan(event.featureBranch)} into ${chalk.cyan(event.baseBranch)}...`);
+      break;
+
+    case 'merge:finalize:complete':
+      succeedSpinner('merge-finalize', `Merged ${chalk.cyan(event.featureBranch)} into ${chalk.cyan(event.baseBranch)}`);
+      break;
+
+    case 'merge:finalize:skipped':
+      console.log(chalk.yellow(`  ⏭ Feature branch merge skipped: ${event.reason}`));
+      console.log(chalk.dim(`    Branch ${chalk.cyan(event.featureBranch)} left for inspection`));
+      break;
+
     // Expedition planning phases
     case 'expedition:architecture:complete':
       succeedSpinner('plan', `Architecture complete \u2014 ${event.modules.length} modules defined`);
