@@ -851,7 +851,12 @@ async function* cleanupPlanFiles(cwd: string, planSet: string, prdFilePath?: str
     // Also remove PRD file when provided
     if (prdFilePath) {
       try {
-        await exec('git', ['rm', '-f', '--', prdFilePath], { cwd });
+        // git rm (tracked files), fall back to fs rm (untracked)
+        try {
+          await exec('git', ['rm', '-f', '--', prdFilePath], { cwd });
+        } catch {
+          await rm(resolve(prdFilePath));
+        }
 
         // Remove empty parent directory of the PRD file
         const { dirname } = await import('node:path');
