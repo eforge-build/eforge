@@ -1,15 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { useTempDir } from './test-tmpdir.js';
 import { evaluateStateCheck, type StateCheckContext } from '../src/monitor/server-main.js';
+import {
+  writeLockfile,
+  updateLockfile,
+  killPidIfAlive,
+  lockfilePath,
+  type LockfileData,
+} from '../src/monitor/lockfile.js';
 
 // We need to mock lockfile, isServerAlive, and openDatabase
 // to test signalMonitorShutdown without real servers
 
-vi.mock('../src/monitor/lockfile.js', () => ({
-  readLockfile: vi.fn(),
-  isServerAlive: vi.fn(),
-}));
+vi.mock('../src/monitor/lockfile.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/monitor/lockfile.js')>();
+  return {
+    ...actual,
+    readLockfile: vi.fn(),
+    isServerAlive: vi.fn(),
+  };
+});
 
 vi.mock('../src/monitor/db.js', () => ({
   openDatabase: vi.fn(),
@@ -187,5 +199,91 @@ describe('hasSeenActivity gate', () => {
     const result = evaluateStateCheck(ctx);
 
     expect(result.hasSeenActivity).toBe(true);
+  });
+});
+
+describe('lockfile watcherPid backward compatibility', () => {
+  const makeTempDir = useTempDir();
+
+  it('lockfile with watcherPid round-trips through writeLockfile and readLockfile', () => {
+    const cwd = makeTempDir();
+    const data: LockfileData = {
+      pid: 12345,
+      port: 4567,
+      startedAt: new Date().toISOString(),
+      watcherPid: 99999,
+    };
+    writeLockfile(cwd, data);
+    // Read directly from disk to bypass mock
+    const raw = JSON.parse(readFileSync(lockfilePath(cwd), 'utf-8')) as LockfileData;
+    expect(raw.pid).toBe(12345);
+    expect(raw.port).toBe(4567);
+    expect(raw.watcherPid).toBe(99999);
+  });
+
+  it('lockfile without watcherPid parses correctly', () => {
+    const cwd = makeTempDir();
+    const data: LockfileData = {
+      pid: 12345,
+      port: 4567,
+      startedAt: new Date().toISOString(),
+    };
+    writeLockfile(cwd, data);
+    // Read directly from disk — existing lockfiles without watcherPid should parse fine
+    const raw = JSON.parse(readFileSync(lockfilePath(cwd), 'utf-8')) as LockfileData;
+    expect(raw.pid).toBe(12345);
+    expect(raw.watcherPid).toBeUndefined();
+  });
+});
+
+describe('updateLockfile', () => {
+  const makeTempDir = useTempDir();
+
+  it('atomically updates an existing lockfile', () => {
+    const cwd = makeTempDir();
+    const startedAt = new Date().toISOString();
+    const data: LockfileData = {
+      pid: 12345,
+      port: 4567,
+      startedAt,
+    };
+    writeLockfile(cwd, data);
+
+    // Mock readLockfile to return the data we just wrote (updateLockfile calls readLockfile internally)
+    mockReadLockfile.mockReturnValueOnce(data);
+
+    updateLockfile(cwd, (existing) => ({
+      ...existing,
+      watcherPid: 77777,
+    }));
+
+    // Verify the file on disk was updated
+    const raw = JSON.parse(readFileSync(lockfilePath(cwd), 'utf-8')) as LockfileData;
+    expect(raw.pid).toBe(12345);
+    expect(raw.port).toBe(4567);
+    expect(raw.watcherPid).toBe(77777);
+  });
+
+  it('does not throw and does not create a file when lockfile is missing', () => {
+    const cwd = makeTempDir();
+    // Mock readLockfile to return null (no lockfile found)
+    mockReadLockfile.mockReturnValueOnce(null);
+
+    expect(() => {
+      updateLockfile(cwd, (existing) => ({
+        ...existing,
+        watcherPid: 77777,
+      }));
+    }).not.toThrow();
+
+    // Verify no file was created
+    expect(() => readFileSync(lockfilePath(cwd), 'utf-8')).toThrow();
+  });
+});
+
+describe('killPidIfAlive', () => {
+  it('returns false for a non-existent PID', () => {
+    const result = killPidIfAlive(999999);
+    expect(result).toBe(false);
   });
 });

@@ -102,6 +102,7 @@ export async function* withRecording(
 
     if (event.type === 'phase:end' && runId) {
       db.updateRunStatus(runId, event.result.status, event.timestamp);
+      runId = undefined;
     }
 
     if (event.type === 'session:end' && enqueueRunId && !runId) {
@@ -111,6 +112,11 @@ export async function* withRecording(
           db.updateRunStatus(enqueueRunId, 'failed', 'timestamp' in event ? (event as { timestamp: string }).timestamp : new Date().toISOString());
         }
       }
+    }
+
+    if (event.type === 'session:end') {
+      runId = undefined;
+      enqueueRunId = undefined;
     }
 
     yield event;

@@ -223,6 +223,68 @@ describe('enqueue-only session via runSession + withRecording', () => {
   });
 });
 
+describe('queue cycle event scoping', () => {
+  const makeTempDir = useTempDir();
+
+  it('queue-level events between PRD sessions are not recorded under either PRD run', async () => {
+    const cwd = makeTempDir();
+    mkdirSync(resolve(cwd, '.eforge'), { recursive: true });
+    const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+    const db = openDatabase(dbPath);
+
+    const now = new Date().toISOString();
+
+    // Simulate a queue cycle with 2 PRD sessions and queue-level events in between
+    async function* queueCycleEvents(): AsyncGenerator<EforgeEvent> {
+      // --- PRD 1 session ---
+      yield { type: 'session:start', sessionId: 'session-1', timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'phase:start', runId: 'run-1', sessionId: 'session-1', planSet: 'prd-1', command: 'build', timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'phase:end', runId: 'run-1', sessionId: 'session-1', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'session:end', sessionId: 'session-1', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
+
+      // --- Queue-level events between sessions ---
+      yield { type: 'queue:watch:cycle', timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'queue:watch:waiting', timestamp: now } as unknown as EforgeEvent;
+
+      // --- PRD 2 session ---
+      yield { type: 'session:start', sessionId: 'session-2', timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'phase:start', runId: 'run-2', sessionId: 'session-2', planSet: 'prd-2', command: 'build', timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'phase:end', runId: 'run-2', sessionId: 'session-2', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'session:end', sessionId: 'session-2', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
+    }
+
+    const { withRecording } = await import('../src/monitor/recorder.js');
+    const wrapped = withRecording(queueCycleEvents(), db, cwd);
+    const collected: EforgeEvent[] = [];
+    for await (const event of wrapped) {
+      collected.push(event);
+    }
+
+    expect(collected).toHaveLength(10);
+
+    // Both runs should exist
+    const runs = db.getRuns();
+    const run1 = runs.find((r) => r.id === 'run-1');
+    const run2 = runs.find((r) => r.id === 'run-2');
+    expect(run1).toBeDefined();
+    expect(run2).toBeDefined();
+
+    // Queue-level events should NOT be in run-1's events
+    const run1Events = db.getEvents('run-1');
+    const run1Types = run1Events.map((e) => e.type);
+    expect(run1Types).not.toContain('queue:watch:cycle');
+    expect(run1Types).not.toContain('queue:watch:waiting');
+
+    // Queue-level events should NOT be in run-2's events
+    const run2Events = db.getEvents('run-2');
+    const run2Types = run2Events.map((e) => e.type);
+    expect(run2Types).not.toContain('queue:watch:cycle');
+    expect(run2Types).not.toContain('queue:watch:waiting');
+
+    db.close();
+  });
+});
+
 describe('buildMonitor wiring', () => {
   const makeTempDir = useTempDir();
 

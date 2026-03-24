@@ -6,6 +6,7 @@ export interface LockfileData {
   pid: number;
   port: number;
   startedAt: string;
+  watcherPid?: number;
 }
 
 export const LOCKFILE_NAME = 'daemon.lock';
@@ -68,6 +69,27 @@ export function removeLockfile(cwd: string): void {
 export function isPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function updateLockfile(cwd: string, updater: (data: LockfileData) => LockfileData): void {
+  const existing = readLockfile(cwd);
+  if (!existing) {
+    return; // No-op when lockfile is missing
+  }
+  const updated = updater(existing);
+  writeLockfile(cwd, updated);
+}
+
+export function killPidIfAlive(pid: number, signal: NodeJS.Signals = 'SIGTERM'): boolean {
+  if (!isPidAlive(pid)) {
+    return false;
+  }
+  try {
+    process.kill(pid, signal);
     return true;
   } catch {
     return false;
