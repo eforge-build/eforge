@@ -52,30 +52,38 @@ flowchart TD
 
     Start --> Formatter["Formatter"]
     Formatter --> Queue["Queue"]
-    Queue --> Planner
 
-    subgraph compile ["Compile (profile-dependent)"]
-        Planner["Planner"] --> PC["Write plans + build config"]
-        PC --> PR["Plan Review Cycle"]
-    end
+    Queue --> Daemon["Daemon\n(watches queue, auto-starts)"]
+    Queue -.->|"--foreground"| Worker
 
-    PR --> Orch
+    Daemon -->|"spawns per PRD"| Worker["Worker Process"]
 
-    subgraph build ["Build (per plan, parallel)"]
-        Orch["Orchestrator"] -->|"for each plan"| BS["Run plan's build stages"]
-        BS --> SM["Squash merge\n(topological order)"]
-    end
+    subgraph worker ["Worker Pipeline"]
+        direction TB
+        subgraph compile ["Compile (profile-dependent)"]
+            Planner["Planner"] --> PC["Write plans + build config"]
+            PC --> PR["Plan Review Cycle"]
+        end
 
-    SM --> validate
+        PR --> Orch
 
-    subgraph validate ["Validation"]
-        Val["Run validation commands"]
-        Val -->|"Pass"| Done["Done"]
-        Val -->|"Fail"| Fixer["Validation Fixer"]
-        Fixer --> Val
+        subgraph build ["Build (per plan, parallel)"]
+            Orch["Orchestrator"] -->|"for each plan"| BS["Run plan's build stages"]
+            BS --> SM["Squash merge\n(topological order)"]
+        end
+
+        SM --> Val
+
+        subgraph validate ["Validation"]
+            Val["Run validation commands"]
+            Val -->|"Pass"| Done["Done"]
+            Val -->|"Fail"| Fixer["Validation Fixer"]
+            Fixer --> Val
+        end
     end
 ```
 
+- **Daemon** - A persistent background process (port 4567) that watches the PRD queue and spawns an isolated worker process for each PRD. The CLI auto-starts the daemon on first use. Use `--foreground` to bypass the daemon and run the pipeline directly.
 - **Compile** - Profile-dependent. The planner explores the codebase, selects a workflow profile (errand = passthrough, excursion = plan + review, expedition = architecture + module planning + cohesion review), and writes plan files. Each plan carries its own build stage sequence and review config in `orchestration.yaml`. Plans go through a blind review cycle before building starts.
 - **Build** - Each plan runs its own build stages in an isolated git worktree. The default is `implement → review-cycle`, where the review cycle runs a blind code reviewer, a fixer that applies suggestions, and an evaluator that accepts strict improvements while rejecting intent changes. Plans with documentation changes use `[implement, doc-update] → review-cycle` (parallel group). Test and TDD workflows are also available. Completed plans squash-merge to the base branch in topological dependency order.
 - **Validation** - Runs configured commands (type-check, tests, linting) after all plans merge. If validation fails, a fixer agent attempts minimal repairs automatically.
@@ -96,11 +104,14 @@ eforge enqueue plans/my-feature-prd.md   # add to queue (daemon auto-builds by d
 eforge status                            # check running builds
 eforge monitor                           # open web dashboard
 eforge config show                       # print resolved config
+eforge daemon start                      # start persistent daemon
+eforge daemon stop                       # stop daemon
+eforge daemon status                     # show daemon PID, port, uptime
 ```
 
 `eforge run` is a backwards-compatible alias for `eforge build`.
 
-All commands support `--help`. Notable flags: `--auto` (bypass approval gates), `--verbose` (stream agent output), `--dry-run` (compile only), `--foreground` (run in foreground instead of delegating to daemon).
+All commands support `--help`. Notable flags: `--auto` (bypass approval gates), `--verbose` (stream agent output), `--dry-run` (compile only), `--foreground` (run in foreground instead of delegating to daemon), `--cleanup/--no-cleanup` (keep or remove plan files after build).
 
 ## Configuration
 
@@ -113,6 +124,8 @@ All commands support `--help`. Notable flags: `--auto` (bypass approval gates), 
 Agent runners use the `AgentBackend` interface - all SDK interaction is isolated behind a single adapter (`src/engine/backends/claude-sdk.ts`). New surfaces (CI, TUI, web) consume the same event stream.
 
 A real-time web monitor records all events to SQLite and serves a dashboard over SSE, auto-starting with `build` commands. Recording is decoupled from the web server - events are always persisted, even with `--no-monitor` or `enqueue`.
+
+The daemon is a persistent HTTP server (default port 4567) that watches the PRD queue and auto-builds new entries. Each build spawns an isolated worker process running the same `eforge` binary. The CLI auto-starts the daemon on first `build` invocation and falls back to foreground execution if the daemon is unavailable. An MCP proxy bridges the Claude Code plugin to the daemon's HTTP API, translating tool calls into enqueue and status requests. SQLite (`.eforge/monitor.db`) is the coordination point — the daemon, workers, and web monitor all read/write the same database using WAL mode for concurrent access.
 
 ## Evaluation
 
