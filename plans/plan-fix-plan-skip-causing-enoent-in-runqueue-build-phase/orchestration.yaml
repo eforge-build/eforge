@@ -1,6 +1,6 @@
 name: plan-fix-plan-skip-causing-enoent-in-runqueue-build-phase
-description: Fix plan:skip causing ENOENT crash in runQueue build phase by
-  detecting skip events and short-circuiting before build
+description: Fix runQueue() crashing with ENOENT when planner emits plan:skip by
+  detecting the skip event and bypassing the build phase
 created: 2026-03-24
 compiled: 2026-03-24
 mode: errand

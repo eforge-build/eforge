@@ -1,7 +1,7 @@
 ---
 id: plan-01-skip-detection
 name: Add plan:skip detection to runQueue
-depends_on: []
+dependsOn: []
 branch: plan-fix-plan-skip-causing-enoent-in-runqueue-build-phase/skip-detection
 ---
 
@@ -9,41 +9,38 @@ branch: plan-fix-plan-skip-causing-enoent-in-runqueue-build-phase/skip-detection
 
 ## Architecture Context
 
-The `runQueue()` method in `EforgeEngine` iterates compile events and then unconditionally calls `build()`. When the planner emits `plan:skip` (work already complete), compile succeeds but never writes `orchestration.yaml`. The subsequent `build()` call fails with ENOENT when `validatePlanSet()` tries to read the missing file.
-
-The fix follows the existing `compileFailed` pattern — track a boolean during compile event iteration and short-circuit before `build()`.
+The `runQueue()` method in `src/engine/eforge.ts` iterates compile events and then unconditionally proceeds to `this.build()`. When the planner emits `plan:skip` (work already done), compile completes successfully but never writes `orchestration.yaml`. The build phase then fails with ENOENT trying to read that file. The fix adds skip detection alongside the existing `compileFailed` pattern.
 
 ## Implementation
 
 ### Overview
 
-Add a `skipped` boolean and `skipReason` string alongside the existing `compileFailed` flag in `runQueue()`. When a `plan:skip` event is seen during compile iteration, set `skipped = true`. After compile completes, check `skipped` before entering the build phase — if true, set `prdResult` to `{ status: 'skipped', summary: skipReason }` and `continue` to the next PRD.
+Track `plan:skip` events during compile iteration in `runQueue()`. When detected, set the PRD status to `skipped` and `continue` to the next PRD — bypassing the build phase entirely. This follows the identical control flow pattern already used for `compileFailed`.
 
 ### Key Decisions
 
-1. Follow the identical control flow pattern as `compileFailed` — a boolean flag set during event iteration, checked after the loop, with `continue` to skip remaining processing. This keeps the code consistent and minimal.
-2. Use `'skipped'` as the `prdResult.status` value — the `PrdStatus` type already includes `'skipped'` in its union (`src/engine/prd-queue.ts` line 22), so no type changes are needed.
+1. Reuse the `compileFailed` pattern (boolean flag + early `continue`) for consistency — no new abstractions needed
+2. Use `'skipped'` as the PRD status, which is already a valid value in the `PrdStatus` type (`src/engine/prd-queue.ts` line 22)
 
 ## Scope
 
 ### In Scope
-- `runQueue()` method in `src/engine/eforge.ts`: add skip detection between compile and build phases
+- `src/engine/eforge.ts` `runQueue()` method: add `skipped` boolean + `skipReason` string, detect `plan:skip` events, early-continue with `'skipped'` status
 
 ### Out of Scope
-- Planner agent logic or `plan:skip` event emission
-- Compile pipeline stages
-- PRD frontmatter schema changes
-- Test file changes (no existing unit tests cover `runQueue` — it's integration-level per CLAUDE.md conventions)
+- Changes to the planner or `plan:skip` event emission logic
+- Changes to the compile pipeline
+- Changes to the PRD frontmatter schema (already supports `'skipped'`)
 
 ## Files
 
 ### Modify
-- `src/engine/eforge.ts` — Add `skipped`/`skipReason` tracking in `runQueue()` compile event loop (~lines 647-667). Insert skip check between the `compileFailed` check and the build phase.
+- `src/engine/eforge.ts` — In `runQueue()` (~lines 647-667): add `skipped` and `skipReason` variables, detect `plan:skip` in the compile event loop, add early-continue block after `compileFailed` check
 
 ## Verification
 
 - [ ] `pnpm type-check` passes with zero errors
-- [ ] `pnpm test` passes — all existing tests remain green
-- [ ] `./eval/run.sh todo-api-errand-skip` exits 0 (skip scenario no longer crashes with ENOENT)
-- [ ] In `runQueue()`, when `plan:skip` is emitted during compile, `prdResult.status` is set to `'skipped'` and the build phase loop is never entered
-- [ ] The `skipped` check appears after `compileFailed` check and before the build phase, following the same `continue` pattern
+- [ ] `pnpm test` — all existing tests pass
+- [ ] `./eval/run.sh todo-api-errand-skip` exits 0 with a skip message (no ENOENT)
+- [ ] When `plan:skip` is emitted during compile in queue mode, `prdResult.status` is `'skipped'` and `this.build()` is never called
+- [ ] The `skipped` status is written to the PRD file frontmatter via `updatePrdStatus()`
