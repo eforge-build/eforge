@@ -1,7 +1,7 @@
 ---
 title: Robust Daemon Process Lifecycle & Queue Event Scoping
 created: 2026-03-24
-status: pending
+status: running
 ---
 
 # Robust Daemon Process Lifecycle & Queue Event Scoping

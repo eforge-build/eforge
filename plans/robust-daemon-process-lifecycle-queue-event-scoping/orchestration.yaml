@@ -1,0 +1,49 @@
+name: robust-daemon-process-lifecycle-queue-event-scoping
+description: Ensure exactly one monitor and one watcher process per repo with
+  clean startup/shutdown, force-kill escalation, and fix queue event scoping so
+  transient queue events never leak into individual PRD build timelines.
+created: 2026-03-24
+compiled: 2026-03-24
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-lockfile-helpers-and-recorder-fix
+    name: Lockfile Helpers & Recorder Queue Event Scoping Fix
+    depends_on: []
+    branch: robust-daemon-process-lifecycle-queue-event-scoping/lockfile-helpers-and-recorder-fix
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-daemon-lifecycle-hardening
+    name: Daemon Lifecycle Hardening & New Commands
+    depends_on:
+      - plan-01-lockfile-helpers-and-recorder-fix
+    branch: robust-daemon-process-lifecycle-queue-event-scoping/daemon-lifecycle-hardening
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
