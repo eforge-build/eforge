@@ -40,9 +40,11 @@ cleanup() {
 # Prune old runs, keeping only the most recent MAX_RUNS
 prune_old_runs() {
   [[ -d "$RESULTS_DIR" ]] || return 0
-  local runs
+  local runs=()
   # Timestamped dirs sort lexicographically (oldest first)
-  mapfile -t runs < <(ls -1d "$RESULTS_DIR"/????-??-??T* 2>/dev/null | sort)
+  while IFS= read -r dir; do
+    runs+=("$dir")
+  done < <(ls -1d "$RESULTS_DIR"/????-??-??T* 2>/dev/null | sort)
   local count=${#runs[@]}
   if (( count <= MAX_RUNS )); then
     return 0

@@ -59,11 +59,11 @@ run_scenario() {
 
     # Output goes to both terminal (for live monitoring URL) and log file
     # Env vars (e.g. LANGFUSE_*) are inherited from run.sh's --env-file sourcing
-    echo "  Running eforge run $prd --auto --verbose..."
+    echo "  Running eforge run $prd --auto --verbose --foreground..."
     set +e
     (
       cd "$workspace"
-      "$eforge_bin" run "$prd" --auto --verbose
+      "$eforge_bin" run "$prd" --auto --verbose --foreground
     ) 2>&1 | tee "$scenario_dir/eforge.log"
     eforge_exit=${PIPESTATUS[0]}
     set -e
