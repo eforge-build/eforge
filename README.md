@@ -96,19 +96,11 @@ flowchart TD
 
 ![eforge monitor - timeline view](docs/images/monitor-timeline.png)
 
-## Queue Workflow
+## The Workflow
 
-The queue is how I actually use `eforge` day to day. Plan features throughout the day, add them to the queue, and let the daemon process them:
+The way I actually use `eforge`: plan a feature interactively in Claude Code, then hand it off with `/eforge:build`. The plugin enqueues the PRD and a daemon picks it up automatically — compile, build, review, validate. The daemon serves a web monitor (default `localhost:4567`) where you can watch builds in real time.
 
-```bash
-eforge enqueue "Add health check endpoint"
-eforge enqueue plans/auth-refactor.md
-eforge enqueue "Fix the race condition in the webhook handler"
-eforge status                            # check progress
-eforge monitor                           # open web dashboard
-```
-
-Queued work is re-assessed before execution so changes from earlier builds are accounted for.
+I do this throughout the day. Each build lands on main before the next one starts, so later builds plan against the updated codebase, not a stale snapshot.
 
 ## Architecture
 
