@@ -1,5 +1,7 @@
 # eforge
 
+[![npm version](https://img.shields.io/npm/v/eforge)](https://www.npmjs.com/package/eforge)
+
 An agentic build system. PRD in, reviewed and validated code out.
 
 `eforge` takes a prompt or requirements doc, plans the implementation against your codebase, builds it in isolated git worktrees, runs a blind code review with a fresh-context agent, and validates the result. No supervision required.
