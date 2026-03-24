@@ -5,8 +5,8 @@ postMergeCommands:
 
 hooks:
   - event: "session:*"
-    command: 'echo "{\"event\":\"$EFORGE_EVENT_TYPE\",\"EFORGE_SESSION_ID\":\"$EFORGE_SESSION_ID\",\"EFORGE_RUN_ID\":\"$EFORGE_RUN_ID\",\"EFORGE_CWD\":\"$EFORGE_CWD\",\"EFORGE_GIT_REMOTE\":\"$EFORGE_GIT_REMOTE\"}" >> .eforge/hook-events.log'
+    command: 'mkdir -p .eforge && echo "{\"event\":\"$EFORGE_EVENT_TYPE\",\"EFORGE_SESSION_ID\":\"$EFORGE_SESSION_ID\",\"EFORGE_RUN_ID\":\"$EFORGE_RUN_ID\",\"EFORGE_CWD\":\"$EFORGE_CWD\",\"EFORGE_GIT_REMOTE\":\"$EFORGE_GIT_REMOTE\"}" >> .eforge/hook-events.log'
     timeout: 5000
   - event: "phase:*"
-    command: 'echo "{\"event\":\"$EFORGE_EVENT_TYPE\",\"EFORGE_SESSION_ID\":\"$EFORGE_SESSION_ID\",\"EFORGE_RUN_ID\":\"$EFORGE_RUN_ID\"}" >> .eforge/hook-events.log'
+    command: 'mkdir -p .eforge && echo "{\"event\":\"$EFORGE_EVENT_TYPE\",\"EFORGE_SESSION_ID\":\"$EFORGE_SESSION_ID\",\"EFORGE_RUN_ID\":\"$EFORGE_RUN_ID\"}" >> .eforge/hook-events.log'
     timeout: 5000

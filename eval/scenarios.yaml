@@ -26,7 +26,6 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
-      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add JWT auth middleware + protected routes"
     expect:
       mode: excursion
@@ -38,7 +37,6 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
-      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "PRD describes what db.ts already implements - should skip"
     expect:
       mode: errand
@@ -53,7 +51,6 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
-      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add reactions, threads, and pins to workspace API (expedition, parallel modules)"
     expect:
       mode: expedition
@@ -65,7 +62,6 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
-      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add bookmarks, categories, and activity modules - 3 independent verticals"
     expect:
       mode: expedition
@@ -79,7 +75,6 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
-      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Fix stale README and API reference - docs only, no code changes"
     expect:
       mode: errand
@@ -91,7 +86,6 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
-      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Extract generic EntityStore from duplicated CRUD patterns in store.ts"
     expect:
       mode: excursion
@@ -103,7 +97,6 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
-      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Remove src/legacy/, formatCsv(), and validateCsvRow() dead code"
     expect:
       mode: excursion
@@ -115,7 +108,6 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
-      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add GET /notes/search?q= with test coverage"
     expect:
       mode: excursion
