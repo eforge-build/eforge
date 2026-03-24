@@ -103,6 +103,7 @@ function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string): void {
 }
 
 async function main(): Promise<void> {
+  process.title = 'eforge-monitor';
   const serverStartedAt = Date.now();
   const args = process.argv.slice(2);
   const persistent = args.includes('--persistent');

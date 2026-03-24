@@ -211,6 +211,7 @@ export function createProgram(abortController?: AbortController): Command {
       ) => {
         // --queue mode: delegate to engine.runQueue() or engine.watchQueue()
         if (options.queue) {
+          if (options.watch) process.title = 'eforge-watcher';
           initDisplay({ verbose: options.verbose });
 
           const configOverrides = buildConfigOverrides(options);
@@ -770,6 +771,7 @@ export function createProgram(abortController?: AbortController): Command {
     .command('mcp-proxy')
     .description('Run the MCP stdio proxy server (used by Claude Code plugin)')
     .action(async () => {
+      process.title = 'eforge-mcp';
       const { runMcpProxy } = await import('./mcp-proxy.js');
       await runMcpProxy(process.cwd());
     });

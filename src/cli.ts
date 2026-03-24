@@ -1,6 +1,8 @@
 // Allow running as a subprocess from within Claude Code sessions
 delete process.env.CLAUDECODE;
 
+process.title = 'eforge';
+
 import { run } from './cli/index.js';
 
 try {
