@@ -20,7 +20,7 @@ import type {
   PlanFile,
   ClarificationQuestion,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, updatePrdStatus, enqueuePrd, inferTitle } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, updatePrdStatus, enqueuePrd, inferTitle, claimPrd, releasePrd } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runFormatter } from './agents/formatter.js';
 import type { EforgeConfig, PluginConfig, PartialProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
@@ -574,6 +574,14 @@ export class EforgeEngine {
         title: prd.frontmatter.title,
       };
 
+      // Claim this PRD exclusively — skip if another process already holds it
+      const claimed = await claimPrd(prd.filePath);
+      if (!claimed) {
+        yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'claimed by another process' };
+        skipped++;
+        continue;
+      }
+
       // Staleness check — skip only if PRD was added in the most recent commit
       const headHash = await getHeadHash(cwd);
       if (prd.lastCommitHash && prd.lastCommitHash !== headHash) {
@@ -598,6 +606,7 @@ export class EforgeEngine {
         }
 
         if (stalenessVerdict === 'obsolete') {
+          await releasePrd(prd.filePath);
           await updatePrdStatus(prd.filePath, 'skipped');
           yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
           skipped++;
@@ -616,6 +625,7 @@ export class EforgeEngine {
             }
           } else {
             // Skip — needs manual revision
+            await releasePrd(prd.filePath);
             yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
             skipped++;
             continue;
@@ -703,6 +713,9 @@ export class EforgeEngine {
       } catch (err) {
         prdResult = { status: 'failed', summary: (err as Error).message };
       } finally {
+        try {
+          await releasePrd(prd.filePath);
+        } catch { /* best-effort lock cleanup */ }
         try {
           await updatePrdStatus(prd.filePath, prdResult.status);
         } catch { /* prevent double-throw */ }

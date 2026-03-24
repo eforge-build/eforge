@@ -5,8 +5,9 @@
  * same dependency graph algorithm as plan orchestration.
  */
 
-import { readFile, readdir, writeFile, mkdir, rm, rmdir } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir, rm, rmdir, open } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
+import { constants } from 'node:fs';
 import { resolve, basename } from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod/v4';
@@ -319,6 +320,46 @@ export async function updatePrdStatus(filePath: string, newStatus: PrdStatus): P
   }
 
   await writeFile(filePath, updated, 'utf-8');
+}
+
+// ---------------------------------------------------------------------------
+// Lockfile-based PRD claim
+// ---------------------------------------------------------------------------
+
+/**
+ * Atomically claim a PRD by creating an exclusive lock file.
+ * Uses O_CREAT | O_EXCL flags so only one process can create the file.
+ * Writes the current PID into the lock file for debugging.
+ * Returns `true` if the claim succeeded, `false` if another process holds it.
+ */
+export async function claimPrd(filePath: string): Promise<boolean> {
+  const lockPath = `${filePath}.lock`;
+  try {
+    const fd = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY);
+    await fd.writeFile(String(process.pid), 'utf-8');
+    await fd.close();
+    return true;
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Release a PRD claim by removing the lock file.
+ * Best-effort and non-throwing — if the lock file is already gone, that's fine.
+ */
+export async function releasePrd(filePath: string): Promise<void> {
+  const lockPath = `${filePath}.lock`;
+  try {
+    await rm(lockPath);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw err;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

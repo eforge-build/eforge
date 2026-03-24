@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { validatePrdFrontmatter, resolveQueueOrder, updatePrdStatus, type QueuedPrd } from '../src/engine/prd-queue.js';
+import { existsSync } from 'node:fs';
+import { validatePrdFrontmatter, resolveQueueOrder, updatePrdStatus, claimPrd, releasePrd, type QueuedPrd } from '../src/engine/prd-queue.js';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -215,5 +216,71 @@ describe('updatePrdStatus', () => {
     // Should still have valid frontmatter structure
     expect(content).toMatch(/^---\n/);
     expect(content).toMatch(/\n---\n/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// claimPrd / releasePrd
+// ---------------------------------------------------------------------------
+
+describe('claimPrd', () => {
+  const makeTempDir = useTempDir('eforge-prd-claim-');
+
+  it('returns true on first call and creates .lock file', async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, 'test.md');
+    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+
+    const result = await claimPrd(filePath);
+    expect(result).toBe(true);
+    expect(existsSync(`${filePath}.lock`)).toBe(true);
+  });
+
+  it('returns false on second call for the same path', async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, 'test.md');
+    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+
+    const first = await claimPrd(filePath);
+    expect(first).toBe(true);
+
+    const second = await claimPrd(filePath);
+    expect(second).toBe(false);
+  });
+
+  it('succeeds again after releasePrd', async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, 'test.md');
+    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+
+    await claimPrd(filePath);
+    await releasePrd(filePath);
+
+    const result = await claimPrd(filePath);
+    expect(result).toBe(true);
+  });
+});
+
+describe('releasePrd', () => {
+  const makeTempDir = useTempDir('eforge-prd-release-');
+
+  it('removes the .lock file', async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, 'test.md');
+    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+
+    await claimPrd(filePath);
+    expect(existsSync(`${filePath}.lock`)).toBe(true);
+
+    await releasePrd(filePath);
+    expect(existsSync(`${filePath}.lock`)).toBe(false);
+  });
+
+  it('does not throw when lock file is already gone', async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, 'nonexistent.md');
+
+    // Should not throw even though there's no lock file
+    await expect(releasePrd(filePath)).resolves.toBeUndefined();
   });
 });
