@@ -65,7 +65,7 @@ export class ClaudeSDKBackend implements AgentBackend {
         },
       });
 
-      yield* mapSDKMessages(q, agent, planId);
+      yield* mapSDKMessages(q, agent, agentId, planId);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       throw err;
@@ -97,6 +97,7 @@ function abortControllerFromSignal(signal: AbortSignal): AbortController {
 export async function* mapSDKMessages(
   messages: AsyncIterable<SDKMessage>,
   agent: AgentRole,
+  agentId: string,
   planId?: string,
 ): AsyncGenerator<EforgeEvent> {
   // Track toolUseId → toolName for resolving tool results
@@ -108,12 +109,13 @@ export async function* mapSDKMessages(
         const assistantMsg = msg as SDKAssistantMessage;
         for (const block of assistantMsg.message.content) {
           if (block.type === 'text') {
-            yield { type: 'agent:message', planId, agent, content: block.text };
+            yield { type: 'agent:message', planId, agentId: agentId!, agent, content: block.text };
           } else if (block.type === 'tool_use') {
             toolNameMap.set(block.id, block.name);
             yield {
               type: 'agent:tool_use',
               planId,
+              agentId: agentId!,
               agent,
               tool: block.name,
               toolUseId: block.id,
@@ -150,6 +152,7 @@ export async function* mapSDKMessages(
         yield {
           type: 'agent:tool_result',
           planId,
+          agentId: agentId!,
           agent,
           tool: toolName,
           toolUseId: userMsg.parent_tool_use_id,
@@ -166,6 +169,7 @@ export async function* mapSDKMessages(
           yield {
             type: 'agent:tool_result',
             planId,
+            agentId: agentId!,
             agent,
             tool: toolName,
             toolUseId,
@@ -179,7 +183,7 @@ export async function* mapSDKMessages(
         const partial = msg as SDKPartialAssistantMessage;
         const event = partial.event;
         if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-          yield { type: 'agent:message', planId, agent, content: event.delta.text };
+          yield { type: 'agent:message', planId, agentId: agentId!, agent, content: event.delta.text };
         }
         break;
       }

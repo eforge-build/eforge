@@ -21,11 +21,12 @@ describe('mapSDKMessages', () => {
       },
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages, 'planner'));
+    const events = await collectEvents(mapSDKMessages(messages, 'planner', 'test-agent-id'));
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual({
       type: 'agent:message',
       planId: undefined,
+      agentId: 'test-agent-id',
       agent: 'planner',
       content: 'Hello world',
     });
@@ -43,7 +44,7 @@ describe('mapSDKMessages', () => {
       },
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages, 'builder'));
+    const events = await collectEvents(mapSDKMessages(messages, 'builder', 'test-agent-id'));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       type: 'agent:tool_use',
@@ -64,11 +65,12 @@ describe('mapSDKMessages', () => {
       },
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages, 'reviewer'));
+    const events = await collectEvents(mapSDKMessages(messages, 'reviewer', 'test-agent-id'));
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual({
       type: 'agent:message',
       planId: undefined,
+      agentId: 'test-agent-id',
       agent: 'reviewer',
       content: 'streaming chunk',
     });
@@ -97,7 +99,7 @@ describe('mapSDKMessages', () => {
       },
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages, 'planner'));
+    const events = await collectEvents(mapSDKMessages(messages, 'planner', 'test-agent-id'));
     // Result text is NOT re-emitted as agent:message (already came from assistant message).
     // Only agent:result is emitted with resultText captured for tracing.
     expect(events).toHaveLength(1);
@@ -145,7 +147,7 @@ describe('mapSDKMessages', () => {
       },
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages, 'planner'));
+    const events = await collectEvents(mapSDKMessages(messages, 'planner', 'test-agent-id'));
     const resultEvent = events.find((e) => e.type === 'agent:result');
     expect(resultEvent).toBeDefined();
     if (resultEvent?.type === 'agent:result') {
@@ -191,7 +193,7 @@ describe('mapSDKMessages', () => {
       },
     ]);
 
-    const gen = mapSDKMessages(messages, 'builder');
+    const gen = mapSDKMessages(messages, 'builder', 'test-agent-id');
     // First yield should be agent:result with usage data (even on error)
     const first = await gen.next();
     expect(first.done).toBe(false);
@@ -215,7 +217,7 @@ describe('mapSDKMessages', () => {
       { type: 'user' },
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages, 'planner'));
+    const events = await collectEvents(mapSDKMessages(messages, 'planner', 'test-agent-id'));
     expect(events).toHaveLength(0);
   });
 
@@ -229,7 +231,7 @@ describe('mapSDKMessages', () => {
       },
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages, 'builder', 'plan-42'));
+    const events = await collectEvents(mapSDKMessages(messages, 'builder', 'test-agent-id', 'plan-42'));
     expect(events[0]).toMatchObject({ planId: 'plan-42' });
   });
 
@@ -247,7 +249,7 @@ describe('mapSDKMessages', () => {
       },
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages, 'builder'));
+    const events = await collectEvents(mapSDKMessages(messages, 'builder', 'test-agent-id'));
     expect(events).toHaveLength(3);
     expect(events[0].type).toBe('agent:message');
     expect(events[1].type).toBe('agent:tool_use');
