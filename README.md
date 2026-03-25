@@ -94,7 +94,7 @@ flowchart TD
 
 **Blind review** - Every build gets reviewed by a separate agent with no builder context. Separating generation from evaluation [dramatically improves quality](https://www.anthropic.com/engineering/harness-design-long-running-apps) - solo agents tend to approve their own work regardless. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes.
 
-**Parallel orchestration** - Expedition plans run in isolated git worktrees, merge in topological dependency order, then run post-merge validation with auto-fix.
+**Parallel orchestration** - Each plan builds in an isolated git worktree. Expeditions run multiple plans in parallel, merging in topological dependency order. Post-merge validation runs with auto-fix.
 
 ![eforge dashboard - timeline view](docs/images/monitor-timeline.png)
 
