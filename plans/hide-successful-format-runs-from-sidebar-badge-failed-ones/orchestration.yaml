@@ -1,0 +1,31 @@
+name: hide-successful-format-runs-from-sidebar-badge-failed-ones
+description: Hide successful format (enqueue-only) runs from the monitor sidebar
+  and badge failed ones with a red "enqueue" indicator
+created: 2026-03-25
+compiled: 2026-03-25
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-filter-and-badge
+    name: Filter Successful Format Runs and Badge Failed Ones
+    depends_on: []
+    branch: hide-successful-format-runs-from-sidebar-badge-failed-ones/filter-and-badge
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
