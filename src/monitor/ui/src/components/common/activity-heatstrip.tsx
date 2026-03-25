@@ -74,7 +74,7 @@ export function ActivityHeatstrip({ events, startTime, endTime }: ActivityHeatst
                       height: CELL_HEIGHT,
                       backgroundColor: bucket.color,
                       borderRadius: 1,
-                      animation: bucket.isLast ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
+                      animation: bucket.isLast && !endTime ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
                     }}
                   />
                 </TooltipTrigger>
