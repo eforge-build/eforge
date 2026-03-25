@@ -106,10 +106,11 @@ export function App() {
     const interval = setInterval(async () => {
       try {
         const latestId = await fetchLatestSessionId();
+        // Refresh sidebar on every poll cycle so DB state changes (enqueue completion,
+        // phase transitions, status updates) are reflected without a browser refresh.
+        setSidebarRefresh((c) => c + 1);
         if (latestId && latestId !== knownLatestRef.current) {
           knownLatestRef.current = latestId;
-          // Refresh sidebar to show new run, but only auto-switch if user hasn't manually selected
-          setSidebarRefresh((c) => c + 1);
           if (!userSelectedRef.current) {
             setCurrentSessionId(latestId);
           }
