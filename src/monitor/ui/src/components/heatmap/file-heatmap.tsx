@@ -5,6 +5,7 @@ import { HeatmapCell } from './heatmap-cell';
 import { HeatmapLegend } from './heatmap-legend';
 import { HeatmapSummary } from './heatmap-summary';
 import { DiffViewer } from './diff-viewer';
+import { shortenPath } from '@/lib/format';
 
 const DEFAULT_FILE_LIMIT = 50;
 
@@ -93,7 +94,7 @@ export function FileHeatmap({ runState, sessionId }: FileHeatmapProps) {
         {/* Grid */}
         <div className="overflow-x-auto">
           {/* Plan column headers */}
-          <div className="flex gap-0.5 mb-1" style={{ paddingLeft: '218px' }}>
+          <div className="flex gap-0.5 mb-1" style={{ paddingLeft: '322px' }}>
             {plans.map((plan) => (
               <div
                 key={plan.id}
@@ -114,11 +115,11 @@ export function FileHeatmap({ runState, sessionId }: FileHeatmapProps) {
             return (
               <div key={file.path} className="flex items-center gap-0.5 mb-0.5">
                 <div
-                  className={`w-[216px] text-[10px] overflow-hidden text-ellipsis whitespace-nowrap shrink-0 cursor-pointer hover:text-text-bright ${isFileSelected ? 'text-text-bright font-medium' : 'text-text-dim'}`}
+                  className={`w-[320px] text-[10px] overflow-hidden text-ellipsis whitespace-nowrap shrink-0 cursor-pointer hover:text-text-bright ${isFileSelected ? 'text-text-bright font-medium' : 'text-text-dim'}`}
                   title={file.path}
                   onClick={() => handleFileNameClick(file.path)}
                 >
-                  {file.path}
+                  {shortenPath(file.path)}
                 </div>
                 {plans.map((plan) => {
                   const risk = planRisks?.get(plan.id) ?? 'none';
