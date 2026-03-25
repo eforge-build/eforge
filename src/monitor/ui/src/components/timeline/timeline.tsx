@@ -9,7 +9,7 @@ interface TimelineProps {
 
 export function Timeline({ events, startTime, showVerbose }: TimelineProps) {
   return (
-    <div className="flex flex-col gap-1 flex-1">
+    <div className="flex flex-col flex-1">
       {events.map((storedEvent, i) => (
         <EventCard
           key={storedEvent.eventId || i}
