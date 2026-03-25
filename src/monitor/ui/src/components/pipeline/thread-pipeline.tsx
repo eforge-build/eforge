@@ -168,7 +168,7 @@ function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStag
 }
 
 /** Minimum timeline window (ms) so short-elapsed bars don't fill 100% width */
-const MIN_TIMELINE_WINDOW_MS = 60_000;
+const MIN_TIMELINE_WINDOW_MS = 300_000;
 
 // --- Heatstrip constants ---
 
