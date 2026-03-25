@@ -2,17 +2,17 @@
 
 [![npm version](https://img.shields.io/npm/v/eforge)](https://www.npmjs.com/package/eforge)
 
-An agentic build system. PRD in, reviewed and validated code out.
+An agentic build system - PRD in, reviewed and validated code out.
 
-`eforge` lets you stay at the planning level. Describe what you want built - a prompt, a markdown file, a full PRD - and hand it off. eforge handles the orchestration of planning, implementation, code review, and validation across specialized agents without you managing any of it.
+`eforge` stays at the planning level. Describe what you want built - a prompt, a markdown file, a full PRD - and hand it off. eforge orchestrates planning, implementation, code review, and validation across specialized agents.
 
 ![eforge dashboard - full pipeline](docs/images/monitor-full-pipeline.png)
 
-## How I Use It
+## Typical Use
 
 Plan a feature interactively in Claude Code, then hand it off with `/eforge:build`. The plugin enqueues the PRD and a daemon picks it up - compile, build, review, validate. A web monitor (default `localhost:4567`) tracks progress, cost, and token usage in real time.
 
-I do this throughout the day. Each build lands on the current branch before the next one starts, so later builds plan against the updated codebase, not a stale snapshot.
+Builds land on the current branch sequentially, so each one plans against the updated codebase, not a stale snapshot.
 
 ## Install
 
@@ -92,7 +92,7 @@ flowchart TD
 - **Excursion** - Multi-file features. Planner writes a plan, blind review cycle, then build.
 - **Expedition** - Large cross-cutting work. Architecture doc, module decomposition, cohesion review across plans, parallel builds in dependency order.
 
-**Blind review** - Every build gets reviewed by a separate agent with no builder context. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes.
+**Blind review** - Every build gets reviewed by a separate agent with no builder context. Separating generation from evaluation [dramatically improves quality](https://www.anthropic.com/engineering/harness-design-long-running-apps) - solo agents tend to approve their own work regardless. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes.
 
 **Parallel orchestration** - Expedition plans run in isolated git worktrees, merge in topological dependency order, then run post-merge validation with auto-fix.
 
@@ -119,7 +119,7 @@ Configured via `eforge.yaml` (searched upward from cwd), environment variables, 
 
 ## Status
 
-This is a young project moving fast. I use it daily to build real features (including itself), but expect rough edges - bugs are likely, change is expected, and YMMV. Source is public so you can read, learn from, and fork it. Not accepting issues or PRs at this time.
+This is a young project moving fast. Used daily to build real features (including itself), but expect rough edges - bugs are likely, change is expected, and YMMV. Source is public so you can read, learn from, and fork it. Not accepting issues or PRs at this time.
 
 ## Development
 
