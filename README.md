@@ -50,43 +50,6 @@ By default, `eforge build` enqueues the PRD and a daemon automatically picks it 
 
 ## How It Works
 
-```mermaid
-flowchart TD
-    Start["PRD, prompt, or plan file"]
-
-    Start --> Formatter["Formatter"]
-    Formatter --> Queue["Queue"]
-
-    Queue --> Daemon["Daemon\n(watches queue, auto-starts)"]
-    Queue -.->|"--foreground"| Worker
-
-    Daemon -->|"spawns per PRD"| Worker["Worker Process"]
-
-    subgraph worker ["Worker Pipeline"]
-        direction TB
-        subgraph compile ["Compile (profile-dependent)"]
-            Planner["Planner"] --> PC["Write plans + build config"]
-            PC --> PR["Plan Review Cycle"]
-        end
-
-        PR --> Orch
-
-        subgraph build ["Build (per plan, parallel)"]
-            Orch["Orchestrator"] -->|"for each plan"| BS["Run plan's build stages"]
-            BS --> SM["Squash merge\n(topological order)"]
-        end
-
-        SM --> Val
-
-        subgraph validate ["Validation"]
-            Val["Run validation commands"]
-            Val -->|"Pass"| Done["Done"]
-            Val -->|"Fail"| Fixer["Validation Fixer"]
-            Fixer --> Val
-        end
-    end
-```
-
 **Workflow profiles** - The planner assesses complexity and selects a profile:
 - **Errand** - Small, self-contained changes. Passthrough compile, fast build.
 - **Excursion** - Multi-file features. Planner writes a plan, blind review cycle, then build.
