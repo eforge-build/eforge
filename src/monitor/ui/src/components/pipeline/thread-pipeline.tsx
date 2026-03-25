@@ -167,6 +167,9 @@ function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStag
   );
 }
 
+/** Minimum timeline window (ms) so short-elapsed bars don't fill 100% width */
+const MIN_TIMELINE_WINDOW_MS = 60_000;
+
 // --- Main component ---
 
 interface ThreadPipelineProps {
@@ -193,7 +196,7 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
         if (end > maxEnd) maxEnd = end;
       }
     }
-    return { sessionStart: start, totalSpan: Math.max(maxEnd - start, 1) };
+    return { sessionStart: start, totalSpan: Math.max(maxEnd - start, MIN_TIMELINE_WINDOW_MS) };
   }, [agentThreads, startTime, endTime]);
 
   // Group threads by planId (threads without planId go under a synthetic key)
