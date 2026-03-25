@@ -743,6 +743,23 @@ async function buildContinuationDiff(cwd: string, baseBranch: string): Promise<s
   return `[Diff too large (${diff.length} chars) — showing file summary instead]\n\n${stat}`;
 }
 
+/**
+ * Emit a build:files_changed event listing all files changed vs the base branch.
+ * Uses two-dot diff (baseBranch) to capture committed, staged, and unstaged changes.
+ * Non-critical — silently skips on failure.
+ */
+async function* emitFilesChanged(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
+  try {
+    const { stdout } = await exec('git', ['diff', '--name-only', ctx.orchConfig.baseBranch], { cwd: ctx.worktreePath });
+    const files = stdout.trim().split('\n').filter(Boolean);
+    if (files.length > 0) {
+      yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files };
+    }
+  } catch {
+    // Non-critical - skip silently
+  }
+}
+
 registerBuildStage('implement', async function* implementStage(ctx) {
   const agentConfig = resolveAgentConfig('builder', ctx.config);
   const maxTurns = agentConfig.maxTurns;
@@ -860,15 +877,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
   }
 
   // Emit files changed by implementation (non-critical)
-  try {
-    const { stdout } = await exec('git', ['diff', '--name-only', `${ctx.orchConfig.baseBranch}...HEAD`], { cwd: ctx.worktreePath });
-    const files = stdout.trim().split('\n').filter(Boolean);
-    if (files.length > 0) {
-      yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files };
-    }
-  } catch {
-    // Non-critical - skip silently
-  }
+  yield* emitFilesChanged(ctx);
 });
 
 registerBuildStage('review', async function* reviewStage(ctx) {
@@ -953,6 +962,9 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
     fixerTracker.cleanup();
     fixerSpan.error(err as Error);
   }
+
+  // Emit files changed after review fixes (non-critical)
+  yield* emitFilesChanged(ctx);
 }
 
 registerBuildStage('evaluate', async function* evaluateStage(ctx) {
@@ -1052,6 +1064,9 @@ registerBuildStage('doc-update', async function* docUpdateStage(ctx) {
     if (err instanceof Error && err.name === 'AbortError') throw err;
     // Doc-update failure is non-fatal — don't propagate
   }
+
+  // Emit files changed after doc update (non-critical)
+  yield* emitFilesChanged(ctx);
 });
 
 // ---------------------------------------------------------------------------
@@ -1094,6 +1109,9 @@ registerBuildStage('test-write', async function* testWriteStage(ctx) {
     span.error(err as Error);
     if (err instanceof Error && err.name === 'AbortError') throw err;
   }
+
+  // Emit files changed after test writing (non-critical)
+  yield* emitFilesChanged(ctx);
 });
 
 registerBuildStage('test', async function* testStage(ctx) {
