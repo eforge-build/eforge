@@ -32,6 +32,7 @@ const AGENT_COLORS: Record<string, { bg: string; border: string }> = {
 
 const FALLBACK_COLOR = { bg: 'bg-cyan/30', border: 'border-cyan/50' };
 const EMPTY_THREADS: AgentThread[] = [];
+const EMPTY_EVENTS: StoredEvent[] = [];
 
 function getAgentColor(agent: string) {
   return AGENT_COLORS[agent] ?? FALLBACK_COLOR;
@@ -170,43 +171,35 @@ function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStag
 /** Minimum timeline window (ms) so short-elapsed bars don't fill 100% width */
 const MIN_TIMELINE_WINDOW_MS = 300_000;
 
-// --- Heatstrip constants ---
+// --- Activity overlay constants ---
 
-const BUCKET_MS = 30_000; // 30 seconds per bucket
+const ACTIVITY_BUCKET_MS = 5_000; // 5 seconds per bucket
 
-const DENSITY_COLORS = [
-  'var(--color-bg-tertiary)',
-  'var(--color-blue)',
-  'var(--color-cyan)',
-  'var(--color-yellow)',
-  'var(--color-orange)',
-];
+const ACTIVITY_STREAMING_TYPES = new Set(['agent:message', 'agent:tool_use', 'agent:tool_result']);
 
-function getDensityColor(count: number, maxCount: number): string {
-  if (count === 0 || maxCount === 0) return DENSITY_COLORS[0];
-  const ratio = count / maxCount;
-  if (ratio < 0.25) return DENSITY_COLORS[1];
-  if (ratio < 0.5) return DENSITY_COLORS[2];
-  if (ratio < 0.75) return DENSITY_COLORS[3];
-  return DENSITY_COLORS[4];
+function getActivityOpacity(ratio: number): string {
+  if (ratio < 0.25) return 'rgba(255, 255, 255, 0.05)';
+  if (ratio < 0.50) return 'rgba(255, 255, 255, 0.12)';
+  if (ratio < 0.75) return 'rgba(255, 255, 255, 0.20)';
+  return 'rgba(255, 255, 255, 0.30)';
 }
 
-function HeatstripRow({ events, sessionStart, totalSpan, endTime }: {
-  events: StoredEvent[];
-  sessionStart: number;
-  totalSpan: number;
-  endTime: number | null;
+function ActivityOverlay({ agentEvents, threadStart, threadEnd }: {
+  agentEvents: StoredEvent[];
+  threadStart: number;
+  threadEnd: number;
 }) {
   const buckets = useMemo(() => {
-    if (events.length === 0) return [];
+    const span = threadEnd - threadStart;
+    if (span <= 0) return [];
 
-    const totalBuckets = Math.max(1, Math.ceil(totalSpan / BUCKET_MS));
+    const totalBuckets = Math.max(1, Math.ceil(span / ACTIVITY_BUCKET_MS));
     const counts = new Array(totalBuckets).fill(0);
 
-    for (const { event } of events) {
+    for (const { event } of agentEvents) {
       if ('timestamp' in event) {
         const t = new Date((event as { timestamp: string }).timestamp).getTime();
-        const idx = Math.floor((t - sessionStart) / BUCKET_MS);
+        const idx = Math.floor((t - threadStart) / ACTIVITY_BUCKET_MS);
         if (idx >= 0 && idx < totalBuckets) {
           counts[idx]++;
         }
@@ -214,44 +207,39 @@ function HeatstripRow({ events, sessionStart, totalSpan, endTime }: {
     }
 
     const maxCount = Math.max(...counts, 1);
-    return counts.map((count, i) => ({
-      count,
-      color: getDensityColor(count, maxCount),
-      isLast: i === totalBuckets - 1,
-      minutes: ((i * BUCKET_MS) / 60_000).toFixed(1),
-      leftPercent: ((i * BUCKET_MS) / totalSpan) * 100,
-      widthPercent: (BUCKET_MS / totalSpan) * 100,
-    }));
-  }, [events, sessionStart, totalSpan]);
+    return counts
+      .map((count, i) => ({ count, index: i }))
+      .filter(({ count }) => count > 0)
+      .map(({ count, index }) => ({
+        count,
+        leftPercent: ((index * ACTIVITY_BUCKET_MS) / span) * 100,
+        widthPercent: (ACTIVITY_BUCKET_MS / span) * 100,
+        color: getActivityOpacity(count / maxCount),
+      }));
+  }, [agentEvents, threadStart, threadEnd]);
 
   if (buckets.length === 0) return null;
 
   return (
-    <div className="flex items-start gap-2 text-xs">
-      <span className="w-[140px] shrink-0 mt-0.5 text-text-dim font-mono text-[11px]">
-        Activity
-      </span>
-      <div className="flex-1 relative h-4 bg-bg-tertiary rounded-sm overflow-hidden">
-        {buckets.map((bucket, i) => (
-          <Tooltip key={i}>
-            <TooltipTrigger asChild>
-              <div
-                className="absolute inset-y-0"
-                style={{
-                  left: `${bucket.leftPercent}%`,
-                  width: `${bucket.widthPercent}%`,
-                  backgroundColor: bucket.color,
-                  animation: bucket.isLast && !endTime ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
-                }}
-              />
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {bucket.count} events ({bucket.minutes}m)
-            </TooltipContent>
-          </Tooltip>
-        ))}
-      </div>
-    </div>
+    <>
+      {buckets.map((bucket, i) => (
+        <Tooltip key={i}>
+          <TooltipTrigger asChild>
+            <div
+              className="absolute inset-y-0 z-0"
+              style={{
+                left: `${bucket.leftPercent}%`,
+                width: `${bucket.widthPercent}%`,
+                backgroundColor: bucket.color,
+              }}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {bucket.count} events
+          </TooltipContent>
+        </Tooltip>
+      ))}
+    </>
   );
 }
 
@@ -359,7 +347,6 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
           <>
 
             <div className="flex flex-col gap-1.5">
-              <HeatstripRow events={events} sessionStart={sessionStart} totalSpan={totalSpan} endTime={endTime} />
               {hasGlobalThreads && (
                 <PlanRow
                   key="__compile__"
@@ -371,6 +358,7 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   disablePreview
                   hoveredStage={hoveredStage}
                   onStageHover={setHoveredStage}
+                  events={events}
                 />
               )}
               {entries.map(([planId]) => (
@@ -384,6 +372,7 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   issues={reviewIssues?.[planId]}
                   hoveredStage={hoveredStage}
                   onStageHover={setHoveredStage}
+                  events={events}
                 />
               ))}
             </div>
@@ -404,6 +393,7 @@ interface PlanRowProps {
   disablePreview?: boolean;
   hoveredStage: string | null;
   onStageHover: (stage: string | null) => void;
+  events: StoredEvent[];
 }
 
 function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -427,13 +417,31 @@ function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
   );
 }
 
-function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover }: PlanRowProps) {
+function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, events }: PlanRowProps) {
   const { openPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
     () => [...threads].sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()),
     [threads],
   );
+
+  // Pre-group activity events by agentId to avoid N full scans in ActivityOverlay
+  const eventsByAgent = useMemo(() => {
+    const map = new Map<string, StoredEvent[]>();
+    for (const stored of events) {
+      const { event } = stored;
+      if (!ACTIVITY_STREAMING_TYPES.has(event.type)) continue;
+      if (!('agentId' in event)) continue;
+      const aid = (event as { agentId: string }).agentId;
+      let arr = map.get(aid);
+      if (!arr) {
+        arr = [];
+        map.set(aid, arr);
+      }
+      arr.push(stored);
+    }
+    return map;
+  }, [events]);
 
   return (
     <div className="flex flex-col gap-1">
@@ -482,7 +490,12 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
                       onMouseEnter={() => onStageHover(stripStage ?? null)}
                       onMouseLeave={() => onStageHover(null)}
                     >
-                      <span className="text-[9px] truncate px-1 leading-4 text-foreground/70">
+                      <ActivityOverlay
+                        agentEvents={eventsByAgent.get(thread.agentId) ?? EMPTY_EVENTS}
+                        threadStart={threadStart}
+                        threadEnd={threadEnd}
+                      />
+                      <span className="text-[9px] truncate px-1 leading-4 text-foreground/70 relative z-10">
                         {thread.agent}{thread.totalTokens != null ? ` ${formatNumber(thread.totalTokens)}` : ''}
                       </span>
                     </div>

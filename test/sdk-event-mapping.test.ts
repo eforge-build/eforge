@@ -40,7 +40,7 @@ describe('mapSDKMessages tool events', () => {
       } as unknown,
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner'));
+    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner', 'test-agent-id'));
     const toolUse = events.find((e) => e.type === 'agent:tool_use');
 
     expect(toolUse).toBeDefined();
@@ -78,7 +78,7 @@ describe('mapSDKMessages tool events', () => {
       } as unknown,
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'builder', 'plan-1'));
+    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'builder', 'test-agent-id', 'plan-1'));
     const toolResult = events.find((e) => e.type === 'agent:tool_result');
 
     expect(toolResult).toBeDefined();
@@ -118,7 +118,7 @@ describe('mapSDKMessages tool events', () => {
       } as unknown,
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner'));
+    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner', 'test-agent-id'));
     const toolResults = events.filter((e) => e.type === 'agent:tool_result');
 
     expect(toolResults).toHaveLength(2);
@@ -142,7 +142,7 @@ describe('mapSDKMessages tool events', () => {
       } as unknown,
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner'));
+    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner', 'test-agent-id'));
     const toolResults = events.filter((e) => e.type === 'agent:tool_result');
     expect(toolResults).toHaveLength(0);
   });
@@ -164,7 +164,7 @@ describe('mapSDKMessages tool events', () => {
       } as unknown,
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner'));
+    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner', 'test-agent-id'));
     const toolResult = events.find((e) => e.type === 'agent:tool_result');
     expect(toolResult).toMatchObject({ tool: 'unknown', toolUseId: 'tu_orphan' });
   });
@@ -195,7 +195,7 @@ describe('mapSDKMessages tool events', () => {
       } as unknown,
     ]);
 
-    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner'));
+    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner', 'test-agent-id'));
     const toolResult = events.find((e) => e.type === 'agent:tool_result');
     expect(toolResult).toBeDefined();
     if (toolResult?.type === 'agent:tool_result') {

@@ -81,14 +81,14 @@ export class StubBackend implements AgentBackend {
       // Emit tool calls
       if (response.toolCalls) {
         for (const tc of response.toolCalls) {
-          yield { type: 'agent:tool_use', planId, agent, tool: tc.tool, toolUseId: tc.toolUseId, input: tc.input };
-          yield { type: 'agent:tool_result', planId, agent, tool: tc.tool, toolUseId: tc.toolUseId, output: tc.output };
+          yield { type: 'agent:tool_use', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, input: tc.input };
+          yield { type: 'agent:tool_result', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, output: tc.output };
         }
       }
 
       // Emit text as agent:message
       if (response.text) {
-        yield { type: 'agent:message', planId, agent, content: response.text };
+        yield { type: 'agent:message', planId, agentId, agent, content: response.text };
       }
 
       // Always emit agent:result to match real backend behavior

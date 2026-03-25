@@ -205,9 +205,9 @@ export type EforgeEvent = { sessionId?: string; runId?: string } & (
   | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string; timestamp?: string }
 
   // Agent-level (verbose streaming)
-  | { type: 'agent:message'; planId?: string; agent: AgentRole; content: string }
-  | { type: 'agent:tool_use'; planId?: string; agent: AgentRole; tool: string; toolUseId: string; input: unknown }
-  | { type: 'agent:tool_result'; planId?: string; agent: AgentRole; tool: string; toolUseId: string; output: string }
+  | { type: 'agent:message'; planId?: string; agentId: string; agent: AgentRole; content: string }
+  | { type: 'agent:tool_use'; planId?: string; agentId: string; agent: AgentRole; tool: string; toolUseId: string; input: unknown }
+  | { type: 'agent:tool_result'; planId?: string; agentId: string; agent: AgentRole; tool: string; toolUseId: string; output: string }
   | { type: 'agent:result'; planId?: string; agent: AgentRole; result: AgentResultData }
 
   // Validation (post-merge)
