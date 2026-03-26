@@ -78,6 +78,8 @@ export interface DaemonState {
   onSpawnWatcher?: () => void;
   /** Callback to kill the watcher — set by server-main.ts */
   onKillWatcher?: () => void;
+  /** Callback to trigger graceful daemon shutdown — set by server-main.ts */
+  onShutdown?: () => void;
 }
 
 interface SSESubscriber {
@@ -917,6 +919,27 @@ export async function startServer(
     }
 
     // --- Auto-build API routes ---
+    if (req.method === 'POST' && url === '/api/daemon/stop') {
+      if (!options?.daemonState) {
+        sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      try {
+        const body = await parseJsonBody(req) as { force?: boolean };
+        const force = body.force === true;
+        if (!options.daemonState.onShutdown) {
+          sendJsonError(res, 500, 'Shutdown handler not configured');
+          return;
+        }
+        sendJson(res, { status: 'stopping', force });
+        // Trigger shutdown asynchronously after responding
+        setImmediate(() => options.daemonState!.onShutdown!());
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+      }
+      return;
+    }
+
     if (req.method === 'GET' && url === '/api/auto-build') {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');

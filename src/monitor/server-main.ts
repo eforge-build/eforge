@@ -242,6 +242,7 @@ async function main(): Promise<void> {
     },
     onSpawnWatcher: () => spawnWatcher(),
     onKillWatcher: () => killWatcher(),
+    onShutdown: undefined as (() => void) | undefined,
   } : undefined;
 
   function spawnWatcher(): void {
@@ -494,6 +495,11 @@ async function main(): Promise<void> {
       db.close();
       process.exit(1);
     });
+  }
+
+  // Wire onShutdown callback so the HTTP endpoint can trigger graceful shutdown
+  if (daemonState) {
+    daemonState.onShutdown = shutdown;
   }
 
   process.on('SIGTERM', shutdown);

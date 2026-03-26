@@ -5,53 +5,38 @@ disable-model-invocation: true
 
 # /eforge:restart
 
-Safely restart the eforge daemon. Checks for active builds before stopping, then starts a fresh daemon instance.
+Safely restart the eforge daemon. The MCP tool checks for active builds before stopping, then starts a fresh daemon instance.
 
 ## Workflow
 
-### Step 1: Check for Active Builds
+### Step 1: Restart via MCP Tool
 
-Call the `mcp__eforge__eforge_status` tool to check for active builds.
+Call the `mcp__eforge__eforge_daemon` tool with `action: "restart"`.
 
-- If the response contains `status: 'running'`, **abort the restart immediately** and tell the user:
+- If the response contains an error about active builds, tell the user:
 
 > An eforge build is currently running. The daemon cannot be safely restarted while builds are in progress. Please wait until all builds complete, then re-run `/eforge:restart`.
 
-**Stop here. Do not proceed to `eforge daemon stop`.**
+**Stop here. Do not proceed.**
 
-- If the status is anything other than `'running'`, proceed to Step 2.
+- If the response succeeds, proceed to Step 2.
 
-### Step 2: Stop the Daemon
+### Step 2: Report Result
 
-```bash
-eforge daemon stop
-```
-
-If the command fails (e.g. daemon was not running), note the error but continue to Step 3.
-
-### Step 3: Start the Daemon
-
-```bash
-eforge daemon start
-```
-
-After the daemon starts, capture the output which includes the port and PID.
-
-### Step 4: Report Result
-
-Report the restart result:
+Report the restart result using the response from the MCP tool:
 
 > **eforge daemon restarted**
 >
-> The daemon is now running on port {port} (PID {pid}).
+> The daemon is now running on port {port}.
 
-If the start command output does not include port/PID details, run `eforge daemon status` to retrieve them.
+## Force Restart
+
+If the user explicitly requests a forced restart (even with active builds), call the `mcp__eforge__eforge_daemon` tool with `action: "restart"` and `force: true`.
 
 ## Error Handling
 
 | Error | Action |
 |-------|--------|
-| `mcp__eforge__eforge_status` tool unavailable | Warn the user that build status could not be checked; ask for confirmation before proceeding |
-| Active build detected (`status: 'running'`) | Abort the restart; tell the user to wait until all builds complete before retrying |
-| `eforge daemon stop` fails | Log the error but continue to `eforge daemon start` (daemon may not have been running) |
-| `eforge daemon start` fails | Show error output; suggest running `eforge daemon start` manually |
+| `mcp__eforge__eforge_daemon` tool unavailable | Warn the user that the eforge MCP tools are not available; suggest checking plugin configuration |
+| Active build detected | Abort the restart; tell the user to wait until all builds complete before retrying, or use force restart |
+| Restart fails | Show error output; suggest running `/eforge:restart` again or checking daemon logs |

@@ -8,7 +8,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ensureDaemon, daemonRequest } from './daemon-client.js';
+import { ensureDaemon, daemonRequest, sleep, DAEMON_POLL_INTERVAL_MS } from './daemon-client.js';
+import { readLockfile } from '../monitor/lockfile.js';
 
 const ALLOWED_FLAGS = new Set([
   '--queue',
@@ -148,6 +149,93 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const path = action === 'validate' ? '/api/config/validate' : '/api/config/show';
       const { data } = await daemonRequest(cwd, 'GET', path);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  // Tool: eforge_daemon
+  server.tool(
+    'eforge_daemon',
+    'Manage the eforge daemon lifecycle: start, stop, or restart the daemon.',
+    {
+      action: z.enum(['start', 'stop', 'restart']).describe("'start' ensures daemon is running, 'stop' gracefully stops it, 'restart' stops then starts"),
+      force: z.boolean().optional().describe('When action is "stop" or "restart", force shutdown even if builds are active. Default: false.'),
+    },
+    async ({ action, force }) => {
+      const LOCKFILE_POLL_INTERVAL_MS = 250;
+      const LOCKFILE_POLL_TIMEOUT_MS = 5000;
+
+      async function checkActiveBuilds(): Promise<string | null> {
+        try {
+          const { data: latestRun } = await daemonRequest(cwd, 'GET', '/api/latest-run');
+          const latestRunObj = latestRun as { sessionId?: string };
+          if (!latestRunObj?.sessionId) return null;
+          const { data: summary } = await daemonRequest(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`);
+          const summaryObj = summary as { status?: string };
+          if (summaryObj?.status === 'running') {
+            return 'An eforge build is currently active. Use force: true to stop anyway.';
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      }
+
+      async function stopDaemon(forceStop: boolean): Promise<{ stopped: boolean; message: string }> {
+        // Check if daemon is running
+        const lock = readLockfile(cwd);
+        if (!lock) {
+          return { stopped: true, message: 'Daemon is not running.' };
+        }
+
+        // Check for active builds unless force
+        if (!forceStop) {
+          const activeMessage = await checkActiveBuilds();
+          if (activeMessage) {
+            return { stopped: false, message: activeMessage };
+          }
+        }
+
+        // Send stop request
+        try {
+          await daemonRequest(cwd, 'POST', '/api/daemon/stop', { force: forceStop });
+        } catch {
+          // Daemon may have already shut down before responding
+        }
+
+        // Poll for lockfile removal
+        const deadline = Date.now() + LOCKFILE_POLL_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+          await sleep(LOCKFILE_POLL_INTERVAL_MS);
+          const current = readLockfile(cwd);
+          if (!current) {
+            return { stopped: true, message: 'Daemon stopped successfully.' };
+          }
+        }
+
+        return { stopped: true, message: 'Daemon stop requested. Lockfile may take a moment to clear.' };
+      }
+
+      if (action === 'start') {
+        const port = await ensureDaemon(cwd);
+        return { content: [{ type: 'text', text: JSON.stringify({ status: 'running', port }, null, 2) }] };
+      }
+
+      if (action === 'stop') {
+        const result = await stopDaemon(force === true);
+        if (!result.stopped) {
+          return { content: [{ type: 'text', text: JSON.stringify({ error: result.message }, null, 2) }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ status: 'stopped', message: result.message }, null, 2) }] };
+      }
+
+      // action === 'restart'
+      const stopResult = await stopDaemon(force === true);
+      if (!stopResult.stopped) {
+        return { content: [{ type: 'text', text: JSON.stringify({ error: stopResult.message }, null, 2) }], isError: true };
+      }
+
+      const port = await ensureDaemon(cwd);
+      return { content: [{ type: 'text', text: JSON.stringify({ status: 'restarted', port, message: 'Daemon restarted successfully.' }, null, 2) }] };
     },
   );
 
