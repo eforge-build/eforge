@@ -341,7 +341,58 @@ export async function claimPrd(filePath: string): Promise<boolean> {
     return true;
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
-      return false;
+      // Check if the lock is stale (owning process no longer alive)
+      let lockContent: string;
+      try {
+        lockContent = await readFile(lockPath, 'utf-8');
+      } catch {
+        // Can't read lock file - treat as actively held
+        return false;
+      }
+
+      const pid = parseInt(lockContent.trim(), 10);
+      if (!Number.isFinite(pid) || pid <= 0) {
+        // Corrupt/invalid lock file content - treat as actively held
+        return false;
+      }
+
+      // Check if the PID is alive
+      let isPidAlive = false;
+      try {
+        process.kill(pid, 0);
+        isPidAlive = true;
+      } catch (killErr: unknown) {
+        // EPERM means the process exists but is owned by a different user
+        if ((killErr as NodeJS.ErrnoException).code === 'EPERM') {
+          isPidAlive = true;
+        }
+        // ESRCH or other errors mean the process is dead - stale lock
+      }
+
+      if (isPidAlive) {
+        // Process is alive - lock is legitimately held
+        return false;
+      }
+
+      try {
+        await rm(lockPath);
+      } catch {
+        // Can't remove stale lock - treat as actively held
+        return false;
+      }
+
+      try {
+        const fd = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY);
+        await fd.writeFile(String(process.pid), 'utf-8');
+        await fd.close();
+        return true;
+      } catch (retryErr: unknown) {
+        if ((retryErr as NodeJS.ErrnoException).code === 'EEXIST') {
+          // Another process claimed it between our remove and retry
+          return false;
+        }
+        throw retryErr;
+      }
     }
     throw err;
   }

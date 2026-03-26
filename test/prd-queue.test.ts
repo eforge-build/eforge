@@ -248,6 +248,58 @@ describe('claimPrd', () => {
     expect(second).toBe(false);
   });
 
+  it('returns true and re-acquires when lock file contains a dead PID', async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, 'test.md');
+    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+
+    // Write a lock file with a PID that does not exist
+    writeFileSync(`${filePath}.lock`, '999999');
+
+    const result = await claimPrd(filePath);
+    expect(result).toBe(true);
+
+    // Lock file should now contain our PID
+    const lockContent = readFileSync(`${filePath}.lock`, 'utf-8');
+    expect(lockContent).toBe(String(process.pid));
+  });
+
+  it('returns false when lock file contains a live PID', async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, 'test.md');
+    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+
+    // Write a lock file with the current (alive) process PID
+    writeFileSync(`${filePath}.lock`, String(process.pid));
+
+    const result = await claimPrd(filePath);
+    expect(result).toBe(false);
+  });
+
+  it('returns false when lock file contains invalid content', async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, 'test.md');
+    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+
+    // Write a lock file with non-numeric content
+    writeFileSync(`${filePath}.lock`, 'not-a-pid');
+
+    const result = await claimPrd(filePath);
+    expect(result).toBe(false);
+  });
+
+  it('returns false when lock file is empty', async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, 'test.md');
+    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+
+    // Write an empty lock file
+    writeFileSync(`${filePath}.lock`, '');
+
+    const result = await claimPrd(filePath);
+    expect(result).toBe(false);
+  });
+
   it('succeeds again after releasePrd', async () => {
     const dir = makeTempDir();
     const filePath = join(dir, 'test.md');
