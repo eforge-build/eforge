@@ -959,6 +959,9 @@ async function loadPlugins(cwd: string, pluginConfig: PluginConfig): Promise<Sdk
       const data = JSON.parse(installedContent);
       if (data?.plugins && typeof data.plugins === 'object' && !Array.isArray(data.plugins)) {
         for (const [id, entries] of Object.entries(data.plugins)) {
+          // Skip the eforge plugin itself to prevent orphaned daemons in agent worktrees
+          if (id.startsWith('eforge@')) continue;
+
           // Find first matching entry — plugins may have multiple entries (e.g., user + project scope)
           if (!Array.isArray(entries)) continue;
           for (const entry of entries as Array<Record<string, unknown>>) {

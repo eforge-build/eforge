@@ -116,6 +116,7 @@ describe('hasSeenActivity gate', () => {
       hasSeenActivity: false,
       serverStartedAt: Date.now(),
       idleFallbackMs: 10_000,
+      maxWaitForActivityMs: 0,
       getRunningRuns: () => [],
       getLatestEventTimestamp: () => undefined,
       transitionToCountdown: vi.fn(),
@@ -235,6 +236,72 @@ describe('hasSeenActivity gate', () => {
 
     // 10s idle < 60s threshold — should stay WATCHING
     expect(result.state).toBe('WATCHING');
+    expect(ctx.transitionToCountdown).not.toHaveBeenCalled();
+  });
+});
+
+describe('maxWaitForActivityMs', () => {
+  function makeContext(overrides: Partial<StateCheckContext> = {}): StateCheckContext {
+    return {
+      state: 'WATCHING',
+      lastActivityTimestamp: Date.now(),
+      hasSeenActivity: false,
+      serverStartedAt: Date.now(),
+      idleFallbackMs: 10_000,
+      maxWaitForActivityMs: 0,
+      getRunningRuns: () => [],
+      getLatestEventTimestamp: () => undefined,
+      transitionToCountdown: vi.fn(),
+      cancelCountdown: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it('triggers COUNTDOWN when elapsed exceeds maxWaitForActivityMs with no activity', () => {
+    const serverStartedAt = Date.now() - 400_000; // started 400s ago
+    const ctx = makeContext({
+      serverStartedAt,
+      lastActivityTimestamp: serverStartedAt,
+      maxWaitForActivityMs: 300_000, // 5 min
+      getLatestEventTimestamp: () => undefined, // no events
+    });
+
+    const result = evaluateStateCheck(ctx);
+
+    expect(result.state).toBe('COUNTDOWN');
+    expect(result.hasSeenActivity).toBe(false);
+    expect(ctx.transitionToCountdown).toHaveBeenCalled();
+  });
+
+  it('stays WATCHING when elapsed is below maxWaitForActivityMs', () => {
+    const serverStartedAt = Date.now() - 60_000; // started 60s ago
+    const ctx = makeContext({
+      serverStartedAt,
+      lastActivityTimestamp: serverStartedAt,
+      maxWaitForActivityMs: 300_000, // 5 min
+      getLatestEventTimestamp: () => undefined,
+    });
+
+    const result = evaluateStateCheck(ctx);
+
+    expect(result.state).toBe('WATCHING');
+    expect(result.hasSeenActivity).toBe(false);
+    expect(ctx.transitionToCountdown).not.toHaveBeenCalled();
+  });
+
+  it('does not check timeout when maxWaitForActivityMs is 0', () => {
+    const serverStartedAt = Date.now() - 600_000; // started 10 min ago
+    const ctx = makeContext({
+      serverStartedAt,
+      lastActivityTimestamp: serverStartedAt,
+      maxWaitForActivityMs: 0, // disabled
+      getLatestEventTimestamp: () => undefined,
+    });
+
+    const result = evaluateStateCheck(ctx);
+
+    expect(result.state).toBe('WATCHING');
+    expect(result.hasSeenActivity).toBe(false);
     expect(ctx.transitionToCountdown).not.toHaveBeenCalled();
   });
 });

@@ -26,6 +26,7 @@ const STATE_CHECK_INTERVAL_MS = 2000;
 const COUNTDOWN_WITH_SUBSCRIBERS_MS = 60_000;
 const COUNTDOWN_WITHOUT_SUBSCRIBERS_MS = 10_000;
 const IDLE_FALLBACK_MS = 10_000;
+const MAX_WAIT_FOR_ACTIVITY_MS = 300_000;
 
 export type ServerState = 'WATCHING' | 'COUNTDOWN' | 'SHUTDOWN';
 
@@ -35,6 +36,7 @@ export interface StateCheckContext {
   hasSeenActivity: boolean;
   serverStartedAt: number;
   idleFallbackMs: number;
+  maxWaitForActivityMs: number;
   getRunningRuns: () => { id: string }[];
   getLatestEventTimestamp: () => string | undefined;
   transitionToCountdown: () => void;
@@ -77,6 +79,10 @@ export function evaluateStateCheck(ctx: StateCheckContext): {
     }
 
     if (!hasSeenActivity) {
+      if (ctx.maxWaitForActivityMs > 0 && Date.now() - ctx.serverStartedAt >= ctx.maxWaitForActivityMs) {
+        ctx.transitionToCountdown();
+        state = 'COUNTDOWN';
+      }
       return { state, lastActivityTimestamp, hasSeenActivity };
     }
 
@@ -440,6 +446,7 @@ async function main(): Promise<void> {
           hasSeenActivity,
           serverStartedAt,
           idleFallbackMs,
+          maxWaitForActivityMs: MAX_WAIT_FOR_ACTIVITY_MS,
           getRunningRuns: () => db.getRunningRuns(),
           getLatestEventTimestamp: () => db.getLatestEventTimestamp(),
           transitionToCountdown,
