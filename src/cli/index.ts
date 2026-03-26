@@ -3,6 +3,8 @@ import chalk from 'chalk';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 
+declare const EFORGE_VERSION: string;
+
 import { EforgeEngine } from '../engine/eforge.js';
 import {
   validatePlanSet,
@@ -131,7 +133,7 @@ export function createProgram(abortController?: AbortController): Command {
   program
     .name('eforge')
     .description('Autonomous plan-build-review CLI for code generation')
-    .version('0.1.0');
+    .version(EFORGE_VERSION);
 
   program
     .command('enqueue <source>')

@@ -1,0 +1,13 @@
+services:
+  eforge-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - claude-auth:/root/.claude
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+
+volumes:
+  claude-auth:

@@ -1,6 +1,10 @@
 import { defineConfig } from "tsup";
 import { cp, readFile, writeFile } from "node:fs/promises";
 import { globSync } from "node:fs";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { version } = require("./package.json");
 
 // esbuild resolves `node:` protocol imports internally and strips the `node:`
 // prefix for newer builtins (like `node:sqlite`) that aren't in its hardcoded
@@ -30,6 +34,7 @@ export default defineConfig([
     clean: true,
     dts: false,
     external: ["@anthropic-ai/claude-agent-sdk"],
+    define: { EFORGE_VERSION: JSON.stringify(version) },
     banner: {
       js: "#!/usr/bin/env -S node --disable-warning=ExperimentalWarning",
     },
