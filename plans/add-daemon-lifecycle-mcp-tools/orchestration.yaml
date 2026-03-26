@@ -1,0 +1,30 @@
+name: add-daemon-lifecycle-mcp-tools
+description: Add eforge_daemon MCP tool with start/stop/restart actions and
+  update restart skill to use it
+created: 2026-03-26
+compiled: 2026-03-26
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-daemon-lifecycle
+    name: Add daemon lifecycle MCP tools and update restart skill
+    depends_on: []
+    branch: add-daemon-lifecycle-mcp-tools/daemon-lifecycle
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
