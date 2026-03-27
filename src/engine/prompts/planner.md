@@ -97,7 +97,8 @@ Create 1 or more plan files in `plans/{{planSetName}}/`.
 **Multiple plans** (excursion) when there is clear separation — e.g., a database migration must complete first, or a genuine dependency order exists between independent subsystems.
 
 **Split large plans** — if a plan would modify more than ~15 files, consider splitting into ordered sub-plans. Each builder agent has a limited turn budget. Common split patterns:
-- Source changes first (plan-01), then test updates (plan-02) and UI/docs (plan-03) in parallel
+- Source changes in one plan (plan-01), UI/docs in another (plan-02) when they touch different files
+- **Do NOT create separate test-only plans.** Tests belong in the same plan as the code they verify. Use `test-cycle` or `test-write` build stages to handle testing within a plan - never split tests into a standalone plan.
 - **Critical rule**: never split a type change from the updates to its consumers. If you make a field required or remove a type field, all files that construct that type must be updated in the same plan. Otherwise post-merge validation will fail on files that weren't updated.
 
 Then generate `plans/{{planSetName}}/orchestration.yaml` alongside the plan files (see format below).

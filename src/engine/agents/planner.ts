@@ -127,6 +127,12 @@ Build stages control the post-implementation pipeline. You can add, remove, or r
 
 **Omitting \`doc-update\`**: Skip it for purely internal changes — refactors, bug fixes with no API surface change, test-only additions, or dependency updates. The overhead (~100k tokens) isn't justified when there's nothing user-facing to document.
 
+**Adding \`test-cycle\`**: Include \`test-cycle\` when the plan modifies code that has existing tests, or when the PRD explicitly requires test coverage for the changes. Place it after the review stages: \`["implement", "review-cycle", "test-cycle"]\`. The test-cycle stage writes and runs tests, then iterates on failures.
+
+**TDD with \`test-write\`**: Use \`test-write\` before \`implement\` for a test-driven approach when the PRD specifies TDD or when building against a well-defined interface contract: \`["test-write", "implement", "review-cycle"]\`. The test-write stage creates tests first, then implement makes them pass.
+
+**Omitting test stages**: Skip test stages for documentation-only changes, config updates, or trivial refactors where tests would add no value. Do NOT create separate test-only plans - tests belong in the same plan as the code they verify.
+
 **Parallel groups**: Wrap stage names in an inner array to run them concurrently. Only stages with no data dependencies should be parallelized. Example: \`[["implement", "doc-update"], "review"]\` runs implement and doc-update in parallel, then review sequentially after both complete.`;
 
 }
