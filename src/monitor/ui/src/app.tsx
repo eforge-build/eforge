@@ -34,6 +34,7 @@ function AppContent() {
   const consolePanelRef = usePanelRef();
   const knownLatestRef = useRef<string | null>(null);
   const userSelectedRef = useRef<string | null>(null);
+  const isCurrentRunningRef = useRef(false);
   const { runState, connectionStatus, shutdownCountdown } = useEforgeEvents(currentSessionId);
   const { containerRef, autoScroll, enableAutoScroll } = useAutoScroll([runState.events.length]);
   const { state: autoBuildState, toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild();
@@ -90,6 +91,12 @@ function AppContent() {
     setSidebarRefresh((c) => c + 1);
   }, []);
 
+  // Track whether the current session is actively running (for auto-switch suppression).
+  // Uses a ref so the polling interval closure reads fresh state.
+  useEffect(() => {
+    isCurrentRunningRef.current = runState.events.length > 0 && !runState.isComplete;
+  }, [runState.events.length, runState.isComplete]);
+
   // Clear user selection when the watched session completes
   useEffect(() => {
     if (runState.isComplete && userSelectedRef.current === currentSessionId) {
@@ -117,7 +124,10 @@ function AppContent() {
         setSidebarRefresh((c) => c + 1);
         if (latestId && latestId !== knownLatestRef.current) {
           knownLatestRef.current = latestId;
-          if (!userSelectedRef.current) {
+          // Auto-switch only when the user hasn't explicitly selected a session
+          // AND the current session isn't actively running (prevents enqueue/format
+          // runs from stealing focus from an in-progress build).
+          if (!userSelectedRef.current && !isCurrentRunningRef.current) {
             setCurrentSessionId(latestId);
           }
         }
