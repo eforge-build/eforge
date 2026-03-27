@@ -1,7 +1,9 @@
+import { PanelLeftClose, PanelLeft } from 'lucide-react';
 import type { AutoBuildState } from '@/lib/api';
 import type { ConnectionStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
 
 export interface ProjectContext {
   cwd: string | null;
@@ -14,6 +16,8 @@ interface HeaderProps {
   autoBuildToggling: boolean;
   onToggleAutoBuild: () => void;
   projectContext?: ProjectContext | null;
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
 }
 
 function extractOwnerRepo(gitRemote: string): string | null {
@@ -34,11 +38,14 @@ function getProjectLabel(projectContext: ProjectContext | null | undefined): str
   return null;
 }
 
-export function Header({ connectionStatus, autoBuildState, autoBuildToggling, onToggleAutoBuild, projectContext }: HeaderProps) {
+export function Header({ connectionStatus, autoBuildState, autoBuildToggling, onToggleAutoBuild, projectContext, sidebarCollapsed, onToggleSidebar }: HeaderProps) {
   const projectLabel = getProjectLabel(projectContext);
 
   return (
     <header className="col-span-full bg-card border-b border-border px-6 py-3.5 flex items-center gap-3 shadow-sm shadow-black/30">
+      <Button variant="ghost" size="icon" onClick={onToggleSidebar} className="h-7 w-7">
+        {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+      </Button>
       <h1 className="text-base font-bold text-text-bright tracking-tight">eforge</h1>
       {projectLabel && (
         <span className="text-xs text-text-dim">

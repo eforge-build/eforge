@@ -39,6 +39,7 @@ function AppContent() {
   const { containerRef, autoScroll, enableAutoScroll } = useAutoScroll([runState.events.length]);
   const { state: autoBuildState, toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild();
   const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { setRuntimeData } = usePlanPreview();
 
   // Fetch project context once on mount
@@ -252,7 +253,8 @@ function AppContent() {
 
   return (
     <AppLayout
-      header={<Header connectionStatus={connectionStatus} autoBuildState={autoBuildState} autoBuildToggling={autoBuildToggling} onToggleAutoBuild={onToggleAutoBuild} projectContext={projectContext} />}
+      sidebarCollapsed={sidebarCollapsed}
+      header={<Header connectionStatus={connectionStatus} autoBuildState={autoBuildState} autoBuildToggling={autoBuildToggling} onToggleAutoBuild={onToggleAutoBuild} projectContext={projectContext} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(prev => !prev)} />}
       sidebar={
         <Sidebar
           currentSessionId={currentSessionId}
