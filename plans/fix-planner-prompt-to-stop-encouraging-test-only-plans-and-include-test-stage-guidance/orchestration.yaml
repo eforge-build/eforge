@@ -1,0 +1,31 @@
+name: fix-planner-prompt-to-stop-encouraging-test-only-plans-and-include-test-stage-guidance
+description: Fix planner prompt to stop encouraging test-only plans and add test
+  stage guidance to profile generation
+created: 2026-03-27
+compiled: 2026-03-27
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-fix-planner-prompt
+    name: Fix Planner Prompt and Profile Generation Test Stage Guidance
+    depends_on: []
+    branch: fix-planner-prompt-to-stop-encouraging-test-only-plans-and-include-test-stage-guidance/fix-planner-prompt
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
