@@ -106,7 +106,6 @@ src/
   monitor/                    # Web monitor — SQLite event persistence + SSE dashboard
   cli/                        # Thin CLI consumer — Commander setup, event rendering, interactive prompts
   cli.ts                      # Entry point (shebang, imports cli/index)
-eval/                           # End-to-end evaluation harness (scenarios, fixtures, runner)
 ```
 
 ## Testing
@@ -119,10 +118,6 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 - **Helpers colocated.** Test helpers (e.g., `makeState()`, `asyncIterableFrom()`) live in the test file that uses them. No shared test utils unless reuse spans 3+ files. Shared helpers that cross the threshold: `test/test-events.ts` (`collectEvents`, `findEvent`, `filterEvents`), `test/test-tmpdir.ts` (`useTempDir`).
 - **Agent wiring tests use `StubBackend`** (`test/stub-backend.ts`). Test the logic between backend calls and EforgeEvents: clarification loops, XML parsing → event synthesis, error propagation. See `test/agent-wiring.test.ts`.
 - **Don't test backend implementations or infra.** `ClaudeSDKBackend`, `EforgeEngine` orchestration, worktree/git ops, and tracing are integration-level — don't unit test them.
-
-## Evaluation
-
-`eval/` contains an end-to-end eval harness. `eval/scenarios.yaml` defines scenarios (fixture + PRD + validation commands). Fixtures in `eval/fixtures/` are plain project files copied into disposable git repos per run. Results are gitignored and auto-pruned. Run `./eval/run.sh --help` or read `eval/run.sh` for usage.
 
 ## Configuration
 
@@ -206,3 +201,4 @@ Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run
 ## Key references
 
 - Roadmap: `docs/roadmap.md`
+- Eval harness: [eforge-build/eval](https://github.com/eforge-build/eval)

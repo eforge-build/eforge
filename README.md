@@ -99,12 +99,7 @@ For the eforge repository itself, the `/eforge-daemon-restart` project-local ski
 
 ## Evaluation
 
-An end-to-end eval harness runs `eforge` against embedded fixture projects and validates the output compiles and tests pass.
-
-```bash
-./eval/run.sh                        # Run all scenarios
-./eval/run.sh todo-api-health-check  # Run one scenario
-```
+See [eforge-build/eval](https://github.com/eforge-build/eval) for the end-to-end evaluation harness.
 
 ## License
 

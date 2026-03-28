@@ -8,5 +8,3 @@ dist/
 .schaake-os-track
 .orchestration-logs/
 
-# Eval
-eval/results/

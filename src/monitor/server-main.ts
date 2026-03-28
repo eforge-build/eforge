@@ -15,7 +15,7 @@
 
 import { openDatabase, type MonitorDB } from './db.js';
 import { startServer, type WorkerTracker, type DaemonState } from './server.js';
-import { writeLockfile, removeLockfile, updateLockfile, isPidAlive } from './lockfile.js';
+import { writeLockfile, removeLockfile, updateLockfile, isPidAlive, readLockfile, isServerAlive } from './lockfile.js';
 import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig } from '../engine/config.js';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -125,6 +125,17 @@ async function main(): Promise<void> {
 
   const preferredPort = parseInt(portStr, 10);
   const db = openDatabase(dbPath);
+
+  // Pre-flight: refuse to start if a live daemon already owns this cwd
+  const existingLock = readLockfile(cwd);
+  if (existingLock && existingLock.pid !== process.pid) {
+    const alive = await isServerAlive(existingLock);
+    if (alive) {
+      console.error(`eforge-monitor: existing daemon (pid=${existingLock.pid}, port=${existingLock.port}) is alive for this cwd, exiting`);
+      db.close();
+      process.exit(0);
+    }
+  }
 
   // --- Worker tracking for persistent (daemon) mode ---
   const workerProcesses = new Map<string, ChildProcess>();
