@@ -332,8 +332,10 @@ export async function updatePrdStatus(filePath: string, newStatus: PrdStatus): P
  * Writes the current PID into the lock file for debugging.
  * Returns `true` if the claim succeeded, `false` if another process holds it.
  */
-export async function claimPrd(filePath: string): Promise<boolean> {
-  const lockPath = `${filePath}.lock`;
+export async function claimPrd(prdId: string, cwd: string): Promise<boolean> {
+  const lockDir = resolve(cwd, '.eforge', 'queue-locks');
+  await mkdir(lockDir, { recursive: true });
+  const lockPath = resolve(lockDir, `${prdId}.lock`);
   try {
     const fd = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY);
     await fd.writeFile(String(process.pid), 'utf-8');
@@ -402,8 +404,8 @@ export async function claimPrd(filePath: string): Promise<boolean> {
  * Release a PRD claim by removing the lock file.
  * Best-effort and non-throwing — if the lock file is already gone, that's fine.
  */
-export async function releasePrd(filePath: string): Promise<void> {
-  const lockPath = `${filePath}.lock`;
+export async function releasePrd(prdId: string, cwd: string): Promise<void> {
+  const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${prdId}.lock`);
   try {
     await rm(lockPath);
   } catch (err: unknown) {

@@ -228,87 +228,92 @@ describe('claimPrd', () => {
 
   it('returns true on first call and creates .lock file', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+    const prdId = 'test';
 
-    const result = await claimPrd(filePath);
+    const result = await claimPrd(prdId, dir);
     expect(result).toBe(true);
-    expect(existsSync(`${filePath}.lock`)).toBe(true);
+    expect(existsSync(join(dir, '.eforge', 'queue-locks', `${prdId}.lock`))).toBe(true);
   });
 
-  it('returns false on second call for the same path', async () => {
+  it('returns false on second call for the same prdId', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+    const prdId = 'test';
 
-    const first = await claimPrd(filePath);
+    const first = await claimPrd(prdId, dir);
     expect(first).toBe(true);
 
-    const second = await claimPrd(filePath);
+    const second = await claimPrd(prdId, dir);
     expect(second).toBe(false);
   });
 
   it('returns true and re-acquires when lock file contains a dead PID', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+    const prdId = 'test';
+    const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
     // Write a lock file with a PID that does not exist
-    writeFileSync(`${filePath}.lock`, '999999');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
+    writeFileSync(lockPath, '999999');
 
-    const result = await claimPrd(filePath);
+    const result = await claimPrd(prdId, dir);
     expect(result).toBe(true);
 
     // Lock file should now contain our PID
-    const lockContent = readFileSync(`${filePath}.lock`, 'utf-8');
+    const lockContent = readFileSync(lockPath, 'utf-8');
     expect(lockContent).toBe(String(process.pid));
   });
 
   it('returns false when lock file contains a live PID', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+    const prdId = 'test';
+    const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
     // Write a lock file with the current (alive) process PID
-    writeFileSync(`${filePath}.lock`, String(process.pid));
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
+    writeFileSync(lockPath, String(process.pid));
 
-    const result = await claimPrd(filePath);
+    const result = await claimPrd(prdId, dir);
     expect(result).toBe(false);
   });
 
   it('returns false when lock file contains invalid content', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+    const prdId = 'test';
+    const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
     // Write a lock file with non-numeric content
-    writeFileSync(`${filePath}.lock`, 'not-a-pid');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
+    writeFileSync(lockPath, 'not-a-pid');
 
-    const result = await claimPrd(filePath);
+    const result = await claimPrd(prdId, dir);
     expect(result).toBe(false);
   });
 
   it('returns false when lock file is empty', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+    const prdId = 'test';
+    const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
     // Write an empty lock file
-    writeFileSync(`${filePath}.lock`, '');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
+    writeFileSync(lockPath, '');
 
-    const result = await claimPrd(filePath);
+    const result = await claimPrd(prdId, dir);
     expect(result).toBe(false);
   });
 
   it('succeeds again after releasePrd', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+    const prdId = 'test';
 
-    await claimPrd(filePath);
-    await releasePrd(filePath);
+    await claimPrd(prdId, dir);
+    await releasePrd(prdId, dir);
 
-    const result = await claimPrd(filePath);
+    const result = await claimPrd(prdId, dir);
     expect(result).toBe(true);
   });
 });
@@ -318,21 +323,21 @@ describe('releasePrd', () => {
 
   it('removes the .lock file', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\n---\n');
+    const prdId = 'test';
+    const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
-    await claimPrd(filePath);
-    expect(existsSync(`${filePath}.lock`)).toBe(true);
+    await claimPrd(prdId, dir);
+    expect(existsSync(lockPath)).toBe(true);
 
-    await releasePrd(filePath);
-    expect(existsSync(`${filePath}.lock`)).toBe(false);
+    await releasePrd(prdId, dir);
+    expect(existsSync(lockPath)).toBe(false);
   });
 
   it('does not throw when lock file is already gone', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'nonexistent.md');
+    const prdId = 'nonexistent';
 
     // Should not throw even though there's no lock file
-    await expect(releasePrd(filePath)).resolves.toBeUndefined();
+    await expect(releasePrd(prdId, dir)).resolves.toBeUndefined();
   });
 });

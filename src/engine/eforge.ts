@@ -624,7 +624,7 @@ export class EforgeEngine {
       };
 
       // Claim this PRD exclusively — skip if another process already holds it
-      const claimed = await claimPrd(prd.filePath);
+      const claimed = await claimPrd(prd.id, cwd);
       if (!claimed) {
         yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'claimed by another process' };
         skipped++;
@@ -655,7 +655,7 @@ export class EforgeEngine {
         }
 
         if (stalenessVerdict === 'obsolete') {
-          await releasePrd(prd.filePath);
+          await releasePrd(prd.id, cwd);
           await updatePrdStatus(prd.filePath, 'skipped');
           yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
           skipped++;
@@ -674,7 +674,7 @@ export class EforgeEngine {
             }
           } else {
             // Skip — needs manual revision
-            await releasePrd(prd.filePath);
+            await releasePrd(prd.id, cwd);
             yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
             skipped++;
             continue;
@@ -763,7 +763,7 @@ export class EforgeEngine {
         prdResult = { status: 'failed', summary: (err as Error).message };
       } finally {
         try {
-          await releasePrd(prd.filePath);
+          await releasePrd(prd.id, cwd);
         } catch { /* best-effort lock cleanup */ }
         try {
           await updatePrdStatus(prd.filePath, prdResult.status);
