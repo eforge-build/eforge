@@ -1,10 +1,11 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type TestIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getTestIssueSchemaYaml } from '../schemas.js';
 import { parseTestIssues } from './common.js';
 
-export interface TestWriterOptions {
+export interface TestWriterOptions extends SdkPassthroughConfig {
   backend: AgentBackend;
   cwd: string;
   planId: string;
@@ -77,6 +78,7 @@ export async function* runTestWriter(
         maxTurns: options.maxTurns ?? 30,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
+        ...pickSdkOptions(options),
       },
       'test-writer',
       options.planId,
@@ -99,7 +101,7 @@ export async function* runTestWriter(
   yield { timestamp: new Date().toISOString(), type: 'build:test:write:complete', planId: options.planId, testsWritten };
 }
 
-export interface TesterOptions {
+export interface TesterOptions extends SdkPassthroughConfig {
   backend: AgentBackend;
   cwd: string;
   planId: string;
@@ -140,6 +142,7 @@ export async function* runTester(
         maxTurns: options.maxTurns ?? 40,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
+        ...pickSdkOptions(options),
       },
       'tester',
       options.planId,

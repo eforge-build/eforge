@@ -1,4 +1,5 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
@@ -7,7 +8,7 @@ import { getPlanReviewIssueSchemaYaml } from '../schemas.js';
 /**
  * Options for the architecture reviewer agent.
  */
-export interface ArchitectureReviewerOptions {
+export interface ArchitectureReviewerOptions extends SdkPassthroughConfig {
   /** Backend for running the agent */
   backend: AgentBackend;
   /** The original source/PRD content to review architecture against */
@@ -54,7 +55,7 @@ export async function* runArchitectureReview(
   let fullText = '';
 
   for await (const event of backend.run(
-    { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal },
+    { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'architecture-reviewer',
   )) {
     if (isAlwaysYieldedAgentEvent(event) || verbose) {

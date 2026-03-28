@@ -1,4 +1,5 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
@@ -12,7 +13,7 @@ export type EvaluatorMode = 'plan' | 'cohesion' | 'architecture';
 /**
  * Options shared by both plan and cohesion evaluator agents.
  */
-export interface PlanPhaseEvaluatorOptions {
+export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   /** Evaluator mode */
   mode: EvaluatorMode;
   /** Backend for running the agent */
@@ -32,7 +33,7 @@ export interface PlanPhaseEvaluatorOptions {
 /**
  * Options for the plan evaluator agent.
  */
-export interface PlanEvaluatorOptions {
+export interface PlanEvaluatorOptions extends SdkPassthroughConfig {
   /** Backend for running the agent */
   backend: AgentBackend;
   /** The plan set name */
@@ -139,7 +140,7 @@ async function* runEvaluate(
   let fullText = '';
   try {
     for await (const event of backend.run(
-      { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal },
+      { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
       config.role,
     )) {
       if (isAlwaysYieldedAgentEvent(event) || verbose) {

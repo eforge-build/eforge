@@ -1,7 +1,8 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
 import { parseClarificationBlocks, parseSkipBlock, parseProfileBlock, parseGeneratedProfileBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
@@ -10,7 +11,7 @@ import type { ResolvedProfileConfig } from '../config.js';
 import { validateProfileConfig, resolveGeneratedProfile, getCompileOnlyProfileSchemaYaml } from '../config.js';
 import { getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml } from '../schemas.js';
 
-export interface PlannerOptions extends CompileOptions {
+export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   backend: AgentBackend;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Available workflow profiles for profile selection. When provided, the planner selects a profile. */
@@ -246,7 +247,7 @@ ${existingPlans}`;
     let needsRestart = false;
 
     for await (const event of backend.run(
-      { prompt, cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal },
+      { prompt, cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
       'planner',
     )) {
       if (event.type === 'agent:message') {

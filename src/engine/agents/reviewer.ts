@@ -1,4 +1,5 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getReviewIssueSchemaYaml } from '../schemas.js';
@@ -6,7 +7,7 @@ import { getReviewIssueSchemaYaml } from '../schemas.js';
 /**
  * Options for the reviewer agent.
  */
-export interface ReviewerOptions {
+export interface ReviewerOptions extends SdkPassthroughConfig {
   /** Backend for running the agent */
   backend: AgentBackend;
   /** The plan content (full markdown body) to review against */
@@ -148,7 +149,7 @@ export async function* runReview(
   let fullText = '';
 
   for await (const event of backend.run(
-    { prompt, cwd, maxTurns: 30, tools: 'none', abortSignal: abortController?.signal },
+    { prompt, cwd, maxTurns: 30, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'reviewer',
     planId,
   )) {

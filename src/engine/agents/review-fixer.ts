@@ -4,11 +4,12 @@
  * Uses tools: 'coding' to write fixes, but does NOT stage or commit.
  */
 
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
-export interface ReviewFixerOptions {
+export interface ReviewFixerOptions extends SdkPassthroughConfig {
   /** Backend for running the agent */
   backend: AgentBackend;
   /** Plan identifier for event correlation */
@@ -68,6 +69,7 @@ export async function* runReviewFixer(
         maxTurns: 30,
         tools: 'coding',
         abortSignal: abortController?.signal,
+        ...pickSdkOptions(options),
       },
       'review-fixer',
       planId,

@@ -6,7 +6,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import type { ReviewPerspective } from '../review-heuristics.js';
 import { categorizeFiles, determineApplicableReviews, shouldParallelizeReview } from '../review-heuristics.js';
@@ -23,7 +24,7 @@ import {
 
 const exec = promisify(execFile);
 
-export interface ParallelReviewerOptions {
+export interface ParallelReviewerOptions extends SdkPassthroughConfig {
   /** Backend for running agents */
   backend: AgentBackend;
   /** The plan content (full markdown body) to review against */
@@ -84,6 +85,7 @@ export async function* runParallelReview(
       cwd,
       verbose,
       abortController,
+      ...pickSdkOptions(options),
     });
     return;
   }
@@ -122,6 +124,7 @@ export async function* runParallelReview(
       cwd,
       verbose,
       abortController,
+      ...pickSdkOptions(options),
     });
     return;
   }
@@ -170,7 +173,7 @@ export async function* runParallelReview(
       let fullText = '';
 
       for await (const event of backend.run(
-        { prompt, cwd, maxTurns: 30, tools: 'none', abortSignal: abortController?.signal },
+        { prompt, cwd, maxTurns: 30, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
         'reviewer',
         planId,
       )) {

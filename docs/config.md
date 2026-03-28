@@ -18,6 +18,16 @@ agents:
   permissionMode: bypass      # 'bypass' or 'default'
   settingSources:             # Which Claude Code settings to load
     - project                 # Loads CLAUDE.md and project settings
+  # model: claude-sonnet-4-20250514  # Global model override for all agents
+  # thinking:                 # Global thinking config
+  #   type: adaptive          # 'adaptive', 'enabled' (with optional budgetTokens), or 'disabled'
+  # effort: high              # Global effort level: 'low', 'medium', 'high', 'max'
+  # roles:                    # Per-agent role overrides (override global settings)
+  #   formatter:
+  #     effort: low
+  #   builder:
+  #     model: claude-sonnet-4-20250514
+  #     maxTurns: 50
 
 build:
   parallelism: <cpu-count>    # Max parallel plan executions

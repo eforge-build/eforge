@@ -1,9 +1,10 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import type { MergeConflictInfo } from '../worktree.js';
 import { loadPrompt } from '../prompts.js';
 
-export interface MergeConflictResolverOptions {
+export interface MergeConflictResolverOptions extends SdkPassthroughConfig {
   backend: AgentBackend;
   cwd: string;
   conflict: MergeConflictInfo;
@@ -40,6 +41,7 @@ export async function* runMergeConflictResolver(
         maxTurns: 30,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
+        ...pickSdkOptions(options),
       },
       'merge-conflict-resolver',
     )) {

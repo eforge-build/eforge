@@ -1,4 +1,5 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
@@ -7,7 +8,7 @@ import { getPlanReviewIssueSchemaYaml } from '../schemas.js';
 /**
  * Options for the cohesion reviewer agent.
  */
-export interface CohesionReviewerOptions {
+export interface CohesionReviewerOptions extends SdkPassthroughConfig {
   /** Backend for running the agent */
   backend: AgentBackend;
   /** The original source/PRD content to review plans against */
@@ -54,7 +55,7 @@ export async function* runCohesionReview(
   let fullText = '';
 
   for await (const event of backend.run(
-    { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal },
+    { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'cohesion-reviewer',
   )) {
     if (isAlwaysYieldedAgentEvent(event) || verbose) {

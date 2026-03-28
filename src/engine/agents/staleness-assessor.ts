@@ -1,4 +1,5 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getStalenessSchemaYaml } from '../schemas.js';
@@ -7,7 +8,7 @@ import { parseStalenessBlock } from './common.js';
 /**
  * Options for the staleness assessor agent.
  */
-export interface StalenessAssessorOptions {
+export interface StalenessAssessorOptions extends SdkPassthroughConfig {
   /** Backend for running the agent */
   backend: AgentBackend;
   /** Full PRD file content */
@@ -48,7 +49,7 @@ export async function* runStalenessAssessor(
   let fullText = '';
 
   for await (const event of backend.run(
-    { prompt, cwd, maxTurns: 20, tools: 'coding', abortSignal: abortController?.signal },
+    { prompt, cwd, maxTurns: 20, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'staleness-assessor',
   )) {
     // Always yield agent:result, agent:tool_use, agent:tool_result; gate agent:message on verbose

@@ -1,11 +1,12 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 /**
  * Options for the formatter agent.
  */
-export interface FormatterOptions {
+export interface FormatterOptions extends SdkPassthroughConfig {
   /** Backend for running the agent */
   backend: AgentBackend;
   /** The raw source content to format */
@@ -48,7 +49,7 @@ export async function* runFormatter(
   let fullText = '';
 
   for await (const event of backend.run(
-    { prompt, cwd: process.cwd(), maxTurns: 1, tools: 'none', abortSignal: abortController?.signal },
+    { prompt, cwd: process.cwd(), maxTurns: 1, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'formatter',
   )) {
     // Always yield agent:result, agent:tool_use, agent:tool_result; gate agent:message on verbose

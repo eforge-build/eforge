@@ -1,4 +1,5 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
@@ -8,7 +9,7 @@ export type { EvaluationVerdict, EvaluationEvidence } from './common.js';
 /**
  * Options for builder agent functions.
  */
-export interface BuilderOptions {
+export interface BuilderOptions extends SdkPassthroughConfig {
   /** Backend for running the agent */
   backend: AgentBackend;
   /** Working directory (typically a worktree path) */
@@ -130,7 +131,7 @@ Review the diff above, then continue implementing the remaining parts of the pla
 
   try {
     for await (const event of options.backend.run(
-      { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 50, tools: 'coding', abortSignal: options.abortController?.signal },
+      { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 50, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
       'builder',
       plan.id,
     )) {
@@ -169,7 +170,7 @@ export async function* builderEvaluate(
   let fullText = '';
   try {
     for await (const event of options.backend.run(
-      { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal },
+      { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
       'evaluator',
       plan.id,
     )) {

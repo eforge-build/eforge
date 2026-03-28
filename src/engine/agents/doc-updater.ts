@@ -1,8 +1,9 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
-export interface DocUpdaterOptions {
+export interface DocUpdaterOptions extends SdkPassthroughConfig {
   backend: AgentBackend;
   cwd: string;
   planId: string;
@@ -49,6 +50,7 @@ export async function* runDocUpdater(
         maxTurns: options.maxTurns ?? 20,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
+        ...pickSdkOptions(options),
       },
       'doc-updater',
       options.planId,

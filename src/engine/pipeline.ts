@@ -468,7 +468,7 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
         backend: ctx.backend,
         onClarification: ctx.onClarification,
         profiles: ctx.config.profiles,
-        maxTurns: agentConfig.maxTurns,
+        ...agentConfig,
         continuationContext,
       })) {
         // Update active profile when planner selects one.
@@ -561,6 +561,8 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
 registerCompileStage('plan-review-cycle', async function* planReviewCycleStage(ctx) {
   const verbose = ctx.verbose;
   const abortController = ctx.abortController;
+  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config);
+  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config);
 
   try {
     yield* runReviewCycle({
@@ -576,6 +578,7 @@ registerCompileStage('plan-review-cycle', async function* planReviewCycleStage(c
           cwd: ctx.cwd,
           verbose,
           abortController,
+          ...reviewerConfig,
         }),
       },
       evaluator: {
@@ -588,6 +591,7 @@ registerCompileStage('plan-review-cycle', async function* planReviewCycleStage(c
           cwd: ctx.cwd,
           verbose,
           abortController,
+          ...evaluatorConfig,
         }),
       },
     });
@@ -618,6 +622,9 @@ registerCompileStage('architecture-review-cycle', async function* architectureRe
     return;
   }
 
+  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config);
+  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config);
+
   try {
     yield* runReviewCycle({
       tracing: ctx.tracing,
@@ -625,12 +632,12 @@ registerCompileStage('architecture-review-cycle', async function* architectureRe
       reviewer: {
         role: 'architecture-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
+        run: () => runArchitectureReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, ...archReviewerConfig }),
       },
       evaluator: {
         role: 'architecture-evaluator',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController }),
+        run: () => runArchitectureEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, ...archEvaluatorConfig }),
       },
     });
   } catch (err) {
@@ -710,7 +717,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
               verbose,
               onClarification,
               abortController,
-              maxTurns: agentConfig.maxTurns,
+              ...agentConfig,
             })) {
               modTracker.handleEvent(event);
 
@@ -771,6 +778,9 @@ registerCompileStage('cohesion-review-cycle', async function* cohesionReviewCycl
     // Architecture file may not exist
   }
 
+  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config);
+  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config);
+
   try {
     yield* runReviewCycle({
       tracing: ctx.tracing,
@@ -778,12 +788,12 @@ registerCompileStage('cohesion-review-cycle', async function* cohesionReviewCycl
       reviewer: {
         role: 'cohesion-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runCohesionReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
+        run: () => runCohesionReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, ...cohesionReviewerConfig }),
       },
       evaluator: {
         role: 'cohesion-evaluator',
         metadata: { planSet: planSetName },
-        run: () => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController }),
+        run: () => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, ...cohesionEvaluatorConfig }),
       },
     });
   } catch (err) {
@@ -849,7 +859,6 @@ async function* emitFilesChanged(ctx: BuildStageContext): AsyncGenerator<EforgeE
 
 registerBuildStage('implement', async function* implementStage(ctx) {
   const agentConfig = resolveAgentConfig('builder', ctx.config);
-  const maxTurns = agentConfig.maxTurns;
 
   // Resolve maxContinuations: per-plan > global config > default (3)
   const planEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
@@ -886,7 +895,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
         cwd: ctx.worktreePath,
         verbose: ctx.verbose,
         abortController: ctx.abortController,
-        maxTurns,
+        ...agentConfig,
         parallelStages,
         verificationScope,
         continuationContext,
@@ -977,6 +986,7 @@ async function* reviewStageInner(
 ): AsyncGenerator<EforgeEvent> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
+  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config);
 
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
@@ -993,6 +1003,7 @@ async function* reviewStageInner(
       abortController: ctx.abortController,
       strategy,
       perspectives,
+      ...reviewerAgentConfig,
     })) {
       reviewTracker.handleEvent(event);
       yield event;
@@ -1023,6 +1034,7 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
   // Only runs if review found actionable issues after filtering
   if (ctx.reviewIssues.length === 0) return;
 
+  const fixerAgentConfig = resolveAgentConfig('review-fixer', ctx.config);
   const fixerSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixerSpan.setInput({
     planId: ctx.planId,
@@ -1039,6 +1051,7 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
       issues: ctx.reviewIssues,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
+      ...fixerAgentConfig,
     })) {
       fixerTracker.handleEvent(event);
       yield event;
@@ -1078,7 +1091,7 @@ async function* evaluateStageInner(
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
-      maxTurns: evalAgentConfig.maxTurns,
+      ...evalAgentConfig,
       strictness,
     })) {
       evalTracker.handleEvent(event);
@@ -1137,7 +1150,7 @@ registerBuildStage('doc-update', async function* docUpdateStage(ctx) {
       planContent: ctx.planFile.body,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
-      maxTurns: agentConfig.maxTurns,
+      ...agentConfig,
     })) {
       docTracker.handleEvent(event);
       yield event;
@@ -1184,7 +1197,7 @@ registerBuildStage('test-write', async function* testWriteStage(ctx) {
       implementationContext: implementationContext || undefined,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
-      maxTurns: agentConfig.maxTurns,
+      ...agentConfig,
     })) {
       tracker.handleEvent(event);
       yield event;
@@ -1219,7 +1232,7 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
       planContent: ctx.planFile.body,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
-      maxTurns: agentConfig.maxTurns,
+      ...agentConfig,
     })) {
       tracker.handleEvent(event);
       yield event;

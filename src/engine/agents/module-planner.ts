@@ -1,8 +1,9 @@
-import type { AgentBackend } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ClarificationQuestion } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
-export interface ModulePlannerOptions {
+export interface ModulePlannerOptions extends SdkPassthroughConfig {
   backend: AgentBackend;
   cwd: string;
   planSetName: string;
@@ -42,7 +43,7 @@ export async function* runModulePlanner(
   });
 
   for await (const event of options.backend.run(
-    { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 20, tools: 'coding', abortSignal: options.abortController?.signal },
+    { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 20, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
     'module-planner',
   )) {
     // Always yield agent:result + tool events for tracing; gate streaming text on verbose
