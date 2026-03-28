@@ -54,11 +54,16 @@ If the source is fully implemented (zero gaps), emit a `<skip>` block explaining
 
 {{profiles}}
 
-If profiles are listed above, select the profile that best matches the work described in the source document. Consider:
-- The type of work (migration, security, refactor, feature, etc.)
-- The risk profile and review needs
-- The scope indicators from your codebase exploration
-- **Decomposability** — can the work be split into modules that each pass type-check and tests independently?
+If profiles are listed above, select the profile that best matches the work described in the source document. The "Pipeline Effect" column shows what happens after profile selection - this is critical because some profiles skip quality gates.
+
+**Errand criteria** - use errand ONLY for trivial, mechanical changes:
+- Typo fixes, comment corrections, single-line config changes
+- Single-file bug fixes with an obvious root cause and obvious fix
+- Changes where plan review would add no value because the change is self-evident
+
+Errand skips plan review entirely - the plan goes directly to build without any quality review of the plan itself. This is appropriate only when the change is so simple that reviewing the plan would be wasteful.
+
+**Excursion is the default** - use excursion for most feature work, refactors, bug fixes spanning multiple files, and any change where plan review adds value. When in doubt between errand and excursion, choose excursion.
 
 **When NOT to use expedition:**
 - Type/interface refactors where changing a definition breaks all consumers (use excursion)
@@ -66,7 +71,7 @@ If profiles are listed above, select the profile that best matches the work desc
 - Rename-and-update-all-callers refactors (use excursion)
 - Work where every module depends on a "foundation" module (sign the split is artificial)
 
-Expedition is for genuinely independent subsystems — e.g., building auth + billing + notifications where each is self-contained. If your dependency graph is a tall chain (A → B → C → D), that's sequential work better handled as an excursion with ordered plans.
+Expedition is for genuinely independent subsystems - e.g., building auth + billing + notifications where each is self-contained. If your dependency graph is a tall chain (A → B → C → D), that's sequential work better handled as an excursion with ordered plans.
 
 Emit a `<profile>` block declaring your selection:
 
@@ -92,9 +97,9 @@ Determine how many plans the work requires based on your codebase exploration:
 
 Create 1 or more plan files in `plans/{{planSetName}}/`.
 
-**Single plan** (errand) when all work is in one area and has no natural phasing. This is the common case.
+**Single plan** when all work is in one area and has no natural phasing.
 
-**Multiple plans** (excursion) when there is clear separation — e.g., a database migration must complete first, or a genuine dependency order exists between independent subsystems.
+**Multiple plans** when there is clear separation - e.g., a database migration must complete first, or a genuine dependency order exists between independent subsystems.
 
 **Split large plans** — if a plan would modify more than ~15 files, consider splitting into ordered sub-plans. Each builder agent has a limited turn budget. Common split patterns:
 - Source changes in one plan (plan-01), UI/docs in another (plan-02) when they touch different files
@@ -300,7 +305,7 @@ name: {{planSetName}}
 description: {description derived from source}
 created: {YYYY-MM-DD}
 compiled: {YYYY-MM-DD}
-mode: errand
+mode: {selected profile name}
 base_branch: {current git branch}
 
 validate:
@@ -336,7 +341,7 @@ plans:
 
 Important:
 - Determine the current git branch for `base_branch` (run `git rev-parse --abbrev-ref HEAD`)
-- `mode` must match the plan count: `errand` for 1 plan, `excursion` for 2-3 plans
+- `mode` must match the selected profile name
 - Plan entries must match the plan files exactly
 - `depends_on` in orchestration.yaml must use the same IDs as in plan file frontmatter
 

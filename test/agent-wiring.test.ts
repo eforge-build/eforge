@@ -221,10 +221,10 @@ describe('formatProfileDescriptions', () => {
     expect(formatProfileDescriptions({})).toBe('');
   });
 
-  it('returns a markdown table with one row', () => {
+  it('returns a markdown table with one row including pipeline effect', () => {
     const result = formatProfileDescriptions({ errand: stubProfile });
-    expect(result).toContain('| Profile | Description |');
-    expect(result).toContain('| `errand` | Small focused change |');
+    expect(result).toContain('| Profile | Description | Pipeline Effect |');
+    expect(result).toContain('| `errand` | Small focused change | Skips plan review - plan goes directly to build |');
   });
 
   it('returns a markdown table with multiple profiles', () => {
@@ -233,7 +233,25 @@ describe('formatProfileDescriptions', () => {
       migration: { ...stubProfile, description: 'Database migration work' },
     });
     expect(result).toContain('| `errand` |');
-    expect(result).toContain('| `migration` | Database migration work |');
+    expect(result).toContain('| `migration` | Database migration work | Stages: planner |');
+  });
+
+  it('shows well-known pipeline effects for built-in profiles', () => {
+    const result = formatProfileDescriptions({
+      errand: stubProfile,
+      excursion: { ...stubProfile, description: 'Multi-file feature work' },
+      expedition: { ...stubProfile, description: 'Large cross-cutting work' },
+    });
+    expect(result).toContain('Skips plan review');
+    expect(result).toContain('Includes plan review before build');
+    expect(result).toContain('Full architecture review, module planning, and cohesion review');
+  });
+
+  it('falls back to compile stages for custom profiles', () => {
+    const result = formatProfileDescriptions({
+      'custom-flow': { ...stubProfile, description: 'Custom workflow', compile: ['planner', 'plan-review-cycle'] },
+    });
+    expect(result).toContain('Stages: planner, plan-review-cycle');
   });
 });
 

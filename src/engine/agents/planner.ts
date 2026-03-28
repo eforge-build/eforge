@@ -57,11 +57,22 @@ ${rows.join('\n')}`;
 export function formatProfileDescriptions(profiles: Record<string, ResolvedProfileConfig>): string {
   if (Object.keys(profiles).length === 0) return '';
 
+  const pipelineEffectMap: Record<string, string> = {
+    errand: 'Skips plan review - plan goes directly to build',
+    excursion: 'Includes plan review before build',
+    expedition: 'Full architecture review, module planning, and cohesion review',
+    docs: 'Skips plan review and code review',
+  };
+
   const rows = Object.entries(profiles)
-    .map(([name, profile]) => `| \`${name}\` | ${profile.description} |`)
+    .map(([name, profile]) => {
+      const effect = pipelineEffectMap[name]
+        ?? `Stages: ${profile.compile.join(', ')}`;
+      return `| \`${name}\` | ${profile.description} | ${effect} |`;
+    })
     .join('\n');
 
-  return `| Profile | Description |\n|---------|-------------|\n${rows}`;
+  return `| Profile | Description | Pipeline Effect |\n|---------|-------------|------------------|\n${rows}`;
 }
 
 /**
