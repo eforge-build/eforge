@@ -384,7 +384,7 @@ describe('agent config threading', () => {
   it('resolveAgentConfig returns role default over global config', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
 
-    // Builder has a role default of 50 — even with global maxTurns set differently
+    // Builder has a role default of 50 - even with global maxTurns set differently
     const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 25 } };
     const result = resolveAgentConfig('builder', config);
     expect(result.maxTurns).toBe(50);
@@ -397,6 +397,97 @@ describe('agent config threading', () => {
     // reviewer has no role default, so it should fall back to the global config value
     const result = resolveAgentConfig('reviewer', config);
     expect(result.maxTurns).toBe(42);
+  });
+
+  it('resolveAgentConfig returns undefined for SDK fields when not configured', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(50);
+    expect(result.model).toBeUndefined();
+    expect(result.thinking).toBeUndefined();
+    expect(result.effort).toBeUndefined();
+    expect(result.maxBudgetUsd).toBeUndefined();
+    expect(result.fallbackModel).toBeUndefined();
+    expect(result.allowedTools).toBeUndefined();
+    expect(result.disallowedTools).toBeUndefined();
+  });
+
+  it('resolveAgentConfig returns global effort when no role override exists', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: { ...DEFAULT_CONFIG.agents, effort: 'high' as const },
+    };
+    const result = resolveAgentConfig('reviewer', config);
+    expect(result.effort).toBe('high');
+  });
+
+  it('resolveAgentConfig returns role-specific value over global', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        effort: 'high' as const,
+        roles: {
+          formatter: { effort: 'low' as const },
+        },
+      },
+    };
+    const result = resolveAgentConfig('formatter', config);
+    expect(result.effort).toBe('low');
+  });
+
+  it('resolveAgentConfig: user per-role maxTurns overrides built-in role default', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        roles: {
+          builder: { maxTurns: 100 },
+        },
+      },
+    };
+    const result = resolveAgentConfig('builder', config);
+    expect(result.maxTurns).toBe(100);
+  });
+
+  it('resolveAgentConfig: built-in role maxTurns beats user global maxTurns', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: { ...DEFAULT_CONFIG.agents, maxTurns: 20 },
+    };
+    // builder has built-in default of 50 which beats user global 20
+    const result = resolveAgentConfig('builder', config);
+    expect(result.maxTurns).toBe(50);
+  });
+
+  it('resolveAgentConfig: user global model propagates to roles without overrides', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: { ...DEFAULT_CONFIG.agents, model: 'claude-sonnet' },
+    };
+    const result = resolveAgentConfig('reviewer', config);
+    expect(result.model).toBe('claude-sonnet');
+  });
+
+  it('resolveAgentConfig: user per-role thinking overrides user global thinking', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        thinking: { type: 'adaptive' as const },
+        roles: {
+          builder: { thinking: { type: 'disabled' as const } },
+        },
+      },
+    };
+    const result = resolveAgentConfig('builder', config);
+    expect(result.thinking).toEqual({ type: 'disabled' });
   });
 });
 

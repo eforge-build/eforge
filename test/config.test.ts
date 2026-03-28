@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, AGENT_ROLES } from '../src/engine/config.js';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema } from '../src/engine/config.js';
+import { pickSdkOptions } from '../src/engine/backend.js';
 import type { PartialEforgeConfig, HookConfig } from '../src/engine/config.js';
 
 describe('resolveConfig', () => {
@@ -346,5 +347,241 @@ describe('prdQueue config', () => {
     expect(merged.prdQueue?.autoRevise).toBe(true);
     // Global dir survives since project didn't override it
     expect(merged.prdQueue?.dir).toBe('global/queue');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SDK Passthrough Schemas
+// ---------------------------------------------------------------------------
+
+describe('thinkingConfigSchema', () => {
+  it('accepts adaptive type', () => {
+    const result = thinkingConfigSchema.safeParse({ type: 'adaptive' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts enabled type with budgetTokens', () => {
+    const result = thinkingConfigSchema.safeParse({ type: 'enabled', budgetTokens: 5000 });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts enabled type without budgetTokens', () => {
+    const result = thinkingConfigSchema.safeParse({ type: 'enabled' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts disabled type', () => {
+    const result = thinkingConfigSchema.safeParse({ type: 'disabled' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid type', () => {
+    const result = thinkingConfigSchema.safeParse({ type: 'invalid' });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('effortLevelSchema', () => {
+  it('accepts low', () => {
+    expect(effortLevelSchema.safeParse('low').success).toBe(true);
+  });
+
+  it('accepts medium', () => {
+    expect(effortLevelSchema.safeParse('medium').success).toBe(true);
+  });
+
+  it('accepts high', () => {
+    expect(effortLevelSchema.safeParse('high').success).toBe(true);
+  });
+
+  it('accepts max', () => {
+    expect(effortLevelSchema.safeParse('max').success).toBe(true);
+  });
+
+  it('rejects extreme', () => {
+    expect(effortLevelSchema.safeParse('extreme').success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// roles schema validation
+// ---------------------------------------------------------------------------
+
+describe('roles schema in eforgeConfigSchema', () => {
+  it('accepts valid roles', () => {
+    const config: PartialEforgeConfig = {
+      agents: {
+        roles: {
+          builder: { effort: 'high' },
+          formatter: { model: 'claude-sonnet', maxTurns: 10 },
+        },
+      },
+    };
+    const resolved = resolveConfig(config, {});
+    expect(resolved.agents.roles?.builder).toEqual({ effort: 'high' });
+    expect(resolved.agents.roles?.formatter).toEqual({ model: 'claude-sonnet', maxTurns: 10 });
+  });
+
+  it('rejects invalid role names via schema', async () => {
+    const { eforgeConfigSchema } = await import('../src/engine/config.js');
+    const result = eforgeConfigSchema.safeParse({
+      agents: {
+        roles: {
+          'not-a-role': { effort: 'high' },
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergePartialConfigs with roles deep-merge
+// ---------------------------------------------------------------------------
+
+describe('mergePartialConfigs roles deep-merge', () => {
+  it('per-role shallow merge: project role fields override global, global-only fields survive', () => {
+    const global: PartialEforgeConfig = {
+      agents: {
+        roles: {
+          builder: { model: 'global-model', effort: 'high' },
+          reviewer: { effort: 'low' },
+        },
+      },
+    };
+    const project: PartialEforgeConfig = {
+      agents: {
+        roles: {
+          builder: { effort: 'low' },
+        },
+      },
+    };
+    const merged = mergePartialConfigs(global, project);
+    // builder: project effort overrides global, global model survives
+    expect(merged.agents?.roles?.builder).toEqual({ model: 'global-model', effort: 'low' });
+    // reviewer: only in global, survives
+    expect(merged.agents?.roles?.reviewer).toEqual({ effort: 'low' });
+  });
+
+  it('project-only roles merge with empty global roles', () => {
+    const global: PartialEforgeConfig = {
+      agents: { maxTurns: 30 },
+    };
+    const project: PartialEforgeConfig = {
+      agents: {
+        roles: {
+          formatter: { effort: 'low' },
+        },
+      },
+    };
+    const merged = mergePartialConfigs(global, project);
+    expect(merged.agents?.roles?.formatter).toEqual({ effort: 'low' });
+    expect(merged.agents?.maxTurns).toBe(30);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveConfig with global SDK fields
+// ---------------------------------------------------------------------------
+
+describe('resolveConfig with global SDK fields', () => {
+  it('passes through global model, thinking, effort', () => {
+    const config = resolveConfig({
+      agents: {
+        model: 'claude-opus',
+        thinking: { type: 'adaptive' },
+        effort: 'high',
+      },
+    }, {});
+    expect(config.agents.model).toBe('claude-opus');
+    expect(config.agents.thinking).toEqual({ type: 'adaptive' });
+    expect(config.agents.effort).toBe('high');
+  });
+
+  it('SDK fields default to undefined when not configured', () => {
+    const config = resolveConfig({}, {});
+    expect(config.agents.model).toBeUndefined();
+    expect(config.agents.thinking).toBeUndefined();
+    expect(config.agents.effort).toBeUndefined();
+    expect(config.agents.roles).toBeUndefined();
+  });
+
+  it('passes through roles from config', () => {
+    const config = resolveConfig({
+      agents: {
+        roles: {
+          builder: { effort: 'max', maxTurns: 100 },
+        },
+      },
+    }, {});
+    expect(config.agents.roles?.builder).toEqual({ effort: 'max', maxTurns: 100 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pickSdkOptions
+// ---------------------------------------------------------------------------
+
+describe('pickSdkOptions', () => {
+  it('strips undefined values from config', () => {
+    const result = pickSdkOptions({ model: 'x', thinking: undefined, effort: 'low' });
+    expect(result).toEqual({ model: 'x', effort: 'low' });
+    expect('thinking' in result).toBe(false);
+  });
+
+  it('returns empty object when all values are undefined', () => {
+    const result = pickSdkOptions({});
+    expect(result).toEqual({});
+  });
+
+  it('passes through all defined fields', () => {
+    const result = pickSdkOptions({
+      model: 'claude-opus',
+      thinking: { type: 'enabled', budgetTokens: 5000 },
+      effort: 'high',
+      maxBudgetUsd: 10,
+      fallbackModel: 'claude-sonnet',
+      allowedTools: ['read', 'write'],
+      disallowedTools: ['bash'],
+    });
+    expect(result).toEqual({
+      model: 'claude-opus',
+      thinking: { type: 'enabled', budgetTokens: 5000 },
+      effort: 'high',
+      maxBudgetUsd: 10,
+      fallbackModel: 'claude-sonnet',
+      allowedTools: ['read', 'write'],
+      disallowedTools: ['bash'],
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sdkPassthroughConfigSchema
+// ---------------------------------------------------------------------------
+
+describe('sdkPassthroughConfigSchema', () => {
+  it('accepts valid config with all fields', () => {
+    const result = sdkPassthroughConfigSchema.safeParse({
+      model: 'claude-opus',
+      thinking: { type: 'enabled', budgetTokens: 5000 },
+      effort: 'high',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts empty object (all fields optional)', () => {
+    const result = sdkPassthroughConfigSchema.safeParse({});
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid effort value', () => {
+    const result = sdkPassthroughConfigSchema.safeParse({ effort: 'extreme' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects invalid thinking type', () => {
+    const result = sdkPassthroughConfigSchema.safeParse({ thinking: { type: 'invalid' } });
+    expect(result.success).toBe(false);
   });
 });

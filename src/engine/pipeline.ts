@@ -225,13 +225,13 @@ export async function hasUnstagedChanges(cwd: string): Promise<boolean> {
   }
 }
 
-/** Per-role default maxTurns. Agents that need more/fewer turns than the global default declare it here. */
-const AGENT_MAX_TURNS_DEFAULTS: Partial<Record<AgentRole, number>> = {
-  builder: 50,
-  'module-planner': 20,
-  'doc-updater': 20,
-  'test-writer': 30,
-  'tester': 40,
+/** Per-role built-in defaults. Agents that need different settings than the global default declare them here. */
+export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, Partial<import('./config.js').ResolvedAgentConfig>>> = {
+  builder: { maxTurns: 50 },
+  'module-planner': { maxTurns: 20 },
+  'doc-updater': { maxTurns: 20 },
+  'test-writer': { maxTurns: 30 },
+  'tester': { maxTurns: 40 },
 };
 
 /** Per-role default maxContinuations for agents that support continuation loops. */
@@ -241,18 +241,46 @@ export const AGENT_MAX_CONTINUATIONS_DEFAULTS: Partial<Record<AgentRole, number>
 
 /**
  * Resolve agent config for a given role.
- * Priority (highest → lowest): role defaults → global config
+ * Four-tier priority (highest → lowest):
+ *   1. User per-role config (config.agents.roles[role])
+ *   2. User global config (config.agents.{model,thinking,effort,...}, config.agents.maxTurns)
+ *   3. Built-in per-role defaults (AGENT_ROLE_DEFAULTS[role])
+ *   4. Built-in global default (DEFAULT_CONFIG.agents.maxTurns)
+ *
+ * Each field is resolved independently through the chain.
  */
 export function resolveAgentConfig(
   role: AgentRole,
   config: EforgeConfig,
-): { maxTurns: number } {
-  const roleDefault = AGENT_MAX_TURNS_DEFAULTS[role];
-  const globalMaxTurns = config.agents.maxTurns;
-
-  return {
-    maxTurns: roleDefault ?? globalMaxTurns,
+): import('./config.js').ResolvedAgentConfig {
+  const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
+  const userGlobal: import('./config.js').ResolvedAgentConfig = {
+    maxTurns: config.agents.maxTurns,
+    model: config.agents.model,
+    thinking: config.agents.thinking,
+    effort: config.agents.effort,
   };
+  const userRole = config.agents.roles?.[role] ?? {};
+
+  // For each field: user per-role > built-in per-role > user global > built-in global
+  // Special case for maxTurns: built-in per-role beats user global (e.g. builder's 50 beats global 30)
+  // but user per-role always wins.
+  const SDK_FIELDS = ['model', 'thinking', 'effort', 'maxBudgetUsd', 'fallbackModel', 'allowedTools', 'disallowedTools'] as const;
+
+  const result: import('./config.js').ResolvedAgentConfig = {};
+
+  // Resolve maxTurns: user per-role > built-in per-role > user global
+  result.maxTurns = userRole.maxTurns ?? builtinRoleDefaults.maxTurns ?? userGlobal.maxTurns;
+
+  // Resolve SDK passthrough fields: user per-role > user global > built-in per-role
+  for (const field of SDK_FIELDS) {
+    const value = userRole[field] ?? userGlobal[field] ?? builtinRoleDefaults[field];
+    if (value !== undefined) {
+      (result as Record<string, unknown>)[field] = value;
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -24,11 +24,42 @@ const agentRoleSchema = z.enum(AGENT_ROLES);
 
 const toolPresetConfigSchema = z.enum(['coding', 'none']);
 
+// ---------------------------------------------------------------------------
+// SDK Passthrough Config Schemas
+// ---------------------------------------------------------------------------
+
+export const thinkingConfigSchema = z.union([
+  z.object({ type: z.literal('adaptive') }),
+  z.object({ type: z.literal('enabled'), budgetTokens: z.number().int().positive().optional() }),
+  z.object({ type: z.literal('disabled') }),
+]).describe('Controls Claude\'s thinking/reasoning behavior');
+
+export const effortLevelSchema = z.enum(['low', 'medium', 'high', 'max']).describe('Effort level for controlling thinking depth');
+
+export const sdkPassthroughConfigSchema = z.object({
+  model: z.string().optional().describe('Model override'),
+  thinking: thinkingConfigSchema.optional().describe('Thinking/reasoning behavior'),
+  effort: effortLevelSchema.optional().describe('Effort level'),
+  maxBudgetUsd: z.number().positive().optional().describe('Maximum budget in USD'),
+  fallbackModel: z.string().optional().describe('Fallback model if primary is unavailable'),
+  allowedTools: z.array(z.string()).optional().describe('Whitelist of allowed tool names'),
+  disallowedTools: z.array(z.string()).optional().describe('Blacklist of disallowed tool names'),
+});
+
 const agentProfileConfigSchema = z.object({
   maxTurns: z.number().int().positive().optional().describe('Maximum conversation turns for this agent'),
   prompt: z.string().optional().describe('Custom prompt override for this agent'),
   tools: toolPresetConfigSchema.optional().describe('Tool preset: "coding" for full tools or "none" for read-only'),
   model: z.string().optional().describe('Model override for this agent'),
+  thinking: thinkingConfigSchema.optional().describe('Thinking/reasoning behavior'),
+  effort: effortLevelSchema.optional().describe('Effort level'),
+  maxBudgetUsd: z.number().positive().optional().describe('Maximum budget in USD'),
+  fallbackModel: z.string().optional().describe('Fallback model if primary is unavailable'),
+  allowedTools: z.array(z.string()).optional().describe('Whitelist of allowed tool names'),
+  disallowedTools: z.array(z.string()).optional().describe('Blacklist of disallowed tool names'),
+  roles: z.record(agentRoleSchema, sdkPassthroughConfigSchema.extend({
+    maxTurns: z.number().int().positive().optional(),
+  })).optional().describe('Per-agent role overrides for SDK passthrough fields'),
 });
 
 const STRATEGIES = ['auto', 'single', 'parallel'] as const;
@@ -177,6 +208,12 @@ export const eforgeConfigSchema = z.object({
     permissionMode: z.enum(['bypass', 'default']).optional(),
     settingSources: z.array(z.enum(SETTING_SOURCES)).nonempty().optional(),
     bare: z.boolean().optional(),
+    model: z.string().optional().describe('Global model override for all agents'),
+    thinking: thinkingConfigSchema.optional().describe('Global thinking config for all agents'),
+    effort: effortLevelSchema.optional().describe('Global effort level for all agents'),
+    roles: z.record(agentRoleSchema, sdkPassthroughConfigSchema.extend({
+      maxTurns: z.number().int().positive().optional(),
+    })).optional().describe('Per-agent role overrides'),
   }).optional(),
   build: z.object({
     parallelism: z.number().int().positive().optional(),
@@ -218,9 +255,31 @@ export type ProfileConfig = ResolvedProfileConfig;
 export type HookConfig = z.output<typeof hookConfigSchema>;
 export type PluginConfig = z.output<typeof pluginConfigSchema>;
 
+/** Resolved agent config for a specific role, combining SDK passthrough fields with maxTurns. */
+export interface ResolvedAgentConfig {
+  maxTurns?: number;
+  model?: string;
+  thinking?: import('./backend.js').ThinkingConfig;
+  effort?: import('./backend.js').EffortLevel;
+  maxBudgetUsd?: number;
+  fallbackModel?: string;
+  allowedTools?: string[];
+  disallowedTools?: string[];
+}
+
 export interface EforgeConfig {
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
-  agents: { maxTurns: number; maxContinuations: number; permissionMode: 'bypass' | 'default'; settingSources?: string[]; bare: boolean };
+  agents: {
+    maxTurns: number;
+    maxContinuations: number;
+    permissionMode: 'bypass' | 'default';
+    settingSources?: string[];
+    bare: boolean;
+    model?: string;
+    thinking?: import('./backend.js').ThinkingConfig;
+    effort?: import('./backend.js').EffortLevel;
+    roles?: Record<string, Partial<ResolvedAgentConfig>>;
+  };
   build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
   plugins: PluginConfig;
@@ -337,6 +396,10 @@ export function resolveConfig(
       permissionMode: fileConfig.agents?.permissionMode ?? DEFAULT_CONFIG.agents.permissionMode,
       settingSources: fileConfig.agents?.settingSources ?? DEFAULT_CONFIG.agents.settingSources,
       bare: fileConfig.agents?.bare ?? !!env.ANTHROPIC_API_KEY,
+      model: fileConfig.agents?.model,
+      thinking: fileConfig.agents?.thinking,
+      effort: fileConfig.agents?.effort,
+      roles: fileConfig.agents?.roles,
     }),
     build: Object.freeze({
       parallelism: fileConfig.build?.parallelism ?? DEFAULT_CONFIG.build.parallelism,
@@ -453,7 +516,28 @@ export function mergePartialConfigs(
     result.langfuse = { ...global.langfuse, ...project.langfuse };
   }
   if (global.agents || project.agents) {
-    result.agents = { ...global.agents, ...project.agents };
+    const mergedAgents = { ...global.agents, ...project.agents };
+    // Deep-merge roles: per-role shallow merge (project role fields override global, global-only fields survive)
+    const globalRoles = global.agents?.roles;
+    const projectRoles = project.agents?.roles;
+    if (globalRoles || projectRoles) {
+      const mergedRoles: Record<string, Record<string, unknown>> = {};
+      const allRoleNames = new Set([
+        ...Object.keys(globalRoles ?? {}),
+        ...Object.keys(projectRoles ?? {}),
+      ]);
+      for (const roleName of allRoleNames) {
+        const g = (globalRoles as Record<string, Record<string, unknown>> | undefined)?.[roleName];
+        const p = (projectRoles as Record<string, Record<string, unknown>> | undefined)?.[roleName];
+        if (g && p) {
+          mergedRoles[roleName] = { ...g, ...p };
+        } else {
+          mergedRoles[roleName] = (p ?? g)!;
+        }
+      }
+      mergedAgents.roles = mergedRoles;
+    }
+    result.agents = mergedAgents;
   }
   if (global.build || project.build) {
     result.build = { ...global.build, ...project.build };

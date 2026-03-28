@@ -67,6 +67,13 @@ export class ClaudeSDKBackend implements AgentBackend {
             ? abortControllerFromSignal(options.abortSignal)
             : undefined,
           ...(this.bare ? { extraArgs: { bare: null } } : {}),
+          // SDK passthrough fields — only include when defined
+          ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
+          ...(options.effort !== undefined ? { effort: options.effort } : {}),
+          ...(options.maxBudgetUsd !== undefined ? { maxBudgetUsd: options.maxBudgetUsd } : {}),
+          ...(options.fallbackModel !== undefined ? { fallbackModel: options.fallbackModel } : {}),
+          ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
+          ...(options.disallowedTools !== undefined ? { disallowedTools: options.disallowedTools } : {}),
         },
       });
 
