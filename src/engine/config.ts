@@ -325,11 +325,11 @@ export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.fr
     compile: Object.freeze(['prd-passthrough']) as unknown as string[],
   }),
   excursion: Object.freeze({
-    description: 'Multi-file feature work or refactors. Use when changes touch many files but are tightly coupled - e.g., type signature changes that cascade to consumers, interface refactors, rename-and-update-all-callers. The key test: can every piece pass type-check independently? If not, use excursion.',
+    description: 'Multi-file feature work or refactors. Use when the full scope can be planned in a single planner session - all plans enumerated, all file changes listed, and cross-plan dependencies resolved. Covers tightly coupled changes (type cascades, interface refactors, rename-and-update-all-callers) and any work where one planning pass is sufficient.',
     compile: Object.freeze(['planner', 'plan-review-cycle']) as unknown as string[],
   }),
   expedition: Object.freeze({
-    description: 'Large work that decomposes into independently buildable modules. Each module must be able to pass type-check and tests on its own branch before merging. Use only when modules have genuinely independent scopes - not when a single type change ripples across many files.',
+    description: 'Large work where planning scope requires delegated module planning with architecture and cohesion review. Use when the total scope exceeds what a single planner session can produce with quality - 4+ subsystems each needing dedicated codebase exploration, shared files requiring coordinated edits, or planning that would need to be deferred across modules.',
     compile: Object.freeze(['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition']) as unknown as string[],
   }),
 });

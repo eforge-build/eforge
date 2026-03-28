@@ -65,13 +65,21 @@ Errand skips plan review entirely - the plan goes directly to build without any 
 
 **Excursion is the default** - use excursion for most feature work, refactors, bug fixes spanning multiple files, and any change where plan review adds value. When in doubt between errand and excursion, choose excursion.
 
-**When NOT to use expedition:**
-- Type/interface refactors where changing a definition breaks all consumers (use excursion)
-- Adding or removing required fields from widely-used types (use excursion)
-- Rename-and-update-all-callers refactors (use excursion)
-- Work where every module depends on a "foundation" module (sign the split is artificial)
+**Excursion vs expedition - planning complexity is the deciding factor.** The core question is: can you, in this single planner session, enumerate all plans, list all file changes, and resolve cross-plan dependencies? If yes, use excursion. If you would need to defer detailed planning for some modules because the total scope exceeds what one session can produce with quality, that signals expedition.
 
-Expedition is for genuinely independent subsystems - e.g., building auth + billing + notifications where each is self-contained. If your dependency graph is a tall chain (A → B → C → D), that's sequential work better handled as an excursion with ordered plans.
+**Positive expedition signals** (use expedition when multiple apply):
+- 4+ subsystems each requiring dedicated codebase exploration to plan properly
+- Shared files that need coordinated region-based edits across modules
+- Total planning scope where producing quality plans for all modules would exhaust your turn budget
+- Genuinely independent subsystems - e.g., building auth + billing + notifications where each is self-contained
+
+**When NOT to use expedition** (use excursion instead):
+- Type/interface refactors where changing a definition breaks all consumers
+- Adding or removing required fields from widely-used types
+- Rename-and-update-all-callers refactors
+- Sequential dependency chains (A -> B -> C -> D) - that's ordered excursion plans, not parallel modules
+
+**Foundation module heuristic:** A pattern of one foundation module plus independent verticals CAN be expedition if the total planning scope genuinely demands delegated module planning, but is typically excursion when you can plan all pieces (including the foundation) in one session. Don't force an expedition split just because a shared layer exists.
 
 Emit a `<profile>` block declaring your selection:
 
