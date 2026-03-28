@@ -2,11 +2,12 @@
 
 ## Eval & Observability
 
-**Goal**: Use evaluation data and runtime observability to drive evidence-based improvement of workflow profiles and agent behavior.
+**Goal**: Use evaluation data and runtime observability to drive evidence-based improvement of workflow profiles and agent behavior. Eval harness lives in [eforge-build/eval](https://github.com/eforge-build/eval).
 
 - **Code quality metrics** — Add static analysis metrics (complexity, duplication, lint violations) to the eval harness so profile tuning goes beyond pass/fail, tokens, and cost
 - **Comparative profile tuning** — Run profiles head-to-head on the same PRDs and use outcome data (including code quality) to refine profiles from intuition toward evidence
 - **Acceptance coverage gaps** — Detect PRD requirements that lack corresponding test cases and flag builds where acceptance coverage is incomplete
+- **TypeScript-focused benchmarks** — Move beyond SWE-bench (Python-only) to benchmarks that reflect eforge's target usage. Evaluate alternatives like [ts-bench](https://github.com/laiso/ts-bench) and mixed-language datasets. Benchmarks live in [eforge-build/benchmarks](https://github.com/eforge-build/benchmarks).
 
 ---
 

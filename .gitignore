@@ -7,4 +7,4 @@ dist/
 .mcp.json
 .schaake-os-track
 .orchestration-logs/
-
+.claude/settings.local.json
