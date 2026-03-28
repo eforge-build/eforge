@@ -3,7 +3,7 @@ import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { AgentThread, StoredEvent } from '@/lib/reducer';
-import type { PipelineStage, ReviewIssue, ProfileInfo } from '@/lib/types';
+import type { PipelineStage, ReviewIssue, ProfileInfo, OrchestrationConfig, BuildStageSpec } from '@/lib/types';
 
 const REVIEW_AGENTS = new Set([
   'reviewer', 'plan-reviewer', 'architecture-reviewer', 'cohesion-reviewer',
@@ -72,12 +72,13 @@ const AGENT_TO_STAGE: Record<string, string> = {
   'validation-fixer': 'validate',
 };
 
-type StageStatus = 'pending' | 'active' | 'completed';
+type StageStatus = 'pending' | 'active' | 'completed' | 'failed';
 
 const STAGE_STATUS_STYLES: Record<StageStatus, string> = {
   pending: 'bg-bg-tertiary text-text-dim/80',
   active: 'bg-primary/20 text-primary',
   completed: 'bg-green/15 text-green/70',
+  failed: 'bg-red/15 text-red/70',
 };
 
 // --- Stage overview sub-components ---
@@ -168,6 +169,116 @@ function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStag
   );
 }
 
+// --- Build stage breadcrumb ---
+
+/** Map PipelineStage values to build stage spec names (collapsing sub-stages to composites) */
+const PIPELINE_TO_BUILD_STAGE: Record<string, string> = {
+  implement: 'implement',
+  'doc-update': 'doc-update',
+  test: 'test',
+  review: 'review-cycle',
+  evaluate: 'review-cycle',
+};
+
+/** Normalize a BuildStageSpec to its string name (for parallel groups, join with '+') */
+function buildStageName(spec: BuildStageSpec): string {
+  return Array.isArray(spec) ? spec.join('+') : spec;
+}
+
+/** Compute status for each build stage given the current PipelineStage */
+function getBuildStageStatuses(
+  buildStages: BuildStageSpec[],
+  currentStage: PipelineStage | undefined,
+  threads?: AgentThread[],
+): StageStatus[] {
+  if (!currentStage || buildStages.length === 0) return buildStages.map(() => 'pending');
+
+  // All completed
+  if (currentStage === 'complete') return buildStages.map(() => 'completed');
+
+  // Failed - find the furthest-reached build stage from thread data and mark it as failed
+  if (currentStage === 'failed') {
+    // Use thread data to find the furthest-reached build stage index
+    let furthestIdx = -1;
+    if (threads && threads.length > 0) {
+      for (const thread of threads) {
+        const mappedName = PIPELINE_TO_BUILD_STAGE[AGENT_TO_STAGE[thread.agent] ?? ''];
+        if (!mappedName) continue;
+        const idx = buildStages.findIndex((spec) => {
+          const name = buildStageName(spec);
+          return name === mappedName || (Array.isArray(spec) && spec.includes(mappedName));
+        });
+        if (idx > furthestIdx) furthestIdx = idx;
+      }
+    }
+    // Fall back to the last stage if no thread data available
+    if (furthestIdx === -1) furthestIdx = buildStages.length - 1;
+
+    return buildStages.map((_, i) => {
+      if (i < furthestIdx) return 'completed';
+      if (i === furthestIdx) return 'failed';
+      return 'pending';
+    });
+  }
+
+  // Map current PipelineStage to build stage name
+  const mappedName = PIPELINE_TO_BUILD_STAGE[currentStage];
+  if (!mappedName) return buildStages.map(() => 'pending');
+
+  // Find the index of the current stage in the build stages
+  const currentIdx = buildStages.findIndex((spec) => {
+    const name = buildStageName(spec);
+    return name === mappedName || (Array.isArray(spec) && spec.includes(mappedName));
+  });
+
+  if (currentIdx === -1) return buildStages.map(() => 'pending');
+
+  return buildStages.map((_, i) => {
+    if (i < currentIdx) return 'completed';
+    if (i === currentIdx) return 'active';
+    return 'pending';
+  });
+}
+
+function BuildStageProgress({ buildStages, currentStage, hoveredStage, onStageHover, threads }: {
+  buildStages?: BuildStageSpec[];
+  currentStage?: PipelineStage;
+  hoveredStage: string | null;
+  onStageHover: (stage: string | null) => void;
+  threads?: AgentThread[];
+}) {
+  if (!buildStages || buildStages.length === 0) return null;
+
+  const statuses = getBuildStageStatuses(buildStages, currentStage, threads);
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap mb-0.5">
+      {buildStages.map((spec, i) => {
+        const status = statuses[i];
+        if (Array.isArray(spec)) {
+          // Parallel group: render in a bordered container
+          return (
+            <div key={`b-${i}`} className="flex items-center gap-1">
+              {i > 0 && <Chevron />}
+              <div className={`flex items-center gap-0.5 border rounded px-1 py-0.5 ${STAGE_STATUS_STYLES[status].replace(/bg-\S+/, '')} border-current/20`}>
+                {spec.map((s, j) => (
+                  <StagePill key={s} stage={s} status={status} hoveredStage={hoveredStage} onStageHover={onStageHover} />
+                ))}
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div key={`b-${i}`} className="flex items-center gap-1">
+            {i > 0 && <Chevron />}
+            <StagePill stage={spec} status={status} hoveredStage={hoveredStage} onStageHover={onStageHover} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Minimum timeline window (ms) so short-elapsed bars don't fill 100% width */
 const MIN_TIMELINE_WINDOW_MS = 300_000;
 
@@ -253,9 +364,10 @@ interface ThreadPipelineProps {
   reviewIssues?: Record<string, ReviewIssue[]>;
   profileInfo?: ProfileInfo | null;
   events: StoredEvent[];
+  orchestration?: OrchestrationConfig | null;
 }
 
-export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, profileInfo, events }: ThreadPipelineProps) {
+export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, profileInfo, events, orchestration }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const entries = Object.entries(planStatuses);
 
@@ -287,6 +399,19 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
     }
     return map;
   }, [agentThreads]);
+
+  // Build a lookup from plan ID to build stages from orchestration
+  const buildStagesByPlan = useMemo(() => {
+    const map = new Map<string, BuildStageSpec[]>();
+    if (orchestration) {
+      for (const plan of orchestration.plans) {
+        if (plan.build && plan.build.length > 0) {
+          map.set(plan.id, plan.build);
+        }
+      }
+    }
+    return map;
+  }, [orchestration]);
 
   const globalThreads = threadsByPlan.get('__global__') ?? EMPTY_THREADS;
   const hasGlobalThreads = globalThreads.length > 0;
@@ -373,6 +498,8 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   hoveredStage={hoveredStage}
                   onStageHover={setHoveredStage}
                   events={events}
+                  buildStages={buildStagesByPlan.get(planId)}
+                  currentStage={planStatuses[planId]}
                 />
               ))}
             </div>
@@ -394,6 +521,8 @@ interface PlanRowProps {
   hoveredStage: string | null;
   onStageHover: (stage: string | null) => void;
   events: StoredEvent[];
+  buildStages?: BuildStageSpec[];
+  currentStage?: PipelineStage;
 }
 
 function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -417,7 +546,7 @@ function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
   );
 }
 
-function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, events }: PlanRowProps) {
+function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, events, buildStages, currentStage }: PlanRowProps) {
   const { openPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -457,6 +586,10 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
           </TooltipTrigger>
           <TooltipContent side="left">{planId}</TooltipContent>
         </Tooltip>
+        <div className="flex-1 flex flex-col gap-0.5">
+          {!disablePreview && (
+            <BuildStageProgress buildStages={buildStages} currentStage={currentStage} hoveredStage={hoveredStage} onStageHover={onStageHover} threads={threads} />
+          )}
         <div className="flex-1 bg-bg-tertiary rounded-sm overflow-x-clip flex flex-col gap-px py-px min-h-4">
           {sortedThreads.map((thread) => {
             const threadStart = new Date(thread.startedAt).getTime();
@@ -522,6 +655,7 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
               </div>
             );
           })}
+        </div>
         </div>
       </div>
     </div>
