@@ -1,0 +1,30 @@
+name: add-build-prd-link-to-monitor-build-view-header
+description: Add a "Build PRD" link to the monitor build view header for quick
+  access to the PRD that initiated a build
+created: 2026-03-29
+compiled: 2026-03-29
+mode: ui-tweak
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm --filter monitor-ui build
+plans:
+  - id: plan-01-build-prd-link
+    name: Add Build PRD Link to Monitor Build View Header
+    depends_on: []
+    branch: add-build-prd-link-to-monitor-build-view-header/build-prd-link
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
