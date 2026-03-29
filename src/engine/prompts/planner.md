@@ -371,6 +371,12 @@ Each plan entry in orchestration.yaml carries its own `build` and `review` field
 - Config changes, simple refactors, doc-only work: omit test stages
 - Time-optimized: `build: [implement, [test-cycle, review-cycle]]` (parallel test + review)
 
+**Doc-update stage guidance:**
+- Include `doc-update` (parallel with `implement`) when the plan changes: CLI commands, config schema/defaults, agent behavior, pipeline stages, public API surface, or architecture
+- Omit for: pure bug fixes, test-only changes, internal refactors with no user-facing impact
+- Default to including it - the doc-updater emits `count="0"` if no updates are needed, so it's cheap to include
+- Examples: `build: [[implement, doc-update], review-cycle]` for user-facing changes, `build: [implement, review-cycle]` for internal changes
+
 **`review`** — object with the following fields:
 - `strategy` — `auto`, `single`, or `parallel`. `auto` picks single or parallel per run.
 - `perspectives` — array of review perspectives: `code`, `security`, `api`, `docs`.

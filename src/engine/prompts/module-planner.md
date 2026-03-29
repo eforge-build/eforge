@@ -160,7 +160,12 @@ After writing the module plan, emit a `<build-config>` XML block containing JSON
   - `maxRounds` — max review-fix-evaluate cycles (integer, typically 1-3)
   - `evaluatorStrictness` — `strict`, `standard`, or `lenient`
 
-Tailor the config to the module's complexity. A simple utility module may need only `[implement, review-cycle]` with one round, while a security-critical module may warrant `strategy: parallel` with `perspectives: [code, security]` and `maxRounds: 2`. For modules with testable features, include `test-cycle` after `implement`: `[implement, test-cycle, review-cycle]`. For TDD, place `test-write` before `implement`: `[test-write, implement, test-cycle]`.
+Tailor the config to the module's complexity. A simple utility module may need only `[implement, review-cycle]` with one round, while a security-critical module may warrant `strategy: parallel` with `perspectives: [code, security]` and `maxRounds: 2`. For modules with testable features, include `test-cycle` after `implement`: `[implement, test-cycle, review-cycle]`. For TDD, place `test-write` before `implement`: `[test-write, implement, test-cycle]`. For modules with user-facing changes, include `doc-update` parallel with `implement`: `[[implement, doc-update], review-cycle]`.
+
+**Doc-update stage guidance:**
+- Include `doc-update` (parallel with `implement`) when the module changes: CLI commands, config schema/defaults, agent behavior, pipeline stages, public API surface, or architecture
+- Omit for: pure bug fixes, test-only changes, internal refactors with no user-facing impact
+- Default to including it - the doc-updater emits `count="0"` if no updates are needed, so it's cheap to include
 
 ## Quality Criteria
 

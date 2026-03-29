@@ -39,9 +39,11 @@ node --env-file=.env dist/cli.js build some-prd.md --verbose
 
 Compile stages: `prd-passthrough`, `planner`, `plan-review-cycle`, `architecture-review-cycle`, `module-planning`, `cohesion-review-cycle`, `compile-expedition`
 
-Build stages: `implement`, `review`, `review-fix`, `evaluate`, `review-cycle`, `validate`, `doc-update`
+Build stages: `implement`, `review`, `review-fix`, `evaluate`, `review-cycle`, `validate`, `doc-update`, `test-write`, `test`, `test-fix`, `test-cycle`
 
 `review-cycle` is a composite stage that expands to `[review, review-fix, evaluate]`.
+
+`test-cycle` is a composite stage that expands to `[test, test-fix, evaluate]`. Use it when the plan has testable behavior.
 
 **Built-in profiles** (defined in `BUILTIN_PROFILES` in `src/engine/config.ts`):
 - **errand** — Small, self-contained changes. Compile: `[prd-passthrough]`.
@@ -72,6 +74,8 @@ Build stages and review config are determined per-plan by the planner (for singl
 - **Review Fixer** — one-shot coding agent. Applies reviewer-suggested fixes as unstaged changes for evaluator judgment.
 - **Doc Updater** — one-shot coding agent. Updates documentation to reflect implementation changes, runs in parallel with the builder.
 - **Merge Conflict Resolver** — one-shot coding agent. Resolves git merge conflicts by understanding intent from each plan.
+- **Tester** — one-shot coding agent. Runs tests, fixes test bugs, and reports production issues found during testing.
+- **Test Writer** — one-shot coding agent. Writes tests from the plan spec that initially fail (TDD mode). Runs before `implement`.
 - **Validation Fixer** — one-shot coding agent. Receives post-merge validation failures and makes minimal fixes.
 
 **Engine** (`src/engine/`): Pure library, no stdout. Agent implementations in `src/engine/agents/`, prompts in `src/engine/prompts/` (self-contained `.md` files, no runtime plugin dependencies).
@@ -101,7 +105,7 @@ src/
     pipeline.ts               # Stage registry, compile/build stage implementations
     config.ts                 # Config loading, merging & validation
     git.ts                    # forgeCommit() helper — all engine commits go through here for attribution
-    agents/                   # Agent implementations (15 agent files — see agent list above; plan evaluator, cohesion evaluator, and architecture evaluator share one file)
+    agents/                   # Agent implementations (17 agent files — see agent list above; plan evaluator, cohesion evaluator, and architecture evaluator share one file)
     backends/                 # SDK adapters (sole provider SDK import point): claude-sdk.ts, pi.ts, pi-mcp-bridge.ts, pi-extensions.ts
     prompts/                  # Agent prompt .md files (self-contained, no runtime plugin deps)
   monitor/                    # Web monitor — SQLite event persistence + SSE dashboard
@@ -130,7 +134,7 @@ eforge loads config from two levels, merged together:
 **Priority chain** (lowest → highest): defaults → global config → project config → env vars → CLI overrides
 
 **Merge strategy**:
-- Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`): shallow merge per-field — project overrides global, global fields survive if project doesn't define them. `prdQueue` has `dir` (queue directory path), `autoRevise` (boolean), `autoBuild` (boolean, default `true` — daemon automatically builds after enqueue), and `watchPollIntervalMs` (poll interval for watch mode, default 5000) fields. `daemon` has `idleShutdownMs` (idle timeout in milliseconds before auto-shutdown, default `7_200_000` / 2 hours; set to `0` to disable and run forever).
+- Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `pi`): shallow merge per-field — project overrides global, global fields survive if project doesn't define them. `prdQueue` has `dir` (queue directory path), `autoRevise` (boolean), `autoBuild` (boolean, default `true` — daemon automatically builds after enqueue), and `watchPollIntervalMs` (poll interval for watch mode, default 5000) fields. `daemon` has `idleShutdownMs` (idle timeout in milliseconds before auto-shutdown, default `7_200_000` / 2 hours; set to `0` to disable and run forever).
 - `hooks` array: **concatenate** (global hooks fire first, then project hooks)
 - Arrays inside objects (`postMergeCommands`, `plugins.include/exclude/paths`, `settingSources`): project replaces global
 
@@ -184,6 +188,10 @@ eforge queue run --watch  # Watch queue and process new PRDs as they arrive
 eforge monitor            # Start or connect to the monitor dashboard
 eforge config validate    # Validate eforge/config.yaml (schema + profile stage names)
 eforge config show        # Print resolved config (all layers merged) as YAML
+eforge daemon start       # Start the eforge daemon
+eforge daemon stop        # Gracefully stop the daemon
+eforge daemon status      # Check daemon status
+eforge daemon kill        # Force kill the daemon
 ```
 
 `eforge run` is a backwards-compatible alias for `eforge build`.
