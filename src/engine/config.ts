@@ -304,7 +304,7 @@ export interface ResolvedAgentConfig {
 }
 
 export interface PiConfig {
-  provider: string;
+  provider?: string;
   apiKey?: string;
   thinkingLevel: 'off' | 'medium' | 'high';
   extensions: { autoDiscover: boolean; include?: string[]; exclude?: string[] };
@@ -392,7 +392,6 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   prdQueue: Object.freeze({ dir: 'eforge/queue', autoRevise: true, autoBuild: true, watchPollIntervalMs: 5000 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   pi: Object.freeze({
-    provider: 'openrouter',
     thinkingLevel: 'medium' as const,
     extensions: Object.freeze({ autoDiscover: true }),
     compaction: Object.freeze({ enabled: true, threshold: 100_000 }),
@@ -502,7 +501,7 @@ export function resolveConfig(
       idleShutdownMs: fileConfig.daemon?.idleShutdownMs ?? DEFAULT_CONFIG.daemon.idleShutdownMs,
     }),
     pi: Object.freeze({
-      provider: fileConfig.pi?.provider ?? DEFAULT_CONFIG.pi.provider,
+      provider: fileConfig.pi?.provider,
       apiKey: fileConfig.pi?.apiKey,
       thinkingLevel: fileConfig.pi?.thinkingLevel ?? DEFAULT_CONFIG.pi.thinkingLevel,
       extensions: Object.freeze({

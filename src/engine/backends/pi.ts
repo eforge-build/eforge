@@ -91,30 +91,34 @@ function resolveThinkingLevel(options: AgentRunOptions, piConfig?: PiConfig): Th
 
 /**
  * Resolve a Pi Model from an eforge model string.
- * Provider comes from piConfig.provider (defaults to 'openrouter') - never parsed from the model string.
+ * Provider comes from piConfig.provider - never parsed from the model string.
  * Uses pi-ai's getModel for known provider/model combos.
  * Falls back to constructing a minimal model object for unknown combos.
  */
 function resolveModel(modelStr: string, piConfig?: PiConfig): Model<Api> {
-  const provider = piConfig?.provider ?? 'openrouter';
-
-  try {
-    return getModel(provider as never, modelStr as never) as Model<Api>;
-  } catch {
-    // Unknown model — construct a minimal model object for openrouter-style routing
-    return {
-      id: modelStr,
-      name: modelStr,
-      api: 'openai-completions' as Api,
-      provider,
-      baseUrl: provider === 'openrouter' ? 'https://openrouter.ai/api/v1' : `https://api.${provider}.com`,
-      reasoning: true,
-      input: ['text', 'image'],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 200000,
-      maxTokens: 16384,
-    };
+  const provider = piConfig?.provider;
+  if (!provider) {
+    throw new Error('No provider configured for Pi backend. Set pi.provider in eforge/config.yaml.');
   }
+
+  const knownModel = getModel(provider as never, modelStr as never) as Model<Api> | undefined;
+  if (knownModel) {
+    return knownModel;
+  }
+
+  // Unknown model — construct a minimal model object for provider-style routing
+  return {
+    id: modelStr,
+    name: modelStr,
+    api: 'openai-completions' as Api,
+    provider,
+    baseUrl: `https://api.${provider}.com`,
+    reasoning: true,
+    input: ['text', 'image'],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 200000,
+    maxTokens: 16384,
+  };
 }
 
 // ---------------------------------------------------------------------------
