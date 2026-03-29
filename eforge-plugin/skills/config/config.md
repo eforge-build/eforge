@@ -106,7 +106,7 @@ Available top-level sections in `eforge/config.yaml`:
 
 ```yaml
 # Backend
-backend: claude-sdk                    # 'claude-sdk' or 'pi'
+backend: claude-sdk                    # REQUIRED - 'claude-sdk' or 'pi'
 
 # Build settings
 build:

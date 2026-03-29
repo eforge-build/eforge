@@ -649,9 +649,9 @@ describe('eforgeConfigSchema backend and pi validation', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts empty config and does not require backend', () => {
+  it('rejects empty config without backend', () => {
     const result = eforgeConfigSchema.safeParse({});
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
   it('rejects { backend: "invalid" }', () => {
@@ -804,6 +804,7 @@ describe('modelClassSchema', () => {
 describe('agents.models schema validation', () => {
   it('accepts valid models map with known class names', () => {
     const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
       agents: { models: { max: 'some-model' } },
     });
     expect(result.success).toBe(true);
@@ -811,6 +812,7 @@ describe('agents.models schema validation', () => {
 
   it('accepts models map with multiple classes', () => {
     const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
       agents: { models: { max: 'model-a', balanced: 'model-b', fast: 'model-c' } },
     });
     expect(result.success).toBe(true);
@@ -827,6 +829,7 @@ describe('agents.models schema validation', () => {
 describe('per-role modelClass schema validation', () => {
   it('accepts valid modelClass in per-role config', () => {
     const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
       agents: {
         roles: {
           builder: { modelClass: 'max' },
@@ -839,6 +842,7 @@ describe('per-role modelClass schema validation', () => {
   it('accepts all valid modelClass values', () => {
     for (const cls of MODEL_CLASSES) {
       const result = eforgeConfigSchema.safeParse({
+        backend: 'claude-sdk',
         agents: {
           roles: {
             builder: { modelClass: cls },

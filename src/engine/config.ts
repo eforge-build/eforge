@@ -227,7 +227,7 @@ export const piConfigSchema = z.object({
 }).describe('Configuration for the Pi coding agent backend');
 
 export const eforgeConfigSchema = z.object({
-  backend: backendSchema.optional(),
+  backend: backendSchema,
   langfuse: z.object({
     enabled: z.boolean().optional(),
     publicKey: z.string().optional(),
@@ -338,7 +338,8 @@ export interface EforgeConfig {
 }
 
 /** Deep-partial version of EforgeConfig used for parsing and merging — derived from the zod schema. */
-export type PartialEforgeConfig = z.output<typeof eforgeConfigSchema>;
+const partialEforgeConfigSchema = eforgeConfigSchema.partial();
+export type PartialEforgeConfig = z.output<typeof partialEforgeConfigSchema>;
 
 export const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
   strategy: 'auto' as const,
@@ -530,7 +531,7 @@ export function resolveConfig(
  * a warning is logged to stderr so users get feedback on typos.
  */
 function parseRawConfig(data: Record<string, unknown>): PartialEforgeConfig {
-  const result = eforgeConfigSchema.safeParse(data);
+  const result = partialEforgeConfigSchema.safeParse(data);
   if (result.success) {
     return stripUndefinedSections(result.data);
   }
@@ -944,7 +945,7 @@ export async function validateConfigFile(
   }
 
   // Profile validation against stage registries
-  const parsed = result.success ? result.data : {};
+  const parsed: PartialEforgeConfig = result.success ? result.data : {};
   if (parsed.profiles) {
     const compileStageNames = getCompileStageNames();
 
