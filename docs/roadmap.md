@@ -1,21 +1,10 @@
 # Eforge Roadmap
 
-## Eval & Observability
-
-**Goal**: Use evaluation data and runtime observability to drive evidence-based improvement of workflow profiles and agent behavior. Eval harness lives in [eforge-build/eval](https://github.com/eforge-build/eval).
-
-- **Code quality metrics** — Add static analysis metrics (complexity, duplication, lint violations) to the eval harness so profile tuning goes beyond pass/fail, tokens, and cost
-- **Comparative profile tuning** — Run profiles head-to-head on the same PRDs and use outcome data (including code quality) to refine profiles from intuition toward evidence
-- **Acceptance coverage gaps** — Detect PRD requirements that lack corresponding test cases and flag builds where acceptance coverage is incomplete
-- **TypeScript-focused benchmarks** — Move beyond SWE-bench (Python-only) to benchmarks that reflect eforge's target usage. Evaluate alternatives like [ts-bench](https://github.com/laiso/ts-bench) and mixed-language datasets. Benchmarks live in [eforge-build/benchmarks](https://github.com/eforge-build/benchmarks).
-
----
-
 ## Daemon & MCP Server
 
 **Goal**: Extend the daemon as the single orchestration authority with richer controls and safety checks.
 
-- **Queue reordering & priority** — Web UI and MCP controls for reordering queued PRDs and setting build priority
+- **Queue reordering & priority** — MCP tool and web UI controls for changing priority on queued PRDs at runtime (priority field exists in frontmatter and affects execution order, but there's no way to modify it after enqueue)
 - **Re-guidance** — Build interruption with amended context, daemon-to-worker IPC for mid-build guidance changes
 - **Plugin-engine version compatibility** — Add `version` to the daemon health endpoint and `minEngineVersion` to plugin.json. The MCP proxy checks compatibility at startup and warns (or refuses) if the installed eforge version is too old for the plugin.
 - **Config initialization via MCP elicitation** — Add `init` action to `eforge_config` tool that walks users through `eforge/config.yaml` setup via interactive form steps (basics, build settings, integrations) using the MCP elicitation protocol
@@ -36,7 +25,7 @@
 
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
 
-- **Multi-provider backend via pi-mono** — `AgentBackend` implementation using `@mariozechner/pi-ai` (unified LLM streaming, 20+ direct providers including OpenAI, Anthropic, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter) and `@mariozechner/pi-agent-core` (agent loop with built-in coding tools: read, write, edit, bash). Three integration layers: (1) event translation from pi's lifecycle events (`agent_start`, `turn_start`, `message_update`, `tool_execution_start/end`, `agent_end`) to eforge's `EforgeEvent`s, (2) MCP bridge wrapping MCP server tools as pi `AgentTool` instances (TypeBox schemas), and (3) TypeBox↔Zod schema adapter for tool parameter definitions. Pi provides AbortSignal support and cache token tracking (Anthropic models) out of the box.
+- **Test and evaluate pi backend** — PiBackend is implemented but not yet tested end-to-end. Run builds against real providers, compare output quality and cost against ClaudeSDKBackend, and fix integration gaps.
 - **Monorepo** — Extend pnpm workspaces (currently only monitor UI) so the engine, eforge-plugin, and marketing site each get their own package with isolated deps and build configs
 
 ---
