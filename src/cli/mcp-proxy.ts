@@ -512,7 +512,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_config
   server.tool(
     'eforge_config',
-    'Show resolved eforge configuration or validate eforge.yaml.',
+    'Show resolved eforge configuration or validate eforge/config.yaml.',
     {
       action: z.enum(['show', 'validate']).describe("'show' returns resolved config, 'validate' checks for errors"),
     },

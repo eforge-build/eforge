@@ -158,7 +158,7 @@ describe('writePlanArtifacts', () => {
     expect(parsed.body).toContain('## Steps');
 
     // Verify orchestration.yaml can be parsed back
-    const orchPath = resolve(dir, 'plans', 'add-auth', 'orchestration.yaml');
+    const orchPath = resolve(dir, 'eforge', 'plans', 'add-auth', 'orchestration.yaml');
     expect(existsSync(orchPath)).toBe(true);
     const orch = await parseOrchestrationConfig(orchPath);
     expect(orch.name).toBe('add-auth');
@@ -184,7 +184,7 @@ describe('writePlanArtifacts', () => {
       review: DEFAULT_REVIEW,
     });
 
-    expect(existsSync(resolve(dir, 'plans', 'my-plan'))).toBe(true);
+    expect(existsSync(resolve(dir, 'eforge', 'plans', 'my-plan'))).toBe(true);
   });
 
   it('uses explicit mode in orchestration.yaml', async () => {
@@ -203,7 +203,7 @@ describe('writePlanArtifacts', () => {
     });
 
     const orch = await parseOrchestrationConfig(
-      resolve(dir, 'plans', 'multi-plan', 'orchestration.yaml'),
+      resolve(dir, 'eforge', 'plans', 'multi-plan', 'orchestration.yaml'),
     );
     expect(orch.mode).toBe('excursion');
   });
@@ -223,7 +223,7 @@ describe('writePlanArtifacts', () => {
     });
 
     const orch = await parseOrchestrationConfig(
-      resolve(dir, 'plans', 'default-mode', 'orchestration.yaml'),
+      resolve(dir, 'eforge', 'plans', 'default-mode', 'orchestration.yaml'),
     );
     expect(orch.mode).toBe('errand');
   });
@@ -244,7 +244,7 @@ describe('writePlanArtifacts', () => {
     });
 
     const orch = await parseOrchestrationConfig(
-      resolve(dir, 'plans', 'no-validate', 'orchestration.yaml'),
+      resolve(dir, 'eforge', 'plans', 'no-validate', 'orchestration.yaml'),
     );
     expect(orch.validate).toBeUndefined();
   });

@@ -338,23 +338,25 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({ maxTurns: 30, maxContinuations: 3, permissionMode: 'bypass' as const, settingSources: ['project'] as string[], bare: false }),
   build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
-  plan: Object.freeze({ outputDir: 'plans' }),
+  plan: Object.freeze({ outputDir: 'eforge/plans' }),
   plugins: Object.freeze({ enabled: true }),
-  prdQueue: Object.freeze({ dir: 'docs/prd-queue', autoRevise: true, autoBuild: true, watchPollIntervalMs: 5000 }),
+  prdQueue: Object.freeze({ dir: 'eforge/queue', autoRevise: true, autoBuild: true, watchPollIntervalMs: 5000 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   hooks: Object.freeze([]),
   profiles: BUILTIN_PROFILES,
 });
 
 /**
- * Walk up the directory tree looking for eforge.yaml.
+ * Walk up the directory tree looking for eforge/config.yaml.
+ * If not found, checks for legacy eforge.yaml at startDir only and logs a
+ * migration warning to stderr.
  * Returns the absolute path if found, null otherwise.
  */
 export async function findConfigFile(startDir: string): Promise<string | null> {
   let dir = resolve(startDir);
 
   while (true) {
-    const candidate = resolve(dir, 'eforge.yaml');
+    const candidate = resolve(dir, 'eforge', 'config.yaml');
     try {
       await access(candidate);
       return candidate;
@@ -364,10 +366,25 @@ export async function findConfigFile(startDir: string): Promise<string | null> {
 
     const parent = dirname(dir);
     if (parent === dir) {
-      return null; // reached filesystem root
+      break; // reached filesystem root
     }
     dir = parent;
   }
+
+  // Check for legacy eforge.yaml at startDir only
+  const legacyCandidate = resolve(startDir, 'eforge.yaml');
+  try {
+    await access(legacyCandidate);
+    console.error(
+      `[eforge] Found legacy config at ${legacyCandidate}. ` +
+      `Please move it to eforge/config.yaml. ` +
+      `Run: mkdir -p eforge && mv eforge.yaml eforge/config.yaml`,
+    );
+  } catch {
+    // no legacy config either
+  }
+
+  return null;
 }
 
 /**

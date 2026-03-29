@@ -69,7 +69,7 @@ describe('compileExpedition', () => {
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'eforge-test-'));
-    planDir = resolve(tmpDir, 'plans', 'test-exp');
+    planDir = resolve(tmpDir, 'eforge', 'plans', 'test-exp');
     await mkdir(resolve(planDir, 'modules'), { recursive: true });
   });
 

@@ -413,6 +413,7 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
     mode: 'errand',
     build: DEFAULT_BUILD,
     review: DEFAULT_REVIEW,
+    outputDir: ctx.config.plan.outputDir,
   });
 
   ctx.plans = [planFile];
@@ -420,7 +421,7 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
   // Commit plan artifacts (prd-passthrough replaces both planner + review,
   // so it must commit its own artifacts for the build phase to create worktrees)
   const commitCwd = ctx.planCommitCwd ?? ctx.cwd;
-  const planDir = resolve(ctx.cwd, 'plans', ctx.planSetName);
+  const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
   await exec('git', ['add', planDir], { cwd: commitCwd });
   await forgeCommit(commitCwd, `plan(${ctx.planSetName}): PRD passthrough artifacts`);
 
@@ -439,7 +440,7 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
     // Build continuation context for retry attempts
     let continuationContext: { attempt: number; maxContinuations: number; existingPlans: string } | undefined;
     if (attempt > 0) {
-      const planDir = resolve(ctx.cwd, 'plans', ctx.planSetName);
+      const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
       let existingPlans = '[No existing plans found]';
       if (existsSync(planDir)) {
         try {
@@ -478,6 +479,7 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
         backend: ctx.backend,
         onClarification: ctx.onClarification,
         profiles: ctx.config.profiles,
+        outputDir: ctx.config.plan.outputDir,
         ...agentConfig,
         continuationContext,
       })) {
@@ -521,7 +523,7 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
         if (event.type === 'plan:complete') {
           // Inject the resolved profile (and correct baseBranch) into the planner-written orchestration.yaml.
           // The planner sees the merge worktree's feature branch as HEAD, so base_branch needs overriding.
-          const orchYamlPath = resolve(ctx.cwd, 'plans', ctx.planSetName, 'orchestration.yaml');
+          const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
           await injectProfileIntoOrchestrationYaml(orchYamlPath, ctx.profile, ctx.baseBranch);
 
           // Backfill dependsOn from orchestration.yaml into plan:complete events.
@@ -553,7 +555,7 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
       const isMaxTurns = errorMsg.includes('error_max_turns');
       if (isMaxTurns && attempt < maxContinuations) {
         // Commit any plan files written so far as a checkpoint
-        await commitPlanArtifacts(ctx.planCommitCwd ?? ctx.cwd, ctx.planSetName, ctx.cwd);
+        await commitPlanArtifacts(ctx.planCommitCwd ?? ctx.cwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir);
 
         span.end();
 
@@ -589,6 +591,7 @@ registerCompileStage('plan-review-cycle', async function* planReviewCycleStage(c
           cwd: ctx.cwd,
           verbose,
           abortController,
+          outputDir: ctx.config.plan.outputDir,
           ...reviewerConfig,
         }),
       },
@@ -602,6 +605,7 @@ registerCompileStage('plan-review-cycle', async function* planReviewCycleStage(c
           cwd: ctx.cwd,
           verbose,
           abortController,
+          outputDir: ctx.config.plan.outputDir,
           ...evaluatorConfig,
         }),
       },
@@ -617,7 +621,7 @@ registerCompileStage('architecture-review-cycle', async function* architectureRe
   if (ctx.expeditionModules.length === 0) return;
 
   const cwd = ctx.cwd;
-  const planDir = resolve(cwd, 'plans', ctx.planSetName);
+  const planDir = resolve(cwd, ctx.config.plan.outputDir, ctx.planSetName);
   const verbose = ctx.verbose;
   const abortController = ctx.abortController;
   const backend = ctx.backend;
@@ -643,12 +647,12 @@ registerCompileStage('architecture-review-cycle', async function* architectureRe
       reviewer: {
         role: 'architecture-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, ...archReviewerConfig }),
+        run: () => runArchitectureReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...archReviewerConfig }),
       },
       evaluator: {
         role: 'architecture-evaluator',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, ...archEvaluatorConfig }),
+        run: () => runArchitectureEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...archEvaluatorConfig }),
       },
     });
   } catch (err) {
@@ -661,7 +665,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
   if (ctx.expeditionModules.length === 0) return;
 
   const cwd = ctx.cwd;
-  const planDir = resolve(cwd, 'plans', ctx.planSetName);
+  const planDir = resolve(cwd, ctx.config.plan.outputDir, ctx.planSetName);
 
   // Read architecture content for module planners
   let architectureContent = '';
@@ -728,6 +732,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
               verbose,
               onClarification,
               abortController,
+              outputDir: ctx.config.plan.outputDir,
               ...agentConfig,
             })) {
               modTracker.handleEvent(event);
@@ -774,7 +779,7 @@ registerCompileStage('cohesion-review-cycle', async function* cohesionReviewCycl
   if (ctx.expeditionModules.length === 0) return;
 
   const cwd = ctx.cwd;
-  const planDir = resolve(cwd, 'plans', ctx.planSetName);
+  const planDir = resolve(cwd, ctx.config.plan.outputDir, ctx.planSetName);
   const verbose = ctx.verbose;
   const abortController = ctx.abortController;
   const backend = ctx.backend;
@@ -799,12 +804,12 @@ registerCompileStage('cohesion-review-cycle', async function* cohesionReviewCycl
       reviewer: {
         role: 'cohesion-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runCohesionReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, ...cohesionReviewerConfig }),
+        run: () => runCohesionReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...cohesionReviewerConfig }),
       },
       evaluator: {
         role: 'cohesion-evaluator',
         metadata: { planSet: planSetName },
-        run: () => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, ...cohesionEvaluatorConfig }),
+        run: () => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...cohesionEvaluatorConfig }),
       },
     });
   } catch (err) {
@@ -817,7 +822,7 @@ registerCompileStage('compile-expedition', async function* compileExpeditionStag
   if (ctx.expeditionModules.length === 0) return;
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:start' };
-  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.profile, ctx.moduleBuildConfigs);
+  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.profile, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:complete', plans };
   yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
 
@@ -1372,7 +1377,7 @@ export async function* runCompilePipeline(
       // (reviewers read committed files)
       if (ctx.plans.length > 0 || ctx.expeditionModules.length > 0) {
         const commitCwd = ctx.planCommitCwd ?? ctx.cwd;
-        await commitPlanArtifacts(commitCwd, ctx.planSetName, ctx.cwd);
+        await commitPlanArtifacts(commitCwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir);
       }
     }
     const stage = getCompileStage(stageName);
@@ -1435,8 +1440,8 @@ export async function* runBuildPipeline(
  * @param planSetName - Name of the plan set
  * @param planFilesCwd - Optional directory where plan files live (defaults to commitCwd)
  */
-async function commitPlanArtifacts(commitCwd: string, planSetName: string, planFilesCwd?: string): Promise<void> {
-  const planDir = resolve(planFilesCwd ?? commitCwd, 'plans', planSetName);
+async function commitPlanArtifacts(commitCwd: string, planSetName: string, planFilesCwd?: string, outputDir?: string): Promise<void> {
+  const planDir = resolve(planFilesCwd ?? commitCwd, outputDir ?? 'eforge/plans', planSetName);
   await exec('git', ['add', planDir], { cwd: commitCwd });
   // Guard: only commit if there are staged changes (prevents "nothing to commit" errors
   // when artifacts were already committed by a previous continuation checkpoint)

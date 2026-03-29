@@ -249,7 +249,7 @@ export class EforgeEngine {
       // in the compile stages, commit artifacts here
       // (runCompilePipeline handles the commit before plan-review-cycle when present)
       if (ctx.plans.length > 0 && !ctx.profile.compile.includes('plan-review-cycle')) {
-        const planDir = resolve(mergeWorktreePath, 'plans', planSetName);
+        const planDir = resolve(mergeWorktreePath, this.config.plan.outputDir, planSetName);
         await exec('git', ['add', planDir], { cwd: mergeWorktreePath });
         await forgeCommit(mergeWorktreePath, `plan(${planSetName}): initial planning artifacts`);
       }
@@ -390,7 +390,7 @@ export class EforgeEngine {
       // Plan files live in the merge worktree (committed there during compile).
       // Fall back to repoRoot for backwards compatibility with pre-worktree builds.
       const planBaseCwd = mergeWorktreePath ?? cwd;
-      const configPath = resolve(planBaseCwd, 'plans', planSet, 'orchestration.yaml');
+      const configPath = resolve(planBaseCwd, this.config.plan.outputDir, planSet, 'orchestration.yaml');
       const validation = await validatePlanSet(configPath);
       if (!validation.valid) {
         status = 'failed';
@@ -402,7 +402,7 @@ export class EforgeEngine {
       const orchConfig = await parseOrchestrationConfig(configPath);
 
       // Pre-load plan files for the runner
-      const planDir = resolve(planBaseCwd, 'plans', planSet);
+      const planDir = resolve(planBaseCwd, this.config.plan.outputDir, planSet);
       const planFileMap = new Map<string, PlanFile>();
       for (const plan of orchConfig.plans) {
         const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
@@ -565,7 +565,7 @@ export class EforgeEngine {
 
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
       if (status === 'completed' && shouldCleanup) {
-        yield* cleanupPlanFiles(cwd, planSet, options.prdFilePath);
+        yield* cleanupPlanFiles(cwd, planSet, this.config.plan.outputDir, options.prdFilePath);
       }
     } catch (err) {
       status = 'failed';
@@ -880,15 +880,15 @@ export class EforgeEngine {
 /**
  * Remove plan files after a successful build and commit the removal.
  */
-async function* cleanupPlanFiles(cwd: string, planSet: string, prdFilePath?: string): AsyncGenerator<EforgeEvent> {
+async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir: string, prdFilePath?: string): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'cleanup:start', planSet };
 
   try {
-    const planDir = resolve(cwd, 'plans', planSet);
+    const planDir = resolve(cwd, outputDir, planSet);
     await exec('git', ['rm', '-r', '--', planDir], { cwd });
 
-    // Remove empty plans/ directory
-    const plansDir = resolve(cwd, 'plans');
+    // Remove empty output directory
+    const plansDir = resolve(cwd, outputDir);
     try {
       const remaining = await readdir(plansDir);
       if (remaining.length === 0) {

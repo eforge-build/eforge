@@ -484,11 +484,13 @@ export interface WritePlanArtifactsOptions {
   build?: BuildStageSpec[];
   /** Per-plan review config (written to orchestration.yaml plan entry). */
   review?: ReviewProfileConfig;
+  /** Plan output directory (defaults to 'eforge/plans'). */
+  outputDir?: string;
 }
 
 export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Promise<PlanFile> {
   const { cwd, planSetName, sourceContent, planName, baseBranch, validate } = options;
-  const planDir = resolve(cwd, 'plans', planSetName);
+  const planDir = resolve(cwd, options.outputDir ?? 'eforge/plans', planSetName);
   await mkdir(planDir, { recursive: true });
 
   const planId = `plan-01-${planSetName}`;

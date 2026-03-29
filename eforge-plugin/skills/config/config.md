@@ -1,12 +1,12 @@
 ---
-description: Initialize or edit eforge.yaml configuration, with validation via MCP tool
+description: Initialize or edit eforge/config.yaml configuration, with validation via MCP tool
 disable-model-invocation: true
 argument-hint: "[--init|--edit]"
 ---
 
 # /eforge:config
 
-Create or modify an `eforge.yaml` configuration file interactively. Supports two modes - init for new projects and edit for existing configs. Validation uses the eforge MCP server.
+Create or modify an `eforge/config.yaml` configuration file interactively. Supports two modes - init for new projects and edit for existing configs. Validation uses the eforge MCP server.
 
 ## Mode Detection
 
@@ -14,14 +14,14 @@ Determine the mode from arguments and file state:
 
 1. If `$ARGUMENTS` contains `--init`, use **init mode**
 2. If `$ARGUMENTS` contains `--edit`, use **edit mode**
-3. If `eforge.yaml` exists in the project root, use **edit mode**
+3. If `eforge/config.yaml` exists in the project root, use **edit mode**
 4. Otherwise, use **init mode**
 
 ## Init Mode
 
 ### Step 1: Check Existence
 
-If `eforge.yaml` already exists, ask the user whether they want to switch to edit mode or overwrite. Respect their choice.
+If `eforge/config.yaml` already exists, ask the user whether they want to switch to edit mode or overwrite. Respect their choice.
 
 ### Step 2: Gather Context
 
@@ -51,11 +51,11 @@ For each section, explain what it controls and suggest values based on the proje
 
 ### Step 4: Present Draft
 
-Show the user the complete `eforge.yaml` content before writing. Ask for any changes.
+Show the user the complete `eforge/config.yaml` content before writing. Ask for any changes.
 
 ### Step 5: Write
 
-Save to `eforge.yaml` in the project root.
+Save to `eforge/config.yaml` in the project root.
 
 ### Step 6: Validate
 
@@ -67,7 +67,7 @@ If validation returns errors, show them to the user and offer to fix them.
 
 ### Step 1: Read Current Config
 
-Read the existing `eforge.yaml` file and summarize its current settings for the user.
+Read the existing `eforge/config.yaml` file and summarize its current settings for the user.
 
 ### Step 2: Identify Changes
 
@@ -79,7 +79,7 @@ Modify the config based on the user's requests. Present the updated content befo
 
 ### Step 4: Write
 
-Save the updated `eforge.yaml`.
+Save the updated `eforge/config.yaml`.
 
 ### Step 5: Validate
 
@@ -97,7 +97,7 @@ This returns the merged result of defaults + global config + project config.
 
 ## Configuration Reference
 
-Available top-level sections in `eforge.yaml`:
+Available top-level sections in `eforge/config.yaml`:
 
 ```yaml
 # Build settings
@@ -132,7 +132,7 @@ plugins:
 
 # PRD queue
 prdQueue:
-  dir: docs/prd-queue
+  dir: eforge/queue
   autoRevise: false
 
 # Event hooks

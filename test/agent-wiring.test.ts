@@ -175,7 +175,7 @@ describe('runPlanner wiring', () => {
 
   it('scans plan directory for generated plan files', async () => {
     const cwd = makeTempDir();
-    const planDir = join(cwd, 'plans', 'my-plan');
+    const planDir = join(cwd, 'eforge', 'plans', 'my-plan');
     mkdirSync(planDir, { recursive: true });
 
     // Write a valid plan file with YAML frontmatter

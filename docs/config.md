@@ -1,8 +1,8 @@
 # Configuration
 
-`eforge` is configured via `eforge.yaml` (searched upward from cwd), environment variables, and auto-discovered files.
+`eforge` is configured via `eforge/config.yaml` (searched upward from cwd), environment variables, and auto-discovered files.
 
-## `eforge.yaml`
+## `eforge/config.yaml`
 
 All fields are optional. Defaults are shown:
 
@@ -39,17 +39,17 @@ build:
   #   - "pnpm test"
 
 plan:
-  outputDir: plans            # Where plan artifacts are written
+  outputDir: eforge/plans     # Where plan artifacts are written
 
 prdQueue:
-  dir: docs/prd-queue         # Where queued PRDs are stored
+  dir: eforge/queue           # Where queued PRDs are stored
   autoRevise: true            # Auto-revise stale PRDs before building
   watchPollIntervalMs: 5000   # Poll interval for watch mode (ms)
 ```
 
 ## Profiles
 
-Workflow profiles control which compile stages run. Built-in profiles (`errand`, `excursion`, `expedition`) cover the common cases - define custom profiles in `eforge.yaml` or via `--profiles` files to extend or override them.
+Workflow profiles control which compile stages run. Built-in profiles (`errand`, `excursion`, `expedition`) cover the common cases - define custom profiles in `eforge/config.yaml` or via `--profiles` files to extend or override them.
 
 ```yaml
 profiles:
@@ -69,7 +69,7 @@ MCP servers are auto-loaded from `.mcp.json` in the project root (same format Cl
 
 ## Plugins
 
-Plugins are auto-discovered from `~/.claude/plugins/installed_plugins.json`. Both user-scoped and project-scoped plugins matching the working directory are loaded. Use `plugins.include`/`plugins.exclude` in `eforge.yaml` to filter, or `--no-plugins` to disable entirely.
+Plugins are auto-discovered from `~/.claude/plugins/installed_plugins.json`. Both user-scoped and project-scoped plugins matching the working directory are loaded. Use `plugins.include`/`plugins.exclude` in `eforge/config.yaml` to filter, or `--no-plugins` to disable entirely.
 
 ## Hooks
 
@@ -80,6 +80,6 @@ Hooks are fire-and-forget shell commands triggered by `eforge` events - useful f
 Config merges from two levels (lowest to highest priority):
 
 1. **Global** - `~/.config/eforge/config.yaml` (respects `$XDG_CONFIG_HOME`)
-2. **Project** - `eforge.yaml` found by walking up from cwd
+2. **Project** - `eforge/config.yaml` found by walking up from cwd
 
 Object sections shallow-merge per-field. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.

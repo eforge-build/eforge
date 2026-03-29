@@ -20,6 +20,8 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   maxTurns?: number;
   /** Continuation context when restarting after hitting max turns */
   continuationContext?: { attempt: number; maxContinuations: number; existingPlans: string };
+  /** Plan output directory (defaults to 'eforge/plans'). */
+  outputDir?: string;
 }
 
 /**
@@ -215,6 +217,7 @@ ${existingPlans}`;
       source: sourceContent,
       planSetName,
       cwd,
+      outputDir: options.outputDir ?? 'eforge/plans',
       priorClarifications: formatPriorClarifications(allClarifications),
       continuation_context: continuationContextText,
       profiles: options.profiles ? formatProfileDescriptions(options.profiles) : '',
@@ -327,7 +330,7 @@ ${existingPlans}`;
   yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Scanning plan files...' };
 
   // Scan plan directory for generated plan files
-  const planDir = resolve(cwd, 'plans', planSetName);
+  const planDir = resolve(cwd, options.outputDir ?? 'eforge/plans', planSetName);
   const plans: PlanFile[] = [];
 
   if (existsSync(planDir)) {

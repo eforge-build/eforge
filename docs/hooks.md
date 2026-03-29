@@ -6,7 +6,7 @@ This is different from Claude Code hooks, which can block tool execution. eforge
 
 ## Configuration
 
-Hooks are configured in `eforge.yaml` under the `hooks` key. Each hook specifies an event pattern and a shell command:
+Hooks are configured in `eforge/config.yaml` under the `hooks` key. Each hook specifies an event pattern and a shell command:
 
 ```yaml
 hooks:
@@ -68,7 +68,7 @@ TOOL_NAME=$(echo "$CONTEXT" | jq -r '.tool // empty' 2>/dev/null)
 Hooks can be configured at two levels:
 
 1. **Global** - `~/.config/eforge/config.yaml` (or `$XDG_CONFIG_HOME/eforge/config.yaml`)
-2. **Project** - `eforge.yaml` in the project root
+2. **Project** - `eforge/config.yaml` in the project root
 
 When both are present, hook arrays are **concatenated** - global hooks fire first, then project hooks. This lets you keep general-purpose hooks (notifications, time tracking) global while adding project-specific hooks where needed.
 

@@ -21,6 +21,8 @@ export interface PlanReviewerOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Plan output directory (defaults to 'eforge/plans'). */
+  outputDir?: string;
 }
 
 /**
@@ -45,6 +47,7 @@ export async function* runPlanReview(
   const prompt = await loadPrompt('plan-reviewer', {
     source_content: sourceContent,
     plan_set_name: planSetName,
+    outputDir: options.outputDir ?? 'eforge/plans',
     review_issue_schema: getPlanReviewIssueSchemaYaml(),
   });
 

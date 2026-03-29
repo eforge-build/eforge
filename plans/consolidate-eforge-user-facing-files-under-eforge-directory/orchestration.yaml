@@ -1,0 +1,65 @@
+name: consolidate-eforge-user-facing-files-under-eforge-directory
+description: Consolidate all committable eforge artifacts (config, queue, plans)
+  under a single eforge/ directory with updated defaults, wire the previously
+  dead plan.outputDir config through all consumers, and add legacy migration
+  warning.
+created: 2026-03-29
+compiled: 2026-03-29
+mode: path-consolidation-refactor
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-engine-paths
+    name: Engine Config Defaults, Path Wiring, and Prompt Templates
+    depends_on: []
+    branch: consolidate-eforge-user-facing-files-under-eforge-directory/engine-paths
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-consumers
+    name: Monitor, CLI, MCP, and Test Updates
+    depends_on:
+      - plan-01-engine-paths
+    branch: consolidate-eforge-user-facing-files-under-eforge-directory/consumers
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-03-docs-and-move
+    name: Documentation Updates and File Moves
+    depends_on:
+      - plan-02-consumers
+    branch: consolidate-eforge-user-facing-files-under-eforge-directory/docs-and-move
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors. Use when the full scope can
+    be planned in a single planner session - all plans enumerated, all file
+    changes listed, and cross-plan dependencies resolved. Covers tightly coupled
+    changes (type cascades, interface refactors, rename-and-update-all-callers)
+    and any work where one planning pass is sufficient.
+  compile:
+    - planner
+    - plan-review-cycle

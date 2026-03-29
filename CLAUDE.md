@@ -33,7 +33,7 @@ node --env-file=.env dist/cli.js build some-prd.md --verbose
 
 **Agent pipeline**: The pipeline is stage-driven, not a fixed linear sequence. Compile stages are declared per-profile while build stages and review config are per-plan - each stage is an async generator registered in a stage registry. The formatter normalizes source input into a structured PRD as a pre-pipeline step. Profile selection (where the planner picks the best workflow profile) is also pre-pipeline. The resolved profile is persisted into orchestration.yaml during compile so the build phase can read it back - compile and build share no runtime state. Planning and building both use review cycles composed from stages.
 
-**Workflow profiles**: Pipeline behavior is config-driven through profiles. A profile declares which compile stages run - build stages and review config are per-plan, determined by the planner/module planner and stored in orchestration.yaml plan entries. Built-in profiles (`errand`, `excursion`, `expedition`) encode the default compile behavior. Custom profiles can be defined in `eforge.yaml` or via `--profiles` files. Profile config lives in `DEFAULT_CONFIG.profiles` and participates in the standard merge chain.
+**Workflow profiles**: Pipeline behavior is config-driven through profiles. A profile declares which compile stages run - build stages and review config are per-plan, determined by the planner/module planner and stored in orchestration.yaml plan entries. Built-in profiles (`errand`, `excursion`, `expedition`) encode the default compile behavior. Custom profiles can be defined in `eforge/config.yaml` or via `--profiles` files. Profile config lives in `DEFAULT_CONFIG.profiles` and participates in the standard merge chain.
 
 **Pipeline stages**: Compile and build pipelines are composed of named stages registered in a stage registry (`src/engine/pipeline.ts`). Each stage is an async generator that accepts a `PipelineContext` and yields `EforgeEvent`s. The engine iterates the compile stage list from the resolved profile; build stages and review config are per-plan, stored in orchestration.yaml plan entries.
 
@@ -54,7 +54,7 @@ Build stages and review config are determined per-plan by the planner (for singl
 
 **MCP server propagation**: The engine auto-loads MCP servers from `.mcp.json` in the project root (same file Claude Code uses). All agents get the same MCP servers — no per-role filtering. MCP config is backend-specific: `ClaudeSDKBackend` accepts optional `mcpServers` in its constructor, and `EforgeEngineOptions.mcpServers` lets callers inject servers programmatically (overrides auto-loading). The `AgentBackend` interface has no MCP concept. Note: SDK subprocesses do NOT auto-discover MCP servers from settings files — explicit propagation is required.
 
-**Plugin propagation**: The engine auto-discovers Claude Code plugins from `~/.claude/plugins/installed_plugins.json`. Both user-scoped (global) and project-scoped plugins matching the cwd are loaded. Plugins provide skills, hooks, and MCP servers. Like MCP servers, plugins are backend-specific: `ClaudeSDKBackend` accepts `plugins` and `settingSources` in its constructor. The `AgentBackend` interface has no plugin concept. Configure via `eforge.yaml` `plugins` section or `--no-plugins` CLI flag. The eforge Claude Code plugin itself lives in-repo at `eforge-plugin/` — this repo is also a Claude Code marketplace (see `.claude-plugin/marketplace.json`). The plugin exposes MCP tools: `eforge_build` (enqueue PRD for daemon to build), `eforge_enqueue` (add to queue without building), `eforge_auto_build` (get/set daemon auto-build state), and `eforge_status` (check build progress).
+**Plugin propagation**: The engine auto-discovers Claude Code plugins from `~/.claude/plugins/installed_plugins.json`. Both user-scoped (global) and project-scoped plugins matching the cwd are loaded. Plugins provide skills, hooks, and MCP servers. Like MCP servers, plugins are backend-specific: `ClaudeSDKBackend` accepts `plugins` and `settingSources` in its constructor. The `AgentBackend` interface has no plugin concept. Configure via `eforge/config.yaml` `plugins` section or `--no-plugins` CLI flag. The eforge Claude Code plugin itself lives in-repo at `eforge-plugin/` — this repo is also a Claude Code marketplace (see `.claude-plugin/marketplace.json`). The plugin exposes MCP tools: `eforge_build` (enqueue PRD for daemon to build), `eforge_enqueue` (add to queue without building), `eforge_auto_build` (get/set daemon auto-build state), and `eforge_status` (check build progress).
 
 - **Formatter** — one-shot query. Normalizes source input (PRD, prompt, rough notes) into a well-structured PRD with frontmatter for the queue.
 - **Planner** — one-shot query. Explores codebase, selects a workflow profile, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities and `<skip>` blocks when work is already complete. For expeditions, also generates architecture + module list.
@@ -76,7 +76,7 @@ Build stages and review config are determined per-plan by the planner (for singl
 
 **Engine** (`src/engine/`): Pure library, no stdout. Agent implementations in `src/engine/agents/`, prompts in `src/engine/prompts/` (self-contained `.md` files, no runtime plugin dependencies).
 
-**Orchestration**: `src/engine/orchestrator.ts` resolves a dependency graph from `orchestration.yaml`, computes execution waves, and runs plans in parallel via git worktrees (`src/engine/worktree.ts`). orchestration.yaml carries the resolved profile (full `ResolvedProfileConfig` object, not just a name - required field, validated with Zod on parse) so the build phase knows which stages and agent parameters to use. The pipeline injects the profile after the planner writes orchestration.yaml during compile. Worktrees live in a sibling directory (`../{project}-{set}-worktrees/`) to avoid CLAUDE.md context pollution. Branches merge in topological order after all plans complete - each branch is force-deleted (`git branch -D`) immediately after its squash merge succeeds, and any remaining branches (failed, skipped, blocked plans) are swept in the finally block alongside worktree cleanup. Post-merge validation runs commands from `orchestration.yaml` `validate` (planner-generated) + `eforge.yaml` `postMergeCommands` (user-configured). On failure, the validation fixer agent attempts repairs up to `maxValidationRetries` times (default 2).
+**Orchestration**: `src/engine/orchestrator.ts` resolves a dependency graph from `orchestration.yaml`, computes execution waves, and runs plans in parallel via git worktrees (`src/engine/worktree.ts`). orchestration.yaml carries the resolved profile (full `ResolvedProfileConfig` object, not just a name - required field, validated with Zod on parse) so the build phase knows which stages and agent parameters to use. The pipeline injects the profile after the planner writes orchestration.yaml during compile. Worktrees live in a sibling directory (`../{project}-{set}-worktrees/`) to avoid CLAUDE.md context pollution. Branches merge in topological order after all plans complete - each branch is force-deleted (`git branch -D`) immediately after its squash merge succeeds, and any remaining branches (failed, skipped, blocked plans) are swept in the finally block alongside worktree cleanup. Post-merge validation runs commands from `orchestration.yaml` `validate` (planner-generated) + `eforge/config.yaml` `postMergeCommands` (user-configured). On failure, the validation fixer agent attempts repairs up to `maxValidationRetries` times (default 2).
 
 **State**: `.eforge/state.json` (gitignored) tracks build progress for resume support.
 
@@ -90,7 +90,8 @@ Build stages and review config are determined per-plan by the planner (for singl
 .claude-plugin/marketplace.json     # Claude Code marketplace manifest
 eforge-plugin/                      # Claude Code plugin (skills for build, status, config)
 .mcp.json                           # MCP server config (gitignored, auto-loaded by engine)
-eforge.yaml                         # Optional engine config (langfuse, parallelism, etc.)
+eforge/                             # Committable eforge artifacts (config, queue, plans)
+  config.yaml                       # Optional engine config (langfuse, parallelism, etc.)
 src/
   engine/                     # Library core (no stdout, events only)
     eforge.ts                 # EforgeEngine: compile(), build(), status(), watchQueue()
@@ -124,7 +125,7 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 eforge loads config from two levels, merged together:
 
 1. **Global (user-level)**: `~/.config/eforge/config.yaml` (respects `$XDG_CONFIG_HOME`)
-2. **Project-level**: `eforge.yaml` found by walking up from cwd
+2. **Project-level**: `eforge/config.yaml` found by walking up from cwd
 
 **Priority chain** (lowest → highest): defaults → global config → project config → env vars → CLI overrides
 
@@ -165,7 +166,7 @@ eforge loads config from two levels, merged together:
 - Langfuse tracing for all agent calls via `src/engine/tracing.ts` (env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`)
 - `EFORGE_MONITOR_PORT` env var pins the monitor to a specific port (useful in Docker/CI where port mappings are fixed). `EFORGE_MONITOR_DB` overrides the SQLite path.
 - MCP servers auto-loaded from `.mcp.json` (gitignored, same format as Claude Code). Agents get full tool access to configured servers (brain, langfuse, etc.). Programmatic callers can override via `EforgeEngineOptions.mcpServers`.
-- Claude Code plugins auto-discovered from `~/.claude/plugins/installed_plugins.json`. Provides skills, hooks, and plugin-bundled MCP servers to agents via the SDK's `plugins` option. Configured via `eforge.yaml` `plugins` section. `settingSources: ['project']` enabled by default so agents load CLAUDE.md.
+- Claude Code plugins auto-discovered from `~/.claude/plugins/installed_plugins.json`. Provides skills, hooks, and plugin-bundled MCP servers to agents via the SDK's `plugins` option. Configured via `eforge/config.yaml` `plugins` section. `settingSources: ['project']` enabled by default so agents load CLAUDE.md.
 
 ## CLI commands
 
@@ -180,7 +181,7 @@ eforge queue list         # Show PRDs in the queue
 eforge queue run [name]   # Process PRDs from the queue (optionally by name)
 eforge queue run --watch  # Watch queue and process new PRDs as they arrive
 eforge monitor            # Start or connect to the monitor dashboard
-eforge config validate    # Validate eforge.yaml (schema + profile stage names)
+eforge config validate    # Validate eforge/config.yaml (schema + profile stage names)
 eforge config show        # Print resolved config (all layers merged) as YAML
 ```
 

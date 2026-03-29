@@ -29,8 +29,9 @@ export async function compileExpedition(
   planSetName: string,
   profile?: ResolvedProfileConfig,
   moduleBuildConfigs?: Map<string, { build: BuildStageSpec[]; review: ReviewProfileConfig }>,
+  outputDir?: string,
 ): Promise<PlanFile[]> {
-  const planDir = resolve(cwd, 'plans', planSetName);
+  const planDir = resolve(cwd, outputDir ?? 'eforge/plans', planSetName);
   const indexPath = resolve(planDir, 'index.yaml');
   const modulesDir = resolve(planDir, 'modules');
 
