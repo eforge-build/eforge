@@ -22,6 +22,12 @@ export const AGENT_ROLES = [
 
 const agentRoleSchema = z.enum(AGENT_ROLES);
 
+/** Model classes group agents by workload type. */
+export const MODEL_CLASSES = ['max', 'balanced', 'fast', 'auto'] as const;
+export type ModelClass = (typeof MODEL_CLASSES)[number];
+
+export const modelClassSchema = z.enum(MODEL_CLASSES).describe('Model class for agent workload grouping');
+
 const toolPresetConfigSchema = z.enum(['coding', 'none']);
 
 // ---------------------------------------------------------------------------
@@ -57,8 +63,10 @@ const agentProfileConfigSchema = z.object({
   fallbackModel: z.string().optional().describe('Fallback model if primary is unavailable'),
   allowedTools: z.array(z.string()).optional().describe('Whitelist of allowed tool names'),
   disallowedTools: z.array(z.string()).optional().describe('Blacklist of disallowed tool names'),
+  modelClass: modelClassSchema.optional().describe('Override the model class for this agent profile'),
   roles: z.record(agentRoleSchema, sdkPassthroughConfigSchema.extend({
     maxTurns: z.number().int().positive().optional(),
+    modelClass: modelClassSchema.optional().describe('Override the model class for this role'),
   })).optional().describe('Per-agent role overrides for SDK passthrough fields'),
 });
 
@@ -202,7 +210,7 @@ export const piThinkingLevelSchema = z.enum(['off', 'medium', 'high']).describe(
 export const piConfigSchema = z.object({
   provider: z.string().optional().describe('Pi AI provider (e.g. "openrouter", "anthropic")'),
   apiKey: z.string().optional().describe('API key for the Pi provider'),
-  model: z.string().optional().describe('Model identifier (e.g. "anthropic/claude-sonnet-4")'),
+  model: z.string().optional().describe('Model identifier (e.g. "anthropic/claude-sonnet-4-6")'),
   thinkingLevel: piThinkingLevelSchema.optional().describe('Thinking level for Pi agents'),
   extensions: z.object({
     autoDiscover: z.boolean().optional().describe('Automatically discover Pi extensions'),
@@ -236,8 +244,10 @@ export const eforgeConfigSchema = z.object({
     model: z.string().optional().describe('Global model override for all agents'),
     thinking: thinkingConfigSchema.optional().describe('Global thinking config for all agents'),
     effort: effortLevelSchema.optional().describe('Global effort level for all agents'),
+    models: z.record(modelClassSchema, z.string()).optional().describe('Map model class names to model strings'),
     roles: z.record(agentRoleSchema, sdkPassthroughConfigSchema.extend({
       maxTurns: z.number().int().positive().optional(),
+      modelClass: modelClassSchema.optional().describe('Override the model class for this role'),
     })).optional().describe('Per-agent role overrides'),
   }).optional(),
   build: z.object({
@@ -285,6 +295,7 @@ export type PluginConfig = z.output<typeof pluginConfigSchema>;
 export interface ResolvedAgentConfig {
   maxTurns?: number;
   model?: string;
+  modelClass?: ModelClass;
   thinking?: import('./backend.js').ThinkingConfig;
   effort?: import('./backend.js').EffortLevel;
   maxBudgetUsd?: number;
@@ -315,6 +326,7 @@ export interface EforgeConfig {
     model?: string;
     thinking?: import('./backend.js').ThinkingConfig;
     effort?: import('./backend.js').EffortLevel;
+    models?: Partial<Record<ModelClass, string>>;
     roles?: Record<string, Partial<ResolvedAgentConfig>>;
   };
   build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
@@ -383,7 +395,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   pi: Object.freeze({
     provider: 'openrouter',
-    model: 'anthropic/claude-sonnet-4',
+    model: 'anthropic/claude-sonnet-4-6',
     thinkingLevel: 'medium' as const,
     extensions: Object.freeze({ autoDiscover: true }),
     compaction: Object.freeze({ enabled: true, threshold: 100_000 }),
@@ -464,6 +476,7 @@ export function resolveConfig(
       model: fileConfig.agents?.model,
       thinking: fileConfig.agents?.thinking,
       effort: fileConfig.agents?.effort,
+      models: fileConfig.agents?.models,
       roles: fileConfig.agents?.roles,
     }),
     build: Object.freeze({

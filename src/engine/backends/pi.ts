@@ -109,8 +109,8 @@ function parseModelString(model: string): { provider: string; modelId: string } 
 function resolveModel(modelStr: string | undefined, piConfig?: PiConfig): Model<Api> {
   const effectiveModel = modelStr ?? piConfig?.model;
   if (!effectiveModel) {
-    // Default to anthropic/claude-sonnet-4
-    return getModel('anthropic', 'claude-sonnet-4' as never) as Model<Api>;
+    // Default to anthropic/claude-sonnet-4-6
+    return getModel('anthropic', 'claude-sonnet-4-6' as never) as Model<Api>;
   }
 
   const { provider, modelId } = parseModelString(effectiveModel);

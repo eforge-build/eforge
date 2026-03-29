@@ -399,11 +399,12 @@ describe('agent config threading', () => {
     expect(result.maxTurns).toBe(42);
   });
 
-  it('resolveAgentConfig returns undefined for SDK fields when not configured', async () => {
+  it('resolveAgentConfig returns model class default for SDK fields when not configured', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
     expect(result.maxTurns).toBe(50);
-    expect(result.model).toBeUndefined();
+    // builder is 'balanced' class, so claude-sdk default is 'claude-sonnet-4-6'
+    expect(result.model).toBe('claude-sonnet-4-6');
     expect(result.thinking).toBeUndefined();
     expect(result.effort).toBeUndefined();
     expect(result.maxBudgetUsd).toBeUndefined();
@@ -464,7 +465,7 @@ describe('agent config threading', () => {
     expect(result.maxTurns).toBe(50);
   });
 
-  it('resolveAgentConfig: user global model propagates to roles without overrides', async () => {
+  it('resolveAgentConfig: user global model propagates to roles without overrides (overriding class)', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
     const config = {
       ...DEFAULT_CONFIG,
@@ -633,6 +634,104 @@ describe('EforgeEngineOptions.profileOverrides type', () => {
 // ---------------------------------------------------------------------------
 // Re-export Tests
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Model Class Resolution Tests
+// ---------------------------------------------------------------------------
+
+describe('model class resolution', () => {
+  it('planner (max class) resolves to claude-opus-4-6 on claude-sdk', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const result = resolveAgentConfig('planner', DEFAULT_CONFIG);
+    expect(result.model).toBe('claude-opus-4-6');
+  });
+
+  it('formatter (balanced class) resolves to claude-sonnet-4-6 on claude-sdk', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const result = resolveAgentConfig('formatter', DEFAULT_CONFIG);
+    expect(result.model).toBe('claude-sonnet-4-6');
+  });
+
+  it('builder (balanced class) resolves to anthropic/claude-sonnet-4-6 on pi backend', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG, 'pi');
+    expect(result.model).toBe('anthropic/claude-sonnet-4-6');
+  });
+
+  it('per-role modelClass override changes the class used for resolution', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        roles: {
+          builder: { modelClass: 'max' as const },
+        },
+      },
+    };
+    const result = resolveAgentConfig('builder', config);
+    expect(result.model).toBe('claude-opus-4-6');
+  });
+
+  it('per-role model overrides class-based resolution', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        roles: {
+          planner: { model: 'custom-model' },
+        },
+      },
+    };
+    const result = resolveAgentConfig('planner', config);
+    expect(result.model).toBe('custom-model');
+  });
+
+  it('global model overrides class-based resolution', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: { ...DEFAULT_CONFIG.agents, model: 'global-override' },
+    };
+    const result = resolveAgentConfig('planner', config);
+    expect(result.model).toBe('global-override');
+  });
+
+  it('auto class on claude-sdk returns undefined model', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        roles: {
+          builder: { modelClass: 'auto' as const },
+        },
+      },
+    };
+    const result = resolveAgentConfig('builder', config);
+    expect(result.model).toBeUndefined();
+  });
+
+  it('pi backend class defaults resolve correctly for max class', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const result = resolveAgentConfig('planner', DEFAULT_CONFIG, 'pi');
+    expect(result.model).toBe('anthropic/claude-opus-4-6');
+  });
+
+  it('user agents.models override applies to class resolution', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        models: { max: 'my-custom-max-model' } as Record<string, string>,
+      },
+    };
+    const result = resolveAgentConfig('planner', config);
+    expect(result.model).toBe('my-custom-max-model');
+  });
+});
 
 describe('index.ts re-exports', () => {
   it('PipelineContext type is re-exported', async () => {

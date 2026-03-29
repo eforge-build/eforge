@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema } from '../src/engine/config.js';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, modelClassSchema, MODEL_CLASSES } from '../src/engine/config.js';
 import { pickSdkOptions } from '../src/engine/backend.js';
 import type { PartialEforgeConfig, HookConfig } from '../src/engine/config.js';
 
@@ -775,5 +775,97 @@ describe('mergePartialConfigs backend and pi', () => {
     const merged = mergePartialConfigs(global, project);
     expect(merged.pi?.provider).toBe('openrouter');
     expect(merged.pi?.model).toBe('anthropic/claude-sonnet-4');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Model Class Schema Validation
+// ---------------------------------------------------------------------------
+
+describe('modelClassSchema', () => {
+  it('accepts max', () => {
+    expect(modelClassSchema.safeParse('max').success).toBe(true);
+  });
+
+  it('accepts balanced', () => {
+    expect(modelClassSchema.safeParse('balanced').success).toBe(true);
+  });
+
+  it('accepts fast', () => {
+    expect(modelClassSchema.safeParse('fast').success).toBe(true);
+  });
+
+  it('accepts auto', () => {
+    expect(modelClassSchema.safeParse('auto').success).toBe(true);
+  });
+
+  it('rejects invalid class name', () => {
+    expect(modelClassSchema.safeParse('invalid').success).toBe(false);
+  });
+});
+
+describe('agents.models schema validation', () => {
+  it('accepts valid models map with known class names', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agents: { models: { max: 'some-model' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts models map with multiple classes', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agents: { models: { max: 'model-a', balanced: 'model-b', fast: 'model-c' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects models map with invalid class name', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agents: { models: { 'invalid-class': 'model' } },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('per-role modelClass schema validation', () => {
+  it('accepts valid modelClass in per-role config', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agents: {
+        roles: {
+          builder: { modelClass: 'max' },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts all valid modelClass values', () => {
+    for (const cls of MODEL_CLASSES) {
+      const result = eforgeConfigSchema.safeParse({
+        agents: {
+          roles: {
+            builder: { modelClass: cls },
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects invalid modelClass in per-role config', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agents: {
+        roles: {
+          builder: { modelClass: 'invalid' },
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('DEFAULT_CONFIG.pi model default', () => {
+  it('has updated model default to anthropic/claude-sonnet-4-6', () => {
+    expect(DEFAULT_CONFIG.pi.model).toBe('anthropic/claude-sonnet-4-6');
   });
 });

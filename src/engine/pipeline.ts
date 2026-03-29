@@ -24,8 +24,8 @@ import {
   type ReviewIssue,
   type OrchestrationConfig,
 } from './events.js';
-import type { EforgeConfig, ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
-import { DEFAULT_REVIEW, DEFAULT_BUILD } from './config.js';
+import type { EforgeConfig, ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig, ModelClass } from './config.js';
+import { DEFAULT_REVIEW, DEFAULT_BUILD, MODEL_CLASSES } from './config.js';
 import type { AgentBackend } from './backend.js';
 import type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
@@ -246,19 +246,70 @@ export const AGENT_MAX_CONTINUATIONS_DEFAULTS: Partial<Record<AgentRole, number>
   planner: 2,
 };
 
+// ---------------------------------------------------------------------------
+// Model Class System
+// ---------------------------------------------------------------------------
+
+/** Maps each agent role to its default model class. */
+export const AGENT_MODEL_CLASSES: Record<AgentRole, ModelClass> = {
+  planner: 'max',
+  'architecture-reviewer': 'max',
+  'architecture-evaluator': 'max',
+  'cohesion-reviewer': 'max',
+  'cohesion-evaluator': 'max',
+  'module-planner': 'max',
+  'plan-reviewer': 'max',
+  'plan-evaluator': 'max',
+  builder: 'balanced',
+  reviewer: 'balanced',
+  evaluator: 'balanced',
+  'review-fixer': 'balanced',
+  'validation-fixer': 'balanced',
+  'merge-conflict-resolver': 'balanced',
+  'doc-updater': 'balanced',
+  'test-writer': 'balanced',
+  tester: 'balanced',
+  formatter: 'balanced',
+  'staleness-assessor': 'balanced',
+};
+
+/** Per-backend default model strings for each model class. `undefined` means the SDK picks its own model. */
+export const MODEL_CLASS_DEFAULTS: Record<string, Record<ModelClass, string | undefined>> = {
+  'claude-sdk': {
+    max: 'claude-opus-4-6',
+    balanced: 'claude-sonnet-4-6',
+    fast: 'claude-haiku-3-5',
+    auto: undefined,
+  },
+  pi: {
+    max: 'anthropic/claude-opus-4-6',
+    balanced: 'anthropic/claude-sonnet-4-6',
+    fast: 'anthropic/claude-haiku-3-5',
+    auto: undefined,
+  },
+};
+
 /**
  * Resolve agent config for a given role.
- * Four-tier priority (highest → lowest):
+ * Five-tier model resolution (highest → lowest):
+ *   1. User per-role model (config.agents.roles[role].model)
+ *   2. User global model (config.agents.model)
+ *   3. User model class override (config.agents.models[effectiveClass])
+ *   4. Backend model class default (MODEL_CLASS_DEFAULTS[backend][effectiveClass])
+ *   5. undefined (no model set)
+ *
+ * Effective class is determined by: per-role modelClass > built-in AGENT_MODEL_CLASSES[role].
+ *
+ * Other fields use the existing four-tier priority:
  *   1. User per-role config (config.agents.roles[role])
- *   2. User global config (config.agents.{model,thinking,effort,...}, config.agents.maxTurns)
+ *   2. User global config (config.agents.{thinking,effort,...}, config.agents.maxTurns)
  *   3. Built-in per-role defaults (AGENT_ROLE_DEFAULTS[role])
  *   4. Built-in global default (DEFAULT_CONFIG.agents.maxTurns)
- *
- * Each field is resolved independently through the chain.
  */
 export function resolveAgentConfig(
   role: AgentRole,
   config: EforgeConfig,
+  backend: 'claude-sdk' | 'pi' = 'claude-sdk',
 ): import('./config.js').ResolvedAgentConfig {
   const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
   const userGlobal: import('./config.js').ResolvedAgentConfig = {
@@ -272,18 +323,43 @@ export function resolveAgentConfig(
   // For each field: user per-role > built-in per-role > user global > built-in global
   // Special case for maxTurns: built-in per-role beats user global (e.g. builder's 50 beats global 30)
   // but user per-role always wins.
-  const SDK_FIELDS = ['model', 'thinking', 'effort', 'maxBudgetUsd', 'fallbackModel', 'allowedTools', 'disallowedTools'] as const;
+  const SDK_FIELDS = ['thinking', 'effort', 'maxBudgetUsd', 'fallbackModel', 'allowedTools', 'disallowedTools'] as const;
 
   const result: import('./config.js').ResolvedAgentConfig = {};
 
   // Resolve maxTurns: user per-role > built-in per-role > user global
   result.maxTurns = userRole.maxTurns ?? builtinRoleDefaults.maxTurns ?? userGlobal.maxTurns;
 
-  // Resolve SDK passthrough fields: user per-role > user global > built-in per-role
+  // Resolve SDK passthrough fields (excluding model - handled via class system below)
   for (const field of SDK_FIELDS) {
     const value = userRole[field] ?? userGlobal[field] ?? builtinRoleDefaults[field];
     if (value !== undefined) {
       (result as Record<string, unknown>)[field] = value;
+    }
+  }
+
+  // Resolve model via class system:
+  //   per-role model > global model > user class override > backend class default
+  const perRoleModel = userRole.model ?? builtinRoleDefaults.model;
+  const globalModel = userGlobal.model;
+  if (perRoleModel !== undefined) {
+    result.model = perRoleModel;
+  } else if (globalModel !== undefined) {
+    result.model = globalModel;
+  } else {
+    // Determine effective model class
+    const effectiveClass: ModelClass = userRole.modelClass ?? AGENT_MODEL_CLASSES[role];
+
+    // Check user-configured class model overrides
+    const userClassModel = config.agents.models?.[effectiveClass];
+    if (userClassModel !== undefined) {
+      result.model = userClassModel;
+    } else {
+      // Fall back to backend defaults
+      const backendDefaults = MODEL_CLASS_DEFAULTS[backend];
+      if (backendDefaults) {
+        result.model = backendDefaults[effectiveClass];
+      }
     }
   }
 
@@ -429,7 +505,7 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
 });
 
 registerCompileStage('planner', async function* plannerStage(ctx) {
-  const agentConfig = resolveAgentConfig('planner', ctx.config);
+  const agentConfig = resolveAgentConfig('planner', ctx.config, ctx.config.backend);
   const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['planner'] ?? 0;
 
   for (let attempt = 0; attempt <= maxContinuations; attempt++) {
@@ -574,8 +650,8 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
 registerCompileStage('plan-review-cycle', async function* planReviewCycleStage(ctx) {
   const verbose = ctx.verbose;
   const abortController = ctx.abortController;
-  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config);
-  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config);
+  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config, ctx.config.backend);
+  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config, ctx.config.backend);
 
   try {
     yield* runReviewCycle({
@@ -637,8 +713,8 @@ registerCompileStage('architecture-review-cycle', async function* architectureRe
     return;
   }
 
-  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config);
-  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config);
+  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config, ctx.config.backend);
+  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config, ctx.config.backend);
 
   try {
     yield* runReviewCycle({
@@ -693,7 +769,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
   const tracing = ctx.tracing;
   const sourceContent = ctx.sourceContent;
   const planSetName = ctx.planSetName;
-  const agentConfig = resolveAgentConfig('module-planner', ctx.config);
+  const agentConfig = resolveAgentConfig('module-planner', ctx.config, ctx.config.backend);
 
   // 2. Plan each wave (parallel within wave, sequential across waves)
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
@@ -794,8 +870,8 @@ registerCompileStage('cohesion-review-cycle', async function* cohesionReviewCycl
     // Architecture file may not exist
   }
 
-  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config);
-  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config);
+  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config, ctx.config.backend);
+  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config, ctx.config.backend);
 
   try {
     yield* runReviewCycle({
@@ -874,7 +950,7 @@ async function* emitFilesChanged(ctx: BuildStageContext): AsyncGenerator<EforgeE
 }
 
 registerBuildStage('implement', async function* implementStage(ctx) {
-  const agentConfig = resolveAgentConfig('builder', ctx.config);
+  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.config.backend);
 
   // Resolve maxContinuations: per-plan > global config > default (3)
   const planEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
@@ -1002,7 +1078,7 @@ async function* reviewStageInner(
 ): AsyncGenerator<EforgeEvent> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
-  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config);
+  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.config.backend);
 
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
@@ -1050,7 +1126,7 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
   // Only runs if review found actionable issues after filtering
   if (ctx.reviewIssues.length === 0) return;
 
-  const fixerAgentConfig = resolveAgentConfig('review-fixer', ctx.config);
+  const fixerAgentConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.config.backend);
   const fixerSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixerSpan.setInput({
     planId: ctx.planId,
@@ -1101,7 +1177,7 @@ async function* evaluateStageInner(
   const evalTracker = createToolTracker(evalSpan);
 
   try {
-    const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config);
+    const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.config.backend);
     for await (const event of builderEvaluate(ctx.planFile, {
       backend: ctx.backend,
       cwd: ctx.worktreePath,
@@ -1153,7 +1229,7 @@ registerBuildStage('validate', async function* validateStage(_ctx) {
 });
 
 registerBuildStage('doc-update', async function* docUpdateStage(ctx) {
-  const agentConfig = resolveAgentConfig('doc-updater', ctx.config);
+  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.config.backend);
   const docSpan = ctx.tracing.createSpan('doc-updater', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -1190,7 +1266,7 @@ registerBuildStage('doc-update', async function* docUpdateStage(ctx) {
 // ---------------------------------------------------------------------------
 
 registerBuildStage('test-write', async function* testWriteStage(ctx) {
-  const agentConfig = resolveAgentConfig('test-writer', ctx.config);
+  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.config.backend);
   const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -1235,7 +1311,7 @@ registerBuildStage('test', async function* testStage(ctx) {
 });
 
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
-  const agentConfig = resolveAgentConfig('tester', ctx.config);
+  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.config.backend);
   const span = ctx.tracing.createSpan('tester', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
