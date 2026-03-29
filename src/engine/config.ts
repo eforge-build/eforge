@@ -195,7 +195,32 @@ const pluginConfigSchema = z.object({
 
 const SETTING_SOURCES = ['user', 'project', 'local'] as const;
 
+export const backendSchema = z.enum(['claude-sdk', 'pi']).describe('Backend provider for agent execution');
+
+export const piThinkingLevelSchema = z.enum(['off', 'medium', 'high']).describe('Pi-native thinking level');
+
+export const piConfigSchema = z.object({
+  provider: z.string().optional().describe('Pi AI provider (e.g. "openrouter", "anthropic")'),
+  apiKey: z.string().optional().describe('API key for the Pi provider'),
+  model: z.string().optional().describe('Model identifier (e.g. "anthropic/claude-sonnet-4")'),
+  thinkingLevel: piThinkingLevelSchema.optional().describe('Thinking level for Pi agents'),
+  extensions: z.object({
+    autoDiscover: z.boolean().optional().describe('Automatically discover Pi extensions'),
+    include: z.array(z.string()).optional().describe('Extension names to include'),
+    exclude: z.array(z.string()).optional().describe('Extension names to exclude'),
+  }).optional().describe('Pi extension configuration'),
+  compaction: z.object({
+    enabled: z.boolean().optional().describe('Enable context compaction'),
+    threshold: z.number().int().positive().optional().describe('Token threshold before compaction triggers'),
+  }).optional().describe('Context compaction settings'),
+  retry: z.object({
+    maxRetries: z.number().int().nonnegative().optional().describe('Maximum retry attempts'),
+    backoffMs: z.number().int().positive().optional().describe('Initial backoff in milliseconds'),
+  }).optional().describe('Retry configuration for Pi API calls'),
+}).describe('Configuration for the Pi coding agent backend');
+
 export const eforgeConfigSchema = z.object({
+  backend: backendSchema.optional(),
   langfuse: z.object({
     enabled: z.boolean().optional(),
     publicKey: z.string().optional(),
@@ -235,6 +260,7 @@ export const eforgeConfigSchema = z.object({
   daemon: z.object({
     idleShutdownMs: z.number().int().nonnegative().optional(),
   }).optional(),
+  pi: piConfigSchema.optional(),
   hooks: z.array(hookConfigSchema).optional(),
   profiles: z.record(z.string(), partialProfileConfigSchema).optional(),
 });
@@ -267,7 +293,18 @@ export interface ResolvedAgentConfig {
   disallowedTools?: string[];
 }
 
+export interface PiConfig {
+  provider: string;
+  apiKey?: string;
+  model: string;
+  thinkingLevel: 'off' | 'medium' | 'high';
+  extensions: { autoDiscover: boolean; include?: string[]; exclude?: string[] };
+  compaction: { enabled: boolean; threshold: number };
+  retry: { maxRetries: number; backoffMs: number };
+}
+
 export interface EforgeConfig {
+  backend: 'claude-sdk' | 'pi';
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
   agents: {
     maxTurns: number;
@@ -285,6 +322,7 @@ export interface EforgeConfig {
   plugins: PluginConfig;
   prdQueue: { dir: string; autoRevise: boolean; autoBuild: boolean; watchPollIntervalMs: number };
   daemon: { idleShutdownMs: number };
+  pi: PiConfig;
   hooks: readonly HookConfig[];
   profiles: Record<string, ResolvedProfileConfig>;
 }
@@ -335,6 +373,7 @@ export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.fr
 });
 
 export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
+  backend: 'claude-sdk' as const,
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({ maxTurns: 30, maxContinuations: 3, permissionMode: 'bypass' as const, settingSources: ['project'] as string[], bare: false }),
   build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
@@ -342,6 +381,14 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   plugins: Object.freeze({ enabled: true }),
   prdQueue: Object.freeze({ dir: 'eforge/queue', autoRevise: true, autoBuild: true, watchPollIntervalMs: 5000 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
+  pi: Object.freeze({
+    provider: 'openrouter',
+    model: 'anthropic/claude-sonnet-4',
+    thinkingLevel: 'medium' as const,
+    extensions: Object.freeze({ autoDiscover: true }),
+    compaction: Object.freeze({ enabled: true, threshold: 100_000 }),
+    retry: Object.freeze({ maxRetries: 3, backoffMs: 1000 }),
+  }),
   hooks: Object.freeze([]),
   profiles: BUILTIN_PROFILES,
 });
@@ -401,6 +448,7 @@ export function resolveConfig(
   const langfuseEnabled = !!(langfusePublicKey && langfuseSecretKey);
 
   return Object.freeze({
+    backend: fileConfig.backend ?? DEFAULT_CONFIG.backend,
     langfuse: Object.freeze({
       enabled: langfuseEnabled,
       publicKey: langfusePublicKey,
@@ -443,6 +491,25 @@ export function resolveConfig(
     daemon: Object.freeze({
       idleShutdownMs: fileConfig.daemon?.idleShutdownMs ?? DEFAULT_CONFIG.daemon.idleShutdownMs,
     }),
+    pi: Object.freeze({
+      provider: fileConfig.pi?.provider ?? DEFAULT_CONFIG.pi.provider,
+      apiKey: fileConfig.pi?.apiKey,
+      model: fileConfig.pi?.model ?? DEFAULT_CONFIG.pi.model,
+      thinkingLevel: fileConfig.pi?.thinkingLevel ?? DEFAULT_CONFIG.pi.thinkingLevel,
+      extensions: Object.freeze({
+        autoDiscover: fileConfig.pi?.extensions?.autoDiscover ?? DEFAULT_CONFIG.pi.extensions.autoDiscover,
+        include: fileConfig.pi?.extensions?.include,
+        exclude: fileConfig.pi?.extensions?.exclude,
+      }),
+      compaction: Object.freeze({
+        enabled: fileConfig.pi?.compaction?.enabled ?? DEFAULT_CONFIG.pi.compaction.enabled,
+        threshold: fileConfig.pi?.compaction?.threshold ?? DEFAULT_CONFIG.pi.compaction.threshold,
+      }),
+      retry: Object.freeze({
+        maxRetries: fileConfig.pi?.retry?.maxRetries ?? DEFAULT_CONFIG.pi.retry.maxRetries,
+        backoffMs: fileConfig.pi?.retry?.backoffMs ?? DEFAULT_CONFIG.pi.retry.backoffMs,
+      }),
+    }),
     hooks: Object.freeze(fileConfig.hooks ?? DEFAULT_CONFIG.hooks) as HookConfig[],
     profiles: Object.freeze(
       resolveProfileExtensions(fileConfig.profiles ?? {}, BUILTIN_PROFILES),
@@ -473,7 +540,14 @@ function parseRawConfig(data: Record<string, unknown>): PartialEforgeConfig {
  */
 function parseRawConfigFallback(data: Record<string, unknown>): PartialEforgeConfig {
   const result: PartialEforgeConfig = {};
-  const sections = ['langfuse', 'agents', 'build', 'plan', 'plugins', 'prdQueue', 'daemon', 'hooks', 'profiles'] as const;
+  // Handle top-level scalar fields
+  if (data.backend !== undefined) {
+    const backendResult = backendSchema.safeParse(data.backend);
+    if (backendResult.success) {
+      (result as Record<string, unknown>).backend = backendResult.data;
+    }
+  }
+  const sections = ['langfuse', 'agents', 'build', 'plan', 'plugins', 'prdQueue', 'daemon', 'pi', 'hooks', 'profiles'] as const;
   for (const key of sections) {
     if (data[key] === undefined) continue;
     const sectionSchema = eforgeConfigSchema.shape[key];
@@ -492,6 +566,7 @@ function parseRawConfigFallback(data: Record<string, unknown>): PartialEforgeCon
  */
 function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfig {
   const out: PartialEforgeConfig = {};
+  if (config.backend !== undefined) out.backend = config.backend;
   if (config.langfuse !== undefined) out.langfuse = config.langfuse;
   if (config.agents !== undefined) out.agents = config.agents;
   if (config.build !== undefined) out.build = config.build;
@@ -499,6 +574,7 @@ function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfi
   if (config.plugins !== undefined) out.plugins = config.plugins;
   if (config.prdQueue !== undefined) out.prdQueue = config.prdQueue;
   if (config.daemon !== undefined) out.daemon = config.daemon;
+  if (config.pi !== undefined) out.pi = config.pi;
   if (config.hooks !== undefined) out.hooks = config.hooks;
   if (config.profiles !== undefined) out.profiles = config.profiles;
   return out;
@@ -527,6 +603,11 @@ export function mergePartialConfigs(
   project: PartialEforgeConfig,
 ): PartialEforgeConfig {
   const result: PartialEforgeConfig = {};
+
+  // Scalar fields: project wins
+  if (project.backend !== undefined || global.backend !== undefined) {
+    result.backend = project.backend ?? global.backend;
+  }
 
   // Object sections: shallow merge
   if (global.langfuse || project.langfuse) {
@@ -570,6 +651,9 @@ export function mergePartialConfigs(
   }
   if (global.daemon || project.daemon) {
     result.daemon = { ...global.daemon, ...project.daemon };
+  }
+  if (global.pi || project.pi) {
+    result.pi = { ...global.pi, ...project.pi };
   }
 
   // hooks: concatenate (global first, then project)

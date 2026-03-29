@@ -43,6 +43,14 @@ export type { AgentBackend, AgentRunOptions, ToolPreset } from './backend.js';
 export { ClaudeSDKBackend } from './backends/claude-sdk.js';
 export type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
 
+// --- eforge:region plan-02-pi-backend ---
+export { PiBackend } from './backends/pi.js';
+export type { PiBackendOptions } from './backends/pi.js';
+export { PiMcpBridge, jsonSchemaToTypeBox } from './backends/pi-mcp-bridge.js';
+export { discoverPiExtensions } from './backends/pi-extensions.js';
+export type { PiExtensionConfig } from './backends/pi-extensions.js';
+// --- eforge:endregion plan-02-pi-backend ---
+
 // --- agents/common ---
 export { parseClarificationBlocks, parseProfileBlock, parseGeneratedProfileBlock, parseStalenessBlock, parseBuildConfigBlock } from './agents/common.js';
 export type { ProfileSelection, GeneratedProfileBlock } from './agents/common.js';
@@ -126,8 +134,8 @@ export type { HookConfig } from './config.js';
 export { withHooks, matchesPattern } from './hooks.js';
 
 // --- config ---
-export type { EforgeConfig, PartialEforgeConfig, PluginConfig, ProfileConfig, ResolvedProfileConfig, AgentProfileConfig, ReviewProfileConfig, PartialProfileConfig, BuildStageSpec } from './config.js';
-export { DEFAULT_CONFIG, DEFAULT_BUILD, DEFAULT_BUILD_WITH_DOCS, DEFAULT_REVIEW, BUILTIN_PROFILES, AGENT_ROLES, eforgeConfigSchema, resolvedProfileConfigSchema, buildStageSpecSchema, reviewProfileConfigSchema, findConfigFile, resolveConfig, loadConfig, getUserConfigPath, mergePartialConfigs, resolveProfileExtensions, parseProfilesFile, validateProfileConfig, validateConfigFile, resolveGeneratedProfile, getCompileOnlyProfileSchemaYaml } from './config.js';
+export type { EforgeConfig, PartialEforgeConfig, PluginConfig, ProfileConfig, ResolvedProfileConfig, AgentProfileConfig, ReviewProfileConfig, PartialProfileConfig, BuildStageSpec, PiConfig } from './config.js';
+export { DEFAULT_CONFIG, DEFAULT_BUILD, DEFAULT_BUILD_WITH_DOCS, DEFAULT_REVIEW, BUILTIN_PROFILES, AGENT_ROLES, eforgeConfigSchema, backendSchema, piConfigSchema, resolvedProfileConfigSchema, buildStageSpecSchema, reviewProfileConfigSchema, findConfigFile, resolveConfig, loadConfig, getUserConfigPath, mergePartialConfigs, resolveProfileExtensions, parseProfilesFile, validateProfileConfig, validateConfigFile, resolveGeneratedProfile, getCompileOnlyProfileSchemaYaml } from './config.js';
 export type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 export { createTracingContext, createNoopTracingContext } from './tracing.js';
 

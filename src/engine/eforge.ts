@@ -938,6 +938,7 @@ async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir: string
  */
 function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): EforgeConfig {
   return {
+    backend: overrides.backend ?? base.backend,
     langfuse: overrides.langfuse ? { ...base.langfuse, ...overrides.langfuse } : base.langfuse,
     agents: overrides.agents ? { ...base.agents, ...overrides.agents } : base.agents,
     build: overrides.build ? { ...base.build, ...overrides.build } : base.build,
@@ -945,6 +946,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     plugins: overrides.plugins ? { ...base.plugins, ...overrides.plugins } : base.plugins,
     prdQueue: overrides.prdQueue ? { ...base.prdQueue, ...overrides.prdQueue } : base.prdQueue,
     daemon: overrides.daemon ? { ...base.daemon, ...overrides.daemon } : base.daemon,
+    pi: overrides.pi ? { ...base.pi, ...overrides.pi } : base.pi,
     hooks: overrides.hooks ?? base.hooks,
     profiles: overrides.profiles ?? base.profiles,
   };

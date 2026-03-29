@@ -33,7 +33,13 @@ export default defineConfig([
     target: "node22",
     clean: true,
     dts: false,
-    external: ["@anthropic-ai/claude-agent-sdk"],
+    external: [
+      "@anthropic-ai/claude-agent-sdk",
+      "@mariozechner/pi-coding-agent",
+      "@mariozechner/pi-agent-core",
+      "@mariozechner/pi-ai",
+      "@sinclair/typebox",
+    ],
     define: { EFORGE_VERSION: JSON.stringify(version) },
     banner: {
       js: "#!/usr/bin/env -S node --disable-warning=ExperimentalWarning",
@@ -52,6 +58,10 @@ export default defineConfig([
     outDir: "dist",
     external: [
       "@anthropic-ai/claude-agent-sdk",
+      "@mariozechner/pi-coding-agent",
+      "@mariozechner/pi-agent-core",
+      "@mariozechner/pi-ai",
+      "@sinclair/typebox",
       "chalk",
       "commander",
       "langfuse",
