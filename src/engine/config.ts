@@ -244,11 +244,11 @@ export const eforgeConfigSchema = z.object({
     model: z.string().optional().describe('Global model override for all agents'),
     thinking: thinkingConfigSchema.optional().describe('Global thinking config for all agents'),
     effort: effortLevelSchema.optional().describe('Global effort level for all agents'),
-    models: z.record(modelClassSchema, z.string()).optional().describe('Map model class names to model strings'),
+    models: z.record(modelClassSchema, z.string().optional()).optional().describe('Map model class names to model strings'),
     roles: z.record(agentRoleSchema, sdkPassthroughConfigSchema.extend({
       maxTurns: z.number().int().positive().optional(),
       modelClass: modelClassSchema.optional().describe('Override the model class for this role'),
-    })).optional().describe('Per-agent role overrides'),
+    }).optional()).optional().describe('Per-agent role overrides'),
   }).optional(),
   build: z.object({
     parallelism: z.number().int().positive().optional(),
