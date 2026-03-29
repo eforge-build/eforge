@@ -55,7 +55,7 @@ For a deeper look at the engine internals, see the [architecture docs](docs/arch
 
 ## Install
 
-**Prerequisites:** Node.js 22+, Anthropic API key or [Claude subscription](https://claude.ai/upgrade)
+**Prerequisites:** Node.js 22+, and an LLM provider API key - Anthropic API key or [Claude subscription](https://claude.ai/upgrade) for the `claude-sdk` backend, or a provider-specific key for the `pi` backend
 
 Claude Code plugin (recommended):
 
@@ -72,6 +72,8 @@ npx eforge build plans/my-feature-prd.md
 ```
 
 Or install globally: `npm install -g eforge`
+
+Create `eforge/config.yaml` with at minimum `backend: claude-sdk` (or `backend: pi` for the Pi multi-provider backend).
 
 ## Configuration
 

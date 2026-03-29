@@ -4,10 +4,10 @@
 
 ## `eforge/config.yaml`
 
-All fields are optional. Defaults are shown:
+The `backend` field is required. All other fields are optional with defaults shown below:
 
 ```yaml
-backend: claude-sdk            # 'claude-sdk' or 'pi' - which LLM backend to use
+backend: claude-sdk            # REQUIRED - 'claude-sdk' or 'pi'
 
 plugins:
   enabled: true               # Auto-discover Claude Code plugins
@@ -63,8 +63,7 @@ daemon:
   idleShutdownMs: 7200000     # Idle timeout before auto-shutdown (2 hours). Set to 0 to disable.
 
 pi:                            # Pi backend config (experimental/untested)
-  provider: openrouter         # LLM provider
-  model: anthropic/claude-sonnet-4-6  # Model identifier
+  provider: openrouter         # REQUIRED for pi backend - LLM provider (e.g. 'openrouter', 'anthropic')
   thinkingLevel: medium        # 'off', 'medium', 'high'
   extensions:
     autoDiscover: true         # Auto-discover extensions from .pi/extensions/
