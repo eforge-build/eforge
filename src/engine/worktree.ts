@@ -244,6 +244,7 @@ export async function mergeFeatureBranchToBase(
   featureBranch: string,
   baseBranch: string,
   worktreeBase: string,
+  mergeResolver?: MergeResolver,
 ): Promise<string> {
   // Guard: verify we're on the expected base branch to avoid merging into the wrong target
   const { stdout: currentBranchRaw } = await exec('git', ['branch', '--show-current'], { cwd: repoRoot });
@@ -276,7 +277,36 @@ export async function mergeFeatureBranchToBase(
 
       // Merge feature branch into baseBranch in the temporary worktree
       const { ATTRIBUTION } = await import('./git.js');
-      await exec('git', ['merge', featureBranch, '-m', `Merge ${featureBranch} into ${baseBranch}\n\n${ATTRIBUTION}`], { cwd: tmpMergePath });
+      try {
+        await exec('git', ['merge', featureBranch, '-m', `Merge ${featureBranch} into ${baseBranch}\n\n${ATTRIBUTION}`], { cwd: tmpMergePath });
+      } catch (mergeErr) {
+        // Attempt conflict resolution via callback if provided
+        if (mergeResolver) {
+          const conflictInfo = await gatherConflictInfo(tmpMergePath, featureBranch, baseBranch);
+          if (conflictInfo) {
+            const resolved = await mergeResolver(tmpMergePath, conflictInfo);
+            if (resolved) {
+              // Verify no remaining conflicts
+              const { stdout: remaining } = await exec(
+                'git', ['diff', '--name-only', '--diff-filter=U'],
+                { cwd: tmpMergePath },
+              );
+              if (remaining.trim().length === 0) {
+                // All conflicts resolved — commit using Git's preserved merge message
+                await exec('git', ['commit', '--no-edit'], { cwd: tmpMergePath });
+              } else {
+                throw mergeErr;
+              }
+            } else {
+              throw mergeErr;
+            }
+          } else {
+            throw mergeErr;
+          }
+        } else {
+          throw mergeErr;
+        }
+      }
 
       // Get the resulting commit SHA
       const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: tmpMergePath });

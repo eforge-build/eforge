@@ -671,7 +671,7 @@ export class Orchestrator {
         yield { timestamp: new Date().toISOString(), type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
 
         try {
-          const commitSha = await mergeFeatureBranchToBase(repoRoot, featureBranch, config.baseBranch, worktreeBase);
+          const commitSha = await mergeFeatureBranchToBase(repoRoot, featureBranch, config.baseBranch, worktreeBase, this.options.mergeResolver);
           featureBranchMerged = true;
           yield { timestamp: new Date().toISOString(), type: 'merge:finalize:complete', featureBranch, baseBranch: config.baseBranch, commitSha };
         } catch (err) {
