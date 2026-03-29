@@ -43,6 +43,14 @@ export type { AgentBackend, AgentRunOptions, ToolPreset } from './backend.js';
 export { ClaudeSDKBackend } from './backends/claude-sdk.js';
 export type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
 
+// --- eforge:region plan-02-pi-backend ---
+export { PiBackend } from './backends/pi.js';
+export type { PiBackendOptions } from './backends/pi.js';
+export { PiMcpBridge, jsonSchemaToTypeBox } from './backends/pi-mcp-bridge.js';
+export { discoverPiExtensions } from './backends/pi-extensions.js';
+export type { PiExtensionConfig } from './backends/pi-extensions.js';
+// --- eforge:endregion plan-02-pi-backend ---
+
 // --- agents/common ---
 export { parseClarificationBlocks, parseProfileBlock, parseGeneratedProfileBlock, parseStalenessBlock, parseBuildConfigBlock } from './agents/common.js';
 export type { ProfileSelection, GeneratedProfileBlock } from './agents/common.js';
