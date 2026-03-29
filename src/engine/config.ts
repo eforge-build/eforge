@@ -477,7 +477,7 @@ export function resolveConfig(
       thinking: fileConfig.agents?.thinking,
       effort: fileConfig.agents?.effort,
       models: fileConfig.agents?.models,
-      roles: fileConfig.agents?.roles,
+      roles: fileConfig.agents?.roles as Record<string, Partial<ResolvedAgentConfig>> | undefined,
     }),
     build: Object.freeze({
       parallelism: fileConfig.build?.parallelism ?? DEFAULT_CONFIG.build.parallelism,
