@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema } from '../src/engine/config.js';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema } from '../src/engine/config.js';
 import { pickSdkOptions } from '../src/engine/backend.js';
 import type { PartialEforgeConfig, HookConfig } from '../src/engine/config.js';
 
@@ -583,5 +583,166 @@ describe('sdkPassthroughConfigSchema', () => {
   it('rejects invalid thinking type', () => {
     const result = sdkPassthroughConfigSchema.safeParse({ thinking: { type: 'invalid' } });
     expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// backend and pi config
+// ---------------------------------------------------------------------------
+
+describe('backendSchema', () => {
+  it('accepts claude-sdk', () => {
+    expect(backendSchema.safeParse('claude-sdk').success).toBe(true);
+  });
+
+  it('accepts pi', () => {
+    expect(backendSchema.safeParse('pi').success).toBe(true);
+  });
+
+  it('rejects invalid backend', () => {
+    expect(backendSchema.safeParse('invalid').success).toBe(false);
+  });
+});
+
+describe('eforgeConfigSchema backend and pi validation', () => {
+  it('accepts { backend: "pi", pi: { provider: "openrouter", model: "anthropic/claude-sonnet-4" } }', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'pi',
+      pi: { provider: 'openrouter', model: 'anthropic/claude-sonnet-4' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts { backend: "claude-sdk" } without pi section', () => {
+    const result = eforgeConfigSchema.safeParse({ backend: 'claude-sdk' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts empty config and does not require backend', () => {
+    const result = eforgeConfigSchema.safeParse({});
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects { backend: "invalid" }', () => {
+    const result = eforgeConfigSchema.safeParse({ backend: 'invalid' });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('piConfigSchema', () => {
+  it('accepts full pi config', () => {
+    const result = piConfigSchema.safeParse({
+      provider: 'openrouter',
+      apiKey: 'sk-test',
+      model: 'anthropic/claude-sonnet-4',
+      thinkingLevel: 'high',
+      extensions: { autoDiscover: true, include: ['ext1'], exclude: ['ext2'] },
+      compaction: { enabled: true, threshold: 50_000 },
+      retry: { maxRetries: 5, backoffMs: 2000 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts empty pi config (all fields optional)', () => {
+    const result = piConfigSchema.safeParse({});
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid thinkingLevel', () => {
+    const result = piConfigSchema.safeParse({ thinkingLevel: 'invalid' });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('resolveConfig backend and pi', () => {
+  it('defaults backend to claude-sdk when config is empty', () => {
+    const config = resolveConfig({}, {});
+    expect(config.backend).toBe('claude-sdk');
+  });
+
+  it('defaults pi section with sensible defaults', () => {
+    const config = resolveConfig({}, {});
+    expect(config.pi).toBeDefined();
+    expect(config.pi.thinkingLevel).toBe('medium');
+    expect(config.pi.extensions.autoDiscover).toBe(true);
+    expect(config.pi.compaction.enabled).toBe(true);
+  });
+
+  it('preserves pi values from file config', () => {
+    const config = resolveConfig(
+      {
+        backend: 'pi',
+        pi: {
+          provider: 'openrouter',
+          apiKey: 'sk-test',
+          model: 'anthropic/claude-sonnet-4',
+        },
+      },
+      {},
+    );
+    expect(config.backend).toBe('pi');
+    expect(config.pi.provider).toBe('openrouter');
+    expect(config.pi.apiKey).toBe('sk-test');
+    expect(config.pi.model).toBe('anthropic/claude-sonnet-4');
+  });
+
+  it('merges pi section with defaults for unset fields', () => {
+    const config = resolveConfig(
+      {
+        backend: 'pi',
+        pi: { provider: 'anthropic', model: 'claude-opus' },
+      },
+      {},
+    );
+    // Explicitly set values preserved
+    expect(config.pi.provider).toBe('anthropic');
+    expect(config.pi.model).toBe('claude-opus');
+    // Defaults fill in unset values
+    expect(config.pi.thinkingLevel).toBe('medium');
+    expect(config.pi.extensions.autoDiscover).toBe(true);
+    expect(config.pi.compaction.enabled).toBe(true);
+    expect(config.pi.retry.maxRetries).toBe(3);
+  });
+
+  it('pi section is frozen in resolved config', () => {
+    const config = resolveConfig({}, {});
+    expect(Object.isFrozen(config.pi)).toBe(true);
+  });
+});
+
+describe('DEFAULT_CONFIG.pi', () => {
+  it('has sensible defaults', () => {
+    expect(DEFAULT_CONFIG.pi.thinkingLevel).toBe('medium');
+    expect(DEFAULT_CONFIG.pi.extensions.autoDiscover).toBe(true);
+    expect(DEFAULT_CONFIG.pi.compaction.enabled).toBe(true);
+    expect(DEFAULT_CONFIG.pi.compaction.threshold).toBe(100_000);
+    expect(DEFAULT_CONFIG.pi.retry.maxRetries).toBe(3);
+    expect(DEFAULT_CONFIG.pi.retry.backoffMs).toBe(1000);
+  });
+
+  it('has backend defaulting to claude-sdk', () => {
+    expect(DEFAULT_CONFIG.backend).toBe('claude-sdk');
+  });
+});
+
+describe('mergePartialConfigs backend and pi', () => {
+  it('project backend overrides global', () => {
+    const merged = mergePartialConfigs(
+      { backend: 'claude-sdk' },
+      { backend: 'pi' },
+    );
+    expect(merged.backend).toBe('pi');
+  });
+
+  it('pi section merges shallowly (global provider + project model)', () => {
+    const global: PartialEforgeConfig = {
+      pi: { provider: 'openrouter' },
+    };
+    const project: PartialEforgeConfig = {
+      pi: { model: 'anthropic/claude-sonnet-4' },
+    };
+    const merged = mergePartialConfigs(global, project);
+    expect(merged.pi?.provider).toBe('openrouter');
+    expect(merged.pi?.model).toBe('anthropic/claude-sonnet-4');
   });
 });
