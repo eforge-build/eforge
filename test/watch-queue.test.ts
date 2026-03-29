@@ -49,7 +49,7 @@ describe('watchQueue', () => {
     const engine = await EforgeEngine.create({
       cwd,
       config: {
-        prdQueue: { dir: 'docs/prd-queue', autoRevise: false, watchPollIntervalMs: 50 },
+        prdQueue: { dir: 'eforge/queue', autoRevise: false, watchPollIntervalMs: 50 },
         plugins: { enabled: false },
       },
     });

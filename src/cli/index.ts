@@ -106,7 +106,9 @@ async function consumeEvents(
 
 async function showDryRun(planSet: string): Promise<never> {
   const cwd = process.cwd();
-  const configPath = resolve(cwd, 'plans', planSet, 'orchestration.yaml');
+  const { loadConfig } = await import('../engine/config.js');
+  const resolvedConfig = await loadConfig(cwd);
+  const configPath = resolve(cwd, resolvedConfig.plan.outputDir, planSet, 'orchestration.yaml');
   const validation = await validatePlanSet(configPath);
   if (!validation.valid) {
     console.error(
@@ -558,7 +560,7 @@ export function createProgram(abortController?: AbortController): Command {
 
   config
     .command('validate')
-    .description('Validate eforge.yaml configuration')
+    .description('Validate eforge/config.yaml configuration')
     .action(async () => {
       const { validateConfigFile } = await import('../engine/config.js');
       const result = await validateConfigFile();

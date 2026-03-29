@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema } from '../src/engine/config.js';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema } from '../src/engine/config.js';
 import { pickSdkOptions } from '../src/engine/backend.js';
 import type { PartialEforgeConfig, HookConfig } from '../src/engine/config.js';
 
@@ -264,7 +264,9 @@ describe('parseRawConfig validation warnings', () => {
     const { join } = await import('node:path');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-warn-'));
-    const configPath = join(tmpDir, 'eforge.yaml');
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(tmpDir, 'eforge'), { recursive: true });
+    const configPath = join(tmpDir, 'eforge', 'config.yaml');
     await writeFile(configPath, 'agents:\n  maxTurns: "not-a-number"\n', 'utf-8');
 
     const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -284,7 +286,9 @@ describe('parseRawConfig validation warnings', () => {
     const { join } = await import('node:path');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-warn-'));
-    const configPath = join(tmpDir, 'eforge.yaml');
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(tmpDir, 'eforge'), { recursive: true });
+    const configPath = join(tmpDir, 'eforge', 'config.yaml');
     await writeFile(configPath, 'agents:\n  permissionMode: "skip"\n', 'utf-8');
 
     const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -304,6 +308,33 @@ describe('parseRawConfig validation warnings', () => {
 
   it('merge-conflict-resolver is recognized as a valid agent role', () => {
     expect(AGENT_ROLES).toContain('merge-conflict-resolver');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findConfigFile
+// ---------------------------------------------------------------------------
+
+describe('findConfigFile', () => {
+  it('returns null when only legacy eforge.yaml exists and logs a warning', async () => {
+    const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-find-'));
+    await writeFile(join(tmpDir, 'eforge.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
+
+    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result = await findConfigFile(tmpDir);
+      expect(result).toBeNull();
+      const warnings = stderrSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(warnings).toContain('legacy config');
+      expect(warnings).toContain('eforge/config.yaml');
+    } finally {
+      stderrSpy.mockRestore();
+      await rm(tmpDir, { recursive: true });
+    }
   });
 });
 

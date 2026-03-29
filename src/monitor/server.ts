@@ -91,7 +91,7 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -374,8 +374,9 @@ export async function startServer(
     if (!run) return null;
 
     try {
-      const orchPath = resolve(run.cwd, 'plans', run.planSet, 'orchestration.yaml');
-      const expectedBase = resolve(run.cwd, 'plans');
+      const planBase = options?.planOutputDir ?? 'eforge/plans';
+      const orchPath = resolve(run.cwd, planBase, run.planSet, 'orchestration.yaml');
+      const expectedBase = resolve(run.cwd, planBase);
       if (!orchPath.startsWith(expectedBase + '/')) return null;
 
       const content = await readFile(orchPath, 'utf-8');
@@ -430,8 +431,9 @@ export async function startServer(
 
       if (compileRun) {
         const { cwd, planSet } = compileRun;
-        const planDir = resolve(cwd, 'plans', planSet);
-        const expectedBase = resolve(cwd, 'plans');
+        const planBase = options?.planOutputDir ?? 'eforge/plans';
+        const planDir = resolve(cwd, planBase, planSet);
+        const expectedBase = resolve(cwd, planBase);
         if (!planDir.startsWith(expectedBase + '/')) {
           // planSet contains path traversal — skip expedition files
           sendJson(res, compiledPlans);
@@ -505,7 +507,7 @@ export async function startServer(
       return;
     }
 
-    const queueDir = resolve(cwd, 'docs/prd-queue');
+    const queueDir = resolve(cwd, options?.queueDir ?? 'eforge/queue');
     let entries: string[];
     try {
       entries = await readdir(queueDir);
@@ -592,7 +594,8 @@ export async function startServer(
 
     // Read orchestration.yaml
     try {
-      const orchPath = resolve(run.cwd, 'plans', run.planSet, 'orchestration.yaml');
+      const planBase = options?.planOutputDir ?? 'eforge/plans';
+      const orchPath = resolve(run.cwd, planBase, run.planSet, 'orchestration.yaml');
       const content = await readFile(orchPath, 'utf-8');
       const orch = parseYaml(content);
       if (!orch?.base_branch || !Array.isArray(orch.plans)) return null;
