@@ -40,7 +40,7 @@ function AppContent() {
   const { state: autoBuildState, toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild();
   const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { setRuntimeData } = usePlanPreview();
+  const { setRuntimeData, openContentPreview } = usePlanPreview();
 
   // Fetch project context once on mount
   useEffect(() => {
@@ -207,6 +207,13 @@ function AppContent() {
     return synthetic;
   }, [isCompilePhase, runState.planStatuses, runState.moduleStatuses]);
 
+  // Derive PRD source from the first plan:start event
+  const prdSource = useMemo(() => {
+    const planStart = runState.events.find((e) => e.event.type === 'plan:start');
+    if (!planStart || planStart.event.type !== 'plan:start') return null;
+    return { label: planStart.event.label ?? 'Build PRD', content: planStart.event.source };
+  }, [runState.events]);
+
   // Reset active tab if its feature becomes unavailable
   useEffect(() => {
     if (activeTab === 'graph' && !graphEnabled) setActiveTab('changes');
@@ -275,7 +282,17 @@ function AppContent() {
               </div>
             ) : (
               <>
-                <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} />
+                <div className="flex items-center justify-between">
+                  <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} />
+                  {prdSource && (
+                    <span
+                      className="text-blue cursor-pointer hover:underline text-xs"
+                      onClick={() => openContentPreview(prdSource.label, prdSource.content)}
+                    >
+                      Build PRD
+                    </span>
+                  )}
+                </div>
                 <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} profileInfo={runState.profileInfo} events={runState.events} orchestration={effectiveOrchestration} />
 
                 {/* Content tabs */}
