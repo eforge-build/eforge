@@ -342,4 +342,208 @@ describe('worktree integration', () => {
     const { stdout: files } = await exec('git', ['ls-files'], { cwd: path2 });
     expect(files).toContain('progress.txt');
   });
+
+  it('mergeFeatureBranchToBase squashes commits when squashCommitMessage is provided', async () => {
+    const baseDir = makeTempDir();
+    const featureBranch = 'eforge/feature-squash';
+    const { repoRoot, baseBranch } = await setupRepo(baseDir, { featureBranch });
+    const worktreeBase = join(baseDir, 'worktrees');
+
+    // Create a merge worktree and make multiple commits on the feature branch
+    const mergeWorktreePath = await createMergeWorktree(
+      repoRoot,
+      worktreeBase,
+      featureBranch,
+      baseBranch,
+    );
+
+    // Commit 1
+    writeFileSync(join(mergeWorktreePath, 'file1.txt'), 'first file\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'builder: implement feature'], { cwd: mergeWorktreePath });
+
+    // Commit 2
+    writeFileSync(join(mergeWorktreePath, 'file2.txt'), 'second file\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'review-fixer: apply fixes'], { cwd: mergeWorktreePath });
+
+    // Commit 3
+    writeFileSync(join(mergeWorktreePath, 'file3.txt'), 'third file\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'validation-fixer: fix validation'], { cwd: mergeWorktreePath });
+
+    // Remove merge worktree before merging to base
+    await removeWorktree(repoRoot, mergeWorktreePath);
+
+    // Squash merge with a commit message
+    const squashMessage = 'feat(plan-01): My feature\n\nCo-Authored-By: forged-by-eforge <noreply@eforge.build>';
+    const sha = await mergeFeatureBranchToBase(
+      repoRoot,
+      featureBranch,
+      baseBranch,
+      worktreeBase,
+      undefined,
+      squashMessage,
+    );
+
+    expect(sha).toBeTruthy();
+
+    // Verify all files exist on base branch
+    const { stdout: files } = await exec('git', ['ls-files'], { cwd: repoRoot });
+    expect(files).toContain('file1.txt');
+    expect(files).toContain('file2.txt');
+    expect(files).toContain('file3.txt');
+
+    // Verify there's exactly one new commit on base (the squash commit)
+    const { stdout: log } = await exec('git', ['log', '--oneline'], { cwd: repoRoot });
+    const commits = log.trim().split('\n');
+    // Should be 2: initial commit + squash commit
+    expect(commits).toHaveLength(2);
+
+    // Verify commit message contains the squash message
+    const { stdout: lastMsg } = await exec('git', ['log', '-1', '--format=%B'], { cwd: repoRoot });
+    expect(lastMsg.trim()).toContain('feat(plan-01): My feature');
+    expect(lastMsg.trim()).toContain('Co-Authored-By: forged-by-eforge');
+  });
+
+  it('mergeFeatureBranchToBase preserves individual commits without squashCommitMessage', async () => {
+    const baseDir = makeTempDir();
+    const featureBranch = 'eforge/feature-no-squash';
+    const { repoRoot, baseBranch } = await setupRepo(baseDir, { featureBranch });
+    const worktreeBase = join(baseDir, 'worktrees');
+
+    // Create a merge worktree and make multiple commits
+    const mergeWorktreePath = await createMergeWorktree(
+      repoRoot,
+      worktreeBase,
+      featureBranch,
+      baseBranch,
+    );
+
+    writeFileSync(join(mergeWorktreePath, 'a.txt'), 'a\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'commit A'], { cwd: mergeWorktreePath });
+
+    writeFileSync(join(mergeWorktreePath, 'b.txt'), 'b\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'commit B'], { cwd: mergeWorktreePath });
+
+    await removeWorktree(repoRoot, mergeWorktreePath);
+
+    // Merge without squash - should fast-forward preserving individual commits
+    const sha = await mergeFeatureBranchToBase(
+      repoRoot,
+      featureBranch,
+      baseBranch,
+      worktreeBase,
+    );
+
+    expect(sha).toBeTruthy();
+
+    // Verify individual commits are preserved (ff-only)
+    const { stdout: log } = await exec('git', ['log', '--oneline'], { cwd: repoRoot });
+    const commits = log.trim().split('\n');
+    // Should be 3: initial + commit A + commit B
+    expect(commits).toHaveLength(3);
+    expect(log).toContain('commit A');
+    expect(log).toContain('commit B');
+  });
+
+  it('mergeFeatureBranchToBase squash with conflict invokes resolver', async () => {
+    const baseDir = makeTempDir();
+    const featureBranch = 'eforge/feature-squash-conflict';
+    const { repoRoot, baseBranch } = await setupRepo(baseDir);
+    const worktreeBase = join(baseDir, 'worktrees');
+
+    // Make a commit on main that will conflict
+    writeFileSync(join(repoRoot, 'shared.txt'), 'main content\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'add shared.txt on main'], { cwd: repoRoot });
+
+    // Create feature branch from main, then diverge
+    await exec('git', ['checkout', '-b', featureBranch], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'shared.txt'), 'feature content\n');
+    writeFileSync(join(repoRoot, 'feature-only.txt'), 'only in feature\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'feature changes'], { cwd: repoRoot });
+
+    // Go back to main and make a conflicting change
+    await exec('git', ['checkout', baseBranch], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'shared.txt'), 'main diverged content\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'main diverged'], { cwd: repoRoot });
+
+    // Now squash merge should conflict
+    let resolverCalled = false;
+    const resolver = async (cwd: string, conflict: { conflictedFiles: string[] }) => {
+      resolverCalled = true;
+      expect(conflict.conflictedFiles).toContain('shared.txt');
+
+      // Resolve by writing merged content
+      writeFileSync(join(cwd, 'shared.txt'), 'resolved content\n');
+      await exec('git', ['add', 'shared.txt'], { cwd });
+      return true;
+    };
+
+    const squashMessage = 'feat(plan-01): squashed with resolution';
+    const sha = await mergeFeatureBranchToBase(
+      repoRoot,
+      featureBranch,
+      baseBranch,
+      worktreeBase,
+      resolver,
+      squashMessage,
+    );
+
+    expect(resolverCalled).toBe(true);
+    expect(sha).toBeTruthy();
+
+    // Verify resolved content
+    const { stdout: content } = await exec('git', ['show', 'HEAD:shared.txt'], { cwd: repoRoot });
+    expect(content).toBe('resolved content\n');
+
+    // Verify feature-only file is present
+    const { stdout: files } = await exec('git', ['ls-files'], { cwd: repoRoot });
+    expect(files).toContain('feature-only.txt');
+  });
+
+  it('mergeFeatureBranchToBase squash resets on failure without resolver', async () => {
+    const baseDir = makeTempDir();
+    const featureBranch = 'eforge/feature-squash-fail';
+    const { repoRoot, baseBranch } = await setupRepo(baseDir);
+    const worktreeBase = join(baseDir, 'worktrees');
+
+    // Make a commit on main
+    writeFileSync(join(repoRoot, 'shared.txt'), 'main content\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'add shared on main'], { cwd: repoRoot });
+
+    // Create feature branch and diverge
+    await exec('git', ['checkout', '-b', featureBranch], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'shared.txt'), 'feature content\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'feature changes'], { cwd: repoRoot });
+
+    await exec('git', ['checkout', baseBranch], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'shared.txt'), 'main diverged\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'main diverged'], { cwd: repoRoot });
+
+    // Squash merge without resolver - should fail and reset
+    const squashMessage = 'feat(plan-01): should fail';
+    await expect(
+      mergeFeatureBranchToBase(
+        repoRoot,
+        featureBranch,
+        baseBranch,
+        worktreeBase,
+        undefined,
+        squashMessage,
+      ),
+    ).rejects.toThrow();
+
+    // Verify the merge state was reset (no conflict markers left)
+    const { stdout: status } = await exec('git', ['status', '--porcelain'], { cwd: repoRoot });
+    expect(status.trim()).toBe('');
+  });
 });
