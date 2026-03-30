@@ -387,6 +387,10 @@ async function main(): Promise<void> {
   // Register in global port registry
   registerPort(cwd, server.port, process.pid);
 
+  // Declare state-machine variables before use (setupStateMachine assigns stateTimer)
+  let stateTimer: ReturnType<typeof setInterval> | undefined;
+  let isShuttingDown = false;
+
   // --- Start watcher if autoBuild enabled + idle shutdown (persistent mode) ---
   if (persistent && daemonState && config) {
     respawnDelayMs = config.prdQueue.watchPollIntervalMs;
@@ -424,9 +428,6 @@ async function main(): Promise<void> {
     }
   }, ORPHAN_CHECK_INTERVAL_MS);
   orphanTimer.unref();
-
-  let stateTimer: ReturnType<typeof setInterval> | undefined;
-  let isShuttingDown = false;
 
   function setupStateMachine(idleFallbackMs: number): void {
     let state: ServerState = 'WATCHING';
