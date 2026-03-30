@@ -215,6 +215,7 @@ export const piConfigSchema = z.object({
     autoDiscover: z.boolean().optional().describe('Automatically discover Pi extensions'),
     include: z.array(z.string()).optional().describe('Extension names to include'),
     exclude: z.array(z.string()).optional().describe('Extension names to exclude'),
+    paths: z.array(z.string()).optional().describe('Explicit extension directory paths to load'),
   }).optional().describe('Pi extension configuration'),
   compaction: z.object({
     enabled: z.boolean().optional().describe('Enable context compaction'),
@@ -307,7 +308,7 @@ export interface PiConfig {
   provider?: string;
   apiKey?: string;
   thinkingLevel: 'off' | 'medium' | 'high';
-  extensions: { autoDiscover: boolean; include?: string[]; exclude?: string[] };
+  extensions: { autoDiscover: boolean; include?: string[]; exclude?: string[]; paths?: string[] };
   compaction: { enabled: boolean; threshold: number };
   retry: { maxRetries: number; backoffMs: number };
 }
@@ -508,6 +509,7 @@ export function resolveConfig(
         autoDiscover: fileConfig.pi?.extensions?.autoDiscover ?? DEFAULT_CONFIG.pi.extensions.autoDiscover,
         include: fileConfig.pi?.extensions?.include,
         exclude: fileConfig.pi?.extensions?.exclude,
+        paths: fileConfig.pi?.extensions?.paths,
       }),
       compaction: Object.freeze({
         enabled: fileConfig.pi?.compaction?.enabled ?? DEFAULT_CONFIG.pi.compaction.enabled,
