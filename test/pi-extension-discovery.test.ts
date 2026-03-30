@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { discoverPiExtensions } from '../src/engine/backends/pi-extensions.js';
 import { useTempDir } from './test-tmpdir.js';
 
 describe('discoverPiExtensions', () => {
-  const tmpDir = useTempDir();
+  const makeTempDir = useTempDir();
 
   let cwd: string;
 
   beforeEach(async () => {
-    cwd = tmpDir.path;
+    cwd = makeTempDir();
     // Create project-local .pi/extensions/ with some extension dirs
     const extDir = join(cwd, '.pi', 'extensions');
     await mkdir(extDir, { recursive: true });

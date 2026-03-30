@@ -190,6 +190,7 @@ export class EforgeEngine {
               autoDiscover: config.pi.extensions.autoDiscover,
               include: config.pi.extensions.include,
               exclude: config.pi.extensions.exclude,
+              paths: config.pi.extensions?.paths,
             },
           }),
         };
