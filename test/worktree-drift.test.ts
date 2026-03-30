@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
-import { recoverDriftedWorktree } from '../src/engine/worktree.js';
+import { recoverDriftedWorktree } from '../src/engine/worktree-ops.js';
 
 const exec = promisify(execFile);
 

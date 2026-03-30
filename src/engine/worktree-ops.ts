@@ -53,16 +53,20 @@ export async function createWorktree(
 
 /**
  * Remove a git worktree and its directory.
+ * Returns `{ removed: true, fallback: false }` on clean removal,
+ * `{ removed: true, fallback: true }` when force cleanup was needed.
  */
-export async function removeWorktree(repoRoot: string, worktreePath: string): Promise<void> {
+export async function removeWorktree(repoRoot: string, worktreePath: string): Promise<{ removed: boolean; fallback: boolean }> {
   try {
     await exec('git', ['worktree', 'remove', worktreePath, '--force'], {
       cwd: repoRoot,
     });
+    return { removed: true, fallback: false };
   } catch {
     // Worktree may already be removed — force cleanup
     await rm(worktreePath, { recursive: true, force: true });
     await exec('git', ['worktree', 'prune'], { cwd: repoRoot });
+    return { removed: true, fallback: true };
   }
 }
 

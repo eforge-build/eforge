@@ -16,16 +16,10 @@ import { loadState, saveState, isResumable } from './state.js';
 import { transitionPlan } from './orchestrator/plan-lifecycle.js';
 import {
   computeWorktreeBase,
-  createWorktree,
-  removeWorktree,
-  mergeWorktree,
-  mergeFeatureBranchToBase,
-  cleanupWorktrees,
-  recoverDriftedWorktree,
   type MergeResolver,
-} from './worktree.js';
+} from './worktree-ops.js';
+import { WorktreeManager } from './worktree-manager.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
-import { ATTRIBUTION } from './git.js';
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -315,8 +309,13 @@ export class Orchestrator {
     const maxConcurrency = computeMaxConcurrency(config.plans);
     const needsPlanWorktrees = maxConcurrency > 1;
 
-    // Track plans that built directly on the merge worktree (no squash merge needed)
-    const builtOnMergeWorktree = new Set<string>();
+    // WorktreeManager owns all worktree lifecycle
+    const wm = new WorktreeManager({
+      repoRoot,
+      worktreeBase,
+      featureBranch,
+      mergeWorktreePath,
+    });
 
     try {
       // Feature branch was already created by createMergeWorktree() during compile.
@@ -360,26 +359,11 @@ export class Orchestrator {
         const planPromise = (async () => {
           const plan = planMap.get(planId)!;
           let worktreePath: string | undefined;
-          let usedMergeWorktree = false;
 
           try {
             await semaphore.acquire();
 
-            if (needsPlanWorktrees) {
-              // Create worktree — branch off featureBranch (not baseBranch)
-              // so plan builders can see committed plan artifacts from compile
-              worktreePath = await createWorktree(
-                repoRoot,
-                worktreeBase,
-                plan.branch,
-                featureBranch,
-              );
-            } else {
-              // No concurrent plans — build directly on the merge worktree
-              worktreePath = mergeWorktreePath;
-              usedMergeWorktree = true;
-              builtOnMergeWorktree.add(planId);
-            }
+            worktreePath = await wm.acquireForPlan(planId, plan.branch, needsPlanWorktrees);
 
             state.plans[planId].worktreePath = worktreePath;
             transitionPlan(state, planId, 'running');
@@ -405,13 +389,7 @@ export class Orchestrator {
             for (const e of failureEvents) eventQueue.push(e);
           } finally {
             semaphore.release();
-            if (worktreePath && !usedMergeWorktree) {
-              try {
-                await removeWorktree(repoRoot, worktreePath);
-              } catch {
-                // Best-effort worktree cleanup
-              }
-            }
+            await wm.releaseForPlan(planId);
             eventQueue.removeProducer();
           }
         })();
@@ -506,66 +484,19 @@ export class Orchestrator {
             try {
               const plan = planMap.get(planId)!;
 
-              if (builtOnMergeWorktree.has(planId)) {
-                // Plan built directly on the merge worktree — commits already on featureBranch.
-                // No squash merge needed. Recover from any branch drift first, then capture HEAD SHA.
-                const prefix = config.mode === 'errand' ? 'fix' : 'feat';
-                const driftCommitMessage = `${prefix}(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}`;
-                await recoverDriftedWorktree(mergeWorktreePath, featureBranch, driftCommitMessage);
+              const commitSha = await wm.mergePlan(planId, plan, {
+                mode: config.mode,
+                mergeResolver: this.options.mergeResolver,
+                recentlyMergedIds,
+                planMap,
+              });
 
-                const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: mergeWorktreePath });
-                const commitSha = shaOut.trim();
+              transitionPlan(state, planId, 'merged');
+              planState.merged = true;
+              recentlyMergedIds.push(planId);
+              saveState(stateDir, state);
 
-                transitionPlan(state, planId, 'merged');
-                planState.merged = true;
-                recentlyMergedIds.push(planId);
-                saveState(stateDir, state);
-
-                yield { timestamp: new Date().toISOString(), type: 'merge:complete', planId, commitSha };
-              } else {
-                // Wrap mergeResolver to inject plan context into MergeConflictInfo
-                const baseResolver = this.options.mergeResolver;
-                const contextResolver: MergeResolver | undefined = baseResolver
-                  ? async (cwd, conflict) => {
-                      // Enrich conflict info with plan context
-                      conflict.planName = plan.name;
-
-                      // Find the most recently merged plan as the likely conflict source
-                      if (recentlyMergedIds.length > 0) {
-                        const lastMergedId = recentlyMergedIds[recentlyMergedIds.length - 1];
-                        const otherPlan = planMap.get(lastMergedId);
-                        if (otherPlan) {
-                          conflict.otherPlanName = otherPlan.name;
-                        }
-                      }
-
-                      return baseResolver(cwd, conflict);
-                    }
-                  : undefined;
-
-                const prefix = config.mode === 'errand' ? 'fix' : 'feat';
-                const commitMessage = `${prefix}(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}`;
-                // Squash merge into featureBranch in the merge worktree (not repoRoot)
-                await mergeWorktree(mergeWorktreePath, plan.branch, featureBranch, commitMessage, contextResolver);
-
-                // Capture the squash-merge commit SHA for diff retrieval
-                const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: mergeWorktreePath });
-                const commitSha = shaOut.trim();
-
-                // Best-effort branch deletion — squash merges leave branches "unmerged" so use -D (force)
-                try {
-                  await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot });
-                } catch {
-                  // Branch may already be deleted or never created
-                }
-
-                transitionPlan(state, planId, 'merged');
-                planState.merged = true;
-                recentlyMergedIds.push(planId);
-                saveState(stateDir, state);
-
-                yield { timestamp: new Date().toISOString(), type: 'merge:complete', planId, commitSha };
-              }
+              yield { timestamp: new Date().toISOString(), type: 'merge:complete', planId, commitSha };
             } catch (err) {
               failedMerges.add(planId);
               transitionPlan(state, planId, 'failed', { error: `Merge failed: ${(err as Error).message}` });
@@ -669,12 +600,12 @@ export class Orchestrator {
       }
 
       // 8. Final merge of feature branch to baseBranch
-      // Uses mergeFeatureBranchToBase() which does ff-only in repoRoot without switching branches
+      // Uses wm.mergeToBase() which does ff-only in repoRoot without switching branches
       if (allMerged && !signal?.aborted) {
         yield { timestamp: new Date().toISOString(), type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
 
         try {
-          const commitSha = await mergeFeatureBranchToBase(repoRoot, featureBranch, config.baseBranch, worktreeBase, this.options.mergeResolver);
+          const commitSha = await wm.mergeToBase(config.baseBranch, this.options.mergeResolver);
           featureBranchMerged = true;
           yield { timestamp: new Date().toISOString(), type: 'merge:finalize:complete', featureBranch, baseBranch: config.baseBranch, commitSha };
         } catch (err) {
@@ -700,20 +631,7 @@ export class Orchestrator {
       // 9. Cleanup — always runs, even on errors
       // Note: no `git checkout baseBranch` needed — repoRoot was never modified
 
-      // Remove the merge worktree first (before cleanupWorktrees prunes all)
-      if (mergeWorktreePath) {
-        try {
-          await removeWorktree(repoRoot, mergeWorktreePath);
-        } catch {
-          // Best-effort merge worktree cleanup
-        }
-      }
-
-      try {
-        await cleanupWorktrees(repoRoot, worktreeBase);
-      } catch {
-        // Best-effort cleanup
-      }
+      await wm.cleanupAll();
 
       // Sweep all plan branches (catches failed, skipped, blocked plans that never reached merge)
       for (const [, plan] of planMap) {

@@ -116,12 +116,10 @@ export { Orchestrator } from './orchestrator.js';
 export type { PlanRunner, ValidationFixer, OrchestratorOptions } from './orchestrator.js';
 export {
   computeWorktreeBase,
-  createWorktree,
-  removeWorktree,
-  mergeWorktree,
-  cleanupWorktrees,
-} from './worktree.js';
-export type { MergeResolver, MergeConflictInfo } from './worktree.js';
+} from './worktree-ops.js';
+export type { MergeResolver, MergeConflictInfo } from './worktree-ops.js';
+export { WorktreeManager } from './worktree-manager.js';
+export type { CleanupReport } from './worktree-manager.js';
 export { Semaphore, AsyncEventQueue, runParallel } from './concurrency.js';
 export type { ParallelTask, RunParallelOptions } from './concurrency.js';
 

@@ -12,7 +12,7 @@ import {
   createMergeWorktree,
   mergeFeatureBranchToBase,
   cleanupWorktrees,
-} from '../src/engine/worktree.js';
+} from '../src/engine/worktree-ops.js';
 
 const exec = promisify(execFile);
 
