@@ -679,6 +679,56 @@ export async function startServer(
     }
   }
 
+  async function resolveFeatureBranch(
+    sessionId: string,
+  ): Promise<{ branch: string; baseBranch: string } | null> {
+    const sessionRuns = db.getSessionRuns(sessionId);
+    const run = [...sessionRuns].reverse().find((r) => r.cwd && r.planSet);
+    if (!run) return null;
+
+    // Resolve the repo root — run.cwd may be a worktree path (e.g. .eforge/worktrees/merge)
+    // which would cause candidateOrchestrationPaths to produce incorrect paths.
+    let repoDir: string;
+    try {
+      repoDir = (await execAsync('git', ['rev-parse', '--show-toplevel'], { cwd: run.cwd })).stdout.trim();
+    } catch {
+      repoDir = run.cwd; // fallback to run.cwd if git fails
+    }
+
+    try {
+      const planBase = options?.planOutputDir ?? 'eforge/plans';
+      const candidates = candidateOrchestrationPaths(repoDir, planBase, run.planSet);
+
+      let content: string | null = null;
+      for (const candidate of candidates) {
+        if (!candidate.path.startsWith(candidate.base + '/')) continue;
+        try {
+          content = await readFile(candidate.path, 'utf-8');
+          break;
+        } catch {
+          // try next candidate
+        }
+      }
+      if (!content) return null;
+
+      const orch = parseYaml(content);
+      if (!orch?.base_branch || !orch?.name) return null;
+
+      const branch = `eforge/${orch.name}`;
+
+      // Verify the branch exists in git
+      try {
+        await execAsync('git', ['rev-parse', '--verify', branch], { cwd: repoDir });
+      } catch {
+        return null;
+      }
+
+      return { branch, baseBranch: orch.base_branch };
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Resolve the working directory from the run's DB record for git operations.
    * Prefers the build run's cwd, but falls back to the compile run's cwd
@@ -724,7 +774,22 @@ export async function startServer(
 
     if (!commitSha) {
       // Fallback: branch-based diffing for pre-merge builds
-      const branchInfo = await resolvePlanBranch(sessionId, planId);
+      let branchInfo = await resolvePlanBranch(sessionId, planId);
+
+      // Verify the plan branch actually exists in git
+      if (branchInfo) {
+        try {
+          await execAsync('git', ['rev-parse', '--verify', branchInfo.branch], { cwd });
+        } catch {
+          branchInfo = null;
+        }
+      }
+
+      // Fall back to feature branch (eforge/{name}) for sequential builds
+      if (!branchInfo) {
+        branchInfo = await resolveFeatureBranch(sessionId);
+      }
+
       if (!branchInfo) {
         res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: 'Commit not found' }));
