@@ -4,7 +4,7 @@
 
 import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 
 /** Configuration for Pi extension discovery. */
@@ -13,6 +13,10 @@ export interface PiExtensionConfig {
   paths?: string[];
   /** Whether to auto-discover extensions from standard locations. Default: true. */
   autoDiscover?: boolean;
+  /** Whitelist of extension directory basenames to include (auto-discovered only). */
+  include?: string[];
+  /** Blacklist of extension directory basenames to exclude (auto-discovered only). */
+  exclude?: string[];
 }
 
 /**
@@ -34,7 +38,7 @@ export async function discoverPiExtensions(
 ): Promise<string[]> {
   const result: string[] = [];
 
-  // Add explicit paths first
+  // Add explicit paths first (never filtered by include/exclude)
   if (config?.paths) {
     for (const p of config.paths) {
       if (existsSync(p)) {
@@ -48,14 +52,31 @@ export async function discoverPiExtensions(
     return result;
   }
 
+  // Auto-discover from standard locations
+  const autoDiscovered: string[] = [];
+
   // Auto-discover from project-local .pi/extensions/
   const projectExtDir = join(cwd, '.pi', 'extensions');
-  await collectExtensionDirs(projectExtDir, result);
+  await collectExtensionDirs(projectExtDir, autoDiscovered);
 
   // Auto-discover from global ~/.pi/extensions/
   const globalExtDir = join(homedir(), '.pi', 'extensions');
-  await collectExtensionDirs(globalExtDir, result);
+  await collectExtensionDirs(globalExtDir, autoDiscovered);
 
+  // Apply include filter (whitelist) — keep only matching basenames
+  let filtered = autoDiscovered;
+  if (config?.include && config.include.length > 0) {
+    const includeSet = new Set(config.include);
+    filtered = filtered.filter(p => includeSet.has(basename(p)));
+  }
+
+  // Apply exclude filter (blacklist) — remove matching basenames
+  if (config?.exclude && config.exclude.length > 0) {
+    const excludeSet = new Set(config.exclude);
+    filtered = filtered.filter(p => !excludeSet.has(basename(p)));
+  }
+
+  result.push(...filtered);
   return result;
 }
 

@@ -186,6 +186,11 @@ export class EforgeEngine {
             mcpServers: options.mcpServers,
             piConfig: config.pi,
             bare: config.agents.bare,
+            extensions: {
+              autoDiscover: config.pi.extensions.autoDiscover,
+              include: config.pi.extensions.include,
+              exclude: config.pi.extensions.exclude,
+            },
           }),
         };
       } catch (err) {
