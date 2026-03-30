@@ -1,0 +1,95 @@
+name: refactor-worktree-management
+description: Extract worktree lifecycle into WorktreeManager, decompose
+  monolithic execute() into phase functions, add plan lifecycle guards and
+  resume reconciliation
+created: 2026-03-30
+compiled: 2026-03-30
+mode: refactor-with-tests
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-plan-lifecycle-guards
+    name: Plan Lifecycle Guards
+    depends_on: []
+    branch: refactor-worktree-management/plan-lifecycle-guards
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-02-worktree-integration-tests
+    name: Worktree Integration Test Baseline
+    depends_on:
+      - plan-01-plan-lifecycle-guards
+    branch: refactor-worktree-management/worktree-integration-tests
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-03-worktree-manager
+    name: WorktreeManager Extraction
+    depends_on:
+      - plan-02-worktree-integration-tests
+    branch: refactor-worktree-management/worktree-manager
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-04-phase-decomposition
+    name: Phase Decomposition
+    depends_on:
+      - plan-03-worktree-manager
+    branch: refactor-worktree-management/phase-decomposition
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-05-resume-reconciliation
+    name: Resume Reconciliation
+    depends_on:
+      - plan-04-phase-decomposition
+    branch: refactor-worktree-management/resume-reconciliation
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors. Use when the full scope can
+    be planned in a single planner session - all plans enumerated, all file
+    changes listed, and cross-plan dependencies resolved. Covers tightly coupled
+    changes (type cascades, interface refactors, rename-and-update-all-callers)
+    and any work where one planning pass is sufficient.
+  compile:
+    - planner
+    - plan-review-cycle
