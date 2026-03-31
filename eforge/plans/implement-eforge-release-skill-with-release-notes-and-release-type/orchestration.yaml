@@ -1,0 +1,32 @@
+name: implement-eforge-release-skill-with-release-notes-and-release-type
+description: Rewrite eforge-release skill to support configurable release types,
+  automatic release notes generation, changelog management, and GitHub Release
+  creation
+created: 2026-03-31
+compiled: 2026-03-31
+mode: skill-rewrite
+base_branch: main
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+validate:
+  - pnpm build
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-rewrite-release-skill
+    name: Rewrite eforge-release skill with release notes and release type
+    depends_on: []
+    branch: implement-eforge-release-skill-with-release-notes-and-release-type/rewrite-release-skill
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
