@@ -18,6 +18,7 @@ import { Semaphore, AsyncEventQueue } from '../concurrency.js';
 import type { PlanRunner, ValidationFixer, PrdValidator } from '../orchestrator.js';
 import type { MergeResolver } from '../worktree-ops.js';
 import { ATTRIBUTION } from '../git.js';
+import { cleanupPlanFiles } from '../cleanup.js';
 
 /**
  * Shared context passed between phase functions.
@@ -48,6 +49,14 @@ export interface PhaseContext {
   featureBranchMerged: boolean;
   /** Whether this execution is resuming from a prior interrupted run */
   resumed: boolean;
+  /** Whether to run cleanup on the feature branch before the final merge. */
+  shouldCleanup?: boolean;
+  /** Plan set name for cleanup commit message. */
+  cleanupPlanSet?: string;
+  /** Output directory containing plan files. */
+  cleanupOutputDir?: string;
+  /** Path to the PRD file to remove during cleanup. */
+  cleanupPrdFilePath?: string;
 }
 
 /**
@@ -516,11 +525,26 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     yield { timestamp: new Date().toISOString(), type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
 
     try {
+      // Run cleanup on the feature branch before the final merge
+      if (ctx.shouldCleanup && ctx.cleanupPlanSet && ctx.cleanupOutputDir) {
+        try {
+          await exec('git', ['checkout', featureBranch], { cwd: ctx.mergeWorktreePath });
+          for await (const event of cleanupPlanFiles(ctx.mergeWorktreePath, ctx.cleanupPlanSet, ctx.cleanupOutputDir, ctx.cleanupPrdFilePath)) {
+            yield event;
+          }
+          await exec('git', ['checkout', config.baseBranch], { cwd: ctx.mergeWorktreePath });
+        } catch (cleanupErr) {
+          yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Feature branch cleanup failed (non-fatal): ${(cleanupErr as Error).message}` };
+          // Attempt to restore baseBranch checkout so merge can proceed
+          try { await exec('git', ['checkout', config.baseBranch], { cwd: ctx.mergeWorktreePath }); } catch {}
+        }
+      }
+
       // Build the merge commit message
       const prefix = config.mode === 'errand' ? 'fix' : 'feat';
       let commitMessage: string;
       if (config.plans.length === 1) {
-        commitMessage = `${prefix}(${config.plans[0].id}): ${config.plans[0].name}\n\n${ATTRIBUTION}`;
+        commitMessage = `${prefix}(${config.name}): ${config.plans[0].name}\n\n${ATTRIBUTION}`;
       } else {
         const planList = config.plans.map((p) => `- ${p.id}: ${p.name}`).join('\n');
         commitMessage = `${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}\n\n${ATTRIBUTION}`;

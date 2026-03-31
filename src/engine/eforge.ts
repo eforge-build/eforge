@@ -41,6 +41,7 @@ import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validate
 import { loadState, saveState as saveEforgeState } from './state.js';
 import { runCompilePipeline, runBuildPipeline, createToolTracker, type PipelineContext, type BuildStageContext } from './pipeline.js';
 import { forgeCommit, retryOnLock } from './git.js';
+import { cleanupPlanFiles } from './cleanup.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
 
 const exec = promisify(execFile);
@@ -651,6 +652,7 @@ export class EforgeEngine {
       // Create and run orchestrator
       const parallelism = config.build.parallelism;
       const signal = abortController?.signal;
+      const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
       const orchestrator = new Orchestrator({
         stateDir: cwd,
         repoRoot: cwd,
@@ -664,6 +666,10 @@ export class EforgeEngine {
         mergeResolver,
         prdValidator,
         mergeWorktreePath,
+        shouldCleanup,
+        cleanupPlanSet: planSet,
+        cleanupOutputDir: this.config.plan.outputDir,
+        cleanupPrdFilePath: options.prdFilePath,
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
@@ -700,14 +706,13 @@ export class EforgeEngine {
         yield mergeEvents.shift()!;
       }
 
-      const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
-      if (status === 'completed' && shouldCleanup) {
-        yield* cleanupPlanFiles(cwd, planSet, this.config.plan.outputDir, options.prdFilePath);
-      }
     } catch (err) {
       status = 'failed';
       summary = (err as Error).message;
     } finally {
+      // Clean up state file (gitignored) — must use repo root, not merge worktree
+      try { await rm(resolve(cwd, '.eforge', 'state.json')); } catch {}
+
       tracing?.setOutput({ status, summary });
       yield {
         type: 'phase:end',
@@ -1156,66 +1161,6 @@ export class EforgeEngine {
       completedPlans: state.completedPlans,
     };
   }
-}
-
-/**
- * Remove plan files after a successful build and commit the removal.
- */
-async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir: string, prdFilePath?: string): AsyncGenerator<EforgeEvent> {
-  yield { timestamp: new Date().toISOString(), type: 'cleanup:start', planSet };
-
-  try {
-    const planDir = resolve(cwd, outputDir, planSet);
-    await retryOnLock(() => exec('git', ['rm', '-r', '--', planDir], { cwd }), cwd);
-
-    // Remove empty output directory
-    const plansDir = resolve(cwd, outputDir);
-    try {
-      const remaining = await readdir(plansDir);
-      if (remaining.length === 0) {
-        await rm(plansDir, { recursive: true });
-      }
-    } catch { /* may already be gone */ }
-
-    // Also remove PRD file when provided
-    if (prdFilePath) {
-      try {
-        // git rm (tracked files), fall back to fs rm (untracked)
-        try {
-          await retryOnLock(() => exec('git', ['rm', '-f', '--', prdFilePath], { cwd }), cwd);
-        } catch {
-          await rm(resolve(cwd, prdFilePath));
-          // Stage the deletion so forgeCommit picks it up
-          try {
-            await retryOnLock(() => exec('git', ['add', '--', prdFilePath], { cwd }), cwd);
-          } catch { /* file may have been untracked */ }
-        }
-
-        // Remove empty parent directory of the PRD file
-        const { dirname } = await import('node:path');
-        const prdDir = dirname(prdFilePath);
-        try {
-          const remaining = await readdir(prdDir);
-          if (remaining.length === 0) {
-            await rm(prdDir, { recursive: true });
-          }
-        } catch { /* may already be gone */ }
-      } catch { /* PRD file may not exist or already removed */ }
-    }
-
-    const commitMsg = prdFilePath
-      ? `cleanup(${planSet}): remove plan files and PRD`
-      : `cleanup(${planSet}): remove plan files after successful build`;
-    await forgeCommit(cwd, commitMsg);
-
-    // Clean up state file (gitignored)
-    try { await rm(resolve(cwd, '.eforge', 'state.json')); } catch {}
-  } catch (err) {
-    // Non-fatal — ensure cleanup:complete always pairs with cleanup:start
-    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Cleanup failed (non-fatal): ${(err as Error).message}` };
-  }
-
-  yield { timestamp: new Date().toISOString(), type: 'cleanup:complete', planSet };
 }
 
 /**

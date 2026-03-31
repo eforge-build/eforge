@@ -66,6 +66,14 @@ export interface OrchestratorOptions {
   prdValidator?: PrdValidator;
   /** Path to the merge worktree (created during compile, loaded from state during build). */
   mergeWorktreePath?: string;
+  /** Whether to run cleanup on the feature branch before the final merge. */
+  shouldCleanup?: boolean;
+  /** Plan set name for cleanup commit message. */
+  cleanupPlanSet?: string;
+  /** Output directory containing plan files. */
+  cleanupOutputDir?: string;
+  /** Path to the PRD file to remove during cleanup. */
+  cleanupPrdFilePath?: string;
 }
 
 /**
@@ -146,6 +154,8 @@ export class Orchestrator {
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
       mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, worktreeManager: wm,
       failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, resumed,
+      shouldCleanup: this.options.shouldCleanup, cleanupPlanSet: this.options.cleanupPlanSet,
+      cleanupOutputDir: this.options.cleanupOutputDir, cleanupPrdFilePath: this.options.cleanupPrdFilePath,
     };
     try {
       yield* executePlans(ctx);
