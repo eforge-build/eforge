@@ -57,6 +57,7 @@ prdQueue:
   dir: eforge/queue           # Where queued PRDs are stored
   autoRevise: true            # Auto-revise stale PRDs before building
   autoBuild: true             # Daemon automatically builds after enqueue
+  parallelism: 1              # Max concurrent PRD builds from the queue
   watchPollIntervalMs: 5000   # Poll interval for watch mode (ms)
 
 daemon:
@@ -154,3 +155,35 @@ Config merges from two levels (lowest to highest priority):
 2. **Project** - `eforge/config.yaml` found by walking up from cwd
 
 Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `pi`) shallow-merge per-field. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
+
+## Parallelism
+
+eforge has three dimensions of parallelism:
+
+### Queue processing (`prdQueue.parallelism`)
+
+Controls the maximum number of PRDs built concurrently when processing the queue (`eforge build --queue` or `eforge queue run`). Default: `1` (sequential).
+
+PRDs with `depends_on` frontmatter wait for their dependencies to complete before starting. If a dependency fails, all transitive dependents are marked as blocked and skipped.
+
+CLI override: `--queue-parallelism <n>`
+
+```yaml
+prdQueue:
+  parallelism: 3    # Build up to 3 PRDs concurrently
+```
+
+### Plan execution (`build.parallelism`)
+
+Controls the maximum number of plans executed in parallel within a single build. Applies to expedition and multi-plan profiles where plans run in separate git worktrees. Default: CPU core count via `os.availableParallelism()`.
+
+This is config-only - there is no CLI override.
+
+```yaml
+build:
+  parallelism: 4    # Run up to 4 plan worktrees in parallel
+```
+
+### Enqueuing
+
+Enqueuing is always single-threaded. The formatter processes one PRD at a time before adding it to the queue. No configuration is needed or available.
