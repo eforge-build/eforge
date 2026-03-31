@@ -516,11 +516,16 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     yield { timestamp: new Date().toISOString(), type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
 
     try {
-      // For single-plan builds, squash all feature-branch commits into one clean commit
-      const squashCommitMessage = config.plans.length === 1
-        ? `feat(${config.plans[0].id}): ${config.plans[0].name}\n\n${ATTRIBUTION}`
-        : undefined;
-      const commitSha = await ctx.worktreeManager.mergeToBase(config.baseBranch, ctx.mergeResolver, squashCommitMessage);
+      // Build the merge commit message
+      const prefix = config.mode === 'errand' ? 'fix' : 'feat';
+      let commitMessage: string;
+      if (config.plans.length === 1) {
+        commitMessage = `${prefix}(${config.plans[0].id}): ${config.plans[0].name}\n\n${ATTRIBUTION}`;
+      } else {
+        const planList = config.plans.map((p) => `- ${p.id}: ${p.name}`).join('\n');
+        commitMessage = `${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}\n\n${ATTRIBUTION}`;
+      }
+      const commitSha = await ctx.worktreeManager.mergeToBase(config.baseBranch, commitMessage, ctx.mergeResolver);
       ctx.featureBranchMerged = true;
       yield { timestamp: new Date().toISOString(), type: 'merge:finalize:complete', featureBranch, baseBranch: config.baseBranch, commitSha };
     } catch (err) {

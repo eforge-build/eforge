@@ -32,7 +32,7 @@ For test bugs:
 3. Stage and commit the test fixes:
 
 ```
-git add <test-files> && git commit -m "fix({{plan_id}}): fix test issues
+git add <test-files> && git commit -m "test({{plan_id}}): fix test issues
 
 {{attribution}}"
 ```

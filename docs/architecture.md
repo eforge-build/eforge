@@ -171,7 +171,7 @@ graph TD
     FB -->|"deps met"| WT3["Worktree C<br/>(plan 3 - depended on 1)"]
     WT3 -->|"squash-merge"| FB
 
-    FB -->|"all plans merged"| Base["Base branch"]
+    FB -->|"--no-ff merge"| Base["Base branch"]
     Base --> Val{"Post-merge<br/>validation"}
     Val -->|"fail"| Fix["Validation fixer<br/>(up to N retries)"]
     Fix --> Val
@@ -180,7 +180,7 @@ graph TD
 
 Each plan builds in an **isolated git worktree**. Worktrees live in a sibling directory to avoid polluting the main repo. A semaphore limits concurrent plan execution (configurable via `build.parallelism`).
 
-When a plan completes and merges, the orchestrator immediately checks if any pending plans now have all dependencies satisfied, and launches them. Plans squash-merge back to the feature branch as they finish - a plan only merges after all its dependencies have merged. If a merge conflict occurs, the merge-conflict-resolver agent attempts resolution using context from both plans. After all plans merge, the feature branch merges to the base branch.
+When a plan completes and merges, the orchestrator immediately checks if any pending plans now have all dependencies satisfied, and launches them. Plans squash-merge back to the feature branch as they finish - a plan only merges after all its dependencies have merged. If a merge conflict occurs, the merge-conflict-resolver agent attempts resolution using context from both plans. After all plans merge, the feature branch merges to the base branch via `--no-ff`, creating a merge commit that preserves the full branch history while keeping the base branch's first-parent history clean.
 
 **Post-merge validation** runs commands from `orchestration.yaml` (planner-generated) and `eforge/config.yaml` `postMergeCommands` (user-configured). On failure, the validation-fixer agent attempts repairs up to a configurable retry limit.
 

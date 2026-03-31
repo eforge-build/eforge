@@ -236,20 +236,19 @@ export async function createMergeWorktree(
 
 /**
  * Merge the feature branch into baseBranch in the user's repoRoot
- * using `git merge --ff-only`. This updates the ref and working tree
- * atomically without switching branches.
+ * using `git merge --no-ff`. This always creates a merge commit,
+ * preserving individual branch commits for traceability while keeping
+ * the base branch's first-parent history clean with merge commits only.
  *
- * Falls back to a detached-worktree merge when fast-forward is not possible:
- * creates a temporary worktree, performs the merge there, and updates the
- * baseBranch ref via `git update-ref`.
+ * On conflict, invokes the optional mergeResolver callback to attempt resolution.
+ * If no resolver or resolution fails, aborts the merge and re-throws.
  */
 export async function mergeFeatureBranchToBase(
   repoRoot: string,
   featureBranch: string,
   baseBranch: string,
-  worktreeBase: string,
+  commitMessage: string,
   mergeResolver?: MergeResolver,
-  squashCommitMessage?: string,
 ): Promise<string> {
   // Guard: verify we're on the expected base branch to avoid merging into the wrong target
   const { stdout: currentBranchRaw } = await exec('git', ['branch', '--show-current'], { cwd: repoRoot });
@@ -260,124 +259,42 @@ export async function mergeFeatureBranchToBase(
     );
   }
 
-  // Squash merge: collapse all feature-branch commits into one clean commit on baseBranch
-  if (squashCommitMessage) {
-    try {
-      await exec('git', ['merge', '--squash', featureBranch], { cwd: repoRoot });
-      await exec('git', ['commit', '-m', squashCommitMessage], { cwd: repoRoot });
-      const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
-      return shaOut.trim();
-    } catch (err) {
-      // Attempt conflict resolution via callback if provided
-      if (mergeResolver) {
-        try {
-          const conflictInfo = await gatherConflictInfo(repoRoot, featureBranch, baseBranch);
-          if (conflictInfo) {
-            const resolved = await mergeResolver(repoRoot, conflictInfo);
-            if (resolved) {
-              // Verify no remaining conflicts
-              const { stdout: remaining } = await exec(
-                'git', ['diff', '--name-only', '--diff-filter=U'],
-                { cwd: repoRoot },
-              );
-              if (remaining.trim().length === 0) {
-                await exec('git', ['commit', '-m', squashCommitMessage], { cwd: repoRoot });
-                const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
-                return shaOut.trim();
-              }
-            }
-          }
-        } catch {
-          // Resolver failed - fall through to reset
-        }
-      }
-
-      try {
-        await exec('git', ['reset', '--merge'], { cwd: repoRoot });
-      } catch {
-        // Best-effort reset
-      }
-      throw err;
-    }
-  }
-
   try {
-    // Fast-forward: update baseBranch ref to point at featureBranch HEAD
-    await exec('git', ['merge', '--ff-only', featureBranch], { cwd: repoRoot });
+    await exec('git', ['merge', '--no-ff', featureBranch, '-m', commitMessage], { cwd: repoRoot });
     const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
     return shaOut.trim();
-  } catch {
-    // Non-fast-forward: use a temporary detached worktree for the merge
-    const tmpMergePath = join(worktreeBase, '__final-merge__');
-    try {
-      // Create a temporary worktree on baseBranch
-      await mkdir(worktreeBase, { recursive: true });
+  } catch (err) {
+    // Attempt conflict resolution via callback if provided
+    if (mergeResolver) {
       try {
-        await exec('git', ['worktree', 'add', '--detach', tmpMergePath, baseBranch], { cwd: repoRoot });
-      } catch {
-        // Worktree may already exist from a previous failed attempt
-        await rm(tmpMergePath, { recursive: true, force: true });
-        await exec('git', ['worktree', 'prune'], { cwd: repoRoot });
-        await exec('git', ['worktree', 'add', '--detach', tmpMergePath, baseBranch], { cwd: repoRoot });
-      }
-
-      // Merge feature branch into baseBranch in the temporary worktree
-      const { ATTRIBUTION } = await import('./git.js');
-      try {
-        await exec('git', ['merge', featureBranch, '-m', `Merge ${featureBranch} into ${baseBranch}\n\n${ATTRIBUTION}`], { cwd: tmpMergePath });
-      } catch (mergeErr) {
-        // Attempt conflict resolution via callback if provided
-        if (mergeResolver) {
-          const conflictInfo = await gatherConflictInfo(tmpMergePath, featureBranch, baseBranch);
-          if (conflictInfo) {
-            const resolved = await mergeResolver(tmpMergePath, conflictInfo);
-            if (resolved) {
-              // Verify no remaining conflicts
-              const { stdout: remaining } = await exec(
-                'git', ['diff', '--name-only', '--diff-filter=U'],
-                { cwd: tmpMergePath },
-              );
-              if (remaining.trim().length === 0) {
-                // All conflicts resolved — commit using Git's preserved merge message
-                await exec('git', ['commit', '--no-edit'], { cwd: tmpMergePath });
-              } else {
-                throw mergeErr;
-              }
-            } else {
-              throw mergeErr;
+        const conflictInfo = await gatherConflictInfo(repoRoot, featureBranch, baseBranch);
+        if (conflictInfo) {
+          const resolved = await mergeResolver(repoRoot, conflictInfo);
+          if (resolved) {
+            // Verify no remaining conflicts
+            const { stdout: remaining } = await exec(
+              'git', ['diff', '--name-only', '--diff-filter=U'],
+              { cwd: repoRoot },
+            );
+            if (remaining.trim().length === 0) {
+              // All conflicts resolved — commit using Git's preserved merge message
+              await exec('git', ['commit', '--no-edit'], { cwd: repoRoot });
+              const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
+              return shaOut.trim();
             }
-          } else {
-            throw mergeErr;
           }
-        } else {
-          throw mergeErr;
         }
-      }
-
-      // Get the resulting commit SHA
-      const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: tmpMergePath });
-      const commitSha = shaOut.trim();
-
-      // Update the baseBranch ref in the main repo to point at the merge commit
-      await exec('git', ['update-ref', `refs/heads/${baseBranch}`, commitSha], { cwd: repoRoot });
-
-      // Reset the working tree to match the updated ref
-      await exec('git', ['reset', '--hard', 'HEAD'], { cwd: repoRoot });
-
-      return commitSha;
-    } finally {
-      // Cleanup the temporary merge worktree — wrapped defensively to avoid masking original errors
-      try {
-        await exec('git', ['worktree', 'remove', tmpMergePath, '--force'], { cwd: repoRoot });
       } catch {
-        try {
-          await rm(tmpMergePath, { recursive: true, force: true });
-          await exec('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => {});
-        } catch {
-          // Cleanup failed — don't mask the original error
-        }
+        // Resolver failed - fall through to reset
       }
     }
+
+    try {
+      await exec('git', ['reset', '--merge'], { cwd: repoRoot });
+    } catch {
+      // Best-effort reset
+    }
+    throw err;
   }
 }
 

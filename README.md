@@ -43,11 +43,11 @@ eforge also runs standalone. By default, `eforge build` enqueues and a daemon pr
 
 **Blind review** - Every build gets reviewed by a separate agent with no builder context. Separating generation from evaluation [dramatically improves quality](https://www.anthropic.com/engineering/harness-design-long-running-apps) - solo agents tend to approve their own work regardless. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes.
 
-**Parallel orchestration** - Each plan builds in an isolated git worktree. Expeditions run multiple plans in parallel, merging in topological dependency order. Post-merge validation runs with auto-fix.
+**Parallel orchestration** - Each plan builds in an isolated git worktree. Expeditions run multiple plans in parallel, merging in topological dependency order. The feature branch merges to the base branch via `--no-ff`, creating a merge commit that preserves branch history. Post-merge validation runs with auto-fix.
 
 <img src="docs/images/monitor-timeline.png" alt="eforge dashboard - timeline view" width="800">
 
-**Queue and merge** - Completed builds merge back to the branch as ordered commits. When the next build starts from the queue, the planner re-evaluates against the current codebase - so plans adapt to changes that landed since they were enqueued.
+**Queue and merge** - Completed builds merge back to the base branch as merge commits via `--no-ff`, preserving the full branch history while keeping first-parent history clean. When the next build starts from the queue, the planner re-evaluates against the current codebase - so plans adapt to changes that landed since they were enqueued.
 
 <img src="docs/images/eforge-commits.png" alt="eforge commits from an expedition build" width="800">
 

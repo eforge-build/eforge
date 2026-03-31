@@ -168,7 +168,7 @@ describe('worktree integration', () => {
     expect(log).toContain('merge plan-02');
   });
 
-  it('mergeFeatureBranchToBase fast-forwards base branch', async () => {
+  it('mergeFeatureBranchToBase creates a --no-ff merge commit', async () => {
     const baseDir = makeTempDir();
     const featureBranch = 'eforge/feature';
     const { repoRoot, baseBranch } = await setupRepo(baseDir, { featureBranch });
@@ -193,16 +193,22 @@ describe('worktree integration', () => {
     // Remove merge worktree before merging to base (avoids branch conflicts)
     await removeWorktree(repoRoot, mergeWorktreePath);
 
-    // Merge feature branch back to base
+    // Merge feature branch back to base with --no-ff
+    const commitMessage = 'feat(plan-01): feature merge';
     const sha = await mergeFeatureBranchToBase(
       repoRoot,
       featureBranch,
       baseBranch,
-      worktreeBase,
+      commitMessage,
     );
 
-    // Fast-forward: SHA should match the feature branch HEAD
-    expect(sha).toBe(featureSha.trim());
+    // --no-ff: SHA should differ from feature branch HEAD (it's a merge commit)
+    expect(sha).not.toBe(featureSha.trim());
+
+    // Verify merge commit has 2 parents
+    const { stdout: commitInfo } = await exec('git', ['cat-file', '-p', 'HEAD'], { cwd: repoRoot });
+    const parentLines = commitInfo.split('\n').filter((l: string) => l.startsWith('parent '));
+    expect(parentLines).toHaveLength(2);
 
     // Verify file exists on base branch
     const { stdout: files } = await exec('git', ['ls-files'], { cwd: repoRoot });
@@ -343,9 +349,9 @@ describe('worktree integration', () => {
     expect(files).toContain('progress.txt');
   });
 
-  it('mergeFeatureBranchToBase squashes commits when squashCommitMessage is provided', async () => {
+  it('mergeFeatureBranchToBase --no-ff preserves branch history with merge commit', async () => {
     const baseDir = makeTempDir();
-    const featureBranch = 'eforge/feature-squash';
+    const featureBranch = 'eforge/feature-noff';
     const { repoRoot, baseBranch } = await setupRepo(baseDir, { featureBranch });
     const worktreeBase = join(baseDir, 'worktrees');
 
@@ -375,15 +381,13 @@ describe('worktree integration', () => {
     // Remove merge worktree before merging to base
     await removeWorktree(repoRoot, mergeWorktreePath);
 
-    // Squash merge with a commit message
-    const squashMessage = 'feat(plan-01): My feature\n\nCo-Authored-By: forged-by-eforge <noreply@eforge.build>';
+    // --no-ff merge with a commit message
+    const commitMessage = 'feat(plan-01): My feature\n\nCo-Authored-By: forged-by-eforge <noreply@eforge.build>';
     const sha = await mergeFeatureBranchToBase(
       repoRoot,
       featureBranch,
       baseBranch,
-      worktreeBase,
-      undefined,
-      squashMessage,
+      commitMessage,
     );
 
     expect(sha).toBeTruthy();
@@ -394,19 +398,29 @@ describe('worktree integration', () => {
     expect(files).toContain('file2.txt');
     expect(files).toContain('file3.txt');
 
-    // Verify there's exactly one new commit on base (the squash commit)
-    const { stdout: log } = await exec('git', ['log', '--oneline'], { cwd: repoRoot });
-    const commits = log.trim().split('\n');
-    // Should be 2: initial commit + squash commit
-    expect(commits).toHaveLength(2);
+    // Verify merge commit at HEAD with 2 parents
+    const { stdout: commitInfo } = await exec('git', ['cat-file', '-p', 'HEAD'], { cwd: repoRoot });
+    const parentLines = commitInfo.split('\n').filter((l: string) => l.startsWith('parent '));
+    expect(parentLines).toHaveLength(2);
 
-    // Verify commit message contains the squash message
+    // First-parent history should show 2 commits (initial + merge)
+    const { stdout: firstParentLog } = await exec('git', ['log', '--first-parent', '--oneline'], { cwd: repoRoot });
+    const firstParentCommits = firstParentLog.trim().split('\n');
+    expect(firstParentCommits).toHaveLength(2);
+
+    // Full log should show all individual commits
+    const { stdout: fullLog } = await exec('git', ['log', '--oneline'], { cwd: repoRoot });
+    expect(fullLog).toContain('builder: implement feature');
+    expect(fullLog).toContain('reviewer: apply fixes');
+    expect(fullLog).toContain('validation-fixer: fix validation');
+
+    // Verify commit message
     const { stdout: lastMsg } = await exec('git', ['log', '-1', '--format=%B'], { cwd: repoRoot });
     expect(lastMsg.trim()).toContain('feat(plan-01): My feature');
     expect(lastMsg.trim()).toContain('Co-Authored-By: forged-by-eforge');
   });
 
-  it('mergeFeatureBranchToBase preserves individual commits without squashCommitMessage', async () => {
+  it('mergeFeatureBranchToBase --no-ff preserves individual commits in full log', async () => {
     const baseDir = makeTempDir();
     const featureBranch = 'eforge/feature-no-squash';
     const { repoRoot, baseBranch } = await setupRepo(baseDir, { featureBranch });
@@ -430,30 +444,32 @@ describe('worktree integration', () => {
 
     await removeWorktree(repoRoot, mergeWorktreePath);
 
-    // Merge without squash - should fast-forward preserving individual commits
+    // --no-ff merge creates a merge commit
+    const commitMessage = 'feat(plan-01): merge feature';
     const sha = await mergeFeatureBranchToBase(
       repoRoot,
       featureBranch,
       baseBranch,
-      worktreeBase,
+      commitMessage,
     );
 
     expect(sha).toBeTruthy();
 
-    // Verify individual commits are preserved (ff-only)
+    // Verify merge commit at HEAD with 2 parents
+    const { stdout: commitInfo } = await exec('git', ['cat-file', '-p', 'HEAD'], { cwd: repoRoot });
+    const parentLines = commitInfo.split('\n').filter((l: string) => l.startsWith('parent '));
+    expect(parentLines).toHaveLength(2);
+
+    // Individual commits are preserved in full log
     const { stdout: log } = await exec('git', ['log', '--oneline'], { cwd: repoRoot });
-    const commits = log.trim().split('\n');
-    // Should be 3: initial + commit A + commit B
-    expect(commits).toHaveLength(3);
     expect(log).toContain('commit A');
     expect(log).toContain('commit B');
   });
 
-  it('mergeFeatureBranchToBase squash with conflict invokes resolver', async () => {
+  it('mergeFeatureBranchToBase --no-ff with conflict invokes resolver', async () => {
     const baseDir = makeTempDir();
-    const featureBranch = 'eforge/feature-squash-conflict';
+    const featureBranch = 'eforge/feature-noff-conflict';
     const { repoRoot, baseBranch } = await setupRepo(baseDir);
-    const worktreeBase = join(baseDir, 'worktrees');
 
     // Make a commit on main that will conflict
     writeFileSync(join(repoRoot, 'shared.txt'), 'main content\n');
@@ -473,7 +489,7 @@ describe('worktree integration', () => {
     await exec('git', ['add', '.'], { cwd: repoRoot });
     await exec('git', ['commit', '-m', 'main diverged'], { cwd: repoRoot });
 
-    // Now squash merge should conflict
+    // Now --no-ff merge should conflict
     let resolverCalled = false;
     const resolver = async (cwd: string, conflict: { conflictedFiles: string[] }) => {
       resolverCalled = true;
@@ -485,18 +501,22 @@ describe('worktree integration', () => {
       return true;
     };
 
-    const squashMessage = 'feat(plan-01): squashed with resolution';
+    const commitMessage = 'feat(plan-01): merged with resolution';
     const sha = await mergeFeatureBranchToBase(
       repoRoot,
       featureBranch,
       baseBranch,
-      worktreeBase,
+      commitMessage,
       resolver,
-      squashMessage,
     );
 
     expect(resolverCalled).toBe(true);
     expect(sha).toBeTruthy();
+
+    // Verify merge commit has 2 parents
+    const { stdout: commitInfo } = await exec('git', ['cat-file', '-p', 'HEAD'], { cwd: repoRoot });
+    const parentLines = commitInfo.split('\n').filter((l: string) => l.startsWith('parent '));
+    expect(parentLines).toHaveLength(2);
 
     // Verify resolved content
     const { stdout: content } = await exec('git', ['show', 'HEAD:shared.txt'], { cwd: repoRoot });
@@ -507,11 +527,10 @@ describe('worktree integration', () => {
     expect(files).toContain('feature-only.txt');
   });
 
-  it('mergeFeatureBranchToBase squash resets on failure without resolver', async () => {
+  it('mergeFeatureBranchToBase --no-ff resets on failure without resolver', async () => {
     const baseDir = makeTempDir();
-    const featureBranch = 'eforge/feature-squash-fail';
+    const featureBranch = 'eforge/feature-noff-fail';
     const { repoRoot, baseBranch } = await setupRepo(baseDir);
-    const worktreeBase = join(baseDir, 'worktrees');
 
     // Make a commit on main
     writeFileSync(join(repoRoot, 'shared.txt'), 'main content\n');
@@ -529,16 +548,15 @@ describe('worktree integration', () => {
     await exec('git', ['add', '.'], { cwd: repoRoot });
     await exec('git', ['commit', '-m', 'main diverged'], { cwd: repoRoot });
 
-    // Squash merge without resolver - should fail and reset
-    const squashMessage = 'feat(plan-01): should fail';
+    // --no-ff merge without resolver - should fail and reset
+    const commitMessage = 'feat(plan-01): should fail';
     await expect(
       mergeFeatureBranchToBase(
         repoRoot,
         featureBranch,
         baseBranch,
-        worktreeBase,
+        commitMessage,
         undefined,
-        squashMessage,
       ),
     ).rejects.toThrow();
 
