@@ -1,0 +1,28 @@
+name: document-parallelism-configuration-in-docs-config-md
+description: Add parallelism documentation to docs/config.md covering queue
+  processing, plan execution, and enqueuing dimensions
+created: 2026-03-31
+compiled: 2026-03-31
+mode: docs-only
+base_branch: main
+validate: []
+plans:
+  - id: plan-01-parallelism-docs
+    name: Document parallelism configuration
+    depends_on: []
+    branch: document-parallelism-configuration-in-docs-config-md/parallelism-docs
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: docs
+  description: Documentation-only changes. Plans and implements but skips code
+    review since review categories (bugs, security, types, etc.) don't apply to
+    prose.
+  compile:
+    - prd-passthrough
