@@ -8,9 +8,14 @@ eforge is a standalone CLI tool and Claude Code plugin for plan-build-review wor
 
 The architecture is **library-first**: a pure, event-driven engine (`src/engine/`) that yields typed `EforgeEvent`s via `AsyncGenerator`, consumed by thin surface layers (CLI today, Claude Code plugin and headless/CI in the future).
 
-**Engine vs plugin boundary**: The engine handles everything that runs without Claude Code (plan generation, review cycles, build execution, orchestration, state, monitoring, tracing). The plugin is a thin launcher/facilitator — requirement refinement in conversation context, subprocess delegation, status rendering. Not a reimplementation.
+**Engine vs plugin boundary**: The engine handles everything that runs without Claude Code. The plugin is a thin launcher/facilitator - requirement refinement, subprocess delegation, status rendering. eforge will supersede the orchestrate & EEE plugins.
 
-**Relationship to orchestrate & EEE plugins**: eforge is a graduated replacement. The eforge plugin will supersede both for planning and execution, eventually deprecating them entirely.
+## Documentation
+
+- `README.md` - User-facing overview, install instructions, and quick-start guide. Keep it current when adding features or changing CLI surface.
+- `docs/roadmap.md` - High-level vision (see Roadmap section below for governance rules).
+- `docs/` - PRDs and design docs for planned-but-not-yet-implemented work. Delete after implementation.
+- When searching for documentation or code, always exclude `node_modules/` and `dist/` from file searches to avoid noise from vendored dependencies and build output.
 
 ## Commands
 
@@ -29,64 +34,36 @@ node --env-file=.env dist/cli.js build some-prd.md --verbose
 
 ## Architecture
 
-**Design principle**: Engine emits, consumers render. The engine never writes to stdout — all communication flows through `EforgeEvent`s.
+**Design principle**: Engine emits, consumers render. The engine never writes to stdout - all communication flows through `EforgeEvent`s.
 
-**Agent pipeline**: The pipeline is stage-driven, not a fixed linear sequence. Compile stages are declared per-profile while build stages and review config are per-plan - each stage is an async generator registered in a stage registry. The formatter normalizes source input into a structured PRD as a pre-pipeline step. Profile selection (where the planner picks the best workflow profile) is also pre-pipeline. The resolved profile is persisted into orchestration.yaml during compile so the build phase can read it back - compile and build share no runtime state. Planning and building both use review cycles composed from stages.
+**Agent pipeline**: Stage-driven, not a fixed linear sequence (`src/engine/pipeline.ts`). Compile and build share no runtime state - the resolved profile is persisted into orchestration.yaml during compile.
 
-**Workflow profiles**: Pipeline behavior is config-driven through profiles. A profile declares which compile stages run - build stages and review config are per-plan, determined by the planner/module planner and stored in orchestration.yaml plan entries. Built-in profiles (`errand`, `excursion`, `expedition`) encode the default compile behavior. Custom profiles can be defined in `eforge/config.yaml` or via `--profiles` files. Profile config lives in `DEFAULT_CONFIG.profiles` and participates in the standard merge chain.
+**Workflow profiles**: Config-driven via profiles (`src/engine/config.ts`): `errand`, `excursion`, `expedition`. A profile declares compile stages; build stages and review config are per-plan in orchestration.yaml.
 
-**Pipeline stages**: Compile and build pipelines are composed of named stages registered in a stage registry (`src/engine/pipeline.ts`). Each stage is an async generator that accepts a `PipelineContext` and yields `EforgeEvent`s. The engine iterates the compile stage list from the resolved profile; build stages and review config are per-plan, stored in orchestration.yaml plan entries.
+**Backend abstraction**: All LLM interaction goes through `AgentBackend` (`src/engine/backend.ts`). Provider SDK imports restricted to `src/engine/backends/`. Implementations: `ClaudeSDKBackend` and `PiBackend`.
 
-Compile stages: `prd-passthrough`, `planner`, `plan-review-cycle`, `architecture-review-cycle`, `module-planning`, `cohesion-review-cycle`, `compile-expedition`
+**Agents** (implementations in `src/engine/agents/`, prompts in `src/engine/prompts/`):
+- **Formatter** - normalizes input into structured PRD
+- **Planner** - explores codebase, selects profile, writes plans
+- **Plan Reviewer** - blind review of plans against PRD
+- **Plan Evaluator** - evaluates reviewer fixes (also handles cohesion/architecture modes)
+- **Module Planner** - detailed plan for single module (expedition)
+- **Cohesion Reviewer** - cross-module plan consistency review (expedition)
+- **Architecture Reviewer** - architecture doc review (expedition)
+- **Staleness Assessor** - checks if plans need regeneration
+- **Builder** - multi-turn agent that implements plans
+- **Reviewer** - blind code review, no builder context
+- **Review Fixer** - applies minimal fixes from review issues
+- **Parallel Reviewer** - multi-perspective code review
+- **Doc Updater** - updates docs to reflect implementation changes
+- **Merge Conflict Resolver** - resolves conflicts using plan intent
+- **Tester** - runs tests, fixes test bugs
+- **Test Writer** - writes failing tests (TDD mode)
+- **Validation Fixer** - fixes post-merge validation failures
 
-Build stages: `implement`, `review`, `review-fix`, `evaluate`, `review-cycle`, `validate`, `doc-update`, `test-write`, `test`, `test-cycle`
+**MCP servers**: Auto-loaded from `.mcp.json`. **Plugins**: Auto-discovered from installed plugins. Both configurable via `eforge/config.yaml`.
 
-`review-cycle` is a composite stage that expands to `[review, review-fix, evaluate]`.
-
-`test-cycle` is a composite stage that expands to `[test, evaluate]`. Use it when the plan has testable behavior.
-
-**Built-in profiles** (defined in `BUILTIN_PROFILES` in `src/engine/config.ts`):
-- **errand** — Small, self-contained changes. Compile: `[prd-passthrough]`.
-- **excursion** — Multi-file feature work. Compile: `[planner, plan-review-cycle]`.
-- **expedition** — Large cross-cutting work. Compile: `[planner, architecture-review-cycle, module-planning, cohesion-review-cycle, compile-expedition]`.
-
-Build stages and review config are determined per-plan by the planner (for single-plan profiles) or module planner (for expeditions) and stored in each plan's entry in orchestration.yaml.
-
-**Backend abstraction**: Agent runners never import the AI SDK directly. All LLM interaction goes through the `AgentBackend` interface (`src/engine/backend.ts`). Two implementations exist: `ClaudeSDKBackend` (`src/engine/backends/claude-sdk.ts`) using `@anthropic-ai/claude-agent-sdk`, and `PiBackend` (`src/engine/backends/pi.ts`) using `@mariozechner/pi-ai` and `@mariozechner/pi-agent-core`. New agents must accept an `AgentBackend` via their options — do not import provider SDKs outside of `src/engine/backends/`. The backend emits `agent:start`/`agent:stop` lifecycle events (with a UUID `agentId`) around every agent invocation — agent runners must pass these through via `isAlwaysYieldedAgentEvent()` from `events.ts`. Agent Options interfaces extend `SdkPassthroughConfig` (from `backend.ts`) so SDK fields like `model`, `thinking`, `effort`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, and `disallowedTools` flow through from config. Each `backend.run()` call spreads `...pickSdkOptions(options)` to forward only explicitly-set fields. Pipeline stages resolve per-role config via `resolveAgentConfig(role, config)` and spread the result into agent options.
-
-**MCP server propagation**: The engine auto-loads MCP servers from `.mcp.json` in the project root (same file Claude Code uses). All agents get the same MCP servers — no per-role filtering. MCP config is backend-specific: `ClaudeSDKBackend` accepts optional `mcpServers` in its constructor; `PiBackend` uses `PiMcpBridge` (`src/engine/backends/pi-mcp-bridge.ts`) to wrap MCP server tools as Pi `AgentTool` instances with JSON Schema to TypeBox conversion, namespaced as `mcp_{serverName}_{toolName}`. `EforgeEngineOptions.mcpServers` lets callers inject servers programmatically (overrides auto-loading). The `AgentBackend` interface has no MCP concept. Note: SDK subprocesses do NOT auto-discover MCP servers from settings files — explicit propagation is required.
-
-**Plugin propagation**: The engine auto-discovers Claude Code plugins from `~/.claude/plugins/installed_plugins.json`. Both user-scoped (global) and project-scoped plugins matching the cwd are loaded. Plugins provide skills, hooks, and MCP servers. Like MCP servers, plugins are backend-specific: `ClaudeSDKBackend` accepts `plugins` and `settingSources` in its constructor. The `AgentBackend` interface has no plugin concept. Configure via `eforge/config.yaml` `plugins` section or `--no-plugins` CLI flag. The eforge Claude Code plugin itself lives in-repo at `eforge-plugin/` — this repo is also a Claude Code marketplace (see `.claude-plugin/marketplace.json`). The plugin exposes MCP tools: `eforge_build` (enqueue PRD for daemon to build), `eforge_enqueue` (add to queue without building), `eforge_auto_build` (get/set daemon auto-build state), and `eforge_status` (check build progress).
-
-- **Formatter** — one-shot query. Normalizes source input (PRD, prompt, rough notes) into a well-structured PRD with frontmatter for the queue.
-- **Planner** — one-shot query. Explores codebase, selects a workflow profile, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities and `<skip>` blocks when work is already complete. For expeditions, also generates architecture + module list.
-- **Plan Reviewer** — one-shot query. Blind review of plan files against PRD for cohesion, completeness, correctness. Leaves fixes unstaged.
-- **Plan Evaluator** — one-shot query. Evaluates plan reviewer's unstaged fixes against planner's intent. Accepts/rejects. Parameterized with `mode: 'plan' | 'cohesion' | 'architecture'` - the same runner handles plan, cohesion, and architecture evaluation, dispatching different event types and prompts based on mode.
-- **Module Planner** — one-shot query (expedition mode only). Writes detailed plan for a single module using architecture context.
-- **Cohesion Reviewer** — one-shot query (expedition mode only). Reviews cross-module plan cohesion for consistency and integration gaps.
-- **Cohesion Evaluator** — one-shot query (expedition mode only). Evaluates cohesion reviewer's fixes against module planner intent. Implemented as a thin wrapper around the plan evaluator with `mode: 'cohesion'`.
-- **Architecture Reviewer** — one-shot query (expedition mode only). Blind review of `architecture.md` against PRD for module boundary soundness, integration contract completeness, and shared file registry clarity. Leaves fixes unstaged.
-- **Architecture Evaluator** — one-shot query (expedition mode only). Evaluates architecture reviewer's fixes against planner intent. Implemented as a thin wrapper around the plan evaluator with `mode: 'architecture'`.
-- **Staleness Assessor** — one-shot query. Checks whether existing plans need regeneration based on codebase changes.
-- **Builder** — multi-turn agent. Turn 1: implement plan. Turn 2: evaluate reviewer's unstaged fixes (accept/reject/review).
-- **Reviewer** — one-shot query. Blind code review (no builder context), identifies issues without writing fixes.
-- **Review Fixer** — one-shot coding agent. Receives aggregated review issues and applies minimal fixes as unstaged changes.
-- **Parallel Reviewer** — one-shot query. Multi-perspective code review that runs review perspectives in parallel.
-- **Doc Updater** — one-shot coding agent. Updates documentation to reflect implementation changes, runs in parallel with the builder.
-- **Merge Conflict Resolver** — one-shot coding agent. Resolves git merge conflicts by understanding intent from each plan.
-- **Tester** — one-shot coding agent. Runs tests, fixes test bugs, and reports production issues found during testing.
-- **Test Writer** — one-shot coding agent. Writes tests from the plan spec that initially fail (TDD mode). Runs before `implement`.
-- **Validation Fixer** — one-shot coding agent. Receives post-merge validation failures and makes minimal fixes.
-
-**Engine** (`src/engine/`): Pure library, no stdout. Agent implementations in `src/engine/agents/`, prompts in `src/engine/prompts/` (self-contained `.md` files, no runtime plugin dependencies).
-
-**Orchestration**: `src/engine/orchestrator.ts` resolves a dependency graph from `orchestration.yaml`, computes execution waves, and runs plans in parallel via git worktrees (`src/engine/worktree.ts`). orchestration.yaml carries the resolved profile (full `ResolvedProfileConfig` object, not just a name - required field, validated with Zod on parse) so the build phase knows which stages and agent parameters to use. The pipeline injects the profile after the planner writes orchestration.yaml during compile. Worktrees live in a sibling directory (`../{project}-{set}-worktrees/`) to avoid CLAUDE.md context pollution. Branches merge in topological order after all plans complete via a two-level merge strategy: plan branches squash-merge into the feature branch (preserving clean per-plan commits), then the feature branch merges into the base branch via `--no-ff` to create a merge commit that preserves branch history while keeping base branch first-parent history clean. Each plan branch is force-deleted (`git branch -D`) immediately after its squash merge succeeds, and any remaining branches (failed, skipped, blocked plans) are swept in the finally block alongside worktree cleanup. Post-merge validation runs commands from `orchestration.yaml` `validate` (planner-generated) + `eforge/config.yaml` `postMergeCommands` (user-configured). On failure, the validation fixer agent attempts repairs up to `maxValidationRetries` times (default 2).
-
-**State**: `.eforge/state.json` (gitignored) tracks build progress for resume support.
-
-**Monitor** (`src/monitor/`): Web-based real-time monitor. Recording and the web server are decoupled - events are always recorded to SQLite (`.eforge/monitor.db`) via a transparent `withRecording()` async generator middleware, even with `--no-monitor` or `enqueue`. The web dashboard serves a single-page UI over SSE at `http://localhost:4567` and auto-starts with `build` commands (disable with `--no-monitor`). The server uses a countdown shutdown state machine (WATCHING → COUNTDOWN → SHUTDOWN) that gives browser users time to inspect results before the server exits. A `hasSeenActivity` gate prevents premature shutdown during startup - the server records its start time and refuses to enter the countdown path until it observes at least one event with a timestamp >= its own start time, since the CLI can take 20+ seconds before emitting its first event. `signalMonitorShutdown()` exported from `src/monitor/index.ts` handles clean server termination.
-
-**CLI** (`src/cli/`): Thin consumer that iterates the engine's event stream and renders to stdout. Handles interactive clarification prompts and approval gates via callbacks.
+**Orchestration** (`src/engine/orchestrator.ts`): Resolves dependency graph from `orchestration.yaml`, runs plans in parallel via git worktrees. **Monitor** (`src/monitor/`): Real-time dashboard with SQLite event persistence. **CLI** (`src/cli/`): Thin event stream consumer.
 
 ## Project structure
 
@@ -117,99 +94,49 @@ src/
 
 Tests live in `test/` and use vitest. Organize by **logical unit**, not source file:
 
-- **Group by what's tested, not where it lives.** A source file may split across multiple test files (e.g., `plan.ts` → `dependency-graph.test.ts` + `plan-parsing.test.ts`) or multiple source files may merge into one test file (e.g., XML parsers from `common.ts`, `reviewer.ts`, `builder.ts` → `xml-parsers.test.ts`).
-- **No mocks.** Test real code. For SDK types, hand-craft data objects cast through `unknown` rather than mocking.
-- **Fixtures for I/O tests only.** File-reading tests use `test/fixtures/`; everything else constructs inputs inline.
-- **Helpers colocated.** Test helpers (e.g., `makeState()`, `asyncIterableFrom()`) live in the test file that uses them. No shared test utils unless reuse spans 3+ files. Shared helpers that cross the threshold: `test/test-events.ts` (`collectEvents`, `findEvent`, `filterEvents`), `test/test-tmpdir.ts` (`useTempDir`).
-- **Agent wiring tests use `StubBackend`** (`test/stub-backend.ts`). Test the logic between backend calls and EforgeEvents: clarification loops, XML parsing → event synthesis, error propagation. See `test/agent-wiring.test.ts`.
-- **Don't test backend implementations or infra.** `ClaudeSDKBackend`, `EforgeEngine` orchestration, worktree/git ops, and tracing are integration-level — don't unit test them.
+- **Group by what's tested, not where it lives.** Source files may split across test files or merge into one.
+- **No mocks.** Test real code. For SDK types, hand-craft data objects cast through `unknown`.
+- **Fixtures for I/O tests only.** Everything else constructs inputs inline.
+- **Helpers colocated.** Test helpers live in the test file that uses them. Shared helpers that cross the 3+ file threshold: `test/test-events.ts`, `test/test-tmpdir.ts`.
+- **Agent wiring tests use `StubBackend`** (`test/stub-backend.ts`). See `test/agent-wiring.test.ts`.
+- **Don't test backend implementations or infra.** `ClaudeSDKBackend`, `EforgeEngine` orchestration, worktree/git ops, and tracing are integration-level.
 
 ## Configuration
 
-eforge loads config from two levels, merged together:
-
-1. **Global (user-level)**: `~/.config/eforge/config.yaml` (respects `$XDG_CONFIG_HOME`)
-2. **Project-level**: `eforge/config.yaml` found by walking up from cwd
-
-**Model class system**: Each agent role has a `ModelClass` (`max`, `balanced`, `fast`, `auto`) - all default to `max`. claude-sdk backend has built-in class defaults (max=opus, balanced=sonnet, fast=haiku, auto=undefined/SDK picks). Pi backend has no built-in defaults - users must configure `agents.models.max` at minimum; the engine throws a descriptive error if no model resolves for a non-claude-sdk backend. Users can reassign a role's class via per-role `modelClass` - e.g., set execution roles (builder, reviewer, etc.) to `balanced` or `fast` for cost optimization. Resolution order: per-role model > global model > user class override > backend class default. The `AGENT_MODEL_CLASSES` map and `MODEL_CLASS_DEFAULTS` map live in `src/engine/pipeline.ts`; `resolveAgentConfig()` implements the resolution logic.
-
-**Priority chain** (lowest → highest): defaults → global config → project config → env vars → CLI overrides
-
-**Merge strategy**:
-- Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `pi`): shallow merge per-field — project overrides global, global fields survive if project doesn't define them. `prdQueue` has `dir` (queue directory path), `autoRevise` (boolean), `autoBuild` (boolean, default `true` — daemon automatically builds after enqueue), and `watchPollIntervalMs` (poll interval for watch mode, default 5000) fields. `daemon` has `idleShutdownMs` (idle timeout in milliseconds before auto-shutdown, default `7_200_000` / 2 hours; set to `0` to disable and run forever).
-- `hooks` array: **concatenate** (global hooks fire first, then project hooks)
-- Arrays inside objects (`postMergeCommands`, `plugins.include/exclude/paths`, `settingSources`): project replaces global
-
-**Profiles** (`profiles` section): Workflow profiles declared as named entries. Each profile has `description`, optional `extends`, and `compile` stage list. Build stages and review config are per-plan in orchestration.yaml, not profile-level. Profiles merge by name across config layers. `extends` chains resolve at config load time (cycles rejected). Built-in profiles (`errand`, `excursion`, `expedition`) can be overridden by defining a profile with the same name.
-
-**Hook env vars**: Hook commands receive the full `EforgeEvent` JSON on stdin plus these environment variables:
-
-| Env var | Description |
-|---------|-------------|
-| `EFORGE_SESSION_ID` | Session ID - stable across compile+build per PRD. In queue mode, each PRD gets its own session ID. Preferred identifier for session tracking. |
-| `EFORGE_RUN_ID` | Per-phase run ID (UUID). Changes between compile and build phases. |
-| `EFORGE_EVENT_TYPE` | Event type string (e.g., `session:start`, `phase:start`, `plan:complete`) |
-| `EFORGE_CWD` | Working directory for the eforge run |
-| `EFORGE_GIT_REMOTE` | Git origin remote URL (empty string if not a git repo or no origin) |
-
-`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events. For `eforge build`, `EFORGE_SESSION_ID` is shared across both phases for each PRD while `EFORGE_RUN_ID` is unique per phase. In queue mode, each PRD gets a unique session ID - queue-level events carry no `EFORGE_SESSION_ID`.
+eforge loads config from two levels: global (`~/.config/eforge/config.yaml`) and project-level (`eforge/config.yaml`). Priority (lowest to highest): defaults - global - project - env vars - CLI. See `src/engine/config.ts` for merge logic. Built-in profiles can be overridden by name.
 
 ## Conventions
 
 - Use Mermaid diagrams instead of ASCII art in documentation
-- All engine commits use `forgeCommit()` from `src/engine/git.ts` — this appends the `Co-Authored-By: forged-by-eforge` trailer automatically. Do not use raw `exec('git', ['commit', ...])` in engine code outside of `git.ts` and `worktree.ts`.
-- Provider SDK imports (`@anthropic-ai/claude-agent-sdk`, `@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`) are restricted to `src/engine/backends/` — agent runners use the `AgentBackend` interface
-- **Always bump the plugin version** in `eforge-plugin/.claude-plugin/plugin.json` when making any changes to the plugin (skills, plugin.json, etc.). Plugin and npm package versions are independent — do not sync them.
+- All engine commits use `forgeCommit()` from `src/engine/git.ts` - this appends the `Co-Authored-By: forged-by-eforge` trailer automatically. Do not use raw `exec('git', ['commit', ...])` in engine code outside of `git.ts` and `worktree.ts`.
+- Provider SDK imports (`@anthropic-ai/claude-agent-sdk`, `@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`) are restricted to `src/engine/backends/` - agent runners use the `AgentBackend` interface
+- **Always bump the plugin version** in `eforge-plugin/.claude-plugin/plugin.json` when making any changes to the plugin (skills, plugin.json, etc.). Plugin and npm package versions are independent - do not sync them.
 - The monitor UI (`src/monitor/ui/`) uses **shadcn/ui components** (Button, ScrollArea, Checkbox, Tooltip, Resizable, etc.) rather than custom UI primitives. Follow the shadcn pattern when adding new UI components.
+- Exclude `node_modules/` and `dist/` from file searches - these contain vendored dependencies and build output that pollute search results.
 
 ## Tech decisions
 
 - ESM-only (`"type": "module"`), target Node.js 22+
-- `@anthropic-ai/claude-agent-sdk` is a runtime dependency (externalized from bundle so its `import.meta.url` resolves correctly). Chosen for Max subscription billing (zero API cost). Isolated behind `AgentBackend` interface for provider swappability.
-- `@mariozechner/pi-ai` and `@mariozechner/pi-agent-core` provide the `PiBackend` - a multi-provider backend supporting 20+ LLM providers (OpenAI, Anthropic, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, etc.). `PiMcpBridge` wraps MCP server tools as Pi `AgentTool` instances with JSON Schema to TypeBox conversion. Extensions are auto-discovered from `.pi/extensions/` (project and global).
-- tsup bundles to `dist/cli.js` with shebang; SDK is externalized via `external` config to preserve subprocess resolution
-- Engine uses `AsyncGenerator<EforgeEvent>` pattern — consumers iterate, no callbacks except clarification/approval
+- `@anthropic-ai/claude-agent-sdk` chosen for Max subscription billing (zero API cost), isolated behind `AgentBackend` for swappability
+- `@mariozechner/pi-ai` and `@mariozechner/pi-agent-core` provide `PiBackend` - multi-provider backend (20+ LLM providers)
+- Engine uses `AsyncGenerator<EforgeEvent>` pattern - consumers iterate, no callbacks except clarification/approval
 - Clarification uses engine-level events (parsed from agent XML output), not SDK's built-in `AskUserQuestion`
-- Langfuse tracing for all agent calls via `src/engine/tracing.ts` (env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`)
-- `EFORGE_MONITOR_PORT` env var pins the monitor to a specific port (useful in Docker/CI where port mappings are fixed). `EFORGE_MONITOR_DB` overrides the SQLite path.
-- MCP servers auto-loaded from `.mcp.json` (gitignored, same format as Claude Code). Agents get full tool access to configured servers (brain, langfuse, etc.). Programmatic callers can override via `EforgeEngineOptions.mcpServers`.
-- Claude Code plugins auto-discovered from `~/.claude/plugins/installed_plugins.json`. Provides skills, hooks, and plugin-bundled MCP servers to agents via the SDK's `plugins` option. Configured via `eforge/config.yaml` `plugins` section. `settingSources: ['project']` enabled by default so agents load CLAUDE.md.
+- Langfuse tracing for all agent calls via `src/engine/tracing.ts`
 
 ## CLI commands
 
-```
-eforge build <source>     # Enqueue + compile + build + validate (default: via daemon)
-eforge build --foreground # Run compile + build + validate in the foreground (no daemon)
-eforge build --queue      # Process all PRDs from the queue
-eforge build --queue --watch # Watch queue and process new PRDs as they arrive
-eforge enqueue <source>   # Normalize input and add to PRD queue (no build)
-eforge status             # Check running builds
-eforge queue list         # Show PRDs in the queue
-eforge queue run [name]   # Process PRDs from the queue (optionally by name)
-eforge queue run --watch  # Watch queue and process new PRDs as they arrive
-eforge monitor            # Start or connect to the monitor dashboard
-eforge config validate    # Validate eforge/config.yaml (schema + profile stage names)
-eforge config show        # Print resolved config (all layers merged) as YAML
-eforge daemon start       # Start the eforge daemon
-eforge daemon stop        # Gracefully stop the daemon
-eforge daemon status      # Check daemon status
-eforge daemon kill        # Force kill the daemon
-```
-
-`eforge run` is a backwards-compatible alias for `eforge build`.
-
-Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--foreground` (run in foreground instead of delegating to daemon), `--queue` (process all PRDs from the queue), `--watch` (watch queue for new PRDs, re-poll after each cycle), `--poll-interval <ms>` (poll interval for watch mode, default 5000), `--no-monitor` (disable web monitor server; events are still recorded to SQLite), `--no-plugins` (disable plugin loading), `--profiles <path>` (add custom workflow profiles from a YAML file), `--no-generate-profile` (disable custom profile generation; enabled by default)
+Run `eforge --help` for the full command and flag reference. Key commands: `build`, `enqueue`, `status`, `queue`, `monitor`, `config`, `daemon`.
 
 ## Roadmap
 
-`docs/roadmap.md` is a high-level vision document for where the project is headed. It captures direction (what and why), not implementation details (how). It will evolve over time as priorities shift.
+`docs/roadmap.md` captures direction (what and why), not implementation details (how).
 
-- **Read it** before proposing new features or architectural changes to ensure alignment with planned direction
-- **Keep it lean** — goal + bullet points per section, no code examples, frontmatter specs, or implementation plans
-- **Future only** — remove items from the roadmap once they ship. Completed work lives in git history and CLAUDE.md, not the roadmap.
+- **Read it** before proposing new features or architectural changes
+- **Keep it lean** - goal + bullet points per section, no code examples or implementation plans
+- **Future only** - remove items once they ship; completed work lives in git history and CLAUDE.md
 - **Update it** when direction changes after discussion with the user
-- **Don't duplicate it** — implementation details belong in plan files or CLAUDE.md, not the roadmap
-- **Delete PRDs after implementation** — `docs/` should reflect current state and planned-but-not-yet-implemented work only. Once a PRD is built, the code and git history are the record. Don't keep stale PRDs around as "historical context."
+- **Don't duplicate it** - implementation details belong in plan files or CLAUDE.md
+- **Delete PRDs after implementation** - `docs/` should reflect current state and planned work only
 
 ## Key references
 
