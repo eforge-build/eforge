@@ -15,7 +15,7 @@ import { saveState } from '../state.js';
 import { transitionPlan } from './plan-lifecycle.js';
 import { WorktreeManager } from '../worktree-manager.js';
 import { Semaphore, AsyncEventQueue } from '../concurrency.js';
-import type { PlanRunner, ValidationFixer } from '../orchestrator.js';
+import type { PlanRunner, ValidationFixer, PrdValidator } from '../orchestrator.js';
 import type { MergeResolver } from '../worktree-ops.js';
 import { ATTRIBUTION } from '../git.js';
 
@@ -36,6 +36,7 @@ export interface PhaseContext {
   validationFixer?: ValidationFixer;
   maxValidationRetries: number;
   mergeResolver?: MergeResolver;
+  prdValidator?: PrdValidator;
   mergeWorktreePath: string;
   featureBranch: string;
   worktreeManager: WorktreeManager;
@@ -472,6 +473,34 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     state.status = 'failed';
     state.completedAt = new Date().toISOString();
     saveState(stateDir, state);
+  }
+}
+
+/**
+ * Run PRD validation after post-merge validation passes.
+ * Compares the original PRD against the implementation to detect gaps.
+ * Agent errors are non-fatal — the build continues if the validator crashes.
+ */
+export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
+  const { state, stateDir, prdValidator } = ctx;
+
+  if (!prdValidator) return;
+  if ((state.status as string) === 'failed') return;
+
+  try {
+    for await (const event of prdValidator(ctx.mergeWorktreePath)) {
+      yield event;
+
+      // If PRD validation fails, mark state as failed
+      if (event.type === 'prd_validation:complete' && !event.passed) {
+        state.status = 'failed';
+        state.completedAt = new Date().toISOString();
+        saveState(stateDir, state);
+      }
+    }
+  } catch (err) {
+    // Agent errors are non-fatal — PRD validation crashing should not block the build
+    if (err instanceof Error && err.name === 'AbortError') throw err;
   }
 }
 

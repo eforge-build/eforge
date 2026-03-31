@@ -269,6 +269,7 @@ export const AGENT_MODEL_CLASSES: Record<AgentRole, ModelClass> = {
   tester: 'max',
   formatter: 'max',
   'staleness-assessor': 'max',
+  'prd-validator': 'max',
 };
 
 /** Per-backend default model strings for each model class. `undefined` means the SDK picks its own model. */

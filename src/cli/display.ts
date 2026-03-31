@@ -679,6 +679,21 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.yellow(`  ⚠ PRD ${event.prdId} commit failed (non-fatal): ${event.error}`));
       break;
 
+    case 'prd_validation:start':
+      startSpinner('prd-validation', 'PRD Validation...');
+      break;
+
+    case 'prd_validation:complete':
+      if (event.passed) {
+        succeedSpinner('prd-validation', chalk.green('PRD Validation passed'));
+      } else {
+        failSpinner('prd-validation', chalk.red(`PRD Validation failed: ${event.gaps.length} gap(s) found`));
+        for (const gap of event.gaps) {
+          console.log(chalk.red(`  - ${gap.requirement}: ${gap.explanation}`));
+        }
+      }
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

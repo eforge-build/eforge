@@ -19,6 +19,7 @@ export type {
   EforgeStatus,
   StalenessVerdict,
   ReconciliationReport,
+  PrdValidationGap,
 } from './events.js';
 
 // --- plan ---
@@ -104,13 +105,17 @@ export type { ArchitectureReviewerOptions } from './agents/architecture-reviewer
 export { runValidationFixer } from './agents/validation-fixer.js';
 export type { ValidationFixerOptions } from './agents/validation-fixer.js';
 
+// --- prd-validator ---
+export { runPrdValidator } from './agents/prd-validator.js';
+export type { PrdValidatorOptions } from './agents/prd-validator.js';
+
 // --- doc-updater ---
 export { runDocUpdater } from './agents/doc-updater.js';
 export type { DocUpdaterOptions } from './agents/doc-updater.js';
 
 // --- orchestration ---
 export { Orchestrator } from './orchestrator.js';
-export type { PlanRunner, ValidationFixer, OrchestratorOptions } from './orchestrator.js';
+export type { PlanRunner, ValidationFixer, PrdValidator, OrchestratorOptions } from './orchestrator.js';
 export {
   computeWorktreeBase,
 } from './worktree-ops.js';

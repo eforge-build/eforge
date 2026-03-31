@@ -30,6 +30,7 @@ const AGENT_COLORS: Record<AgentRole, { bg: string; border: string }> = {
   'test-writer':            { bg: 'bg-orange/30',  border: 'border-orange/50' },
   'merge-conflict-resolver': { bg: 'bg-red/30',    border: 'border-red/50' },
   'staleness-assessor':     { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
+  'prd-validator':          { bg: 'bg-orange/30',  border: 'border-orange/50' },
 };
 
 const FALLBACK_COLOR = { bg: 'bg-cyan/30', border: 'border-cyan/50' };
@@ -75,6 +76,7 @@ const AGENT_TO_STAGE: Record<AgentRole, string> = {
   'test-writer': 'test-write',
   'merge-conflict-resolver': 'merge',
   'staleness-assessor': 'staleness',
+  'prd-validator': 'prd-validation',
 };
 
 type StageStatus = 'pending' | 'active' | 'completed' | 'failed';

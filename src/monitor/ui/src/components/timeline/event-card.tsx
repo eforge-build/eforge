@@ -83,6 +83,8 @@ function eventSummary(event: EforgeEvent): string {
     case 'validation:complete': return event.passed ? 'Validation passed' : 'Validation failed';
     case 'validation:fix:start': return `Fix attempt ${event.attempt}/${event.maxAttempts}`;
     case 'validation:fix:complete': return `Fix attempt ${event.attempt} complete`;
+    case 'prd_validation:start': return 'PRD Validation started';
+    case 'prd_validation:complete': return event.passed ? 'PRD Validation: passed' : `PRD Validation: ${event.gaps?.length || 0} gap(s) found`;
     case 'approval:needed': return `Approval needed: ${event.action}`;
     case 'approval:response': return event.approved ? 'Approved' : 'Rejected';
     case 'enqueue:start': return `Enqueuing from: ${event.source}`;
@@ -169,6 +171,14 @@ function eventDetail(event: EforgeEvent): string | null {
       return event.modules?.map((m) => `${m.id}: ${m.description}${m.dependsOn?.length ? ' (depends: ' + m.dependsOn.join(', ') + ')' : ''}`).join('\n') ?? null;
     case 'validation:command:complete':
       return event.output || null;
+    case 'prd_validation:complete': {
+      if (event.passed) return 'All PRD requirements satisfied.';
+      const gapParts: string[] = [];
+      for (const gap of (event.gaps ?? [])) {
+        gapParts.push(`Requirement: ${gap.requirement}\n  Gap: ${gap.explanation}`);
+      }
+      return gapParts.join('\n\n') || null;
+    }
     default:
       return null;
   }

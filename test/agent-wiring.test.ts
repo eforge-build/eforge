@@ -13,6 +13,7 @@ import { runPlanEvaluate } from '../src/engine/agents/plan-evaluator.js';
 import { runArchitectureEvaluate } from '../src/engine/agents/plan-evaluator.js';
 import { runModulePlanner } from '../src/engine/agents/module-planner.js';
 import { runArchitectureReview } from '../src/engine/agents/architecture-reviewer.js';
+import { runPrdValidator } from '../src/engine/agents/prd-validator.js';
 import type { ResolvedProfileConfig } from '../src/engine/config.js';
 
 // --- Planner ---
@@ -721,7 +722,7 @@ describe('runArchitectureEvaluate wiring', () => {
     ]);
   });
 
-  it('emits zero counts and re-throws on error', async () => {
+  it('emits zero counts and re-throws on error (architecture)', async () => {
     const backend = new StubBackend([{ error: new Error('Architecture evaluate crash') }]);
 
     let thrown: Error | undefined;
@@ -746,5 +747,98 @@ describe('runArchitectureEvaluate wiring', () => {
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(0);
     expect(complete!.rejected).toBe(0);
+  });
+});
+
+// --- PRD Validator ---
+
+describe('runPrdValidator wiring', () => {
+  it('emits prd_validation:start and prd_validation:complete with no gaps when agent finds none', async () => {
+    const backend = new StubBackend([{
+      text: '```json\n{ "gaps": [] }\n```',
+    }]);
+
+    const events = await collectEvents(runPrdValidator({
+      backend,
+      cwd: '/tmp',
+      prdContent: '# PRD\n\nAdd a login page.',
+      diff: 'diff --git a/src/login.ts b/src/login.ts\n+export function LoginPage() {}',
+    }));
+
+    expect(findEvent(events, 'prd_validation:start')).toBeDefined();
+    const complete = findEvent(events, 'prd_validation:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.passed).toBe(true);
+    expect(complete!.gaps).toEqual([]);
+  });
+
+  it('emits prd_validation:complete with gaps when agent finds issues', async () => {
+    const backend = new StubBackend([{
+      text: `\`\`\`json
+{
+  "gaps": [
+    {
+      "requirement": "Login page should support OAuth",
+      "explanation": "No OAuth integration found in the diff"
+    },
+    {
+      "requirement": "Error messages should be user-friendly",
+      "explanation": "Error handling uses raw error messages without user-friendly formatting"
+    }
+  ]
+}
+\`\`\``,
+    }]);
+
+    const events = await collectEvents(runPrdValidator({
+      backend,
+      cwd: '/tmp',
+      prdContent: '# PRD\n\nAdd a login page with OAuth and friendly errors.',
+      diff: 'diff --git a/src/login.ts b/src/login.ts\n+export function LoginPage() {}',
+    }));
+
+    const complete = findEvent(events, 'prd_validation:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.passed).toBe(false);
+    expect(complete!.gaps).toHaveLength(2);
+    expect(complete!.gaps[0].requirement).toBe('Login page should support OAuth');
+    expect(complete!.gaps[1].explanation).toContain('Error handling');
+  });
+
+  it('handles agent errors gracefully (non-fatal)', async () => {
+    const backend = new StubBackend([{ error: new Error('Agent crashed') }]);
+
+    const events: EforgeEvent[] = [];
+    // Should NOT throw — agent errors are non-fatal
+    for await (const event of runPrdValidator({
+      backend,
+      cwd: '/tmp',
+      prdContent: 'PRD content',
+      diff: 'some diff',
+    })) {
+      events.push(event);
+    }
+
+    expect(findEvent(events, 'prd_validation:start')).toBeDefined();
+    const complete = findEvent(events, 'prd_validation:complete');
+    expect(complete).toBeDefined();
+    // Errors treated as no gaps (pass)
+    expect(complete!.passed).toBe(true);
+    expect(complete!.gaps).toEqual([]);
+  });
+
+  it('yields agent:result event (always yielded)', async () => {
+    const backend = new StubBackend([{
+      text: '```json\n{ "gaps": [] }\n```',
+    }]);
+
+    const events = await collectEvents(runPrdValidator({
+      backend,
+      cwd: '/tmp',
+      prdContent: 'PRD',
+      diff: 'diff',
+    }));
+
+    expect(findEvent(events, 'agent:result')).toBeDefined();
   });
 });

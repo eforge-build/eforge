@@ -18,7 +18,7 @@ import {
   type MergeResolver,
 } from './worktree-ops.js';
 import { WorktreeManager } from './worktree-manager.js';
-import { executePlans, validate, finalize, type PhaseContext } from './orchestrator/phases.js';
+import { executePlans, validate, prdValidate, finalize, type PhaseContext } from './orchestrator/phases.js';
 import { resumeState } from './orchestrator/plan-lifecycle.js';
 
 /**
@@ -43,6 +43,15 @@ export type ValidationFixer = (
   maxAttempts: number,
 ) => AsyncGenerator<EforgeEvent>;
 
+/**
+ * Callback that runs PRD validation after post-merge validation passes.
+ * Injected by the consumer (typically wraps the prd-validator agent).
+ * @param cwd - Working directory (merge worktree path)
+ */
+export type PrdValidator = (
+  cwd: string,
+) => AsyncGenerator<EforgeEvent>;
+
 export interface OrchestratorOptions {
   stateDir: string;
   repoRoot: string;
@@ -54,6 +63,7 @@ export interface OrchestratorOptions {
   validationFixer?: ValidationFixer;
   maxValidationRetries?: number;
   mergeResolver?: MergeResolver;
+  prdValidator?: PrdValidator;
   /** Path to the merge worktree (created during compile, loaded from state during build). */
   mergeWorktreePath?: string;
 }
@@ -134,12 +144,13 @@ export class Orchestrator {
       planRunner: this.options.planRunner, parallelism: this.options.parallelism ?? availableParallelism(),
       signal, postMergeCommands: this.options.postMergeCommands, validateCommands: this.options.validateCommands,
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
-      mergeResolver: this.options.mergeResolver, worktreeManager: wm,
+      mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, worktreeManager: wm,
       failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, resumed,
     };
     try {
       yield* executePlans(ctx);
       if ((state.status as string) !== 'failed') yield* validate(ctx);
+      if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
       if ((state.status as string) !== 'failed') yield* finalize(ctx);
     } finally {
       await wm.cleanupAll();

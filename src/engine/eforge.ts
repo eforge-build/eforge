@@ -32,7 +32,8 @@ import { ClaudeSDKBackend } from './backends/claude-sdk.js';
 import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
-import { Orchestrator, type ValidationFixer } from './orchestrator.js';
+import { runPrdValidator } from './agents/prd-validator.js';
+import { Orchestrator, type ValidationFixer, type PrdValidator } from './orchestrator.js';
 import type { MergeResolver } from './worktree-ops.js';
 import { computeWorktreeBase, createMergeWorktree } from './worktree-ops.js';
 import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
@@ -557,6 +558,51 @@ export class EforgeEngine {
         return resolved;
       };
 
+      // Create PRD validator closure
+      const prdValidator: PrdValidator | undefined = options.prdFilePath ? async function* (validatorCwd) {
+        // Read PRD content
+        let prdContent: string;
+        try {
+          prdContent = await readFile(resolve(cwd, options.prdFilePath!), 'utf-8');
+        } catch {
+          // If PRD file can't be read, skip validation
+          return;
+        }
+
+        // Build diff: baseBranch...HEAD truncated at 80K chars
+        let diff: string;
+        try {
+          const { stdout } = await exec('git', ['diff', `${orchConfig.baseBranch}...HEAD`], { cwd: validatorCwd, maxBuffer: 100 * 1024 * 1024 });
+          diff = stdout.length > 80_000 ? stdout.slice(0, 80_000) + '\n\n[diff truncated at 80K chars]' : stdout;
+        } catch {
+          return;
+        }
+
+        if (!diff.trim()) return;
+
+        const prdSpan = tracing!.createSpan('prd-validator', {});
+        prdSpan.setInput({ prdLength: prdContent.length, diffLength: diff.length });
+        const prdTracker = createToolTracker(prdSpan);
+        try {
+          for await (const event of runPrdValidator({
+            backend,
+            cwd: validatorCwd,
+            prdContent,
+            diff,
+            verbose,
+            abortController,
+          })) {
+            prdTracker.handleEvent(event);
+            yield event;
+          }
+          prdTracker.cleanup();
+          prdSpan.end();
+        } catch (err) {
+          prdTracker.cleanup();
+          prdSpan.error(err as Error);
+        }
+      } : undefined;
+
       // Create and run orchestrator
       const parallelism = config.build.parallelism;
       const signal = abortController?.signal;
@@ -571,6 +617,7 @@ export class EforgeEngine {
         validationFixer,
         maxValidationRetries: config.build.maxValidationRetries,
         mergeResolver,
+        prdValidator,
         mergeWorktreePath,
       });
 
@@ -593,6 +640,12 @@ export class EforgeEngine {
           } else {
             status = 'failed';
             summary = 'Post-merge validation failed';
+          }
+        }
+        if (event.type === 'prd_validation:complete') {
+          if (!event.passed) {
+            status = 'failed';
+            summary = `PRD validation failed: ${event.gaps.length} gap(s) found`;
           }
         }
       }

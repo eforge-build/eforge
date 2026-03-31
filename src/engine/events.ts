@@ -7,7 +7,12 @@ import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSc
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater' | 'test-writer' | 'tester';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater' | 'test-writer' | 'tester' | 'prd-validator';
+
+export interface PrdValidationGap {
+  requirement: string;
+  explanation: string;
+}
 
 export type ExpeditionModule = z.output<typeof expeditionModuleSchema>;
 
@@ -231,6 +236,10 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'validation:complete'; passed: boolean }
   | { type: 'validation:fix:start'; attempt: number; maxAttempts: number }
   | { type: 'validation:fix:complete'; attempt: number }
+
+  // PRD validation (post-merge, after validation)
+  | { type: 'prd_validation:start' }
+  | { type: 'prd_validation:complete'; passed: boolean; gaps: PrdValidationGap[] }
 
   // Reconciliation (resume)
   | { type: 'reconciliation:start' }
