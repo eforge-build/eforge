@@ -23,9 +23,10 @@ import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, 
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
-function buildConfigOverrides(options: { parallelism?: number; plugins?: boolean }): Partial<EforgeConfig> | undefined {
+function buildConfigOverrides(options: { parallelism?: number; queueParallelism?: number; plugins?: boolean }): Partial<EforgeConfig> | undefined {
   const overrides: Partial<EforgeConfig> = {};
   if (options.parallelism) overrides.build = { parallelism: options.parallelism } as EforgeConfig['build'];
+  if (options.queueParallelism) overrides.prdQueue = { parallelism: options.queueParallelism } as EforgeConfig['prdQueue'];
   if (options.plugins === false) overrides.plugins = { enabled: false };
   return Object.keys(overrides).length > 0 ? overrides : undefined;
 }
@@ -189,6 +190,7 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--name <name>', 'Plan set name (inferred from source if omitted)')
     .option('--queue', 'Process all PRDs from the queue')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
+    .option('--queue-parallelism <n>', 'Max parallel queue PRDs', parseInt)
     .option('--dry-run', 'Compile only, then show execution plan without building')
     .option('--foreground', 'Run in-process instead of delegating to daemon')
     .option('--no-cleanup', 'Keep plan files after successful build')
@@ -208,6 +210,7 @@ export function createProgram(abortController?: AbortController): Command {
           queue?: boolean;
           cleanup?: boolean;
           parallelism?: number;
+          queueParallelism?: number;
           dryRun?: boolean;
           foreground?: boolean;
           monitor?: boolean;
@@ -502,6 +505,7 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--no-monitor', 'Disable web monitor')
     .option('--no-plugins', 'Disable plugin loading')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
+    .option('--queue-parallelism <n>', 'Max parallel queue PRDs', parseInt)
     .option('--watch', 'Watch mode: continuously poll the queue for new PRDs')
     .option('--poll-interval <ms>', 'Poll interval in milliseconds for watch mode', parseInt)
     .action(
@@ -514,6 +518,7 @@ export function createProgram(abortController?: AbortController): Command {
           monitor?: boolean;
           plugins?: boolean;
           parallelism?: number;
+          queueParallelism?: number;
           watch?: boolean;
           pollInterval?: number;
         },

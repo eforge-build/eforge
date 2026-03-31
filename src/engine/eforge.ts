@@ -41,6 +41,7 @@ import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validate
 import { loadState, saveState as saveEforgeState } from './state.js';
 import { runCompilePipeline, runBuildPipeline, createToolTracker, type PipelineContext, type BuildStageContext } from './pipeline.js';
 import { forgeCommit, retryOnLock } from './git.js';
+import { Semaphore, AsyncEventQueue } from './concurrency.js';
 
 const exec = promisify(execFile);
 
@@ -719,14 +720,189 @@ export class EforgeEngine {
   }
 
   /**
-   * Queue: process PRDs from a queue directory sequentially.
+   * Process a single PRD: claim, staleness check, compile, build, release.
+   * Extracted from runQueue() so the greedy scheduler can run PRDs concurrently.
+   */
+  private async *buildSinglePrd(
+    prd: import('./prd-queue.js').QueuedPrd,
+    options: QueueOptions,
+  ): AsyncGenerator<EforgeEvent> {
+    const cwd = this.cwd;
+    const verbose = options.verbose;
+    const abortController = options.abortController;
+
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'queue:prd:start',
+      prdId: prd.id,
+      title: prd.frontmatter.title,
+    };
+
+    // Claim this PRD exclusively — skip if another process already holds it
+    const claimed = await claimPrd(prd.id, cwd);
+    if (!claimed) {
+      yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'claimed by another process' };
+      yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
+      return;
+    }
+
+    // Staleness check — skip only if PRD was added in the most recent commit
+    const headHash = await getHeadHash(cwd);
+    if (prd.lastCommitHash && prd.lastCommitHash !== headHash) {
+      const diffSummary = await getPrdDiffSummary(prd.lastCommitHash, cwd);
+
+      let stalenessVerdict: 'proceed' | 'revise' | 'obsolete' = 'proceed';
+      let revision: string | undefined;
+
+      for await (const event of runStalenessAssessor({
+        backend: this.backend,
+        prdContent: prd.content,
+        diffSummary,
+        cwd,
+        verbose,
+        abortController,
+      })) {
+        if (event.type === 'queue:prd:stale') {
+          stalenessVerdict = event.verdict;
+          revision = event.revision;
+        }
+        yield event;
+      }
+
+      if (stalenessVerdict === 'obsolete') {
+        await releasePrd(prd.id, cwd);
+        await updatePrdStatus(prd.filePath, 'skipped');
+        yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
+        yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
+        return;
+      }
+
+      if (stalenessVerdict === 'revise') {
+        if (this.config.prdQueue.autoRevise && revision) {
+          // Auto-apply revision and commit
+          await writeFile(prd.filePath, revision, 'utf-8');
+          try {
+            await retryOnLock(() => exec('git', ['add', '--', prd.filePath], { cwd }), cwd);
+            await forgeCommit(cwd, `chore(queue): revise stale PRD ${prd.id}`);
+          } catch (err) {
+            yield {
+              timestamp: new Date().toISOString(),
+              type: 'queue:prd:commit-failed',
+              prdId: prd.id,
+              error: err instanceof Error ? err.message : String(err),
+            };
+          }
+        } else {
+          // Skip — needs manual revision
+          await releasePrd(prd.id, cwd);
+          yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
+          yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
+          return;
+        }
+      }
+    }
+
+    // Per-PRD session: each PRD gets its own sessionId for monitor grouping
+    const prdSessionId = randomUUID();
+    let prdResult: { status: 'completed' | 'failed' | 'skipped'; summary: string } = {
+      status: 'failed',
+      summary: 'Session terminated abnormally',
+    };
+
+    try {
+      // Update status to running
+      await updatePrdStatus(prd.filePath, 'running');
+
+      yield {
+        type: 'session:start',
+        sessionId: prdSessionId,
+        timestamp: new Date().toISOString(),
+      } as EforgeEvent;
+
+      // Compile (plan) the PRD
+      let compileFailed = false;
+      let planSkipped = false;
+      let skipReason = '';
+      const planSetName = options.name ?? prd.id;
+
+      for await (const event of this.compile(prd.filePath, {
+        name: planSetName,
+        auto: options.auto,
+        verbose,
+        generateProfile: options.generateProfile ?? true,
+        cwd,
+        abortController,
+      })) {
+        yield { ...event, sessionId: prdSessionId } as EforgeEvent;
+        if (event.type === 'phase:end' && event.result.status === 'failed') {
+          compileFailed = true;
+        }
+        if (event.type === 'plan:skip') {
+          planSkipped = true;
+          skipReason = event.reason;
+        }
+      }
+
+      if (compileFailed) {
+        prdResult = { status: 'failed', summary: 'Compile failed' };
+        return;
+      }
+
+      if (planSkipped) {
+        prdResult = { status: 'skipped', summary: skipReason };
+        return;
+      }
+
+      // Build the plan — PRD cleanup flows through build()
+      let buildFailed = false;
+      for await (const event of this.build(planSetName, {
+        auto: options.auto,
+        verbose,
+        cwd,
+        abortController,
+        prdFilePath: prd.filePath,
+      })) {
+        yield { ...event, sessionId: prdSessionId } as EforgeEvent;
+        if (event.type === 'phase:end' && event.result.status === 'failed') {
+          buildFailed = true;
+        }
+      }
+
+      if (buildFailed) {
+        prdResult = { status: 'failed', summary: 'Build failed' };
+      } else {
+        prdResult = { status: 'completed', summary: 'Build complete' };
+      }
+    } catch (err) {
+      prdResult = { status: 'failed', summary: (err as Error).message };
+    } finally {
+      try {
+        await releasePrd(prd.id, cwd);
+      } catch { /* best-effort lock cleanup */ }
+      try {
+        await updatePrdStatus(prd.filePath, prdResult.status);
+      } catch { /* prevent double-throw */ }
+
+      yield {
+        type: 'session:end',
+        sessionId: prdSessionId,
+        result: prdResult,
+        timestamp: new Date().toISOString(),
+      } as EforgeEvent;
+    }
+
+    yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: prdResult.status };
+  }
+
+  /**
+   * Queue: process PRDs from a queue directory with greedy semaphore-limited scheduling.
    * For each PRD: staleness check → compile → build.
    * Updates frontmatter status as PRDs are processed.
+   * At parallelism=1 (default), behavior is identical to sequential execution.
    */
   async *runQueue(options: QueueOptions = {}): AsyncGenerator<EforgeEvent> {
     const cwd = this.cwd;
     const queueDir = this.config.prdQueue.dir;
-    const verbose = options.verbose;
     const abortController = options.abortController;
 
     // Load and order queue
@@ -745,181 +921,145 @@ export class EforgeEngine {
       dir: queueDir,
     };
 
+    // Per-PRD state tracking for the greedy scheduler
+    type PrdRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'blocked';
+    interface PrdRunState {
+      status: PrdRunStatus;
+      dependsOn: string[];
+    }
+
+    const prdState = new Map<string, PrdRunState>();
+    for (const prd of orderedPrds) {
+      const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
+        orderedPrds.some((p) => p.id === dep),
+      );
+      prdState.set(prd.id, { status: 'pending', dependsOn: deps });
+    }
+
+    const isReady = (prdId: string): boolean => {
+      const state = prdState.get(prdId)!;
+      if (state.status !== 'pending') return false;
+      return state.dependsOn.every((dep) => {
+        const depState = prdState.get(dep);
+        return depState && (depState.status === 'completed' || depState.status === 'skipped');
+      });
+    };
+
+    const propagateBlocked = (failedId: string): void => {
+      // Mark all transitive dependents as blocked
+      const queue = [failedId];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        for (const [id, state] of prdState) {
+          if (state.status === 'pending' && state.dependsOn.includes(current)) {
+            state.status = 'blocked';
+            queue.push(id);
+          }
+        }
+      }
+    };
+
+    const parallelism = this.config.prdQueue.parallelism;
+    const semaphore = new Semaphore(parallelism);
+    const eventQueue = new AsyncEventQueue<EforgeEvent>();
+
     let processed = 0;
     let skipped = 0;
 
-    for (const prd of orderedPrds) {
-      // Check for abort
-      if (abortController?.signal.aborted) break;
+    const startReadyPrds = (): void => {
+      for (const prd of orderedPrds) {
+        if (abortController?.signal.aborted) break;
+        if (!isReady(prd.id)) continue;
 
-      yield {
-        timestamp: new Date().toISOString(),
-        type: 'queue:prd:start',
-        prdId: prd.id,
-        title: prd.frontmatter.title,
-      };
+        const state = prdState.get(prd.id)!;
+        state.status = 'running';
 
-      // Claim this PRD exclusively — skip if another process already holds it
-      const claimed = await claimPrd(prd.id, cwd);
-      if (!claimed) {
-        yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'claimed by another process' };
-        skipped++;
-        continue;
-      }
+        eventQueue.addProducer();
 
-      // Staleness check — skip only if PRD was added in the most recent commit
-      const headHash = await getHeadHash(cwd);
-      if (prd.lastCommitHash && prd.lastCommitHash !== headHash) {
-        const diffSummary = await getPrdDiffSummary(prd.lastCommitHash, cwd);
+        // Launch asynchronously — semaphore gates actual execution
+        void (async () => {
+          let acquired = false;
+          let lastCompletionStatus: string | undefined;
+          try {
+            await semaphore.acquire();
+            acquired = true;
 
-        let stalenessVerdict: 'proceed' | 'revise' | 'obsolete' = 'proceed';
-        let revision: string | undefined;
-
-        for await (const event of runStalenessAssessor({
-          backend: this.backend,
-          prdContent: prd.content,
-          diffSummary,
-          cwd,
-          verbose,
-          abortController,
-        })) {
-          if (event.type === 'queue:prd:stale') {
-            stalenessVerdict = event.verdict;
-            revision = event.revision;
-          }
-          yield event;
-        }
-
-        if (stalenessVerdict === 'obsolete') {
-          await releasePrd(prd.id, cwd);
-          await updatePrdStatus(prd.filePath, 'skipped');
-          yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
-          skipped++;
-          continue;
-        }
-
-        if (stalenessVerdict === 'revise') {
-          if (this.config.prdQueue.autoRevise && revision) {
-            // Auto-apply revision and commit
-            await writeFile(prd.filePath, revision, 'utf-8');
-            try {
-              await retryOnLock(() => exec('git', ['add', '--', prd.filePath], { cwd }), cwd);
-              await forgeCommit(cwd, `chore(queue): revise stale PRD ${prd.id}`);
-            } catch (err) {
-              yield {
-                timestamp: new Date().toISOString(),
-                type: 'queue:prd:commit-failed',
-                prdId: prd.id,
-                error: err instanceof Error ? err.message : String(err),
-              };
+            for await (const event of this.buildSinglePrd(prd, options)) {
+              if (event.type === 'queue:prd:complete') {
+                lastCompletionStatus = (event as { status: string }).status;
+              }
+              eventQueue.push(event);
             }
-          } else {
-            // Skip — needs manual revision
-            await releasePrd(prd.id, cwd);
-            yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
-            skipped++;
-            continue;
+          } catch (err) {
+            lastCompletionStatus = 'failed';
+            eventQueue.push({
+              timestamp: new Date().toISOString(),
+              type: 'queue:prd:complete',
+              prdId: prd.id,
+              status: 'failed',
+            } as EforgeEvent);
+          } finally {
+            if (acquired) semaphore.release();
+
+            // Update state based on the actual completion status from buildSinglePrd
+            const finalState = prdState.get(prd.id)!;
+            if (finalState.status === 'running') {
+              if (lastCompletionStatus === 'completed') {
+                finalState.status = 'completed';
+              } else if (lastCompletionStatus === 'skipped') {
+                finalState.status = 'skipped';
+              } else {
+                finalState.status = 'failed';
+              }
+            }
+
+            // Propagate blocked on failure
+            if (finalState.status === 'failed') {
+              propagateBlocked(prd.id);
+            }
+
+            eventQueue.removeProducer();
           }
-        }
+        })();
       }
 
-      // Per-PRD session: each PRD gets its own sessionId for monitor grouping
-      const prdSessionId = randomUUID();
-      let prdResult: { status: 'completed' | 'failed' | 'skipped'; summary: string } = {
-        status: 'failed',
-        summary: 'Session terminated abnormally',
-      };
+    };
 
-      try {
-        // Update status to running
-        await updatePrdStatus(prd.filePath, 'running');
+    // Seed the scheduler
+    startReadyPrds();
 
-        yield {
-          type: 'session:start',
-          sessionId: prdSessionId,
-          timestamp: new Date().toISOString(),
-        } as EforgeEvent;
+    // If nothing was launched (empty queue or all blocked), add/remove a producer to close the queue
+    const hasAnyRunning = [...prdState.values()].some((s) => s.status === 'running');
+    if (!hasAnyRunning) {
+      eventQueue.addProducer();
+      eventQueue.removeProducer();
+    }
 
-        // Record HEAD before compile so we can reset on build failure
-        const preCompileHead = (await exec('git', ['rev-parse', 'HEAD'], { cwd })).stdout.trim();
+    // Consume multiplexed events
+    for await (const event of eventQueue) {
+      yield event;
 
-        // Compile (plan) the PRD
-        let compileFailed = false;
-        let planSkipped = false;
-        let skipReason = '';
-        const planSetName = options.name ?? prd.id;
-
-        for await (const event of this.compile(prd.filePath, {
-          name: planSetName,
-          auto: options.auto,
-          verbose,
-          generateProfile: options.generateProfile ?? true,
-          cwd,
-          abortController,
-        })) {
-          yield { ...event, sessionId: prdSessionId } as EforgeEvent;
-          if (event.type === 'phase:end' && event.result.status === 'failed') {
-            compileFailed = true;
-          }
-          if (event.type === 'plan:skip') {
-            planSkipped = true;
-            skipReason = event.reason;
-          }
-        }
-
-        if (compileFailed) {
-          prdResult = { status: 'failed', summary: 'Compile failed' };
-          continue;
-        }
-
-        if (planSkipped) {
-          prdResult = { status: 'skipped', summary: skipReason };
+      // On PRD completion, update counters and try to launch newly-ready PRDs.
+      // State transitions are handled by the producer's finally block (which runs
+      // before removeProducer), so we only need to update counters here.
+      if (event.type === 'queue:prd:complete') {
+        const completionStatus = (event as { status: string }).status;
+        if (completionStatus === 'skipped') {
           skipped++;
-          continue;
-        }
-
-        // Build the plan — PRD cleanup flows through build()
-        let buildFailed = false;
-        for await (const event of this.build(planSetName, {
-          auto: options.auto,
-          verbose,
-          cwd,
-          abortController,
-          prdFilePath: prd.filePath,
-        })) {
-          yield { ...event, sessionId: prdSessionId } as EforgeEvent;
-          if (event.type === 'phase:end' && event.result.status === 'failed') {
-            buildFailed = true;
-          }
-        }
-
-        if (buildFailed) {
-          // Reset HEAD to before compile so plan file commits are unwound
-          try { await exec('git', ['reset', '--hard', preCompileHead], { cwd }); } catch { /* best effort */ }
-          prdResult = { status: 'failed', summary: 'Build failed' };
         } else {
-          prdResult = { status: 'completed', summary: 'Build complete' };
+          processed++;
         }
-      } catch (err) {
-        prdResult = { status: 'failed', summary: (err as Error).message };
-      } finally {
-        try {
-          await releasePrd(prd.id, cwd);
-        } catch { /* best-effort lock cleanup */ }
-        try {
-          await updatePrdStatus(prd.filePath, prdResult.status);
-        } catch { /* prevent double-throw */ }
 
-        yield {
-          type: 'session:end',
-          sessionId: prdSessionId,
-          result: prdResult,
-          timestamp: new Date().toISOString(),
-        } as EforgeEvent;
+        // Try to launch newly-unblocked PRDs
+        startReadyPrds();
       }
+    }
 
-      yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: prdResult.status };
-      processed++;
+    // Count blocked PRDs as skipped
+    for (const [, state] of prdState) {
+      if (state.status === 'blocked') {
+        skipped++;
+      }
     }
 
     yield {
