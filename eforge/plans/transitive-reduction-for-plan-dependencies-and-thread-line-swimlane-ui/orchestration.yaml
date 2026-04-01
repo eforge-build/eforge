@@ -1,0 +1,50 @@
+name: transitive-reduction-for-plan-dependencies-and-thread-line-swimlane-ui
+description: Apply transitive reduction at orchestration parse time and replace
+  binary swimlane indentation with thread-line depth indicators
+created: 2026-04-01
+compiled: 2026-04-01
+mode: excursion
+base_branch: main
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors. Use when the full scope can
+    be planned in a single planner session - all plans enumerated, all file
+    changes listed, and cross-plan dependencies resolved. Covers tightly coupled
+    changes (type cascades, interface refactors, rename-and-update-all-callers)
+    and any work where one planning pass is sufficient.
+  compile:
+    - planner
+    - plan-review-cycle
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-transitive-reduction
+    name: Transitive Reduction in Orchestration Config Parsing
+    depends_on: []
+    branch: transitive-reduction-for-plan-dependencies-and-thread-line-swimlane-ui/transitive-reduction
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-thread-line-swimlane-ui
+    name: Thread-Line Swimlane UI for Dependency Depth
+    depends_on:
+      - plan-01-transitive-reduction
+    branch: transitive-reduction-for-plan-dependencies-and-thread-line-swimlane-ui/thread-line-swimlane-ui
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
