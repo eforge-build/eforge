@@ -39,7 +39,8 @@ agents:
   #     maxTurns: 50          #   architecture-reviewer, architecture-evaluator,
   #   staleness-assessor:     #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
   #     modelClass: fast      #   review-fixer, merge-conflict-resolver, staleness-assessor,
-  #                           #   formatter, doc-updater, test-writer, tester
+  #                           #   formatter, doc-updater, test-writer, tester,
+  #                           #   prd-validator, dependency-detector
 
 build:
   parallelism: <cpu-count>    # Max parallel plan executions
