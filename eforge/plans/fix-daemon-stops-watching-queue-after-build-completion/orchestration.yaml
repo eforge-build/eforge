@@ -1,0 +1,72 @@
+name: fix-daemon-stops-watching-queue-after-build-completion
+description: Fix daemon stopping queue watch after build completion due to
+  directory deletion, stale prdState cache, and missing watcher respawn logic
+created: 2026-04-01
+compiled: 2026-04-01
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-queue-dir-preservation-and-watch-recovery
+    name: Queue Directory Preservation and fs.watch Recovery
+    depends_on: []
+    branch: fix-daemon-stops-watching-queue-after-build-completion/queue-dir-preservation-and-watch-recovery
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-daemon-respawn-and-prd-requeue
+    name: Daemon Watcher Respawn and PRD Re-queue Support
+    depends_on:
+      - plan-01-queue-dir-preservation-and-watch-recovery
+    branch: fix-daemon-stops-watching-queue-after-build-completion/daemon-respawn-and-prd-requeue
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - test-write
+      - doc-update
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - correctness
+      - resilience
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "Excursion scope: this is a multi-file bug fix touching 4 critical
+    files across two subsystems (engine watcher and daemon monitor), but they're
+    tightly coupled fixes in a single domain - not independent enough for
+    expedition. Plan-review-cycle is included because the fixes involve
+    retry/circuit-breaker logic with subtle edge cases that benefit from a
+    planning quality gate. Test-write and test-cycle are included because the
+    PRD explicitly requires unit tests for fs.watch recovery, prdState reset,
+    and daemon respawn logic. Doc-update runs in parallel with test-write since
+    neither depends on the other. Review perspectives focus on correctness
+    (ensuring the three bugs are properly fixed) and resilience (the retry
+    limits, circuit breakers, and recovery paths must be robust). Standard
+    strictness is appropriate - these are important runtime fixes but not
+    security-critical."
