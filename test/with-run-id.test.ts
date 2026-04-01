@@ -73,6 +73,54 @@ describe('withRunId', () => {
     expect(sessionEnd!.runId).toBe('run-build');
   });
 
+  it('preserves pre-existing runId values on interleaved parallel PRD events', async () => {
+    // Simulate two parallel PRD sessions (A and B) whose events interleave
+    // through a single withRunId middleware. Events are pre-stamped with runId
+    // by per-sub-generator withRunId wrapping in buildSinglePrd.
+    async function* interleavedEvents(): AsyncGenerator<EforgeEvent> {
+      // Session A: phase:start
+      yield { type: 'phase:start', runId: 'run-A', planSet: 'prd-a', command: 'compile', timestamp: '2024-01-01T00:00:00Z' } as unknown as EforgeEvent;
+      // Session B: phase:start (interleaved)
+      yield { type: 'phase:start', runId: 'run-B', planSet: 'prd-b', command: 'compile', timestamp: '2024-01-01T00:00:01Z' } as unknown as EforgeEvent;
+      // Session A: plan:start (pre-stamped with run-A)
+      yield { type: 'plan:start', source: 'a.md', runId: 'run-A' } as unknown as EforgeEvent;
+      // Session B: plan:start (pre-stamped with run-B)
+      yield { type: 'plan:start', source: 'b.md', runId: 'run-B' } as unknown as EforgeEvent;
+      // Session A: phase:end
+      yield { type: 'phase:end', runId: 'run-A', result: { status: 'completed' }, timestamp: '2024-01-01T00:01:00Z' } as unknown as EforgeEvent;
+      // Session B: phase:end
+      yield { type: 'phase:end', runId: 'run-B', result: { status: 'completed' }, timestamp: '2024-01-01T00:01:01Z' } as unknown as EforgeEvent;
+    }
+
+    const result = await collectEvents(withRunId(interleavedEvents()));
+
+    // A's plan:start retains run-A (not corrupted to run-B)
+    expect(result[2].runId).toBe('run-A');
+    // B's plan:start retains run-B
+    expect(result[3].runId).toBe('run-B');
+    // A's phase:end retains run-A
+    expect(result[4].runId).toBe('run-A');
+    // B's phase:end retains run-B
+    expect(result[5].runId).toBe('run-B');
+  });
+
+  it('does not stamp unstamped events outside phases when pre-stamped events are interleaved', async () => {
+    async function* events(): AsyncGenerator<EforgeEvent> {
+      // Queue event before any phase — no runId
+      yield { type: 'queue:start', prdCount: 1, dir: '/tmp/q' } as unknown as EforgeEvent;
+      // Pre-stamped event from a parallel session
+      yield { type: 'phase:start', runId: 'run-X', planSet: 'prd-x', command: 'compile', timestamp: '2024-01-01T00:00:00Z' } as unknown as EforgeEvent;
+      yield { type: 'phase:end', runId: 'run-X', result: { status: 'completed' }, timestamp: '2024-01-01T00:01:00Z' } as unknown as EforgeEvent;
+      // Queue event after phase — should still not be stamped
+      yield { type: 'queue:complete', processed: 1, skipped: 0 } as unknown as EforgeEvent;
+    }
+
+    const result = await collectEvents(withRunId(events()));
+
+    expect(result[0].runId).toBeUndefined();
+    expect(result[3].runId).toBeUndefined();
+  });
+
   it('handles multi-phase session correctly', async () => {
     async function* events(): AsyncGenerator<EforgeEvent> {
       yield { type: 'session:start', sessionId: 's1', timestamp: '2024-01-01T00:00:00Z' } as unknown as EforgeEvent;

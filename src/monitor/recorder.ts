@@ -14,7 +14,7 @@ export async function* withRecording(
   pid?: number,
 ): AsyncGenerator<EforgeEvent> {
   let enqueueRunId: string | undefined;
-  let bufferedSessionStart: EforgeEvent | undefined;
+  const bufferedSessionStarts = new Map<string, EforgeEvent>();
 
   for await (const event of events) {
     if (event.type === 'phase:start') {
@@ -30,27 +30,30 @@ export async function* withRecording(
         pid,
       });
       // Flush buffered session:start if present
-      if (bufferedSessionStart) {
+      const eventSessionId = 'sessionId' in event ? (event as { sessionId: string }).sessionId : undefined;
+      const bufferedStart = eventSessionId ? bufferedSessionStarts.get(eventSessionId) : undefined;
+      if (bufferedStart && eventSessionId) {
         db.insertEvent({
           runId: event.runId,
-          type: bufferedSessionStart.type,
-          planId: extractPlanId(bufferedSessionStart),
-          agent: extractAgent(bufferedSessionStart),
-          data: JSON.stringify(bufferedSessionStart),
-          timestamp: bufferedSessionStart.timestamp,
+          type: bufferedStart.type,
+          planId: extractPlanId(bufferedStart),
+          agent: extractAgent(bufferedStart),
+          data: JSON.stringify(bufferedStart),
+          timestamp: bufferedStart.timestamp,
         });
-        bufferedSessionStart = undefined;
+        bufferedSessionStarts.delete(eventSessionId);
       }
     }
 
     if (event.type === 'session:start' && !event.runId && !enqueueRunId) {
-      bufferedSessionStart = event;
+      bufferedSessionStarts.set(event.sessionId, event);
     }
 
     if (event.type === 'enqueue:start') {
       enqueueRunId = randomUUID();
-      const sessionId = bufferedSessionStart && 'sessionId' in bufferedSessionStart
-        ? (bufferedSessionStart as { sessionId: string }).sessionId
+      const firstBuffered = bufferedSessionStarts.values().next().value as EforgeEvent | undefined;
+      const sessionId = firstBuffered && 'sessionId' in firstBuffered
+        ? (firstBuffered as { sessionId: string }).sessionId
         : undefined;
       db.insertRun({
         id: enqueueRunId,
@@ -63,16 +66,17 @@ export async function* withRecording(
         pid,
       });
       // Flush buffered session:start
-      if (bufferedSessionStart) {
+      const bufferedEnqueueStart = sessionId ? bufferedSessionStarts.get(sessionId) : undefined;
+      if (bufferedEnqueueStart && sessionId) {
         db.insertEvent({
           runId: enqueueRunId,
-          type: bufferedSessionStart.type,
-          planId: extractPlanId(bufferedSessionStart),
-          agent: extractAgent(bufferedSessionStart),
-          data: JSON.stringify(bufferedSessionStart),
-          timestamp: bufferedSessionStart.timestamp,
+          type: bufferedEnqueueStart.type,
+          planId: extractPlanId(bufferedEnqueueStart),
+          agent: extractAgent(bufferedEnqueueStart),
+          data: JSON.stringify(bufferedEnqueueStart),
+          timestamp: bufferedEnqueueStart.timestamp,
         });
-        bufferedSessionStart = undefined;
+        bufferedSessionStarts.delete(sessionId);
       }
     }
 
