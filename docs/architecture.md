@@ -26,7 +26,7 @@ graph TD
 
     CLI -->|"iterates events"| EforgeEngine
     Monitor -->|"records events"| EforgeEngine
-    Plugin -->|"invokes via CLI"| CLI
+    Plugin -->|"MCP tools"| EforgeEngine
     EforgeEngine --> Pipeline
     EforgeEngine --> Orchestrator
     Pipeline --> Agents
@@ -48,7 +48,7 @@ graph TD
 
 ### Plugin
 
-`eforge-plugin/` is the Claude Code integration. It exposes MCP tools for build, queue, and status operations that invoke the CLI via `npx -y eforge`.
+`eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for build, queue, status, config, and daemon operations.
 
 ## Event System
 
@@ -64,6 +64,10 @@ graph TD
 | `agent:*` | Agent lifecycle and streaming |
 | `validation:*` | Post-merge validation |
 | `queue:*` / `enqueue:*` | PRD queue operations |
+| `prd_validation:*` | PRD validation (`prd_validation:start`, `prd_validation:complete`) |
+| `reconciliation:*` | Reconciliation (`reconciliation:start`, `reconciliation:complete`) |
+| `cleanup:*` | Cleanup (`cleanup:start`, `cleanup:complete`) |
+| `approval:*` | Approval flow (`approval:needed`, `approval:response`) |
 
 The CLI composes async generator middleware around the engine's event stream - transformers that stamp session/run IDs, fire hooks, and record to SQLite without altering the events themselves.
 
@@ -142,7 +146,7 @@ Agent roles by function:
 
 | Function | Roles |
 |----------|-------|
-| **Planning** | formatter, planner, module-planner, staleness-assessor |
+| **Planning** | formatter, planner, module-planner, staleness-assessor, prd-validator, dependency-detector |
 | **Building** | builder, doc-updater, test-writer, tester |
 | **Review** | reviewer, parallel-reviewer, review-fixer, plan-evaluator, cohesion-reviewer, architecture-reviewer |
 | **Recovery** | validation-fixer, merge-conflict-resolver |
