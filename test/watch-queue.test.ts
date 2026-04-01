@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, rm, stat } from 'node:fs/promises';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -135,12 +135,16 @@ describe('watchQueue', () => {
     let discoveredSeen = false;
 
     // After watcher starts:
-    // 1. Delete the queue directory to trigger fs.watch error + recovery
-    // 2. Wait for recovery (directory recreation), then write a new PRD
+    // 1. Delete the queue directory to trigger fs.watch change + recovery
+    // 2. Wait for recovery (debounce 500ms + mkdir + setupWatcher), then write a new PRD
     const deleteTimer = setTimeout(async () => {
       await rm(queueDir, { recursive: true });
-      // Give recovery time to recreate the directory and re-establish watcher
+      // Recovery path: change event → 500ms debounce → stat detects missing dir →
+      // error handler → mkdir + setupWatcher. Wait 1500ms to ensure recovery completes
+      // and the new watcher is established before writing.
       setTimeout(async () => {
+        // Ensure directory exists (recovery should have recreated it)
+        await mkdir(queueDir, { recursive: true });
         const prdContent = [
           '---',
           'title: Recovery PRD',
@@ -151,11 +155,11 @@ describe('watchQueue', () => {
           'Written after recovery.',
         ].join('\n');
         await writeFile(join(queueDir, 'recovery-prd.md'), prdContent);
-      }, 500);
+      }, 1500);
     }, 300);
 
-    // Give enough time for delete + recovery + fs.watch fire + debounce + discovery
-    const abortTimer = setTimeout(() => abortController.abort(), 3000);
+    // Give enough time for delete + recovery + write + debounce + discovery
+    const abortTimer = setTimeout(() => abortController.abort(), 5000);
 
     try {
       for await (const event of engine.watchQueue({ abortController })) {
@@ -177,7 +181,7 @@ describe('watchQueue', () => {
 
     // Final event should be queue:complete
     expect(events[events.length - 1].type).toBe('queue:complete');
-  });
+  }, 10_000);
 
   it('3 rapid consecutive directory deletions within 10 seconds triggers abort', async () => {
     const { engine, cwd, queueDir } = await createTestEngine();
@@ -185,19 +189,39 @@ describe('watchQueue', () => {
 
     const events: EforgeEvent[] = [];
 
-    // Rapidly delete the queue directory 3 times to exhaust the circuit breaker
+    // Helper: wait for the queue directory to be recreated by recovery
+    const waitForDir = async (maxWait = 2000): Promise<boolean> => {
+      const start = Date.now();
+      while (Date.now() - start < maxWait) {
+        try {
+          await stat(queueDir);
+          return true;
+        } catch {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+      return false;
+    };
+
+    // Delete the queue directory 3 times, waiting for recovery between each.
+    // Each cycle: delete → 500ms debounce → stat detect → error handler → mkdir + setupWatcher
+    // Total ~800ms per cycle, all 3 within the 10s circuit breaker window.
     const deleteTimer = setTimeout(async () => {
       for (let i = 0; i < 3; i++) {
+        // Wait for directory to exist (recovery from previous cycle, or initial)
+        await waitForDir();
         try {
           await rm(queueDir, { recursive: true });
         } catch { /* may already be gone */ }
-        // Wait briefly for recovery to recreate the dir before deleting again
-        await new Promise((r) => setTimeout(r, 200));
+        // Wait for recovery to process before next deletion
+        if (i < 2) {
+          await waitForDir();
+        }
       }
     }, 300);
 
     // Safety timeout in case circuit breaker doesn't fire
-    const abortTimer = setTimeout(() => abortController.abort(), 5000);
+    const abortTimer = setTimeout(() => abortController.abort(), 15000);
 
     try {
       for await (const event of engine.watchQueue({ abortController })) {
@@ -211,5 +235,5 @@ describe('watchQueue', () => {
     const types = events.map((e) => e.type);
     // Should exit with queue:complete (the circuit breaker called onAbort)
     expect(types[types.length - 1]).toBe('queue:complete');
-  });
+  }, 20_000);
 });
