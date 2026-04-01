@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -44,24 +45,30 @@ describe('abortableSleep', () => {
 });
 
 describe('watchQueue', () => {
-  async function createTestEngine(): Promise<{ engine: EforgeEngine; cwd: string }> {
+  async function createTestEngine(): Promise<{ engine: EforgeEngine; cwd: string; queueDir: string }> {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-watch-test-'));
+    const queueDir = join(cwd, 'eforge', 'queue');
+    await mkdir(queueDir, { recursive: true });
     const engine = await EforgeEngine.create({
       cwd,
       config: {
         backend: 'claude-sdk',
-        prdQueue: { dir: 'eforge/queue', autoRevise: false, watchPollIntervalMs: 50 },
+        prdQueue: { dir: 'eforge/queue', autoRevise: false },
         plugins: { enabled: false },
       },
     });
-    return { engine, cwd };
+    return { engine, cwd, queueDir };
   }
 
-  it('delegates to runQueue and emits queue:start and queue:complete', async () => {
+  it('abort signal causes clean exit with queue:complete as final event', async () => {
     const { engine } = await createTestEngine();
+    const abortController = new AbortController();
+
+    // Abort after a short delay to let the watcher start
+    setTimeout(() => abortController.abort(), 200);
 
     const events: EforgeEvent[] = [];
-    for await (const event of engine.watchQueue()) {
+    for await (const event of engine.watchQueue({ abortController })) {
       events.push(event);
     }
 
@@ -72,15 +79,51 @@ describe('watchQueue', () => {
     expect(types[types.length - 1]).toBe('queue:complete');
   });
 
-  it('emits final queue:complete after watch completes', async () => {
-    const { engine } = await createTestEngine();
+  it('writing a new PRD file into queue directory triggers queue:prd:discovered', async () => {
+    const { engine, queueDir } = await createTestEngine();
+    const abortController = new AbortController();
 
     const events: EforgeEvent[] = [];
-    for await (const event of engine.watchQueue()) {
-      events.push(event);
+    let discoveredSeen = false;
+
+    // Write a PRD file after watcher starts, then abort after discovery
+    const writeTimer = setTimeout(async () => {
+      const prdContent = [
+        '---',
+        'title: Test PRD',
+        'status: pending',
+        '---',
+        '',
+        '# Test PRD',
+        '',
+        'Do something.',
+      ].join('\n');
+      await writeFile(join(queueDir, 'test-prd.md'), prdContent);
+    }, 300);
+
+    // Give enough time for fs.watch to fire + debounce (500ms) + discovery
+    const abortTimer = setTimeout(() => abortController.abort(), 1500);
+
+    try {
+      for await (const event of engine.watchQueue({ abortController })) {
+        events.push(event);
+        if (event.type === 'queue:prd:discovered') {
+          discoveredSeen = true;
+          // Abort once we've seen the discovery event
+          abortController.abort();
+        }
+      }
+    } finally {
+      clearTimeout(writeTimer);
+      clearTimeout(abortTimer);
     }
 
-    const lastEvent = events[events.length - 1];
-    expect(lastEvent.type).toBe('queue:complete');
+    expect(discoveredSeen).toBe(true);
+    const discoveredEvent = events.find((e) => e.type === 'queue:prd:discovered');
+    expect(discoveredEvent).toBeDefined();
+    expect((discoveredEvent as { prdId: string }).prdId).toBe('test-prd');
+
+    // Final event should be queue:complete
+    expect(events[events.length - 1].type).toBe('queue:complete');
   });
 });
