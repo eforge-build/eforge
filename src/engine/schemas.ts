@@ -302,7 +302,7 @@ export function getPlanFrontmatterSchemaYaml(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Pipeline Composition schema (structured output for pipeline-composer agent)
+// Pipeline Composition schema
 // ---------------------------------------------------------------------------
 
 /**
@@ -336,37 +336,7 @@ export const pipelineCompositionSchema = z.object({
 
 export type PipelineComposition = z.output<typeof pipelineCompositionSchema>;
 
-/**
- * Keys unsupported by Claude's structured output constrained decoding.
- * Zod v4's toJSONSchema emits these from .int().positive(), .min(1), .nonempty(), etc.
- * Their presence causes the CLI to silently skip structured output mode.
- */
-const UNSUPPORTED_JSON_SCHEMA_KEYS = new Set([
-  '$schema', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum',
-  'minLength', 'maxLength', 'pattern',
-]);
-
-/** Recursively strip keys unsupported by Claude's structured output. */
-function stripUnsupportedKeys(obj: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (UNSUPPORTED_JSON_SCHEMA_KEYS.has(k)) continue;
-    if (Array.isArray(v)) {
-      result[k] = v.map((item) =>
-        item && typeof item === 'object' && !Array.isArray(item)
-          ? stripUnsupportedKeys(item as Record<string, unknown>)
-          : item,
-      );
-    } else if (v && typeof v === 'object') {
-      result[k] = stripUnsupportedKeys(v as Record<string, unknown>);
-    } else {
-      result[k] = v;
-    }
-  }
-  return result;
-}
-
-/** Return the JSON Schema for the PipelineComposition Zod schema (for SDK outputFormat). */
-export function getPipelineCompositionJsonSchema(): Record<string, unknown> {
-  return stripUnsupportedKeys(z.toJSONSchema(pipelineCompositionSchema) as Record<string, unknown>);
+/** Schema YAML for pipeline composition (used by pipeline-composer agent). */
+export function getPipelineCompositionSchemaYaml(): string {
+  return getSchemaYaml('pipeline-composition', pipelineCompositionSchema);
 }
