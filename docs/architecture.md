@@ -48,7 +48,7 @@ graph TD
 
 ### Plugin
 
-`eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for build, queue, status, config, and daemon operations.
+`eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for init, build, queue, status, config, and daemon operations. The `eforge_init` tool uses MCP elicitation to present an interactive form for project onboarding and operates locally (no daemon needed) for file creation.
 
 ## Event System
 
