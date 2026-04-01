@@ -7,6 +7,7 @@ import {
   stalenessVerdictSchema,
   expeditionModuleSchema,
   planFileFrontmatterSchema,
+  pipelineCompositionSchema,
   getSchemaYaml,
   getReviewIssueSchemaYaml,
   getCodeReviewIssueSchemaYaml,
@@ -19,6 +20,7 @@ import {
   getStalenessSchemaYaml,
   getModuleSchemaYaml,
   getPlanFrontmatterSchemaYaml,
+  getPipelineCompositionSchemaYaml,
 } from '../src/engine/schemas.js';
 
 describe('getSchemaYaml', () => {
@@ -351,5 +353,67 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('dependsOn');
     expect(yaml).toContain('branch');
     expect(yaml).toContain('migrations');
+  });
+
+  it('getPipelineCompositionSchemaYaml contains pipeline composition fields', () => {
+    const yaml = getPipelineCompositionSchemaYaml();
+    expect(yaml).toContain('scope');
+    expect(yaml).toContain('compile');
+    expect(yaml).toContain('defaultBuild');
+    expect(yaml).toContain('defaultReview');
+    expect(yaml).toContain('rationale');
+  });
+});
+
+describe('pipelineCompositionSchema', () => {
+  const validReview = {
+    strategy: 'auto' as const,
+    perspectives: ['code'],
+    maxRounds: 2,
+    evaluatorStrictness: 'standard' as const,
+  };
+
+  it('accepts a valid pipeline composition', () => {
+    const result = pipelineCompositionSchema.safeParse({
+      scope: 'excursion',
+      compile: ['planner'],
+      defaultBuild: ['implement'],
+      defaultReview: validReview,
+      rationale: 'Standard pipeline for a typical feature',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts parallel build stages', () => {
+    const result = pipelineCompositionSchema.safeParse({
+      scope: 'expedition',
+      compile: ['planner'],
+      defaultBuild: ['implement', ['review-cycle', 'test']],
+      defaultReview: validReview,
+      rationale: 'Pipeline with parallel stages',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid scope', () => {
+    const result = pipelineCompositionSchema.safeParse({
+      scope: 'invalid',
+      compile: ['planner'],
+      defaultBuild: ['implement'],
+      defaultReview: validReview,
+      rationale: 'Test',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects empty rationale', () => {
+    const result = pipelineCompositionSchema.safeParse({
+      scope: 'errand',
+      compile: ['planner'],
+      defaultBuild: ['implement'],
+      defaultReview: { ...validReview, maxRounds: 1, evaluatorStrictness: 'lenient' as const },
+      rationale: '',
+    });
+    expect(result.success).toBe(false);
   });
 });

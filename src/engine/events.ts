@@ -91,8 +91,6 @@ export interface AgentResultData {
   modelUsage: Record<string, { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number; costUSD: number }>;
   /** Final result text from the agent (used as generation output in traces) */
   resultText?: string;
-  /** Structured output parsed from the SDK result (schema-dependent, typed as unknown). */
-  structuredOutput?: unknown;
 }
 
 export interface CompileOptions {

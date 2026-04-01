@@ -40,9 +40,17 @@ Analyze the PRD above and compose a pipeline by:
 - When the PRD touches documentation or public APIs, include doc-update.
 - Match review strictness to risk: `strict` for security/data, `standard` for features, `lenient` for cosmetic changes.
 
+## Schema
+
+Your JSON output must conform to this schema:
+
+```yaml
+{{schema}}
+```
+
 ## Output
 
-Return a JSON object matching the PipelineComposition schema. Do not include any text outside the JSON.
+Return a JSON object matching the schema above. You may wrap it in a markdown code fence (```json ... ```). Do not include any other text outside the JSON.
 
 ---
 {{attribution}}
