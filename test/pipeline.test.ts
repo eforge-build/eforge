@@ -23,11 +23,17 @@ import {
   type BuildStageContext,
   type CompileStage,
   type BuildStage,
+  type StageDescriptor,
 } from '../src/engine/pipeline.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Create a minimal StageDescriptor for testing. */
+function testDescriptor(name: string, phase: 'compile' | 'build'): StageDescriptor {
+  return { name, phase, description: `Test ${name}`, whenToUse: 'testing', costHint: 'low' };
+}
 
 /** Collect all events from an async generator. */
 async function collect(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
@@ -124,13 +130,13 @@ describe('stage registry', () => {
 
   it('registerCompileStage makes stage retrievable', () => {
     const fn: CompileStage = async function* () { /* noop */ };
-    registerCompileStage('test-compile-stage', fn);
+    registerCompileStage(testDescriptor('test-compile-stage', 'compile'), fn);
     expect(getCompileStage('test-compile-stage')).toBe(fn);
   });
 
   it('registerBuildStage makes stage retrievable', () => {
     const fn: BuildStage = async function* () { /* noop */ };
-    registerBuildStage('test-build-stage', fn);
+    registerBuildStage(testDescriptor('test-build-stage', 'build'), fn);
     expect(getBuildStage('test-build-stage')).toBe(fn);
   });
 
@@ -159,11 +165,11 @@ describe('runCompilePipeline', () => {
   it('calls stages in order from profile compile list', async () => {
     const order: string[] = [];
 
-    registerCompileStage('test-stage-a', async function* () {
+    registerCompileStage(testDescriptor('test-stage-a', 'compile'), async function* () {
       order.push('a');
       yield { type: 'plan:progress', message: 'stage-a' };
     });
-    registerCompileStage('test-stage-b', async function* () {
+    registerCompileStage(testDescriptor('test-stage-b', 'compile'), async function* () {
       order.push('b');
       yield { type: 'plan:progress', message: 'stage-b' };
     });
@@ -197,12 +203,12 @@ describe('runCompilePipeline', () => {
   it('skipped flag halts pipeline after the stage that sets it', async () => {
     const stagesRun: string[] = [];
 
-    registerCompileStage('test-skip-planner', async function* (ctx) {
+    registerCompileStage(testDescriptor('test-skip-planner', 'compile'), async function* (ctx) {
       stagesRun.push('planner');
       ctx.skipped = true;
       yield { type: 'plan:skip', reason: 'Already done' };
     });
-    registerCompileStage('test-skip-review', async function* () {
+    registerCompileStage(testDescriptor('test-skip-review', 'compile'), async function* () {
       stagesRun.push('review');
       yield { type: 'plan:progress', message: 'review' };
     });
@@ -234,7 +240,7 @@ describe('runCompilePipeline', () => {
   it('with planner only (no plan-review-cycle), only planner stage runs', async () => {
     const stagesRun: string[] = [];
 
-    registerCompileStage('test-planner-only', async function* () {
+    registerCompileStage(testDescriptor('test-planner-only', 'compile'), async function* () {
       stagesRun.push('planner');
       yield { type: 'plan:progress', message: 'planned' };
     });
@@ -258,7 +264,7 @@ describe('runCompilePipeline', () => {
 
 describe('runBuildPipeline', () => {
   it('emits build:start and build:complete around stages', async () => {
-    registerBuildStage('test-impl', async function* (ctx) {
+    registerBuildStage(testDescriptor('test-impl', 'build'), async function* (ctx) {
       yield { type: 'build:implement:start', planId: ctx.planId };
       yield { type: 'build:implement:complete', planId: ctx.planId };
     });
@@ -273,15 +279,15 @@ describe('runBuildPipeline', () => {
   it('calls all four default build stages in order', async () => {
     const order: string[] = [];
 
-    registerBuildStage('test-b-impl', async function* () {
+    registerBuildStage(testDescriptor('test-b-impl', 'build'), async function* () {
       order.push('implement');
       yield { type: 'plan:progress', message: 'impl' };
     });
-    registerBuildStage('test-b-review', async function* () {
+    registerBuildStage(testDescriptor('test-b-review', 'build'), async function* () {
       order.push('review');
       yield { type: 'plan:progress', message: 'review' };
     });
-    registerBuildStage('test-b-eval', async function* () {
+    registerBuildStage(testDescriptor('test-b-eval', 'build'), async function* () {
       order.push('evaluate');
       yield { type: 'plan:progress', message: 'eval' };
     });
@@ -303,10 +309,10 @@ describe('runBuildPipeline', () => {
   });
 
   it('with custom profile build stages (implement + validate)', async () => {
-    registerBuildStage('test-custom-impl', async function* (ctx) {
+    registerBuildStage(testDescriptor('test-custom-impl', 'build'), async function* (ctx) {
       yield { type: 'build:implement:start', planId: ctx.planId };
     });
-    registerBuildStage('test-custom-validate', async function* () {
+    registerBuildStage(testDescriptor('test-custom-validate', 'build'), async function* () {
       yield { type: 'plan:progress', message: 'validate' };
     });
 
@@ -335,13 +341,13 @@ describe('PipelineContext mutable state', () => {
       filePath: '/tmp/test.md',
     };
 
-    registerCompileStage('test-set-plans', async function* (ctx) {
+    registerCompileStage(testDescriptor('test-set-plans', 'compile'), async function* (ctx) {
       ctx.plans = [testPlan];
       yield { type: 'plan:progress', message: 'set-plans' };
     });
 
     let readPlans: PlanFile[] = [];
-    registerCompileStage('test-read-plans', async function* (ctx) {
+    registerCompileStage(testDescriptor('test-read-plans', 'compile'), async function* (ctx) {
       readPlans = ctx.plans;
       yield { type: 'plan:progress', message: 'read-plans' };
     });
@@ -500,11 +506,11 @@ describe('runBuildPipeline parallel stage groups', () => {
   it('parallel group runs both stages and yields events from both', async () => {
     const stagesRun: string[] = [];
 
-    registerBuildStage('test-par-a', async function* (ctx) {
+    registerBuildStage(testDescriptor('test-par-a', 'build'), async function* (ctx) {
       stagesRun.push('a');
       yield { type: 'plan:progress', message: 'par-a' };
     });
-    registerBuildStage('test-par-b', async function* (ctx) {
+    registerBuildStage(testDescriptor('test-par-b', 'build'), async function* (ctx) {
       stagesRun.push('b');
       yield { type: 'plan:progress', message: 'par-b' };
     });
@@ -526,15 +532,15 @@ describe('runBuildPipeline parallel stage groups', () => {
   it('mixed config [["a", "b"], "c"] runs a+b in parallel then c sequentially', async () => {
     const order: string[] = [];
 
-    registerBuildStage('test-mix-a', async function* () {
+    registerBuildStage(testDescriptor('test-mix-a', 'build'), async function* () {
       order.push('a');
       yield { type: 'plan:progress', message: 'mix-a' };
     });
-    registerBuildStage('test-mix-b', async function* () {
+    registerBuildStage(testDescriptor('test-mix-b', 'build'), async function* () {
       order.push('b');
       yield { type: 'plan:progress', message: 'mix-b' };
     });
-    registerBuildStage('test-mix-c', async function* () {
+    registerBuildStage(testDescriptor('test-mix-c', 'build'), async function* () {
       order.push('c');
       yield { type: 'plan:progress', message: 'mix-c' };
     });
@@ -556,16 +562,16 @@ describe('runBuildPipeline parallel stage groups', () => {
   it('buildFailed set during parallel group stops pipeline after group completes', async () => {
     const stagesRun: string[] = [];
 
-    registerBuildStage('test-fail-par-a', async function* (ctx) {
+    registerBuildStage(testDescriptor('test-fail-par-a', 'build'), async function* (ctx) {
       stagesRun.push('a');
       ctx.buildFailed = true;
       yield { type: 'plan:progress', message: 'fail-par-a' };
     });
-    registerBuildStage('test-fail-par-b', async function* () {
+    registerBuildStage(testDescriptor('test-fail-par-b', 'build'), async function* () {
       stagesRun.push('b');
       yield { type: 'plan:progress', message: 'fail-par-b' };
     });
-    registerBuildStage('test-fail-after', async function* () {
+    registerBuildStage(testDescriptor('test-fail-after', 'build'), async function* () {
       stagesRun.push('after');
       yield { type: 'plan:progress', message: 'after' };
     });

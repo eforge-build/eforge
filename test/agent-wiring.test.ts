@@ -14,7 +14,7 @@ import { runArchitectureEvaluate } from '../src/engine/agents/plan-evaluator.js'
 import { runModulePlanner } from '../src/engine/agents/module-planner.js';
 import { runArchitectureReview } from '../src/engine/agents/architecture-reviewer.js';
 import { runPrdValidator } from '../src/engine/agents/prd-validator.js';
-import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames } from '../src/engine/pipeline.js';
+import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors } from '../src/engine/pipeline.js';
 import type { ResolvedProfileConfig } from '../src/engine/config.js';
 
 // --- Planner ---
@@ -841,6 +841,32 @@ describe('runPrdValidator wiring', () => {
     }));
 
     expect(findEvent(events, 'agent:result')).toBeDefined();
+  });
+});
+
+// --- Stage Descriptor Metadata ---
+
+describe('stage descriptor metadata', () => {
+  it('all 7 compile stage descriptors have non-empty description, whenToUse, and costHint', () => {
+    const descriptors = getCompileStageDescriptors();
+    expect(descriptors.length).toBe(7);
+    for (const d of descriptors) {
+      expect(d.description.length).toBeGreaterThan(0);
+      expect(d.whenToUse.length).toBeGreaterThan(0);
+      expect(['low', 'medium', 'high']).toContain(d.costHint);
+      expect(d.phase).toBe('compile');
+    }
+  });
+
+  it('all 10 build stage descriptors have non-empty description, whenToUse, and costHint', () => {
+    const descriptors = getBuildStageDescriptors();
+    expect(descriptors.length).toBe(10);
+    for (const d of descriptors) {
+      expect(d.description.length).toBeGreaterThan(0);
+      expect(d.whenToUse.length).toBeGreaterThan(0);
+      expect(['low', 'medium', 'high']).toContain(d.costHint);
+      expect(d.phase).toBe('build');
+    }
   });
 });
 
