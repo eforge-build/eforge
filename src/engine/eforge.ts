@@ -25,11 +25,11 @@ import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePr
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runFormatter } from './agents/formatter.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
-import type { EforgeConfig, PluginConfig, PartialProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
+import type { EforgeConfig, PluginConfig, PartialProfileConfig, ReviewProfileConfig } from './config.js';
 import type { AgentBackend } from './backend.js';
 import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
-import { loadConfig, resolveProfileExtensions } from './config.js';
+import { loadConfig, resolveProfileExtensions, DEFAULT_REVIEW } from './config.js';
 import { ClaudeSDKBackend } from './backends/claude-sdk.js';
 import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
@@ -252,10 +252,6 @@ export class EforgeEngine {
       } catch {
         sourceContent = source;
       }
-      // Default profile before planner selection — planner stage updates ctx.profile
-      // when it emits plan:profile. Excursion is a safe default (superset of errand stages).
-      const selectedProfile = this.config.profiles['excursion'];
-
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
       const { stdout: baseBranchRaw } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
@@ -263,10 +259,20 @@ export class EforgeEngine {
       const worktreeBase = computeWorktreeBase(cwd, planSetName);
       const mergeWorktreePath = await createMergeWorktree(cwd, worktreeBase, featureBranch, baseBranch);
 
+      // Default pipeline — the planner stage's composePipeline() call will update ctx.pipeline
+      // with the actual composition before the planner agent runs.
+      const defaultPipeline: import('./schemas.js').PipelineComposition = {
+        scope: 'excursion',
+        compile: ['planner', 'plan-review-cycle'],
+        defaultBuild: ['implement', 'review-cycle'],
+        defaultReview: DEFAULT_REVIEW,
+        rationale: 'Default pipeline (will be replaced by composer)',
+      };
+
       const ctx: PipelineContext = {
         backend: this.backend,
         config: this.config,
-        profile: selectedProfile,
+        pipeline: defaultPipeline,
         tracing,
         cwd: mergeWorktreePath,
         planCommitCwd: mergeWorktreePath,
@@ -275,7 +281,6 @@ export class EforgeEngine {
         sourceContent,
         verbose: options.verbose,
         auto: options.auto,
-        generateProfile: options.generateProfile,
         abortController: options.abortController,
         onClarification: this.onClarification,
         plans: [],
@@ -289,7 +294,7 @@ export class EforgeEngine {
       // If compile pipeline didn't produce plans and there's no plan-review-cycle
       // in the compile stages, commit artifacts here
       // (runCompilePipeline handles the commit before plan-review-cycle when present)
-      if (ctx.plans.length > 0 && !ctx.profile.compile.includes('plan-review-cycle')) {
+      if (ctx.plans.length > 0 && !ctx.pipeline.compile.includes('plan-review-cycle')) {
         const planDir = resolve(mergeWorktreePath, this.config.plan.outputDir, planSetName);
         await exec('git', ['add', planDir], { cwd: mergeWorktreePath });
         await forgeCommit(mergeWorktreePath, `plan(${planSetName}): initial planning artifacts`);
@@ -502,8 +507,8 @@ export class EforgeEngine {
       const verbose = options.verbose;
       const abortController = options.abortController;
 
-      // Use the profile persisted in orchestration.yaml during compile
-      const buildProfile = orchConfig.profile;
+      // Use the pipeline persisted in orchestration.yaml during compile
+      const buildPipeline = orchConfig.pipeline;
 
       const planRunner = async function* (
         planId: string,
@@ -523,7 +528,7 @@ export class EforgeEngine {
         const buildCtx: BuildStageContext = {
           backend,
           config,
-          profile: buildProfile,
+          pipeline: buildPipeline,
           tracing: tracing!,
           cwd: worktreePath,
           planSetName: planSet,

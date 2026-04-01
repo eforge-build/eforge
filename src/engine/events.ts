@@ -1,9 +1,9 @@
 // EforgeEvent discriminated union and all supporting types
 
 import type { z } from 'zod/v4';
-import type { ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
+import type { BuildStageSpec, ReviewProfileConfig } from './config.js';
 import type { ReviewPerspective } from './review-heuristics.js';
-import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSchema } from './schemas.js';
+import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSchema, PipelineComposition } from './schemas.js';
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 
@@ -54,7 +54,7 @@ export interface OrchestrationConfig {
   created: string;
   mode: (typeof ORCHESTRATION_MODES)[number];
   baseBranch: string;
-  profile: ResolvedProfileConfig;
+  pipeline: PipelineComposition;
   plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string; build: BuildStageSpec[]; review: ReviewProfileConfig; maxContinuations?: number }>;
   validate?: string[];
 }
@@ -101,7 +101,6 @@ export interface CompileOptions {
   name?: string;
   cwd?: string;
   abortController?: AbortController;
-  generateProfile?: boolean;
 }
 
 export interface BuildOptions {
@@ -151,7 +150,6 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   // Planning
   | { type: 'plan:start'; source: string; label?: string }
   | { type: 'plan:skip'; reason: string }
-  | { type: 'plan:profile'; profileName: string; rationale: string; config?: import('./config.js').ResolvedProfileConfig }
   | { type: 'plan:clarification'; questions: ClarificationQuestion[] }
   | { type: 'plan:clarification:answer'; answers: Record<string, string> }
   | { type: 'plan:progress'; message: string }

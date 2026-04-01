@@ -25,7 +25,8 @@ import {
   type OrchestrationConfig,
 } from './events.js';
 import type { EforgeConfig, ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig, ModelClass } from './config.js';
-import { DEFAULT_REVIEW, DEFAULT_BUILD, MODEL_CLASSES } from './config.js';
+import { DEFAULT_REVIEW, MODEL_CLASSES } from './config.js';
+import type { PipelineComposition } from './schemas.js';
 import type { AgentBackend } from './backend.js';
 import type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
@@ -39,9 +40,10 @@ import { runPlanEvaluate, runCohesionEvaluate, runArchitectureEvaluate } from '.
 import { runCohesionReview } from './agents/cohesion-reviewer.js';
 import { runArchitectureReview } from './agents/architecture-reviewer.js';
 import { parseModulesBlock, parseBuildConfigBlock, testIssueToReviewIssue } from './agents/common.js';
+import { composePipeline } from './agents/pipeline-composer.js';
 import { runTestWriter, runTester } from './agents/tester.js';
 import { compileExpedition } from './compiler.js';
-import { resolveDependencyGraph, injectProfileIntoOrchestrationYaml, parseOrchestrationConfig, writePlanArtifacts, extractPlanTitle, detectValidationCommands, parsePlanFile } from './plan.js';
+import { resolveDependencyGraph, injectPipelineIntoOrchestrationYaml, parseOrchestrationConfig, writePlanArtifacts, extractPlanTitle, detectValidationCommands, parsePlanFile } from './plan.js';
 import { runParallel, type ParallelTask } from './concurrency.js';
 import { forgeCommit } from './git.js';
 
@@ -54,14 +56,13 @@ const exec = promisify(execFile);
 export interface PipelineContext {
   backend: AgentBackend;
   config: EforgeConfig;
-  profile: ResolvedProfileConfig;
+  pipeline: PipelineComposition;
   tracing: TracingContext;
   cwd: string;
   planSetName: string;
   sourceContent: string;
   verbose?: boolean;
   auto?: boolean;
-  generateProfile?: boolean;
   abortController?: AbortController;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
 
@@ -654,9 +655,6 @@ registerCompileStage({
   // Extract title and body from PRD
   const { title, body } = extractPrdMetadata(ctx.sourceContent, ctx.planSetName);
 
-  // Profile event
-  yield { timestamp: new Date().toISOString(), type: 'plan:profile', profileName: 'errand', rationale: 'PRD passthrough uses errand profile' };
-
   yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Writing plan artifacts from PRD content' };
 
   // Get base branch — prefer ctx.baseBranch (resolved from repoRoot before worktree creation)
@@ -674,11 +672,11 @@ registerCompileStage({
     sourceContent: body,
     planName: title,
     baseBranch,
-    profile: ctx.profile,
+    pipeline: ctx.pipeline,
     validate: validate.length > 0 ? validate : undefined,
     mode: 'errand',
-    build: DEFAULT_BUILD,
-    review: DEFAULT_REVIEW,
+    build: ctx.pipeline.defaultBuild as BuildStageSpec[],
+    review: ctx.pipeline.defaultReview as ReviewProfileConfig,
     outputDir: ctx.config.plan.outputDir,
   });
 
@@ -703,6 +701,29 @@ registerCompileStage({
   conflictsWith: ['prd-passthrough'],
   parallelizable: false,
 }, async function* plannerStage(ctx) {
+  // Run pipeline composition first (fast LLM call to determine scope and stages)
+  const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, ctx.config.backend);
+  for await (const event of composePipeline({
+    backend: ctx.backend,
+    source: ctx.sourceContent,
+    cwd: ctx.cwd,
+    verbose: ctx.verbose,
+    abortController: ctx.abortController,
+    ...composerConfig,
+  })) {
+    if (event.type === 'plan:pipeline') {
+      // Update the context pipeline from the composer result
+      ctx.pipeline = {
+        scope: event.scope,
+        compile: event.compile,
+        defaultBuild: event.defaultBuild,
+        defaultReview: event.defaultReview,
+        rationale: event.rationale,
+      };
+    }
+    yield event;
+  }
+
   const agentConfig = resolveAgentConfig('planner', ctx.config, ctx.config.backend);
   const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['planner'] ?? 0;
 
@@ -748,30 +769,14 @@ registerCompileStage({
         name: ctx.planSetName,
         auto: ctx.auto,
         verbose: ctx.verbose,
-        generateProfile: ctx.generateProfile,
         abortController: ctx.abortController,
         backend: ctx.backend,
         onClarification: ctx.onClarification,
-        profiles: ctx.config.profiles,
+        scope: ctx.pipeline.scope,
         outputDir: ctx.config.plan.outputDir,
         ...agentConfig,
         continuationContext,
       })) {
-        // Update active profile when planner selects one.
-        // Prefer inline config (future: agent-generated profiles), fall back to named lookup.
-        if (event.type === 'plan:profile') {
-          if (event.config) {
-            ctx.profile = event.config;
-          } else {
-            const resolved = ctx.config.profiles[event.profileName];
-            if (resolved) {
-              ctx.profile = resolved;
-            } else {
-              throw new Error(`Planner selected unknown profile "${event.profileName}" — available profiles: ${Object.keys(ctx.config.profiles).join(', ')}`);
-            }
-          }
-        }
-
         // Detect <modules> block in agent messages (expedition mode, first match only)
         if (event.type === 'agent:message' && event.agent === 'planner' && ctx.expeditionModules.length === 0) {
           const modules = parseModulesBlock(event.content);
@@ -793,12 +798,12 @@ registerCompileStage({
           continue;
         }
 
-        // Track final plans for review phase and inject profile into orchestration.yaml
+        // Track final plans for review phase and inject pipeline into orchestration.yaml
         if (event.type === 'plan:complete') {
-          // Inject the resolved profile (and correct baseBranch) into the planner-written orchestration.yaml.
+          // Inject the pipeline composition (and correct baseBranch) into the planner-written orchestration.yaml.
           // The planner sees the merge worktree's feature branch as HEAD, so base_branch needs overriding.
           const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
-          await injectProfileIntoOrchestrationYaml(orchYamlPath, ctx.profile, ctx.baseBranch);
+          await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch);
 
           // Backfill dependsOn from orchestration.yaml into plan:complete events.
           // The planner writes depends_on to orchestration.yaml but not to individual
@@ -1136,7 +1141,12 @@ registerCompileStage({
   if (ctx.expeditionModules.length === 0) return;
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:start' };
-  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.profile, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
+  // Build a ResolvedProfileConfig from the pipeline for the compiler
+  const profileForCompiler: ResolvedProfileConfig = {
+    description: ctx.pipeline.rationale,
+    compile: ctx.pipeline.compile,
+  };
+  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, profileForCompiler, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:complete', plans };
   yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
 
@@ -1835,12 +1845,12 @@ async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator<Eforge
 export async function* runCompilePipeline(
   ctx: PipelineContext,
 ): AsyncGenerator<EforgeEvent> {
-  // Index-based iteration: ctx.profile may change mid-pipeline (e.g., planner
-  // stage switches from excursion to expedition), so re-read ctx.profile.compile
+  // Index-based iteration: ctx.pipeline may change mid-pipeline (e.g., planner
+  // stage switches from excursion to expedition), so re-read ctx.pipeline.compile
   // on each iteration instead of capturing it once via for...of.
   let i = 0;
-  while (i < ctx.profile.compile.length) {
-    const stageName = ctx.profile.compile[i];
+  while (i < ctx.pipeline.compile.length) {
+    const stageName = ctx.pipeline.compile[i];
     if (stageName === 'plan-review-cycle' || stageName === 'architecture-review-cycle') {
       // Commit plan artifacts before running review cycles
       // (reviewers read committed files)

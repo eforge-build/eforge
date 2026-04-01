@@ -6,7 +6,9 @@ import { promisify } from 'node:util';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { PlanFile, OrchestrationConfig, ExpeditionModule } from './events.js';
 import type { ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
-import { resolvedProfileConfigSchema, buildStageSpecSchema, reviewProfileConfigSchema } from './config.js';
+import { buildStageSpecSchema, reviewProfileConfigSchema } from './config.js';
+import { pipelineCompositionSchema } from './schemas.js';
+import type { PipelineComposition } from './schemas.js';
 import { z } from 'zod/v4';
 
 const execAsync = promisify(execFile);
@@ -202,13 +204,13 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     ? (data.validate as unknown[]).filter((v): v is string => typeof v === 'string')
     : undefined;
 
-  // Parse and validate required profile field
-  if (!data.profile || typeof data.profile !== 'object') {
-    throw new Error(`Orchestration config missing required 'profile' field: ${absPath}`);
+  // Parse and validate required pipeline field
+  if (!data.pipeline || typeof data.pipeline !== 'object') {
+    throw new Error(`Orchestration config missing required 'pipeline' field: ${absPath}`);
   }
-  const profileResult = resolvedProfileConfigSchema.safeParse(data.profile);
-  if (!profileResult.success) {
-    throw new Error(`Orchestration config has malformed 'profile' field: ${absPath}`);
+  const pipelineResult = pipelineCompositionSchema.safeParse(data.pipeline);
+  if (!pipelineResult.success) {
+    throw new Error(`Orchestration config has malformed 'pipeline' field: ${absPath}`);
   }
 
   return {
@@ -217,7 +219,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     created: (data.created as string) ?? '',
     mode: (data.mode as OrchestrationConfig['mode']) ?? 'errand',
     baseBranch: (data.base_branch as string) ?? 'main',
-    profile: profileResult.data,
+    pipeline: pipelineResult.data,
     plans,
     ...(validate && validate.length > 0 && { validate }),
   };
@@ -477,7 +479,7 @@ export interface WritePlanArtifactsOptions {
   sourceContent: string;
   planName: string;
   baseBranch: string;
-  profile: ResolvedProfileConfig;
+  pipeline: PipelineComposition;
   validate?: string[];
   mode?: 'errand' | 'excursion';
   /** Per-plan build stage sequence (written to orchestration.yaml plan entry). */
@@ -515,7 +517,7 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
     created: new Date().toISOString().split('T')[0],
     mode: options.mode ?? 'errand',
     base_branch: baseBranch,
-    profile: options.profile,
+    pipeline: options.pipeline,
     ...(validate && validate.length > 0 && { validate }),
     plans: [{
       id: planId,
@@ -540,19 +542,19 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
 }
 
 /**
- * Inject a resolved profile (and optionally override base_branch) into an existing orchestration.yaml.
- * Reads the YAML, adds/replaces the `profile` field, and writes it back.
- * Used by the pipeline after the planner agent writes orchestration.yaml.
+ * Inject a pipeline composition (and optionally override base_branch) into an existing orchestration.yaml.
+ * Reads the YAML, adds/replaces the `pipeline` field, and writes it back.
+ * Used by the pipeline after the composer and planner agents run.
  */
-export async function injectProfileIntoOrchestrationYaml(
+export async function injectPipelineIntoOrchestrationYaml(
   orchestrationYamlPath: string,
-  profile: ResolvedProfileConfig,
+  pipeline: PipelineComposition,
   baseBranch?: string,
 ): Promise<void> {
   const absPath = resolve(orchestrationYamlPath);
   const raw = await readFile(absPath, 'utf-8');
   const data = parseYaml(raw) as Record<string, unknown>;
-  data.profile = profile;
+  data.pipeline = pipeline;
   if (baseBranch) {
     data.base_branch = baseBranch;
   }

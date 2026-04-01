@@ -5,7 +5,7 @@
  */
 import { z } from 'zod/v4';
 import type { ClarificationQuestion, ExpeditionModule, TestIssue, ReviewIssue } from '../events.js';
-import type { ResolvedProfileConfig, ReviewProfileConfig, BuildStageSpec } from '../config.js';
+import type { ReviewProfileConfig, BuildStageSpec } from '../config.js';
 import { buildStageSpecSchema, reviewProfileConfigSchema } from '../config.js';
 import type { stalenessVerdictSchema, evaluationEvidenceSchema, evaluationVerdictSchema } from '../schemas.js';
 
@@ -115,26 +115,6 @@ export function parseModulesBlock(text: string): ExpeditionModule[] {
   return modules;
 }
 
-export interface ProfileSelection {
-  profileName: string;
-  rationale: string;
-}
-
-/**
- * Parse a <profile> XML block from assistant text into a ProfileSelection.
- *
- * Expected format:
- *   <profile name="excursion">Rationale text</profile>
- */
-export function parseProfileBlock(text: string): ProfileSelection | null {
-  const match = text.match(/<profile\s+name="([^"]+)">([\s\S]*?)<\/profile>/);
-  if (!match) return null;
-  const profileName = match[1].trim();
-  const rationale = match[2].trim();
-  if (!profileName || !rationale) return null;
-  return { profileName, rationale };
-}
-
 /**
  * Parse a <skip> XML block from assistant text.
  *
@@ -148,42 +128,6 @@ export function parseSkipBlock(text: string): string | null {
   if (!match) return null;
   const reason = match[1].trim();
   return reason || null;
-}
-
-// ---------------------------------------------------------------------------
-// Generated Profile Parsing
-// ---------------------------------------------------------------------------
-
-export interface GeneratedProfileBlock {
-  extends?: string;
-  name?: string;
-  overrides?: Partial<{
-    description: string;
-    compile: string[];
-  }>;
-  config?: ResolvedProfileConfig;
-}
-
-/**
- * Parse a <generated-profile> XML block from assistant text.
- * The block contains JSON with either:
- * - `{ extends: "base-name", name?: "...", overrides: { ... } }`
- * - `{ config: { description, compile, build, agents, review }, name?: "..." }`
- *
- * Returns a typed object or null if no block found or parse failure.
- */
-export function parseGeneratedProfileBlock(text: string): GeneratedProfileBlock | null {
-  const match = text.match(/<generated-profile>([\s\S]*?)<\/generated-profile>/);
-  if (!match) return null;
-
-  try {
-    const parsed = JSON.parse(match[1].trim());
-    if (parsed.config) return { config: parsed.config, name: parsed.name };
-    if (parsed.extends || parsed.overrides) return { extends: parsed.extends, overrides: parsed.overrides, name: parsed.name };
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 // ---------------------------------------------------------------------------

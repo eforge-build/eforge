@@ -4,18 +4,16 @@ import { resolve } from 'node:path';
 import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
 import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
-import { parseClarificationBlocks, parseSkipBlock, parseProfileBlock, parseGeneratedProfileBlock } from './common.js';
+import { parseClarificationBlocks, parseSkipBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
 import { parsePlanFile, deriveNameFromSource, extractPlanTitle } from '../plan.js';
-import type { ResolvedProfileConfig } from '../config.js';
-import { validateProfileConfig, resolveGeneratedProfile, getCompileOnlyProfileSchemaYaml } from '../config.js';
 import { getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml } from '../schemas.js';
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   backend: AgentBackend;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
-  /** Available workflow profiles for profile selection. When provided, the planner selects a profile. */
-  profiles?: Record<string, ResolvedProfileConfig>;
+  /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
+  scope?: string;
   /** Override max conversation turns (default: 30) */
   maxTurns?: number;
   /** Continuation context when restarting after hitting max turns */
@@ -51,104 +49,6 @@ You previously asked the following clarifying questions and received answers. Us
 | Question | Answer |
 |----------|--------|
 ${rows.join('\n')}`;
-}
-
-/**
- * Format profile descriptions into a markdown table for prompt injection.
- * Returns empty string when no profiles are available.
- */
-export function formatProfileDescriptions(profiles: Record<string, ResolvedProfileConfig>): string {
-  if (Object.keys(profiles).length === 0) return '';
-
-  const pipelineEffectMap: Record<string, string> = {
-    errand: 'Skips plan review - plan goes directly to build',
-    excursion: 'Includes plan review before build',
-    expedition: 'Full architecture review, module planning, and cohesion review',
-    docs: 'Skips plan review and code review',
-  };
-
-  const rows = Object.entries(profiles)
-    .map(([name, profile]) => {
-      const effect = pipelineEffectMap[name]
-        ?? `Stages: ${profile.compile.join(', ')}`;
-      return `| \`${name}\` | ${profile.description} | ${effect} |`;
-    })
-    .join('\n');
-
-  return `| Profile | Description | Pipeline Effect |\n|---------|-------------|------------------|\n${rows}`;
-}
-
-/**
- * Format the profile generation prompt section for injection via {{profileGeneration}}.
- * Includes available profiles as JSON so the agent can reference exact field names.
- */
-export function formatProfileGenerationSection(profiles: Record<string, ResolvedProfileConfig>): string {
-  // Strip build/review/agents from each profile — the planner only controls compile-time config.
-  // Per-plan build/review is handled by module planners via <build-config> blocks.
-  const compileOnlyProfiles: Record<string, { description: string; compile: string[]; extends?: string }> = {};
-  for (const [name, profile] of Object.entries(profiles)) {
-    compileOnlyProfiles[name] = {
-      description: profile.description,
-      compile: profile.compile,
-      ...(profile.extends ? { extends: profile.extends } : {}),
-    };
-  }
-  const profilesJson = JSON.stringify(compileOnlyProfiles, null, 2);
-  const schemaYaml = getCompileOnlyProfileSchemaYaml();
-
-  return `### Profile Generation
-
-Instead of selecting a predefined profile by name, generate a custom profile configuration tailored to this specific work. Analyze the PRD and your codebase exploration to determine the optimal review strategy, perspectives, and pipeline stages.
-
-Output a \`<generated-profile>\` block with JSON content. Prefer extending a base profile with overrides:
-
-\`\`\`xml
-<generated-profile>
-{
-  "extends": "excursion",
-  "name": "security-focused",
-  "overrides": {
-    "review": {
-      "perspectives": ["code", "security"],
-      "maxRounds": 2,
-      "evaluatorStrictness": "strict"
-    }
-  }
-}
-</generated-profile>
-\`\`\`
-
-Available base profiles:
-\`\`\`json
-${profilesJson}
-\`\`\`
-
-Profile schema:
-\`\`\`yaml
-${schemaYaml}\`\`\`
-
-Rules:
-- Give the profile a descriptive kebab-case name reflecting its purpose (e.g. "security-focused", "perf-tuning", "api-migration")
-- When a base profile fits with minor tweaks, use \`extends\` + \`overrides\`
-- Only override fields that differ from the base — omit fields you want to inherit
-- When the \`<generated-profile>\` block is present, skip the \`<profile>\` block
-
-### Stage Customization
-
-Build stages control the post-implementation pipeline. You can add, remove, or reorder stages in your generated profile to match the work's needs.
-
-**Adding \`doc-update\`**: Include \`doc-update\` when the work adds or changes user-facing surface area — new API endpoints, modified request/response contracts, CLI flags, configuration options, or behavioral changes that users or integrators would notice. This applies regardless of which base profile you extend. Place it in a parallel group with \`implement\`: \`[["implement", "doc-update"], "review", "review-fix", "evaluate"]\`.
-
-**Omitting \`doc-update\`**: Skip it for purely internal changes — refactors, bug fixes with no API surface change, test-only additions, or dependency updates. The overhead (~100k tokens) isn't justified when there's nothing user-facing to document.
-
-**Adding \`test-cycle\`**: Include \`test-cycle\` when the plan modifies code that has existing tests, or when the PRD explicitly requires test coverage for the changes. Place it after the review stages: \`["implement", "review-cycle", "test-cycle"]\`. The test-cycle stage writes and runs tests, then iterates on failures.
-
-**TDD with \`test-write\`**: Use \`test-write\` before \`implement\` for a test-driven approach when the PRD specifies TDD or when building against a well-defined interface contract: \`["test-write", "implement", "review-cycle"]\`. The test-write stage creates tests first, then implement makes them pass.
-
-**Omitting test stages**: Skip test stages for documentation-only changes, config updates, or trivial refactors where tests would add no value. Do NOT create separate test-only plans - tests belong in the same plan as the code they verify.
-
-**Parallel groups**: Wrap stage names in an inner array to run them concurrently. Only stages with no data dependencies should be parallelized. Example: \`[["implement", "doc-update"], "review"]\` runs implement and doc-update in parallel, then review sequentially after both complete.`;
-
 }
 
 /**
@@ -196,11 +96,6 @@ export async function* runPlanner(
   const allClarifications: Array<{ questions: ClarificationQuestion[]; answers: Record<string, string> }> = [];
 
   function buildPrompt(): Promise<string> {
-    let profileGeneration = '';
-    if (options.generateProfile && options.profiles) {
-      profileGeneration = formatProfileGenerationSection(options.profiles);
-    }
-
     let continuationContextText = '';
     if (options.continuationContext) {
       const { attempt, maxContinuations, existingPlans } = options.continuationContext;
@@ -220,8 +115,7 @@ ${existingPlans}`;
       outputDir: options.outputDir ?? 'eforge/plans',
       priorClarifications: formatPriorClarifications(allClarifications),
       continuation_context: continuationContextText,
-      profiles: options.profiles ? formatProfileDescriptions(options.profiles) : '',
-      profileGeneration,
+      scope: options.scope ?? '',
       parallelLanes: '',
       clarification_schema: getClarificationSchemaYaml(),
       module_schema: getModuleSchemaYaml(),
@@ -230,7 +124,6 @@ ${existingPlans}`;
   }
 
   let skipEmitted = false;
-  let profileEmitted = false;
 
   // Main loop: run agent, collect clarifications, restart with answers baked in
   let iteration = 0;
@@ -259,44 +152,6 @@ ${existingPlans}`;
           if (skipReason) {
             skipEmitted = true;
             yield { timestamp: new Date().toISOString(), type: 'plan:skip', reason: skipReason };
-          }
-        }
-
-        if (!profileEmitted && options.generateProfile) {
-          const generatedBlock = parseGeneratedProfileBlock(event.content);
-          if (generatedBlock) {
-            try {
-              const resolved = resolveGeneratedProfile(generatedBlock, options.profiles ?? {});
-              const { valid, errors } = validateProfileConfig(resolved);
-              if (valid) {
-                profileEmitted = true;
-                yield {
-                  timestamp: new Date().toISOString(),
-                  type: 'plan:profile',
-                  profileName: generatedBlock.name ?? generatedBlock.extends ?? 'generated',
-                  rationale: `Generated profile${generatedBlock.extends ? ` extending ${generatedBlock.extends}` : ''} tailored to this PRD`,
-                  config: resolved,
-                };
-              } else {
-                yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Generated profile invalid (${errors.join('; ')}), falling back to name-based selection` };
-              }
-            } catch (err) {
-              yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Generated profile resolution failed (${(err as Error).message}), falling back to name-based selection` };
-            }
-          }
-        }
-
-        if (!profileEmitted) {
-          const profile = parseProfileBlock(event.content);
-          if (profile) {
-            profileEmitted = true;
-            yield {
-              timestamp: new Date().toISOString(),
-              type: 'plan:profile',
-              profileName: profile.profileName,
-              rationale: profile.rationale,
-              config: options.profiles?.[profile.profileName],
-            };
           }
         }
 
