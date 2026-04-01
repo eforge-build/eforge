@@ -729,7 +729,7 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
   const leftLabel = (() => {
     if (prdSource) {
       return (
-        <div className={`w-[100px] shrink-0 mt-0.5`}>
+        <div className={`w-[100px] shrink-0 mt-0.5`} style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -746,7 +746,7 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
     }
     if (planArtifact) {
       return (
-        <div className="w-[100px] shrink-0 mt-0.5">
+        <div className="w-[100px] shrink-0 mt-0.5" style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -771,6 +771,7 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
         <TooltipTrigger asChild>
           <span
             className={`w-[100px] shrink-0 mt-0.5 text-text-dim overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] ${disablePreview ? '' : 'cursor-pointer hover:text-foreground hover:underline'}`}
+            style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}
             onClick={disablePreview ? undefined : () => openPreview(planId)}
           >
             {planId}
@@ -782,7 +783,7 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
   })();
 
   return (
-    <div className="flex flex-col gap-1" style={{ marginLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
+    <div className="flex flex-col gap-1">
       <div className="flex items-start gap-2 text-xs">
         {leftLabel}
         <div className="flex-1 flex flex-col gap-0.5">
