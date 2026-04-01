@@ -44,6 +44,7 @@ import { runCompilePipeline, runBuildPipeline, createToolTracker, type PipelineC
 import { forgeCommit, retryOnLock } from './git.js';
 import { cleanupPlanFiles } from './cleanup.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
+import { withRunId } from './session.js';
 
 const exec = promisify(execFile);
 
@@ -827,14 +828,14 @@ export class EforgeEngine {
       let skipReason = '';
       const planSetName = options.name ?? prd.id;
 
-      for await (const event of this.compile(prd.filePath, {
+      for await (const event of withRunId(this.compile(prd.filePath, {
         name: planSetName,
         auto: options.auto,
         verbose,
         generateProfile: options.generateProfile ?? true,
         cwd,
         abortController,
-      })) {
+      }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
           compileFailed = true;
@@ -857,13 +858,13 @@ export class EforgeEngine {
 
       // Build the plan — PRD cleanup flows through build()
       let buildFailed = false;
-      for await (const event of this.build(planSetName, {
+      for await (const event of withRunId(this.build(planSetName, {
         auto: options.auto,
         verbose,
         cwd,
         abortController,
         prdFilePath: prd.filePath,
-      })) {
+      }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
           buildFailed = true;

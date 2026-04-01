@@ -29,7 +29,7 @@ export async function* withSessionId(
       }
     }
 
-    yield { ...event, sessionId: sessionId ?? event.sessionId } as EforgeEvent;
+    yield { ...event, sessionId: event.sessionId ?? sessionId } as EforgeEvent;
   }
 }
 
@@ -56,20 +56,20 @@ export async function* withRunId(
 
     if (event.type === 'phase:end') {
       // Stamp phase:end with the current runId before clearing
-      yield { ...event, runId: currentRunId ?? event.runId } as EforgeEvent;
+      yield { ...event, runId: event.runId ?? currentRunId } as EforgeEvent;
       currentRunId = undefined;
       continue;
     }
 
     if (event.type === 'session:end' && !currentRunId && lastRunId) {
       // session:end arrives after phase:end — stamp with lastRunId
-      yield { ...event, runId: lastRunId } as EforgeEvent;
+      yield { ...event, runId: event.runId ?? lastRunId } as EforgeEvent;
       lastRunId = undefined;
       continue;
     }
 
     if (currentRunId) {
-      yield { ...event, runId: currentRunId } as EforgeEvent;
+      yield { ...event, runId: event.runId ?? currentRunId } as EforgeEvent;
     } else {
       yield event;
     }

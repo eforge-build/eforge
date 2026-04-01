@@ -64,6 +64,21 @@ describe('withSessionId', () => {
     expect(result.every(e => e.sessionId === 'queue-session-1')).toBe(true);
   });
 
+  it('preserves each event\'s existing sessionId when events carry heterogeneous sessionIds', async () => {
+    const events: EforgeEvent[] = [
+      { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z', sessionId: 'session-A' },
+      { type: 'plan:start', source: 'test.md', sessionId: 'session-B' },
+      { type: 'phase:end', runId: 'run-1', result: { status: 'completed', summary: 'done' }, timestamp: '2024-01-01T00:01:00Z', sessionId: 'session-A' },
+    ];
+
+    // withSessionId called with no pre-set sessionId — should preserve each event's own sessionId
+    const result = await collect(withSessionId(asyncIterableFrom(events)));
+
+    expect(result[0].sessionId).toBe('session-A');
+    expect(result[1].sessionId).toBe('session-B');
+    expect(result[2].sessionId).toBe('session-A');
+  });
+
   it('preserves runIds on phase events', async () => {
     const events: EforgeEvent[] = [
       { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' },
