@@ -14,6 +14,7 @@ import { runArchitectureEvaluate } from '../src/engine/agents/plan-evaluator.js'
 import { runModulePlanner } from '../src/engine/agents/module-planner.js';
 import { runArchitectureReview } from '../src/engine/agents/architecture-reviewer.js';
 import { runPrdValidator } from '../src/engine/agents/prd-validator.js';
+import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames } from '../src/engine/pipeline.js';
 import type { ResolvedProfileConfig } from '../src/engine/config.js';
 
 // --- Planner ---
@@ -840,5 +841,68 @@ describe('runPrdValidator wiring', () => {
     }));
 
     expect(findEvent(events, 'agent:result')).toBeDefined();
+  });
+});
+
+// --- Stage Registry: validatePipeline ---
+
+describe('validatePipeline', () => {
+  it('returns valid for a correct pipeline', () => {
+    const result = validatePipeline(
+      ['planner', 'plan-review-cycle'],
+      [['implement', 'doc-update'], 'review-cycle'],
+    );
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('returns error for unknown compile stage', () => {
+    const result = validatePipeline(['nonexistent'], ['implement']);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('Unknown compile stage') && e.includes('nonexistent'))).toBe(true);
+  });
+
+  it('returns error for unknown build stage', () => {
+    const result = validatePipeline(['planner'], ['nonexistent']);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('Unknown build stage') && e.includes('nonexistent'))).toBe(true);
+  });
+
+  it('returns error for missing predecessor', () => {
+    // plan-review-cycle requires 'planner' as predecessor
+    const result = validatePipeline(['plan-review-cycle'], ['implement']);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('predecessor') && e.includes('planner'))).toBe(true);
+  });
+
+  it('returns error for conflicting stages', () => {
+    const result = validatePipeline(['planner', 'prd-passthrough'], ['implement']);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('conflicts'))).toBe(true);
+  });
+
+  it('returns warning for non-parallelizable stage in parallel group', () => {
+    const result = validatePipeline(['planner'], [['implement', 'review-cycle']]);
+    expect(result.warnings.some((w) => w.includes('not parallelizable'))).toBe(true);
+  });
+});
+
+// --- Stage Registry: formatStageRegistry ---
+
+describe('formatStageRegistry', () => {
+  it('returns a non-empty markdown table', () => {
+    const output = formatStageRegistry();
+    expect(output.length).toBeGreaterThan(0);
+    expect(output).toContain('| Name |');
+    expect(output).toContain('|------|');
+  });
+
+  it('contains all registered stage names', () => {
+    const output = formatStageRegistry();
+    const allNames = [...getCompileStageNames(), ...getBuildStageNames()];
+    expect(allNames.length).toBe(17);
+    for (const name of allNames) {
+      expect(output).toContain(name);
+    }
   });
 });
