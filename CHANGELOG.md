@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1] - 2026-04-01
+
+### Maintenance
+
+- Update hero screenshot and remove slow flaky tests
+
 ## [0.3.0] - 2026-04-01
 
 ### Features
