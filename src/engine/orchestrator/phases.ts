@@ -38,6 +38,7 @@ export interface PhaseContext {
   mergeResolver?: MergeResolver;
   prdValidator?: PrdValidator;
   gapCloser?: GapCloser;
+  minCompletionPercent: number;
   gapClosePerformed: boolean;
   mergeWorktreePath: string;
   featureBranch: string;
@@ -501,9 +502,15 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     for await (const event of prdValidator(ctx.mergeWorktreePath)) {
       yield event;
 
-      // If PRD validation fails, attempt gap closing or mark as failed
+      // If PRD validation fails, check viability gate before attempting gap closing
       if (event.type === 'prd_validation:complete' && !event.passed) {
-        if (ctx.gapCloser && !ctx.gapClosePerformed) {
+        // Viability gate: if completionPercent is defined and below threshold, fail immediately
+        if (event.completionPercent !== undefined && event.completionPercent < ctx.minCompletionPercent) {
+          yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `PRD completion ${event.completionPercent}% is below viability threshold (${ctx.minCompletionPercent}%) - skipping gap closing` };
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
+          saveState(stateDir, state);
+        } else if (ctx.gapCloser && !ctx.gapClosePerformed) {
           try {
             yield* ctx.gapCloser(ctx.mergeWorktreePath, event.gaps);
             ctx.gapClosePerformed = true;

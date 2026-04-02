@@ -674,11 +674,24 @@ export function renderEvent(event: EforgeEvent): void {
 
     case 'prd_validation:complete':
       if (event.passed) {
-        succeedSpinner('prd-validation', chalk.green('PRD Validation passed'));
+        const pctMsg = event.completionPercent !== undefined ? ` ${event.completionPercent}% complete,` : '';
+        succeedSpinner('prd-validation', chalk.green(`PRD Validation passed:${pctMsg} no gaps`));
       } else {
-        failSpinner('prd-validation', chalk.red(`PRD Validation failed: ${event.gaps.length} gap(s) found`));
+        const pctMsg = event.completionPercent !== undefined ? `${event.completionPercent}% complete, ` : '';
+        failSpinner('prd-validation', chalk.red(`PRD Validation failed: ${pctMsg}${event.gaps.length} gap(s) found`));
         for (const gap of event.gaps) {
           console.log(chalk.red(`  - ${gap.requirement}: ${gap.explanation}`));
+        }
+        // Show complexity breakdown if any gaps have complexity
+        const trivial = event.gaps.filter((g) => g.complexity === 'trivial').length;
+        const moderate = event.gaps.filter((g) => g.complexity === 'moderate').length;
+        const significant = event.gaps.filter((g) => g.complexity === 'significant').length;
+        if (trivial + moderate + significant > 0) {
+          const parts: string[] = [];
+          if (trivial > 0) parts.push(`${trivial} trivial`);
+          if (moderate > 0) parts.push(`${moderate} moderate`);
+          if (significant > 0) parts.push(`${significant} significant`);
+          console.log(chalk.dim(`  ${parts.join(', ')}`));
         }
       }
       break;

@@ -84,7 +84,10 @@ function eventSummary(event: EforgeEvent): string {
     case 'validation:fix:start': return `Fix attempt ${event.attempt}/${event.maxAttempts}`;
     case 'validation:fix:complete': return `Fix attempt ${event.attempt} complete`;
     case 'prd_validation:start': return 'PRD Validation started';
-    case 'prd_validation:complete': return event.passed ? 'PRD Validation: passed' : `PRD Validation: ${event.gaps?.length || 0} gap(s) found`;
+    case 'prd_validation:complete': {
+      const pct = event.completionPercent !== undefined ? `${event.completionPercent}% complete, ` : '';
+      return event.passed ? `PRD Validation: ${pct}passed` : `PRD Validation: ${pct}${event.gaps?.length || 0} gap(s) found`;
+    }
     case 'gap_close:start': return 'Gap closing started';
     case 'gap_close:complete': return 'Gap closing complete';
     case 'approval:needed': return `Approval needed: ${event.action}`;
@@ -177,7 +180,8 @@ function eventDetail(event: EforgeEvent): string | null {
       if (event.passed) return 'All PRD requirements satisfied.';
       const gapParts: string[] = [];
       for (const gap of (event.gaps ?? [])) {
-        gapParts.push(`Requirement: ${gap.requirement}\n  Gap: ${gap.explanation}`);
+        const complexitySuffix = gap.complexity ? ` [${gap.complexity}]` : '';
+        gapParts.push(`Requirement: ${gap.requirement}${complexitySuffix}\n  Gap: ${gap.explanation}`);
       }
       return gapParts.join('\n\n') || null;
     }

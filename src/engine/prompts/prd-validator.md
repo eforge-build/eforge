@@ -21,10 +21,18 @@ You are validating that a completed implementation satisfies the original PRD (P
 
 ## Output Format
 
-Output a single JSON block with your analysis:
+Output a single JSON block with your analysis. Include a `completionPercent` field (0-100 integer) estimating overall PRD completion, and a `complexity` field per gap.
+
+Complexity definitions:
+- `trivial` - missing log line, config tweak, or minor wiring
+- `moderate` - missing function, handler, or isolated feature path
+- `significant` - missing subsystem or major feature path
+
+If all requirements are satisfied:
 
 ```json
 {
+  "completionPercent": 100,
   "gaps": []
 }
 ```
@@ -33,10 +41,12 @@ If there are gaps:
 
 ```json
 {
+  "completionPercent": 85,
   "gaps": [
     {
       "requirement": "Brief description of the PRD requirement",
-      "explanation": "What is missing or not implemented"
+      "explanation": "What is missing or not implemented",
+      "complexity": "moderate"
     }
   ]
 }

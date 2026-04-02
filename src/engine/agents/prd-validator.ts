@@ -27,6 +27,7 @@ export async function* runPrdValidator(
   });
 
   let gaps: PrdValidationGap[] = [];
+  let completionPercent: number | undefined;
 
   try {
     let accumulatedText = '';
@@ -53,7 +54,9 @@ export async function* runPrdValidator(
     }
 
     // Parse structured JSON output from accumulated text
-    gaps = parseGaps(accumulatedText);
+    const parsed = parseGaps(accumulatedText);
+    gaps = parsed.gaps;
+    completionPercent = parsed.completionPercent;
   } catch (err) {
     // Re-throw abort errors so the orchestrator can respect cancellation
     if (err instanceof Error && err.name === 'AbortError') throw err;
@@ -61,35 +64,48 @@ export async function* runPrdValidator(
   }
 
   const passed = gaps.length === 0;
-  yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed, gaps };
+  yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed, gaps, completionPercent };
 }
+
+const VALID_COMPLEXITIES = new Set(['trivial', 'moderate', 'significant']);
 
 /**
  * Parse gap analysis JSON from agent output.
- * Looks for a JSON block containing { "gaps": [...] }.
+ * Looks for a JSON block containing { "gaps": [...] } and optional completionPercent.
  */
-function parseGaps(text: string): PrdValidationGap[] {
+export function parseGaps(text: string): { gaps: PrdValidationGap[]; completionPercent: number | undefined } {
   // Try to find a JSON block (fenced or raw)
   const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) ?? text.match(/(\{[\s\S]*"gaps"[\s\S]*\})/);
-  if (!jsonMatch) return [];
+  if (!jsonMatch) return { gaps: [], completionPercent: undefined };
 
   try {
     const parsed = JSON.parse(jsonMatch[1]);
+    const completionPercent = typeof parsed.completionPercent === 'number' ? parsed.completionPercent : undefined;
+
     if (Array.isArray(parsed.gaps)) {
-      return parsed.gaps
-        .filter((g: unknown): g is { requirement: string; explanation: string } =>
+      const gaps = parsed.gaps
+        .filter((g: unknown): g is { requirement: string; explanation: string; complexity?: string } =>
           typeof g === 'object' && g !== null &&
           typeof (g as Record<string, unknown>).requirement === 'string' &&
           typeof (g as Record<string, unknown>).explanation === 'string',
         )
-        .map((g: { requirement: string; explanation: string }) => ({
-          requirement: g.requirement,
-          explanation: g.explanation,
-        }));
+        .map((g: { requirement: string; explanation: string; complexity?: string }) => {
+          const gap: PrdValidationGap = {
+            requirement: g.requirement,
+            explanation: g.explanation,
+          };
+          if (typeof g.complexity === 'string' && VALID_COMPLEXITIES.has(g.complexity)) {
+            gap.complexity = g.complexity as PrdValidationGap['complexity'];
+          }
+          return gap;
+        });
+      return { gaps, completionPercent };
     }
+
+    return { gaps: [], completionPercent };
   } catch {
     // JSON parse failure — treat as no gaps
   }
 
-  return [];
+  return { gaps: [], completionPercent: undefined };
 }

@@ -12,6 +12,7 @@ export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'review-fixer' | 'e
 export interface PrdValidationGap {
   requirement: string;
   explanation: string;
+  complexity?: 'trivial' | 'moderate' | 'significant';
 }
 
 export type ExpeditionModule = z.output<typeof expeditionModuleSchema>;
@@ -239,7 +240,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
 
   // PRD validation (post-merge, after validation)
   | { type: 'prd_validation:start' }
-  | { type: 'prd_validation:complete'; passed: boolean; gaps: PrdValidationGap[] }
+  | { type: 'prd_validation:complete'; passed: boolean; gaps: PrdValidationGap[]; completionPercent?: number }
 
   // Gap closing (PRD validation gap remediation)
   | { type: 'gap_close:start' }
