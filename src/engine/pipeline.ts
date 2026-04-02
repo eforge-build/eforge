@@ -94,6 +94,8 @@ export interface BuildStageContext extends PipelineContext {
   review: ReviewProfileConfig;
   /** Set to true by the implement stage on failure — signals the pipeline runner to stop. */
   buildFailed?: boolean;
+  /** Commit SHA captured before the implement stage runs — used as reset target by the evaluator. */
+  preImplementCommit?: string;
 }
 
 export type CompileStage = (ctx: PipelineContext) => AsyncGenerator<EforgeEvent>;
@@ -1312,6 +1314,14 @@ registerBuildStage({
   costHint: 'high',
   parallelizable: false,
 }, async function* implementStage(ctx) {
+  // Capture the current HEAD before the builder commits — used by the evaluator as reset target
+  try {
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd: ctx.worktreePath });
+    ctx.preImplementCommit = stdout.trim();
+  } catch {
+    // Fresh repo or no commits — evaluator will fall back to HEAD~1
+  }
+
   const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.config.backend);
 
   // Resolve maxContinuations: per-plan > global config > default (3)
@@ -1521,6 +1531,7 @@ async function* evaluateStageInner(
         ...evalAgentConfig,
         strictness,
         evaluatorContinuationContext,
+        preImplementCommit: ctx.preImplementCommit,
       })) {
         evalTracker.handleEvent(event);
         yield event;
