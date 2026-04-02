@@ -60,6 +60,7 @@ export type PrdValidator = (
 export type GapCloser = (
   cwd: string,
   gaps: PrdValidationGap[],
+  completionPercent?: number,
 ) => AsyncGenerator<EforgeEvent>;
 
 export interface OrchestratorOptions {

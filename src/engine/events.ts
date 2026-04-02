@@ -243,8 +243,8 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'prd_validation:complete'; passed: boolean; gaps: PrdValidationGap[]; completionPercent?: number }
 
   // Gap closing (PRD validation gap remediation)
-  | { type: 'gap_close:start' }
-  | { type: 'gap_close:complete' }
+  | { type: 'gap_close:start'; gapCount?: number; completionPercent?: number }
+  | { type: 'gap_close:complete'; passed?: boolean }
 
   // Reconciliation (resume)
   | { type: 'reconciliation:start' }

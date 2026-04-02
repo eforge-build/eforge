@@ -409,6 +409,7 @@ export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, Partial<import('./co
   'doc-updater': { maxTurns: 20 },
   'test-writer': { maxTurns: 30 },
   'tester': { maxTurns: 40 },
+  'gap-closer': { maxTurns: 20 },
 };
 
 /** Per-role default maxContinuations for agents that support continuation loops. */

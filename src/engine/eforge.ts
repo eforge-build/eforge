@@ -647,7 +647,7 @@ export class EforgeEngine {
       } : undefined;
 
       // Create gap closer closure
-      const gapCloser: GapCloser | undefined = options.prdFilePath ? async function* (gapCloserCwd, gaps) {
+      const gapCloser: GapCloser | undefined = options.prdFilePath ? async function* (gapCloserCwd, gaps, completionPercent) {
         // Read PRD content
         let prdContent: string;
         try {
@@ -657,7 +657,7 @@ export class EforgeEngine {
         }
 
         const gapSpan = tracing!.createSpan('gap-closer', {});
-        gapSpan.setInput({ gapCount: gaps.length });
+        gapSpan.setInput({ gapCount: gaps.length, completionPercent });
         const gapTracker = createToolTracker(gapSpan);
         try {
           for await (const event of runGapCloser({
@@ -665,6 +665,16 @@ export class EforgeEngine {
             cwd: gapCloserCwd,
             gaps,
             prdContent,
+            completionPercent,
+            pipelineContext: {
+              config,
+              pipeline: buildPipeline,
+              tracing: tracing!,
+              planSetName: planSet,
+              orchConfig,
+              planFileMap,
+            },
+            runBuildPipeline,
             verbose,
             abortController,
           })) {

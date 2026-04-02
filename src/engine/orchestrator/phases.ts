@@ -512,7 +512,7 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
           saveState(stateDir, state);
         } else if (ctx.gapCloser && !ctx.gapClosePerformed) {
           try {
-            yield* ctx.gapCloser(ctx.mergeWorktreePath, event.gaps);
+            yield* ctx.gapCloser(ctx.mergeWorktreePath, event.gaps, event.completionPercent);
             ctx.gapClosePerformed = true;
           } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') throw err;

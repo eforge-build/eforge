@@ -88,7 +88,10 @@ function eventSummary(event: EforgeEvent): string {
       const pct = event.completionPercent !== undefined ? `${event.completionPercent}% complete, ` : '';
       return event.passed ? `PRD Validation: ${pct}passed` : `PRD Validation: ${pct}${event.gaps?.length || 0} gap(s) found`;
     }
-    case 'gap_close:start': return 'Gap closing started';
+    case 'gap_close:start': {
+      const gapCount = 'gapCount' in event ? (event as { gapCount?: number }).gapCount : undefined;
+      return gapCount !== undefined ? `Gap closing: ${gapCount} gap(s)` : 'Gap closing started';
+    }
     case 'gap_close:complete': return 'Gap closing complete';
     case 'approval:needed': return `Approval needed: ${event.action}`;
     case 'approval:response': return event.approved ? 'Approved' : 'Rejected';
@@ -249,7 +252,7 @@ export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
                 className="text-blue cursor-pointer hover:underline font-mono text-[11px]"
                 onClick={() => openPreview(planId)}
               >
-                {planId}
+                {planId === 'gap-close' ? 'PRD Gap Close' : planId}
               </span>
             </>
           )}

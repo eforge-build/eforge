@@ -32,6 +32,9 @@ const AGENT_COLORS: Record<AgentRole, { bg: string; border: string }> = {
   'merge-conflict-resolver': { bg: 'bg-red/30',    border: 'border-red/50' },
   'staleness-assessor':     { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
   'prd-validator':          { bg: 'bg-orange/30',  border: 'border-orange/50' },
+  'gap-closer':            { bg: 'bg-pink/30',    border: 'border-pink/50' },
+  'dependency-detector':   { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
+  'pipeline-composer':     { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
 };
 
 const FALLBACK_COLOR = { bg: 'bg-cyan/30', border: 'border-cyan/50' };
@@ -47,6 +50,7 @@ const prdPillClass = `${pillClass} bg-yellow/15 text-yellow/70 hover:bg-yellow/2
 const planPillClass = `${pillClass} bg-cyan/15 text-cyan/70 hover:bg-cyan/25`;
 
 function abbreviatePlanId(id: string): string {
+  if (id === 'gap-close') return 'Gap Close';
   const match = id.match(/^plan-(\d+)/);
   if (match) return `Plan ${match[1]}`;
   return id;
@@ -93,6 +97,9 @@ const AGENT_TO_STAGE: Record<AgentRole, string> = {
   'merge-conflict-resolver': 'merge',
   'staleness-assessor': 'staleness',
   'prd-validator': 'prd-validation',
+  'gap-closer': 'gap-close',
+  'dependency-detector': 'dependency-detection',
+  'pipeline-composer': 'pipeline-composition',
 };
 
 type StageStatus = 'pending' | 'active' | 'completed' | 'failed';
