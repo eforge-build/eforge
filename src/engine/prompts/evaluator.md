@@ -16,7 +16,7 @@ A builder agent implemented a plan and committed the changes. A blind reviewer t
 First, run this command to create the staged vs unstaged comparison:
 
 ```bash
-git reset --soft HEAD~1
+git reset --soft {{reset_target}}
 ```
 
 This puts the builder's implementation as **staged changes** (`git diff --cached`) and the reviewer's fixes as **unstaged changes** (`git diff`).

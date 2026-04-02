@@ -37,6 +37,8 @@ export interface BuilderOptions extends SdkPassthroughConfig {
     attempt: number;
     maxContinuations: number;
   };
+  /** Commit SHA captured before the implement stage — used as evaluator reset target */
+  preImplementCommit?: string;
 }
 
 /**
@@ -154,8 +156,8 @@ Review the diff above, then continue implementing the remaining parts of the pla
 
 /**
  * Turn 2: Evaluate reviewer's unstaged fixes. The agent runs
- * `git reset --soft HEAD~1`, inspects staged (implementation) vs unstaged
- * (reviewer fixes), applies verdicts, and commits the final result.
+ * `git reset --soft <preImplementCommit>`, inspects staged (implementation)
+ * vs unstaged (reviewer fixes), applies verdicts, and commits the final result.
  */
 export async function* builderEvaluate(
   plan: PlanFile,
@@ -172,7 +174,7 @@ export async function* builderEvaluate(
 
 The previous evaluator run was interrupted because it ran out of conversation turns. Some files have already been evaluated (accepted via \`git add\` or rejected via \`git checkout --\`). Do NOT redo already-evaluated files - only evaluate files that still have unstaged changes.
 
-Do NOT run \`git reset --soft HEAD~1\` again - the staged vs unstaged comparison is already set up from the previous run.`;
+Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again - the staged vs unstaged comparison is already set up from the previous run.`;
   }
 
   const strictnessKey = options.strictness ?? 'standard';
@@ -182,6 +184,7 @@ Do NOT run \`git reset --soft HEAD~1\` again - the staged vs unstaged comparison
     strictness: STRICTNESS_BLOCKS[strictnessKey] ?? '',
     evaluation_schema: getEvaluationSchemaYaml(),
     continuation_context: continuationContextText,
+    reset_target: options.preImplementCommit ?? 'HEAD~1',
   });
 
   let fullText = '';
