@@ -60,6 +60,7 @@ export type PrdValidator = (
 export type GapCloser = (
   cwd: string,
   gaps: PrdValidationGap[],
+  completionPercent?: number,
 ) => AsyncGenerator<EforgeEvent>;
 
 export interface OrchestratorOptions {
@@ -74,6 +75,8 @@ export interface OrchestratorOptions {
   mergeResolver?: MergeResolver;
   prdValidator?: PrdValidator;
   gapCloser?: GapCloser;
+  /** Minimum PRD completion percentage (0-100) required to attempt gap closing. Defaults to 75. */
+  minCompletionPercent?: number;
   /** Path to the merge worktree (created during compile, loaded from state during build). */
   mergeWorktreePath?: string;
   /** Whether to run cleanup on the feature branch before the final merge. */
@@ -162,7 +165,8 @@ export class Orchestrator {
       planRunner: this.options.planRunner, parallelism: config.plans.length || 1,
       signal, postMergeCommands: this.options.postMergeCommands, validateCommands: this.options.validateCommands,
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
-      mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, gapCloser: this.options.gapCloser, worktreeManager: wm,
+      mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, gapCloser: this.options.gapCloser,
+      minCompletionPercent: this.options.minCompletionPercent ?? 75, worktreeManager: wm,
       failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, resumed, gapClosePerformed: false,
       shouldCleanup: this.options.shouldCleanup, cleanupPlanSet: this.options.cleanupPlanSet,
       cleanupOutputDir: this.options.cleanupOutputDir, cleanupPrdFilePath: this.options.cleanupPrdFilePath,

@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { EforgeEvent } from '../src/engine/events.js';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
-import { runGapCloser } from '../src/engine/agents/gap-closer.js';
+import { runGapCloser, type GapCloserContext } from '../src/engine/agents/gap-closer.js';
+import type { BuildStageContext } from '../src/engine/pipeline.js';
 
 const GAPS = [
   { requirement: 'Must support dark mode', explanation: 'No dark mode CSS classes found in the theme configuration' },
@@ -10,97 +11,105 @@ const GAPS = [
 
 const PRD_CONTENT = '# Feature PRD\n\n## Requirements\n\n- Must support dark mode\n- Must have responsive layout';
 
-const BASE_OPTIONS = {
-  cwd: '/tmp',
-  gaps: GAPS,
-  prdContent: PRD_CONTENT,
-};
+function makePipelineContext() {
+  return {
+    config: { agents: { maxTurns: 30 }, backend: 'claude-sdk' } as never,
+    pipeline: { compile: [], build: [] } as never,
+    tracing: { createSpan: () => ({ setInput: () => {}, end: () => {}, error: () => {} }) } as never,
+    planSetName: 'test-set',
+    orchConfig: { name: 'test', description: '', created: '', mode: 'errand' as const, baseBranch: 'main', pipeline: { compile: [], build: [] }, plans: [] } as never,
+    planFileMap: new Map(),
+  };
+}
 
-describe('runGapCloser wiring', () => {
-  it('emits start and complete lifecycle events', async () => {
-    const backend = new StubBackend([{ text: 'Fixed the gaps.' }]);
+function makeOptions(backend: StubBackend, overrides?: Partial<GapCloserContext>): GapCloserContext {
+  return {
+    backend,
+    cwd: '/tmp',
+    gaps: GAPS,
+    prdContent: PRD_CONTENT,
+    pipelineContext: makePipelineContext(),
+    runBuildPipeline: async function* () {
+      yield { timestamp: new Date().toISOString(), type: 'build:start', planId: 'gap-close' } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'build:complete', planId: 'gap-close' } as EforgeEvent;
+    },
+    ...overrides,
+  };
+}
 
-    const events = await collectEvents(runGapCloser({ backend, ...BASE_OPTIONS }));
+describe('runGapCloser two-stage flow', () => {
+  it('emits gap_close:start with gapCount', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix dark mode\n\n## Files\n- src/theme.ts: Add dark classes' }]);
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend)));
 
     const start = findEvent(events, 'gap_close:start');
     expect(start).toBeDefined();
-
-    const complete = findEvent(events, 'gap_close:complete');
-    expect(complete).toBeDefined();
+    expect((start as { gapCount?: number }).gapCount).toBe(1);
   });
 
-  it('emits start before complete', async () => {
-    const backend = new StubBackend([{ text: 'Fixed.' }]);
+  it('calls plan generation agent with maxTurns from AGENT_ROLE_DEFAULTS', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix it\n\n## Files\n- src/a.ts: change' }]);
 
-    const events = await collectEvents(runGapCloser({ backend, ...BASE_OPTIONS }));
-
-    const startIdx = events.findIndex((e) => e.type === 'gap_close:start');
-    const completeIdx = events.findIndex((e) => e.type === 'gap_close:complete');
-    expect(startIdx).toBeLessThan(completeIdx);
-  });
-
-  it('formats gaps and PRD content into prompt', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
-
-    await collectEvents(runGapCloser({ backend, ...BASE_OPTIONS }));
-
-    expect(backend.prompts).toHaveLength(1);
-    expect(backend.prompts[0]).toContain('Must support dark mode');
-    expect(backend.prompts[0]).toContain('No dark mode CSS classes found');
-    expect(backend.prompts[0]).toContain('Feature PRD');
-  });
-
-  it('passes correct backend options', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
-
-    await collectEvents(runGapCloser({ backend, ...BASE_OPTIONS }));
+    await collectEvents(runGapCloser(makeOptions(backend)));
 
     expect(backend.calls).toHaveLength(1);
-    expect(backend.calls[0].maxTurns).toBe(30);
+    // gap-closer role defaults to maxTurns: 20 in AGENT_ROLE_DEFAULTS
+    // But since we pass a stub config with maxTurns: 30 as global, and no per-role override,
+    // resolveAgentConfig will use the built-in per-role default of 20
+    expect(backend.calls[0].maxTurns).toBe(20);
     expect(backend.calls[0].tools).toBe('coding');
   });
 
-  it('yields agent:result and tool events in non-verbose mode', async () => {
-    const backend = new StubBackend([{
-      text: 'Fixed it.',
-      toolCalls: [{
-        tool: 'Edit',
-        toolUseId: 'tu-1',
-        input: { file: 'src/theme.ts' },
-        output: 'File edited',
-      }],
-    }]);
+  it('passes generated plan to runBuildPipeline with planId gap-close', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix dark mode\n\n## Files\n- src/theme.ts: Add dark classes' }]);
 
-    const events = await collectEvents(runGapCloser({ backend, ...BASE_OPTIONS }));
+    let capturedCtx: BuildStageContext | undefined;
+    const runBuildPipeline = async function* (ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
+      capturedCtx = ctx;
+      yield { timestamp: new Date().toISOString(), type: 'build:start', planId: ctx.planId } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'build:complete', planId: ctx.planId } as EforgeEvent;
+    };
 
-    expect(findEvent(events, 'agent:result')).toBeDefined();
-    expect(filterEvents(events, 'agent:tool_use')).toHaveLength(1);
-    expect(filterEvents(events, 'agent:tool_result')).toHaveLength(1);
+    await collectEvents(runGapCloser(makeOptions(backend, { runBuildPipeline })));
+
+    expect(capturedCtx).toBeDefined();
+    expect(capturedCtx!.planId).toBe('gap-close');
+    expect(capturedCtx!.build).toEqual(['implement', 'review-cycle']);
   });
 
-  it('suppresses agent:message when verbose is false', async () => {
-    const backend = new StubBackend([{ text: 'Some verbose output.' }]);
+  it('emits gap_close:complete with passed: true on success', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
 
-    const events = await collectEvents(runGapCloser({ backend, ...BASE_OPTIONS }));
+    const events = await collectEvents(runGapCloser(makeOptions(backend)));
 
-    expect(filterEvents(events, 'agent:message')).toHaveLength(0);
+    const complete = findEvent(events, 'gap_close:complete');
+    expect(complete).toBeDefined();
+    expect((complete as { passed?: boolean }).passed).toBe(true);
   });
 
-  it('emits agent:message when verbose is true', async () => {
-    const backend = new StubBackend([{ text: 'Some verbose output.' }]);
-
-    const events = await collectEvents(runGapCloser({ backend, ...BASE_OPTIONS, verbose: true }));
-
-    expect(filterEvents(events, 'agent:message').length).toBeGreaterThan(0);
-  });
-
-  it('swallows non-abort errors and still emits complete event', async () => {
+  it('emits gap_close:complete with passed: false when plan generation fails', async () => {
     const backend = new StubBackend([{ error: new Error('Agent crashed') }]);
 
-    const events = await collectEvents(runGapCloser({ backend, ...BASE_OPTIONS }));
+    const events = await collectEvents(runGapCloser(makeOptions(backend)));
 
-    expect(findEvent(events, 'gap_close:start')).toBeDefined();
-    expect(findEvent(events, 'gap_close:complete')).toBeDefined();
+    const complete = findEvent(events, 'gap_close:complete');
+    expect(complete).toBeDefined();
+    expect((complete as { passed?: boolean }).passed).toBe(false);
+
+    // runBuildPipeline should NOT have been called
+    const buildStarts = filterEvents(events, 'build:start');
+    expect(buildStarts).toHaveLength(0);
+  });
+
+  it('emits gap_close:complete with passed: false when agent returns no plan', async () => {
+    const backend = new StubBackend([{ text: '' }]);
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend)));
+
+    const complete = findEvent(events, 'gap_close:complete');
+    expect(complete).toBeDefined();
+    expect((complete as { passed?: boolean }).passed).toBe(false);
   });
 
   it('re-throws AbortError', async () => {
@@ -111,7 +120,7 @@ describe('runGapCloser wiring', () => {
     let thrown: Error | undefined;
     const events: EforgeEvent[] = [];
     try {
-      for await (const event of runGapCloser({ backend, ...BASE_OPTIONS })) {
+      for await (const event of runGapCloser(makeOptions(backend))) {
         events.push(event);
       }
     } catch (err) {
@@ -123,7 +132,73 @@ describe('runGapCloser wiring', () => {
 
     // Start event emitted before the error
     expect(findEvent(events, 'gap_close:start')).toBeDefined();
-    // Complete event NOT emitted — generator threw
+    // Complete event NOT emitted - generator threw
     expect(findEvent(events, 'gap_close:complete')).toBeUndefined();
+  });
+
+  it('forwards completionPercent to gap_close:start event', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend, { completionPercent: 82 })));
+
+    const start = findEvent(events, 'gap_close:start');
+    expect(start).toBeDefined();
+    expect((start as { completionPercent?: number }).completionPercent).toBe(82);
+  });
+
+  it('omits completionPercent from gap_close:start when not provided', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend)));
+
+    const start = findEvent(events, 'gap_close:start');
+    expect(start).toBeDefined();
+    expect((start as { completionPercent?: number }).completionPercent).toBeUndefined();
+  });
+
+  it('emits gap_close:complete with passed: false when build pipeline throws', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const runBuildPipeline = async function* (): AsyncGenerator<EforgeEvent> {
+      yield { timestamp: new Date().toISOString(), type: 'build:start', planId: 'gap-close' } as EforgeEvent;
+      throw new Error('Build pipeline exploded');
+    };
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend, { runBuildPipeline })));
+
+    const complete = findEvent(events, 'gap_close:complete');
+    expect(complete).toBeDefined();
+    expect((complete as { passed?: boolean }).passed).toBe(false);
+  });
+
+  it('re-throws AbortError from build pipeline', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const abortError = new Error('The operation was aborted');
+    abortError.name = 'AbortError';
+    const runBuildPipeline = async function* (): AsyncGenerator<EforgeEvent> {
+      throw abortError;
+    };
+
+    let thrown: Error | undefined;
+    try {
+      await collectEvents(runGapCloser(makeOptions(backend, { runBuildPipeline })));
+    } catch (err) {
+      thrown = err as Error;
+    }
+
+    expect(thrown).toBeDefined();
+    expect(thrown!.name).toBe('AbortError');
+  });
+
+  it('formats gaps and PRD content into prompt', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nPlan\n\n## Files\n- f.ts: change' }]);
+
+    await collectEvents(runGapCloser(makeOptions(backend)));
+
+    expect(backend.prompts).toHaveLength(1);
+    expect(backend.prompts[0]).toContain('Must support dark mode');
+    expect(backend.prompts[0]).toContain('No dark mode CSS classes found');
+    expect(backend.prompts[0]).toContain('Feature PRD');
   });
 });
