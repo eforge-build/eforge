@@ -136,6 +136,61 @@ describe('runGapCloser two-stage flow', () => {
     expect(findEvent(events, 'gap_close:complete')).toBeUndefined();
   });
 
+  it('forwards completionPercent to gap_close:start event', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend, { completionPercent: 82 })));
+
+    const start = findEvent(events, 'gap_close:start');
+    expect(start).toBeDefined();
+    expect((start as { completionPercent?: number }).completionPercent).toBe(82);
+  });
+
+  it('omits completionPercent from gap_close:start when not provided', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend)));
+
+    const start = findEvent(events, 'gap_close:start');
+    expect(start).toBeDefined();
+    expect((start as { completionPercent?: number }).completionPercent).toBeUndefined();
+  });
+
+  it('emits gap_close:complete with passed: false when build pipeline throws', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const runBuildPipeline = async function* (): AsyncGenerator<EforgeEvent> {
+      yield { timestamp: new Date().toISOString(), type: 'build:start', planId: 'gap-close' } as EforgeEvent;
+      throw new Error('Build pipeline exploded');
+    };
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend, { runBuildPipeline })));
+
+    const complete = findEvent(events, 'gap_close:complete');
+    expect(complete).toBeDefined();
+    expect((complete as { passed?: boolean }).passed).toBe(false);
+  });
+
+  it('re-throws AbortError from build pipeline', async () => {
+    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const abortError = new Error('The operation was aborted');
+    abortError.name = 'AbortError';
+    const runBuildPipeline = async function* (): AsyncGenerator<EforgeEvent> {
+      throw abortError;
+    };
+
+    let thrown: Error | undefined;
+    try {
+      await collectEvents(runGapCloser(makeOptions(backend, { runBuildPipeline })));
+    } catch (err) {
+      thrown = err as Error;
+    }
+
+    expect(thrown).toBeDefined();
+    expect(thrown!.name).toBe('AbortError');
+  });
+
   it('formats gaps and PRD content into prompt', async () => {
     const backend = new StubBackend([{ text: '## Overview\nPlan\n\n## Files\n- f.ts: change' }]);
 
