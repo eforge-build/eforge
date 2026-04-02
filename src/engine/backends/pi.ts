@@ -327,9 +327,10 @@ export class PiBackend implements AgentBackend {
         extensionPaths = await discoverPiExtensions(options.cwd, this.extensions);
       }
 
-      // Combine all tools and apply filtering
-      let allTools = [...baseTools, ...mcpTools];
-      allTools = filterTools(allTools, options.allowedTools, options.disallowedTools);
+      // Filter built-in and bridged tools separately so we preserve Pi's
+      // built-in/custom distinction when creating the session.
+      const filteredBaseTools = filterTools(baseTools, options.allowedTools, options.disallowedTools);
+      const filteredMcpTools = filterTools(mcpTools, options.allowedTools, options.disallowedTools);
 
       // Create model registry
       const modelRegistry = new ModelRegistry(authStorage);
@@ -345,8 +346,8 @@ export class PiBackend implements AgentBackend {
         cwd: options.cwd,
         model,
         thinkingLevel,
-        tools: baseTools,
-        customTools: [],
+        tools: filteredBaseTools,
+        customTools: filteredMcpTools,
         authStorage,
         modelRegistry,
         sessionManager,
