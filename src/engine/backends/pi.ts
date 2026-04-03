@@ -241,20 +241,20 @@ export class PiBackend implements AgentBackend {
 
     // Validate model ref before proceeding
     if (!options.model) {
-      yield { type: 'agent:start', planId, agent, agentId, model: 'unknown', backend: 'pi', timestamp: new Date().toISOString() };
+      yield { type: 'agent:start', planId, agent, agentId, model: 'unknown', backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), timestamp: new Date().toISOString() };
       yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set agents.models.max (or the appropriate model class) in eforge/config.yaml.', timestamp: new Date().toISOString() };
       return;
     }
 
     if (!options.model.provider) {
-      yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', timestamp: new Date().toISOString() };
+      yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), timestamp: new Date().toISOString() };
       yield { type: 'agent:stop', planId, agent, agentId, error: `No provider in model ref for Pi backend. Model refs must include "provider" (e.g. { provider: "openrouter", id: "${options.model.id}" }).`, timestamp: new Date().toISOString() };
       return;
     }
 
     const thinkingLevel = resolveThinkingLevel(options, this.piConfig);
 
-    yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), timestamp: new Date().toISOString() };
 
     let error: string | undefined;
     const startTime = Date.now();

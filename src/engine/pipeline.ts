@@ -447,9 +447,9 @@ export const AGENT_MODEL_CLASSES: Record<AgentRole, ModelClass> = {
   'test-writer': 'max',
   tester: 'max',
   formatter: 'max',
-  'staleness-assessor': 'max',
-  'prd-validator': 'max',
-  'dependency-detector': 'max',
+  'staleness-assessor': 'balanced',
+  'prd-validator': 'balanced',
+  'dependency-detector': 'balanced',
   'pipeline-composer': 'max',
   'gap-closer': 'max',
 };
@@ -460,15 +460,16 @@ export const MODEL_CLASS_DEFAULTS: Record<string, Record<ModelClass, import('./c
     max: { id: 'claude-opus-4-6' },
     balanced: { id: 'claude-sonnet-4-6' },
     fast: { id: 'claude-haiku-4-5' },
-    auto: undefined,
   },
   pi: {
     max: undefined,
     balanced: undefined,
     fast: undefined,
-    auto: undefined,
   },
 };
+
+/** Ordered tier list for fallback resolution: index 0 is the most capable. */
+const MODEL_CLASS_TIER: ModelClass[] = ['max', 'balanced', 'fast'];
 
 /**
  * Resolve agent config for a given role.
@@ -543,10 +544,64 @@ export function resolveAgentConfig(
         }
       }
     }
+
+    // Fallback chain: if model is still undefined, walk tiers ascending then descending
+    if (result.model === undefined && backend !== undefined) {
+      const effectiveIdx = MODEL_CLASS_TIER.indexOf(effectiveClass);
+      const attempted: ModelClass[] = [];
+
+      // Ascending (toward more capable): indices < effectiveIdx
+      for (let i = effectiveIdx - 1; i >= 0; i--) {
+        const tier = MODEL_CLASS_TIER[i];
+        attempted.push(tier);
+        const userModel = config.agents.models?.[tier];
+        if (userModel !== undefined) {
+          result.model = userModel;
+          result.fallbackFrom = effectiveClass;
+          break;
+        }
+        const backendModel = MODEL_CLASS_DEFAULTS[backend]?.[tier];
+        if (backendModel !== undefined) {
+          result.model = backendModel;
+          result.fallbackFrom = effectiveClass;
+          break;
+        }
+      }
+
+      // Descending (toward less capable): indices > effectiveIdx
+      if (result.model === undefined) {
+        for (let i = effectiveIdx + 1; i < MODEL_CLASS_TIER.length; i++) {
+          const tier = MODEL_CLASS_TIER[i];
+          attempted.push(tier);
+          const userModel = config.agents.models?.[tier];
+          if (userModel !== undefined) {
+            result.model = userModel;
+            result.fallbackFrom = effectiveClass;
+            break;
+          }
+          const backendModel = MODEL_CLASS_DEFAULTS[backend]?.[tier];
+          if (backendModel !== undefined) {
+            result.model = backendModel;
+            result.fallbackFrom = effectiveClass;
+            break;
+          }
+        }
+      }
+
+      // If still undefined after fallback, throw for non-claude-sdk backends
+      if (result.model === undefined && backend !== 'claude-sdk') {
+        throw new Error(
+          `No model configured for role "${role}" (model class "${effectiveClass}") on backend "${backend}". ` +
+          `Tried fallback: ${attempted.join(', ')}. ` +
+          `Set agents.models.${effectiveClass} in eforge/config.yaml.`,
+        );
+      }
+    }
   }
 
   // Backends without built-in defaults require the user to configure model mappings.
   // claude-sdk is exempt because undefined means "SDK picks based on subscription".
+  // (This check is now only reached when no fallback chain was attempted, i.e. backend is undefined)
   if (result.model === undefined && backend !== 'claude-sdk' && backend !== undefined) {
     throw new Error(
       `No model configured for role "${role}" (model class "${effectiveClass}") on backend "${backend}". ` +

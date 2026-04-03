@@ -28,6 +28,8 @@ export interface SdkPassthroughConfig {
   fallbackModel?: string;
   allowedTools?: string[];
   disallowedTools?: string[];
+  /** Set when the resolved model came from a fallback class instead of the role's effective class. */
+  fallbackFrom?: import('./config.js').ModelClass;
 }
 
 /**
@@ -62,6 +64,8 @@ export interface AgentRunOptions {
   allowedTools?: string[];
   disallowedTools?: string[];
   abortSignal?: AbortSignal;
+  /** Set when the resolved model came from a fallback class instead of the role's effective class. */
+  fallbackFrom?: import('./config.js').ModelClass;
 }
 
 /**
