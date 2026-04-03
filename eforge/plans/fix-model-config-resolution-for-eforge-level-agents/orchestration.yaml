@@ -1,0 +1,44 @@
+name: fix-model-config-resolution-for-eforge-level-agents
+description: Fix 7 eforge-level agents to resolve model config via
+  resolveAgentConfig() instead of sending undefined
+created: 2026-04-03
+compiled: 2026-04-03
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-resolve-model-config
+    name: Resolve Model Config for Eforge-Level Agents
+    depends_on: []
+    branch: fix-model-config-resolution-for-eforge-level-agents/resolve-model-config
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: errand
+  compile:
+    - prd-passthrough
+  defaultBuild:
+    - implement
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+    maxRounds: 1
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: lenient
+  rationale: "This is a mechanical, well-defined fix touching a single file
+    (eforge.ts) with a repetitive pattern: add an import and spread
+    resolveAgentConfig() at 7 call sites. The PRD already specifies the exact
+    pattern and line numbers. prd-passthrough is sufficient since the PRD itself
+    is the implementation plan. No review cycle needed - the change is low-risk,
+    formulaic, and verified by type-checking (pnpm build)."
