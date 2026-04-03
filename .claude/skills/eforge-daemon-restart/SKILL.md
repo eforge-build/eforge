@@ -1,4 +1,5 @@
 ---
+name: eforge-daemon-restart
 description: Rebuild eforge from source and restart the daemon. Use during development after making code changes so the MCP tools pick up the latest build.
 ---
 

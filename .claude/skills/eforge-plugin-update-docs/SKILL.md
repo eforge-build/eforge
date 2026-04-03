@@ -1,4 +1,5 @@
 ---
+name: eforge-plugin-update-docs
 description: Analyze documentation drift and enqueue an eforge build to fix it. Use when docs are stale after implementation changes. Works in any project with eforge running.
 argument-hint: "<file-or-topic: e.g. README.md, CLAUDE.md, architecture, api>"
 ---

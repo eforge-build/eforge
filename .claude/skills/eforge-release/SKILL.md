@@ -1,4 +1,5 @@
 ---
+name: eforge-release
 description: Release a new version of eforge with release notes, changelog, and GitHub Release - supports patch, minor, and major release types
 argument-hint: "[--patch|--minor|--major]"
 disable-model-invocation: true

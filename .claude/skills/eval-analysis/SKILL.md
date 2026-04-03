@@ -1,4 +1,5 @@
 ---
+name: eval-analysis
 description: Analyze eval results to understand signal quality and guide prompt/config changes. Use when the user says "eval-analysis", "analyze eval results", "what do the evals show", "eval regression", or asks about eval signal enrichment.
 ---
 
