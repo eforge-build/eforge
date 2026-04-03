@@ -913,8 +913,8 @@ describe('modelClassSchema', () => {
     expect(modelClassSchema.safeParse('fast').success).toBe(true);
   });
 
-  it('accepts auto', () => {
-    expect(modelClassSchema.safeParse('auto').success).toBe(true);
+  it('rejects auto', () => {
+    expect(modelClassSchema.safeParse('auto').success).toBe(false);
   });
 
   it('rejects invalid class name', () => {

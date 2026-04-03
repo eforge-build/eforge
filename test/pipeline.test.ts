@@ -639,12 +639,19 @@ describe('EforgeEngineOptions type', () => {
 // ---------------------------------------------------------------------------
 
 describe('model class resolution', () => {
-  it('all roles default to max class, resolving to claude-opus-4-6 on claude-sdk', async () => {
+  it('most roles default to max class, three roles default to balanced', async () => {
     const { resolveAgentConfig, AGENT_MODEL_CLASSES } = await import('../src/engine/pipeline.js');
+    const balancedRoles = ['staleness-assessor', 'prd-validator', 'dependency-detector'];
     for (const role of Object.keys(AGENT_MODEL_CLASSES) as Array<keyof typeof AGENT_MODEL_CLASSES>) {
-      expect(AGENT_MODEL_CLASSES[role]).toBe('max');
-      const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
-      expect(result.model).toEqual({ id: 'claude-opus-4-6' });
+      if (balancedRoles.includes(role)) {
+        expect(AGENT_MODEL_CLASSES[role]).toBe('balanced');
+        const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
+        expect(result.model).toEqual({ id: 'claude-sonnet-4-6' });
+      } else {
+        expect(AGENT_MODEL_CLASSES[role]).toBe('max');
+        const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
+        expect(result.model).toEqual({ id: 'claude-opus-4-6' });
+      }
     }
   });
 
@@ -688,42 +695,62 @@ describe('model class resolution', () => {
     expect(result.model).toEqual({ id: 'global-override' });
   });
 
-  it('auto class on claude-sdk returns undefined model', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
-    const config = {
-      ...DEFAULT_CONFIG,
-      agents: {
-        ...DEFAULT_CONFIG.agents,
-        roles: {
-          builder: { modelClass: 'auto' as const },
-        },
-      },
-    };
-    const result = resolveAgentConfig('builder', config);
-    expect(result.model).toBeUndefined();
-  });
-
-  it('pi backend with no model config throws for default max class', async () => {
+  it('pi backend with no model config throws for default max class with fallback tiers listed', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
     expect(() => resolveAgentConfig('builder', DEFAULT_CONFIG, 'pi')).toThrow(
-      /No model configured for role "builder".*model class "max".*backend "pi"/,
+      /No model configured for role "builder".*model class "max".*backend "pi".*Tried fallback: balanced, fast/,
     );
   });
 
-  it('auto class on pi backend throws without explicit config', async () => {
+  it('fallback ascending: balanced role resolves to max model when only max is configured', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
-        roles: {
-          builder: { modelClass: 'auto' as const },
-        },
+        models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('../src/engine/config.js').ModelRef>,
       },
     };
-    expect(() => resolveAgentConfig('builder', config, 'pi')).toThrow(
-      /No model configured for role "builder".*model class "auto".*backend "pi"/,
+    // staleness-assessor defaults to balanced
+    const result = resolveAgentConfig('staleness-assessor', config, 'pi');
+    expect(result.model).toEqual({ provider: 'openrouter', id: 'big-model' });
+    expect(result.fallbackFrom).toBe('balanced');
+  });
+
+  it('fallback descending: max role resolves to balanced model when only balanced is configured', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        models: { balanced: { provider: 'openrouter', id: 'medium-model' } } as Record<string, import('../src/engine/config.js').ModelRef>,
+      },
+    };
+    const result = resolveAgentConfig('builder', config, 'pi');
+    expect(result.model).toEqual({ provider: 'openrouter', id: 'medium-model' });
+    expect(result.fallbackFrom).toBe('max');
+  });
+
+  it('fallback total failure lists attempted tiers in error', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    expect(() => resolveAgentConfig('builder', DEFAULT_CONFIG, 'pi')).toThrow(
+      /Tried fallback: balanced, fast/,
     );
+  });
+
+  it('fallbackFrom metadata is populated on fallback resolution', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('../src/engine/config.js').ModelRef>,
+      },
+    };
+    // prd-validator defaults to balanced, should fall back to max
+    const result = resolveAgentConfig('prd-validator', config, 'pi');
+    expect(result.fallbackFrom).toBe('balanced');
+    expect(result.model).toEqual({ provider: 'openrouter', id: 'big-model' });
   });
 
   it('pi backend with agents.models.max configured resolves correctly', async () => {

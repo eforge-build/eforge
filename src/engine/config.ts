@@ -23,7 +23,7 @@ export const AGENT_ROLES = [
 const agentRoleSchema = z.enum(AGENT_ROLES);
 
 /** Model classes group agents by workload type. */
-export const MODEL_CLASSES = ['max', 'balanced', 'fast', 'auto'] as const;
+export const MODEL_CLASSES = ['max', 'balanced', 'fast'] as const;
 export type ModelClass = (typeof MODEL_CLASSES)[number];
 
 export const modelClassSchema = z.enum(MODEL_CLASSES).describe('Model class for agent workload grouping');
@@ -237,6 +237,8 @@ export interface ResolvedAgentConfig {
   fallbackModel?: string;
   allowedTools?: string[];
   disallowedTools?: string[];
+  /** Set when the resolved model came from a fallback class instead of the role's effective class. */
+  fallbackFrom?: ModelClass;
 }
 
 export interface PiConfig {
