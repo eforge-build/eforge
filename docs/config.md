@@ -29,13 +29,12 @@ agents:
   #   type: adaptive          # 'adaptive', 'enabled' (with optional budgetTokens), or 'disabled'
   # effort: high              # Global effort level: 'low', 'medium', 'high', 'max'
   # models:                    # Map model classes to model refs (override backend defaults)
-  #   max:                     # Used by all roles by default
+  #   max:                     # Used by most roles by default
   #     id: claude-opus-4-6
-  #   balanced:                # Available via per-role modelClass override
+  #   balanced:                # Default for staleness-assessor, prd-validator, dependency-detector
   #     id: claude-sonnet-4-6
   #   fast:                    # Available via per-role modelClass override
   #     id: claude-haiku-4-5
-  #   auto: null              # Let the SDK choose the model
   # roles:                    # Per-agent role overrides (override global settings)
   #   formatter:              # Per-role options: model, modelClass, thinking, effort, maxBudgetUsd,
   #     effort: low           #   fallbackModel, allowedTools, disallowedTools, maxTurns
@@ -96,16 +95,45 @@ Model references are **objects**, not plain strings. The shape depends on your b
 
 ## Model Classes
 
-eforge assigns each agent role a **model class** that determines which model it uses by default. All roles default to `max`. Four classes exist:
+eforge uses a three-tier model class system to assign models to agent roles. Each role has a default class, and users can override it via configuration.
 
 | Class | Default model ref (claude-sdk) | Notes |
 |-------|-------------------------------|-------|
-| `max` | `{ id: claude-opus-4-6 }` | All roles default to this class |
-| `balanced` | `{ id: claude-sonnet-4-6 }` | Available via per-role `modelClass` override for cost optimization |
-| `fast` | `{ id: claude-haiku-4-5 }` | Available via per-role `modelClass` override for lightweight tasks |
-| `auto` | (SDK default) | Lets the backend choose the model |
+| `max` | `{ id: claude-opus-4-6 }` | Most capable - used by 20 of 23 roles |
+| `balanced` | `{ id: claude-sonnet-4-6 }` | Mid-tier - used by roles that don't need max capability |
+| `fast` | `{ id: claude-haiku-4-5 }` | Lightweight - available via per-role `modelClass` override |
 
-The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles) using `{ provider, id }` model refs. The engine throws a descriptive error if no model resolves for a non-claude-sdk backend.
+The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles) using `{ provider, id }` model refs.
+
+### Per-Role Default Model Classes
+
+Each of the 23 agent roles has a built-in default model class:
+
+| Role | Default Class | Category |
+|------|--------------|----------|
+| `planner` | `max` | Planning |
+| `module-planner` | `max` | Planning |
+| `builder` | `max` | Building |
+| `reviewer` | `max` | Review/Eval |
+| `evaluator` | `max` | Review/Eval |
+| `plan-reviewer` | `max` | Review/Eval |
+| `plan-evaluator` | `max` | Review/Eval |
+| `architecture-reviewer` | `max` | Review/Eval |
+| `architecture-evaluator` | `max` | Review/Eval |
+| `cohesion-reviewer` | `max` | Review/Eval |
+| `cohesion-evaluator` | `max` | Review/Eval |
+| `validation-fixer` | `max` | Fixers |
+| `review-fixer` | `max` | Fixers |
+| `merge-conflict-resolver` | `max` | Fixers |
+| `formatter` | `max` | Utilities |
+| `doc-updater` | `max` | Utilities |
+| `test-writer` | `max` | Utilities |
+| `tester` | `max` | Utilities |
+| `pipeline-composer` | `max` | Utilities |
+| `gap-closer` | `max` | Utilities |
+| `staleness-assessor` | `balanced` | Utilities |
+| `prd-validator` | `balanced` | Utilities |
+| `dependency-detector` | `balanced` | Utilities |
 
 ### Model Resolution Order
 
@@ -115,8 +143,48 @@ Model selection follows this priority chain (highest to lowest):
 2. **Global `model`** - `agents.model` - explicit model ref for all roles
 3. **User class override** - `agents.models.<class>` - custom model ref for the role's effective class
 4. **Backend class default** - built-in model ref for the class (see table above)
+5. **Fallback chain** - if the effective class has no configured model (neither user nor backend default), walk tiers to find one (see below)
 
 The "effective class" for a role is determined by: per-role `modelClass` override > built-in class assignment.
+
+### Fallback Chain
+
+When a role's effective model class has no configured model (no user override and no backend default), eforge walks the tier list to find a usable model. The tier order is `max` > `balanced` > `fast`.
+
+The algorithm:
+1. Start at the role's effective class
+2. Walk **ascending** toward more capable tiers (e.g. `balanced` -> `max`)
+3. If no model found ascending, walk **descending** toward less capable tiers (e.g. `balanced` -> `fast`)
+4. If no model found in any tier, throw a descriptive error (non-claude-sdk backends only; the Claude SDK falls back to its own default)
+
+**Example 1: Pi backend with only `max` configured**
+
+```yaml
+backend: pi
+agents:
+  models:
+    max:
+      provider: openrouter
+      id: anthropic/claude-opus-4-6
+```
+
+The `staleness-assessor` role defaults to `balanced`, but no `balanced` model is configured. The fallback chain walks ascending from `balanced` to `max` and finds the configured model. All 23 roles resolve to `anthropic/claude-opus-4-6`.
+
+**Example 2: Pi backend with `balanced` and `fast` configured**
+
+```yaml
+backend: pi
+agents:
+  models:
+    balanced:
+      provider: openrouter
+      id: anthropic/claude-sonnet-4-6
+    fast:
+      provider: openrouter
+      id: anthropic/claude-haiku-4-5
+```
+
+Roles defaulting to `max` (like `builder`) find no `max` model configured. The fallback walks descending from `max` to `balanced` and resolves to `anthropic/claude-sonnet-4-6`. Roles defaulting to `balanced` (like `staleness-assessor`) resolve directly. No role uses the `fast` model unless explicitly assigned via `modelClass`.
 
 ```yaml
 # Example: downgrade some roles to cheaper models (claude-sdk backend)
