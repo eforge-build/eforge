@@ -74,6 +74,8 @@ pi install git:github.com/eforge-build/eforge#pi-package
 
 The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. In Claude Code it presents a form to choose your backend (claude-sdk or pi); in Pi it defaults to `backend: pi`. For further customization, run `/eforge:config --edit`.
 
+The Pi package includes an `/eforge:plan` skill for structured planning conversations before handing off to eforge. Claude Code users get equivalent functionality through Claude Code's built-in plan mode, which eforge works with natively — so the Claude Code plugin doesn't need a separate planning skill.
+
 Standalone CLI:
 
 ```bash
