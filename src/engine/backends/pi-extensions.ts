@@ -63,8 +63,11 @@ export async function discoverPiExtensions(
   const globalExtDir = join(homedir(), '.pi', 'extensions');
   await collectExtensionDirs(globalExtDir, autoDiscovered);
 
+  // Filter the eforge extension to prevent orphaned daemons in agent worktrees
+  const safeAutoDiscovered = autoDiscovered.filter(p => basename(p) !== 'eforge');
+
   // Apply include filter (whitelist) — keep only matching basenames
-  let filtered = autoDiscovered;
+  let filtered = safeAutoDiscovered;
   if (config?.include && config.include.length > 0) {
     const includeSet = new Set(config.include);
     filtered = filtered.filter(p => includeSet.has(basename(p)));

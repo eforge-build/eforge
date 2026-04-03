@@ -1533,6 +1533,8 @@ async function loadMcpServers(cwd: string): Promise<ClaudeSDKBackendOptions['mcp
   try {
     const raw = JSON.parse(content);
     if (raw?.mcpServers && typeof raw.mcpServers === 'object' && !Array.isArray(raw.mcpServers)) {
+      // Filter the eforge MCP server to prevent orphaned daemons in agent worktrees
+      delete raw.mcpServers['eforge'];
       return raw.mcpServers;
     }
   } catch {

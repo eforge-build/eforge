@@ -88,6 +88,22 @@ describe('discoverPiExtensions', () => {
     expect(result).toHaveLength(3);
   });
 
+  it('excludes auto-discovered eforge extension with no config', async () => {
+    const extDir = join(cwd, '.pi', 'extensions');
+    await mkdir(join(extDir, 'eforge'));
+    const result = await discoverPiExtensions(cwd);
+    // alpha, beta, gamma from beforeEach — eforge excluded
+    expect(result).toHaveLength(3);
+    expect(result.map(p => p.split('/').pop())).not.toContain('eforge');
+  });
+
+  it('does not filter explicit eforge path', async () => {
+    const eforgePath = join(cwd, 'eforge');
+    await mkdir(eforgePath, { recursive: true });
+    const result = await discoverPiExtensions(cwd, { paths: [eforgePath] });
+    expect(result.some(p => p.endsWith('eforge'))).toBe(true);
+  });
+
   it('returns empty array when no extensions exist and no config', async () => {
     const emptyDir = join(cwd, 'empty-project');
     await mkdir(emptyDir, { recursive: true });
