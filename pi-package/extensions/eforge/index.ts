@@ -6,6 +6,8 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
+import { Container, Markdown, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { readFileSync, accessSync, mkdirSync, writeFileSync } from "node:fs";
@@ -603,6 +605,101 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }
 
       return jsonResult(response);
+    },
+  });
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_confirm_build
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_confirm_build",
+    label: "eforge confirm build",
+    description:
+      "Present an interactive TUI overlay for the user to confirm, edit, or cancel a build source before enqueuing. Returns the user's choice.",
+    parameters: Type.Object({
+      source: Type.String({
+        description:
+          "The assembled PRD source text to preview for confirmation",
+      }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!ctx.hasUI) {
+        return jsonResult({ choice: "confirm", note: "No UI available, auto-confirming" });
+      }
+
+      const items: SelectItem[] = [
+        { value: "confirm", label: "✓ Confirm", description: "Enqueue for building" },
+        { value: "edit", label: "✎ Edit", description: "Revise the source" },
+        { value: "cancel", label: "✗ Cancel", description: "Abort" },
+      ];
+
+      const choice = await ctx.ui.custom<string>((tui, theme, _kb, done) => {
+        const container = new Container();
+        const border = new DynamicBorder((s: string) => theme.fg("accent", s));
+        const mdTheme = getMarkdownTheme();
+
+        container.addChild(border);
+        container.addChild(new Text(theme.fg("accent", theme.bold("eforge - Confirm Build")), 1, 0));
+        container.addChild(new Markdown(params.source, 1, 1, mdTheme));
+
+        const selectList = new SelectList(items, items.length, {
+          selectedPrefix: (text) => theme.fg("accent", text),
+          selectedText: (text) => theme.fg("accent", text),
+          description: (text) => theme.fg("muted", text),
+          scrollInfo: (text) => theme.fg("dim", text),
+          noMatch: (text) => theme.fg("warning", text),
+        });
+
+        selectList.onSelect = (item) => done(item.value);
+        selectList.onCancel = () => done("cancel");
+
+        container.addChild(selectList);
+        container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc cancel"), 1, 0));
+        container.addChild(border);
+
+        return {
+          render: (width: number) => container.render(width),
+          invalidate: () => container.invalidate(),
+          handleInput: (data: string) => {
+            selectList.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      });
+
+      return jsonResult({ choice: choice ?? "cancel" });
+    },
+
+    renderCall(args, theme) {
+      const source = typeof args.source === "string" ? args.source : "";
+      const truncated = (source.length > 200 ? source.slice(0, 200) + "..." : source).replace(/\n/g, " ");
+      const text =
+        theme.fg("toolTitle", theme.bold("eforge confirm build ")) +
+        theme.fg("muted", `Source preview (${source.length} chars)`) +
+        "\n" +
+        theme.fg("dim", `  ${truncated}`);
+      return new Text(text, 0, 0);
+    },
+
+    renderResult(result, _options, theme) {
+      const text = result.content[0];
+      let choice = "unknown";
+      try {
+        if (text?.type === "text") {
+          const parsed = JSON.parse(text.text);
+          choice = parsed.choice ?? "unknown";
+        }
+      } catch {
+        // fallback
+      }
+
+      const icons: Record<string, string> = {
+        confirm: theme.fg("success", "✓ ") + theme.fg("accent", "Confirmed"),
+        edit: theme.fg("warning", "✎ ") + theme.fg("accent", "Edit requested"),
+        cancel: theme.fg("error", "✗ ") + theme.fg("muted", "Cancelled"),
+      };
+
+      return new Text(icons[choice] ?? theme.fg("muted", choice), 0, 0);
     },
   });
 
