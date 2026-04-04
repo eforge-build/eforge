@@ -1,0 +1,46 @@
+name: fix-dirty-working-tree-causing-final-merge-failure-after-gap-close
+description: Add dirty working tree detection and auto-recovery before final
+  merge, defense-in-depth guard in merge function, remove always-failing
+  checkout, and improve merge error reporting
+created: 2026-04-04
+compiled: 2026-04-04
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-dirty-tree-guards
+    name: Dirty working tree detection, recovery, and merge hardening
+    depends_on: []
+    branch: fix-dirty-working-tree-causing-final-merge-failure-after-gap-close/dirty-tree-guards
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - prd-passthrough
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: This is a focused bug fix touching exactly 2 files with very precise
+    code changes already specified in the PRD. Using prd-passthrough since the
+    PRD provides exact code snippets and line numbers - no LLM planning
+    decomposition needed. Review cycle with correctness perspective ensures the
+    git operations and error handling are implemented correctly, since bugs here
+    could cause data loss. Standard strictness and 2 rounds are sufficient for
+    this scope.
