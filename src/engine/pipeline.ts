@@ -2018,7 +2018,9 @@ export async function* runCompilePipeline(
     const stage = getCompileStage(stageName);
     yield* stage(ctx);
     if (ctx.skipped) break;
-    if (ctx.pipeline.compile !== compileBefore) {
+    const compileChanged = ctx.pipeline.compile.length !== compileBefore.length ||
+      ctx.pipeline.compile.some((s, idx) => s !== compileBefore[idx]);
+    if (compileChanged) {
       // Stage replaced the compile list — restart from the beginning
       if (++restarts > MAX_RESTARTS) {
         throw new Error('Compile pipeline restarted too many times — possible infinite loop');

@@ -326,6 +326,32 @@ describe('runCompilePipeline', () => {
     expect(stagesRun).toEqual(['replacer', 'new-stage']);
     expect(events.map((e) => (e as any).message)).toEqual(['replaced', 'new stage ran']);
   });
+
+  it('does not restart when a stage replaces ctx.pipeline with the same compile stages', async () => {
+    let runCount = 0;
+
+    // Stage that replaces ctx.pipeline (new object reference) but keeps the same stages
+    registerCompileStage(testDescriptor('test-same-replace', 'compile'), async function* (ctx) {
+      runCount++;
+      ctx.pipeline = { ...ctx.pipeline, compile: ['test-same-replace', 'test-after'] };
+      yield { type: 'plan:progress', message: `ran ${runCount}` };
+    });
+
+    registerCompileStage(testDescriptor('test-after', 'compile'), async function* () {
+      yield { type: 'plan:progress', message: 'after' };
+    });
+
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
+      compile: ['test-same-replace', 'test-after'],
+    };
+
+    const ctx = makePipelineCtx({ pipeline });
+    await collect(runCompilePipeline(ctx));
+
+    // Stage should run exactly once - no restart despite new object reference
+    expect(runCount).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
