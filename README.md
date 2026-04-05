@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/eforge)](https://www.npmjs.com/package/eforge)
 
-An agentic build system. You stay at the planning level. Describe what you want built - a prompt, a markdown file, a full PRD - and hand it off. eforge plans the implementation, reviews its own plans, builds, reviews the code, and validates the result.
+An open source agentic build system for developers who want to stay close to the work. Describe what you want built - a prompt, a markdown file, a full PRD - and hand it off. eforge plans the implementation, builds in isolated worktrees, reviews the code blind, and validates the result. The build runs in the background. Your careful planning gets executed faithfully.
 
 The name: **E** from the [Expedition-Excursion-Errand methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) + **forge** - shaping code from plans.
 
@@ -41,7 +41,7 @@ eforge also runs standalone. By default, `eforge build` enqueues and a daemon pr
 - **Excursion** - Multi-file features. Planner writes a plan, blind review cycle, then build.
 - **Expedition** - Large cross-cutting work. Architecture doc, module decomposition, cohesion review across plans, parallel builds in dependency order.
 
-**Blind review** - Every build gets reviewed by a separate agent with no builder context. Separating generation from evaluation [dramatically improves quality](https://www.anthropic.com/engineering/harness-design-long-running-apps) - solo agents tend to approve their own work regardless. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes.
+**Blind review** - Every build gets reviewed by a separate agent with no builder context. Separating generation from evaluation [dramatically improves quality](https://www.anthropic.com/engineering/harness-design-long-running-apps) - solo agents tend to approve their own work regardless. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes. The goal is fidelity to the plan - minimizing drift and slop so the code that lands is what was specified, not a reinterpretation.
 
 **Parallel orchestration** - Each plan builds in an isolated git worktree. Expeditions run multiple plans in parallel, merging in topological dependency order. Post-merge validation runs with auto-fix.
 
