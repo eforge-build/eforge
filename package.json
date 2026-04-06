@@ -33,6 +33,7 @@
   "scripts": {
     "build": "tsup && node --import tsx ./scripts/post-build.ts && pnpm --filter monitor-ui build && tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm build && pnpm test",
+    "prepare:pi-package-publish": "node ./scripts/prepare-pi-package-publish.mjs",
     "build:ui": "pnpm --filter monitor-ui build",
     "dev": "tsx src/cli.ts",
     "dev:trace": "node --env-file=.env node_modules/.bin/tsx src/cli.ts",

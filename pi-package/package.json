@@ -3,6 +3,20 @@
   "version": "0.1.0",
   "description": "eforge integration for Pi — enqueue, run, and monitor builds from within Pi",
   "keywords": ["pi-package"],
+  "homepage": "https://eforge.build",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eforge-build/eforge.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "extensions/",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ],
   "pi": {
     "extensions": ["./extensions/eforge"],
     "skills": ["./skills"]
@@ -10,11 +24,13 @@
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-tui": "*",
     "@sinclair/typebox": "*"
   },
   "peerDependenciesMeta": {
     "@mariozechner/pi-coding-agent": { "optional": false },
     "@mariozechner/pi-ai": { "optional": false },
+    "@mariozechner/pi-tui": { "optional": false },
     "@sinclair/typebox": { "optional": false }
   },
   "author": "Schaake Solutions LLC",

@@ -1,6 +1,7 @@
 # eforge
 
 [![npm version](https://img.shields.io/npm/v/eforge)](https://www.npmjs.com/package/eforge)
+[![npm pi package](https://img.shields.io/npm/v/eforge-pi)](https://www.npmjs.com/package/eforge-pi)
 
 An open source agentic build system for developers who want to stay close to the work. Describe what you want built - a prompt, a markdown file, a full PRD - and hand it off. eforge plans the implementation, builds in isolated worktrees, reviews the code blind, and validates the result. The build runs in the background. Your careful planning gets executed faithfully.
 
@@ -57,7 +58,7 @@ For a deeper look at the engine internals, see the [architecture docs](docs/arch
 
 **Prerequisites:** Node.js 22+, [Claude Code](https://claude.ai/code) or [Pi](https://github.com/nicories/pi-mono), and an LLM provider credential - Anthropic API key or [Claude subscription](https://claude.ai/upgrade) for the `claude-sdk` backend, or a provider-specific API key or OAuth token for the `pi` backend
 
-Claude Code plugin (recommended):
+Claude Code plugin:
 
 ```
 /plugin marketplace add eforge-build/eforge
@@ -67,12 +68,20 @@ Claude Code plugin (recommended):
 
 Pi package:
 
-```
-pi install git:github.com/eforge-build/eforge#pi-package
+```bash
+pi install npm:eforge-pi
 /eforge:init
 ```
 
-The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. In Claude Code it presents a form to choose your backend (claude-sdk or pi); in Pi it defaults to `backend: pi`. For further customization, run `/eforge:config --edit`.
+Add `-l` to `pi install` if you want to write to project settings (`.pi/settings.json`) instead of your global Pi settings:
+
+```bash
+pi install -l npm:eforge-pi
+```
+
+The main `eforge` npm package is the standalone CLI and daemon runtime. The Pi integration is published separately as `eforge-pi`.
+
+The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. In Claude Code it presents a form to choose your backend (`claude-sdk` or `pi`); in Pi it defaults to `backend: pi`. For further customization, run `/eforge:config --edit`.
 
 The Pi package includes an `/eforge:plan` skill for structured planning conversations before handing off to eforge. Claude Code users get equivalent functionality through Claude Code's built-in plan mode, which eforge works with natively — so the Claude Code plugin doesn't need a separate planning skill.
 
