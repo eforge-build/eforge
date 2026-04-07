@@ -11,164 +11,18 @@ import { Container, Markdown, type SelectItem, SelectList, Text } from "@marioze
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { readFileSync, accessSync, mkdirSync, writeFileSync } from "node:fs";
-import { resolve, join } from "node:path";
-import { spawn } from "node:child_process";
+import { join } from "node:path";
 
-// ---------------------------------------------------------------------------
-// Daemon client — inlined from the canonical sources below.
-// If the daemon HTTP API changes, update this code to match.
-//   src/cli/daemon-client.ts   (ensureDaemon, daemonRequest, daemonRequestWithPort)
-//   src/monitor/lockfile.ts    (readLockfile, isPidAlive, isServerAlive, LockfileData)
-// ---------------------------------------------------------------------------
+import {
+  readLockfile,
+  isServerAlive,
+  ensureDaemon,
+  daemonRequest,
+  sleep,
+} from '@eforge-build/client';
 
-const LOCKFILE_NAME = "daemon.lock";
-const LEGACY_LOCKFILE_NAME = "monitor.lock";
-const DAEMON_START_TIMEOUT_MS = 15_000;
-const DAEMON_POLL_INTERVAL_MS = 500;
 const LOCKFILE_POLL_INTERVAL_MS = 250;
 const LOCKFILE_POLL_TIMEOUT_MS = 5000;
-
-interface LockfileData {
-  pid: number;
-  port: number;
-  startedAt: string;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function lockfilePath(cwd: string): string {
-  return resolve(cwd, ".eforge", LOCKFILE_NAME);
-}
-
-function legacyLockfilePath(cwd: string): string {
-  return resolve(cwd, ".eforge", LEGACY_LOCKFILE_NAME);
-}
-
-function tryReadLockfileAt(path: string): LockfileData | null {
-  try {
-    const raw = readFileSync(path, "utf-8");
-    const data = JSON.parse(raw);
-    if (
-      typeof data.pid === "number" &&
-      typeof data.port === "number" &&
-      typeof data.startedAt === "string"
-    ) {
-      return data as LockfileData;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function readLockfile(cwd: string): LockfileData | null {
-  return (
-    tryReadLockfileAt(lockfilePath(cwd)) ??
-    tryReadLockfileAt(legacyLockfilePath(cwd))
-  );
-}
-
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function isServerAlive(lock: LockfileData): Promise<boolean> {
-  if (!isPidAlive(lock.pid)) return false;
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(`http://127.0.0.1:${lock.port}/api/health`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (res.ok) {
-      const body = (await res.json()) as { status: string };
-      return body.status === "ok";
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-async function ensureDaemon(cwd: string): Promise<number> {
-  const existing = readLockfile(cwd);
-  if (existing && (await isServerAlive(existing))) {
-    return existing.port;
-  }
-
-  const bin = process.env.EFORGE_BIN ?? "eforge";
-  const child = spawn(bin, ["daemon", "start"], {
-    cwd,
-    detached: true,
-    stdio: "ignore",
-  });
-  child.on("error", () => {
-    /* swallow — poll loop will time out */
-  });
-  child.unref();
-
-  const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    await sleep(DAEMON_POLL_INTERVAL_MS);
-    const lock = readLockfile(cwd);
-    if (lock && (await isServerAlive(lock))) {
-      return lock.port;
-    }
-  }
-
-  throw new Error(
-    "Daemon failed to start within timeout. Run `eforge daemon start` manually to diagnose.",
-  );
-}
-
-async function daemonRequestWithPort(
-  port: number,
-  method: string,
-  path: string,
-  body?: unknown,
-  signal?: AbortSignal,
-): Promise<{ data: unknown; port: number }> {
-  const url = `http://127.0.0.1:${port}${path}`;
-  const options: RequestInit = {
-    method,
-    signal: signal ?? AbortSignal.timeout(30_000),
-  };
-  if (body !== undefined) {
-    options.headers = { "Content-Type": "application/json" };
-    options.body = JSON.stringify(body);
-  }
-  const res = await fetch(url, options);
-  const text = await res.text();
-  if (!res.ok) {
-    const truncated =
-      text.length > 200 ? text.slice(0, 200) + "..." : text;
-    throw new Error(`Daemon returned ${res.status}: ${truncated}`);
-  }
-  try {
-    return { data: JSON.parse(text), port };
-  } catch {
-    return { data: text, port };
-  }
-}
-
-async function daemonRequest(
-  cwd: string,
-  method: string,
-  path: string,
-  body?: unknown,
-  signal?: AbortSignal,
-): Promise<{ data: unknown; port: number }> {
-  const port = await ensureDaemon(cwd);
-  return daemonRequestWithPort(port, method, path, body, signal);
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -313,7 +167,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         "POST",
         "/api/enqueue",
         { source: params.source },
-        signal,
       );
       return jsonResult(withMonitorUrl(data, port));
     },
@@ -333,8 +186,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         ctx.cwd,
         "GET",
         "/api/latest-run",
-        undefined,
-        signal,
       );
       const latestRunObj = latestRun as { sessionId?: string };
       if (!latestRunObj?.sessionId) {
@@ -347,8 +198,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         ctx.cwd,
         "GET",
         `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`,
-        undefined,
-        signal,
       );
       return jsonResult(summary);
     },
@@ -456,7 +305,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       "List all PRDs currently in the eforge queue with their metadata.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
-      const { data } = await daemonRequest(ctx.cwd, "GET", "/api/queue", undefined, signal);
+      const { data } = await daemonRequest(ctx.cwd, "GET", "/api/queue");
       return jsonResult(data);
     },
   });
@@ -480,7 +329,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         params.action === "validate"
           ? "/api/config/validate"
           : "/api/config/show";
-      const { data } = await daemonRequest(ctx.cwd, "GET", path, undefined, signal);
+      const { data } = await daemonRequest(ctx.cwd, "GET", path);
       return jsonResult(data);
     },
   });
@@ -564,8 +413,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           ctx.cwd,
           "GET",
           "/api/auto-build",
-          undefined,
-          signal,
         );
         return jsonResult(data);
       }
@@ -577,7 +424,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         "POST",
         "/api/auto-build",
         { enabled: params.enabled },
-        signal,
       );
       return jsonResult(data);
     },
@@ -678,8 +524,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           ctx.cwd,
           "GET",
           "/api/config/validate",
-          undefined,
-          signal,
         );
         validation = data as Record<string, unknown>;
       } catch {
