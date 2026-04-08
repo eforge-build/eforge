@@ -153,11 +153,6 @@ function processEvent(
     state.totalCost += event.result.totalCostUsd || 0;
   }
 
-  if (event.type === 'plan:profile' && 'profileName' in event && 'config' in event) {
-    const e = event as unknown as { profileName: string; rationale: string; config: ProfileInfo['config'] };
-    state.profileInfo = { profileName: e.profileName, rationale: e.rationale, config: e.config };
-  }
-
   if (event.type === 'plan:complete' && 'plans' in event) {
     const plans = (event as { plans: Array<{ id: string }> }).plans;
     for (const plan of plans) {
@@ -244,7 +239,7 @@ function processEvent(
       created: '',
       mode: 'expedition',
       baseBranch: '',
-      profile: { description: '', compile: [] },
+      pipeline: { scope: 'expedition', compile: [], defaultBuild: [], defaultReview: { strategy: 'auto' as const, perspectives: [], maxRounds: 1, evaluatorStrictness: 'standard' as const }, rationale: '' },
       plans: event.modules.map((mod) => ({
         id: mod.id,
         name: mod.description,

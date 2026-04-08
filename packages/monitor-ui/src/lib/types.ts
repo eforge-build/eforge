@@ -11,7 +11,7 @@ export type {
   PlanState,
   EforgeState,
   ExpeditionModule,
-} from '../../../../engine/events.js';
+} from '@eforge-build/engine/events';
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 

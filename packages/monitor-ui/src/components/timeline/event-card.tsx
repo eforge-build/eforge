@@ -35,7 +35,7 @@ function eventSummary(event: EforgeEvent): string {
       return `Planning from: ${display}`;
     }
     case 'plan:skip': return `Skipped: ${event.reason}`;
-    case 'plan:profile': return `Profile: ${event.profileName} — ${event.rationale}`;
+    case 'plan:profile' as string: return `Profile: ${(event as unknown as { profileName: string; rationale: string }).profileName} — ${(event as unknown as { profileName: string; rationale: string }).rationale}`;
     case 'plan:clarification': return `${event.questions?.length || 0} clarification question(s)`;
     case 'plan:progress': return event.message;
     case 'plan:complete': return `${event.plans?.length || 0} plan(s) generated`;
@@ -108,11 +108,12 @@ function eventSummary(event: EforgeEvent): string {
 
 function eventDetail(event: EforgeEvent): string | null {
   switch (event.type) {
-    case 'plan:profile': {
-      if (!event.config) return event.rationale;
+    case 'plan:profile' as string: {
+      const _ev = event as unknown as { config?: { compile?: string[]; agents?: Record<string, Record<string, unknown>> }; rationale?: string };
+      if (!_ev.config) return _ev.rationale ?? null;
       const parts: string[] = [];
       {
-        const c = event.config;
+        const c = _ev.config;
         parts.push(`Compile: ${c.compile?.join(' → ') ?? '—'}`);
         const agents = Object.entries((c as Record<string, unknown>)['agents'] as Record<string, Record<string, unknown>> ?? {});
         if (agents.length > 0) {
