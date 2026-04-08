@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { compilePattern, matchesPattern, withHooks } from '../src/engine/hooks.js';
-import type { EforgeEvent } from '../src/engine/events.js';
-import type { HookConfig } from '../src/engine/config.js';
+import { compilePattern, matchesPattern, withHooks } from '@eforge-build/engine/hooks';
+import type { EforgeEvent } from '@eforge-build/engine/events';
+import type { HookConfig } from '@eforge-build/engine/config';
 import { collectEvents } from './test-events.js';
 
 describe('compilePattern', () => {

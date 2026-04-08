@@ -5,9 +5,9 @@ import {
   getSummaryStats,
   type RunState,
   type RunAction,
-} from '../src/monitor/ui/src/lib/reducer';
-import type { EforgeEvent } from '../src/engine/events';
-import { isAlwaysYieldedAgentEvent } from '../src/engine/events';
+} from '@eforge-build/monitor-ui/lib/reducer';
+import type { EforgeEvent } from '@eforge-build/engine/events';
+import { isAlwaysYieldedAgentEvent } from '@eforge-build/engine/events';
 
 function dispatch(state: RunState, events: Array<{ event: EforgeEvent; eventId: string }>): RunState {
   return events.reduce(

@@ -10,10 +10,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import http from 'node:http';
 import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { resolve, dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, DAEMON_POLL_INTERVAL_MS, readLockfile } from '@eforge-build/client';
 import type { LatestRunResponse, EnqueueResponse, RunSummary, ConfigValidateResponse } from '@eforge-build/client';
+
+declare const EFORGE_VERSION: string;
 
 const ALLOWED_FLAGS = new Set([
   '--queue',
@@ -310,12 +311,9 @@ async function ensureGitignoreEntries(projectDir: string, entries: string[]): Pr
 }
 
 export async function runMcpProxy(cwd: string): Promise<void> {
-  const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
-  const { version } = JSON.parse(await readFile(pkgPath, 'utf-8'));
-
   const server = new McpServer({
     name: 'eforge',
-    version,
+    version: EFORGE_VERSION,
   }, {
     capabilities: {
       resources: { listChanged: true },

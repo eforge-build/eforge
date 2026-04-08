@@ -1,8 +1,7 @@
-import { resolve, dirname } from 'node:path';
-import { accessSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fork } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import type { EforgeEvent } from '../engine/events.js';
+import { createRequire } from 'node:module';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { openDatabase, type MonitorDB } from './db.js';
 import { withRecording } from './recorder.js';
 import { readLockfile, isServerAlive, killPidIfAlive, removeLockfile } from '@eforge-build/client';
@@ -12,8 +11,6 @@ export type { MonitorDB } from './db.js';
 export type { MonitorServer } from './server.js';
 export { withRecording } from './recorder.js';
 export { allocatePort } from './registry.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export interface Monitor {
   db: MonitorDB;
@@ -125,19 +122,12 @@ function buildMonitor(db: MonitorDB, port: number | null, cwd: string): Monitor 
 }
 
 function resolveServerMain(): string {
-  // In prod (bundled): __dirname = dist/, server-main.js sits alongside cli.js
-  // In dev (tsx): __dirname = src/monitor/, server-main.ts is in the same directory
-  const jsPath = resolve(__dirname, 'server-main.js');
   try {
-    accessSync(jsPath);
-    return jsPath;
-  } catch {}
-  const tsPath = resolve(__dirname, 'server-main.ts');
-  try {
-    accessSync(tsPath);
-    return tsPath;
-  } catch {}
-  throw new Error(`Monitor server entry point not found at ${jsPath} or ${tsPath}`);
+    const require = createRequire(import.meta.url);
+    return require.resolve('@eforge-build/monitor/server-main');
+  } catch {
+    throw new Error('Monitor server-main entry not found. Did you run `pnpm build`?');
+  }
 }
 
 async function spawnDetachedServer(

@@ -13,7 +13,7 @@ import { parse as parseYaml } from 'yaml';
 
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
-import type { EforgeConfig } from '../engine/config.js';
+import type { EforgeConfig } from '@eforge-build/engine/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
@@ -867,7 +867,7 @@ export async function startServer(
       serveHealth(req, res);
     } else if (url === '/api/config/show') {
       try {
-        const { loadConfig } = await import('../engine/config.js');
+        const { loadConfig } = await import('@eforge-build/engine/config');
         const resolved = await loadConfig(options?.cwd);
         sendJson(res, resolved);
       } catch (err) {
@@ -875,7 +875,7 @@ export async function startServer(
       }
     } else if (url === '/api/config/validate') {
       try {
-        const { validateConfigFile } = await import('../engine/config.js');
+        const { validateConfigFile } = await import('@eforge-build/engine/config');
         const result = await validateConfigFile(options?.cwd);
         sendJson(res, result);
       } catch (err) {

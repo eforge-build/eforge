@@ -12,9 +12,9 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EforgeEngine } from '../src/engine/eforge.js';
-import type { EforgeEvent } from '../src/engine/events.js';
-import { resolveQueueOrder, type QueuedPrd } from '../src/engine/prd-queue.js';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
+import type { EforgeEvent } from '@eforge-build/engine/events';
+import { resolveQueueOrder, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 
 // ---------------------------------------------------------------------------
 // Helpers

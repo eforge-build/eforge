@@ -5,20 +5,20 @@ import { resolve } from 'node:path';
 
 declare const EFORGE_VERSION: string;
 
-import { EforgeEngine } from '../engine/eforge.js';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
 import {
   validatePlanSet,
   parseOrchestrationConfig,
   resolveDependencyGraph,
   validateRuntimeReadiness,
-} from '../engine/plan.js';
-import type { EforgeConfig, HookConfig } from '../engine/config.js';
-import type { EforgeEvent } from '../engine/events.js';
-import { withHooks } from '../engine/hooks.js';
-import { withSessionId, withRunId, runSession } from '../engine/session.js';
+} from '@eforge-build/engine/plan';
+import type { EforgeConfig, HookConfig } from '@eforge-build/engine/config';
+import type { EforgeEvent } from '@eforge-build/engine/events';
+import { withHooks } from '@eforge-build/engine/hooks';
+import { withSessionId, withRunId, runSession } from '@eforge-build/engine/session';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
-import { ensureMonitor, signalMonitorShutdown, type Monitor } from '../monitor/index.js';
+import { ensureMonitor, signalMonitorShutdown, type Monitor } from '@eforge-build/monitor';
 import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, removeLockfile } from '@eforge-build/client';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
@@ -77,7 +77,7 @@ function wrapEvents(
   events: AsyncGenerator<EforgeEvent>,
   monitor: Monitor,
   hooks: readonly HookConfig[],
-  sessionOpts?: import('../engine/session.js').SessionOptions,
+  sessionOpts?: import('@eforge-build/engine/session').SessionOptions,
 ): AsyncGenerator<EforgeEvent> {
   let wrapped = sessionOpts ? withSessionId(events, sessionOpts) : events;
   wrapped = withRunId(wrapped);
@@ -106,7 +106,7 @@ async function consumeEvents(
 
 async function showDryRun(planSet: string): Promise<never> {
   const cwd = process.cwd();
-  const { loadConfig } = await import('../engine/config.js');
+  const { loadConfig } = await import('@eforge-build/engine/config');
   const resolvedConfig = await loadConfig(cwd);
   const configPath = resolve(cwd, resolvedConfig.plan.outputDir, planSet, 'orchestration.yaml');
   const validation = await validatePlanSet(configPath);
@@ -343,7 +343,7 @@ export function createProgram(abortController?: AbortController): Command {
             const compileSessionId = randomUUID();
 
             // Find the enqueued PRD file path from the queue
-            const { loadQueue } = await import('../engine/prd-queue.js');
+            const { loadQueue } = await import('@eforge-build/engine/prd-queue');
             const prds = await loadQueue(engine.resolvedConfig.prdQueue.dir, process.cwd());
             const prd = prds.find((p) => p.id === enqueuedName || p.frontmatter.title === enqueuedName);
             if (!prd) {
@@ -455,8 +455,8 @@ export function createProgram(abortController?: AbortController): Command {
     .command('list')
     .description('Show PRDs in the queue')
     .action(async () => {
-      const { loadQueue, isPrdRunning } = await import('../engine/prd-queue.js');
-      const { loadConfig } = await import('../engine/config.js');
+      const { loadQueue, isPrdRunning } = await import('@eforge-build/engine/prd-queue');
+      const { loadConfig } = await import('@eforge-build/engine/config');
       const config = await loadConfig();
       const cwd = process.cwd();
       const queueDir = config.prdQueue.dir;
@@ -551,7 +551,7 @@ export function createProgram(abortController?: AbortController): Command {
     .command('validate')
     .description('Validate eforge/config.yaml configuration')
     .action(async () => {
-      const { validateConfigFile } = await import('../engine/config.js');
+      const { validateConfigFile } = await import('@eforge-build/engine/config');
       const result = await validateConfigFile();
       if (result.valid) {
         console.log(chalk.green('✔') + ' Config valid');
@@ -568,7 +568,7 @@ export function createProgram(abortController?: AbortController): Command {
     .command('show')
     .description('Show resolved eforge configuration')
     .action(async () => {
-      const { loadConfig } = await import('../engine/config.js');
+      const { loadConfig } = await import('@eforge-build/engine/config');
       const { stringify } = await import('yaml');
       const resolved = await loadConfig();
       console.log(stringify(resolved));
@@ -615,36 +615,17 @@ export function createProgram(abortController?: AbortController): Command {
       }
 
       // Spawn detached server-main with --persistent flag
-      const { accessSync } = await import('node:fs');
-      const { dirname: dirnameFn } = await import('node:path');
-      const { fileURLToPath: fileURLToPathFn } = await import('node:url');
+      const { createRequire } = await import('node:module');
       const { fork } = await import('node:child_process');
 
-      // Resolve server-main entry point
-      const __dirname = dirnameFn(fileURLToPathFn(import.meta.url));
+      // Resolve server-main entry point via Node module resolution
+      const require = createRequire(import.meta.url);
       let serverMainPath: string;
-      const jsPath = resolve(__dirname, '..', 'monitor', 'server-main.js');
-      const tsPath = resolve(__dirname, '..', 'monitor', 'server-main.ts');
-
-      // In bundled mode, server-main.js is alongside cli.js in dist/
-      const bundledPath = resolve(__dirname, 'server-main.js');
-
       try {
-        accessSync(bundledPath);
-        serverMainPath = bundledPath;
+        serverMainPath = require.resolve('@eforge-build/monitor/server-main');
       } catch {
-        try {
-          accessSync(jsPath);
-          serverMainPath = jsPath;
-        } catch {
-          try {
-            accessSync(tsPath);
-            serverMainPath = tsPath;
-          } catch {
-            console.error(chalk.red('Could not find server-main entry point'));
-            process.exit(1);
-          }
-        }
+        console.error(chalk.red('Monitor server-main entry not found. Did you run `pnpm build`?'));
+        process.exit(1);
       }
 
       const child = fork(serverMainPath, [dbPath, String(preferredPort), cwd, '--persistent'], {
@@ -711,7 +692,7 @@ export function createProgram(abortController?: AbortController): Command {
       if (!options.force) {
         let runningBuilds: { id: string; command: string; status: string }[] = [];
         try {
-          const { openDatabase } = await import('../monitor/db.js');
+          const { openDatabase } = await import('@eforge-build/monitor/db');
           const dbPath = resolve(cwd, '.eforge', 'monitor.db');
           const db = openDatabase(dbPath);
           runningBuilds = db.getRunningRuns();
@@ -816,7 +797,7 @@ export function createProgram(abortController?: AbortController): Command {
       // Check running builds via DB
       let runningCount = 0;
       try {
-        const { openDatabase } = await import('../monitor/db.js');
+        const { openDatabase } = await import('@eforge-build/monitor/db');
         const dbPath = resolve(cwd, '.eforge', 'monitor.db');
         const db = openDatabase(dbPath);
         runningCount = db.getRunningRuns().length;

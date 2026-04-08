@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
-import { validateRuntimeReadiness } from '../src/engine/plan.js';
+import { validateRuntimeReadiness } from '@eforge-build/engine/plan';
 
 const exec = promisify(execFile);
 

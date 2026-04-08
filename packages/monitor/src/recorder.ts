@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { EforgeEvent } from '../engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { MonitorDB } from './db.js';
 
 /**

@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { useTempDir } from './test-tmpdir.js';
-import { ensureMonitor } from '../src/monitor/index.js';
-import { openDatabase } from '../src/monitor/db.js';
-import type { EforgeEvent } from '../src/engine/events.js';
+import { ensureMonitor } from '@eforge-build/monitor';
+import { openDatabase } from '@eforge-build/monitor/db';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 
 describe('ensureMonitor with noServer', () => {
   const makeTempDir = useTempDir();

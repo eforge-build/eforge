@@ -36,10 +36,10 @@ vi.mock('../src/engine/eforge.js', async (importOriginal) => {
   return original;
 });
 
-import { loadConfig } from '../src/engine/config.js';
-import { DEFAULT_CONFIG } from '../src/engine/config.js';
-import { EforgeEngine } from '../src/engine/eforge.js';
-import { ClaudeSDKBackend } from '../src/engine/backends/claude-sdk.js';
+import { loadConfig } from '@eforge-build/engine/config';
+import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { ClaudeSDKBackend } from '@eforge-build/engine/backends/claude-sdk';
 import { StubBackend } from './stub-backend.js';
 
 const mockedLoadConfig = vi.mocked(loadConfig);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeHeatmapData } from '../src/monitor/ui/src/components/heatmap/use-heatmap-data';
+import { computeHeatmapData } from '@eforge-build/monitor-ui/components/heatmap/use-heatmap-data';
 
 describe('computeHeatmapData', () => {
   it('returns empty data for empty inputs', () => {

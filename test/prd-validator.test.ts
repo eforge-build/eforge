@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseGaps } from '../src/engine/agents/prd-validator.js';
-import { prdValidate } from '../src/engine/orchestrator/phases.js';
-import type { PhaseContext } from '../src/engine/orchestrator/phases.js';
-import type { EforgeEvent, EforgeState, PrdValidationGap } from '../src/engine/events.js';
+import { parseGaps } from '@eforge-build/engine/agents/prd-validator';
+import { prdValidate } from '@eforge-build/engine/orchestrator/phases';
+import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
+import type { EforgeEvent, EforgeState, PrdValidationGap } from '@eforge-build/engine/events';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 
 /**

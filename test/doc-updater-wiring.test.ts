@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent } from './test-events.js';
-import { runDocUpdater } from '../src/engine/agents/doc-updater.js';
+import { runDocUpdater } from '@eforge-build/engine/agents/doc-updater';
 
 describe('runDocUpdater wiring', () => {
   it('emits lifecycle events in order: start then complete', async () => {

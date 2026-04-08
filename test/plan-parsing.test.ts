@@ -4,9 +4,9 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { parsePlanFile, parseOrchestrationConfig, injectPipelineIntoOrchestrationYaml, transitiveReduce } from '../src/engine/plan.js';
+import { parsePlanFile, parseOrchestrationConfig, injectPipelineIntoOrchestrationYaml, transitiveReduce } from '@eforge-build/engine/plan';
 import { useTempDir } from './test-tmpdir.js';
-import type { PipelineComposition } from '../src/engine/schemas.js';
+import type { PipelineComposition } from '@eforge-build/engine/schemas';
 
 const TEST_PIPELINE: PipelineComposition = {
   scope: 'excursion',

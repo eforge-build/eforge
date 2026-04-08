@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import type { ReviewIssue } from '../src/engine/events.js';
+import type { ReviewIssue } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
-import { deduplicateIssues } from '../src/engine/agents/parallel-reviewer.js';
-import { runReviewFixer } from '../src/engine/agents/review-fixer.js';
+import { deduplicateIssues } from '@eforge-build/engine/agents/parallel-reviewer';
+import { runReviewFixer } from '@eforge-build/engine/agents/review-fixer';
 
 describe('deduplicateIssues', () => {
   it('removes exact duplicates keeping highest severity', () => {

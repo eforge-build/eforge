@@ -1,17 +1,17 @@
-# eforge-pi
+# @eforge-build/eforge-pi
 
 Pi package for [eforge](https://eforge.build).
 
 Install in Pi:
 
 ```bash
-pi install npm:eforge-pi
+pi install npm:@eforge-build/eforge-pi
 ```
 
 Or install for the current project only:
 
 ```bash
-pi install -l npm:eforge-pi
+pi install -l npm:@eforge-build/eforge-pi
 ```
 
 Then, in your project:
@@ -32,11 +32,11 @@ Then, in your project:
 - [Pi](https://github.com/nicories/pi-mono)
 - An LLM provider credential supported by your chosen eforge backend
 
-## Relationship to the `eforge` npm package
+## Relationship to the `@eforge-build/eforge` npm package
 
-`eforge-pi` is the Pi integration package.
+`@eforge-build/eforge-pi` is the Pi integration package.
 
-The main [`eforge`](https://www.npmjs.com/package/eforge) npm package is the standalone CLI and daemon runtime that this Pi package invokes via `npx -y eforge`.
+The main [`@eforge-build/eforge`](https://www.npmjs.com/package/@eforge-build/eforge) npm package is the standalone CLI and daemon runtime that this Pi package invokes via `npx -y @eforge-build/eforge`.
 
 For project docs and full setup guidance, see the main repository:
 

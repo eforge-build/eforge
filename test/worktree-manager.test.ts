@@ -4,8 +4,8 @@ import { promisify } from 'node:util';
 import { writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
-import { WorktreeManager } from '../src/engine/worktree-manager.js';
-import { createMergeWorktree } from '../src/engine/worktree-ops.js';
+import { WorktreeManager } from '@eforge-build/engine/worktree-manager';
+import { createMergeWorktree } from '@eforge-build/engine/worktree-ops';
 
 const exec = promisify(execFile);
 

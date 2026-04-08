@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
-import { builderImplement } from '../src/engine/agents/builder.js';
-import { DEFAULT_CONFIG } from '../src/engine/config.js';
-import { parseOrchestrationConfig } from '../src/engine/plan.js';
+import { builderImplement } from '@eforge-build/engine/agents/builder';
+import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { parseOrchestrationConfig } from '@eforge-build/engine/plan';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';

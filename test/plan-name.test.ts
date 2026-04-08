@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveNameFromSource, validatePlanSetName } from '../src/engine/plan.js';
+import { deriveNameFromSource, validatePlanSetName } from '@eforge-build/engine/plan';
 
 describe('deriveNameFromSource', () => {
   it('extracts kebab-case name from file path', () => {

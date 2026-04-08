@@ -12,7 +12,7 @@ import {
   createMergeWorktree,
   mergeFeatureBranchToBase,
   cleanupWorktrees,
-} from '../src/engine/worktree-ops.js';
+} from '@eforge-build/engine/worktree-ops';
 
 const exec = promisify(execFile);
 

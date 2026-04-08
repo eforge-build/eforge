@@ -9,6 +9,7 @@ export default defineConfig({
   target: "node22",
   clean: true,
   dts: true,
+  external: [/^@eforge-build\//],
   async onSuccess() {
     if (existsSync("../monitor-ui/dist")) {
       await cp("../monitor-ui/dist", "dist/monitor-ui", { recursive: true });

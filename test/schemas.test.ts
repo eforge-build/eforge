@@ -21,7 +21,7 @@ import {
   getModuleSchemaYaml,
   getPlanFrontmatterSchemaYaml,
   getPipelineCompositionSchemaYaml,
-} from '../src/engine/schemas.js';
+} from '@eforge-build/engine/schemas';
 
 describe('getSchemaYaml', () => {
   it('returns YAML string containing expected fields', () => {

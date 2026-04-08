@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { propagateFailure, shouldSkipMerge, computeMaxConcurrency } from '../src/engine/orchestrator/phases.js';
-import { resumeState } from '../src/engine/orchestrator/plan-lifecycle.js';
-import { initializeState } from '../src/engine/orchestrator.js';
-import { saveState } from '../src/engine/state.js';
-import type { EforgeState, OrchestrationConfig, PlanState } from '../src/engine/events.js';
-import type { PipelineComposition } from '../src/engine/schemas.js';
+import { propagateFailure, shouldSkipMerge, computeMaxConcurrency } from '@eforge-build/engine/orchestrator/phases';
+import { resumeState } from '@eforge-build/engine/orchestrator/plan-lifecycle';
+import { initializeState } from '@eforge-build/engine/orchestrator';
+import { saveState } from '@eforge-build/engine/state';
+import type { EforgeState, OrchestrationConfig, PlanState } from '@eforge-build/engine/events';
+import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import { useTempDir } from './test-tmpdir.js';
 
 // --- Helpers ---

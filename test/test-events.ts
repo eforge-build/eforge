@@ -1,4 +1,4 @@
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 
 /** Collect all events from an async generator into an array. */
 export async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {

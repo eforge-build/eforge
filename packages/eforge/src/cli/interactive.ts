@@ -1,6 +1,6 @@
 import readline from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import type { ClarificationQuestion } from '../engine/events.js';
+import type { ClarificationQuestion } from '@eforge-build/engine/events';
 
 /**
  * Create a clarification callback for the engine.

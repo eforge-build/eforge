@@ -3,7 +3,7 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, isPrdRunning, type QueuedPrd } from '../src/engine/prd-queue.js';
+import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, isPrdRunning, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------

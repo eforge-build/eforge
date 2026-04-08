@@ -1,8 +1,8 @@
 import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
-import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from '../engine/events.js';
-import type { EforgeConfig } from '../engine/config.js';
-import type { QueuedPrd } from '../engine/prd-queue.js';
+import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
+import type { EforgeConfig } from '@eforge-build/engine/config';
+import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();

@@ -12,13 +12,13 @@ Check for available eforge updates and walk through updating the npm package, re
 
 ### Step 1: Check Current CLI Version
 
-Run `npx -y eforge --version` to get the currently installed CLI version. Save this as `currentVersion`.
+Run `npx -y @eforge-build/eforge --version` to get the currently installed CLI version. Save this as `currentVersion`.
 
 If the command fails, report that eforge is not installed and stop.
 
 ### Step 2: Check Latest Available Version
 
-Run `npm view eforge version` to get the latest published version. Save this as `latestVersion`.
+Run `npm view @eforge-build/eforge version` to get the latest published version. Save this as `latestVersion`.
 
 ### Step 3: Compare Versions
 
@@ -32,10 +32,10 @@ If `currentVersion` equals `latestVersion`:
 
 Determine the install type by running `which eforge` and inspecting the resolved path:
 
-- **Global install** (path contains a global `node_modules`, e.g. `/usr/local/lib/node_modules` or `~/.npm/`): Run `npm install -g eforge@latest`
+- **Global install** (path contains a global `node_modules`, e.g. `/usr/local/lib/node_modules` or `~/.npm/`): Run `npm install -g @eforge-build/eforge@latest`
 - **npx usage** (no global install found): Skip this step - npx always fetches the latest version automatically.
 
-After the install completes, run `npx -y eforge --version` again to confirm the new version. Save this as `newCliVersion`.
+After the install completes, run `npx -y @eforge-build/eforge --version` again to confirm the new version. Save this as `newCliVersion`.
 
 ### Step 5: Restart the Daemon
 
@@ -53,7 +53,7 @@ Call the `eforge_daemon` tool with `{ action: "stop" }`.
 
 Then call the `eforge_daemon` tool with `{ action: "start" }`.
 
-After the daemon restarts, run `npx -y eforge --version` to confirm the running version. If `newCliVersion` was not set in Step 4 (npx path), save this as `newCliVersion`.
+After the daemon restarts, run `npx -y @eforge-build/eforge --version` to confirm the running version. If `newCliVersion` was not set in Step 4 (npx path), save this as `newCliVersion`.
 
 ### Step 6: Update the Pi Package
 
@@ -85,8 +85,8 @@ Report the update results:
 
 | Error | Action |
 |-------|--------|
-| `npx -y eforge --version` fails | Report that eforge is not installed; suggest `npm install -g eforge` |
-| `npm view eforge version` fails | Report network or registry error; suggest retrying |
+| `npx -y @eforge-build/eforge --version` fails | Report that eforge is not installed; suggest `npm install -g @eforge-build/eforge` |
+| `npm view @eforge-build/eforge version` fails | Report network or registry error; suggest retrying |
 | `npm install -g` fails | Show error output; suggest checking permissions or using `sudo` |
-| Daemon stop/start fails | Show error output; suggest running `npx -y eforge daemon start` manually |
+| Daemon stop/start fails | Show error output; suggest running `npx -y @eforge-build/eforge daemon start` manually |
 | Active build detected (`status: 'running'`) | Abort the update; tell the user to wait until all builds complete before retrying |

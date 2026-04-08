@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { findEvent, filterEvents } from './test-events.js';
-import { runFormatter } from '../src/engine/agents/formatter.js';
+import { runFormatter } from '@eforge-build/engine/agents/formatter';
 
 async function collectEventsAndResult(
   gen: AsyncGenerator<EforgeEvent, { body: string }>,

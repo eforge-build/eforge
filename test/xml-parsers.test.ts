@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { parseClarificationBlocks, parseSkipBlock, parseModulesBlock, parseStalenessBlock } from '../src/engine/agents/common.js';
-import { parseReviewIssues } from '../src/engine/agents/reviewer.js';
-import { parseEvaluationBlock } from '../src/engine/agents/common.js';
-import { formatPriorClarifications } from '../src/engine/agents/planner.js';
+import { parseClarificationBlocks, parseSkipBlock, parseModulesBlock, parseStalenessBlock } from '@eforge-build/engine/agents/common';
+import { parseReviewIssues } from '@eforge-build/engine/agents/reviewer';
+import { parseEvaluationBlock } from '@eforge-build/engine/agents/common';
+import { formatPriorClarifications } from '@eforge-build/engine/agents/planner';
 
 describe('parseClarificationBlocks', () => {
   it('parses a single question with all attributes', () => {

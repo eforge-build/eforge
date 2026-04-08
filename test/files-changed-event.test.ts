@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 
 describe('build:files_changed event', () => {
   it('is assignable to EforgeEvent', () => {

@@ -1,14 +1,14 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
-const rootPackagePath = new URL("../package.json", import.meta.url);
-const piPackagePath = new URL("../pi-package/package.json", import.meta.url);
+const eforgePackagePath = new URL("../packages/eforge/package.json", import.meta.url);
+const piPackagePath = new URL("../packages/eforge-pi/package.json", import.meta.url);
 const clientPackagePath = new URL("../packages/client/package.json", import.meta.url);
 const clientDistPath = new URL("../packages/client/dist", import.meta.url);
 const clientReadmePath = new URL("../packages/client/README.md", import.meta.url);
 const rootLicensePath = new URL("../LICENSE", import.meta.url);
-const piPackageReadmePath = new URL("../pi-package/README.md", import.meta.url);
-const piPackageExtensionsPath = new URL("../pi-package/extensions", import.meta.url);
-const piPackageSkillsPath = new URL("../pi-package/skills", import.meta.url);
+const piPackageReadmePath = new URL("../packages/eforge-pi/README.md", import.meta.url);
+const piPackageExtensionsPath = new URL("../packages/eforge-pi/extensions", import.meta.url);
+const piPackageSkillsPath = new URL("../packages/eforge-pi/skills", import.meta.url);
 const stageDirPath = new URL("../tmp/pi-package-publish/", import.meta.url);
 const stagedPackageJsonPath = new URL("package.json", stageDirPath);
 const stagedLicensePath = new URL("LICENSE", stageDirPath);
@@ -20,7 +20,7 @@ const stagedBundledClientDist = new URL("dist", stagedBundledClientDir);
 const stagedBundledClientPackageJson = new URL("package.json", stagedBundledClientDir);
 const stagedBundledClientReadme = new URL("README.md", stagedBundledClientDir);
 
-const rootPackage = JSON.parse(readFileSync(rootPackagePath, "utf8"));
+const eforgePackage = JSON.parse(readFileSync(eforgePackagePath, "utf8"));
 const piPackage = JSON.parse(readFileSync(piPackagePath, "utf8"));
 
 // Map workspace package names to their actual versions for dependency rewriting
@@ -28,9 +28,9 @@ const workspacePackageVersions = {
   "@eforge-build/client": JSON.parse(readFileSync(clientPackagePath, "utf8")).version,
 };
 
-piPackage.version = rootPackage.version;
-piPackage.homepage = rootPackage.homepage;
-piPackage.repository = rootPackage.repository;
+piPackage.version = eforgePackage.version;
+piPackage.homepage = eforgePackage.homepage;
+piPackage.repository = eforgePackage.repository;
 piPackage.publishConfig = { access: "public" };
 // `node_modules/` is listed so npm pack honors `bundledDependencies` and ships
 // the built `@eforge-build/client` tree inside the tarball. Pi resolves the
@@ -86,4 +86,4 @@ if (existsSync(clientReadmePath)) {
 
 writeFileSync(stagedPackageJsonPath, `${JSON.stringify(piPackage, null, 2)}\n`);
 
-console.log(`Prepared ${stageDirPath.pathname} for npm publish (version ${rootPackage.version}).`);
+console.log(`Prepared ${stageDirPath.pathname} for npm publish (version ${eforgePackage.version}).`);

@@ -27,7 +27,8 @@
   },
   "dependencies": {
     "@eforge-build/client": "workspace:*",
-    "@eforge-build/engine": "workspace:*"
+    "@eforge-build/engine": "workspace:*",
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@eforge-build/monitor-ui": "workspace:*",

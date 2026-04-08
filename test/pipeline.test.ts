@@ -7,11 +7,11 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '../src/engine/events.js';
-import type { EforgeConfig } from '../src/engine/config.js';
-import type { AgentBackend } from '../src/engine/backend.js';
-import type { PipelineComposition } from '../src/engine/schemas.js';
-import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '../src/engine/config.js';
+import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
+import type { EforgeConfig } from '@eforge-build/engine/config';
+import type { AgentBackend } from '@eforge-build/engine/backend';
+import type { PipelineComposition } from '@eforge-build/engine/schemas';
+import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
 
 const DEFAULT_BUILD = ['implement', 'review-cycle'];
 
@@ -22,7 +22,7 @@ const TEST_PIPELINE: PipelineComposition = {
   defaultReview: DEFAULT_REVIEW,
   rationale: 'test pipeline',
 };
-import { createNoopTracingContext } from '../src/engine/tracing.js';
+import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 import {
   getCompileStage,
   getBuildStage,
@@ -36,7 +36,7 @@ import {
   type CompileStage,
   type BuildStage,
   type StageDescriptor,
-} from '../src/engine/pipeline.js';
+} from '@eforge-build/engine/pipeline';
 
 // ---------------------------------------------------------------------------
 // Helpers

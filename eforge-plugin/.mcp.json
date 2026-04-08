@@ -2,7 +2,11 @@
   "mcpServers": {
     "eforge": {
       "command": "npx",
-      "args": ["-y", "eforge", "mcp-proxy"]
+      "args": [
+        "-y",
+        "@eforge-build/eforge",
+        "mcp-proxy"
+      ]
     }
   }
 }

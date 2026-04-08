@@ -1,20 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
-import { runPlanner } from '../src/engine/agents/planner.js';
-import { runReview } from '../src/engine/agents/reviewer.js';
-import { builderImplement, builderEvaluate } from '../src/engine/agents/builder.js';
-import { runPlanReview } from '../src/engine/agents/plan-reviewer.js';
-import { runPlanEvaluate } from '../src/engine/agents/plan-evaluator.js';
-import { runArchitectureEvaluate } from '../src/engine/agents/plan-evaluator.js';
-import { runModulePlanner } from '../src/engine/agents/module-planner.js';
-import { runArchitectureReview } from '../src/engine/agents/architecture-reviewer.js';
-import { runPrdValidator } from '../src/engine/agents/prd-validator.js';
-import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors } from '../src/engine/pipeline.js';
+import { runPlanner } from '@eforge-build/engine/agents/planner';
+import { runReview } from '@eforge-build/engine/agents/reviewer';
+import { builderImplement, builderEvaluate } from '@eforge-build/engine/agents/builder';
+import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
+import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
+import { runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
+import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
+import { runArchitectureReview } from '@eforge-build/engine/agents/architecture-reviewer';
+import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
+import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors } from '@eforge-build/engine/pipeline';
 
 // --- Planner ---
 

@@ -4,7 +4,7 @@ import {
   formatNumber,
   formatTime,
   escapeHtml,
-} from '../src/monitor/ui/src/lib/format';
+} from '@eforge-build/monitor-ui/lib/format';
 
 describe('formatDuration', () => {
   it('formats seconds', () => {

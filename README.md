@@ -1,7 +1,7 @@
 # eforge
 
-[![npm version](https://img.shields.io/npm/v/eforge)](https://www.npmjs.com/package/eforge)
-[![npm pi package](https://img.shields.io/npm/v/eforge-pi)](https://www.npmjs.com/package/eforge-pi)
+[![npm version](https://img.shields.io/npm/v/@eforge-build/eforge)](https://www.npmjs.com/package/@eforge-build/eforge)
+[![npm pi package](https://img.shields.io/npm/v/@eforge-build/eforge-pi)](https://www.npmjs.com/package/@eforge-build/eforge-pi)
 
 An open source agentic build system for developers who want to stay close to the work. Describe what you want built - a prompt, a markdown file, a full PRD - and hand it off. eforge plans the implementation, builds in isolated worktrees, reviews the code blind, and validates the result. The build runs in the background. Your careful planning gets executed faithfully.
 
@@ -69,17 +69,17 @@ Claude Code plugin:
 Pi package:
 
 ```bash
-pi install npm:eforge-pi
+pi install npm:@eforge-build/eforge-pi
 /eforge:init
 ```
 
 Add `-l` to `pi install` if you want to write to project settings (`.pi/settings.json`) instead of your global Pi settings:
 
 ```bash
-pi install -l npm:eforge-pi
+pi install -l npm:@eforge-build/eforge-pi
 ```
 
-The main `eforge` npm package is the standalone CLI and daemon runtime. The Pi integration is published separately as `eforge-pi`.
+The main `@eforge-build/eforge` npm package is the standalone CLI and daemon runtime. The Pi integration is published separately as `@eforge-build/eforge-pi`.
 
 The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. In Claude Code it presents a form to choose your backend (`claude-sdk` or `pi`); in Pi it defaults to `backend: pi`. For further customization, run `/eforge:config --edit`.
 
@@ -88,11 +88,11 @@ The Pi package includes an `/eforge:plan` skill for structured planning conversa
 Standalone CLI:
 
 ```bash
-npx eforge build "Add rate limiting to the API"
-npx eforge build plans/my-feature-prd.md
+npx @eforge-build/eforge build "Add rate limiting to the API"
+npx @eforge-build/eforge build plans/my-feature-prd.md
 ```
 
-Or install globally: `npm install -g eforge`
+Or install globally: `npm install -g @eforge-build/eforge`
 
 For standalone use, create `eforge/config.yaml` with at minimum `backend: claude-sdk` (or `backend: pi` for the Pi multi-provider backend).
 
@@ -110,7 +110,7 @@ pnpm test         # Run unit tests
 
 ### npx convention
 
-The eforge plugin uses `npx -y eforge` to invoke the CLI. This ensures the plugin works for all users regardless of install method - global install, npx, or local development. The `-y` flag auto-confirms install prompts, which is required because the MCP server runs headless and cannot prompt interactively.
+The eforge plugin uses `npx -y @eforge-build/eforge` to invoke the CLI. This ensures the plugin works for all users regardless of install method - global install, npx, or local development. The `-y` flag auto-confirms install prompts, which is required because the MCP server runs headless and cannot prompt interactively.
 
 ### Developer workflow
 

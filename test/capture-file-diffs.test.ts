@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { captureFileDiffs } from '../src/engine/pipeline.js';
+import { captureFileDiffs } from '@eforge-build/engine/pipeline';
 
 /** Run a git command synchronously in the given cwd. */
 function git(cwd: string, ...args: string[]): string {

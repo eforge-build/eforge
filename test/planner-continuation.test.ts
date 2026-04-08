@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
-import { runPlanner } from '../src/engine/agents/planner.js';
-import { DEFAULT_CONFIG } from '../src/engine/config.js';
-import { resolveAgentConfig } from '../src/engine/pipeline.js';
+import { runPlanner } from '@eforge-build/engine/agents/planner';
+import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { resolveAgentConfig } from '@eforge-build/engine/pipeline';
 
 // --- runPlanner with continuation context ---
 
