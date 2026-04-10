@@ -200,7 +200,7 @@ describe('runArchitectureEvaluate continuation context', () => {
 // --- Prompt template verification ---
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const promptsDir = resolve(__dirname, '../src/engine/prompts');
+const promptsDir = resolve(__dirname, '../packages/engine/src/prompts');
 
 describe('evaluator prompt templates', () => {
   it('evaluator.md contains {{continuation_context}} between Context and Setup sections', async () => {

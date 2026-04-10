@@ -5,9 +5,9 @@ maxConcurrentBuilds: 2
 build:
   postMergeCommands:
     - pnpm install
+    - pnpm build
     - pnpm type-check
     - pnpm test
-    - pnpm build
 
 profiles:
   docs:

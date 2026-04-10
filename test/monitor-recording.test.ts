@@ -105,7 +105,7 @@ describe('enqueue recording', () => {
       for (const e of events) yield e;
     }
 
-    const { withRecording } = await import('../src/monitor/recorder.js');
+    const { withRecording } = await import('@eforge-build/monitor/recorder');
     const wrapped = withRecording(fakeEvents(), db, cwd);
     const collected: EforgeEvent[] = [];
     for await (const event of wrapped) {
@@ -154,7 +154,7 @@ describe('enqueue:failed recording', () => {
       for (const e of events) yield e;
     }
 
-    const { withRecording } = await import('../src/monitor/recorder.js');
+    const { withRecording } = await import('@eforge-build/monitor/recorder');
     const wrapped = withRecording(fakeEvents(), db, cwd);
     const collected: EforgeEvent[] = [];
     for await (const event of wrapped) {
@@ -193,11 +193,11 @@ describe('enqueue-only session via runSession + withRecording', () => {
     }
 
     // Wrap with runSession (which should detect enqueue:complete as success)
-    const { runSession } = await import('../src/engine/session.js');
+    const { runSession } = await import('@eforge-build/engine/session');
     const sessionId = 'test-session-enqueue-only';
     const sessionWrapped = runSession(enqueueOnlyEvents(), sessionId);
 
-    const { withRecording } = await import('../src/monitor/recorder.js');
+    const { withRecording } = await import('@eforge-build/monitor/recorder');
     const recorded = withRecording(sessionWrapped, db, cwd);
 
     const collected: EforgeEvent[] = [];
@@ -253,7 +253,7 @@ describe('queue cycle event scoping', () => {
       yield { type: 'session:end', sessionId: 'session-2', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
     }
 
-    const { withRecording } = await import('../src/monitor/recorder.js');
+    const { withRecording } = await import('@eforge-build/monitor/recorder');
     const wrapped = withRecording(queueCycleEvents(), db, cwd);
     const collected: EforgeEvent[] = [];
     for await (const event of wrapped) {
@@ -312,8 +312,8 @@ describe('multi-phase session recording with withRunId', () => {
     }
 
     // Run through withRunId then withRecording
-    const { withRunId } = await import('../src/engine/session.js');
-    const { withRecording } = await import('../src/monitor/recorder.js');
+    const { withRunId } = await import('@eforge-build/engine/session');
+    const { withRecording } = await import('@eforge-build/monitor/recorder');
     const stamped = withRunId(multiPhaseEvents());
     const recorded = withRecording(stamped, db, cwd);
 
@@ -373,8 +373,8 @@ describe('queue cycle recording with session:end presence', () => {
       yield { type: 'session:end', sessionId: 'session-2', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
     }
 
-    const { withRunId } = await import('../src/engine/session.js');
-    const { withRecording } = await import('../src/monitor/recorder.js');
+    const { withRunId } = await import('@eforge-build/engine/session');
+    const { withRecording } = await import('@eforge-build/monitor/recorder');
     const stamped = withRunId(queueCycleEvents());
     const recorded = withRecording(stamped, db, cwd);
 
@@ -445,7 +445,7 @@ describe('recorder extracts diffs from build:files_changed events', () => {
       } as unknown as EforgeEvent;
     }
 
-    const { withRecording } = await import('../src/monitor/recorder.js');
+    const { withRecording } = await import('@eforge-build/monitor/recorder');
     const wrapped = withRecording(fakeEvents(), db, cwd);
     const collected: EforgeEvent[] = [];
     for await (const event of wrapped) {
@@ -502,7 +502,7 @@ describe('recorder extracts diffs from build:files_changed events', () => {
       } as unknown as EforgeEvent;
     }
 
-    const { withRecording } = await import('../src/monitor/recorder.js');
+    const { withRecording } = await import('@eforge-build/monitor/recorder');
     const wrapped = withRecording(fakeEvents(), db, cwd);
     const collected: EforgeEvent[] = [];
     for await (const event of wrapped) {

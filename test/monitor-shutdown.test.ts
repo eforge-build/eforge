@@ -23,7 +23,7 @@ vi.mock('@eforge-build/client', async (importOriginal) => {
   };
 });
 
-vi.mock('../src/monitor/db.js', () => ({
+vi.mock('@eforge-build/monitor/db', () => ({
   openDatabase: vi.fn(),
 }));
 

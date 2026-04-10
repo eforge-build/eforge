@@ -231,7 +231,7 @@ describe('git reset --hard removal verification', () => {
   it('eforge.ts does not contain git reset --hard in queue methods', async () => {
     const { readFileSync } = await import('node:fs');
     const eforgeSrc = readFileSync(
-      join(import.meta.dirname, '..', 'src', 'engine', 'eforge.ts'),
+      join(import.meta.dirname, '..', 'packages', 'engine', 'src', 'eforge.ts'),
       'utf-8',
     );
 

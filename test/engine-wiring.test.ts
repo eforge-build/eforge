@@ -10,8 +10,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock config loading to return controlled config
-vi.mock('../src/engine/config.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../src/engine/config.js')>();
+vi.mock('@eforge-build/engine/config', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@eforge-build/engine/config')>();
   return {
     ...original,
     loadConfig: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock('../src/engine/config.js', async (importOriginal) => {
 });
 
 // Mock PiBackend dynamic import to avoid requiring actual Pi SDK
-vi.mock('../src/engine/backends/pi.js', () => {
+vi.mock('@eforge-build/engine/backends/pi', () => {
   class MockPiBackend {
     readonly _isPiBackend = true;
     constructor(public options: unknown) {}
@@ -31,8 +31,8 @@ vi.mock('../src/engine/backends/pi.js', () => {
 });
 
 // Mock MCP server and plugin loading to prevent filesystem access
-vi.mock('../src/engine/eforge.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../src/engine/eforge.js')>();
+vi.mock('@eforge-build/engine/eforge', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@eforge-build/engine/eforge')>();
   return original;
 });
 

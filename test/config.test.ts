@@ -579,7 +579,7 @@ describe('roles schema in eforgeConfigSchema', () => {
   });
 
   it('rejects invalid role names via schema', async () => {
-    const { eforgeConfigSchema } = await import('../src/engine/config.js');
+    const { eforgeConfigSchema } = await import('@eforge-build/engine/config');
     const result = eforgeConfigSchema.safeParse({
       agents: {
         roles: {

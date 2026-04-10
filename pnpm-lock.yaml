@@ -8,6 +8,27 @@ importers:
 
   .:
     devDependencies:
+      '@eforge-build/client':
+        specifier: workspace:*
+        version: link:packages/client
+      '@eforge-build/engine':
+        specifier: workspace:*
+        version: link:packages/engine
+      '@eforge-build/monitor':
+        specifier: workspace:*
+        version: link:packages/monitor
+      '@eforge-build/monitor-ui':
+        specifier: workspace:*
+        version: link:packages/monitor-ui
+      '@mariozechner/pi-agent-core':
+        specifier: ^0.63.2
+        version: 0.63.2(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+      '@mariozechner/pi-ai':
+        specifier: ^0.63.2
+        version: 0.63.2(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+      '@mariozechner/pi-coding-agent':
+        specifier: ^0.63.2
+        version: 0.63.2(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
       '@types/node':
         specifier: ^25.5.2
         version: 25.5.2
@@ -17,6 +38,9 @@ importers:
       vitest:
         specifier: ^4.1.2
         version: 4.1.2(@types/node@25.5.2)(vite@8.0.0(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.2)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/client:
     devDependencies:

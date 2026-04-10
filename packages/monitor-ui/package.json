@@ -6,6 +6,9 @@
   "files": [
     "dist"
   ],
+  "exports": {
+    "./*": "./src/*"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -213,7 +213,7 @@ describe('eforgeReducer', () => {
   it('handles unknown event types gracefully', () => {
     const state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'totally:unknown' } as unknown as import('../src/engine/events.js').EforgeEvent,
+      event: { type: 'totally:unknown' } as unknown as import('@eforge-build/engine/events').EforgeEvent,
       eventId: '1',
     });
     expect(state.events).toHaveLength(1);
