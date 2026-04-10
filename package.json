@@ -17,8 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "pnpm -r type-check",
-    "prepublishOnly": "pnpm build && pnpm test",
-    "prepare:pi-package-publish": "node ./scripts/prepare-pi-package-publish.mjs"
+    "publish-all": "node scripts/publish-all.mjs"
   },
   "packageManager": "pnpm@10.26.0",
   "pnpm": {
