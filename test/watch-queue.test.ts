@@ -3,8 +3,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { abortableSleep, EforgeEngine } from '../src/engine/eforge.js';
-import type { EforgeEvent } from '../src/engine/events.js';
+import { abortableSleep, EforgeEngine } from '@eforge-build/engine/eforge';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 
 describe('abortableSleep', () => {
   it('returns false when timer completes normally', async () => {

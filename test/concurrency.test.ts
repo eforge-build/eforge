@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Semaphore, AsyncEventQueue, runParallel } from '../src/engine/concurrency.js';
-import type { ParallelTask } from '../src/engine/concurrency.js';
+import { Semaphore, AsyncEventQueue, runParallel } from '@eforge-build/engine/concurrency';
+import type { ParallelTask } from '@eforge-build/engine/concurrency';
 
 describe('Semaphore', () => {
   it('rejects < 1 permits', () => {

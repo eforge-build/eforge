@@ -27,13 +27,11 @@
 - **Low-fidelity input handling** — When the user provides a high-level prompt with minimal detail, eforge should perform thorough codebase exploration before compiling plans. May require a new exploration agent (or parallel exploratory agents) that activates for low-fidelity input and is bypassed for detailed PRDs.
 - **Specialty agents** — Identify and implement domain-specific agents for common use cases beyond the current plan-build-review pipeline
 - **Plugin skill coverage** — Add skills for common scenarios, e.g. `/eforge:update-docs` with flags like `--architecture`, `--readme`, `--claude-md` for targeted documentation updates
-- **Monorepo** — Extend pnpm workspaces (currently monitor UI, `@eforge-build/client`, and pi-package) so the engine, eforge-plugin, and marketing site each get their own package with isolated deps and build configs
 - **Schema library unification on TypeBox** — Standardize on TypeBox across the codebase. TypeBox schemas are JSON Schema natively (no `z.toJSONSchema()` conversion), already in the dep tree for Pi, and align with Pi's tool API. Prerequisite for shared tool registry.
 - **Shared tool registry** — Factor tool definitions into `@eforge-build/client` so MCP proxy and Pi extension become thin adapters. Eliminates remaining ~400 lines of cross-package tool-definition duplication. Depends on schema library unification.
-- **Typed SSE events in client package** — Extract `EforgeEvent` wire-protocol types from `src/engine/events.ts` into `@eforge-build/client`. Requires decoupling from engine-internal imports.
+- **Typed SSE events in client package** — Extract `EforgeEvent` wire-protocol types from `packages/engine/src/events.ts` into `@eforge-build/client`. Requires decoupling from engine-internal imports.
 - **Pi extension SSE event streaming** — Add SSE subscriber to Pi extension for live build progress via Pi `ExtensionAPI` channel.
-- **npm scope migration to `@eforge-build`** — Republish `eforge` as `@eforge-build/cli` and `eforge-pi` as `@eforge-build/pi-extension`. Deprecate old names. Requires major version bump.
-- **Monitor UI client adoption** — Port `src/monitor/ui/src/lib/api.ts` to import response types from `@eforge-build/client`.
+- **Monitor UI client adoption** — Port `packages/monitor-ui/src/lib/api.ts` to import response types from `@eforge-build/client`.
 - **TypeScript project references** — Adopt `tsconfig.json` `references` across workspace members for automatic topological ordering.
 
 ---

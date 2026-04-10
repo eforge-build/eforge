@@ -7,10 +7,10 @@ eforge is **library-first**. The engine is a pure TypeScript library that commun
 ```mermaid
 graph TD
     subgraph Consumers
-        CLI["CLI<br/><code>src/cli/</code>"]
-        Monitor["Monitor<br/><code>src/monitor/</code>"]
+        CLI["CLI<br/><code>packages/eforge/</code>"]
+        Monitor["Monitor<br/><code>packages/monitor/</code>"]
         Plugin["Plugin<br/><code>eforge-plugin/</code>"]
-        PiPkg["Pi Package<br/><code>pi-package/</code>"]
+        PiPkg["Pi Package<br/><code>packages/eforge-pi/</code>"]
     end
 
     subgraph Client ["@eforge-build/client"]
@@ -19,7 +19,7 @@ graph TD
         ResponseTypes["Response Types"]
     end
 
-    subgraph Engine ["Engine - src/engine/"]
+    subgraph Engine ["Engine - packages/engine/"]
         EforgeEngine["EforgeEngine"]
         Pipeline["Pipeline"]
         Orchestrator["Orchestrator"]
@@ -48,15 +48,15 @@ graph TD
 
 ### Engine
 
-`src/engine/` is the library core. The public API is the `EforgeEngine` class, which exposes methods for compiling, building, enqueueing, and queue processing - all returning `AsyncGenerator<EforgeEvent>`.
+`packages/engine/` is the library core. The public API is the `EforgeEngine` class, which exposes methods for compiling, building, enqueueing, and queue processing - all returning `AsyncGenerator<EforgeEvent>`.
 
 ### CLI
 
-`src/cli/` is a thin consumer. Parses arguments via Commander, iterates the engine's event stream, and renders to the terminal. Also manages the daemon process and handles interactive clarification prompts.
+`packages/eforge/` is a thin consumer. Parses arguments via Commander, iterates the engine's event stream, and renders to the terminal. Also manages the daemon process and handles interactive clarification prompts.
 
 ### Monitor
 
-`src/monitor/` provides the web dashboard. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves a React UI over SSE, runs as a detached process, and survives CLI exit.
+`packages/monitor/` provides the web dashboard. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves a React UI (`packages/monitor-ui/`) over SSE, runs as a detached process, and survives CLI exit.
 
 ### Plugin
 
@@ -64,7 +64,7 @@ graph TD
 
 ### Pi Package
 
-`pi-package/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, and daemon management. Skill-based slash commands (`/eforge:build`, `/eforge:config`, `/eforge:init`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity. The Claude Code MCP proxy uses `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. The Pi extension uses the same shared client.
+`packages/eforge-pi/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, and daemon management. Skill-based slash commands (`/eforge:build`, `/eforge:config`, `/eforge:init`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity. The Claude Code MCP proxy and the Pi extension both use `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol.
 
 ## Event System
 

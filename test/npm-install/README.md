@@ -4,7 +4,7 @@ Docker-based isolated environment for testing eforge as end users experience it 
 
 ## Why
 
-Local development puts eforge on PATH via `pnpm build`, so `npx -y eforge` resolves to the local build. This container has no local eforge - npx pulls directly from npm, matching the real user install path.
+Local development puts eforge on PATH via `pnpm build`, so `npx -y @eforge-build/eforge` resolves to the local build. This container has no local eforge - npx pulls directly from npm, matching the real user install path.
 
 ## Usage
 
@@ -48,7 +48,7 @@ Both are persisted via a named Docker volume (`claude-auth`) mounted at `/root/.
 ## Verifying the npm version
 
 ```bash
-docker compose run --rm eforge-test npx -y eforge --version
+docker compose run --rm eforge-test npx -y @eforge-build/eforge --version
 ```
 
 This should match the latest version on npm, not your local `package.json` version.

@@ -4,7 +4,7 @@ import {
   determineApplicableReviews,
   shouldParallelizeReview,
   type FileCategories,
-} from '../src/engine/review-heuristics.js';
+} from '@eforge-build/engine/review-heuristics';
 
 describe('categorizeFiles', () => {
   it('assigns TypeScript files to code', () => {

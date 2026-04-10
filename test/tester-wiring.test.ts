@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent, TestIssue } from '../src/engine/events.js';
+import type { EforgeEvent, TestIssue } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent } from './test-events.js';
-import { runTestWriter, runTester } from '../src/engine/agents/tester.js';
-import { parseTestIssues, testIssueToReviewIssue } from '../src/engine/agents/common.js';
-import type { BuildStageSpec } from '../src/engine/config.js';
+import { runTestWriter, runTester } from '@eforge-build/engine/agents/tester';
+import { parseTestIssues, testIssueToReviewIssue } from '@eforge-build/engine/agents/common';
+import type { BuildStageSpec } from '@eforge-build/engine/config';
 
 // ---------------------------------------------------------------------------
 // parseTestIssues

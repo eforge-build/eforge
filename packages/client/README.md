@@ -4,9 +4,9 @@ Zero-dependency HTTP client for the eforge daemon.
 
 ## Consumers
 
-- Root CLI (`src/cli/index.ts`, `src/cli/mcp-proxy.ts`)
-- Monitor (`src/monitor/index.ts`, `src/monitor/server-main.ts`, `src/monitor/registry.ts`)
-- Pi extension (`pi-package/extensions/eforge/index.ts`)
+- Root CLI (`packages/eforge/src/cli/index.ts`, `packages/eforge/src/cli/mcp-proxy.ts`)
+- Monitor (`packages/monitor/src/index.ts`, `packages/monitor/src/server-main.ts`, `packages/monitor/src/registry.ts`)
+- Pi extension (`packages/eforge-pi/extensions/eforge/index.ts`)
 
 ## What's included
 
@@ -17,8 +17,8 @@ Zero-dependency HTTP client for the eforge daemon.
 
 ## Rationale
 
-The Pi extension (`pi-package/`) cannot depend on the main `eforge` package because it pulls in heavy engine dependencies (Claude SDK, build pipeline, etc.) that are unnecessary for a thin HTTP client. This zero-dependency package extracts the shared daemon wire protocol - lockfile operations, HTTP client helpers, and response type definitions - so both the MCP proxy and the Pi extension use the same typed client without duplicating code.
+The Pi extension (`packages/eforge-pi/`) cannot depend on the main `@eforge-build/eforge` package because it pulls in heavy engine dependencies (Claude SDK, build pipeline, etc.) that are unnecessary for a thin HTTP client. This zero-dependency package extracts the shared daemon wire protocol - lockfile operations, HTTP client helpers, and response type definitions - so both the MCP proxy and the Pi extension use the same typed client without duplicating code.
 
 ## Note
 
-This is an internal contract package. Application consumers should depend on `eforge` (CLI) or `eforge-pi` (Pi extension) rather than taking a direct dependency on `@eforge-build/client`.
+This is an internal contract package. Application consumers should depend on `@eforge-build/eforge` (CLI) or `@eforge-build/eforge-pi` (Pi extension) rather than taking a direct dependency on `@eforge-build/client`.

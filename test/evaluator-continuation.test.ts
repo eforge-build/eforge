@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
-import { builderEvaluate, STRICTNESS_BLOCKS } from '../src/engine/agents/builder.js';
-import { AGENT_MAX_CONTINUATIONS_DEFAULTS } from '../src/engine/pipeline.js';
-import { runPlanEvaluate, runCohesionEvaluate, runArchitectureEvaluate } from '../src/engine/agents/plan-evaluator.js';
+import { builderEvaluate, STRICTNESS_BLOCKS } from '@eforge-build/engine/agents/builder';
+import { AGENT_MAX_CONTINUATIONS_DEFAULTS } from '@eforge-build/engine/pipeline';
+import { runPlanEvaluate, runCohesionEvaluate, runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
 import { readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -200,7 +200,7 @@ describe('runArchitectureEvaluate continuation context', () => {
 // --- Prompt template verification ---
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const promptsDir = resolve(__dirname, '../src/engine/prompts');
+const promptsDir = resolve(__dirname, '../packages/engine/src/prompts');
 
 describe('evaluator prompt templates', () => {
   it('evaluator.md contains {{continuation_context}} between Context and Setup sections', async () => {

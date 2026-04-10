@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
-import type { BuildStageContext } from '../src/engine/pipeline.js';
-import { withPeriodicFileCheck } from '../src/engine/pipeline.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
+import type { BuildStageContext } from '@eforge-build/engine/pipeline';
+import { withPeriodicFileCheck } from '@eforge-build/engine/pipeline';
 
 // Create mock inside vi.hoisted so it's available when vi.mock factory runs (hoisted above imports).
 const { execFileMock, mockedExecFilePromisified } = vi.hoisted(() => {

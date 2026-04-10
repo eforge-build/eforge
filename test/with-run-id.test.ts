@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { withRunId } from '../src/engine/session.js';
-import type { EforgeEvent } from '../src/engine/events.js';
+import { withRunId } from '@eforge-build/engine/session';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 
 async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
   const events: EforgeEvent[] = [];

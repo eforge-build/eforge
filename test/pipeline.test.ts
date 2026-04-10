@@ -7,11 +7,11 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '../src/engine/events.js';
-import type { EforgeConfig } from '../src/engine/config.js';
-import type { AgentBackend } from '../src/engine/backend.js';
-import type { PipelineComposition } from '../src/engine/schemas.js';
-import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '../src/engine/config.js';
+import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
+import type { EforgeConfig } from '@eforge-build/engine/config';
+import type { AgentBackend } from '@eforge-build/engine/backend';
+import type { PipelineComposition } from '@eforge-build/engine/schemas';
+import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
 
 const DEFAULT_BUILD = ['implement', 'review-cycle'];
 
@@ -22,7 +22,7 @@ const TEST_PIPELINE: PipelineComposition = {
   defaultReview: DEFAULT_REVIEW,
   rationale: 'test pipeline',
 };
-import { createNoopTracingContext } from '../src/engine/tracing.js';
+import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 import {
   getCompileStage,
   getBuildStage,
@@ -36,7 +36,7 @@ import {
   type CompileStage,
   type BuildStage,
   type StageDescriptor,
-} from '../src/engine/pipeline.js';
+} from '@eforge-build/engine/pipeline';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -466,13 +466,13 @@ describe('PipelineContext mutable state', () => {
 
 describe('agent config threading', () => {
   it('resolveAgentConfig uses role default for builder', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
     expect(result.maxTurns).toBe(50); // builder role default
   });
 
   it('resolveAgentConfig returns role default when no profile config set', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
 
     // Builder has a role default of 50, so it should return 50 (not the global 30)
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
@@ -480,7 +480,7 @@ describe('agent config threading', () => {
   });
 
   it('resolveAgentConfig returns role default over global config', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
 
     // Builder has a role default of 50 - even with global maxTurns set differently
     const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 25 } };
@@ -489,7 +489,7 @@ describe('agent config threading', () => {
   });
 
   it('resolveAgentConfig falls back to global maxTurns for roles without a specific default', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
 
     const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 42 } };
     // reviewer has no role default, so it should fall back to the global config value
@@ -498,7 +498,7 @@ describe('agent config threading', () => {
   });
 
   it('resolveAgentConfig returns model class default for SDK fields when not configured', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG, 'claude-sdk');
     expect(result.maxTurns).toBe(50);
     // builder defaults to 'max' class, so claude-sdk default is { id: 'claude-opus-4-6' }
@@ -512,7 +512,7 @@ describe('agent config threading', () => {
   });
 
   it('resolveAgentConfig returns global effort when no role override exists', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: { ...DEFAULT_CONFIG.agents, effort: 'high' as const },
@@ -522,7 +522,7 @@ describe('agent config threading', () => {
   });
 
   it('resolveAgentConfig returns role-specific value over global', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
@@ -538,7 +538,7 @@ describe('agent config threading', () => {
   });
 
   it('resolveAgentConfig: user per-role maxTurns overrides built-in role default', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
@@ -553,7 +553,7 @@ describe('agent config threading', () => {
   });
 
   it('resolveAgentConfig: built-in role maxTurns beats user global maxTurns', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: { ...DEFAULT_CONFIG.agents, maxTurns: 20 },
@@ -564,7 +564,7 @@ describe('agent config threading', () => {
   });
 
   it('resolveAgentConfig: user global model propagates to roles without overrides (overriding class)', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: { ...DEFAULT_CONFIG.agents, model: { id: 'claude-sonnet' } },
@@ -574,7 +574,7 @@ describe('agent config threading', () => {
   });
 
   it('resolveAgentConfig: user per-role thinking overrides user global thinking', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
@@ -711,7 +711,7 @@ describe('default pipeline compile stages', () => {
 
 describe('EforgeEngineOptions type', () => {
   it('EforgeEngineOptions accepts empty object', async () => {
-    const opts: import('../src/engine/eforge.js').EforgeEngineOptions = {};
+    const opts: import('@eforge-build/engine/eforge').EforgeEngineOptions = {};
     expect(opts.cwd).toBeUndefined();
   });
 });
@@ -726,7 +726,7 @@ describe('EforgeEngineOptions type', () => {
 
 describe('model class resolution', () => {
   it('most roles default to max class, three roles default to balanced', async () => {
-    const { resolveAgentConfig, AGENT_MODEL_CLASSES } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig, AGENT_MODEL_CLASSES } = await import('@eforge-build/engine/pipeline');
     const balancedRoles = ['staleness-assessor', 'prd-validator', 'dependency-detector'];
     for (const role of Object.keys(AGENT_MODEL_CLASSES) as Array<keyof typeof AGENT_MODEL_CLASSES>) {
       if (balancedRoles.includes(role)) {
@@ -742,7 +742,7 @@ describe('model class resolution', () => {
   });
 
   it('per-role modelClass override to balanced resolves to sonnet on claude-sdk', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
@@ -757,7 +757,7 @@ describe('model class resolution', () => {
   });
 
   it('per-role model overrides class-based resolution', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
@@ -772,7 +772,7 @@ describe('model class resolution', () => {
   });
 
   it('global model overrides class-based resolution', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: { ...DEFAULT_CONFIG.agents, model: { id: 'global-override' } },
@@ -782,19 +782,19 @@ describe('model class resolution', () => {
   });
 
   it('pi backend with no model config throws for default max class with fallback tiers listed', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     expect(() => resolveAgentConfig('builder', DEFAULT_CONFIG, 'pi')).toThrow(
       /No model configured for role "builder".*model class "max".*backend "pi".*Tried fallback: balanced, fast/,
     );
   });
 
   it('fallback ascending: balanced role resolves to max model when only max is configured', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('../src/engine/config.js').ModelRef>,
+        models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
     // staleness-assessor defaults to balanced
@@ -804,12 +804,12 @@ describe('model class resolution', () => {
   });
 
   it('fallback descending: max role resolves to balanced model when only balanced is configured', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { balanced: { provider: 'openrouter', id: 'medium-model' } } as Record<string, import('../src/engine/config.js').ModelRef>,
+        models: { balanced: { provider: 'openrouter', id: 'medium-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
     const result = resolveAgentConfig('builder', config, 'pi');
@@ -818,19 +818,19 @@ describe('model class resolution', () => {
   });
 
   it('fallback total failure lists attempted tiers in error', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     expect(() => resolveAgentConfig('builder', DEFAULT_CONFIG, 'pi')).toThrow(
       /Tried fallback: balanced, fast/,
     );
   });
 
   it('fallbackFrom metadata is populated on fallback resolution', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('../src/engine/config.js').ModelRef>,
+        models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
     // prd-validator defaults to balanced, should fall back to max
@@ -840,12 +840,12 @@ describe('model class resolution', () => {
   });
 
   it('pi backend with agents.models.max configured resolves correctly', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: { provider: 'openrouter', id: 'auto' } } as Record<string, import('../src/engine/config.js').ModelRef>,
+        models: { max: { provider: 'openrouter', id: 'auto' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
     const result = resolveAgentConfig('builder', config, 'pi');
@@ -853,12 +853,12 @@ describe('model class resolution', () => {
   });
 
   it('user agents.models override applies to class resolution', async () => {
-    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: { id: 'my-custom-max-model' } } as Record<string, import('../src/engine/config.js').ModelRef>,
+        models: { max: { id: 'my-custom-max-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
     const result = resolveAgentConfig('planner', config);
@@ -920,15 +920,5 @@ describe('plannerStage missing orchestration.yaml', () => {
   });
 });
 
-describe('index.ts re-exports', () => {
-  it('PipelineContext type is re-exported', async () => {
-    const mod = await import('../src/engine/index.js');
-    // Types don't exist at runtime, but the pipeline functions should be exported
-    expect(typeof mod.getCompileStage).toBe('function');
-    expect(typeof mod.getBuildStage).toBe('function');
-    expect(typeof mod.registerCompileStage).toBe('function');
-    expect(typeof mod.registerBuildStage).toBe('function');
-    expect(typeof mod.runCompilePipeline).toBe('function');
-    expect(typeof mod.runBuildPipeline).toBe('function');
-  });
-});
+// index.ts re-exports test removed: the engine barrel export was deleted as part
+// of the monorepo restructuring. Consumers use subpath imports directly.

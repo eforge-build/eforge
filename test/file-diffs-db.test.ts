@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
-import { openDatabase } from '../src/monitor/db.js';
+import { openDatabase } from '@eforge-build/monitor/db';
 
 describe('file_diffs DB operations', () => {
   const makeTempDir = useTempDir();

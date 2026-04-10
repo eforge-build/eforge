@@ -74,4 +74,4 @@ When both are present, hook arrays are **concatenated** - global hooks fire firs
 
 ## Event types
 
-All event types are defined in [`src/engine/events.ts`](../src/engine/events.ts) as the `EforgeEvent` discriminated union. Refer to that file for the complete list - event type strings follow the `category:action` pattern (e.g., `build:start`, `agent:tool_use`, `validation:failed`).
+All event types are defined in [`packages/engine/src/events.ts`](../packages/engine/src/events.ts) as the `EforgeEvent` discriminated union. Refer to that file for the complete list - event type strings follow the `category:action` pattern (e.g., `build:start`, `agent:tool_use`, `validation:failed`).

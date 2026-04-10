@@ -3,10 +3,10 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 
-import { parseOrchestrationConfig, validatePlanSet } from '../src/engine/plan.js';
-import { parseBuildConfigBlock } from '../src/engine/agents/common.js';
+import { parseOrchestrationConfig, validatePlanSet } from '@eforge-build/engine/plan';
+import { parseBuildConfigBlock } from '@eforge-build/engine/agents/common';
 import { useTempDir } from './test-tmpdir.js';
-import type { PipelineComposition } from '../src/engine/schemas.js';
+import type { PipelineComposition } from '@eforge-build/engine/schemas';
 
 const TEST_PIPELINE: PipelineComposition = {
   scope: 'excursion',

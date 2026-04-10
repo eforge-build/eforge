@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { findEvent, filterEvents } from './test-events.js';
-import { runDependencyDetector, type DependencyDetectorResult } from '../src/engine/agents/dependency-detector.js';
-import { AGENT_ROLES, DEFAULT_CONFIG } from '../src/engine/config.js';
+import { runDependencyDetector, type DependencyDetectorResult } from '@eforge-build/engine/agents/dependency-detector';
+import { AGENT_ROLES, DEFAULT_CONFIG } from '@eforge-build/engine/config';
 
 async function collectEventsAndResult(
   gen: AsyncGenerator<EforgeEvent, DependencyDetectorResult>,

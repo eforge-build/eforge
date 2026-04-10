@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import { enqueuePrd, inferTitle } from '../src/engine/prd-queue.js';
+import { enqueuePrd, inferTitle } from '@eforge-build/engine/prd-queue';
 import { useTempDir } from './test-tmpdir.js';
 
 // --- inferTitle ---

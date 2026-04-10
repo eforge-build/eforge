@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveDependencyGraph } from '../src/engine/plan.js';
+import { resolveDependencyGraph } from '@eforge-build/engine/plan';
 
 describe('resolveDependencyGraph', () => {
   it('handles single plan with no deps', () => {

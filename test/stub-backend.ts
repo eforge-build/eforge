@@ -2,8 +2,8 @@
  * StubBackend — test helper that implements AgentBackend with scripted responses.
  * Lives in test/ (not src/) since it's only for testing.
  */
-import type { AgentBackend, AgentRunOptions } from '../src/engine/backend.js';
-import type { EforgeEvent, AgentRole, AgentResultData } from '../src/engine/events.js';
+import type { AgentBackend, AgentRunOptions } from '@eforge-build/engine/backend';
+import type { EforgeEvent, AgentRole, AgentResultData } from '@eforge-build/engine/events';
 
 export interface StubToolCall {
   tool: string;

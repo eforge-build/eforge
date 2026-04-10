@@ -43,8 +43,8 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
   discoverAndLoadExtensions: vi.fn(async () => ({ extensions: [] })),
 }));
 
-import { PiBackend } from '../src/engine/backends/pi.js';
-import type { PiConfig } from '../src/engine/config.js';
+import { PiBackend } from '@eforge-build/engine/backends/pi';
+import type { PiConfig } from '@eforge-build/engine/config';
 
 async function collectEvents<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const events: T[] = [];

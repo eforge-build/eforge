@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { mkdir, writeFile, utimes, stat, access } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { isLockError, removeStaleIndexLock, retryOnLock } from '../src/engine/git.js';
+import { isLockError, removeStaleIndexLock, retryOnLock } from '@eforge-build/engine/git';
 import { useTempDir } from './test-tmpdir.js';
 
 const execAsync = promisify(execFile);

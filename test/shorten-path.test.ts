@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shortenPath } from '../src/monitor/ui/src/lib/format';
+import { shortenPath } from '@eforge-build/monitor-ui/lib/format';
 
 describe('shortenPath', () => {
   it('returns short paths unchanged', () => {

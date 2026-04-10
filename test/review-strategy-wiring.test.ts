@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import type { ReviewIssue } from '../src/engine/events.js';
-import { STRICTNESS_BLOCKS } from '../src/engine/agents/builder.js';
-import { filterIssuesBySeverity } from '../src/engine/pipeline.js';
+import type { ReviewIssue } from '@eforge-build/engine/events';
+import { STRICTNESS_BLOCKS } from '@eforge-build/engine/agents/builder';
+import { filterIssuesBySeverity } from '@eforge-build/engine/pipeline';
 
 function makeIssue(severity: ReviewIssue['severity'], desc = `${severity} issue`): ReviewIssue {
   return {

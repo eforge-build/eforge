@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { extractPlanTitle, deriveNameFromContent, detectValidationCommands, writePlanArtifacts } from '../src/engine/plan.js';
-import { parsePlanFile, parseOrchestrationConfig } from '../src/engine/plan.js';
-import { DEFAULT_REVIEW } from '../src/engine/config.js';
+import { extractPlanTitle, deriveNameFromContent, detectValidationCommands, writePlanArtifacts } from '@eforge-build/engine/plan';
+import { parsePlanFile, parseOrchestrationConfig } from '@eforge-build/engine/plan';
+import { DEFAULT_REVIEW } from '@eforge-build/engine/config';
 import { useTempDir } from './test-tmpdir.js';
-import type { PipelineComposition } from '../src/engine/schemas.js';
+import type { PipelineComposition } from '@eforge-build/engine/schemas';
 
 const DEFAULT_BUILD = ['implement', 'review-cycle'];
 

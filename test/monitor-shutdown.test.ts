@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { useTempDir } from './test-tmpdir.js';
-import { evaluateStateCheck, type StateCheckContext } from '../src/monitor/server-main.js';
+import { evaluateStateCheck, type StateCheckContext } from '@eforge-build/monitor/server-main';
 import {
   writeLockfile,
   updateLockfile,
@@ -23,13 +23,13 @@ vi.mock('@eforge-build/client', async (importOriginal) => {
   };
 });
 
-vi.mock('../src/monitor/db.js', () => ({
+vi.mock('@eforge-build/monitor/db', () => ({
   openDatabase: vi.fn(),
 }));
 
-import { signalMonitorShutdown } from '../src/monitor/index.js';
+import { signalMonitorShutdown } from '@eforge-build/monitor';
 import { readLockfile, isServerAlive } from '@eforge-build/client';
-import { openDatabase } from '../src/monitor/db.js';
+import { openDatabase } from '@eforge-build/monitor/db';
 
 const mockReadLockfile = vi.mocked(readLockfile);
 const mockIsServerAlive = vi.mocked(isServerAlive);

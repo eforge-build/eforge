@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { backfillDependsOn } from '../src/engine/pipeline.js';
-import type { PlanFile, OrchestrationConfig } from '../src/engine/events.js';
-import type { ResolvedProfileConfig } from '../src/engine/config.js';
+import { backfillDependsOn } from '@eforge-build/engine/pipeline';
+import type { PlanFile, OrchestrationConfig } from '@eforge-build/engine/events';
+import type { ResolvedProfileConfig } from '@eforge-build/engine/config';
 
 const STUB_PROFILE: ResolvedProfileConfig = {
   description: 'stub',

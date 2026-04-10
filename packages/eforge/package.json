@@ -1,0 +1,58 @@
+{
+  "name": "@eforge-build/eforge",
+  "version": "0.4.0",
+  "description": "Autonomous plan-build-review CLI for code generation",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "eforge": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eforge-build/eforge.git"
+  },
+  "homepage": "https://eforge.build",
+  "keywords": [
+    "ai",
+    "agent",
+    "code-generation",
+    "claude"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eforge-build/client": "workspace:*",
+    "@eforge-build/engine": "workspace:*",
+    "@eforge-build/monitor": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "ora": "^8.2.0",
+    "yaml": "^2.8.3",
+    "zod": "^4.3.6"
+  },
+  "bundledDependencies": [
+    "@eforge-build/client",
+    "@eforge-build/engine",
+    "@eforge-build/monitor"
+  ],
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  },
+  "author": "Schaake Solutions LLC"
+}

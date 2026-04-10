@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
-import { compileExpedition } from '../src/engine/compiler.js';
-import { parseExpeditionIndex, indexModulesToExpeditionModules } from '../src/engine/plan.js';
+import { compileExpedition } from '@eforge-build/engine/compiler';
+import { parseExpeditionIndex, indexModulesToExpeditionModules } from '@eforge-build/engine/plan';
 
 describe('parseExpeditionIndex', () => {
   let tmpDir: string;

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, modelClassSchema, MODEL_CLASSES } from '../src/engine/config.js';
-import { pickSdkOptions } from '../src/engine/backend.js';
-import type { PartialEforgeConfig, HookConfig } from '../src/engine/config.js';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, modelClassSchema, MODEL_CLASSES } from '@eforge-build/engine/config';
+import { pickSdkOptions } from '@eforge-build/engine/backend';
+import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
 
 describe('resolveConfig', () => {
   it('returns defaults for empty inputs', () => {
@@ -579,7 +579,7 @@ describe('roles schema in eforgeConfigSchema', () => {
   });
 
   it('rejects invalid role names via schema', async () => {
-    const { eforgeConfigSchema } = await import('../src/engine/config.js');
+    const { eforgeConfigSchema } = await import('@eforge-build/engine/config');
     const result = eforgeConfigSchema.safeParse({
       agents: {
         roles: {

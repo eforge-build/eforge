@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
-import { runGapCloser, type GapCloserContext } from '../src/engine/agents/gap-closer.js';
-import type { BuildStageContext } from '../src/engine/pipeline.js';
+import { runGapCloser, type GapCloserContext } from '@eforge-build/engine/agents/gap-closer';
+import type { BuildStageContext } from '@eforge-build/engine/pipeline';
 
 const GAPS = [
   { requirement: 'Must support dark mode', explanation: 'No dark mode CSS classes found in the theme configuration' },

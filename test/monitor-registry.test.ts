@@ -17,7 +17,7 @@ import {
   readRegistry,
   writeRegistry,
   type Registry,
-} from '../src/monitor/registry.js';
+} from '@eforge-build/monitor/registry';
 
 describe('hashPort', () => {
   it('returns a number in range 4567-4667 for various inputs', () => {

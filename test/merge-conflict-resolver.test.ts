@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import type { MergeConflictInfo } from '../src/engine/worktree.js';
+import type { MergeConflictInfo } from '@eforge-build/engine/worktree';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent } from './test-events.js';
-import { runMergeConflictResolver } from '../src/engine/agents/merge-conflict-resolver.js';
+import { runMergeConflictResolver } from '@eforge-build/engine/agents/merge-conflict-resolver';
 
 function makeConflict(overrides?: Partial<MergeConflictInfo>): MergeConflictInfo {
   return {

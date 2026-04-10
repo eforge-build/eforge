@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
-import { withSessionId, runSession } from '../src/engine/session.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
+import { withSessionId, runSession } from '@eforge-build/engine/session';
 
 async function* asyncIterableFrom(events: EforgeEvent[]): AsyncGenerator<EforgeEvent> {
   for (const event of events) {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { updatePlanStatus, isResumable, loadState, saveState } from '../src/engine/state.js';
-import type { EforgeState } from '../src/engine/events.js';
+import { updatePlanStatus, isResumable, loadState, saveState } from '@eforge-build/engine/state';
+import type { EforgeState } from '@eforge-build/engine/events';
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';

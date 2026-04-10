@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitPlanContent, parseFrontmatterFields } from '../src/monitor/ui/src/lib/plan-content';
+import { splitPlanContent, parseFrontmatterFields } from '@eforge-build/monitor-ui/lib/plan-content';
 
 describe('splitPlanContent', () => {
   it('splits standard plan file with YAML frontmatter and markdown body', () => {

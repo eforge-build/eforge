@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import type { EforgeEvent } from '../src/engine/events.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
-import { runValidationFixer } from '../src/engine/agents/validation-fixer.js';
+import { runValidationFixer } from '@eforge-build/engine/agents/validation-fixer';
 
 const FAILURES = [
   { command: 'pnpm type-check', exitCode: 1, output: 'error TS2345: Argument of type...' },

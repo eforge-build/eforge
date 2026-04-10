@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { transitionPlan, VALID_TRANSITIONS } from '../src/engine/orchestrator/plan-lifecycle.js';
-import type { EforgeState, PlanState } from '../src/engine/events.js';
+import { transitionPlan, VALID_TRANSITIONS } from '@eforge-build/engine/orchestrator/plan-lifecycle';
+import type { EforgeState, PlanState } from '@eforge-build/engine/events';
 
 function makeState(planId: string, status: PlanState['status']): EforgeState {
   return {
