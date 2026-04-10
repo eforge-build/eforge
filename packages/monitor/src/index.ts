@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { fork } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { openDatabase, type MonitorDB } from './db.js';
 import { withRecording } from './recorder.js';
@@ -122,12 +122,10 @@ function buildMonitor(db: MonitorDB, port: number | null, cwd: string): Monitor 
 }
 
 function resolveServerMain(): string {
-  try {
-    const require = createRequire(import.meta.url);
-    return require.resolve('@eforge-build/monitor/server-main');
-  } catch {
-    throw new Error('Monitor server-main entry not found. Did you run `pnpm build`?');
-  }
+  // Resolve relative to this file — server-main.js is always in the same dist directory.
+  // Using a relative URL avoids CJS/ESM exports mismatch when createRequire tries to
+  // resolve the package's own subpath export (which only defines "import", not "require").
+  return fileURLToPath(new URL('./server-main.js', import.meta.url));
 }
 
 async function spawnDetachedServer(
