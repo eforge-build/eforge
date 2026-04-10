@@ -56,11 +56,7 @@ if (dryRun) {
   run("npm publish", { cwd: "tmp/eforge-publish" });
   run("npm publish", { cwd: "tmp/pi-package-publish" });
 
-  // 4. Deprecate old names (may fail if you don't own the old packages)
-  tryRun('npm deprecate eforge "Renamed to @eforge-build/eforge. Install with: npm install -g @eforge-build/eforge"');
-  tryRun('npm deprecate eforge-pi "Renamed to @eforge-build/eforge-pi. Install with: npm install -g @eforge-build/eforge-pi"');
-
-  // 5. Verify
+  // 4. Verify
   tryRun("npm view @eforge-build/eforge version");
   tryRun("npm view @eforge-build/eforge-pi version");
 
