@@ -2011,23 +2011,25 @@ export async function* runCompilePipeline(
         await commitPlanArtifacts(commitCwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir);
       }
     }
-    // Snapshot the compile list before running the stage. If the stage mutates
-    // ctx.pipeline.compile (e.g., planner delegates to prd-passthrough), we
-    // restart the loop from the beginning of the new list.
-    const compileBefore = ctx.pipeline.compile;
     const stage = getCompileStage(stageName);
     yield* stage(ctx);
     if (ctx.skipped) break;
-    const compileChanged = ctx.pipeline.compile.length !== compileBefore.length ||
-      ctx.pipeline.compile.some((s, idx) => s !== compileBefore[idx]);
-    if (compileChanged) {
-      // Stage replaced the compile list — restart from the beginning
+    // If the stage at our current position is still the one we just ran, it
+    // ran to completion — advance past it. This handles composers that shrink
+    // or grow the list (e.g. ['planner', 'plan-review-cycle'] → ['planner'])
+    // without triggering a re-run of the planner stage.
+    //
+    // If position i now holds a different stage, the current stage was
+    // effectively short-circuited (e.g. plannerStage early-returned when the
+    // composer replaced the list with ['prd-passthrough']). Restart from the
+    // top of the new list.
+    if (ctx.pipeline.compile[i] === stageName) {
+      i++;
+    } else {
       if (++restarts > MAX_RESTARTS) {
         throw new Error('Compile pipeline restarted too many times — possible infinite loop');
       }
       i = 0;
-    } else {
-      i++;
     }
   }
 }

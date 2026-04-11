@@ -327,6 +327,38 @@ describe('runCompilePipeline', () => {
     expect(events.map((e) => (e as any).message)).toEqual(['replaced', 'new stage ran']);
   });
 
+  it('does not re-run a stage when its composer shrinks the compile list but keeps the stage at position 0', async () => {
+    // Regression: plannerStage's composer call shrinks compile from
+    // ['planner', 'plan-review-cycle'] to ['planner']. The planner stage then
+    // runs the planner agent and writes plan files. Previously the compile
+    // loop would detect the list change and restart at i=0, re-running
+    // plannerStage (and its composer) a second time — producing a duplicate
+    // set of plan files with a conflicting ID.
+    let runCount = 0;
+
+    registerCompileStage(testDescriptor('test-shrink-planner', 'compile'), async function* (ctx) {
+      runCount++;
+      // Simulate composer shrinking the list before running the agent body
+      ctx.pipeline = { ...ctx.pipeline, compile: ['test-shrink-planner'] };
+      yield { type: 'plan:progress', message: `planner ran ${runCount}` };
+    });
+
+    registerCompileStage(testDescriptor('test-shrink-review', 'compile'), async function* () {
+      yield { type: 'plan:progress', message: 'review ran' };
+    });
+
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
+      compile: ['test-shrink-planner', 'test-shrink-review'],
+    };
+
+    const ctx = makePipelineCtx({ pipeline });
+    await collect(runCompilePipeline(ctx));
+
+    // Planner stage must run exactly once — no duplicate invocation from a loop restart.
+    expect(runCount).toBe(1);
+  });
+
   it('does not restart when a stage replaces ctx.pipeline with the same compile stages', async () => {
     let runCount = 0;
 
