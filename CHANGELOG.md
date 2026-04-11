@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0] - 2026-04-11
+
+### Features
+
+- usage-normalization: shared usage normalization helper for Pi backend (fixes cached % > 100%)
+
+### Bug Fixes
+
+- cli: resolve monitor server-main via import.meta.resolve
+
+### Maintenance
+
+- publish: publish workspace packages in lockstep via pnpm -r
+
 ## [0.4.3] - 2026-04-11
 
 ### Bug Fixes
