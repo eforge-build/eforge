@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.3] - 2026-04-11
+
+### Bug Fixes
+
+- engine: avoid re-running compile stage after composer shrinks list
+
 ## [0.4.2] - 2026-04-11
 
 ### Bug Fixes
