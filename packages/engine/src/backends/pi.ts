@@ -266,7 +266,7 @@ export class PiBackend implements AgentBackend {
       const authStorage = AuthStorage.create();
 
       // Resolve model via ModelRegistry (async) with fallback to getModel then synthetic
-      const modelRegistry = new ModelRegistry(authStorage);
+      const modelRegistry = ModelRegistry.create(authStorage);
       let model: Model<Api>;
       const registryModel = await modelRegistry.find(options.model.provider!, options.model.id) as Model<Api> | undefined;
       if (registryModel) {

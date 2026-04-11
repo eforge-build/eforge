@@ -32,7 +32,8 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
     create: vi.fn(() => ({ kind: 'settings-manager' })),
   },
   ModelRegistry: class {
-    constructor(_authStorage: unknown) {}
+    private constructor(_authStorage: unknown) {}
+    static create(authStorage: unknown) { return new (this as never)(authStorage); }
     async find(_provider: string, _id: string) { return undefined; }
   },
   AuthStorage: {
