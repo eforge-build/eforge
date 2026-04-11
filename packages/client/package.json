@@ -1,8 +1,7 @@
 {
   "name": "@eforge-build/client",
-  "private": true,
-  "version": "0.1.0",
-  "description": "Zero-dependency HTTP client for the eforge daemon",
+  "version": "0.5.0",
+  "description": "Zero-dependency HTTP client for the eforge daemon. Implementation detail of @eforge-build/eforge - not intended for direct consumption.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -18,11 +17,20 @@
   "engines": {
     "node": ">=22"
   },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eforge-build/eforge.git"
+  },
+  "homepage": "https://eforge.build",
   "scripts": {
     "build": "tsup"
   },
   "devDependencies": {
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
-  }
+  },
+  "author": "Schaake Solutions LLC"
 }

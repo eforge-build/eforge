@@ -25,12 +25,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm build
-
-      - run: pnpm type-check
-
-      - run: pnpm test
-
+      # publish-all.mjs is the single source of truth for a release:
+      # it propagates the lockstep version, runs build/type-check/test,
+      # then `pnpm -r publish`. Do not duplicate those steps here.
       - run: pnpm publish-all
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}

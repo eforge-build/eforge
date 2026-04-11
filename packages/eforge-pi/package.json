@@ -1,8 +1,10 @@
 {
   "name": "@eforge-build/eforge-pi",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "description": "eforge integration for Pi - enqueue, run, and monitor builds from within Pi",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "homepage": "https://eforge.build",
   "repository": {
     "type": "git",
@@ -18,8 +20,12 @@
     "LICENSE"
   ],
   "pi": {
-    "extensions": ["./extensions/eforge"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./extensions/eforge"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
@@ -28,15 +34,22 @@
     "@sinclair/typebox": "*"
   },
   "peerDependenciesMeta": {
-    "@mariozechner/pi-coding-agent": { "optional": false },
-    "@mariozechner/pi-ai": { "optional": false },
-    "@mariozechner/pi-tui": { "optional": false },
-    "@sinclair/typebox": { "optional": false }
+    "@mariozechner/pi-coding-agent": {
+      "optional": false
+    },
+    "@mariozechner/pi-ai": {
+      "optional": false
+    },
+    "@mariozechner/pi-tui": {
+      "optional": false
+    },
+    "@sinclair/typebox": {
+      "optional": false
+    }
   },
   "dependencies": {
     "@eforge-build/client": "workspace:*"
   },
-  "bundledDependencies": ["@eforge-build/client"],
   "author": "Schaake Solutions LLC",
   "license": "Apache-2.0"
 }

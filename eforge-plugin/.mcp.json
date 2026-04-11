@@ -1,11 +1,9 @@
 {
   "mcpServers": {
     "eforge": {
-      "command": "npx",
+      "command": "node",
       "args": [
-        "-y",
-        "@eforge-build/eforge",
-        "mcp-proxy"
+        "${CLAUDE_PLUGIN_ROOT}/bin/eforge-mcp-proxy.mjs"
       ]
     }
   }
