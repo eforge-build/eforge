@@ -1,0 +1,66 @@
+name: fix-pi-backend-cached-100-via-shared-usage-normalization-helper
+description: Funnel all backend token usage through a single shared
+  normalization helper so the canonical convention input = uncachedInput +
+  cacheRead + cacheCreation is enforced in one place, eliminating pi backend's
+  >100% cached rendering.
+created: 2026-04-11
+compiled: 2026-04-11
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-usage-normalization
+    name: Shared usage normalization helper
+    depends_on: []
+    branch: fix-pi-backend-cached-100-via-shared-usage-normalization-helper/usage-normalization
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+    - - test-write
+      - doc-update
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - consistency
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This is a focused excursion-scale refactor touching three files in a
+    single package (two backend files plus a new helper module) with
+    well-defined behavior and existing tests as canaries. It is not trivial
+    enough for errand scope because it introduces a new shared module, modifies
+    two backend implementations, and requires new unit tests plus invariant
+    checks - but it is far from expedition scale (single package, no
+    cross-module coordination). Compile uses planner + plan-review-cycle to
+    catch any scope drift since the PRD is prescriptive about line-level edits
+    and it's important the plan respects the 'do not edit' list (monitor-ui,
+    events.ts, backend.ts). Build uses implement followed by review-cycle
+    (correctness + consistency perspectives - correctness to verify the
+    normalization math and that cacheRead <= input invariant holds; consistency
+    to ensure both backends funnel through the helper identically and no
+    duplicated arithmetic remains). test-write runs in parallel with doc-update
+    after review to add the required new unit tests (normalizeUsage happy path,
+    invariant, pi-backend stubbed SessionStats) and update any inline docs about
+    the usage convention. Standard strictness and 2 rounds are appropriate: the
+    math is mechanical and the PRD gives the exact shape, so a long iterative
+    loop is overkill, but one fix round guards against subtle aggregation bugs
+    in the claude-sdk extractResultData rewrite."
