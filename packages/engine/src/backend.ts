@@ -30,17 +30,24 @@ export interface SdkPassthroughConfig {
   disallowedTools?: string[];
   /** Set when the resolved model came from a fallback class instead of the role's effective class. */
   fallbackFrom?: import('./config.js').ModelClass;
+  /** Text appended to the agent prompt after variable substitution. Not passed to the backend SDK. */
+  promptAppend?: string;
 }
+
+/** Keys that are part of SdkPassthroughConfig but should NOT be forwarded to the backend SDK. */
+const NON_SDK_KEYS = new Set(['promptAppend']);
 
 /**
  * Strip `undefined` values from an SdkPassthroughConfig so the SDK
- * doesn't receive explicit `undefined` keys. Returns a new object
- * containing only the keys that have defined values.
+ * doesn't receive explicit `undefined` keys, and omit non-SDK keys
+ * like `promptAppend`. Returns a new object containing only the keys
+ * that have defined values and are safe to forward to the backend.
  */
+
 export function pickSdkOptions(config: SdkPassthroughConfig): Partial<SdkPassthroughConfig> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(config)) {
-    if (value !== undefined) {
+    if (value !== undefined && !NON_SDK_KEYS.has(key)) {
       result[key] = value;
     }
   }

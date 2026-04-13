@@ -43,7 +43,7 @@ export async function* runModulePlanner(
     dependencyPlans: options.dependencyPlanContent || 'No dependencies - this module is planned independently.',
     cwd: options.cwd,
     outputDir: options.outputDir ?? 'eforge/plans',
-  });
+  }, options.promptAppend);
 
   for await (const event of options.backend.run(
     { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 20, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },

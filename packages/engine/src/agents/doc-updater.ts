@@ -39,7 +39,7 @@ export async function* runDocUpdater(
     const prompt = await loadPrompt('doc-updater', {
       plan_id: options.planId,
       plan_content: options.planContent,
-    });
+    }, options.promptAppend);
 
     let fullText = '';
 

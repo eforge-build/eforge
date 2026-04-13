@@ -168,7 +168,7 @@ export async function* runParallelReview(
         plan_content: planContent,
         base_branch: baseBranch,
         review_issue_schema: PERSPECTIVE_SCHEMA_YAML[perspective](),
-      });
+      }, options.promptAppend);
 
       let fullText = '';
 

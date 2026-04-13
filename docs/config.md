@@ -35,17 +35,21 @@ agents:
   #     id: claude-sonnet-4-6
   #   fast:                    # Available via per-role modelClass override
   #     id: claude-haiku-4-5
+  # promptDir: eforge/prompts  # Directory of .md files that shadow bundled prompts by name match.
+  #                            # If eforge/prompts/reviewer.md exists, it replaces the bundled reviewer prompt.
   # roles:                    # Per-agent role overrides (override global settings)
   #   formatter:              # Per-role options: model, modelClass, thinking, effort, maxBudgetUsd,
-  #     effort: low           #   fallbackModel, allowedTools, disallowedTools, maxTurns
+  #     effort: low           #   fallbackModel, allowedTools, disallowedTools, maxTurns, promptAppend
   #   builder:                # Available roles: planner, module-planner, builder, reviewer,
   #     model:                #   evaluator, plan-reviewer, plan-evaluator,
   #       id: claude-sonnet-4-6
   #     maxTurns: 50          #   architecture-reviewer, architecture-evaluator,
   #   staleness-assessor:     #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
   #     modelClass: fast      #   review-fixer, merge-conflict-resolver, staleness-assessor,
-  #                           #   formatter, doc-updater, test-writer, tester,
-  #                           #   prd-validator, dependency-detector, gap-closer
+  #   reviewer:               #   formatter, doc-updater, test-writer, tester,
+  #     promptAppend: |       #   prd-validator, dependency-detector, gap-closer
+  #       ## Project Rules
+  #       - Flag raw SQL queries
 
 maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (default: 2)
 

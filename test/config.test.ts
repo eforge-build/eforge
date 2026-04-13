@@ -27,6 +27,33 @@ describe('resolveConfig', () => {
     expect(config.plan.outputDir).toBe('custom-plans');
   });
 
+  it('propagates agents.promptDir', () => {
+    const config = resolveConfig(
+      { agents: { promptDir: 'eforge/prompts' } },
+      {},
+    );
+    expect(config.agents.promptDir).toBe('eforge/prompts');
+  });
+
+  it('defaults agents.promptDir to undefined', () => {
+    const config = resolveConfig({}, {});
+    expect(config.agents.promptDir).toBeUndefined();
+  });
+
+  it('propagates per-role promptAppend through roles config', () => {
+    const config = resolveConfig(
+      {
+        agents: {
+          roles: {
+            reviewer: { promptAppend: '## Extra\nCheck for XSS.' },
+          },
+        },
+      },
+      {},
+    );
+    expect(config.agents.roles?.reviewer?.promptAppend).toBe('## Extra\nCheck for XSS.');
+  });
+
   it('env overrides file for langfuse keys', () => {
     const config = resolveConfig(
       { langfuse: { enabled: false, publicKey: 'file-pk', secretKey: 'file-sk', host: 'https://file.host' } },
@@ -709,6 +736,16 @@ describe('pickSdkOptions', () => {
       allowedTools: ['read', 'write'],
       disallowedTools: ['bash'],
     });
+  });
+
+  it('strips promptAppend from SDK options', () => {
+    const result = pickSdkOptions({
+      model: { id: 'claude-opus' },
+      effort: 'high',
+      promptAppend: '## Extra rules\nDo not use any type.',
+    });
+    expect(result).toEqual({ model: { id: 'claude-opus' }, effort: 'high' });
+    expect('promptAppend' in result).toBe(false);
   });
 });
 

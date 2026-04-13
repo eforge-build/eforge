@@ -49,7 +49,7 @@ export async function* runGapCloser(
   const prompt = await loadPrompt('gap-closer', {
     prd: options.prdContent,
     gaps: gapsContext,
-  });
+  }, options.promptAppend);
 
   // Stage 1: Plan generation
   const agentConfig = resolveAgentConfig('gap-closer', options.pipelineContext.config, options.pipelineContext.config.backend);

@@ -44,7 +44,7 @@ export async function* runFormatter(
 
   const prompt = await loadPrompt('formatter', {
     source: sourceContent,
-  });
+  }, options.promptAppend);
 
   let fullText = '';
 

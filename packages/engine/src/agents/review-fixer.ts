@@ -59,7 +59,7 @@ export async function* runReviewFixer(
   const issuesText = formatIssuesForPrompt(issues);
   const prompt = await loadPrompt('review-fixer', {
     issues: issuesText,
-  });
+  }, options.promptAppend);
 
   try {
     for await (const event of backend.run(

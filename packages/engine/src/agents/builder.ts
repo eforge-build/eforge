@@ -133,7 +133,7 @@ Review the diff above, then continue implementing the remaining parts of the pla
     parallelLanes,
     verification_scope: verificationScopeText,
     continuation_context: continuationContextText,
-  });
+  }, options.promptAppend);
 
   try {
     for await (const event of options.backend.run(
@@ -185,7 +185,7 @@ Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again 
     evaluation_schema: getEvaluationSchemaYaml(),
     continuation_context: continuationContextText,
     reset_target: options.preImplementCommit ?? 'HEAD~1',
-  });
+  }, options.promptAppend);
 
   let fullText = '';
   try {

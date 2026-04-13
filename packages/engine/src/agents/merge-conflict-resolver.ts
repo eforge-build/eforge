@@ -31,7 +31,7 @@ export async function* runMergeConflictResolver(
     plan_summary: options.conflict.planSummary ?? '',
     other_plan_name: options.conflict.otherPlanName ?? '',
     other_plan_summary: options.conflict.otherPlanSummary ?? '',
-  });
+  }, options.promptAppend);
 
   try {
     for await (const event of options.backend.run(

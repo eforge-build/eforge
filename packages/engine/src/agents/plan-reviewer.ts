@@ -49,7 +49,7 @@ export async function* runPlanReview(
     plan_set_name: planSetName,
     outputDir: options.outputDir ?? 'eforge/plans',
     review_issue_schema: getPlanReviewIssueSchemaYaml(),
-  });
+  }, options.promptAppend);
 
   let fullText = '';
 

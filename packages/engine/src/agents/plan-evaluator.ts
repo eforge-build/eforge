@@ -163,7 +163,7 @@ Do NOT run \`git reset --soft HEAD~1\` again - the staged vs unstaged comparison
     outputDir: options.outputDir ?? 'eforge/plans',
     continuation_context: continuationContextText,
     ...config.promptVars,
-  });
+  }, options.promptAppend);
 
   let fullText = '';
   try {

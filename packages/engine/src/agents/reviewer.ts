@@ -30,12 +30,13 @@ export interface ReviewerOptions extends SdkPassthroughConfig {
 export async function composeReviewPrompt(
   planContent: string,
   baseBranch: string,
+  append?: string,
 ): Promise<string> {
   return loadPrompt('reviewer', {
     plan_content: planContent,
     base_branch: baseBranch,
     review_issue_schema: getReviewIssueSchemaYaml(),
-  });
+  }, append);
 }
 
 /**
@@ -144,7 +145,7 @@ export async function* runReview(
 
   yield { timestamp: new Date().toISOString(), type: 'build:review:start', planId };
 
-  const prompt = await composeReviewPrompt(planContent, baseBranch);
+  const prompt = await composeReviewPrompt(planContent, baseBranch, options.promptAppend);
 
   let fullText = '';
 

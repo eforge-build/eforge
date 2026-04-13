@@ -88,7 +88,7 @@ export async function* composePipeline(
       source,
       stageRegistry,
       schema,
-    });
+    }, options.promptAppend);
 
     // On retry, append the error so the model can self-correct
     if (lastError) {

@@ -67,7 +67,7 @@ export async function* runTestWriter(
       vars.implementation_context = options.implementationContext;
     }
 
-    const prompt = await loadPrompt('test-writer', vars);
+    const prompt = await loadPrompt('test-writer', vars, options.promptAppend);
 
     let fullText = '';
 
@@ -131,7 +131,7 @@ export async function* runTester(
       plan_id: options.planId,
       plan_content: options.planContent,
       test_issue_schema: getTestIssueSchemaYaml(),
-    });
+    }, options.promptAppend);
 
     let fullText = '';
 

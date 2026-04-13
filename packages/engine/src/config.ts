@@ -143,9 +143,11 @@ const eforgeConfigBaseSchema = z.object({
     thinking: thinkingConfigSchema.optional().describe('Global thinking config for all agents'),
     effort: effortLevelSchema.optional().describe('Global effort level for all agents'),
     models: z.record(modelClassSchema, modelRefSchema.optional()).optional().describe('Map model class names to model refs'),
+    promptDir: z.string().optional().describe('Directory of .md files that shadow bundled prompts by name match'),
     roles: z.record(agentRoleSchema, sdkPassthroughConfigSchema.extend({
       maxTurns: z.number().int().positive().optional(),
       modelClass: modelClassSchema.optional().describe('Override the model class for this role'),
+      promptAppend: z.string().optional().describe('Text appended to the agent prompt after variable substitution'),
     }).optional()).optional().describe('Per-agent role overrides'),
   }).optional(),
   build: z.object({
@@ -239,6 +241,8 @@ export interface ResolvedAgentConfig {
   disallowedTools?: string[];
   /** Set when the resolved model came from a fallback class instead of the role's effective class. */
   fallbackFrom?: ModelClass;
+  /** Text appended to the agent prompt after variable substitution. */
+  promptAppend?: string;
 }
 
 export interface PiConfig {
@@ -265,6 +269,8 @@ export interface EforgeConfig {
     effort?: import('./backend.js').EffortLevel;
     models?: Partial<Record<ModelClass, ModelRef>>;
     roles?: Record<string, Partial<ResolvedAgentConfig>>;
+    /** Directory of .md files that shadow bundled prompts by name match. */
+    promptDir?: string;
   };
   build: { worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
@@ -380,6 +386,7 @@ export function resolveConfig(
       effort: fileConfig.agents?.effort,
       models: fileConfig.agents?.models,
       roles: fileConfig.agents?.roles as Record<string, Partial<ResolvedAgentConfig>> | undefined,
+      promptDir: fileConfig.agents?.promptDir,
     }),
     build: Object.freeze({
       worktreeDir: fileConfig.build?.worktreeDir ?? DEFAULT_CONFIG.build.worktreeDir,

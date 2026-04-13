@@ -44,7 +44,7 @@ export async function* runStalenessAssessor(
     diffSummary,
     cwd,
     staleness_schema: getStalenessSchemaYaml(),
-  });
+  }, options.promptAppend);
 
   let fullText = '';
 

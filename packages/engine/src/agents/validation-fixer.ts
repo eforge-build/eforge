@@ -33,7 +33,7 @@ export async function* runValidationFixer(
     failures: failureContext,
     attempt: String(options.attempt),
     max_attempts: String(options.maxAttempts),
-  });
+  }, options.promptAppend);
 
   try {
     for await (const event of options.backend.run(

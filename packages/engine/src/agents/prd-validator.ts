@@ -24,7 +24,7 @@ export async function* runPrdValidator(
   const prompt = await loadPrompt('prd-validator', {
     prd: options.prdContent,
     diff: options.diff,
-  });
+  }, options.promptAppend);
 
   let gaps: PrdValidationGap[] = [];
   let completionPercent: number | undefined;

@@ -68,7 +68,7 @@ export async function* runDependencyDetector(
     prdContent,
     queueItems: JSON.stringify(queueItems, null, 2),
     runningBuilds: JSON.stringify(runningBuilds, null, 2),
-  });
+  }, options.promptAppend);
 
   let fullText = '';
 

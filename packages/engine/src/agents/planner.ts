@@ -120,7 +120,7 @@ ${existingPlans}`;
       clarification_schema: getClarificationSchemaYaml(),
       module_schema: getModuleSchemaYaml(),
       plan_frontmatter_schema: getPlanFrontmatterSchemaYaml(),
-    });
+    }, options.promptAppend);
   }
 
   let skipEmitted = false;

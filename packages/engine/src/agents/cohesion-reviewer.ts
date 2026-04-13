@@ -53,7 +53,7 @@ export async function* runCohesionReview(
     architecture_content: architectureContent,
     outputDir: options.outputDir ?? 'eforge/plans',
     review_issue_schema: getPlanReviewIssueSchemaYaml(),
-  });
+  }, options.promptAppend);
 
   let fullText = '';
 

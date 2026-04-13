@@ -505,7 +505,7 @@ export function resolveAgentConfig(
   // For each field: user per-role > built-in per-role > user global > built-in global
   // Special case for maxTurns: built-in per-role beats user global (e.g. builder's 50 beats global 30)
   // but user per-role always wins.
-  const SDK_FIELDS = ['thinking', 'effort', 'maxBudgetUsd', 'fallbackModel', 'allowedTools', 'disallowedTools'] as const;
+  const SDK_FIELDS = ['thinking', 'effort', 'maxBudgetUsd', 'fallbackModel', 'allowedTools', 'disallowedTools', 'promptAppend'] as const;
 
   const result: import('./config.js').ResolvedAgentConfig = {};
 

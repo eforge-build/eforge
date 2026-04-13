@@ -30,6 +30,7 @@ import type { AgentBackend } from './backend.js';
 import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
 import { loadConfig, DEFAULT_REVIEW } from './config.js';
+import { setPromptDir } from './prompts.js';
 import { ClaudeSDKBackend } from './backends/claude-sdk.js';
 import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
@@ -148,6 +149,9 @@ export class EforgeEngine {
     if (options.config) {
       config = mergeConfig(config, options.config);
     }
+
+    // Wire project-level prompt directory override
+    setPromptDir(config.agents.promptDir, cwd);
 
     // Auto-load MCP servers from .mcp.json if not explicitly provided
     if (!options.mcpServers && !options.backend) {
