@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.1] - 2026-04-13
+
+### Features
+
+- engine: add prompt customization via promptDir and per-role promptAppend
+- fix build phase crash when planner generates 0 plans
+
+### Bug Fixes
+
+- remove prd-passthrough compile stage so planner always runs for codebase-aware skip detection
+
+### Maintenance
+
+- fix test assertions for plan:skip on 0 plans
+
 ## [0.5.0] - 2026-04-11
 
 ### Features
