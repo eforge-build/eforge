@@ -31,8 +31,11 @@ describe('runPlanner wiring', () => {
     }));
 
     expect(findEvent(events, 'plan:start')).toBeDefined();
-    expect(findEvent(events, 'plan:complete')).toBeDefined();
-    expect(findEvent(events, 'plan:complete')!.plans).toEqual([]);
+    // When 0 plans are generated, planner emits plan:skip instead of plan:complete
+    const skip = findEvent(events, 'plan:skip');
+    expect(skip).toBeDefined();
+    expect(skip!.reason).toBe('No plans generated');
+    expect(findEvent(events, 'plan:complete')).toBeUndefined();
     // agent:result should be yielded (always yielded regardless of verbose)
     expect(findEvent(events, 'agent:result')).toBeDefined();
   });
