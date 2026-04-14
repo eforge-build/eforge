@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.3] - 2026-04-13
+
+### Features
+
+- Rename eforge-pi package to pi-eforge
+
 ## [0.5.2] - 2026-04-13
 
 ### Features
