@@ -124,6 +124,14 @@ export function openDatabase(dbPath: string): MonitorDB {
 
   const db = new DatabaseSync(dbPath);
   db.exec('PRAGMA journal_mode = WAL');
+  // Concurrent build subprocesses share this DB file; busy_timeout lets
+  // SQLite's native busy handler wait for the write lock instead of
+  // failing immediately with SQLITE_BUSY.
+  db.exec('PRAGMA busy_timeout = 5000');
+  // NORMAL is safe with WAL: durable across app crashes, only risks losing
+  // the last committed transaction on OS/power failure. Trades that for
+  // fewer fsyncs and much higher write throughput under concurrency.
+  db.exec('PRAGMA synchronous = NORMAL');
   db.exec(SCHEMA);
 
   // Migrations for existing DBs
