@@ -772,6 +772,13 @@ export function renderEvent(event: EforgeEvent): void {
       succeedSpinner('gap-close', 'Gap closing complete');
       break;
 
+    case 'plan:submission':
+      break;
+
+    case 'plan:error':
+      failSpinner('plan', `Planning failed: ${event.reason}`);
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

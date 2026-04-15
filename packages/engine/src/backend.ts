@@ -55,6 +55,21 @@ export function pickSdkOptions(config: SdkPassthroughConfig): Partial<SdkPassthr
 }
 
 // ---------------------------------------------------------------------------
+// Custom Tools
+// ---------------------------------------------------------------------------
+
+/**
+ * A custom tool that can be injected into an agent run.
+ * The handler captures submission state via closure - no state management needed in the backend.
+ */
+export interface CustomTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  handler: (input: unknown) => Promise<string>;
+}
+
+// ---------------------------------------------------------------------------
 // Agent Run Options & Backend Interface
 // ---------------------------------------------------------------------------
 
@@ -73,6 +88,8 @@ export interface AgentRunOptions {
   abortSignal?: AbortSignal;
   /** Set when the resolved model came from a fallback class instead of the role's effective class. */
   fallbackFrom?: import('./config.js').ModelClass;
+  /** Custom tools to inject into the agent run (e.g. submission tools for planners). */
+  customTools?: CustomTool[];
 }
 
 /**

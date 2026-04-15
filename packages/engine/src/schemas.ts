@@ -302,6 +302,221 @@ export function getPlanFrontmatterSchemaYaml(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Plan Set Submission schema
+// ---------------------------------------------------------------------------
+
+const planSetSubmissionPlanSchema = z.object({
+  frontmatter: z.object({
+    id: z.string().min(1).describe('Plan identifier (e.g., plan-01-auth)'),
+    name: z.string().min(1).describe('Human-readable plan name'),
+    dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
+    branch: z.string().min(1).describe('Git branch name for this plan'),
+    migrations: z.array(z.object({
+      timestamp: z.string().regex(/^\d{14}$/, 'Migration timestamp must be 14 digits (YYYYMMDDHHmmss)').describe('Migration timestamp in YYYYMMDDHHmmss format'),
+      description: z.string().min(1).describe('Migration description'),
+    })).optional().describe('Database migrations included in this plan'),
+  }),
+  body: z.string().describe('Plan markdown body'),
+});
+
+const orchestrationPlanSchema = z.object({
+  id: z.string().min(1).describe('Plan ID matching a submitted plan'),
+  name: z.string().min(1).describe('Human-readable plan name'),
+  dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
+  branch: z.string().min(1).describe('Git branch name'),
+});
+
+export const planSetSubmissionSchema = z.object({
+  name: z.string().min(1).describe('Plan set name (kebab-case)'),
+  description: z.string().min(1).describe('Plan set description'),
+  mode: z.enum(['errand', 'excursion', 'expedition']).describe('Orchestration mode'),
+  baseBranch: z.string().min(1).describe('Base git branch'),
+  plans: z.array(planSetSubmissionPlanSchema).min(1).describe('Plan files to write'),
+  orchestration: z.object({
+    validate: z.array(z.string()).describe('Validation commands to run'),
+    plans: z.array(orchestrationPlanSchema).min(1).describe('Orchestration plan entries'),
+  }).describe('Orchestration configuration'),
+}).superRefine((data, ctx) => {
+  // Check for duplicate plan IDs
+  const planIds = data.plans.map(p => p.frontmatter.id);
+  const seen = new Set<string>();
+  for (const id of planIds) {
+    if (seen.has(id)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Duplicate plan ID: "${id}"`,
+        path: ['plans'],
+      });
+    }
+    seen.add(id);
+  }
+
+  const planIdSet = new Set(planIds);
+
+  // Check for dangling dependsOn references
+  for (let i = 0; i < data.plans.length; i++) {
+    for (const dep of data.plans[i].frontmatter.dependsOn) {
+      if (!planIdSet.has(dep)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Plan "${data.plans[i].frontmatter.id}" depends on unknown plan "${dep}"`,
+          path: ['plans', i, 'frontmatter', 'dependsOn'],
+        });
+      }
+    }
+  }
+
+  // Check for dependency cycles using DFS
+  const adjMap = new Map<string, string[]>();
+  for (const plan of data.plans) {
+    adjMap.set(plan.frontmatter.id, plan.frontmatter.dependsOn);
+  }
+
+  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const color = new Map<string, number>();
+  for (const id of planIds) color.set(id, WHITE);
+
+  function hasCycle(node: string): boolean {
+    color.set(node, GRAY);
+    for (const dep of adjMap.get(node) ?? []) {
+      if (!color.has(dep)) continue;
+      if (color.get(dep) === GRAY) return true;
+      if (color.get(dep) === WHITE && hasCycle(dep)) return true;
+    }
+    color.set(node, BLACK);
+    return false;
+  }
+
+  for (const id of planIds) {
+    if (color.get(id) === WHITE && hasCycle(id)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Dependency cycle detected among plans',
+        path: ['plans'],
+      });
+      break;
+    }
+  }
+
+  // Check orchestration plan IDs match submitted plan IDs (also detect duplicates)
+  const orchIds = new Set(data.orchestration.plans.map(p => p.id));
+  if (orchIds.size !== data.orchestration.plans.length) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `Orchestration contains duplicate plan IDs`,
+      path: ['orchestration', 'plans'],
+    });
+  }
+  if (orchIds.size !== planIdSet.size || ![...orchIds].every(id => planIdSet.has(id))) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `Orchestration plan IDs [${[...orchIds].join(', ')}] do not match submitted plan IDs [${[...planIdSet].join(', ')}]`,
+      path: ['orchestration', 'plans'],
+    });
+  }
+});
+
+export type PlanSetSubmission = z.output<typeof planSetSubmissionSchema>;
+
+// ---------------------------------------------------------------------------
+// Architecture Submission schema
+// ---------------------------------------------------------------------------
+
+const architectureModuleSchema = z.object({
+  id: z.string().min(1).describe('Module identifier'),
+  description: z.string().min(1).describe('Module description'),
+  dependsOn: z.array(z.string()).describe('IDs of modules this module depends on'),
+});
+
+export const architectureSubmissionSchema = z.object({
+  architecture: z.string().min(1).describe('Architecture document markdown content'),
+  modules: z.array(architectureModuleSchema).min(1).describe('Modules in the architecture'),
+  index: z.object({
+    name: z.string().min(1).describe('Plan set name'),
+    description: z.string().describe('Plan set description'),
+    mode: z.literal('expedition').describe('Orchestration mode'),
+    validate: z.array(z.string()).describe('Validation commands to run'),
+    modules: z.record(z.string(), z.object({
+      description: z.string().describe('Module description'),
+      depends_on: z.array(z.string()).describe('Module dependencies'),
+    })).describe('Module map for index.yaml'),
+  }).describe('Index metadata for expedition plan set'),
+}).superRefine((data, ctx) => {
+  const moduleIds = new Set(data.modules.map(m => m.id));
+
+  // Check for duplicate module IDs
+  if (moduleIds.size !== data.modules.length) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Architecture contains duplicate module IDs',
+      path: ['modules'],
+    });
+  }
+
+  // Check for dangling dependsOn references
+  for (let i = 0; i < data.modules.length; i++) {
+    for (const dep of data.modules[i].dependsOn) {
+      if (!moduleIds.has(dep)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Module "${data.modules[i].id}" depends on unknown module "${dep}"`,
+          path: ['modules', i, 'dependsOn'],
+        });
+      }
+    }
+  }
+
+  // Check for dependency cycles using DFS
+  const moduleList = data.modules.map(m => m.id);
+  const adjMap = new Map<string, string[]>();
+  for (const mod of data.modules) {
+    adjMap.set(mod.id, mod.dependsOn);
+  }
+
+  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const color = new Map<string, number>();
+  for (const id of moduleList) color.set(id, WHITE);
+
+  function hasCycle(node: string): boolean {
+    color.set(node, GRAY);
+    for (const dep of adjMap.get(node) ?? []) {
+      if (!color.has(dep)) continue;
+      if (color.get(dep) === GRAY) return true;
+      if (color.get(dep) === WHITE && hasCycle(dep)) return true;
+    }
+    color.set(node, BLACK);
+    return false;
+  }
+
+  for (const id of moduleList) {
+    if (color.get(id) === WHITE && hasCycle(id)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Dependency cycle detected among modules',
+        path: ['modules'],
+      });
+      break;
+    }
+  }
+});
+
+export type ArchitectureSubmission = z.output<typeof architectureSubmissionSchema>;
+
+// ---------------------------------------------------------------------------
+// Submission schema YAML getters
+// ---------------------------------------------------------------------------
+
+/** Schema YAML for plan set submissions (used by planner submission tool). */
+export function getPlanSetSubmissionSchemaYaml(): string {
+  return getSchemaYaml('plan-set-submission', planSetSubmissionSchema);
+}
+
+/** Schema YAML for architecture submissions (used by planner submission tool). */
+export function getArchitectureSubmissionSchemaYaml(): string {
+  return getSchemaYaml('architecture-submission', architectureSubmissionSchema);
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline Composition schema
 // ---------------------------------------------------------------------------
 

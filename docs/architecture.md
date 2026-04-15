@@ -73,7 +73,7 @@ graph TD
 | Category | Purpose |
 |----------|---------|
 | `session:*` / `phase:*` | Lifecycle boundaries |
-| `plan:*` | Planning, plan review, architecture review, cohesion review |
+| `plan:*` | Planning, plan review, architecture review, cohesion review, submission, error |
 | `build:*` | Implementation, code review, fix, evaluate, doc-update, test |
 | `schedule:*` / `merge:*` | Orchestration scheduling and merge sequencing |
 | `expedition:*` | Expedition-specific planning phases |
@@ -118,7 +118,7 @@ graph LR
 
 | Stage | Description |
 |-------|-------------|
-| `planner` | Agent explores codebase, selects profile, writes plan files and `orchestration.yaml` |
+| `planner` | Agent explores codebase, selects profile, submits plan set via `submit_plan_set` or `submit_architecture` tool - engine writes plan files and `orchestration.yaml` from validated payload |
 | `plan-review-cycle` | Blind review of plans against PRD, with fix and evaluate loop |
 | `architecture-review-cycle` | Reviews architecture doc for module boundary soundness and integration contracts |
 | `module-planning` | Writes detailed plans for each module using architecture context |

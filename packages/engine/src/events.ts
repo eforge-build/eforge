@@ -150,6 +150,8 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   // Planning
   | { type: 'plan:start'; source: string; label?: string }
   | { type: 'plan:skip'; reason: string }
+  | { type: 'plan:submission'; planCount: number; totalBodySize: number; hasMigrations: boolean }
+  | { type: 'plan:error'; reason: string }
   | { type: 'plan:clarification'; questions: ClarificationQuestion[] }
   | { type: 'plan:clarification:answer'; answers: Record<string, string> }
   | { type: 'plan:progress'; message: string }

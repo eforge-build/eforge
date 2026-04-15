@@ -51,6 +51,8 @@ export class StubBackend implements AgentBackend {
   readonly prompts: string[] = [];
   /** Every AgentRunOptions passed to `run()`, in order. */
   readonly calls: AgentRunOptions[] = [];
+  /** Custom tools from each call, in order. Use for assertion. */
+  readonly customToolSets: (AgentRunOptions['customTools'])[] = [];
 
   constructor(responses: StubResponse[]) {
     this.responses = responses;
@@ -63,6 +65,7 @@ export class StubBackend implements AgentBackend {
   ): AsyncGenerator<EforgeEvent> {
     this.prompts.push(options.prompt);
     this.calls.push(options);
+    this.customToolSets.push(options.customTools);
 
     const agentId = crypto.randomUUID();
     yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'stub-model', backend: 'stub', timestamp: new Date().toISOString() };
@@ -78,11 +81,19 @@ export class StubBackend implements AgentBackend {
         throw response.error;
       }
 
-      // Emit tool calls
+      // Emit tool calls — invoke custom tool handlers when matched
       if (response.toolCalls) {
+        const customToolMap = new Map(
+          (options.customTools ?? []).map(ct => [ct.name, ct]),
+        );
         for (const tc of response.toolCalls) {
           yield { type: 'agent:tool_use', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, input: tc.input };
-          yield { type: 'agent:tool_result', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, output: tc.output };
+          let output = tc.output;
+          const customTool = customToolMap.get(tc.tool);
+          if (customTool) {
+            output = await customTool.handler(tc.input);
+          }
+          yield { type: 'agent:tool_result', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, output };
         }
       }
 
