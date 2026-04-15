@@ -25,6 +25,7 @@ function makeValidPayload(overrides: Record<string, unknown> = {}) {
       makePlan({ id: 'plan-02-api', name: 'API Plan', dependsOn: ['plan-01-auth'], branch: 'api/main' }),
     ],
     orchestration: {
+      validate: [],
       plans: [
         { id: 'plan-01-auth', name: 'Auth Plan', dependsOn: [], branch: 'auth/main' },
         { id: 'plan-02-api', name: 'API Plan', dependsOn: ['plan-01-auth'], branch: 'api/main' },
@@ -47,6 +48,7 @@ describe('planSetSubmissionSchema', () => {
         makePlan({ id: 'plan-01-dup', name: 'Dup Plan' }),
       ],
       orchestration: {
+        validate: [],
         plans: [
           { id: 'plan-01-dup', name: 'Dup Plan', dependsOn: [], branch: 'dup/main' },
         ],
@@ -66,6 +68,7 @@ describe('planSetSubmissionSchema', () => {
         makePlan({ id: 'plan-01-a', dependsOn: ['plan-99-nonexistent'] }),
       ],
       orchestration: {
+        validate: [],
         plans: [
           { id: 'plan-01-a', name: 'A', dependsOn: ['plan-99-nonexistent'], branch: 'a/main' },
         ],
@@ -86,6 +89,7 @@ describe('planSetSubmissionSchema', () => {
         makePlan({ id: 'plan-b', name: 'B', dependsOn: ['plan-a'], branch: 'b/main' }),
       ],
       orchestration: {
+        validate: [],
         plans: [
           { id: 'plan-a', name: 'A', dependsOn: ['plan-b'], branch: 'a/main' },
           { id: 'plan-b', name: 'B', dependsOn: ['plan-a'], branch: 'b/main' },
@@ -104,6 +108,7 @@ describe('planSetSubmissionSchema', () => {
     const payload = makeValidPayload({
       plans: [makePlan({ id: 'plan-01-auth' })],
       orchestration: {
+        validate: [],
         plans: [
           { id: 'plan-99-wrong', name: 'Wrong', dependsOn: [], branch: 'wrong/main' },
         ],
@@ -126,6 +131,7 @@ describe('planSetSubmissionSchema', () => {
         }),
       ],
       orchestration: {
+        validate: [],
         plans: [
           { id: 'plan-01-mig', name: 'Mig Plan', dependsOn: [], branch: 'mig/main' },
         ],
@@ -144,6 +150,7 @@ describe('planSetSubmissionSchema', () => {
         }),
       ],
       orchestration: {
+        validate: [],
         plans: [
           { id: 'plan-01-mig', name: 'Mig Plan', dependsOn: [], branch: 'mig/main' },
         ],
@@ -162,6 +169,16 @@ describe('architectureSubmissionSchema', () => {
         { id: 'mod-auth', description: 'Auth module', dependsOn: [] },
         { id: 'mod-api', description: 'API module', dependsOn: ['mod-auth'] },
       ],
+      index: {
+        name: 'my-plan',
+        description: 'A plan set',
+        mode: 'expedition',
+        validate: [],
+        modules: {
+          'mod-auth': { description: 'Auth module', depends_on: [] },
+          'mod-api': { description: 'API module', depends_on: ['mod-auth'] },
+        },
+      },
     });
     expect(result.success).toBe(true);
   });

@@ -333,6 +333,7 @@ export const planSetSubmissionSchema = z.object({
   baseBranch: z.string().min(1).describe('Base git branch'),
   plans: z.array(planSetSubmissionPlanSchema).min(1).describe('Plan files to write'),
   orchestration: z.object({
+    validate: z.array(z.string()).describe('Validation commands to run'),
     plans: z.array(orchestrationPlanSchema).min(1).describe('Orchestration plan entries'),
   }).describe('Orchestration configuration'),
 }).superRefine((data, ctx) => {
@@ -430,6 +431,16 @@ const architectureModuleSchema = z.object({
 export const architectureSubmissionSchema = z.object({
   architecture: z.string().min(1).describe('Architecture document markdown content'),
   modules: z.array(architectureModuleSchema).min(1).describe('Modules in the architecture'),
+  index: z.object({
+    name: z.string().min(1).describe('Plan set name'),
+    description: z.string().describe('Plan set description'),
+    mode: z.literal('expedition').describe('Orchestration mode'),
+    validate: z.array(z.string()).describe('Validation commands to run'),
+    modules: z.record(z.string(), z.object({
+      description: z.string().describe('Module description'),
+      depends_on: z.array(z.string()).describe('Module dependencies'),
+    })).describe('Module map for index.yaml'),
+  }).describe('Index metadata for expedition plan set'),
 }).superRefine((data, ctx) => {
   const moduleIds = new Set(data.modules.map(m => m.id));
 
@@ -452,6 +463,39 @@ export const architectureSubmissionSchema = z.object({
           path: ['modules', i, 'dependsOn'],
         });
       }
+    }
+  }
+
+  // Check for dependency cycles using DFS
+  const moduleList = data.modules.map(m => m.id);
+  const adjMap = new Map<string, string[]>();
+  for (const mod of data.modules) {
+    adjMap.set(mod.id, mod.dependsOn);
+  }
+
+  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const color = new Map<string, number>();
+  for (const id of moduleList) color.set(id, WHITE);
+
+  function hasCycle(node: string): boolean {
+    color.set(node, GRAY);
+    for (const dep of adjMap.get(node) ?? []) {
+      if (!color.has(dep)) continue;
+      if (color.get(dep) === GRAY) return true;
+      if (color.get(dep) === WHITE && hasCycle(dep)) return true;
+    }
+    color.set(node, BLACK);
+    return false;
+  }
+
+  for (const id of moduleList) {
+    if (color.get(id) === WHITE && hasCycle(id)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Dependency cycle detected among modules',
+        path: ['modules'],
+      });
+      break;
     }
   }
 });

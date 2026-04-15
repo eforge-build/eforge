@@ -776,6 +776,7 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     case 'plan:error':
+      failSpinner('plan', `Planning failed: ${event.reason}`);
       break;
 
     default: {

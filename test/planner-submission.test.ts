@@ -30,6 +30,7 @@ function validPlanSetPayload(): PlanSetSubmission {
       },
     ],
     orchestration: {
+      validate: [],
       plans: [
         {
           id: 'plan-01-widgets',
@@ -49,6 +50,16 @@ function validArchitecturePayload(): ArchitectureSubmission {
       { id: 'foundation', description: 'Core types and utilities', dependsOn: [] },
       { id: 'auth', description: 'Authentication system', dependsOn: ['foundation'] },
     ],
+    index: {
+      name: 'build-modular-system',
+      description: 'A modular system',
+      mode: 'expedition',
+      validate: [],
+      modules: {
+        'foundation': { description: 'Core types and utilities', depends_on: [] },
+        'auth': { description: 'Authentication system', depends_on: ['foundation'] },
+      },
+    },
   };
 }
 

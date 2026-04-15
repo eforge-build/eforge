@@ -40,6 +40,7 @@ describe('writePlanSet', () => {
       },
     ],
     orchestration: {
+      validate: [],
       plans: [
         { id: 'plan-01-auth', name: 'Auth Plan', dependsOn: [], branch: 'auth/main' },
         { id: 'plan-02-api', name: 'API Plan', dependsOn: ['plan-01-auth'], branch: 'api/main' },
@@ -110,6 +111,16 @@ describe('writeArchitecture', () => {
       { id: 'mod-auth', description: 'Auth module', dependsOn: [] },
       { id: 'mod-api', description: 'API module', dependsOn: ['mod-auth'] },
     ],
+    index: {
+      name: 'my-expedition',
+      description: 'System design',
+      mode: 'expedition',
+      validate: [],
+      modules: {
+        'mod-auth': { description: 'Auth module', depends_on: [] },
+        'mod-api': { description: 'API module', depends_on: ['mod-auth'] },
+      },
+    },
   };
 
   it('creates architecture.md with correct content', async () => {

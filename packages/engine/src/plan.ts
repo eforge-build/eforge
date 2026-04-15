@@ -634,7 +634,7 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
     description: payload.description,
     base_branch: payload.baseBranch,
     mode: payload.mode,
-    validate: [],
+    validate: payload.orchestration.validate ?? [],
     plans: payload.orchestration.plans.map(p => ({
       id: p.id,
       name: p.name,
@@ -674,11 +674,12 @@ export async function writeArchitecture(options: WriteArchitectureOptions): Prom
     };
   }
   const indexYaml: Record<string, unknown> = {
-    name: planSetName,
-    description: '',
+    name: payload.index.name,
+    description: payload.index.description,
     created: new Date().toISOString().split('T')[0],
     status: 'draft',
-    mode: 'expedition',
+    mode: payload.index.mode,
+    validate: payload.index.validate,
     architecture: { status: 'complete' },
     modules,
   };

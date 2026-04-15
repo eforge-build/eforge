@@ -60,7 +60,7 @@ ${rows.join('\n')}`;
  * The handler validates the payload against the schema and captures it via the callback.
  */
 function createPlanSetSubmissionTool(
-  onSubmit: (payload: PlanSetSubmission) => void,
+  onSubmit: (payload: PlanSetSubmission) => boolean,
 ): CustomTool {
   return {
     name: 'submit_plan_set',
@@ -71,7 +71,9 @@ function createPlanSetSubmissionTool(
       if (!result.success) {
         return `Validation error: ${result.error.message}`;
       }
-      onSubmit(result.data);
+      if (!onSubmit(result.data)) {
+        return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
+      }
       return 'Plan set submitted successfully.';
     },
   };
@@ -82,7 +84,7 @@ function createPlanSetSubmissionTool(
  * The handler validates the payload against the schema and captures it via the callback.
  */
 function createArchitectureSubmissionTool(
-  onSubmit: (payload: ArchitectureSubmission) => void,
+  onSubmit: (payload: ArchitectureSubmission) => boolean,
 ): CustomTool {
   return {
     name: 'submit_architecture',
@@ -93,7 +95,9 @@ function createArchitectureSubmissionTool(
       if (!result.success) {
         return `Validation error: ${result.error.message}`;
       }
-      onSubmit(result.data);
+      if (!onSubmit(result.data)) {
+        return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
+      }
       return 'Architecture submitted successfully.';
     },
   };
@@ -183,14 +187,16 @@ ${existingPlans}`;
   const customTools: CustomTool[] = [];
   const scope = options.scope;
 
+  const alreadySubmitted = () => captured.planSet !== null || captured.architecture !== null;
+
   if (scope === 'expedition') {
-    customTools.push(createArchitectureSubmissionTool((payload) => { captured.architecture = payload; }));
+    customTools.push(createArchitectureSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.architecture = payload; return true; }));
   } else if (scope === 'errand' || scope === 'excursion') {
-    customTools.push(createPlanSetSubmissionTool((payload) => { captured.planSet = payload; }));
+    customTools.push(createPlanSetSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.planSet = payload; return true; }));
   } else {
     // Unknown scope (no pipeline composer) — inject both tools, let the agent choose
-    customTools.push(createPlanSetSubmissionTool((payload) => { captured.planSet = payload; }));
-    customTools.push(createArchitectureSubmissionTool((payload) => { captured.architecture = payload; }));
+    customTools.push(createPlanSetSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.planSet = payload; return true; }));
+    customTools.push(createArchitectureSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.architecture = payload; return true; }));
   }
 
   // Main loop: run agent, collect clarifications, restart with answers baked in

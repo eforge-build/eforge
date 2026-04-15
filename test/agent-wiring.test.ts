@@ -199,6 +199,7 @@ describe('runPlanner wiring', () => {
             body: '# Implementation\n\nDo the thing.',
           }],
           orchestration: {
+            validate: [],
             plans: [{
               id: 'feature',
               name: 'Add feature',
