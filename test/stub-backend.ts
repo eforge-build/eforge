@@ -81,11 +81,19 @@ export class StubBackend implements AgentBackend {
         throw response.error;
       }
 
-      // Emit tool calls
+      // Emit tool calls — invoke custom tool handlers when matched
       if (response.toolCalls) {
+        const customToolMap = new Map(
+          (options.customTools ?? []).map(ct => [ct.name, ct]),
+        );
         for (const tc of response.toolCalls) {
           yield { type: 'agent:tool_use', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, input: tc.input };
-          yield { type: 'agent:tool_result', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, output: tc.output };
+          let output = tc.output;
+          const customTool = customToolMap.get(tc.tool);
+          if (customTool) {
+            output = await customTool.handler(tc.input);
+          }
+          yield { type: 'agent:tool_result', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, output };
         }
       }
 

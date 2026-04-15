@@ -1,13 +1,17 @@
-import { readFile, readdir, stat } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
+import type { AgentBackend, SdkPassthroughConfig, CustomTool } from '../backend.js';
 import { pickSdkOptions } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
 import { parseClarificationBlocks, parseSkipBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
-import { parsePlanFile, deriveNameFromSource, extractPlanTitle } from '../plan.js';
-import { getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml } from '../schemas.js';
+import { deriveNameFromSource, extractPlanTitle, parsePlanFile, writePlanSet, writeArchitecture } from '../plan.js';
+import { z } from 'zod/v4';
+import {
+  getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml,
+  planSetSubmissionSchema, architectureSubmissionSchema,
+  type PlanSetSubmission, type ArchitectureSubmission,
+} from '../schemas.js';
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   backend: AgentBackend;
@@ -49,6 +53,50 @@ You previously asked the following clarifying questions and received answers. Us
 | Question | Answer |
 |----------|--------|
 ${rows.join('\n')}`;
+}
+
+/**
+ * Create a custom tool for submitting a plan set (errand/excursion mode).
+ * The handler validates the payload against the schema and captures it via the callback.
+ */
+function createPlanSetSubmissionTool(
+  onSubmit: (payload: PlanSetSubmission) => void,
+): CustomTool {
+  return {
+    name: 'submit_plan_set',
+    description: 'Submit a complete plan set with all plan files and orchestration configuration. This is the only way to complete the planning turn for errand/excursion mode.',
+    inputSchema: z.toJSONSchema(planSetSubmissionSchema) as Record<string, unknown>,
+    handler: async (input: unknown) => {
+      const result = planSetSubmissionSchema.safeParse(input);
+      if (!result.success) {
+        return `Validation error: ${result.error.message}`;
+      }
+      onSubmit(result.data);
+      return 'Plan set submitted successfully.';
+    },
+  };
+}
+
+/**
+ * Create a custom tool for submitting an architecture (expedition mode).
+ * The handler validates the payload against the schema and captures it via the callback.
+ */
+function createArchitectureSubmissionTool(
+  onSubmit: (payload: ArchitectureSubmission) => void,
+): CustomTool {
+  return {
+    name: 'submit_architecture',
+    description: 'Submit architecture documentation and module definitions for an expedition. This is the only way to complete the planning turn for expedition mode.',
+    inputSchema: z.toJSONSchema(architectureSubmissionSchema) as Record<string, unknown>,
+    handler: async (input: unknown) => {
+      const result = architectureSubmissionSchema.safeParse(input);
+      if (!result.success) {
+        return `Validation error: ${result.error.message}`;
+      }
+      onSubmit(result.data);
+      return 'Architecture submitted successfully.';
+    },
+  };
 }
 
 /**
@@ -125,6 +173,26 @@ ${existingPlans}`;
 
   let skipEmitted = false;
 
+  // Mutable container for submission payloads — set by custom tool handlers via closure
+  const captured: { planSet: PlanSetSubmission | null; architecture: ArchitectureSubmission | null } = {
+    planSet: null,
+    architecture: null,
+  };
+
+  // Create submission tools based on scope
+  const customTools: CustomTool[] = [];
+  const scope = options.scope;
+
+  if (scope === 'expedition') {
+    customTools.push(createArchitectureSubmissionTool((payload) => { captured.architecture = payload; }));
+  } else if (scope === 'errand' || scope === 'excursion') {
+    customTools.push(createPlanSetSubmissionTool((payload) => { captured.planSet = payload; }));
+  } else {
+    // Unknown scope (no pipeline composer) — inject both tools, let the agent choose
+    customTools.push(createPlanSetSubmissionTool((payload) => { captured.planSet = payload; }));
+    customTools.push(createArchitectureSubmissionTool((payload) => { captured.architecture = payload; }));
+  }
+
   // Main loop: run agent, collect clarifications, restart with answers baked in
   let iteration = 0;
   const maxIterations = 5; // prevent infinite loops
@@ -143,7 +211,7 @@ ${existingPlans}`;
     let needsRestart = false;
 
     for await (const event of backend.run(
-      { prompt, cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
+      { prompt, cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal, customTools, ...pickSdkOptions(options) },
       'planner',
     )) {
       if (event.type === 'agent:message') {
@@ -179,34 +247,65 @@ ${existingPlans}`;
     if (!needsRestart) break;
   }
 
-  // Skip was emitted — no plans to scan, no orchestration.yaml written
+  // Skip was emitted — no plans to write
   if (skipEmitted) return;
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Scanning plan files...' };
+  const outputDir = options.outputDir ?? 'eforge/plans';
 
-  // Scan plan directory for generated plan files
-  const planDir = resolve(cwd, options.outputDir ?? 'eforge/plans', planSetName);
-  const plans: PlanFile[] = [];
+  // Handle plan set submission
+  if (captured.planSet) {
+    const planSetPayload = captured.planSet;
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'plan:submission',
+      planCount: planSetPayload.plans.length,
+      totalBodySize: planSetPayload.plans.reduce((sum: number, p) => sum + p.body.length, 0),
+      hasMigrations: planSetPayload.plans.some(p => p.frontmatter.migrations && p.frontmatter.migrations.length > 0),
+    };
 
-  if (existsSync(planDir)) {
-    const entries = await readdir(planDir);
-    const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
+    await writePlanSet({ cwd, outputDir, planSetName, payload: planSetPayload });
 
-    for (const file of mdFiles) {
-      try {
-        const plan = await parsePlanFile(resolve(planDir, file));
-        plans.push(plan);
-      } catch {
-        // Skip non-plan .md files (e.g. README)
-      }
+    // Read back written plan files to build PlanFile array
+    const planDir = resolve(cwd, outputDir, planSetName);
+    const plans: PlanFile[] = [];
+    for (const plan of planSetPayload.plans) {
+      const filePath = resolve(planDir, `${plan.frontmatter.id}.md`);
+      plans.push(await parsePlanFile(filePath));
     }
-  }
 
-  // If no plans were generated (without an explicit skip), treat as implicit skip
-  if (plans.length === 0) {
-    yield { timestamp: new Date().toISOString(), type: 'plan:skip', reason: 'No plans generated' };
+    yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
     return;
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
+  // Handle architecture submission (expedition)
+  if (captured.architecture) {
+    const architecturePayload = captured.architecture;
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'plan:submission',
+      planCount: architecturePayload.modules.length,
+      totalBodySize: architecturePayload.architecture.length,
+      hasMigrations: false,
+    };
+
+    await writeArchitecture({ cwd, outputDir, planSetName, payload: architecturePayload });
+
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'expedition:architecture:complete',
+      modules: architecturePayload.modules.map(m => ({
+        id: m.id,
+        description: m.description,
+        dependsOn: m.dependsOn,
+      })),
+    };
+    return;
+  }
+
+  // Neither submission tool was called and no <skip> was emitted — this is an error
+  yield {
+    timestamp: new Date().toISOString(),
+    type: 'plan:error',
+    reason: 'Planner agent completed without calling submit_plan_set or emitting <skip>',
+  };
 }
