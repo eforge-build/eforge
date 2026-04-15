@@ -325,6 +325,35 @@ export class PiBackend implements AgentBackend {
         extensionPaths = await discoverPiExtensions(options.cwd, this.extensions);
       }
 
+      // Convert eforge CustomTools to Pi AgentTool format and merge with MCP tools
+      if (options.customTools && options.customTools.length > 0) {
+        const { jsonSchemaToTypeBox } = await import('./pi-mcp-bridge.js');
+        for (const ct of options.customTools) {
+          const parameters = jsonSchemaToTypeBox(ct.inputSchema);
+          mcpTools.push({
+            name: ct.name,
+            label: ct.name,
+            description: ct.description,
+            parameters,
+            execute: async (_toolCallId: string, params: unknown) => {
+              try {
+                const result = await ct.handler(params);
+                return {
+                  content: [{ type: 'text' as const, text: result }],
+                  details: {},
+                };
+              } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                return {
+                  content: [{ type: 'text' as const, text: `Error: ${message}` }],
+                  details: {},
+                };
+              }
+            },
+          } as AgentTool);
+        }
+      }
+
       // Filter built-in and bridged tools separately so we preserve Pi's
       // built-in/custom distinction when creating the session.
       const filteredBaseTools = filterTools(baseTools, options.allowedTools, options.disallowedTools);

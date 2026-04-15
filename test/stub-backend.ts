@@ -51,6 +51,8 @@ export class StubBackend implements AgentBackend {
   readonly prompts: string[] = [];
   /** Every AgentRunOptions passed to `run()`, in order. */
   readonly calls: AgentRunOptions[] = [];
+  /** Custom tools from each call, in order. Use for assertion. */
+  readonly customToolSets: (AgentRunOptions['customTools'])[] = [];
 
   constructor(responses: StubResponse[]) {
     this.responses = responses;
@@ -63,6 +65,7 @@ export class StubBackend implements AgentBackend {
   ): AsyncGenerator<EforgeEvent> {
     this.prompts.push(options.prompt);
     this.calls.push(options);
+    this.customToolSets.push(options.customTools);
 
     const agentId = crypto.randomUUID();
     yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'stub-model', backend: 'stub', timestamp: new Date().toISOString() };

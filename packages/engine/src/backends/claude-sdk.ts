@@ -49,6 +49,30 @@ export class ClaudeSDKBackend implements AgentBackend {
 
     let error: string | undefined;
     try {
+      // Build tools configuration: start with the base preset or empty array,
+      // then append custom tools when provided.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let toolsConfig: any = options.tools === 'coding'
+        ? { type: 'preset', preset: 'claude_code' }
+        : [];
+
+      if (options.customTools && options.customTools.length > 0) {
+        // Convert to array form so we can include both the preset and custom tools
+        const toolsArray = options.tools === 'coding'
+          ? [{ type: 'preset' as const, preset: 'claude_code' as const }]
+          : [];
+        for (const ct of options.customTools) {
+          toolsArray.push({
+            type: 'custom' as const,
+            name: ct.name,
+            description: ct.description,
+            input_schema: ct.inputSchema,
+            handler: ct.handler,
+          } as never);
+        }
+        toolsConfig = toolsArray;
+      }
+
       const q = sdkQuery({
         prompt: options.prompt,
         options: {
@@ -57,9 +81,7 @@ export class ClaudeSDKBackend implements AgentBackend {
           model: options.model?.id,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
-          tools: options.tools === 'coding'
-            ? { type: 'preset', preset: 'claude_code' }
-            : [],
+          tools: toolsConfig,
           ...(options.tools === 'coding' ? {
             mcpServers: this.mcpServers,
             plugins: this.plugins,

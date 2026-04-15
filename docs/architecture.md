@@ -73,7 +73,7 @@ graph TD
 | Category | Purpose |
 |----------|---------|
 | `session:*` / `phase:*` | Lifecycle boundaries |
-| `plan:*` | Planning, plan review, architecture review, cohesion review |
+| `plan:*` | Planning, plan review, architecture review, cohesion review, submission, error |
 | `build:*` | Implementation, code review, fix, evaluate, doc-update, test |
 | `schedule:*` / `merge:*` | Orchestration scheduling and merge sequencing |
 | `expedition:*` | Expedition-specific planning phases |

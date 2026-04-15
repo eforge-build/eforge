@@ -598,6 +598,97 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
 }
 
 /**
+ * Write plan files and orchestration.yaml from a validated plan set submission payload.
+ * Receives already-validated data (validation happens in the submission handler).
+ */
+export interface WritePlanSetOptions {
+  cwd: string;
+  outputDir: string;
+  planSetName: string;
+  payload: import('./schemas.js').PlanSetSubmission;
+}
+
+export async function writePlanSet(options: WritePlanSetOptions): Promise<void> {
+  const { cwd, outputDir, planSetName, payload } = options;
+  const planDir = resolve(cwd, outputDir, planSetName);
+  await mkdir(planDir, { recursive: true });
+
+  // Write each plan file with YAML frontmatter
+  for (const plan of payload.plans) {
+    const frontmatter: Record<string, unknown> = {
+      id: plan.frontmatter.id,
+      name: plan.frontmatter.name,
+      depends_on: plan.frontmatter.dependsOn,
+      branch: plan.frontmatter.branch,
+    };
+    if (plan.frontmatter.migrations && plan.frontmatter.migrations.length > 0) {
+      frontmatter.migrations = plan.frontmatter.migrations;
+    }
+    const content = `---\n${stringifyYaml(frontmatter).trim()}\n---\n\n${plan.body}`;
+    await writeFile(resolve(planDir, `${plan.frontmatter.id}.md`), content, 'utf-8');
+  }
+
+  // Write orchestration.yaml
+  const orchConfig: Record<string, unknown> = {
+    name: payload.name,
+    description: payload.description,
+    base_branch: payload.baseBranch,
+    mode: payload.mode,
+    validate: [],
+    plans: payload.orchestration.plans.map(p => ({
+      id: p.id,
+      name: p.name,
+      depends_on: p.dependsOn,
+      branch: p.branch,
+    })),
+  };
+  await writeFile(resolve(planDir, 'orchestration.yaml'), stringifyYaml(orchConfig), 'utf-8');
+}
+
+/**
+ * Write architecture files from a validated architecture submission payload.
+ * Creates architecture.md, index.yaml, and modules/ directory.
+ */
+export interface WriteArchitectureOptions {
+  cwd: string;
+  outputDir: string;
+  planSetName: string;
+  payload: import('./schemas.js').ArchitectureSubmission;
+}
+
+export async function writeArchitecture(options: WriteArchitectureOptions): Promise<void> {
+  const { cwd, outputDir, planSetName, payload } = options;
+  const planDir = resolve(cwd, outputDir, planSetName);
+  await mkdir(planDir, { recursive: true });
+
+  // Write architecture.md
+  await writeFile(resolve(planDir, 'architecture.md'), payload.architecture, 'utf-8');
+
+  // Write index.yaml with modules
+  const modules: Record<string, { description: string; depends_on: string[]; status: string }> = {};
+  for (const mod of payload.modules) {
+    modules[mod.id] = {
+      description: mod.description,
+      depends_on: mod.dependsOn,
+      status: 'pending',
+    };
+  }
+  const indexYaml: Record<string, unknown> = {
+    name: planSetName,
+    description: '',
+    created: new Date().toISOString().split('T')[0],
+    status: 'draft',
+    mode: 'expedition',
+    architecture: { status: 'complete' },
+    modules,
+  };
+  await writeFile(resolve(planDir, 'index.yaml'), stringifyYaml(indexYaml), 'utf-8');
+
+  // Create modules/ directory
+  await mkdir(resolve(planDir, 'modules'), { recursive: true });
+}
+
+/**
  * Inject a pipeline composition (and optionally override base_branch) into an existing orchestration.yaml.
  * Reads the YAML, adds/replaces the `pipeline` field, and writes it back.
  * Used by the pipeline after the composer and planner agents run.
