@@ -27,7 +27,8 @@ import {
 import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig, ModelClass } from './config.js';
 import { DEFAULT_REVIEW, MODEL_CLASSES } from './config.js';
 import type { PipelineComposition } from './schemas.js';
-import type { AgentBackend } from './backend.js';
+import type { AgentBackend, AgentTerminalSubtype } from './backend.js';
+import { AgentTerminalError, isMaxTurnsError } from './backend.js';
 import type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
 import { runModulePlanner } from './agents/module-planner.js';
@@ -852,11 +853,9 @@ registerCompileStage({
       break; // Success — exit the continuation loop
     } catch (err) {
       tracker.cleanup();
-      const errorMsg = (err as Error).message ?? String(err);
 
       // Check if this is an error_max_turns failure eligible for continuation
-      const isMaxTurns = errorMsg.includes('error_max_turns');
-      if (isMaxTurns && attempt < maxContinuations) {
+      if (isMaxTurnsError(err) && attempt < maxContinuations) {
         // Commit any plan files written so far as a checkpoint
         await commitPlanArtifacts(ctx.planCommitCwd ?? ctx.cwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir);
 
@@ -1356,6 +1355,7 @@ registerBuildStage({
     const implTracker = createToolTracker(implSpan);
     let implFailed = false;
     let failedError = '';
+    let failedTerminalSubtype: AgentTerminalSubtype | undefined;
 
     // Build continuation context for retry attempts
     let continuationContext: { attempt: number; maxContinuations: number; completedDiff: string } | undefined;
@@ -1384,6 +1384,7 @@ registerBuildStage({
         if (event.type === 'build:failed') {
           implFailed = true;
           failedError = event.error;
+          failedTerminalSubtype = event.terminalSubtype;
         } else {
           yield event;
         }
@@ -1391,7 +1392,8 @@ registerBuildStage({
     } catch (err) {
       implTracker.cleanup();
       implSpan.error(err as Error);
-      yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: (err as Error).message } as EforgeEvent;
+      const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
+      yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) } as EforgeEvent;
       ctx.buildFailed = true;
       return;
     }
@@ -1400,7 +1402,7 @@ registerBuildStage({
       implTracker.cleanup();
 
       // Check if this is an error_max_turns failure eligible for continuation
-      const isMaxTurns = failedError.includes('error_max_turns');
+      const isMaxTurns = failedTerminalSubtype === 'error_max_turns';
       if (isMaxTurns && attempt < maxContinuations) {
         // Check if the worktree has changes worth checkpointing
         let hasChanges = false;
@@ -1414,7 +1416,7 @@ registerBuildStage({
         if (!hasChanges) {
           // No changes to checkpoint — fail immediately
           implSpan.error('Implementation failed: error_max_turns with no changes');
-          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: failedError } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: failedError, terminalSubtype: failedTerminalSubtype } as EforgeEvent;
           ctx.buildFailed = true;
           return;
         }
@@ -1441,7 +1443,7 @@ registerBuildStage({
 
       // Non-max_turns error or exhausted continuations — fail
       implSpan.error('Implementation failed');
-      yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: failedError } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: failedError, ...(failedTerminalSubtype && { terminalSubtype: failedTerminalSubtype }) } as EforgeEvent;
       ctx.buildFailed = true;
       return;
     }
@@ -1558,7 +1560,7 @@ async function* evaluateStageInner(
     } catch (err) {
       evalTracker.cleanup();
 
-      const isMaxTurns = (err as Error).message.includes('error_max_turns');
+      const isMaxTurns = isMaxTurnsError(err);
       if (isMaxTurns && attempt < maxContinuations) {
         // Check if there are still unstaged changes to process
         if (!(await hasUnstagedChanges(ctx.worktreePath))) {
@@ -1575,7 +1577,7 @@ async function* evaluateStageInner(
       // Yield build:failed so the pipeline knows evaluation did not complete
       // (builderEvaluate re-throws error_max_turns instead of yielding build:failed)
       if (isMaxTurns) {
-        yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: (err as Error).message } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: (err as Error).message, terminalSubtype: 'error_max_turns' } as EforgeEvent;
       }
       break; // Non-max_turns error or exhausted continuations
     }
@@ -1907,8 +1909,7 @@ async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator<Eforge
       } catch (err) {
         evalTracker.cleanup();
 
-        const isMaxTurns = (err as Error).message.includes('error_max_turns');
-        if (isMaxTurns && attempt < maxContinuations) {
+        if (isMaxTurnsError(err) && attempt < maxContinuations) {
           // Check if there are still unstaged changes to process
           if (!(await hasUnstagedChanges(config.cwd))) {
             evalSpan.end();

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
+import { AgentTerminalError } from '@eforge-build/engine/backend';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -44,7 +45,7 @@ describe('builderImplement without continuation', () => {
 
   it('emits build:failed on error_max_turns without continuation context', async () => {
     const backend = new StubBackend([{
-      error: new Error('Agent builder failed: error_max_turns'),
+      error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (50).'),
     }]);
     const cwd = makeTempDir();
     const plan = makePlanFile();
@@ -58,6 +59,7 @@ describe('builderImplement without continuation', () => {
     const failed = findEvent(events, 'build:failed');
     expect(failed).toBeDefined();
     expect(failed!.error).toContain('error_max_turns');
+    expect(failed!.terminalSubtype).toBe('error_max_turns');
     expect(findEvent(events, 'build:implement:complete')).toBeUndefined();
   });
 

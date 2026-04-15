@@ -1,5 +1,5 @@
 import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import { pickSdkOptions, AgentTerminalError, isMaxTurnsError } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
@@ -146,7 +146,8 @@ Review the diff above, then continue implementing the remaining parts of the pla
       }
     }
   } catch (err) {
-    yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message };
+    const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
+    yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) };
     return;
   }
 
@@ -203,10 +204,11 @@ Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again 
     }
   } catch (err) {
     // Re-throw error_max_turns to enable pipeline continuation loop
-    if ((err as Error).message.includes('error_max_turns')) {
+    if (isMaxTurnsError(err)) {
       throw err;
     }
-    yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message };
+    const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
+    yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) };
     return;
   }
 

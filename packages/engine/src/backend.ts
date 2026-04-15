@@ -83,3 +83,39 @@ export interface AgentBackend {
   /** Run an agent with the given prompt and yield EforgeEvents. */
   run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent>;
 }
+
+// ---------------------------------------------------------------------------
+// Typed Terminal Errors
+// ---------------------------------------------------------------------------
+
+/**
+ * Terminal error subtypes mirrored from the Claude Agent SDK's `SDKResultError`.
+ * Backends should throw `AgentTerminalError` with one of these values so the
+ * pipeline can make structured decisions (e.g. continuation on `error_max_turns`)
+ * without parsing error message strings.
+ */
+export type AgentTerminalSubtype =
+  | 'error_max_turns'
+  | 'error_max_budget_usd'
+  | 'error_max_structured_output_retries'
+  | 'error_during_execution';
+
+/**
+ * Thrown by backends when an agent run ends with a terminal SDK error.
+ * Carries the machine-readable subtype so downstream continuation loops can
+ * branch on the exact cause without inspecting `.message`.
+ */
+export class AgentTerminalError extends Error {
+  readonly subtype: AgentTerminalSubtype;
+
+  constructor(subtype: AgentTerminalSubtype, detail: string) {
+    super(`${subtype}: ${detail}`);
+    this.name = 'AgentTerminalError';
+    this.subtype = subtype;
+  }
+}
+
+/** True when `err` is an `AgentTerminalError` with subtype `error_max_turns`. */
+export function isMaxTurnsError(err: unknown): err is AgentTerminalError {
+  return err instanceof AgentTerminalError && err.subtype === 'error_max_turns';
+}

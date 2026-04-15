@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
+import { AgentTerminalError } from '@eforge-build/engine/backend';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { builderEvaluate, STRICTNESS_BLOCKS } from '@eforge-build/engine/agents/builder';
@@ -34,7 +35,7 @@ describe('AGENT_MAX_CONTINUATIONS_DEFAULTS', () => {
 describe('builderEvaluate', () => {
   it('re-throws error_max_turns errors', async () => {
     const backend = new StubBackend([{
-      error: new Error('Agent evaluator failed: error_max_turns'),
+      error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).'),
     }]);
     const plan = makePlanFile();
 
@@ -43,7 +44,7 @@ describe('builderEvaluate', () => {
         backend,
         cwd: '/tmp',
       }));
-    }).rejects.toThrow('error_max_turns');
+    }).rejects.toBeInstanceOf(AgentTerminalError);
   });
 
   it('catches non-max_turns errors and yields build:failed', async () => {
@@ -156,12 +157,12 @@ describe('runPlanEvaluate continuation context', () => {
 
   it('re-throws error_max_turns errors', async () => {
     const backend = new StubBackend([{
-      error: new Error('Agent failed: error_max_turns'),
+      error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).'),
     }]);
 
     await expect(async () => {
       await collectEvents(runPlanEvaluate(makePlanEvalOptions(backend)));
-    }).rejects.toThrow('error_max_turns');
+    }).rejects.toBeInstanceOf(AgentTerminalError);
   });
 });
 

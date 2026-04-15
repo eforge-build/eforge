@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
+import { AgentTerminalError } from '@eforge-build/engine/backend';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -120,7 +121,7 @@ describe('StubBackend error_max_turns propagation', () => {
 
   it('propagates error_max_turns from runPlanner', async () => {
     const backend = new StubBackend([{
-      error: new Error('Agent planner failed: error_max_turns'),
+      error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).'),
     }]);
     const cwd = makeTempDir();
 

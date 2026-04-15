@@ -15,7 +15,8 @@ import type {
   SettingSource,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
-import type { AgentBackend, AgentRunOptions } from '../backend.js';
+import type { AgentBackend, AgentRunOptions, AgentTerminalSubtype } from '../backend.js';
+import { AgentTerminalError } from '../backend.js';
 import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
 
 export interface ClaudeSDKBackendOptions {
@@ -213,10 +214,10 @@ export async function* mapSDKMessages(
           yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: extractResultData(result, result.result) };
         } else {
           const errorResult = result as SDKResultMessage & { errors?: string[] };
-          const errorMsg = errorResult.errors?.join('; ') || `Agent ${agent} failed: ${result.subtype}`;
+          const detail = errorResult.errors?.join('; ') || `Agent ${agent} failed`;
           // Yield result data even on error (usage is still tracked)
           yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: extractResultData(result) };
-          throw new Error(errorMsg);
+          throw new AgentTerminalError(result.subtype as AgentTerminalSubtype, detail);
         }
         break;
       }
