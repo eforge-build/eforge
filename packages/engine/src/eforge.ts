@@ -676,6 +676,10 @@ export class EforgeEngine {
         } catch (err) {
           prdTracker.cleanup();
           prdSpan.error(err as Error);
+          // Propagate the failure so the orchestrator's prdValidate phase can
+          // mark the build failed. Swallowing would silently certify a build
+          // whose validator never ran (e.g. transient backend 500s).
+          throw err;
         }
       } : undefined;
 

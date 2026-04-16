@@ -25,7 +25,9 @@ Analyze the PRD above and compose a pipeline by:
 
 2. **Compose compile stages** - Select and order compile-phase stages from the catalog. These run once to produce plan files. Respect predecessor constraints from the catalog.
 
-3. **Compose default build stages** - Select and order build-phase stages for each plan. Use arrays for stages that can run in parallel (e.g., `[["implement", "doc-update"], "review-cycle"]`). Respect predecessor constraints.
+3. **Compose default build stages** - Select and order build-phase stages for each plan. Use arrays for stages that can run in parallel (e.g., `[["implement", "doc-update"], "review-cycle"]` - valid because `doc-update` does not declare `implement` as a predecessor). Respect predecessor constraints.
+
+   **Parallel group rule:** A stage may appear inside a parallel group *only if none of its declared predecessors appear in the same parallel group*. Predecessors must appear earlier in `defaultBuild` - either as a sequential entry or in an earlier parallel group. Example of an **invalid** composition: `[["implement", "test-write"]]` - `test-write` declares `implement` as a predecessor, so they cannot share a parallel group. A valid equivalent is `["implement", "test-write"]` (sequential) or `["implement", ["test-write", "doc-update"]]` (`implement` first, then `test-write` parallel with an unrelated stage).
 
 4. **Select default review config** - Choose review strategy, perspectives, rounds, and strictness appropriate for the work's complexity and risk.
 

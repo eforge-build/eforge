@@ -81,7 +81,9 @@ export async function* composePipeline(
   const schema = getPipelineCompositionSchemaYaml();
 
   const maxAttempts = 3;
+  const maxPriorOutputChars = 8192;
   let lastError: string | undefined;
+  let lastResultText: string | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let promptText = await loadPrompt('pipeline-composer', {
@@ -90,9 +92,17 @@ export async function* composePipeline(
       schema,
     }, options.promptAppend);
 
-    // On retry, append the error so the model can self-correct
+    // On retry, include the prior output AND the error so the model has
+    // concrete state to correct from, not just the error string.
     if (lastError) {
-      promptText += `\n\nYour previous response could not be parsed. Error: ${lastError}\n\nPlease return valid JSON matching the schema above.`;
+      const priorOutput = lastResultText !== undefined
+        ? (lastResultText.length > maxPriorOutputChars
+          ? lastResultText.slice(0, maxPriorOutputChars) + '\n... [truncated]'
+          : lastResultText)
+        : '(no prior output captured)';
+      promptText += `\n\nYour previous attempt produced:\n\n${priorOutput}\n\n`
+        + `That response was rejected: ${lastError}\n\n`
+        + `Return valid JSON matching the schema above, correcting the specific issue noted.`;
     }
 
     let resultText: string | undefined;
@@ -145,6 +155,7 @@ export async function* composePipeline(
       return; // Success - exit the retry loop
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
+      lastResultText = resultText;
       if (attempt === maxAttempts) {
         throw new Error(`Pipeline composer failed after ${maxAttempts} attempts: ${lastError}`);
       }

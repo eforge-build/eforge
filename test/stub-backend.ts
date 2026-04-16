@@ -15,6 +15,12 @@ export interface StubToolCall {
 export interface StubResponse {
   /** Text content the "agent" produces (emitted as agent:message events) */
   text?: string;
+  /**
+   * Text captured as the agent's final result (emitted on agent:result).
+   * Defaults to `text` when omitted. Agents like pipeline-composer read from
+   * `agent:result.resultText` rather than streaming messages.
+   */
+  resultText?: string;
   /** Tool use/result events to emit before the text */
   toolCalls?: StubToolCall[];
   /** Throw this error instead of completing normally */
@@ -103,7 +109,13 @@ export class StubBackend implements AgentBackend {
       }
 
       // Always emit agent:result to match real backend behavior
-      yield { type: 'agent:result', planId, agent, result: STUB_RESULT };
+      const resultText = response.resultText ?? response.text;
+      yield {
+        type: 'agent:result',
+        planId,
+        agent,
+        result: resultText !== undefined ? { ...STUB_RESULT, resultText } : STUB_RESULT,
+      };
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       throw err;
