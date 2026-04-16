@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.5] - 2026-04-16
+
+### Features
+
+- Add configFound boolean to validate API, update build/status skills with missing-config guidance, and add Related Skills cross-reference tables to all 13 eforge skill files
+- Add Related Skills tables to remaining skill files and bump plugin version
+- Add configFound field to engine and client types
+
+### Bug Fixes
+
+- propagate validator errors and carry prior output on composer retry
+
+### Maintenance
+
+- bump max model class default to claude-opus-4-7
+- bump pi SDK and agent dependencies
+
 ## [0.5.4] - 2026-04-15
 
 ### Features
