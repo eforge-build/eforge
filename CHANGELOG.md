@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.5.4] - 2026-04-15
+
+### Features
+
+- Fail-fast on unreachable model backend
+- Replace N-Write-calls planner pattern with structured submission tools that validate and persist plan payloads engine-side
+- PRD Gap Close
+- Planner Agent Submission Tool Integration
+- Submission Tool Foundation
+- add pnpm release script for lockstep version bumps
+
+### Bug Fixes
+
+- register planner submission tools via SDK MCP server
+- reduce SQLITE_BUSY errors under concurrent writes
+
+### Refactoring
+
+- introduce typed AgentTerminalError for SDK failures
+
+### Documentation
+
+- sharpen tagline and add "Why eforge" section
+
+### Maintenance
+
+- fix stale planner wiring tests
+- post-parallel-group auto-commit
+
 ## [0.5.3] - 2026-04-13
 
 ### Features
