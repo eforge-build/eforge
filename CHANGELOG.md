@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.6] - 2026-04-16
+
+### Documentation
+
+- clarify excursion vs expedition scope guidance
+
 ## [0.5.5] - 2026-04-16
 
 ### Features
