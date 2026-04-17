@@ -62,19 +62,25 @@ function mapThinkingConfig(thinking: ThinkingConfig): ThinkingLevel {
 }
 
 /**
- * Map eforge EffortLevel to Pi ThinkingLevel as fallback.
+ * Map eforge EffortLevel to Pi ThinkingLevel.
  *
- * - low -> 'off'
+ * pi-ai's ThinkingLevel range is 'off' | 'low' | 'medium' | 'high' | 'xhigh'.
+ * pi-ai has no 'max' level; its 'xhigh' is adaptive-max for Opus 4.6+,
+ * which semantically matches eforge's 'max'.
+ *
+ * - low -> 'low'
  * - medium -> 'medium'
  * - high -> 'high'
- * - max -> 'high'
+ * - xhigh -> 'xhigh'
+ * - max -> 'xhigh'
  */
 function mapEffortLevel(effort: EffortLevel): ThinkingLevel {
   switch (effort) {
-    case 'low': return 'off';
+    case 'low': return 'low';
     case 'medium': return 'medium';
     case 'high': return 'high';
-    case 'max': return 'high';
+    case 'xhigh': return 'xhigh';
+    case 'max': return 'xhigh';
   }
 }
 
@@ -243,20 +249,20 @@ export class PiBackend implements AgentBackend {
 
     // Validate model ref before proceeding
     if (!options.model) {
-      yield { type: 'agent:start', planId, agent, agentId, model: 'unknown', backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), timestamp: new Date().toISOString() };
+      yield { type: 'agent:start', planId, agent, agentId, model: 'unknown', backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), ...(options.effort !== undefined ? { effort: options.effort } : {}), ...(options.thinking !== undefined ? { thinking: options.thinking } : {}), ...(options.effortClamped !== undefined ? { effortClamped: options.effortClamped } : {}), ...(options.effortOriginal !== undefined ? { effortOriginal: options.effortOriginal } : {}), ...(options.effortSource !== undefined ? { effortSource: options.effortSource } : {}), timestamp: new Date().toISOString() };
       yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set agents.models.max (or the appropriate model class) in eforge/config.yaml.', timestamp: new Date().toISOString() };
       return;
     }
 
     if (!options.model.provider) {
-      yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), timestamp: new Date().toISOString() };
+      yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), ...(options.effort !== undefined ? { effort: options.effort } : {}), ...(options.thinking !== undefined ? { thinking: options.thinking } : {}), ...(options.effortClamped !== undefined ? { effortClamped: options.effortClamped } : {}), ...(options.effortOriginal !== undefined ? { effortOriginal: options.effortOriginal } : {}), ...(options.effortSource !== undefined ? { effortSource: options.effortSource } : {}), timestamp: new Date().toISOString() };
       yield { type: 'agent:stop', planId, agent, agentId, error: `No provider in model ref for Pi backend. Model refs must include "provider" (e.g. { provider: "openrouter", id: "${options.model.id}" }).`, timestamp: new Date().toISOString() };
       return;
     }
 
     const thinkingLevel = resolveThinkingLevel(options, this.piConfig);
 
-    yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), ...(options.effort !== undefined ? { effort: options.effort } : {}), ...(options.thinking !== undefined ? { thinking: options.thinking } : {}), ...(options.effortClamped !== undefined ? { effortClamped: options.effortClamped } : {}), ...(options.effortOriginal !== undefined ? { effortOriginal: options.effortOriginal } : {}), ...(options.effortSource !== undefined ? { effortSource: options.effortSource } : {}), timestamp: new Date().toISOString() };
 
     let error: string | undefined;
     const startTime = Date.now();

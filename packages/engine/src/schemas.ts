@@ -150,6 +150,36 @@ export const expeditionModuleSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Agent Tuning schema (effort/thinking overrides per agent role)
+// ---------------------------------------------------------------------------
+
+// Effort and thinking schemas duplicated from config.ts to keep schemas.ts leaf-level
+const effortLevelForTuningSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max'])
+  .describe('Effort level for controlling thinking depth');
+
+const thinkingForTuningSchema = z.union([
+  z.object({ type: z.literal('adaptive') }),
+  z.object({ type: z.literal('enabled'), budgetTokens: z.number().int().positive().optional() }),
+  z.object({ type: z.literal('disabled') }),
+]).describe("Controls the agent's thinking/reasoning behavior");
+
+export const agentTuningSchema = z.object({
+  effort: effortLevelForTuningSchema.optional(),
+  thinking: thinkingForTuningSchema.optional(),
+  rationale: z.string().optional().describe('Why this tuning was chosen'),
+}).describe('Per-agent effort/thinking tuning');
+
+const planAgentsSchema = z.object({
+  builder: agentTuningSchema.optional(),
+  reviewer: agentTuningSchema.optional(),
+  'review-fixer': agentTuningSchema.optional(),
+  evaluator: agentTuningSchema.optional(),
+  'doc-updater': agentTuningSchema.optional(),
+  'test-writer': agentTuningSchema.optional(),
+  tester: agentTuningSchema.optional(),
+}).optional().describe('Per-agent tuning overrides for build-stage agents in this plan');
+
+// ---------------------------------------------------------------------------
 // PlanFile frontmatter schema
 // ---------------------------------------------------------------------------
 
@@ -162,6 +192,7 @@ export const planFileFrontmatterSchema = z.object({
     timestamp: z.string().describe('Migration timestamp'),
     description: z.string().describe('Migration description'),
   })).optional().describe('Database migrations included in this plan'),
+  agents: planAgentsSchema,
 });
 
 // ---------------------------------------------------------------------------
@@ -315,6 +346,7 @@ const planSetSubmissionPlanSchema = z.object({
       timestamp: z.string().regex(/^\d{14}$/, 'Migration timestamp must be 14 digits (YYYYMMDDHHmmss)').describe('Migration timestamp in YYYYMMDDHHmmss format'),
       description: z.string().min(1).describe('Migration description'),
     })).optional().describe('Database migrations included in this plan'),
+    agents: planAgentsSchema,
   }),
   body: z.string().describe('Plan markdown body'),
 });

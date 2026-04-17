@@ -45,7 +45,7 @@ export class ClaudeSDKBackend implements AgentBackend {
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     const agentId = crypto.randomUUID();
-    yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'default', backend: 'claude-sdk', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'default', backend: 'claude-sdk', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), ...(options.effort !== undefined ? { effort: options.effort } : {}), ...(options.thinking !== undefined ? { thinking: options.thinking } : {}), ...(options.effortClamped !== undefined ? { effortClamped: options.effortClamped } : {}), ...(options.effortOriginal !== undefined ? { effortOriginal: options.effortOriginal } : {}), ...(options.effortSource !== undefined ? { effortSource: options.effortSource } : {}), timestamp: new Date().toISOString() };
 
     let error: string | undefined;
     try {

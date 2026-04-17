@@ -1,6 +1,6 @@
 import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, ProfileInfo, ReviewIssue } from './types';
 import type { PipelineStage } from './types';
-import { formatDuration } from './format';
+import { formatDuration, formatThinking } from './format';
 
 export type ModuleStatus = 'pending' | 'planning' | 'complete';
 
@@ -23,6 +23,11 @@ export interface AgentThread {
   costUsd: number | null;
   numTurns: number | null;
   model: string;
+  effort?: string;
+  thinking?: string;
+  effortClamped?: boolean;
+  effortOriginal?: string;
+  effortSource?: string;
 }
 
 export interface RunState {
@@ -280,6 +285,11 @@ function processEvent(
       numTurns: null,
       // Capture model from agent:start (remove fallback after 2026-04-29)
       model: ('model' in event ? (event as { model?: string }).model : undefined) ?? 'unknown',
+      effort: 'effort' in event ? (event as { effort?: string }).effort : undefined,
+      thinking: 'thinking' in event ? formatThinking((event as { thinking?: unknown }).thinking) : undefined,
+      effortClamped: 'effortClamped' in event ? (event as { effortClamped?: boolean }).effortClamped : undefined,
+      effortOriginal: 'effortOriginal' in event ? (event as { effortOriginal?: string }).effortOriginal : undefined,
+      effortSource: 'effortSource' in event ? (event as { effortSource?: string }).effortSource : undefined,
     });
   }
 

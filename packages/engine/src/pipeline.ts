@@ -27,8 +27,9 @@ import {
 import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig, ModelClass } from './config.js';
 import { DEFAULT_REVIEW, MODEL_CLASSES } from './config.js';
 import type { PipelineComposition } from './schemas.js';
-import type { AgentBackend, AgentTerminalSubtype } from './backend.js';
+import type { AgentBackend, AgentTerminalSubtype, EffortLevel, ThinkingConfig } from './backend.js';
 import { AgentTerminalError, isMaxTurnsError } from './backend.js';
+import { clampEffort } from './model-capabilities.js';
 import type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
 import { runModulePlanner } from './agents/module-planner.js';
@@ -93,6 +94,8 @@ export interface BuildStageContext extends PipelineContext {
   build: BuildStageSpec[];
   /** Per-plan review config (resolved from per-plan config or pipeline fallback). */
   review: ReviewProfileConfig;
+  /** Cached plan entry from orchConfig for this planId. Populated once per build stage. */
+  planEntry?: OrchestrationConfig['plans'][number];
   /** Set to true by the implement stage on failure — signals the pipeline runner to stop. */
   buildFailed?: boolean;
   /** Commit SHA captured before the implement stage runs — used as reset target by the evaluator. */
@@ -493,6 +496,7 @@ export function resolveAgentConfig(
   role: AgentRole,
   config: EforgeConfig,
   backend?: 'claude-sdk' | 'pi',
+  planEntry?: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string }> },
 ): import('./config.js').ResolvedAgentConfig {
   const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
   const userGlobal: import('./config.js').ResolvedAgentConfig = {
@@ -503,7 +507,10 @@ export function resolveAgentConfig(
   };
   const userRole = config.agents.roles?.[role] ?? {};
 
-  // For each field: user per-role > built-in per-role > user global > built-in global
+  // Plan override from planner's per-plan agent tuning (highest priority for effort/thinking)
+  const planOverride = planEntry?.agents?.[role];
+
+  // For each field: planEntry override > user per-role > user global > built-in per-role > built-in global
   // Special case for maxTurns: built-in per-role beats user global (e.g. builder's 50 beats global 30)
   // but user per-role always wins.
   const SDK_FIELDS = ['thinking', 'effort', 'maxBudgetUsd', 'fallbackModel', 'allowedTools', 'disallowedTools', 'promptAppend'] as const;
@@ -513,9 +520,30 @@ export function resolveAgentConfig(
   // Resolve maxTurns: user per-role > built-in per-role > user global
   result.maxTurns = userRole.maxTurns ?? builtinRoleDefaults.maxTurns ?? userGlobal.maxTurns;
 
+  // Track effort source provenance
+  let effortSource: 'planner' | 'role-config' | 'global-config' | 'default' = 'default';
+
   // Resolve SDK passthrough fields (excluding model - handled via class system below)
   for (const field of SDK_FIELDS) {
-    const value = userRole[field] ?? userGlobal[field] ?? builtinRoleDefaults[field];
+    let value: unknown;
+    if (field === 'effort' || field === 'thinking') {
+      const planVal = planOverride?.[field];
+      if (planVal !== undefined) {
+        value = planVal;
+        if (field === 'effort') effortSource = 'planner';
+      } else if (userRole[field] !== undefined) {
+        value = userRole[field];
+        if (field === 'effort') effortSource = 'role-config';
+      } else if (userGlobal[field] !== undefined) {
+        value = userGlobal[field];
+        if (field === 'effort') effortSource = 'global-config';
+      } else if (builtinRoleDefaults[field] !== undefined) {
+        value = builtinRoleDefaults[field];
+        // effortSource stays 'default'
+      }
+    } else {
+      value = userRole[field] ?? userGlobal[field] ?? builtinRoleDefaults[field];
+    }
     if (value !== undefined) {
       (result as Record<string, unknown>)[field] = value;
     }
@@ -608,6 +636,20 @@ export function resolveAgentConfig(
       `No model configured for role "${role}" (model class "${effectiveClass}") on backend "${backend}". ` +
       `Set agents.models.${effectiveClass} in eforge/config.yaml.`,
     );
+  }
+
+  // Apply effort clamping after full resolution (model + effort are both resolved)
+  if (result.effort !== undefined) {
+    const modelId = result.model?.id ?? '';
+    const clamped = clampEffort(modelId, result.effort);
+    if (clamped) {
+      if (clamped.clamped) {
+        result.effortOriginal = result.effort;
+        result.effort = clamped.value;
+      }
+      result.effortClamped = clamped.clamped;
+    }
+    result.effortSource = effortSource;
   }
 
   return result;
@@ -1337,11 +1379,9 @@ registerBuildStage({
     // Fresh repo or no commits — evaluator will fall back to HEAD~1
   }
 
-  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.config.backend);
-
   // Resolve maxContinuations: per-plan > global config > default (3)
-  const planEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
-  const maxContinuations = planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
+  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.config.backend, ctx.planEntry);
+  const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
 
   // Extract parallel stage groups from ctx.build for lane awareness
   const parallelStages = ctx.build
@@ -1475,7 +1515,7 @@ async function* reviewStageInner(
 ): AsyncGenerator<EforgeEvent> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
-  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.config.backend);
+  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.config.backend, ctx.planEntry);
 
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
@@ -1527,7 +1567,7 @@ async function* evaluateStageInner(
   if (!(await hasUnstagedChanges(ctx.worktreePath))) return;
 
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
-  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.config.backend);
+  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.config.backend, ctx.planEntry);
   const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['evaluator'] ?? 0;
 
   for (let attempt = 0; attempt <= maxContinuations; attempt++) {
@@ -1600,7 +1640,7 @@ async function* reviewFixStageInner(
 ): AsyncGenerator<EforgeEvent> {
   if (ctx.reviewIssues.length === 0) return;
 
-  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.config.backend);
+  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.config.backend, ctx.planEntry);
   const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
   const fixTracker = createToolTracker(fixSpan);
@@ -1684,7 +1724,7 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* docUpdateStage(ctx) {
-  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.config.backend);
+  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.config.backend, ctx.planEntry);
   const docSpan = ctx.tracing.createSpan('doc-updater', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -1728,7 +1768,7 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* testWriteStage(ctx) {
-  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.config.backend);
+  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.config.backend, ctx.planEntry);
   const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -1780,7 +1820,7 @@ registerBuildStage({
 });
 
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
-  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.config.backend);
+  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.config.backend, ctx.planEntry);
   const span = ctx.tracing.createSpan('tester', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);

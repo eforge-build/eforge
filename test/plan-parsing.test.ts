@@ -282,3 +282,120 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
     expect(config.baseBranch).toBe('main');
   });
 });
+
+// --- Per-plan agents tuning ---
+
+describe('parsePlanFile agents tuning', () => {
+  const makeTempDir = useTempDir('eforge-plan-agents-');
+
+  it('round-trips frontmatter with valid agents block', async () => {
+    const dir = makeTempDir();
+    const planPath = join(dir, 'plan-with-agents.md');
+    writeFileSync(planPath, `---
+id: plan-01-refactor
+name: Refactor Auth
+depends_on: []
+branch: refactor/main
+agents:
+  builder:
+    effort: xhigh
+    rationale: complex refactor
+  reviewer:
+    effort: high
+---
+
+# Refactor plan body
+`);
+
+    const plan = await parsePlanFile(planPath);
+    expect(plan.id).toBe('plan-01-refactor');
+    expect(plan.agents).toBeDefined();
+    expect(plan.agents!.builder).toEqual({ effort: 'xhigh', rationale: 'complex refactor' });
+    expect(plan.agents!.reviewer).toEqual({ effort: 'high' });
+  });
+
+  it('malformed agents block is dropped (no throw, agents field is undefined)', async () => {
+    const dir = makeTempDir();
+    const planPath = join(dir, 'plan-bad-agents.md');
+    writeFileSync(planPath, `---
+id: plan-02-bad
+name: Bad Agents Plan
+depends_on: []
+branch: bad/main
+agents:
+  builder:
+    effort: invalid-value
+---
+
+# Plan body
+`);
+
+    // Should not throw
+    const plan = await parsePlanFile(planPath);
+    expect(plan.id).toBe('plan-02-bad');
+    expect(plan.agents).toBeUndefined();
+  });
+
+  it('plan without agents block has undefined agents', async () => {
+    const plan = await parsePlanFile(resolve(fixturesDir, 'plans/valid-plan.md'));
+    expect(plan.agents).toBeUndefined();
+  });
+});
+
+describe('parseOrchestrationConfig agents propagation', () => {
+  const makeTempDir = useTempDir('eforge-orch-agents-');
+
+  it('propagates agents from plan entries in orchestration.yaml', async () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'agents-test',
+      description: 'Test agents propagation',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      pipeline: ERRAND_PIPELINE,
+      plans: [{
+        id: 'p1',
+        name: 'Plan 1',
+        depends_on: [],
+        branch: 'b1',
+        build: ['implement', 'review-cycle'],
+        review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
+        agents: {
+          builder: { effort: 'xhigh', rationale: 'complex work' },
+          reviewer: { effort: 'high' },
+        },
+      }],
+    }));
+
+    const config = await parseOrchestrationConfig(yamlPath);
+    expect(config.plans[0].agents).toBeDefined();
+    expect(config.plans[0].agents!.builder).toEqual({ effort: 'xhigh', rationale: 'complex work' });
+    expect(config.plans[0].agents!.reviewer).toEqual({ effort: 'high' });
+  });
+
+  it('plan entry without agents has no agents field', async () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'no-agents-test',
+      description: 'No agents',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      pipeline: ERRAND_PIPELINE,
+      plans: [{
+        id: 'p1',
+        name: 'Plan 1',
+        depends_on: [],
+        branch: 'b1',
+        build: ['implement', 'review-cycle'],
+        review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
+      }],
+    }));
+
+    const config = await parseOrchestrationConfig(yamlPath);
+    expect(config.plans[0].agents).toBeUndefined();
+  });
+});
