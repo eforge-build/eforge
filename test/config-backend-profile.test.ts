@@ -52,13 +52,24 @@ async function fileExists(path: string): Promise<boolean> {
 describe('resolveActiveProfileName', () => {
   let projectDir: string;
   let configDir: string;
+  let userHomeDir: string;
+  let origXdg: string | undefined;
 
   beforeEach(async () => {
     ({ projectDir, configDir } = await makeProject({ configYaml: 'backend: claude-sdk\n' }));
+    ({ userHomeDir } = await makeUserHome());
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = userHomeDir;
   });
 
   afterEach(async () => {
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
     await rm(projectDir, { recursive: true, force: true });
+    await rm(userHomeDir, { recursive: true, force: true });
   });
 
   it('returns source=none when no marker and no matching team profile', async () => {
@@ -152,13 +163,24 @@ describe('loadBackendProfile', () => {
 describe('listBackendProfiles', () => {
   let projectDir: string;
   let configDir: string;
+  let userHomeDir: string;
+  let origXdg: string | undefined;
 
   beforeEach(async () => {
     ({ projectDir, configDir } = await makeProject());
+    ({ userHomeDir } = await makeUserHome());
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = userHomeDir;
   });
 
   afterEach(async () => {
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
     await rm(projectDir, { recursive: true, force: true });
+    await rm(userHomeDir, { recursive: true, force: true });
   });
 
   it('returns [] when no backends directory exists', async () => {
