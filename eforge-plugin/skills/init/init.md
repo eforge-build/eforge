@@ -29,11 +29,15 @@ Call `mcp__eforge__eforge_init` with:
 - `force: true` if `$ARGUMENTS` contains `--force` or `force`
 - `postMergeCommands`: the commands from Step 1 (only applied when creating a new config - the tool preserves existing config formatting when the file already exists)
 
-### Step 3: Report
+### Step 3: Ensure `.gitignore` covers the active-backend marker
+
+The `eforge/.active-backend` file is a per-developer marker that tracks which named backend profile is active. It should never be committed - each developer can pick their own profile. The `mcp__eforge__eforge_init` tool already manages the main `.gitignore` entries, but also ensure the repo's `.gitignore` contains `eforge/.active-backend`. If it is missing, append it.
+
+### Step 4: Report
 
 Once the tool completes successfully, inform the user:
 
-> eforge initialized. You can customize further with `/eforge:config --edit`.
+> eforge initialized. You can customize further with `/eforge:config --edit`, or create a personal backend profile with `/eforge:backend:new`.
 
 ## Related Skills
 
@@ -41,6 +45,8 @@ Once the tool completes successfully, inform the user:
 |-------|---------|----------------|
 | Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
 | Config | `/eforge:config` | User wants to view, edit, or validate the eforge config |
+| Backend | `/eforge:backend` | User wants to inspect or switch backend profiles |
+| Backend (new) | `/eforge:backend:new` | User wants to create a personal backend profile |
 | Status | `/eforge:status` | User wants to check build progress or queue state |
 | Restart | `/eforge:restart` | User wants to restart the eforge daemon |
 | Update | `/eforge:update` | User wants to check for or install eforge updates |
