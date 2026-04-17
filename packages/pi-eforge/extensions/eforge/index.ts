@@ -12,6 +12,7 @@ import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { readFileSync, accessSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import {
   readLockfile,
@@ -19,6 +20,8 @@ import {
   ensureDaemon,
   daemonRequest,
   sleep,
+  sanitizeProfileName,
+  parseRawConfigLegacy,
 } from '@eforge-build/client';
 import type { LatestRunResponse, EnqueueResponse, RunSummary, ConfigValidateResponse, QueueItem, AutoBuildState, ConfigShowResponse } from '@eforge-build/client';
 
@@ -142,6 +145,33 @@ function ensureGitignoreEntries(cwd: string, entries: string[]): void {
 // ---------------------------------------------------------------------------
 
 export default function eforgeExtension(pi: ExtensionAPI) {
+  // Module-scope context for refreshing status after backend changes
+  let _latestCtx: { cwd: string; ui: { setStatus(key: string, text: string | undefined): void } } | null = null;
+
+  /** Refresh the Pi footer status with the active backend profile. Best-effort. */
+  async function refreshStatus(ctx: { cwd: string; ui: { setStatus(key: string, text: string | undefined): void } }): Promise<void> {
+    try {
+      const { data } = await daemonRequest<{
+        active: string | null;
+        source: string;
+        resolved: { backend?: string; name?: string } | null;
+      }>(ctx.cwd, 'GET', '/api/backend/show');
+      if (data.active && data.resolved?.backend) {
+        ctx.ui.setStatus('eforge', `eforge: ${data.active} (${data.resolved.backend})`);
+      } else {
+        ctx.ui.setStatus('eforge', undefined);
+      }
+    } catch {
+      ctx.ui.setStatus('eforge', undefined);
+    }
+  }
+
+  // Register session_start listener for Pi footer status
+  pi.on('session_start', async (_ev: unknown, ctx: unknown) => {
+    const typedCtx = ctx as { cwd: string; ui: { setStatus(key: string, text: string | undefined): void } };
+    _latestCtx = typedCtx;
+    await refreshStatus(typedCtx);
+  });
   // ------------------------------------------------------------------
   // Tool: eforge_build
   // ------------------------------------------------------------------
@@ -412,6 +442,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           "/api/backend/use",
           useBody,
         );
+        if (_latestCtx) await refreshStatus(_latestCtx);
         return jsonResult(data);
       }
 
@@ -435,6 +466,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           "/api/backend/create",
           body,
         );
+        if (_latestCtx) await refreshStatus(_latestCtx);
         return jsonResult(data);
       }
 
@@ -712,7 +744,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_init",
     label: "eforge init",
     description:
-      "Initialize eforge in a project: creates eforge/config.yaml (backend: pi) and updates .gitignore.",
+      "Initialize eforge in a project: creates a named backend profile under eforge/backends/, activates it, and writes eforge/config.yaml for team-wide settings. Backend is hardcoded to 'pi'. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.",
     parameters: Type.Object({
       force: Type.Optional(
         Type.Boolean({
@@ -726,35 +758,160 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             'Post-merge validation commands (e.g. ["pnpm install", "pnpm test"]). Only applied when creating a new config.',
         }),
       ),
+      migrate: Type.Optional(
+        Type.Boolean({
+          description:
+            "Extract backend config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.",
+        }),
+      ),
+      provider: Type.Optional(
+        Type.String({
+          description:
+            'Provider name for Pi backend (e.g. "anthropic", "openrouter"). The skill should supply this after querying eforge_models { action: "providers", backend: "pi" }.',
+        }),
+      ),
+      maxModel: Type.Optional(
+        Type.String({
+          description:
+            'Max model ID (e.g. "claude-opus-4-7"). The skill should supply this after querying eforge_models { action: "list", backend: "pi", provider: "..." }.',
+        }),
+      ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const configDir = join(ctx.cwd, "eforge");
       const configPath = join(configDir, "config.yaml");
+
+      // Ensure .gitignore has daemon state and active-backend marker
+      ensureGitignoreEntries(ctx.cwd, [".eforge/", "eforge/.active-backend"]);
+
+      // --- Migrate mode ---
+      if (params.migrate) {
+        let rawYaml: string;
+        try {
+          rawYaml = readFileSync(configPath, "utf-8");
+        } catch {
+          throw new Error("No existing eforge/config.yaml found. Nothing to migrate.");
+        }
+
+        let parsed: unknown;
+        try {
+          parsed = parseYaml(rawYaml);
+          if (!parsed || typeof parsed !== "object") {
+            throw new Error("Existing config.yaml is empty or not an object.");
+          }
+        } catch (err) {
+          throw new Error(`Failed to parse config.yaml: ${err instanceof Error ? err.message : String(err)}`);
+        }
+
+        const data = parsed as Record<string, unknown>;
+        if (data.backend === undefined) {
+          throw new Error('config.yaml has no top-level "backend:" field. Nothing to migrate.');
+        }
+
+        const { profile, remaining } = parseRawConfigLegacy(data);
+        const backend = profile.backend as string;
+
+        let maxModelId: string | undefined;
+        let provider: string | undefined;
+        const agents = profile.agents as Record<string, unknown> | undefined;
+        if (agents?.models) {
+          const models = agents.models as Record<string, unknown>;
+          const maxModel = models.max as { id?: string; provider?: string } | undefined;
+          maxModelId = maxModel?.id;
+          provider = maxModel?.provider;
+        } else if (agents?.model) {
+          const model = agents.model as { id?: string; provider?: string };
+          maxModelId = model.id;
+          provider = model.provider;
+        }
+
+        const profileName = maxModelId
+          ? sanitizeProfileName(backend, provider, maxModelId)
+          : backend;
+
+        const createBody: Record<string, unknown> = {
+          name: profileName,
+          backend,
+          overwrite: true,
+        };
+        if (profile.agents) createBody.agents = profile.agents;
+        if (profile.pi) createBody.pi = profile.pi;
+
+        await daemonRequest(ctx.cwd, "POST", "/api/backend/create", createBody);
+
+        // Rewrite config.yaml with remaining fields only (no backend:) before
+        // activating the profile, so a failed write leaves the profile inactive
+        // (cleanly recoverable by re-running migrate).
+        const yamlOut = Object.keys(remaining).length > 0
+          ? stringifyYaml(remaining)
+          : "";
+        writeFileSync(configPath, yamlOut, "utf-8");
+
+        await daemonRequest(ctx.cwd, "POST", "/api/backend/use", { name: profileName });
+
+        if (_latestCtx) await refreshStatus(_latestCtx);
+
+        return jsonResult({
+          status: "migrated",
+          configPath: "eforge/config.yaml",
+          profileName,
+          profilePath: `eforge/backends/${profileName}.yaml`,
+          backend,
+          moved: Object.keys(profile),
+          kept: Object.keys(remaining),
+        });
+      }
+
+      // --- Fresh init mode ---
 
       // Check if config already exists
       try {
         accessSync(configPath);
         if (!params.force) {
           throw new Error(
-            "eforge/config.yaml already exists. Use force: true to overwrite.",
+            "eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract backend config into a profile.",
           );
         }
       } catch (err) {
-        if (
-          err instanceof Error &&
-          err.message.includes("already exists")
-        ) {
+        if (err instanceof Error && !('code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')) {
           throw err;
         }
-        // File does not exist — proceed
+        // File does not exist - proceed
       }
 
-      // Pi users always get backend: pi. The /eforge:config skill handles
-      // backend selection interactively when the user wants to change it.
+      // Backend is always pi for Pi extension
       const backend = "pi";
+      const provider = params.provider;
+      const maxModelId = params.maxModel;
 
-      // Ensure .gitignore has .eforge/ entry
-      ensureGitignoreEntries(ctx.cwd, [".eforge/"]);
+      // Compute profile name
+      const profileName = maxModelId
+        ? sanitizeProfileName(backend, provider, maxModelId)
+        : backend;
+
+      // Build model ref
+      const modelRef: Record<string, string> = maxModelId
+        ? { id: maxModelId }
+        : { id: "claude-opus-4-7" };
+      if (provider) modelRef.provider = provider;
+
+      // Create the profile via daemon
+      const createBody: Record<string, unknown> = {
+        name: profileName,
+        backend,
+        agents: {
+          models: {
+            max: { ...modelRef },
+            balanced: { ...modelRef },
+            fast: { ...modelRef },
+          },
+        },
+      };
+      if (params.force) createBody.overwrite = true;
+      await daemonRequest(ctx.cwd, "POST", "/api/backend/create", createBody);
+
+      // Activate the profile
+      await daemonRequest(ctx.cwd, "POST", "/api/backend/use", { name: profileName });
 
       // Create eforge/ directory
       try {
@@ -763,34 +920,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         // Directory may already exist
       }
 
-      // Read existing config or create new one
-      let configContent: string;
-      try {
-        const existing = readFileSync(configPath, "utf-8");
-        if (/^backend\s*:/m.test(existing)) {
-          configContent = existing.replace(
-            /^backend\s*:.*$/m,
-            `backend: ${backend}`,
-          );
-        } else {
-          configContent = `backend: ${backend}\n\n${existing}`;
-        }
-      } catch {
-        const lines = [`backend: ${backend}`, ""];
-        if (
-          params.postMergeCommands &&
-          params.postMergeCommands.length > 0
-        ) {
-          lines.push("build:");
-          lines.push("  postMergeCommands:");
-          for (const cmd of params.postMergeCommands) {
-            lines.push(`    - ${yamlQuote(cmd)}`);
-          }
-          lines.push("");
-        }
-        configContent = lines.join("\n");
+      // Write config.yaml with only non-backend fields (never emit backend:)
+      const configData: Record<string, unknown> = {};
+      if (params.postMergeCommands && params.postMergeCommands.length > 0) {
+        configData.build = { postMergeCommands: params.postMergeCommands };
       }
-
+      const configContent = Object.keys(configData).length > 0
+        ? stringifyYaml(configData)
+        : "";
       writeFileSync(configPath, configContent, "utf-8");
 
       // Validate config via daemon (best-effort)
@@ -806,9 +943,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         // Daemon validation is best-effort
       }
 
+      if (_latestCtx) await refreshStatus(_latestCtx);
+
       const response: Record<string, unknown> = {
         status: "initialized",
         configPath: "eforge/config.yaml",
+        profileName,
+        profilePath: `eforge/backends/${profileName}.yaml`,
         backend,
       };
 

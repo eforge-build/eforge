@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
+import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
 
 // ---------------------------------------------------------------------------
@@ -293,6 +294,20 @@ export interface EforgeConfig {
 const partialEforgeConfigSchema = eforgeConfigBaseSchema.partial();
 export type PartialEforgeConfig = z.output<typeof partialEforgeConfigSchema>;
 
+/**
+ * Schema for config.yaml validation — rejects `backend:` which now belongs in profile files.
+ * Uses passthrough to detect the `backend` key and superRefine to produce a validation error.
+ */
+export const configYamlSchema = eforgeConfigBaseSchema.omit({ backend: true }).partial().passthrough().superRefine((data, ctx) => {
+  if (data && typeof data === 'object' && 'backend' in (data as Record<string, unknown>)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: '"backend:" is no longer valid in config.yaml. Backend configuration now lives in named profiles under eforge/backends/. Run eforge init --migrate to extract it.',
+      path: ['backend'],
+    });
+  }
+});
+
 export const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
   strategy: 'auto' as const,
   perspectives: Object.freeze(['code']) as unknown as string[],
@@ -444,11 +459,34 @@ export function resolveConfig(
 }
 
 /**
+ * Error thrown when config.yaml contains `backend:` which must be migrated
+ * to a named profile under eforge/backends/.
+ */
+export class ConfigMigrationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigMigrationError';
+  }
+}
+
+/**
  * Parse and validate a raw YAML object into a partial EforgeConfig.
  * Uses zod schema for validation — invalid fields are dropped and
  * a warning is logged to stderr so users get feedback on typos.
+ *
+ * @param context  `'config'` (default) for config.yaml parsing — rejects and strips `backend:`.
+ *                 `'profile'` for profile file parsing — keeps `backend:`.
  */
-function parseRawConfig(data: Record<string, unknown>): PartialEforgeConfig {
+function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
+  // Config.yaml context: reject backend: field (hard break — must migrate)
+  if (context === 'config' && data.backend !== undefined) {
+    throw new ConfigMigrationError(
+      '"backend:" is no longer valid in config.yaml. ' +
+      'Backend configuration now lives in named profiles under eforge/backends/. ' +
+      'Run eforge init --migrate to extract it.',
+    );
+  }
+
   const result = partialEforgeConfigSchema.safeParse(data);
   if (result.success) {
     return stripUndefinedSections(result.data);
@@ -457,17 +495,17 @@ function parseRawConfig(data: Record<string, unknown>): PartialEforgeConfig {
   console.error('eforge config warning: some fields were invalid and will be ignored:\n' + z.prettifyError(result.error));
   // Parse again with passthrough to salvage valid fields —
   // safeParse is all-or-nothing per property, so re-parse each section independently
-  return parseRawConfigFallback(data);
+  return parseRawConfigFallback(data, context);
 }
 
 /**
  * Fallback parser: parse each top-level section independently so that
  * one bad section doesn't nuke the rest. Mirrors the schema structure.
  */
-function parseRawConfigFallback(data: Record<string, unknown>): PartialEforgeConfig {
+function parseRawConfigFallback(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
   const result: PartialEforgeConfig = {};
-  // Handle top-level scalar fields
-  if (data.backend !== undefined) {
+  // Handle top-level scalar fields — backend: only allowed in profile context
+  if (context === 'profile' && data.backend !== undefined) {
     const backendResult = backendSchema.safeParse(data.backend);
     if (backendResult.success) {
       (result as Record<string, unknown>).backend = backendResult.data;
@@ -618,7 +656,9 @@ export async function loadUserConfig(
       return {};
     }
     return parseRawConfig(data as Record<string, unknown>);
-  } catch {
+  } catch (err) {
+    // Re-throw migration errors so callers surface a hard error
+    if (err instanceof ConfigMigrationError) throw err;
     return {};
   }
 }
@@ -629,8 +669,8 @@ export async function loadUserConfig(
  * Returns DEFAULT_CONFIG when no config files exist.
  *
  * When an active backend profile is found (via `eforge/.active-backend`
- * marker or `config.yaml`'s `backend:` field with a matching profile file),
- * the profile is merged on top of the project config before env-var resolution.
+ * marker), the profile is merged on top of the project config before
+ * env-var resolution.
  */
 export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
   const globalConfig = await loadUserConfig();
@@ -646,7 +686,9 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
       if (data && typeof data === 'object') {
         projectConfig = parseRawConfig(data as Record<string, unknown>);
       }
-    } catch {
+    } catch (err) {
+      // Re-throw migration errors so callers surface a hard error
+      if (err instanceof ConfigMigrationError) throw err;
       // malformed YAML — treat as empty
     }
   }
@@ -681,13 +723,12 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
  * Source of the active backend profile resolution.
  *
  * - `local`: marker file `eforge/.active-backend` selected the profile (dev-local override)
- * - `team`: no marker; `config.yaml` `backend:` matched a profile file (team default)
+ * - `user-local`: user-scope marker `~/.config/eforge/.active-backend` selected the profile
  * - `missing`: marker present, but the referenced profile file is missing
- *   (a one-shot stderr warning is logged; if a team fallback applies it is used,
- *   but the source remains `missing` only when no name could be resolved)
- * - `none`: no profile applied (no marker and no team match)
+ *   (a one-shot stderr warning is logged; fallback to user-marker or none)
+ * - `none`: no profile applied (no marker found)
  */
-export type ActiveProfileSource = 'local' | 'team' | 'user-local' | 'user-team' | 'missing' | 'none';
+export type ActiveProfileSource = 'local' | 'user-local' | 'missing' | 'none';
 
 /** Marker filename inside the eforge config directory. */
 const ACTIVE_BACKEND_MARKER = '.active-backend';
@@ -770,10 +811,8 @@ export async function getConfigDir(cwd?: string): Promise<string | null> {
  * Resolution precedence:
  * 1. Project marker `eforge/.active-backend` (dev-local) — wins when present and the
  *    referenced profile file exists in either project or user scope.
- * 2. Project `config.yaml`'s `backend:` field — used when a matching profile exists.
- * 3. User marker `~/.config/eforge/.active-backend` — user-level dev-local override.
- * 4. User config's `backend:` field — user-level team default.
- * 5. Otherwise no profile is applied.
+ * 2. User marker `~/.config/eforge/.active-backend` — user-level dev-local override.
+ * 3. Otherwise no profile is applied.
  */
 export async function resolveActiveProfileName(
   configDir: string,
@@ -797,42 +836,21 @@ export async function resolveActiveProfileName(
         `Falling back to next available source.`,
       );
     }
-    // Try remaining sources as fallback, keeping source='missing' for project-level fallbacks
-    const teamName = projectConfig.backend;
-    if (teamName && await profileExistsInAnyScope(configDir, teamName)) {
-      return { name: teamName, source: 'missing' };
-    }
-    // Try user sources even with stale project marker
+    // Try user marker as fallback
     const userMarker = await readMarkerName(userMarkerPath());
     if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
       return { name: userMarker, source: 'user-local' };
     }
-    const userTeamName = userConfig?.backend;
-    if (userTeamName && await profileExistsInAnyScope(configDir, userTeamName)) {
-      return { name: userTeamName, source: 'user-team' };
-    }
     return { name: null, source: 'missing' };
   }
 
-  // Step 2: Project config backend:
-  const teamName = projectConfig.backend;
-  if (teamName && await profileExistsInAnyScope(configDir, teamName)) {
-    return { name: teamName, source: 'team' };
-  }
-
-  // Step 3: User marker
+  // Step 2: User marker
   const userMarker = await readMarkerName(userMarkerPath());
   if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
     return { name: userMarker, source: 'user-local' };
   }
 
-  // Step 4: User config backend:
-  const userTeamName = userConfig?.backend;
-  if (userTeamName && await profileExistsInAnyScope(configDir, userTeamName)) {
-    return { name: userTeamName, source: 'user-team' };
-  }
-
-  // Step 5: None
+  // Step 3: None
   return { name: null, source: 'none' };
 }
 
@@ -856,7 +874,7 @@ async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | 
   if (!data || typeof data !== 'object') {
     return {};
   }
-  return parseRawConfig(data as Record<string, unknown>);
+  return parseRawConfig(data as Record<string, unknown>, 'profile');
 }
 
 /**
@@ -1106,6 +1124,9 @@ export async function createBackendProfile(
   return { path };
 }
 
+// Re-export profile utilities from the shared client package
+export { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client';
+
 /**
  * Delete a backend profile file. Refuses to delete the currently active
  * profile unless `force: true` is supplied; in that case, the marker file
@@ -1222,8 +1243,8 @@ export async function validateConfigFile(
     return { configFound: true, valid: true, errors: [] }; // Empty file is valid
   }
 
-  // Schema validation
-  const result = eforgeConfigSchema.safeParse(data);
+  // Schema validation — use configYamlSchema which rejects `backend:`
+  const result = configYamlSchema.safeParse(data);
   if (!result.success) {
     for (const issue of result.error.issues) {
       const path = issue.path.map(String).join('.');

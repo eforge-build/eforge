@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /eforge:init
 
-Initialize eforge in this project. Detects project context, asks the user for backend preference, and creates `eforge/config.yaml` with sensible defaults.
+Initialize eforge in this project. Detects project context, asks the user for provider and model preferences, then creates a named backend profile under `eforge/backends/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.).
 
 ## Workflow
 
@@ -24,11 +24,26 @@ If `eforge/config.yaml` already exists, also read its current `build.postMergeCo
 
 Present your suggested commands to the user briefly: "I'd suggest these postMergeCommands based on your project: ..." and ask if they look right. Accept corrections.
 
+### Step 1.5: Pick provider and model
+
+Since Pi is the backend:
+
+1. **Provider**: Call `eforge_models` with `{ action: "providers", backend: "pi" }` to get available providers. Ask the user to pick one (e.g. "anthropic", "openrouter").
+2. **Max model**: Call `eforge_models` with `{ action: "list", backend: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Default to the newest model. The max model is used for all three model classes (max, balanced, fast) initially - users can refine later with `/eforge:backend:new`.
+
 ### Step 2: Call the tool
 
 Call the `eforge_init` tool with:
 - `force: true` if `$ARGUMENTS` contains `--force` or `force`
 - `postMergeCommands`: the commands from Step 1 (only applied when creating a new config - the tool preserves existing config formatting when the file already exists)
+- `provider`: the provider from Step 1.5
+- `maxModel`: the model ID from Step 1.5
+
+The tool will create a named backend profile under `eforge/backends/`, activate it via `eforge/.active-backend`, and write `eforge/config.yaml` with only team-wide settings (no `backend:` field).
+
+### Step 2.5: Migrate existing config
+
+If `$ARGUMENTS` contains `--migrate`, skip Steps 1.5 and 2 above. Instead call `eforge_init` with `migrate: true`. This extracts the `backend:`, `pi:`, and `agents.models`/`agents.model`/`agents.effort`/`agents.thinking` fields from the existing `config.yaml` into a named profile, activates it, and strips those fields from `config.yaml`.
 
 ### Step 3: Ensure `.gitignore` covers the active-backend marker
 
@@ -38,7 +53,7 @@ The `eforge/.active-backend` file is a per-developer marker that tracks which na
 
 Once the tool completes successfully, inform the user:
 
-> eforge initialized. You can customize further with `/eforge:config --edit`, or create a personal backend profile with `/eforge:backend:new`. Profiles can also be created at user scope (`~/.config/eforge/backends/`) for reuse across projects - `/eforge:backend:new` prompts for scope.
+> eforge initialized with profile `<profileName>`. The profile lives at `eforge/backends/<profileName>.yaml` and is now active. You can customize further with `/eforge:config --edit`, switch profiles with `/eforge:backend`, or create additional profiles with `/eforge:backend:new`. Use `/eforge:backend:new --scope user` to create a user-scope profile under `~/.config/eforge/backends/` that applies across all your projects.
 
 ## Related Skills
 

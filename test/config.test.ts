@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, piThinkingLevelSchema, modelClassSchema, MODEL_CLASSES } from '@eforge-build/engine/config';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, piThinkingLevelSchema, modelClassSchema, MODEL_CLASSES, configYamlSchema, sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
 import { pickSdkOptions } from '@eforge-build/engine/backend';
 import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
 
@@ -1139,5 +1139,108 @@ describe('mergePartialConfigs monitor', () => {
   it('project monitor survives when global has no monitor', () => {
     const merged = mergePartialConfigs({}, { monitor: { retentionCount: 30 } });
     expect(merged.monitor?.retentionCount).toBe(30);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// configYamlSchema — rejects backend: in config.yaml
+// ---------------------------------------------------------------------------
+
+describe('configYamlSchema', () => {
+  it('config.yaml with top-level backend: field is rejected with a validation error', () => {
+    const result = configYamlSchema.safeParse({ backend: 'claude-sdk', agents: { maxTurns: 30 } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i: { message: string }) => i.message).join('\n');
+      expect(messages).toContain('backend');
+    }
+  });
+
+  it('config.yaml without backend: field is accepted', () => {
+    const result = configYamlSchema.safeParse({ agents: { maxTurns: 30 } });
+    expect(result.success).toBe(true);
+  });
+
+  it('empty config.yaml is accepted', () => {
+    const result = configYamlSchema.safeParse({});
+    expect(result.success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sanitizeProfileName
+// ---------------------------------------------------------------------------
+
+describe('sanitizeProfileName', () => {
+  it('claude-sdk + claude-opus-4.7 → claude-sdk-opus-4-7', () => {
+    expect(sanitizeProfileName('claude-sdk', undefined, 'claude-opus-4.7')).toBe('claude-sdk-opus-4-7');
+  });
+
+  it('pi + anthropic + claude-opus-4.7 → pi-anthropic-opus-4-7', () => {
+    expect(sanitizeProfileName('pi', 'anthropic', 'claude-opus-4.7')).toBe('pi-anthropic-opus-4-7');
+  });
+
+  it('pi + zai + glm-4.6 → pi-zai-glm-4-6', () => {
+    expect(sanitizeProfileName('pi', 'zai', 'glm-4.6')).toBe('pi-zai-glm-4-6');
+  });
+
+  it('lowercases model ID', () => {
+    expect(sanitizeProfileName('claude-sdk', undefined, 'Claude-Opus-4.7')).toBe('claude-sdk-opus-4-7');
+  });
+
+  it('collapses repeated dashes', () => {
+    expect(sanitizeProfileName('pi', undefined, 'claude--test-4.7')).toBe('pi-test-4-7');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseRawConfigLegacy
+// ---------------------------------------------------------------------------
+
+describe('parseRawConfigLegacy', () => {
+  it('extracts backend and agents.models into profile, leaves build in remaining', () => {
+    const data = {
+      backend: 'claude-sdk',
+      agents: { models: { max: { id: 'claude-opus-4.7' } } },
+      build: { postMergeCommands: ['pnpm test'] },
+    };
+    const { profile, remaining } = parseRawConfigLegacy(data);
+    expect(profile.backend).toBe('claude-sdk');
+    expect(profile.agents).toEqual({ models: { max: { id: 'claude-opus-4.7' } } });
+    expect(remaining).toEqual({ build: { postMergeCommands: ['pnpm test'] } });
+    expect(remaining).not.toHaveProperty('backend');
+    expect(remaining).not.toHaveProperty('pi');
+    expect(remaining).not.toHaveProperty('agents');
+  });
+
+  it('extracts pi config into profile', () => {
+    const data = {
+      backend: 'pi',
+      pi: { thinkingLevel: 'high' },
+      agents: { model: { provider: 'anthropic', id: 'claude-opus-4.7' }, maxTurns: 50 },
+    };
+    const { profile, remaining } = parseRawConfigLegacy(data);
+    expect(profile.backend).toBe('pi');
+    expect(profile.pi).toEqual({ thinkingLevel: 'high' });
+    expect(profile.agents).toEqual({ model: { provider: 'anthropic', id: 'claude-opus-4.7' } });
+    // maxTurns stays in remaining since it's not a profile field
+    expect(remaining.agents).toEqual({ maxTurns: 50 });
+  });
+
+  it('handles config with no backend-related fields', () => {
+    const data = { build: { postMergeCommands: ['pnpm test'] } };
+    const { profile, remaining } = parseRawConfigLegacy(data);
+    expect(profile).toEqual({});
+    expect(remaining).toEqual({ build: { postMergeCommands: ['pnpm test'] } });
+  });
+
+  it('extracts agents.effort and agents.thinking into profile', () => {
+    const data = {
+      backend: 'claude-sdk',
+      agents: { effort: 'high', thinking: { type: 'adaptive' }, maxTurns: 30 },
+    };
+    const { profile, remaining } = parseRawConfigLegacy(data);
+    expect(profile.agents).toEqual({ effort: 'high', thinking: { type: 'adaptive' } });
+    expect(remaining.agents).toEqual({ maxTurns: 30 });
   });
 });

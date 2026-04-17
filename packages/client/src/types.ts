@@ -202,7 +202,7 @@ export interface BackendProfileInfo {
 }
 
 /** Source of the active backend profile resolution. */
-export type BackendProfileSource = 'local' | 'team' | 'user-local' | 'user-team' | 'missing' | 'none';
+export type BackendProfileSource = 'local' | 'user-local' | 'missing' | 'none';
 
 // GET /api/backend/list
 export interface BackendListResponse {

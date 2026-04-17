@@ -11,6 +11,8 @@ import { z } from 'zod';
 import http from 'node:http';
 import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
 import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, DAEMON_POLL_INTERVAL_MS, readLockfile } from '@eforge-build/client';
 import type { LatestRunResponse, EnqueueResponse, RunSummary, ConfigValidateResponse } from '@eforge-build/client';
 
@@ -740,14 +742,114 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_init
   server.tool(
     'eforge_init',
-    'Initialize eforge in a project: creates eforge/config.yaml and updates .gitignore. Presents an elicitation form for backend selection.',
+    'Initialize eforge in a project: creates a named backend profile under eforge/backends/, activates it, and writes eforge/config.yaml for team-wide settings. Presents an elicitation form for backend, provider, and model selection. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.',
     {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands (e.g. ["pnpm install", "pnpm test"]). Only applied when creating a new config, not when merging with existing.'),
+      migrate: z.boolean().optional().describe('Extract backend config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.'),
     },
-    async ({ force, postMergeCommands }) => {
+    async ({ force, postMergeCommands, migrate }) => {
       const configDir = join(cwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
+
+      // Ensure .gitignore has daemon state (.eforge/) and the per-developer active-backend marker.
+      await ensureGitignoreEntries(cwd, ['.eforge/', 'eforge/.active-backend']);
+
+      // --- Migrate mode ---
+      if (migrate) {
+        // Require existing config.yaml
+        let rawYaml: string;
+        try {
+          rawYaml = await readFile(configPath, 'utf-8');
+        } catch {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: 'No existing eforge/config.yaml found. Nothing to migrate.' }, null, 2) }],
+            isError: true,
+          };
+        }
+
+        let data: Record<string, unknown>;
+        try {
+          const parsed = parseYaml(rawYaml);
+          if (!parsed || typeof parsed !== 'object') {
+            return {
+              content: [{ type: 'text', text: JSON.stringify({ error: 'Existing config.yaml is empty or not an object.' }, null, 2) }],
+              isError: true,
+            };
+          }
+          data = parsed as Record<string, unknown>;
+        } catch (err) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: `Failed to parse config.yaml: ${err instanceof Error ? err.message : String(err)}` }, null, 2) }],
+            isError: true,
+          };
+        }
+
+        if (data.backend === undefined) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: 'config.yaml has no top-level "backend:" field. Nothing to migrate.' }, null, 2) }],
+            isError: true,
+          };
+        }
+
+        const { profile, remaining } = parseRawConfigLegacy(data);
+        const backend = profile.backend as string;
+
+        // Derive a profile name from the backend + model info
+        let maxModelId: string | undefined;
+        let provider: string | undefined;
+        const agents = profile.agents as Record<string, unknown> | undefined;
+        if (agents?.models) {
+          const models = agents.models as Record<string, unknown>;
+          const maxModel = models.max as { id?: string; provider?: string } | undefined;
+          maxModelId = maxModel?.id;
+          provider = maxModel?.provider;
+        } else if (agents?.model) {
+          const model = agents.model as { id?: string; provider?: string };
+          maxModelId = model.id;
+          provider = model.provider;
+        }
+
+        const profileName = maxModelId
+          ? sanitizeProfileName(backend, provider, maxModelId)
+          : backend;
+
+        // Create the profile via daemon
+        const createBody: Record<string, unknown> = {
+          name: profileName,
+          backend,
+          overwrite: true,
+        };
+        if (profile.agents) createBody.agents = profile.agents;
+        if (profile.pi) createBody.pi = profile.pi;
+
+        await daemonRequest(cwd, 'POST', '/api/backend/create', createBody);
+
+        // Rewrite config.yaml with remaining fields only (no backend:) before
+        // activating the profile, so a failed write leaves the profile inactive
+        // (cleanly recoverable by re-running migrate).
+        const yamlOut = Object.keys(remaining).length > 0
+          ? stringifyYaml(remaining)
+          : '';
+        await writeFile(configPath, yamlOut, 'utf-8');
+
+        // Activate the profile
+        await daemonRequest(cwd, 'POST', '/api/backend/use', { name: profileName });
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify({
+            status: 'migrated',
+            configPath: 'eforge/config.yaml',
+            profileName,
+            profilePath: `eforge/backends/${profileName}.yaml`,
+            backend,
+            moved: Object.keys(profile),
+            kept: Object.keys(remaining),
+          }, null, 2) }],
+        };
+      }
+
+      // --- Fresh init mode ---
 
       // Check if config already exists
       try {
@@ -757,7 +859,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
             content: [{
               type: 'text',
               text: JSON.stringify({
-                error: 'eforge/config.yaml already exists. Use force: true to overwrite.',
+                error: 'eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract backend config into a profile.',
               }, null, 2),
             }],
             isError: true,
@@ -792,17 +894,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         });
 
         if (result.action === 'decline') {
-          return {
-            content: [{ type: 'text', text: 'Initialization declined by user.' }],
-          };
+          return { content: [{ type: 'text', text: 'Initialization declined by user.' }] };
         }
-
         if (result.action === 'cancel' || !result.content) {
-          return {
-            content: [{ type: 'text', text: 'Initialization cancelled.' }],
-          };
+          return { content: [{ type: 'text', text: 'Initialization cancelled.' }] };
         }
-
         backend = result.content.backend as string;
       } catch (err) {
         return {
@@ -814,9 +910,103 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         };
       }
 
-      // Ensure .gitignore has daemon state (.eforge/) and the per-developer active-backend marker.
-      // The eforge/ directory itself is committed, but eforge/.active-backend is per-developer state.
-      await ensureGitignoreEntries(cwd, ['.eforge/', 'eforge/.active-backend']);
+      // Elicit provider (if pi, via /api/models/providers)
+      let provider: string | undefined;
+      if (backend === 'pi') {
+        try {
+          const { data: providersResp } = await daemonRequest<{ providers: string[] }>(cwd, 'GET', `/api/models/providers?backend=pi`);
+          if (providersResp.providers.length > 0) {
+            const providerSchema = {
+              type: 'object' as const,
+              properties: {
+                provider: {
+                  type: 'string' as const,
+                  title: 'Provider',
+                  description: 'Which provider to use',
+                  oneOf: providersResp.providers.map((p) => ({ const: p, title: p })),
+                  default: providersResp.providers[0],
+                },
+              },
+              required: ['provider'],
+            };
+            const provResult = await server.server.elicitInput({
+              mode: 'form',
+              message: 'Select a provider:',
+              requestedSchema: providerSchema,
+            });
+            if (provResult.action === 'accept' && provResult.content) {
+              provider = provResult.content.provider as string;
+            }
+          }
+        } catch {
+          // Best-effort provider selection
+        }
+      }
+
+      // Elicit max model (via /api/models/list)
+      let maxModelId: string | undefined;
+      try {
+        const params = new URLSearchParams({ backend });
+        if (provider) params.set('provider', provider);
+        const { data: modelsResp } = await daemonRequest<{ models: Array<{ id: string; provider?: string }> }>(
+          cwd, 'GET', `/api/models/list?${params.toString()}`,
+        );
+        if (modelsResp.models.length > 0) {
+          const topModels = modelsResp.models.slice(0, 10);
+          const modelSchema = {
+            type: 'object' as const,
+            properties: {
+              model: {
+                type: 'string' as const,
+                title: 'Max Model',
+                description: 'Primary model for heavy reasoning (planners, reviewers). Used for all model classes by default.',
+                oneOf: topModels.map((m) => ({ const: m.id, title: m.id })),
+                default: topModels[0].id,
+              },
+            },
+            required: ['model'],
+          };
+          const modelResult = await server.server.elicitInput({
+            mode: 'form',
+            message: 'Select the max model:',
+            requestedSchema: modelSchema,
+          });
+          if (modelResult.action === 'accept' && modelResult.content) {
+            maxModelId = modelResult.content.model as string;
+          } else {
+            maxModelId = topModels[0].id;
+          }
+        }
+      } catch {
+        // Best-effort model selection
+      }
+
+      // Compute profile name
+      const profileName = maxModelId
+        ? sanitizeProfileName(backend, provider, maxModelId)
+        : backend;
+
+      // Build model ref
+      const modelRef: Record<string, string> = maxModelId ? { id: maxModelId } : { id: 'claude-opus-4-7' };
+      if (provider) modelRef.provider = provider;
+
+      // Create the profile via daemon
+      const createBody: Record<string, unknown> = {
+        name: profileName,
+        backend,
+        agents: {
+          models: {
+            max: { ...modelRef },
+            balanced: { ...modelRef },
+            fast: { ...modelRef },
+          },
+        },
+      };
+      if (force) createBody.overwrite = true;
+      await daemonRequest(cwd, 'POST', '/api/backend/create', createBody);
+
+      // Activate the profile
+      await daemonRequest(cwd, 'POST', '/api/backend/use', { name: profileName });
 
       // Create eforge/ directory if it doesn't exist
       try {
@@ -825,33 +1015,17 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         // Directory may already exist
       }
 
-      // Read existing config (if any) and merge - only update backend, preserve formatting
-      let configContent: string;
-      try {
-        const existing = await readFile(configPath, 'utf-8');
-        // Replace or prepend backend line, preserving everything else
-        if (/^backend\s*:/m.test(existing)) {
-          configContent = existing.replace(/^backend\s*:.*$/m, `backend: ${backend}`);
-        } else {
-          configContent = `backend: ${backend}\n\n${existing}`;
-        }
-      } catch {
-        // No existing config - create new one with backend and optional postMergeCommands
-        const lines = [`backend: ${backend}`, ''];
-        if (postMergeCommands && postMergeCommands.length > 0) {
-          lines.push('build:');
-          lines.push('  postMergeCommands:');
-          for (const cmd of postMergeCommands) {
-            lines.push(`    - ${cmd}`);
-          }
-          lines.push('');
-        }
-        configContent = lines.join('\n');
+      // Write config.yaml with only non-backend fields (never emit backend:)
+      const configData: Record<string, unknown> = {};
+      if (postMergeCommands && postMergeCommands.length > 0) {
+        configData.build = { postMergeCommands };
       }
-
+      const configContent = Object.keys(configData).length > 0
+        ? stringifyYaml(configData)
+        : '';
       await writeFile(configPath, configContent, 'utf-8');
 
-      // Validate config via daemon
+      // Validate config via daemon (best-effort)
       let validation: ConfigValidateResponse | null = null;
       try {
         const { data } = await daemonRequest<ConfigValidateResponse>(cwd, 'GET', '/api/config/validate');
@@ -863,6 +1037,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const response: Record<string, unknown> = {
         status: 'initialized',
         configPath: 'eforge/config.yaml',
+        profileName,
+        profilePath: `eforge/backends/${profileName}.yaml`,
         backend,
       };
 
