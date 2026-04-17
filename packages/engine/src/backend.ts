@@ -36,7 +36,7 @@ export interface SdkPassthroughConfig {
 }
 
 /** Keys that are part of SdkPassthroughConfig but should NOT be forwarded to the backend SDK. */
-const NON_SDK_KEYS = new Set(['promptAppend']);
+const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource']);
 
 /**
  * Strip `undefined` values from an SdkPassthroughConfig so the SDK
@@ -91,6 +91,12 @@ export interface AgentRunOptions {
   fallbackFrom?: import('./config.js').ModelClass;
   /** Custom tools to inject into the agent run (e.g. submission tools for planners). */
   customTools?: CustomTool[];
+  /** True when the resolved effort was clamped to the model's maximum supported level. */
+  effortClamped?: boolean;
+  /** The original effort level before clamping was applied. */
+  effortOriginal?: EffortLevel;
+  /** Provenance of the resolved effort value. */
+  effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
 }
 
 /**

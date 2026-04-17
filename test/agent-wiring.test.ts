@@ -12,7 +12,9 @@ import { runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evalua
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runArchitectureReview } from '@eforge-build/engine/agents/architecture-reviewer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
-import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors } from '@eforge-build/engine/pipeline';
+import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
+import { DEFAULT_CONFIG, resolveConfig } from '@eforge-build/engine/config';
+import type { EforgeConfig } from '@eforge-build/engine/config';
 
 // --- Planner ---
 
@@ -832,5 +834,112 @@ describe('formatStageRegistry', () => {
     for (const name of allNames) {
       expect(output).toContain(name);
     }
+  });
+});
+
+// --- resolveAgentConfig per-plan override ---
+
+describe('resolveAgentConfig per-plan override', () => {
+  function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
+    return resolveConfig({
+      agents: {
+        ...overrides,
+      },
+    });
+  }
+
+  it('planEntry override wins over per-role config for effort', () => {
+    const config = makeConfig({
+      roles: {
+        builder: { effort: 'high' },
+      },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+      agents: { builder: { effort: 'xhigh' } },
+    });
+
+    expect(result.effort).toBe('xhigh');
+    expect(result.effortSource).toBe('planner');
+  });
+
+  it('missing planEntry falls back to current behavior', () => {
+    const config = makeConfig({
+      roles: {
+        builder: { effort: 'high' },
+      },
+    });
+
+    const resultWithPlan = resolveAgentConfig('builder', config, 'claude-sdk');
+    const resultWithoutPlan = resolveAgentConfig('builder', config, 'claude-sdk', undefined);
+
+    expect(resultWithPlan.effort).toBe(resultWithoutPlan.effort);
+    expect(resultWithPlan.effortSource).toBe('role-config');
+  });
+
+  it('xhigh and max effort levels flow through on capable models', () => {
+    const config = makeConfig({
+      model: { id: 'claude-opus-4-7' },
+    });
+
+    const resultXhigh = resolveAgentConfig('builder', config, 'claude-sdk', {
+      agents: { builder: { effort: 'xhigh' } },
+    });
+    expect(resultXhigh.effort).toBe('xhigh');
+    expect(resultXhigh.effortClamped).toBe(false);
+
+    const resultMax = resolveAgentConfig('builder', config, 'claude-sdk', {
+      agents: { builder: { effort: 'max' } },
+    });
+    expect(resultMax.effort).toBe('max');
+    expect(resultMax.effortClamped).toBe(false);
+  });
+
+  it('clamping reflects in resolved config for Sonnet model with max effort', () => {
+    const config = makeConfig({
+      model: { id: 'claude-sonnet-4-0' },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+      agents: { builder: { effort: 'max' } },
+    });
+
+    expect(result.effort).toBe('xhigh');
+    expect(result.effortClamped).toBe(true);
+    expect(result.effortOriginal).toBe('max');
+    expect(result.effortSource).toBe('planner');
+  });
+
+  it('planEntry thinking override wins over per-role config', () => {
+    const config = makeConfig({
+      roles: {
+        builder: { thinking: { type: 'disabled' } },
+      },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+      agents: { builder: { thinking: { type: 'enabled', budgetTokens: 5000 } } },
+    });
+
+    expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 5000 });
+  });
+
+  it('effortSource is global-config when effort comes from global config', () => {
+    const config = makeConfig({
+      effort: 'medium',
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+
+    expect(result.effort).toBe('medium');
+    expect(result.effortSource).toBe('global-config');
+  });
+
+  it('effortSource is default when no effort is configured', () => {
+    const config = makeConfig({});
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    // No effort set, so effortSource should not be set
+    expect(result.effort).toBeUndefined();
+    expect(result.effortSource).toBeUndefined();
   });
 });

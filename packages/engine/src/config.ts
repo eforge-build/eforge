@@ -244,6 +244,12 @@ export interface ResolvedAgentConfig {
   fallbackFrom?: ModelClass;
   /** Text appended to the agent prompt after variable substitution. */
   promptAppend?: string;
+  /** True when the resolved effort was clamped to the model's maximum supported level. */
+  effortClamped?: boolean;
+  /** The original effort level before clamping was applied. */
+  effortOriginal?: import('./backend.js').EffortLevel;
+  /** Provenance of the resolved effort value. */
+  effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
 }
 
 export interface PiConfig {

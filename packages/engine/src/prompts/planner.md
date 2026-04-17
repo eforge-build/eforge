@@ -308,6 +308,58 @@ Important:
 - Timestamps for migrations must use `YYYYMMDDHHMMSS` format
 - Verification criteria must be specific and testable
 
+### Per-Plan Agent Tuning (Optional)
+
+For plans that are notably harder or easier than typical, you can include an `agents` block in the plan frontmatter to tune the effort and thinking behavior of individual build-stage agents. Most plans should omit this block entirely - engine defaults are well-tuned for typical work.
+
+Available roles for tuning:
+- `builder` - implements the plan
+- `reviewer` - reviews the implementation
+- `review-fixer` - fixes review issues
+- `evaluator` - evaluates review fixes
+- `doc-updater` - updates documentation
+- `test-writer` - writes tests
+- `tester` - runs and validates tests
+
+Effort levels (from least to most intensive):
+- `low` - quick, surface-level work
+- `medium` - standard depth
+- `high` - thorough analysis
+- `xhigh` - very thorough, deep reasoning
+- `max` - maximum depth, exhaustive reasoning
+
+The engine automatically clamps effort to what the selected model supports. You do not need to worry about model-specific limits.
+
+Example frontmatter with agent tuning:
+
+```yaml
+---
+id: plan-02-refactor-auth
+name: Refactor Authentication System
+depends_on: [plan-01-core]
+branch: refactor-auth/main
+agents:
+  builder:
+    effort: xhigh
+    rationale: Complex multi-file refactor requiring careful coordination
+  reviewer:
+    effort: high
+    rationale: Security-critical code changes need thorough review
+  tester:
+    effort: high
+    thinking:
+      type: enabled
+      budgetTokens: 10000
+    rationale: Need thorough test coverage for auth flows
+---
+```
+
+Guidelines:
+- Only include the `agents` block when a plan's complexity significantly deviates from typical
+- Include a `rationale` for each tuned role to explain why
+- The `thinking` field is optional and controls the agent's reasoning behavior
+- When in doubt, omit the block and let the engine use its defaults
+
 ## Orchestration.yaml Format
 
 Create `{{outputDir}}/{{planSetName}}/orchestration.yaml` (errand/excursion only):

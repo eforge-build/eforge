@@ -7,7 +7,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { PlanFile, OrchestrationConfig, ExpeditionModule } from './events.js';
 import type { BuildStageSpec, ReviewProfileConfig } from './config.js';
 import { buildStageSpecSchema, reviewProfileConfigSchema } from './config.js';
-import { pipelineCompositionSchema } from './schemas.js';
+import { pipelineCompositionSchema, agentTuningSchema } from './schemas.js';
 import type { PipelineComposition } from './schemas.js';
 import { z } from 'zod/v4';
 
@@ -151,12 +151,25 @@ export async function parsePlanFile(mdPath: string): Promise<PlanFile> {
     throw new Error(`Plan file missing required 'name' field: ${absPath}`);
   }
 
+  // Parse optional agents block with graceful fallback
+  let agents: PlanFile['agents'] | undefined;
+  if (frontmatter.agents !== undefined) {
+    const agentsValidator = z.record(z.string(), agentTuningSchema);
+    const agentsResult = agentsValidator.safeParse(frontmatter.agents);
+    if (agentsResult.success) {
+      agents = agentsResult.data as PlanFile['agents'];
+    } else {
+      console.error(`[eforge] Plan file ${absPath}: malformed 'agents' block will be ignored: ${z.prettifyError(agentsResult.error)}`);
+    }
+  }
+
   return {
     id: frontmatter.id,
     name: frontmatter.name,
     dependsOn: Array.isArray(frontmatter.depends_on) ? frontmatter.depends_on : [],
     branch: typeof frontmatter.branch === 'string' ? frontmatter.branch : '',
     migrations: Array.isArray(frontmatter.migrations) ? frontmatter.migrations : undefined,
+    ...(agents && { agents }),
     body,
     filePath: absPath,
   };
@@ -188,6 +201,18 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
           throw new Error(`Plan '${id}' has invalid or missing 'review' field: ${reviewResult.error.message}`);
         }
 
+        // Parse optional agents block
+        let agents: Record<string, { effort?: string; thinking?: object; rationale?: string }> | undefined;
+        if (p.agents !== undefined) {
+          const agentsValidator = z.record(z.string(), agentTuningSchema);
+          const agentsResult = agentsValidator.safeParse(p.agents);
+          if (agentsResult.success) {
+            agents = agentsResult.data as Record<string, { effort?: string; thinking?: object; rationale?: string }>;
+          } else {
+            console.error(`[eforge] Plan '${id}': malformed 'agents' block in orchestration config will be ignored`);
+          }
+        }
+
         return {
           id,
           name: typeof p.name === 'string' ? p.name : String(p.name ?? ''),
@@ -196,6 +221,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
           build: buildResult.data,
           review: reviewResult.data,
           ...(typeof p.max_continuations === 'number' ? { maxContinuations: p.max_continuations } : {}),
+          ...(agents && { agents }),
         };
       })
     : [];
@@ -624,6 +650,9 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
     if (plan.frontmatter.migrations && plan.frontmatter.migrations.length > 0) {
       frontmatter.migrations = plan.frontmatter.migrations;
     }
+    if (plan.frontmatter.agents) {
+      frontmatter.agents = plan.frontmatter.agents;
+    }
     const content = `---\n${stringifyYaml(frontmatter).trim()}\n---\n\n${plan.body}`;
     await writeFile(resolve(planDir, `${plan.frontmatter.id}.md`), content, 'utf-8');
   }
@@ -635,12 +664,16 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
     base_branch: payload.baseBranch,
     mode: payload.mode,
     validate: payload.orchestration.validate ?? [],
-    plans: payload.orchestration.plans.map(p => ({
-      id: p.id,
-      name: p.name,
-      depends_on: p.dependsOn,
-      branch: p.branch,
-    })),
+    plans: payload.orchestration.plans.map(p => {
+      const planData = payload.plans.find(pd => pd.frontmatter.id === p.id);
+      return {
+        id: p.id,
+        name: p.name,
+        depends_on: p.dependsOn,
+        branch: p.branch,
+        ...(planData?.frontmatter.agents ? { agents: planData.frontmatter.agents } : {}),
+      };
+    }),
   };
   await writeFile(resolve(planDir, 'orchestration.yaml'), stringifyYaml(orchConfig), 'utf-8');
 }
