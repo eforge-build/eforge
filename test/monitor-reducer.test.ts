@@ -864,3 +864,179 @@ describe('agent:usage event handling', () => {
     expect(stats.totalCost).toBeCloseTo(0.08);
   });
 });
+
+describe('effort/thinking fields on AgentThread', () => {
+  it('populates effort and effortSource from agent:start event', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        backend: 'pi',
+        timestamp: '2024-01-01T00:00:00Z',
+        effort: 'xhigh',
+        effortSource: 'planner',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.effort).toBe('xhigh');
+    expect(thread!.effortSource).toBe('planner');
+  });
+
+  it('populates effortClamped and effortOriginal from agent:start event', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        backend: 'pi',
+        timestamp: '2024-01-01T00:00:00Z',
+        effort: 'xhigh',
+        effortClamped: true,
+        effortOriginal: 'max',
+        effortSource: 'planner',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.effort).toBe('xhigh');
+    expect(thread!.effortClamped).toBe(true);
+    expect(thread!.effortOriginal).toBe('max');
+    expect(thread!.effortSource).toBe('planner');
+  });
+
+  it('populates thinking from agent:start event', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        backend: 'pi',
+        timestamp: '2024-01-01T00:00:00Z',
+        thinking: 'adaptive',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.thinking).toBe('adaptive');
+  });
+
+  it('leaves effort/thinking undefined when agent:start omits them (older engine)', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        backend: 'pi',
+        timestamp: '2024-01-01T00:00:00Z',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.effort).toBeUndefined();
+    expect(thread!.thinking).toBeUndefined();
+    expect(thread!.effortClamped).toBeUndefined();
+    expect(thread!.effortOriginal).toBeUndefined();
+    expect(thread!.effortSource).toBeUndefined();
+  });
+
+  it('handles effortSource values for config sources', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        backend: 'pi',
+        timestamp: '2024-01-01T00:00:00Z',
+        effort: 'high',
+        effortSource: 'role-config',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.effort).toBe('high');
+    expect(thread!.effortSource).toBe('role-config');
+  });
+
+  it('handles thinking with budget token string', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        backend: 'pi',
+        timestamp: '2024-01-01T00:00:00Z',
+        thinking: 'enabled (10k tokens)',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.thinking).toBe('enabled (10k tokens)');
+  });
+
+  it('populates effort/thinking fields via BATCH_LOAD', () => {
+    const events: Array<{ event: EforgeEvent; eventId: string }> = [
+      {
+        event: {
+          type: 'agent:start',
+          agentId: 'a1',
+          agent: 'builder',
+          planId: 'plan-01',
+          model: 'claude',
+          backend: 'pi',
+          timestamp: '2024-01-01T00:00:00Z',
+          effort: 'xhigh',
+          thinking: 'adaptive',
+          effortClamped: true,
+          effortOriginal: 'max',
+          effortSource: 'planner',
+        } as unknown as EforgeEvent,
+        eventId: '1',
+      },
+    ];
+
+    const state = eforgeReducer(initialRunState, {
+      type: 'BATCH_LOAD',
+      events,
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.effort).toBe('xhigh');
+    expect(thread!.thinking).toBe('adaptive');
+    expect(thread!.effortClamped).toBe(true);
+    expect(thread!.effortOriginal).toBe('max');
+    expect(thread!.effortSource).toBe('planner');
+  });
+});
