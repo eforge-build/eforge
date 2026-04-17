@@ -64,8 +64,11 @@ describe('eforge-plugin/skills/backend/backend.md - user-scope updates', () => {
 
   it('documents the scope parameter section', () => {
     expect(raw).toContain('## Scope Parameter');
-    expect(raw).toContain('scope: "project"');
-    expect(raw).toContain('scope: "user"');
+    expect(raw).toContain('"project"');
+    expect(raw).toContain('"user"');
+    expect(raw).toContain('"all"');
+    expect(raw).toContain('default `"all"`');
+    expect(raw).toContain('default `"project"`');
   });
 
   it('mentions user-scope paths', () => {
@@ -149,8 +152,11 @@ describe('packages/pi-eforge/skills/eforge-backend/SKILL.md - user-scope updates
 
   it('documents the scope parameter section', () => {
     expect(raw).toContain('## Scope Parameter');
-    expect(raw).toContain('scope: "project"');
-    expect(raw).toContain('scope: "user"');
+    expect(raw).toContain('"project"');
+    expect(raw).toContain('"user"');
+    expect(raw).toContain('"all"');
+    expect(raw).toContain('default `"all"`');
+    expect(raw).toContain('default `"project"`');
   });
 
   it('uses bare tool names (no mcp__eforge__ prefix) - Pi convention', () => {

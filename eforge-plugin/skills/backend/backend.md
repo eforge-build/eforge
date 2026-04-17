@@ -54,10 +54,8 @@ On error (e.g. the profile does not exist), surface the error message and sugges
 
 The `scope` parameter is available on `list`, `use`, `create`, and `delete` actions:
 
-- `scope: "project"` (default) - operates on `eforge/backends/` and `eforge/.active-backend`
-- `scope: "user"` - operates on `~/.config/eforge/backends/` and `~/.config/eforge/.active-backend`
-
-When omitted, the default is project scope.
+- **`list`**: `scope` accepts `"project"`, `"user"`, or `"all"` (default `"all"`) - shows profiles from both scopes when omitted.
+- **`use` / `create` / `delete`**: `scope` accepts `"project"` or `"user"` (default `"project"`) - operates on `eforge/backends/` and `eforge/.active-backend` for project scope, `~/.config/eforge/backends/` and `~/.config/eforge/.active-backend` for user scope.
 
 ## Active Profile Precedence
 
