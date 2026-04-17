@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans } from '@eforge-build/engine/orchestrator/phases';
+import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans, finalize } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import { resumeState } from '@eforge-build/engine/orchestrator/plan-lifecycle';
@@ -430,6 +430,9 @@ describe('executePlans - build:failed handling', () => {
     for await (const event of executePlans(ctx)) {
       events.push(event);
     }
+    for await (const event of finalize(ctx)) {
+      events.push(event);
+    }
 
     // plan-a should be failed
     expect(state.plans['plan-a'].status).toBe('failed');
@@ -440,6 +443,8 @@ describe('executePlans - build:failed handling', () => {
     expect(events.some((e) => e.type === 'merge:complete')).toBe(false);
     // A build:failed event for plan-a should be present
     expect(events.some((e) => e.type === 'build:failed' && e.planId === 'plan-a')).toBe(true);
+    // Overall build status should be failed
+    expect(state.status).toBe('failed');
   });
 });
 
