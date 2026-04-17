@@ -329,6 +329,275 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   });
 
   // ------------------------------------------------------------------
+  // Tool: eforge_backend
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_backend",
+    label: "eforge backend",
+    description:
+      'Manage named backend profiles in eforge/backends/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-backend to switch profiles; "create" writes a new eforge/backends/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+    parameters: Type.Object({
+      action: StringEnum(["list", "show", "use", "create", "delete"] as const, {
+        description:
+          "'list' enumerates profiles, 'show' returns the resolved active profile, 'use' switches the active profile, 'create' writes a new profile, 'delete' removes a profile",
+      }),
+      name: Type.Optional(
+        Type.String({
+          description:
+            'Profile name (required for "use", "create", and "delete")',
+        }),
+      ),
+      backend: Type.Optional(
+        StringEnum(["claude-sdk", "pi"] as const, {
+          description: 'Backend kind (required for "create")',
+        }),
+      ),
+      pi: Type.Optional(
+        Type.Record(Type.String(), Type.Any(), {
+          description:
+            'Pi-specific config to embed in the profile (optional, "create" only)',
+        }),
+      ),
+      agents: Type.Optional(
+        Type.Record(Type.String(), Type.Any(), {
+          description:
+            'Agents config block to embed in the profile (optional, "create" only)',
+        }),
+      ),
+      overwrite: Type.Optional(
+        Type.Boolean({
+          description:
+            "Overwrite an existing profile when creating. Default: false.",
+        }),
+      ),
+      force: Type.Optional(
+        Type.Boolean({
+          description:
+            "Delete even if the profile is currently active. Default: false.",
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { action, name, backend, pi: piCfg, agents, overwrite, force } =
+        params;
+
+      if (action === "list") {
+        const { data } = await daemonRequest(ctx.cwd, "GET", "/api/backend/list");
+        return jsonResult(data);
+      }
+
+      if (action === "show") {
+        const { data } = await daemonRequest(ctx.cwd, "GET", "/api/backend/show");
+        return jsonResult(data);
+      }
+
+      if (action === "use") {
+        if (!name) {
+          throw new Error('"name" is required when action is "use"');
+        }
+        const { data } = await daemonRequest(
+          ctx.cwd,
+          "POST",
+          "/api/backend/use",
+          { name },
+        );
+        return jsonResult(data);
+      }
+
+      if (action === "create") {
+        if (!name) {
+          throw new Error('"name" is required when action is "create"');
+        }
+        if (backend !== "claude-sdk" && backend !== "pi") {
+          throw new Error(
+            '"backend" is required when action is "create" (must be "claude-sdk" or "pi")',
+          );
+        }
+        const body: Record<string, unknown> = { name, backend };
+        if (piCfg !== undefined) body.pi = piCfg;
+        if (agents !== undefined) body.agents = agents;
+        if (overwrite !== undefined) body.overwrite = overwrite;
+        const { data } = await daemonRequest(
+          ctx.cwd,
+          "POST",
+          "/api/backend/create",
+          body,
+        );
+        return jsonResult(data);
+      }
+
+      // action === 'delete'
+      if (!name) {
+        throw new Error('"name" is required when action is "delete"');
+      }
+      const body: Record<string, unknown> = {};
+      if (force !== undefined) body.force = force;
+      const { data } = await daemonRequest(
+        ctx.cwd,
+        "DELETE",
+        `/api/backend/${encodeURIComponent(name)}`,
+        body,
+      );
+      return jsonResult(data);
+    },
+
+    renderCall(args, theme) {
+      const action = typeof args.action === "string" ? args.action : "?";
+      const name = typeof args.name === "string" ? args.name : "";
+      const suffix = name ? ` ${name}` : "";
+      return new Text(
+        theme.fg("toolTitle", theme.bold(`eforge backend ${action}${suffix}`)),
+        0,
+        0,
+      );
+    },
+
+    renderResult(result, _options, theme) {
+      const text = result.content[0];
+      if (!text || text.type !== "text") {
+        return new Text(theme.fg("muted", "No data"), 0, 0);
+      }
+      try {
+        const data = JSON.parse(text.text) as Record<string, unknown>;
+        const lines: string[] = [];
+
+        if (Array.isArray((data as { profiles?: unknown }).profiles)) {
+          const profiles = (data as { profiles: Array<{ name: string }> }).profiles;
+          const active = (data as { active?: string | null }).active ?? null;
+          const source = (data as { source?: string }).source ?? "none";
+          lines.push(
+            theme.fg("accent", `${profiles.length} profile(s)`) +
+              theme.fg("dim", `  source: ${source}`),
+          );
+          for (const p of profiles) {
+            const marker = active === p.name ? theme.fg("success", "● ") : theme.fg("muted", "○ ");
+            lines.push(`  ${marker}${theme.fg("text", p.name)}`);
+          }
+        } else if ("resolved" in data) {
+          const active = (data as { active?: string | null }).active ?? null;
+          const source = (data as { source?: string }).source ?? "none";
+          const resolved = (data as { resolved?: { backend?: string } }).resolved;
+          lines.push(
+            theme.fg("accent", `active: ${active ?? "(none)"}`) +
+              theme.fg("dim", `  source: ${source}`),
+          );
+          if (resolved?.backend) {
+            lines.push(theme.fg("dim", `  backend: ${resolved.backend}`));
+          }
+        } else if ("active" in data) {
+          lines.push(theme.fg("success", `✓ active: ${String((data as { active?: unknown }).active)}`));
+        } else if ("path" in data) {
+          lines.push(theme.fg("success", `✓ created: ${String((data as { path?: unknown }).path)}`));
+        } else if ("deleted" in data) {
+          lines.push(theme.fg("success", `✓ deleted: ${String((data as { deleted?: unknown }).deleted)}`));
+        } else {
+          lines.push(theme.fg("muted", text.text));
+        }
+        return new Text(lines.join("\n"), 0, 0);
+      } catch {
+        return new Text(theme.fg("muted", text.text), 0, 0);
+      }
+    },
+  });
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_models
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_models",
+    label: "eforge models",
+    description:
+      'List providers or models available for a given backend. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first.',
+    parameters: Type.Object({
+      action: StringEnum(["providers", "list"] as const, {
+        description:
+          "'providers' returns provider names, 'list' returns available models",
+      }),
+      backend: StringEnum(["claude-sdk", "pi"] as const, {
+        description: "Which backend to query",
+      }),
+      provider: Type.Optional(
+        Type.String({
+          description:
+            'Optional provider filter for "list" (Pi only). Ignored for claude-sdk.',
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (params.action === "providers") {
+        const { data } = await daemonRequest(
+          ctx.cwd,
+          "GET",
+          `/api/models/providers?backend=${encodeURIComponent(params.backend)}`,
+        );
+        return jsonResult(data);
+      }
+      const searchParams = new URLSearchParams({ backend: params.backend });
+      if (params.provider) searchParams.set("provider", params.provider);
+      const { data } = await daemonRequest(
+        ctx.cwd,
+        "GET",
+        `/api/models/list?${searchParams.toString()}`,
+      );
+      return jsonResult(data);
+    },
+
+    renderCall(args, theme) {
+      const action = typeof args.action === "string" ? args.action : "?";
+      const backend = typeof args.backend === "string" ? args.backend : "?";
+      const provider = typeof args.provider === "string" ? args.provider : "";
+      const suffix = provider ? ` / ${provider}` : "";
+      return new Text(
+        theme.fg(
+          "toolTitle",
+          theme.bold(`eforge models ${action} ${backend}${suffix}`),
+        ),
+        0,
+        0,
+      );
+    },
+
+    renderResult(result, { expanded }, theme) {
+      const text = result.content[0];
+      if (!text || text.type !== "text") {
+        return new Text(theme.fg("muted", "No data"), 0, 0);
+      }
+      try {
+        const data = JSON.parse(text.text) as Record<string, unknown>;
+        const lines: string[] = [];
+
+        if (Array.isArray((data as { providers?: unknown }).providers)) {
+          const providers = (data as { providers: string[] }).providers;
+          lines.push(theme.fg("accent", `${providers.length} provider(s)`));
+          for (const p of providers) {
+            lines.push(`  ${theme.fg("text", p)}`);
+          }
+        } else if (Array.isArray((data as { models?: unknown }).models)) {
+          const models = (data as {
+            models: Array<{ id: string; provider?: string; releasedAt?: string }>;
+          }).models;
+          lines.push(theme.fg("accent", `${models.length} model(s)`));
+          const limit = expanded ? models.length : Math.min(10, models.length);
+          for (let i = 0; i < limit; i += 1) {
+            const m = models[i];
+            const provider = m.provider ? theme.fg("dim", ` [${m.provider}]`) : "";
+            const released = m.releasedAt ? theme.fg("dim", `  ${m.releasedAt}`) : "";
+            lines.push(`  ${theme.fg("text", m.id)}${provider}${released}`);
+          }
+          if (!expanded && models.length > limit) {
+            lines.push(theme.fg("dim", `  ... ${models.length - limit} more (expand to see all)`));
+          }
+        } else {
+          lines.push(theme.fg("muted", text.text));
+        }
+        return new Text(lines.join("\n"), 0, 0);
+      } catch {
+        return new Text(theme.fg("muted", text.text), 0, 0);
+      }
+    },
+  });
+
+  // ------------------------------------------------------------------
   // Tool: eforge_daemon
   // ------------------------------------------------------------------
   pi.registerTool({
@@ -677,6 +946,16 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       name: "eforge:update",
       description: "Check for eforge updates and guide through updating",
       skill: "eforge-update",
+    },
+    {
+      name: "eforge:backend",
+      description: "List, inspect, and switch backend profiles",
+      skill: "eforge-backend",
+    },
+    {
+      name: "eforge:backend:new",
+      description: "Create a new backend profile in eforge/backends/",
+      skill: "eforge-backend-new",
     },
   ];
 

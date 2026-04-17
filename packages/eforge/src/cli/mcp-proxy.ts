@@ -548,6 +548,100 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   );
 
+  // Tool: eforge_backend
+  server.tool(
+    'eforge_backend',
+    'Manage named backend profiles in eforge/backends/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-backend to switch profiles; "create" writes a new eforge/backends/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+    {
+      action: z.enum(['list', 'show', 'use', 'create', 'delete']).describe(
+        "'list' enumerates profiles, 'show' returns the resolved active profile, 'use' switches the active profile, 'create' writes a new profile, 'delete' removes a profile",
+      ),
+      name: z.string().optional().describe('Profile name (required for "use", "create", and "delete")'),
+      backend: z.enum(['claude-sdk', 'pi']).optional().describe('Backend kind (required for "create")'),
+      pi: z.record(z.string(), z.any()).optional().describe('Pi-specific config to embed in the profile (optional, "create" only)'),
+      agents: z.record(z.string(), z.any()).optional().describe('Agents config block to embed in the profile (optional, "create" only)'),
+      overwrite: z.boolean().optional().describe('Overwrite an existing profile when creating. Default: false.'),
+      force: z.boolean().optional().describe('Delete even if the profile is currently active. Default: false.'),
+    },
+    async ({ action, name, backend, pi, agents, overwrite, force }) => {
+      if (action === 'list') {
+        const { data } = await daemonRequest(cwd, 'GET', '/api/backend/list');
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+
+      if (action === 'show') {
+        const { data } = await daemonRequest(cwd, 'GET', '/api/backend/show');
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+
+      if (action === 'use') {
+        if (!name) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: '"name" is required when action is "use"' }, null, 2) }],
+            isError: true,
+          };
+        }
+        const { data } = await daemonRequest(cwd, 'POST', '/api/backend/use', { name });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+
+      if (action === 'create') {
+        if (!name) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: '"name" is required when action is "create"' }, null, 2) }],
+            isError: true,
+          };
+        }
+        if (backend !== 'claude-sdk' && backend !== 'pi') {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: '"backend" is required when action is "create" (must be "claude-sdk" or "pi")' }, null, 2) }],
+            isError: true,
+          };
+        }
+        const body: Record<string, unknown> = { name, backend };
+        if (pi !== undefined) body.pi = pi;
+        if (agents !== undefined) body.agents = agents;
+        if (overwrite !== undefined) body.overwrite = overwrite;
+        const { data } = await daemonRequest(cwd, 'POST', '/api/backend/create', body);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+
+      // action === 'delete'
+      if (!name) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: '"name" is required when action is "delete"' }, null, 2) }],
+          isError: true,
+        };
+      }
+      const body: Record<string, unknown> = {};
+      if (force !== undefined) body.force = force;
+      const { data } = await daemonRequest(cwd, 'DELETE', `/api/backend/${encodeURIComponent(name)}`, body);
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  // Tool: eforge_models
+  server.tool(
+    'eforge_models',
+    'List providers or models available for a given backend. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first.',
+    {
+      action: z.enum(['providers', 'list']).describe("'providers' returns provider names, 'list' returns available models"),
+      backend: z.enum(['claude-sdk', 'pi']).describe('Which backend to query'),
+      provider: z.string().optional().describe('Optional provider filter for "list" (Pi only). Ignored for claude-sdk.'),
+    },
+    async ({ action, backend, provider }) => {
+      if (action === 'providers') {
+        const { data } = await daemonRequest(cwd, 'GET', `/api/models/providers?backend=${encodeURIComponent(backend)}`);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+      // action === 'list'
+      const params = new URLSearchParams({ backend });
+      if (provider) params.set('provider', provider);
+      const { data } = await daemonRequest(cwd, 'GET', `/api/models/list?${params.toString()}`);
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
   // Tool: eforge_daemon
   server.tool(
     'eforge_daemon',
@@ -710,8 +804,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         };
       }
 
-      // Ensure .gitignore has .eforge/ entry (daemon state/logs - not eforge/ which is committed)
-      await ensureGitignoreEntries(cwd, ['.eforge/']);
+      // Ensure .gitignore has daemon state (.eforge/) and the per-developer active-backend marker.
+      // The eforge/ directory itself is committed, but eforge/.active-backend is per-developer state.
+      await ensureGitignoreEntries(cwd, ['.eforge/', 'eforge/.active-backend']);
 
       // Create eforge/ directory if it doesn't exist
       try {
