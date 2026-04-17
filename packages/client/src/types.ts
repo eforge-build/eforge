@@ -197,10 +197,12 @@ export interface BackendProfileInfo {
   name: string;
   backend: 'claude-sdk' | 'pi' | undefined;
   path: string;
+  scope: 'project' | 'user';
+  shadowedBy?: 'project';
 }
 
 /** Source of the active backend profile resolution. */
-export type BackendProfileSource = 'local' | 'team' | 'missing' | 'none';
+export type BackendProfileSource = 'local' | 'team' | 'user-local' | 'user-team' | 'missing' | 'none';
 
 // GET /api/backend/list
 export interface BackendListResponse {
@@ -217,12 +219,19 @@ export interface BackendShowResponse {
     backend: 'claude-sdk' | 'pi' | undefined;
     /** The parsed profile partial config. Opaque to the client. */
     profile: unknown | null;
+    scope?: 'project' | 'user';
   };
+}
+
+/** Optional scope filter for the list endpoint. */
+export interface BackendListRequest {
+  scope?: 'project' | 'user' | 'all';
 }
 
 // POST /api/backend/use
 export interface BackendUseRequest {
   name: string;
+  scope?: 'project' | 'user';
 }
 
 export interface BackendUseResponse {
@@ -238,6 +247,7 @@ export interface BackendCreateRequest {
   /** Optional agents config block — opaque to the client. */
   agents?: unknown;
   overwrite?: boolean;
+  scope?: 'project' | 'user';
 }
 
 export interface BackendCreateResponse {
@@ -247,6 +257,7 @@ export interface BackendCreateResponse {
 // DELETE /api/backend/:name
 export interface BackendDeleteRequest {
   force?: boolean;
+  scope?: 'project' | 'user';
 }
 
 export interface BackendDeleteResponse {

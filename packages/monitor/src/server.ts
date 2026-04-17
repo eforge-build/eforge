@@ -882,20 +882,28 @@ export async function startServer(
     }
 
     // --- Backend profile management (DAEMON_API_VERSION 2) ---
-    if (req.method === 'GET' && url === '/api/backend/list') {
+    if (req.method === 'GET' && (url === '/api/backend/list' || url.startsWith('/api/backend/list?'))) {
       try {
-        const { getConfigDir, listBackendProfiles, resolveActiveProfileName } =
+        const { getConfigDir, listBackendProfiles, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
           sendJson(res, { profiles: [], active: null, source: 'none' });
           return;
         }
-        const profiles = await listBackendProfiles(configDir);
+        const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+        const params = new URLSearchParams(queryString);
+        const scopeParam = params.get('scope') as 'project' | 'user' | 'all' | null;
+        let profiles = await listBackendProfiles(configDir);
+        if (scopeParam === 'project' || scopeParam === 'user') {
+          profiles = profiles.filter((p) => p.scope === scopeParam);
+        }
         const projectConfig = await loadProjectPartialConfig(configDir);
+        const userConfig = await loadUserConfig();
         const { name, source } = await resolveActiveProfileName(
           configDir,
           projectConfig as Parameters<typeof resolveActiveProfileName>[1],
+          userConfig as Parameters<typeof resolveActiveProfileName>[2],
         );
         sendJson(res, { profiles, active: name, source });
       } catch (err) {
@@ -906,7 +914,7 @@ export async function startServer(
 
     if (req.method === 'GET' && url === '/api/backend/show') {
       try {
-        const { getConfigDir, loadBackendProfile, resolveActiveProfileName } =
+        const { getConfigDir, loadBackendProfile, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -914,20 +922,27 @@ export async function startServer(
           return;
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
+        const userConfig = await loadUserConfig();
         const { name, source } = await resolveActiveProfileName(
           configDir,
           projectConfig as Parameters<typeof resolveActiveProfileName>[1],
+          userConfig as Parameters<typeof resolveActiveProfileName>[2],
         );
         let profile: unknown = null;
         let backend: 'claude-sdk' | 'pi' | undefined;
+        let profileScope: 'project' | 'user' | undefined;
         if (name) {
-          profile = await loadBackendProfile(configDir, name);
-          if (profile && typeof profile === 'object' && 'backend' in profile) {
-            const b = (profile as { backend?: unknown }).backend;
-            if (b === 'claude-sdk' || b === 'pi') backend = b;
+          const result = await loadBackendProfile(configDir, name);
+          if (result) {
+            profile = result.profile;
+            profileScope = result.scope;
+            if (result.profile && typeof result.profile === 'object' && 'backend' in result.profile) {
+              const b = (result.profile as { backend?: unknown }).backend;
+              if (b === 'claude-sdk' || b === 'pi') backend = b;
+            }
           }
         }
-        sendJson(res, { active: name, source, resolved: { backend, profile } });
+        sendJson(res, { active: name, source, resolved: { backend, profile, scope: profileScope } });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to show backend profile');
       }
@@ -936,11 +951,12 @@ export async function startServer(
 
     if (req.method === 'POST' && url === '/api/backend/use') {
       try {
-        const body = await parseJsonBody(req) as { name?: unknown };
+        const body = await parseJsonBody(req) as { name?: unknown; scope?: unknown };
         if (!body.name || typeof body.name !== 'string') {
           sendJsonError(res, 400, 'Missing required field: name (string)');
           return;
         }
+        const scopeVal = body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
         const { getConfigDir, setActiveBackend } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
@@ -949,7 +965,7 @@ export async function startServer(
           return;
         }
         try {
-          await setActiveBackend(configDir, body.name);
+          await setActiveBackend(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined);
           sendJson(res, { active: body.name });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Failed to set active backend';
@@ -973,6 +989,7 @@ export async function startServer(
           pi?: unknown;
           agents?: unknown;
           overwrite?: unknown;
+          scope?: unknown;
         };
         if (!body.name || typeof body.name !== 'string') {
           sendJsonError(res, 400, 'Missing required field: name (string)');
@@ -982,6 +999,7 @@ export async function startServer(
           sendJsonError(res, 400, 'Invalid field: backend (must be "claude-sdk" or "pi")');
           return;
         }
+        const scopeVal = body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
         const { getConfigDir, createBackendProfile } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
@@ -996,6 +1014,7 @@ export async function startServer(
             pi: body.pi as PartialEforgeConfig['pi'],
             agents: body.agents as PartialEforgeConfig['agents'],
             overwrite: body.overwrite === true,
+            scope: scopeVal,
           });
           sendJson(res, { path: result.path });
         } catch (err) {
@@ -1020,11 +1039,15 @@ export async function startServer(
       }
       try {
         let force = false;
+        let scopeVal: 'project' | 'user' | undefined;
         try {
-          const body = await parseJsonBody(req) as { force?: unknown };
+          const body = await parseJsonBody(req) as { force?: unknown; scope?: unknown };
           force = body.force === true;
+          if (body.scope === 'project' || body.scope === 'user') {
+            scopeVal = body.scope;
+          }
         } catch {
-          // empty body — force defaults to false
+          // empty body — force defaults to false, scope defaults to undefined
         }
         const { getConfigDir, deleteBackendProfile } =
           await import('@eforge-build/engine/config');
@@ -1034,7 +1057,7 @@ export async function startServer(
           return;
         }
         try {
-          await deleteBackendProfile(configDir, name, force);
+          await deleteBackendProfile(configDir, name, force, scopeVal);
           sendJson(res, { deleted: name });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Failed to delete backend profile';
@@ -1042,6 +1065,8 @@ export async function startServer(
             sendJsonError(res, 409, msg);
           } else if (/not found/i.test(msg)) {
             sendJsonError(res, 404, msg);
+          } else if (/ambiguous/i.test(msg)) {
+            sendJsonError(res, 409, msg);
           } else {
             sendJsonError(res, 400, msg);
           }

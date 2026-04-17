@@ -601,7 +601,7 @@ export function mergePartialConfigs(
  * Load the user-level (global) config file.
  * Returns an empty partial on any failure (missing file, bad YAML, etc.).
  */
-async function loadUserConfig(
+export async function loadUserConfig(
   env: Record<string, string | undefined> = process.env,
 ): Promise<PartialEforgeConfig> {
   const configPath = getUserConfigPath(env);
@@ -650,9 +650,12 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
   if (configPath) {
     const configDir = dirname(configPath);
     try {
-      const { name } = await resolveActiveProfileName(configDir, projectConfig);
+      const { name } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
       if (name) {
-        profileConfig = await loadBackendProfile(configDir, name);
+        const result = await loadBackendProfile(configDir, name);
+        if (result) {
+          profileConfig = result.profile;
+        }
       }
     } catch {
       // best-effort: profile resolution should not break config loading
@@ -678,7 +681,7 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
  *   but the source remains `missing` only when no name could be resolved)
  * - `none`: no profile applied (no marker and no team match)
  */
-export type ActiveProfileSource = 'local' | 'team' | 'missing' | 'none';
+export type ActiveProfileSource = 'local' | 'team' | 'user-local' | 'user-team' | 'missing' | 'none';
 
 /** Marker filename inside the eforge config directory. */
 const ACTIVE_BACKEND_MARKER = '.active-backend';
@@ -699,6 +702,41 @@ function backendsDir(configDir: string): string {
 
 function markerPath(configDir: string): string {
   return resolve(configDir, ACTIVE_BACKEND_MARKER);
+}
+
+/** Return the user-scope backends directory (~/.config/eforge/backends/). */
+function userBackendsDir(): string {
+  const base = process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config');
+  return resolve(base, 'eforge', BACKENDS_SUBDIR);
+}
+
+/** Return the path to a user-scope profile file. */
+function userProfilePath(name: string): string {
+  return resolve(userBackendsDir(), `${name}.yaml`);
+}
+
+/** Return the path to the user-scope active-backend marker file. */
+function userMarkerPath(): string {
+  const base = process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config');
+  return resolve(base, 'eforge', ACTIVE_BACKEND_MARKER);
+}
+
+/** Check whether a profile file exists in either project or user scope. */
+async function profileExistsInAnyScope(configDir: string, name: string): Promise<boolean> {
+  if (await fileExists(profilePath(configDir, name))) return true;
+  if (await fileExists(userProfilePath(name))) return true;
+  return false;
+}
+
+/** Read a marker file and return the trimmed name, or null if absent/empty. */
+async function readMarkerName(path: string): Promise<string | null> {
+  try {
+    const raw = await readFile(path, 'utf-8');
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -724,76 +762,79 @@ export async function getConfigDir(cwd?: string): Promise<string | null> {
  * Resolve the active backend profile name and how it was selected.
  *
  * Resolution precedence:
- * 1. `eforge/.active-backend` marker (dev-local) — wins when present and the
- *    referenced profile file exists.
- * 2. `config.yaml`'s `backend:` field — used when a `backends/<that>.yaml` exists.
- * 3. Otherwise no profile is applied.
+ * 1. Project marker `eforge/.active-backend` (dev-local) — wins when present and the
+ *    referenced profile file exists in either project or user scope.
+ * 2. Project `config.yaml`'s `backend:` field — used when a matching profile exists.
+ * 3. User marker `~/.config/eforge/.active-backend` — user-level dev-local override.
+ * 4. User config's `backend:` field — user-level team default.
+ * 5. Otherwise no profile is applied.
  */
 export async function resolveActiveProfileName(
   configDir: string,
   projectConfig: PartialEforgeConfig,
+  userConfig?: PartialEforgeConfig,
 ): Promise<{ name: string | null; source: ActiveProfileSource }> {
-  // Try marker first
-  let markerName: string | null = null;
-  try {
-    const raw = await readFile(markerPath(configDir), 'utf-8');
-    const trimmed = raw.trim();
-    if (trimmed.length > 0) {
-      markerName = trimmed;
-    }
-  } catch {
-    // marker absent — fall through
-  }
+  // Step 1: Project marker
+  const projectMarkerName = await readMarkerName(markerPath(configDir));
 
-  if (markerName !== null) {
-    const path = profilePath(configDir, markerName);
-    if (await fileExists(path)) {
-      return { name: markerName, source: 'local' };
+  if (projectMarkerName !== null) {
+    if (await profileExistsInAnyScope(configDir, projectMarkerName)) {
+      return { name: projectMarkerName, source: 'local' };
     }
-    // Marker is stale — log one-shot warning, then attempt team fallback
-    const key = `${configDir}:${markerName}`;
+    // Marker is stale — log one-shot warning, then attempt fallbacks
+    const key = `${configDir}:${projectMarkerName}`;
     if (!_staleMarkerWarnings.has(key)) {
       _staleMarkerWarnings.add(key);
       console.error(
         `[eforge] Active backend marker ${markerPath(configDir)} points at ` +
-        `"${markerName}" but ${path} does not exist. ` +
-        `Falling back to team default if available.`,
+        `"${projectMarkerName}" but no profile file exists in project or user scope. ` +
+        `Falling back to next available source.`,
       );
     }
-    // Try team fallback after stale marker — but keep source='missing' to signal
-    // that the marker is stale.
+    // Try remaining sources as fallback, keeping source='missing' for project-level fallbacks
     const teamName = projectConfig.backend;
-    if (teamName) {
-      const teamPath = profilePath(configDir, teamName);
-      if (await fileExists(teamPath)) {
-        return { name: teamName, source: 'missing' };
-      }
+    if (teamName && await profileExistsInAnyScope(configDir, teamName)) {
+      return { name: teamName, source: 'missing' };
+    }
+    // Try user sources even with stale project marker
+    const userMarker = await readMarkerName(userMarkerPath());
+    if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
+      return { name: userMarker, source: 'user-local' };
+    }
+    const userTeamName = userConfig?.backend;
+    if (userTeamName && await profileExistsInAnyScope(configDir, userTeamName)) {
+      return { name: userTeamName, source: 'user-team' };
     }
     return { name: null, source: 'missing' };
   }
 
-  // No marker — check team default
+  // Step 2: Project config backend:
   const teamName = projectConfig.backend;
-  if (teamName) {
-    const teamPath = profilePath(configDir, teamName);
-    if (await fileExists(teamPath)) {
-      return { name: teamName, source: 'team' };
-    }
+  if (teamName && await profileExistsInAnyScope(configDir, teamName)) {
+    return { name: teamName, source: 'team' };
   }
 
+  // Step 3: User marker
+  const userMarker = await readMarkerName(userMarkerPath());
+  if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
+    return { name: userMarker, source: 'user-local' };
+  }
+
+  // Step 4: User config backend:
+  const userTeamName = userConfig?.backend;
+  if (userTeamName && await profileExistsInAnyScope(configDir, userTeamName)) {
+    return { name: userTeamName, source: 'user-team' };
+  }
+
+  // Step 5: None
   return { name: null, source: 'none' };
 }
 
 /**
- * Load and parse a backend profile file. Returns null when the profile
- * file does not exist. Profile files use the same partial-config schema
- * as `config.yaml`.
+ * Load and parse a backend profile file from a specific path. Returns null
+ * when the file does not exist or is unparseable.
  */
-export async function loadBackendProfile(
-  configDir: string,
-  name: string,
-): Promise<PartialEforgeConfig | null> {
-  const path = profilePath(configDir, name);
+async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | null> {
   let raw: string;
   try {
     raw = await readFile(path, 'utf-8');
@@ -813,58 +854,107 @@ export async function loadBackendProfile(
 }
 
 /**
- * List all backend profile files under `eforge/backends/`. Each entry includes
- * the profile name (filename without `.yaml`), its declared `backend` (when
- * parseable), and the absolute file path. Unreadable or non-YAML files are
+ * Load and parse a backend profile file. Looks up in project scope first
+ * (`eforge/backends/`), then user scope (`~/.config/eforge/backends/`).
+ * Returns null when the profile file does not exist in either scope.
+ * Profile files use the same partial-config schema as `config.yaml`.
+ */
+export async function loadBackendProfile(
+  configDir: string,
+  name: string,
+): Promise<{ profile: PartialEforgeConfig; scope: 'project' | 'user' } | null> {
+  // Try project scope first
+  const projectResult = await loadProfileFromPath(profilePath(configDir, name));
+  if (projectResult !== null) {
+    return { profile: projectResult, scope: 'project' };
+  }
+  // Try user scope fallback
+  const userResult = await loadProfileFromPath(userProfilePath(name));
+  if (userResult !== null) {
+    return { profile: userResult, scope: 'user' };
+  }
+  return null;
+}
+
+/**
+ * List all backend profile files from both project (`eforge/backends/`) and
+ * user (`~/.config/eforge/backends/`) scopes. Each entry includes the profile
+ * name, its declared `backend`, the absolute file path, the scope it belongs to,
+ * and `shadowedBy: 'project'` when a user-scope entry is shadowed by a
+ * project-scope entry with the same name. Unreadable or non-YAML files are
  * skipped silently.
  */
 export async function listBackendProfiles(
   configDir: string,
-): Promise<Array<{ name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string }>> {
-  const dir = backendsDir(configDir);
-  let entries: string[];
-  try {
-    entries = await readdir(dir);
-  } catch {
-    return [];
+): Promise<Array<{ name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' }>> {
+  type ProfileEntry = { name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' };
+
+  async function scanDir(dir: string, scope: 'project' | 'user'): Promise<ProfileEntry[]> {
+    let entries: string[];
+    try {
+      entries = await readdir(dir);
+    } catch {
+      return [];
+    }
+    const out: ProfileEntry[] = [];
+    for (const entry of entries.sort()) {
+      if (extname(entry) !== '.yaml') continue;
+      const name = basename(entry, '.yaml');
+      const path = resolve(dir, entry);
+      let backend: 'claude-sdk' | 'pi' | undefined;
+      try {
+        const raw = await readFile(path, 'utf-8');
+        const data = parseYaml(raw);
+        if (data && typeof data === 'object') {
+          const parsed = backendSchema.safeParse((data as Record<string, unknown>).backend);
+          if (parsed.success) {
+            backend = parsed.data;
+          }
+        }
+      } catch {
+        // unreadable — still include the entry with backend=undefined
+      }
+      out.push({ name, backend, path, scope });
+    }
+    return out;
   }
 
-  const out: Array<{ name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string }> = [];
-  for (const entry of entries.sort()) {
-    if (extname(entry) !== '.yaml') continue;
-    const name = basename(entry, '.yaml');
-    const path = resolve(dir, entry);
-    let backend: 'claude-sdk' | 'pi' | undefined;
-    try {
-      const raw = await readFile(path, 'utf-8');
-      const data = parseYaml(raw);
-      if (data && typeof data === 'object') {
-        const parsed = backendSchema.safeParse((data as Record<string, unknown>).backend);
-        if (parsed.success) {
-          backend = parsed.data;
-        }
-      }
-    } catch {
-      // unreadable — still include the entry with backend=undefined
+  const projectEntries = await scanDir(backendsDir(configDir), 'project');
+  const userEntries = await scanDir(userBackendsDir(), 'user');
+
+  // Mark user entries that are shadowed by project entries with the same name
+  const projectNames = new Set(projectEntries.map((e) => e.name));
+  for (const entry of userEntries) {
+    if (projectNames.has(entry.name)) {
+      entry.shadowedBy = 'project';
     }
-    out.push({ name, backend, path });
   }
-  return out;
+
+  return [...projectEntries, ...userEntries];
 }
 
 /**
  * Set the active backend profile by writing the marker file atomically.
- * Validates that the profile file exists and that the merged result
- * (global + project + profile) passes `eforgeConfigSchema`.
+ * Validates that the profile file exists (in at least one scope) and that
+ * the merged result (global + project + profile) passes `eforgeConfigSchema`.
+ *
+ * When `opts.scope` is `'user'`, the user-scope marker
+ * (`~/.config/eforge/.active-backend`) is written instead of the project marker.
  */
-export async function setActiveBackend(configDir: string, name: string): Promise<void> {
+export async function setActiveBackend(
+  configDir: string,
+  name: string,
+  opts?: { scope?: 'project' | 'user' },
+): Promise<void> {
+  const scope = opts?.scope ?? 'project';
   name = name.trim();
   if (name.length === 0) {
     throw new Error('Backend profile name must be a non-empty string');
   }
-  const path = profilePath(configDir, name);
-  if (!(await fileExists(path))) {
-    throw new Error(`Backend profile "${name}" not found at ${path}`);
+
+  // Validate profile exists in at least one scope
+  if (!(await profileExistsInAnyScope(configDir, name))) {
+    throw new Error(`Backend profile "${name}" not found in project or user scope`);
   }
 
   // Load project config and global config to validate the merged result
@@ -881,13 +971,13 @@ export async function setActiveBackend(configDir: string, name: string): Promise
     // no project config
   }
 
-  const profile = await loadBackendProfile(configDir, name);
-  if (!profile) {
-    throw new Error(`Backend profile "${name}" could not be parsed at ${path}`);
+  const profileResult = await loadBackendProfile(configDir, name);
+  if (!profileResult) {
+    throw new Error(`Backend profile "${name}" could not be parsed`);
   }
 
   const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
-  const merged = mergePartialConfigs(baseMerged, profile);
+  const merged = mergePartialConfigs(baseMerged, profileResult.profile);
 
   const result = eforgeConfigSchema.safeParse(merged);
   if (!result.success) {
@@ -898,7 +988,7 @@ export async function setActiveBackend(configDir: string, name: string): Promise
   }
 
   // Atomic write: tmp file + rename
-  const target = markerPath(configDir);
+  const target = scope === 'user' ? userMarkerPath() : markerPath(configDir);
   await mkdir(dirname(target), { recursive: true });
   const tmp = `${target}.${randomBytes(6).toString('hex')}.tmp`;
   await writeFile(tmp, `${name}\n`, 'utf-8');
@@ -909,6 +999,9 @@ export async function setActiveBackend(configDir: string, name: string): Promise
  * Create a backend profile file. Validates the partial-config shape and
  * the merged result (global + project + profile) before writing. Refuses
  * to overwrite an existing profile unless `overwrite: true` is supplied.
+ *
+ * When `scope` is `'user'`, writes to the user-scope backends directory
+ * (`~/.config/eforge/backends/`) instead of the project directory.
  */
 export async function createBackendProfile(
   configDir: string,
@@ -918,16 +1011,19 @@ export async function createBackendProfile(
     pi?: PartialEforgeConfig['pi'];
     agents?: PartialEforgeConfig['agents'];
     overwrite?: boolean;
+    scope?: 'project' | 'user';
   },
 ): Promise<{ path: string }> {
-  const { name, backend, pi, agents, overwrite } = input;
+  const { name, backend, pi, agents, overwrite, scope: inputScope } = input;
+  const scope = inputScope ?? 'project';
   if (!name || typeof name !== 'string' || !/^[A-Za-z0-9._-]+$/.test(name)) {
     throw new Error(
       `Invalid profile name "${name}": must contain only letters, digits, dot, underscore, or dash.`,
     );
   }
 
-  const path = profilePath(configDir, name);
+  const targetDir = scope === 'user' ? userBackendsDir() : backendsDir(configDir);
+  const path = resolve(targetDir, `${name}.yaml`);
   if (await fileExists(path)) {
     if (!overwrite) {
       throw new Error(`Backend profile "${name}" already exists at ${path}. Pass overwrite: true to replace it.`);
@@ -975,7 +1071,7 @@ export async function createBackendProfile(
   // Serialize via yaml.stringify, omitting undefined sections
   const yamlOut = stringifyYaml(stripUndefinedSections(partialResult.data));
 
-  await mkdir(backendsDir(configDir), { recursive: true });
+  await mkdir(targetDir, { recursive: true });
   // Atomic write: tmp file + rename
   const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
   await writeFile(tmp, yamlOut, 'utf-8');
@@ -1008,48 +1104,77 @@ export async function createBackendProfile(
  * Delete a backend profile file. Refuses to delete the currently active
  * profile unless `force: true` is supplied; in that case, the marker file
  * is also removed when it pointed at the deleted profile.
+ *
+ * When `scope` is omitted and the profile exists in both project and user
+ * scopes, throws an error requesting explicit scope. When `scope` is specified,
+ * deletes only from that scope.
  */
 export async function deleteBackendProfile(
   configDir: string,
   name: string,
   force?: boolean,
+  scope?: 'project' | 'user',
 ): Promise<void> {
   name = name.trim();
   if (name.length === 0) {
     throw new Error('Backend profile name must be a non-empty string');
   }
-  const path = profilePath(configDir, name);
-  if (!(await fileExists(path))) {
-    throw new Error(`Backend profile "${name}" not found at ${path}`);
-  }
 
-  // Determine if this profile is currently active (marker file)
-  let markerName: string | null = null;
-  try {
-    const raw = await readFile(markerPath(configDir), 'utf-8');
-    const trimmed = raw.trim();
-    if (trimmed.length > 0) {
-      markerName = trimmed;
+  const projectPath = profilePath(configDir, name);
+  const userPath = userProfilePath(name);
+  const existsInProject = await fileExists(projectPath);
+  const existsInUser = await fileExists(userPath);
+
+  if (scope === undefined) {
+    // Infer scope — error if ambiguous
+    if (existsInProject && existsInUser) {
+      throw new Error(
+        `Backend profile "${name}" exists in both project and user scope. ` +
+        `Specify scope: 'project' or 'user' to disambiguate.`,
+      );
     }
-  } catch {
-    // no marker
+    if (existsInProject) {
+      scope = 'project';
+    } else if (existsInUser) {
+      scope = 'user';
+    } else {
+      throw new Error(`Backend profile "${name}" not found in project or user scope`);
+    }
   }
 
-  if (markerName === name && !force) {
+  const targetPath = scope === 'user' ? userPath : projectPath;
+  if (!(await fileExists(targetPath))) {
+    throw new Error(`Backend profile "${name}" not found in ${scope} scope at ${targetPath}`);
+  }
+
+  // Determine if this profile is currently active via either marker
+  const projectMarkerName = await readMarkerName(markerPath(configDir));
+  const userMarkerName = await readMarkerName(userMarkerPath());
+
+  if ((projectMarkerName === name || userMarkerName === name) && !force) {
     throw new Error(
-      `Backend profile "${name}" is currently active (via ${markerPath(configDir)}). ` +
+      `Backend profile "${name}" is currently active. ` +
       `Pass force: true to delete it.`,
     );
   }
 
-  await rm(path);
+  await rm(targetPath);
 
-  // If we forced and the marker pointed at this profile, clear the marker too
-  if (markerName === name && force) {
-    try {
-      await unlink(markerPath(configDir));
-    } catch {
-      // marker already gone
+  // If we forced, clear any marker(s) that pointed at this profile
+  if (force) {
+    if (projectMarkerName === name) {
+      try {
+        await unlink(markerPath(configDir));
+      } catch {
+        // marker already gone
+      }
+    }
+    if (userMarkerName === name) {
+      try {
+        await unlink(userMarkerPath());
+      } catch {
+        // marker already gone
+      }
     }
   }
 }

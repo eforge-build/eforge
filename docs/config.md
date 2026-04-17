@@ -284,6 +284,8 @@ Config merges from two levels (lowest to highest priority):
 
 Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`, `pi`) shallow-merge per-field. Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
 
+Backend profiles follow the same two-level pattern. Profile files can exist in both `eforge/backends/` (project scope) and `~/.config/eforge/backends/` (user scope). The active-backend marker can be set at either level: `eforge/.active-backend` (project) or `~/.config/eforge/.active-backend` (user). Active profile resolution walks a 5-step precedence: (1) project marker, (2) project config `backend:` field, (3) user marker, (4) global config `backend:` field, (5) none. When a profile name is resolved, the profile file is looked up project-first, then user-fallback - so a user-scope marker can still resolve to a project-scope profile file if one exists with that name.
+
 ## Parallelism
 
 eforge has two dimensions of parallelism:
