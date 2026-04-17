@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, modelClassSchema, MODEL_CLASSES } from '@eforge-build/engine/config';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, piThinkingLevelSchema, modelClassSchema, MODEL_CLASSES } from '@eforge-build/engine/config';
 import { pickSdkOptions } from '@eforge-build/engine/backend';
 import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
 
@@ -577,6 +577,10 @@ describe('effortLevelSchema', () => {
     expect(effortLevelSchema.safeParse('high').success).toBe(true);
   });
 
+  it('accepts xhigh', () => {
+    expect(effortLevelSchema.safeParse('xhigh').success).toBe(true);
+  });
+
   it('accepts max', () => {
     expect(effortLevelSchema.safeParse('max').success).toBe(true);
   });
@@ -842,6 +846,36 @@ describe('piConfigSchema', () => {
   it('rejects invalid thinkingLevel', () => {
     const result = piConfigSchema.safeParse({ thinkingLevel: 'invalid' });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('piThinkingLevelSchema', () => {
+  it('accepts off', () => {
+    expect(piThinkingLevelSchema.safeParse('off').success).toBe(true);
+  });
+
+  it('accepts low', () => {
+    expect(piThinkingLevelSchema.safeParse('low').success).toBe(true);
+  });
+
+  it('accepts medium', () => {
+    expect(piThinkingLevelSchema.safeParse('medium').success).toBe(true);
+  });
+
+  it('accepts high', () => {
+    expect(piThinkingLevelSchema.safeParse('high').success).toBe(true);
+  });
+
+  it('accepts xhigh', () => {
+    expect(piThinkingLevelSchema.safeParse('xhigh').success).toBe(true);
+  });
+
+  it('rejects max (not a valid Pi thinking level)', () => {
+    expect(piThinkingLevelSchema.safeParse('max').success).toBe(false);
+  });
+
+  it('rejects invalid values', () => {
+    expect(piThinkingLevelSchema.safeParse('invalid').success).toBe(false);
   });
 });
 
