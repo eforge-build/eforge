@@ -551,6 +551,7 @@ export class EforgeEngine {
           worktreePath,
           planFile,
           orchConfig,
+          planEntry,
           reviewIssues: [],
           build: planBuild,
           review: planReview,

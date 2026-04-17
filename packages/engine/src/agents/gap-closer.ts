@@ -132,6 +132,7 @@ export async function* runGapCloser(
     worktreePath: options.cwd,
     planFile: syntheticPlanFile,
     orchConfig,
+    planEntry: orchConfig.plans.find((p) => p.id === 'gap-close'),
     reviewIssues: [],
     build,
     review,

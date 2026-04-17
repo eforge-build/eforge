@@ -52,6 +52,28 @@ export function formatRunDuration(startedAt: string, completedAt?: string): stri
   return formatDuration(end - start);
 }
 
+/**
+ * Convert a ThinkingConfig-shaped object to a human-readable string.
+ * Accepts `unknown` to avoid importing engine types into monitor-ui.
+ * Returns `undefined` for falsy input.
+ */
+export function formatThinking(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value !== null && 'type' in value) {
+    const obj = value as { type: string; budgetTokens?: number };
+    if (obj.type === 'disabled') return 'disabled';
+    if (obj.type === 'adaptive') return 'adaptive';
+    if (obj.type === 'enabled') {
+      if (typeof obj.budgetTokens === 'number') {
+        return `enabled (${formatNumber(obj.budgetTokens)} tokens)`;
+      }
+      return 'enabled';
+    }
+  }
+  return JSON.stringify(value);
+}
+
 export function shortenPath(path: string, maxChars: number = 50): string {
   if (!path) return '';
   if (path.length <= maxChars) return path;

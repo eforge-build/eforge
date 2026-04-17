@@ -13,12 +13,19 @@ import type { EffortLevel } from './backend.js';
 // Types
 // ---------------------------------------------------------------------------
 
+/** Thinking level for capability descriptors. */
+export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high' | 'xhigh';
+
 /** Capability descriptor for a model family. */
 export interface ModelCapabilities {
   /** Human-readable label for this model family (e.g. "Opus 4.7"). */
   label: string;
   /** Ordered list of supported effort levels (low-to-high). */
   supportedEffort: readonly EffortLevel[];
+  /** Default effort level for this model family. */
+  defaultEffort?: EffortLevel;
+  /** Maximum thinking level supported. */
+  maxThinking?: ThinkingLevel;
 }
 
 /** Internal entry pairing a regex pattern to its capabilities. */
@@ -44,17 +51,19 @@ const EFFORT_ORDER: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 
  */
 const MODEL_CAPABILITIES: readonly CapabilityEntry[] = [
   {
-    match: /^claude-opus-4-[7-9]/,
+    match: /^claude-opus-4-[67]/,
     capabilities: {
-      label: 'Opus 4.7+',
+      label: 'Opus 4.6/4.7',
       supportedEffort: ['low', 'medium', 'high', 'xhigh', 'max'],
+      defaultEffort: 'high',
     },
   },
   {
-    match: /^claude-opus-4/,
+    match: /^claude-opus-4(\.|-)/,
     capabilities: {
       label: 'Opus 4',
-      supportedEffort: ['low', 'medium', 'high', 'xhigh', 'max'],
+      supportedEffort: ['low', 'medium', 'high'],
+      defaultEffort: 'high',
     },
   },
   {
@@ -62,6 +71,7 @@ const MODEL_CAPABILITIES: readonly CapabilityEntry[] = [
     capabilities: {
       label: 'Sonnet 4',
       supportedEffort: ['low', 'medium', 'high', 'xhigh'],
+      defaultEffort: 'high',
     },
   },
   {
@@ -69,6 +79,7 @@ const MODEL_CAPABILITIES: readonly CapabilityEntry[] = [
     capabilities: {
       label: 'Haiku 4',
       supportedEffort: ['low', 'medium', 'high'],
+      defaultEffort: 'medium',
     },
   },
 ];

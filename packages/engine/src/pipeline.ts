@@ -94,6 +94,8 @@ export interface BuildStageContext extends PipelineContext {
   build: BuildStageSpec[];
   /** Per-plan review config (resolved from per-plan config or pipeline fallback). */
   review: ReviewProfileConfig;
+  /** Cached plan entry from orchConfig for this planId. Populated once per build stage. */
+  planEntry?: OrchestrationConfig['plans'][number];
   /** Set to true by the implement stage on failure — signals the pipeline runner to stop. */
   buildFailed?: boolean;
   /** Commit SHA captured before the implement stage runs — used as reset target by the evaluator. */
@@ -641,8 +643,10 @@ export function resolveAgentConfig(
     const modelId = result.model?.id ?? '';
     const clamped = clampEffort(modelId, result.effort);
     if (clamped) {
-      result.effortOriginal = result.effort;
-      result.effort = clamped.value;
+      if (clamped.clamped) {
+        result.effortOriginal = result.effort;
+        result.effort = clamped.value;
+      }
       result.effortClamped = clamped.clamped;
     }
     result.effortSource = effortSource;
@@ -1376,9 +1380,8 @@ registerBuildStage({
   }
 
   // Resolve maxContinuations: per-plan > global config > default (3)
-  const planEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
-  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.config.backend, planEntry);
-  const maxContinuations = planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
+  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.config.backend, ctx.planEntry);
+  const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
 
   // Extract parallel stage groups from ctx.build for lane awareness
   const parallelStages = ctx.build
@@ -1512,8 +1515,7 @@ async function* reviewStageInner(
 ): AsyncGenerator<EforgeEvent> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
-  const reviewPlanEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
-  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.config.backend, reviewPlanEntry);
+  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.config.backend, ctx.planEntry);
 
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
@@ -1565,8 +1567,7 @@ async function* evaluateStageInner(
   if (!(await hasUnstagedChanges(ctx.worktreePath))) return;
 
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
-  const evalPlanEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
-  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.config.backend, evalPlanEntry);
+  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.config.backend, ctx.planEntry);
   const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['evaluator'] ?? 0;
 
   for (let attempt = 0; attempt <= maxContinuations; attempt++) {
@@ -1639,8 +1640,7 @@ async function* reviewFixStageInner(
 ): AsyncGenerator<EforgeEvent> {
   if (ctx.reviewIssues.length === 0) return;
 
-  const fixerPlanEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
-  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.config.backend, fixerPlanEntry);
+  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.config.backend, ctx.planEntry);
   const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
   const fixTracker = createToolTracker(fixSpan);
@@ -1724,8 +1724,7 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* docUpdateStage(ctx) {
-  const docPlanEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
-  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.config.backend, docPlanEntry);
+  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.config.backend, ctx.planEntry);
   const docSpan = ctx.tracing.createSpan('doc-updater', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -1769,8 +1768,7 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* testWriteStage(ctx) {
-  const twPlanEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
-  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.config.backend, twPlanEntry);
+  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.config.backend, ctx.planEntry);
   const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -1822,8 +1820,7 @@ registerBuildStage({
 });
 
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
-  const testerPlanEntry = ctx.orchConfig.plans.find((p) => p.id === ctx.planId);
-  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.config.backend, testerPlanEntry);
+  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.config.backend, ctx.planEntry);
   const span = ctx.tracing.createSpan('tester', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
