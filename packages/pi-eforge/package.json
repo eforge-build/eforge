@@ -48,7 +48,8 @@
     }
   },
   "dependencies": {
-    "@eforge-build/client": "workspace:*"
+    "@eforge-build/client": "workspace:*",
+    "yaml": "^2.8.3"
   },
   "author": "Schaake Solutions LLC",
   "license": "Apache-2.0"

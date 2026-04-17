@@ -293,6 +293,20 @@ export interface EforgeConfig {
 const partialEforgeConfigSchema = eforgeConfigBaseSchema.partial();
 export type PartialEforgeConfig = z.output<typeof partialEforgeConfigSchema>;
 
+/**
+ * Schema for config.yaml validation — rejects `backend:` which now belongs in profile files.
+ * Uses passthrough to detect the `backend` key and superRefine to produce a validation error.
+ */
+export const configYamlSchema = eforgeConfigBaseSchema.omit({ backend: true }).partial().passthrough().superRefine((data, ctx) => {
+  if (data && typeof data === 'object' && 'backend' in (data as Record<string, unknown>)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: '"backend:" is no longer valid in config.yaml. Backend configuration now lives in named profiles under eforge/backends/. Run eforge init --migrate to extract it.',
+      path: ['backend'],
+    });
+  }
+});
+
 export const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
   strategy: 'auto' as const,
   perspectives: Object.freeze(['code']) as unknown as string[],
@@ -447,8 +461,22 @@ export function resolveConfig(
  * Parse and validate a raw YAML object into a partial EforgeConfig.
  * Uses zod schema for validation — invalid fields are dropped and
  * a warning is logged to stderr so users get feedback on typos.
+ *
+ * @param context  `'config'` (default) for config.yaml parsing — rejects and strips `backend:`.
+ *                 `'profile'` for profile file parsing — keeps `backend:`.
  */
-function parseRawConfig(data: Record<string, unknown>): PartialEforgeConfig {
+function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
+  // Config.yaml context: reject and strip backend: field (hard break)
+  if (context === 'config' && data.backend !== undefined) {
+    console.error(
+      '[eforge] "backend:" is no longer valid in config.yaml. ' +
+      'Backend configuration now lives in named profiles under eforge/backends/. ' +
+      'Run eforge init --migrate to extract it.',
+    );
+    const { backend: _, ...rest } = data;
+    data = rest;
+  }
+
   const result = partialEforgeConfigSchema.safeParse(data);
   if (result.success) {
     return stripUndefinedSections(result.data);
@@ -457,17 +485,17 @@ function parseRawConfig(data: Record<string, unknown>): PartialEforgeConfig {
   console.error('eforge config warning: some fields were invalid and will be ignored:\n' + z.prettifyError(result.error));
   // Parse again with passthrough to salvage valid fields —
   // safeParse is all-or-nothing per property, so re-parse each section independently
-  return parseRawConfigFallback(data);
+  return parseRawConfigFallback(data, context);
 }
 
 /**
  * Fallback parser: parse each top-level section independently so that
  * one bad section doesn't nuke the rest. Mirrors the schema structure.
  */
-function parseRawConfigFallback(data: Record<string, unknown>): PartialEforgeConfig {
+function parseRawConfigFallback(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
   const result: PartialEforgeConfig = {};
-  // Handle top-level scalar fields
-  if (data.backend !== undefined) {
+  // Handle top-level scalar fields — backend: only allowed in profile context
+  if (context === 'profile' && data.backend !== undefined) {
     const backendResult = backendSchema.safeParse(data.backend);
     if (backendResult.success) {
       (result as Record<string, unknown>).backend = backendResult.data;
@@ -681,13 +709,12 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
  * Source of the active backend profile resolution.
  *
  * - `local`: marker file `eforge/.active-backend` selected the profile (dev-local override)
- * - `team`: no marker; `config.yaml` `backend:` matched a profile file (team default)
+ * - `user-local`: user-scope marker `~/.config/eforge/.active-backend` selected the profile
  * - `missing`: marker present, but the referenced profile file is missing
- *   (a one-shot stderr warning is logged; if a team fallback applies it is used,
- *   but the source remains `missing` only when no name could be resolved)
- * - `none`: no profile applied (no marker and no team match)
+ *   (a one-shot stderr warning is logged; fallback to user-marker or none)
+ * - `none`: no profile applied (no marker found)
  */
-export type ActiveProfileSource = 'local' | 'team' | 'user-local' | 'user-team' | 'missing' | 'none';
+export type ActiveProfileSource = 'local' | 'user-local' | 'missing' | 'none';
 
 /** Marker filename inside the eforge config directory. */
 const ACTIVE_BACKEND_MARKER = '.active-backend';
@@ -770,10 +797,8 @@ export async function getConfigDir(cwd?: string): Promise<string | null> {
  * Resolution precedence:
  * 1. Project marker `eforge/.active-backend` (dev-local) — wins when present and the
  *    referenced profile file exists in either project or user scope.
- * 2. Project `config.yaml`'s `backend:` field — used when a matching profile exists.
- * 3. User marker `~/.config/eforge/.active-backend` — user-level dev-local override.
- * 4. User config's `backend:` field — user-level team default.
- * 5. Otherwise no profile is applied.
+ * 2. User marker `~/.config/eforge/.active-backend` — user-level dev-local override.
+ * 3. Otherwise no profile is applied.
  */
 export async function resolveActiveProfileName(
   configDir: string,
@@ -797,42 +822,21 @@ export async function resolveActiveProfileName(
         `Falling back to next available source.`,
       );
     }
-    // Try remaining sources as fallback, keeping source='missing' for project-level fallbacks
-    const teamName = projectConfig.backend;
-    if (teamName && await profileExistsInAnyScope(configDir, teamName)) {
-      return { name: teamName, source: 'missing' };
-    }
-    // Try user sources even with stale project marker
+    // Try user marker as fallback
     const userMarker = await readMarkerName(userMarkerPath());
     if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
       return { name: userMarker, source: 'user-local' };
     }
-    const userTeamName = userConfig?.backend;
-    if (userTeamName && await profileExistsInAnyScope(configDir, userTeamName)) {
-      return { name: userTeamName, source: 'user-team' };
-    }
     return { name: null, source: 'missing' };
   }
 
-  // Step 2: Project config backend:
-  const teamName = projectConfig.backend;
-  if (teamName && await profileExistsInAnyScope(configDir, teamName)) {
-    return { name: teamName, source: 'team' };
-  }
-
-  // Step 3: User marker
+  // Step 2: User marker
   const userMarker = await readMarkerName(userMarkerPath());
   if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
     return { name: userMarker, source: 'user-local' };
   }
 
-  // Step 4: User config backend:
-  const userTeamName = userConfig?.backend;
-  if (userTeamName && await profileExistsInAnyScope(configDir, userTeamName)) {
-    return { name: userTeamName, source: 'user-team' };
-  }
-
-  // Step 5: None
+  // Step 3: None
   return { name: null, source: 'none' };
 }
 
@@ -856,7 +860,7 @@ async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | 
   if (!data || typeof data !== 'object') {
     return {};
   }
-  return parseRawConfig(data as Record<string, unknown>);
+  return parseRawConfig(data as Record<string, unknown>, 'profile');
 }
 
 /**
@@ -1104,6 +1108,76 @@ export async function createBackendProfile(
   }
 
   return { path };
+}
+
+/**
+ * Compute a deterministic profile name from backend, provider, and model ID.
+ *
+ * Sanitization: lowercase, `.` → `-`, strip `claude-` prefix from model ID,
+ * collapse repeated dashes. Format: `[backend[-provider]]-[sanitized-model-id]`.
+ *
+ * Examples:
+ * - `('claude-sdk', undefined, 'claude-opus-4.7')` → `'claude-sdk-opus-4-7'`
+ * - `('pi', 'anthropic', 'claude-opus-4.7')` → `'pi-anthropic-opus-4-7'`
+ * - `('pi', 'zai', 'glm-4.6')` → `'pi-zai-glm-4-6'`
+ */
+export function sanitizeProfileName(backend: string, provider: string | undefined, modelId: string): string {
+  let sanitized = modelId.toLowerCase().replace(/\./g, '-');
+  sanitized = sanitized.replace(/^claude-/, '');
+  const parts = [backend];
+  if (provider) parts.push(provider);
+  parts.push(sanitized);
+  return parts.join('-').replace(/-{2,}/g, '-');
+}
+
+/**
+ * Parse a pre-overhaul config.yaml that has `backend:` at the top level.
+ * Extracts backend-related fields into a `profile` object and puts everything
+ * else into `remaining`. Used by the `--migrate` flow.
+ */
+export function parseRawConfigLegacy(data: Record<string, unknown>): {
+  profile: { backend?: string; pi?: unknown; agents?: unknown };
+  remaining: Record<string, unknown>;
+} {
+  const profile: Record<string, unknown> = {};
+  const remaining: Record<string, unknown> = {};
+
+  // Extract backend-related fields into profile
+  if (data.backend !== undefined) profile.backend = data.backend;
+  if (data.pi !== undefined) profile.pi = data.pi;
+
+  // Extract agent fields that belong in the profile (model configuration)
+  if (data.agents !== undefined) {
+    const agents = data.agents as Record<string, unknown>;
+    const profileAgents: Record<string, unknown> = {};
+    for (const key of ['models', 'model', 'effort', 'thinking']) {
+      if (agents[key] !== undefined) profileAgents[key] = agents[key];
+    }
+    if (Object.keys(profileAgents).length > 0) {
+      profile.agents = profileAgents;
+    }
+  }
+
+  // Put everything else in remaining
+  for (const [key, value] of Object.entries(data)) {
+    if (key === 'backend' || key === 'pi') continue;
+    if (key === 'agents') {
+      const agents = value as Record<string, unknown>;
+      const remainingAgents: Record<string, unknown> = {};
+      for (const [ak, av] of Object.entries(agents)) {
+        if (!['models', 'model', 'effort', 'thinking'].includes(ak)) {
+          remainingAgents[ak] = av;
+        }
+      }
+      if (Object.keys(remainingAgents).length > 0) {
+        remaining.agents = remainingAgents;
+      }
+      continue;
+    }
+    remaining[key] = value;
+  }
+
+  return { profile: profile as { backend?: string; pi?: unknown; agents?: unknown }, remaining };
 }
 
 /**

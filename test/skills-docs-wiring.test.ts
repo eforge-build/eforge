@@ -27,8 +27,8 @@ describe('plugin version bump', () => {
     version: string;
   };
 
-  it('version is 0.5.28', () => {
-    expect(manifest.version).toBe('0.5.28');
+  it('version is 0.5.29', () => {
+    expect(manifest.version).toBe('0.5.29');
   });
 });
 
