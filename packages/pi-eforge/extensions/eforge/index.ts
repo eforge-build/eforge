@@ -376,13 +376,22 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             "Delete even if the profile is currently active. Default: false.",
         }),
       ),
+      scope: Type.Optional(
+        Type.Union([Type.Literal("project"), Type.Literal("user"), Type.Literal("all")], {
+          description:
+            'Scope for the operation. "list" accepts project|user|all (default: all). "use", "create", "delete" accept project|user (default: project). "show" ignores scope (resolves via precedence).',
+        }),
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, name, backend, pi: piCfg, agents, overwrite, force } =
+      const { action, name, backend, pi: piCfg, agents, overwrite, force, scope } =
         params;
 
       if (action === "list") {
-        const { data } = await daemonRequest(ctx.cwd, "GET", "/api/backend/list");
+        const params = new URLSearchParams();
+        if (scope) params.set("scope", scope);
+        const qs = params.toString();
+        const { data } = await daemonRequest(ctx.cwd, "GET", `/api/backend/list${qs ? `?${qs}` : ""}`);
         return jsonResult(data);
       }
 
@@ -395,11 +404,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!name) {
           throw new Error('"name" is required when action is "use"');
         }
+        const useBody: Record<string, unknown> = { name };
+        if (scope) useBody.scope = scope;
         const { data } = await daemonRequest(
           ctx.cwd,
           "POST",
           "/api/backend/use",
-          { name },
+          useBody,
         );
         return jsonResult(data);
       }
@@ -417,6 +428,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (piCfg !== undefined) body.pi = piCfg;
         if (agents !== undefined) body.agents = agents;
         if (overwrite !== undefined) body.overwrite = overwrite;
+        if (scope) body.scope = scope;
         const { data } = await daemonRequest(
           ctx.cwd,
           "POST",
@@ -432,6 +444,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }
       const body: Record<string, unknown> = {};
       if (force !== undefined) body.force = force;
+      if (scope) body.scope = scope;
       const { data } = await daemonRequest(
         ctx.cwd,
         "DELETE",

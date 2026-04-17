@@ -562,10 +562,16 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       agents: z.record(z.string(), z.any()).optional().describe('Agents config block to embed in the profile (optional, "create" only)'),
       overwrite: z.boolean().optional().describe('Overwrite an existing profile when creating. Default: false.'),
       force: z.boolean().optional().describe('Delete even if the profile is currently active. Default: false.'),
+      scope: z.enum(['project', 'user', 'all']).optional().describe(
+        'Scope for the operation. "list" accepts project|user|all (default: all). "use", "create", "delete" accept project|user (default: project). "show" ignores scope (resolves via precedence).',
+      ),
     },
-    async ({ action, name, backend, pi, agents, overwrite, force }) => {
+    async ({ action, name, backend, pi, agents, overwrite, force, scope }) => {
       if (action === 'list') {
-        const { data } = await daemonRequest(cwd, 'GET', '/api/backend/list');
+        const params = new URLSearchParams();
+        if (scope) params.set('scope', scope);
+        const qs = params.toString();
+        const { data } = await daemonRequest(cwd, 'GET', `/api/backend/list${qs ? `?${qs}` : ''}`);
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
 
@@ -581,7 +587,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
             isError: true,
           };
         }
-        const { data } = await daemonRequest(cwd, 'POST', '/api/backend/use', { name });
+        const useBody: Record<string, unknown> = { name };
+        if (scope) useBody.scope = scope;
+        const { data } = await daemonRequest(cwd, 'POST', '/api/backend/use', useBody);
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
 
@@ -602,6 +610,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (pi !== undefined) body.pi = pi;
         if (agents !== undefined) body.agents = agents;
         if (overwrite !== undefined) body.overwrite = overwrite;
+        if (scope) body.scope = scope;
         const { data } = await daemonRequest(cwd, 'POST', '/api/backend/create', body);
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
@@ -615,6 +624,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       }
       const body: Record<string, unknown> = {};
       if (force !== undefined) body.force = force;
+      if (scope) body.scope = scope;
       const { data } = await daemonRequest(cwd, 'DELETE', `/api/backend/${encodeURIComponent(name)}`, body);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     },

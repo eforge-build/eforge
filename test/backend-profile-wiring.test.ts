@@ -247,7 +247,8 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
 
   it('dispatches eforge_backend actions to the expected daemon endpoints', () => {
     // Each action should reach its matching REST path.
-    expect(source).toContain("'/api/backend/list'");
+    // The list endpoint now uses a template literal for optional query params.
+    expect(source).toMatch(/\/api\/backend\/list/);
     expect(source).toContain("'/api/backend/show'");
     expect(source).toContain("'/api/backend/use'");
     expect(source).toContain("'/api/backend/create'");
@@ -304,5 +305,72 @@ describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index
   it('dispatches eforge_models to the daemon via daemonRequest', () => {
     expect(source).toMatch(/\/api\/models\/providers\?backend=/);
     expect(source).toMatch(/\/api\/models\/list\?/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scope field parity (MCP proxy + Pi extension)
+// ---------------------------------------------------------------------------
+
+describe('eforge_backend scope field parity', () => {
+  const mcpSource = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
+  const piSource = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+
+  it('MCP proxy eforge_backend schema includes a scope field accepting project, user, all', () => {
+    // Find the eforge_backend registration block
+    const idx = mcpSource.indexOf("server.tool(\n    'eforge_backend',");
+    expect(idx).toBeGreaterThan(-1);
+    const block = mcpSource.slice(idx, idx + 3000);
+    // Verify scope enum includes all three values
+    expect(block).toMatch(/scope:\s*z\.enum\(\[.*'project'.*'user'.*'all'.*\]\)/s);
+  });
+
+  it('Pi extension eforge_backend schema includes a scope field accepting project, user, all', () => {
+    // Find the eforge_backend registration block
+    const idx = piSource.indexOf('name: "eforge_backend"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = piSource.slice(idx - 200, idx + 3000);
+    // Verify scope with Type.Union containing all three literals
+    expect(block).toContain('Type.Literal("project")');
+    expect(block).toContain('Type.Literal("user")');
+    expect(block).toContain('Type.Literal("all")');
+  });
+
+  it('MCP proxy threads scope as query param for list action', () => {
+    // The list action should pass scope via URLSearchParams
+    expect(mcpSource).toMatch(/params\.set\(['"]scope['"],\s*scope\)/);
+  });
+
+  it('MCP proxy threads scope in request body for use, create, delete actions', () => {
+    // Extract the full eforge_backend tool block (up to the next server.tool call)
+    const idx = mcpSource.indexOf("server.tool(\n    'eforge_backend',");
+    expect(idx).toBeGreaterThan(-1);
+    const nextTool = mcpSource.indexOf('server.tool(', idx + 1);
+    const block = nextTool > idx ? mcpSource.slice(idx, nextTool) : mcpSource.slice(idx);
+    // use action: useBody.scope = scope
+    expect(block).toMatch(/useBody\.scope\s*=\s*scope/);
+    // create and delete actions: body.scope = scope
+    const scopeAssignments = block.match(/body\.scope\s*=\s*scope/g);
+    expect(scopeAssignments).not.toBeNull();
+    expect(scopeAssignments!.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('Pi extension threads scope as query param for list action', () => {
+    // The list action should pass scope via URLSearchParams
+    expect(piSource).toMatch(/params\.set\(["']scope["'],\s*scope\)/);
+  });
+
+  it('Pi extension threads scope in request body for use, create, delete actions', () => {
+    // Extract the full eforge_backend tool block (from tool name to the next pi.registerTool call)
+    const idx = piSource.indexOf('name: "eforge_backend"');
+    expect(idx).toBeGreaterThan(-1);
+    const nextTool = piSource.indexOf('pi.registerTool(', idx + 1);
+    const block = nextTool > idx ? piSource.slice(idx - 200, nextTool) : piSource.slice(idx - 200);
+    // use action: useBody.scope = scope
+    expect(block).toMatch(/useBody\.scope\s*=\s*scope/);
+    // create and delete actions: body.scope = scope
+    const scopeAssignments = block.match(/body\.scope\s*=\s*scope/g);
+    expect(scopeAssignments).not.toBeNull();
+    expect(scopeAssignments!.length).toBeGreaterThanOrEqual(2);
   });
 });
