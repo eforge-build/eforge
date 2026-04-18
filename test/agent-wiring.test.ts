@@ -1124,3 +1124,74 @@ describe('resolveAgentConfig thinking coercion', () => {
     expect(result.thinkingCoerced).toBeUndefined();
   });
 });
+
+// --- Thinking coercion warning event ---
+
+describe('agent:warning event for thinking coercion', () => {
+  it('emits agent:warning with code thinking-coerced when thinkingCoerced is true', async () => {
+    const backend = new StubBackend([{ text: 'Done.' }]);
+
+    const events = await collectEvents(backend.run(
+      {
+        prompt: 'test',
+        cwd: '/tmp',
+        maxTurns: 1,
+        tools: 'none',
+        model: { id: 'claude-opus-4-7' },
+        thinking: { type: 'adaptive' },
+        thinkingCoerced: true,
+        thinkingOriginal: { type: 'enabled', budgetTokens: 10000 },
+      },
+      'builder',
+      'plan-1',
+    ));
+
+    const warning = findEvent(events, 'agent:warning');
+    expect(warning).toBeDefined();
+    expect(warning!.code).toBe('thinking-coerced');
+    expect(warning!.message).toContain('claude-opus-4-7');
+    expect(warning!.message).toContain('adaptive');
+    expect(warning!.agentId).toBeDefined();
+    expect(warning!.agent).toBe('builder');
+    expect(warning!.planId).toBe('plan-1');
+  });
+
+  it('does not emit agent:warning when thinkingCoerced is absent', async () => {
+    const backend = new StubBackend([{ text: 'Done.' }]);
+
+    const events = await collectEvents(backend.run(
+      {
+        prompt: 'test',
+        cwd: '/tmp',
+        maxTurns: 1,
+        tools: 'none',
+        model: { id: 'claude-opus-4-6' },
+        thinking: { type: 'enabled', budgetTokens: 10000 },
+      },
+      'builder',
+      'plan-1',
+    ));
+
+    const warning = findEvent(events, 'agent:warning');
+    expect(warning).toBeUndefined();
+  });
+
+  it('does not emit agent:warning when thinkingCoerced is false', async () => {
+    const backend = new StubBackend([{ text: 'Done.' }]);
+
+    const events = await collectEvents(backend.run(
+      {
+        prompt: 'test',
+        cwd: '/tmp',
+        maxTurns: 1,
+        tools: 'none',
+        model: { id: 'claude-opus-4-6' },
+        thinkingCoerced: false,
+      },
+      'builder',
+    ));
+
+    const warning = findEvent(events, 'agent:warning');
+    expect(warning).toBeUndefined();
+  });
+});
