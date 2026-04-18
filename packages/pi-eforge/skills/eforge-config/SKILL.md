@@ -4,6 +4,8 @@ description: Initialize or edit eforge/config.yaml configuration, with validatio
 disable-model-invocation: true
 ---
 
+> **Note:** In Pi, the native `/eforge:config` command provides a richer interactive experience with a structured config viewer overlay. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
+
 # /eforge:config
 
 Create or modify an `eforge/config.yaml` configuration file interactively. Supports two modes - init for new projects and edit for existing configs. Validation uses the eforge daemon.
