@@ -3,7 +3,9 @@
 [![npm version](https://img.shields.io/npm/v/@eforge-build/eforge)](https://www.npmjs.com/package/@eforge-build/eforge)
 [![npm pi package](https://img.shields.io/npm/v/@eforge-build/pi-eforge)](https://www.npmjs.com/package/@eforge-build/pi-eforge)
 
-An open source agentic build system for engineers who want to stay close to the code without writing or reviewing it. You're the detail planner - specs, architecture, decisions. eforge handles implementation, blind review, and validation in the background. Backends are swappable (Claude Agent SDK, or Pi for 15+ providers), so your workflow is portable across a volatile model landscape.
+An open source agentic build system for engineers who want to stay close to the code without writing or reviewing it. You're the detail planner — specs, architecture, decisions. eforge handles implementation, blind review, and validation in the background.
+
+You drive eforge from the coding agent you already use (Claude Code or Pi). eforge delegates each pipeline stage to the agent library you configure — the Claude Agent SDK or pi-agent-core. Both paths let you use a subscription you already pay for: Claude Max on the SDK side, OpenAI Codex on the Pi side (plus 20+ other providers via Pi including open source and local models). The two choices are independent, so your UI doesn't lock you into a model.
 
 The name: **E** from the [Expedition-Excursion-Errand methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) + **forge** - shaping code from plans.
 
@@ -13,9 +15,9 @@ The name: **E** from the [Expedition-Excursion-Errand methodology](https://www.m
 
 ## Why eforge
 
-**Stay close, don't write.** You plan every detail - reading specs, making architecture decisions, understanding every choice before handoff. eforge implements faithfully and reviews its own output blind; you stay in control without being in the code.
+**Stay close, don't write.** You plan every detail — reading specs, making architecture decisions, understanding every choice before handoff. eforge implements faithfully and reviews its own output blind; you stay in control without being in the code.
 
-**Don't get locked in.** Model quality, availability, and pricing shift constantly. eforge's backend is swappable - Claude Agent SDK or Pi (OpenAI, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, local models, and more). Your workflow survives the next model shakeup.
+**Use the tools you already pay for.** Drive eforge from Claude Code or Pi. Delegate execution to the Claude Agent SDK (your Claude Max subscription works) or pi-agent-core (your OpenAI Codex subscription works; plus Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, local models, and more). Mix and match — your UI and your execution stack don't have to share a vendor.
 
 ## What is an Agentic Build System?
 
@@ -31,9 +33,17 @@ An agentic build system applies build-system thinking to this multi-agent pipeli
 - **Dependency-aware orchestration** - Large work decomposes into modules with a dependency graph. Plans build in parallel across isolated git worktrees, merging in topological order.
 - **Adaptive complexity** - The system assesses scope and selects the right workflow: a one-file fix doesn't need architecture review, and a cross-cutting refactor shouldn't skip it.
 
-## Typical Use
+## Use Cases
 
-Plan a feature interactively in Claude Code or Pi, then hand it off with `/eforge:build`. The extension enqueues the input and a daemon picks it up - planning, building, reviewing, and validating autonomously. A web monitor (default `localhost:4567`) tracks progress, cost, and token usage in real time.
+Plan a feature interactively, then hand it off to eforge with `/eforge:build`. A daemon picks up the plan and runs planning, building, blind review, and validation autonomously. A web monitor (default `localhost:4567`) tracks progress, cost, and token usage in real time.
+
+Because the coding agent you drive from and the agent library eforge delegates to are independent, a few ways this plays out:
+
+- **Plan and execute on Claude.** Drive eforge from Claude Code and delegate to the Claude Agent SDK. Your Claude Max subscription covers both sides.
+- **Plan and execute on OpenAI.** Drive eforge from Pi and delegate to pi-agent-core with GPT-5.4. Your OpenAI Codex subscription covers both sides.
+- **Plan in Pi with GPT-5.4, execute on Claude.** Plan with a different model, then hand off to the Claude Agent SDK for the build via your Max subscription.
+- **Plan with Opus in Claude Code, execute via pi-agent-core.** Plan with the model you trust, then dispatch builds across GPT-5.4, OpenRouter, or local models — match the tool to the workload.
+- **Claude Code outage?** Switch to Pi and flip eforge's delegation to pi-agent-core. Keep working. No vendor owns your workflow.
 
 <img src="docs/images/claude-code-handoff.png" alt="eforge invoked from Claude Code" width="800">
 
