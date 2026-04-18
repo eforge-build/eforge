@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.5.9] - 2026-04-17
+
+### Features
+
+- Opus 4.7 Per-Role Effort Defaults, Capability Split, and Thinking Coercion
+- Fix consumer-facing docs drift around Pi thinking levels and effort levels, then implement native Pi command UX for backend, backend:new, and config flows with module extraction, ambient status, and architecture docs updates.
+- PRD Gap Close
+- Native Pi command UX, module extraction, and ambient status
+- Fix consumer-facing docs and skills enum drift
+- Effort and Thinking Provenance Tracking
+- Backend profile overhaul: schema, resolver, init handlers, Pi footer, docs, and tests
+- Widen effort schema to include xhigh for Opus 4.7, fix Pi backend mappings to cover full range, add data-driven model-capability map with clamping, enable planner to emit per-plan effort/thinking overrides in plan frontmatter, integrate overrides into resolveAgentConfig with precedence and clamping, enrich agent:start events with resolved effort/thinking/source, and surface all runtime decisions in the monitor UI tooltip.
+- Monitor UI - Surface Effort/Thinking in Stage Hover
+- Runtime Per-Plan Override + Clamping + Event Enrichment + Planner Prompt
+- Schema Widening + Backend Mappings + Model Capability Map
+
+### Bug Fixes
+
+- guard against daemon auto-spawn inside agent worktrees
+- isolate user-scope config in backend profile tests
+
+### Maintenance
+
+- add tests for native Pi UX, monitor UI, and schema capabilities
+- include git sha and dirty flag in build version
+- post-parallel-group auto-commit for schema handlers tests
+
+### Other
+
+- update readme
+- migrate config
+- re-enqueue failed build
+- remove project backends in favor of user scoped
+
 ## [0.5.8] - 2026-04-17
 
 ### Features
@@ -282,12 +316,6 @@
 ### Bug Fixes
 
 - Fix Evaluator Reset Target
-
-## [0.3.1] - 2026-04-01
-
-### Maintenance
-
-- Update hero screenshot and remove slow flaky tests
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
