@@ -28,6 +28,7 @@ export interface AgentThread {
   effortClamped?: boolean;
   effortOriginal?: string;
   effortSource?: string;
+  thinkingSource?: string;
 }
 
 export interface RunState {
@@ -290,6 +291,7 @@ function processEvent(
       effortClamped: 'effortClamped' in event ? (event as { effortClamped?: boolean }).effortClamped : undefined,
       effortOriginal: 'effortOriginal' in event ? (event as { effortOriginal?: string }).effortOriginal : undefined,
       effortSource: 'effortSource' in event ? (event as { effortSource?: string }).effortSource : undefined,
+      thinkingSource: 'thinkingSource' in event ? (event as { thinkingSource?: string }).thinkingSource : undefined,
     });
   }
 

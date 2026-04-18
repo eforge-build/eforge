@@ -959,6 +959,7 @@ describe('effort/thinking fields on AgentThread', () => {
     expect(thread!.effortClamped).toBeUndefined();
     expect(thread!.effortOriginal).toBeUndefined();
     expect(thread!.effortSource).toBeUndefined();
+    expect(thread!.thinkingSource).toBeUndefined();
   });
 
   it('handles effortSource values for config sources', () => {
@@ -1038,5 +1039,50 @@ describe('effort/thinking fields on AgentThread', () => {
     expect(thread!.effortClamped).toBe(true);
     expect(thread!.effortOriginal).toBe('max');
     expect(thread!.effortSource).toBe('planner');
+  });
+
+  it('populates thinkingSource from agent:start event', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        backend: 'pi',
+        timestamp: '2024-01-01T00:00:00Z',
+        thinking: 'adaptive',
+        thinkingSource: 'planner',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.thinking).toBe('adaptive');
+    expect(thread!.thinkingSource).toBe('planner');
+  });
+
+  it('leaves thinkingSource undefined when agent:start omits it (backward compat)', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        backend: 'pi',
+        timestamp: '2024-01-01T00:00:00Z',
+        thinking: 'adaptive',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.thinking).toBe('adaptive');
+    expect(thread!.thinkingSource).toBeUndefined();
   });
 });

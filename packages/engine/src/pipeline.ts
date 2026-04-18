@@ -520,8 +520,9 @@ export function resolveAgentConfig(
   // Resolve maxTurns: user per-role > built-in per-role > user global
   result.maxTurns = userRole.maxTurns ?? builtinRoleDefaults.maxTurns ?? userGlobal.maxTurns;
 
-  // Track effort source provenance
+  // Track effort and thinking source provenance
   let effortSource: 'planner' | 'role-config' | 'global-config' | 'default' = 'default';
+  let thinkingSource: 'planner' | 'role-config' | 'global-config' | 'default' = 'default';
 
   // Resolve SDK passthrough fields (excluding model - handled via class system below)
   for (const field of SDK_FIELDS) {
@@ -531,15 +532,18 @@ export function resolveAgentConfig(
       if (planVal !== undefined) {
         value = planVal;
         if (field === 'effort') effortSource = 'planner';
+        if (field === 'thinking') thinkingSource = 'planner';
       } else if (userRole[field] !== undefined) {
         value = userRole[field];
         if (field === 'effort') effortSource = 'role-config';
+        if (field === 'thinking') thinkingSource = 'role-config';
       } else if (userGlobal[field] !== undefined) {
         value = userGlobal[field];
         if (field === 'effort') effortSource = 'global-config';
+        if (field === 'thinking') thinkingSource = 'global-config';
       } else if (builtinRoleDefaults[field] !== undefined) {
         value = builtinRoleDefaults[field];
-        // effortSource stays 'default'
+        // effortSource/thinkingSource stays 'default'
       }
     } else {
       value = userRole[field] ?? userGlobal[field] ?? builtinRoleDefaults[field];
@@ -649,8 +653,11 @@ export function resolveAgentConfig(
       }
       result.effortClamped = clamped.clamped;
     }
-    result.effortSource = effortSource;
   }
+
+  // Always stamp provenance so the UI always has source data
+  result.effortSource = effortSource;
+  result.thinkingSource = thinkingSource;
 
   return result;
 }
