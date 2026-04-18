@@ -251,6 +251,8 @@ export interface ResolvedAgentConfig {
   effortOriginal?: import('./backend.js').EffortLevel;
   /** Provenance of the resolved effort value. */
   effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
+  /** Provenance of the resolved thinking value. */
+  thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default';
 }
 
 export interface PiConfig {

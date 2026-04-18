@@ -849,25 +849,38 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
                   <TooltipContent side="top">
                     <div className="font-medium">{thread.agent}</div>
                     {thread.model && <div className="opacity-50 text-[10px]">{thread.model}</div>}
-                    {thread.effort && (
-                      <div className="opacity-50 text-[10px]">
-                        {thread.effortClamped && thread.effortOriginal
+                    <div className={thread.effortSource === 'planner' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
+                      effort: {thread.effort
+                        ? (thread.effortClamped && thread.effortOriginal
                           ? `${thread.effort} (clamped from ${thread.effortOriginal})`
-                          : thread.effort}
-                        {thread.effortSource && (
-                          <span>
-                            {' '}({thread.effortSource === 'planner'
-                              ? 'planner'
-                              : thread.effortSource === 'role-config' || thread.effortSource === 'global-config'
-                                ? 'config'
-                                : thread.effortSource === 'default'
-                                  ? 'default'
-                                  : thread.effortSource})
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {thread.thinking && <div className="opacity-50 text-[10px]">{thread.thinking}</div>}
+                          : thread.effort)
+                        : 'unset'}
+                      {thread.effortSource && (
+                        <span>
+                          {' '}({thread.effortSource === 'planner'
+                            ? 'planner'
+                            : thread.effortSource === 'role-config' || thread.effortSource === 'global-config'
+                              ? 'config'
+                              : thread.effortSource === 'default'
+                                ? 'default'
+                                : thread.effortSource})
+                        </span>
+                      )}
+                    </div>
+                    <div className={thread.thinkingSource === 'planner' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
+                      thinking: {thread.thinking ?? 'unset'}
+                      {thread.thinkingSource && (
+                        <span>
+                          {' '}({thread.thinkingSource === 'planner'
+                            ? 'planner'
+                            : thread.thinkingSource === 'role-config' || thread.thinkingSource === 'global-config'
+                              ? 'config'
+                              : thread.thinkingSource === 'default'
+                                ? 'default'
+                                : thread.thinkingSource})
+                        </span>
+                      )}
+                    </div>
                     <div className="opacity-70">{duration}</div>
                     {thread.totalTokens != null && (
                       <div className="opacity-70">

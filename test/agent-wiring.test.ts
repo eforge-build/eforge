@@ -935,11 +935,64 @@ describe('resolveAgentConfig per-plan override', () => {
     expect(result.effortSource).toBe('global-config');
   });
 
-  it('effortSource is default when no effort is configured', () => {
+  it('effortSource and thinkingSource are default when no effort/thinking is configured', () => {
     const config = makeConfig({});
     const result = resolveAgentConfig('builder', config, 'claude-sdk');
-    // No effort set, so effortSource should not be set
+    // No effort set, but source is always stamped
     expect(result.effort).toBeUndefined();
-    expect(result.effortSource).toBeUndefined();
+    expect(result.effortSource).toBe('default');
+    expect(result.thinking).toBeUndefined();
+    expect(result.thinkingSource).toBe('default');
+  });
+
+  it('thinkingSource tracks planner provenance', () => {
+    const config = makeConfig({
+      roles: {
+        builder: { thinking: { type: 'disabled' } },
+      },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+      agents: { builder: { thinking: { type: 'enabled', budgetTokens: 5000 } } },
+    });
+
+    expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 5000 });
+    expect(result.thinkingSource).toBe('planner');
+  });
+
+  it('thinkingSource tracks role-config provenance', () => {
+    const config = makeConfig({
+      roles: {
+        builder: { thinking: { type: 'enabled', budgetTokens: 3000 } },
+      },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+
+    expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 3000 });
+    expect(result.thinkingSource).toBe('role-config');
+  });
+
+  it('thinkingSource tracks global-config provenance', () => {
+    const config = makeConfig({
+      thinking: { type: 'enabled', budgetTokens: 8000 },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+
+    expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 8000 });
+    expect(result.thinkingSource).toBe('global-config');
+  });
+
+  it('effortSource is always stamped even when effort is set', () => {
+    const config = makeConfig({
+      effort: 'medium',
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+
+    expect(result.effort).toBe('medium');
+    expect(result.effortSource).toBe('global-config');
+    expect(result.thinkingSource).toBe('default');
   });
 });

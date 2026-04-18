@@ -36,7 +36,7 @@ export interface SdkPassthroughConfig {
 }
 
 /** Keys that are part of SdkPassthroughConfig but should NOT be forwarded to the backend SDK. */
-const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource']);
+const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource']);
 
 /**
  * Strip `undefined` values from an SdkPassthroughConfig so the SDK
@@ -97,6 +97,8 @@ export interface AgentRunOptions {
   effortOriginal?: EffortLevel;
   /** Provenance of the resolved effort value. */
   effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
+  /** Provenance of the resolved thinking value. */
+  thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default';
 }
 
 /**
