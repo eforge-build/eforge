@@ -119,9 +119,9 @@ Configured via `eforge/config.yaml` (searched upward from cwd), a global config 
 ## Development
 
 ```bash
-pnpm dev          # Run via tsx (pass args after --)
-pnpm build        # Bundle with tsup
-pnpm test         # Run unit tests
+pnpm build        # Bundle all workspace packages
+pnpm test         # Run unit tests (vitest)
+pnpm type-check   # Type check without emitting
 ```
 
 ### npx convention

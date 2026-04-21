@@ -15,7 +15,7 @@ import type {
   SettingSource,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
-import type { AgentBackend, AgentRunOptions, AgentTerminalSubtype } from '../backend.js';
+import type { AgentBackend, AgentRunOptions, AgentTerminalSubtype, BackendDebugCallback, BackendDebugPayload } from '../backend.js';
 import { AgentTerminalError } from '../backend.js';
 import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
 
@@ -34,6 +34,12 @@ export interface ClaudeSDKBackendOptions {
    * Pi has no Task tool / subagent concept.
    */
   disableSubagents?: boolean;
+  /**
+   * Optional callback fired just before each `sdkQuery` dispatch with a snapshot
+   * of the request (system prompt, tools, model, etc.). Used by diagnostic
+   * tooling like `eforge debug-composer` to compare framing across backends.
+   */
+  onDebugPayload?: BackendDebugCallback;
 }
 
 /** The tool name Claude Code exposes for subagent spawning. */
@@ -64,6 +70,7 @@ export class ClaudeSDKBackend implements AgentBackend {
   private readonly settingSources?: SettingSource[];
   private readonly bare: boolean;
   private readonly disableSubagents: boolean;
+  private readonly onDebugPayload?: BackendDebugCallback;
 
   constructor(options?: ClaudeSDKBackendOptions) {
     this.mcpServers = options?.mcpServers;
@@ -71,6 +78,7 @@ export class ClaudeSDKBackend implements AgentBackend {
     this.settingSources = options?.settingSources;
     this.bare = options?.bare ?? false;
     this.disableSubagents = options?.disableSubagents ?? false;
+    this.onDebugPayload = options?.onDebugPayload;
   }
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
@@ -110,6 +118,42 @@ export class ClaudeSDKBackend implements AgentBackend {
           ? { ...(this.mcpServers ?? {}), ...customMcpServers }
           : undefined;
 
+      const effectiveDisallowed = resolveDisallowedTools(options.disallowedTools, this.disableSubagents);
+      const usesPreset = options.tools === 'coding';
+
+      // Fire debug capture hook with the request eforge is about to hand to the SDK.
+      // The Claude Code CLI subprocess may add its own preset preamble on top when
+      // `tools === 'coding'`; that extra framing is not visible here.
+      if (this.onDebugPayload) {
+        const debugPayload: BackendDebugPayload = {
+          backend: 'claude-sdk',
+          agent,
+          userPrompt: options.prompt,
+          systemPrompt: '', // eforge never sets systemPrompt; SDK coerces undefined to ""
+          tools: usesPreset
+            ? [{ name: '<preset:claude_code>', description: 'Claude Code built-in tool preset (Read/Write/Edit/Bash/Grep/Glob/Task/...)' }]
+            : [],
+          model: { id: options.model?.id ?? 'default' },
+          ...(options.effort !== undefined ? { effort: options.effort } : {}),
+          ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
+          maxTurns: options.maxTurns,
+          ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
+          ...(effectiveDisallowed !== undefined ? { disallowedTools: effectiveDisallowed } : {}),
+          extra: {
+            toolsMode: options.tools,
+            usesPreset,
+            disableSubagents: this.disableSubagents,
+            bare: this.bare,
+            mcpServerNames: mergedMcpServers ? Object.keys(mergedMcpServers) : [],
+            pluginCount: this.plugins?.length ?? 0,
+            settingSources: usesPreset ? (this.settingSources ?? null) : null,
+            customToolCount: options.customTools?.length ?? 0,
+            note: 'systemPrompt is empty because eforge does not set one; the Claude Code CLI may inject its preset preamble downstream when usesPreset=true.',
+          },
+        };
+        await this.onDebugPayload(debugPayload);
+      }
+
       const q = sdkQuery({
         prompt: options.prompt,
         options: {
@@ -136,10 +180,7 @@ export class ClaudeSDKBackend implements AgentBackend {
           ...(options.maxBudgetUsd !== undefined ? { maxBudgetUsd: options.maxBudgetUsd } : {}),
           ...(options.fallbackModel !== undefined ? { fallbackModel: options.fallbackModel } : {}),
           ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
-          ...(() => {
-            const disallowed = resolveDisallowedTools(options.disallowedTools, this.disableSubagents);
-            return disallowed !== undefined ? { disallowedTools: disallowed } : {};
-          })(),
+          ...(effectiveDisallowed !== undefined ? { disallowedTools: effectiveDisallowed } : {}),
         },
       });
 

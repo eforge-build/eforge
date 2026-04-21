@@ -18,6 +18,7 @@ import { withHooks } from '@eforge-build/engine/hooks';
 import { withSessionId, withRunId, runSession } from '@eforge-build/engine/session';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
+import { registerDebugComposerCommand } from './debug-composer.js';
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '@eforge-build/monitor';
 import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, removeLockfile, isAgentWorktreeCwd } from '@eforge-build/client';
 
@@ -573,6 +574,9 @@ export function createProgram(abortController?: AbortController): Command {
       const resolved = await loadConfig();
       console.log(stringify(resolved));
     });
+
+  // Diagnostic commands
+  registerDebugComposerCommand(program);
 
   // Daemon commands
   const daemon = program

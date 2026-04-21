@@ -5,8 +5,7 @@ Project overview and user-facing docs are in `README.md` at the repo root.
 ## Commands
 
 ```bash
-pnpm build        # Bundle with tsup → dist/cli.js
-pnpm dev          # Run via tsx (e.g. pnpm dev -- build foo.md)
+pnpm build        # Bundle all workspace packages (tsup); CLI lands at packages/eforge/dist/cli.js
 pnpm test         # Run tests (vitest)
 pnpm test:watch   # Watch mode
 pnpm type-check   # Type check without emitting

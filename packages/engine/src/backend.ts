@@ -115,6 +115,59 @@ export interface AgentBackend {
 }
 
 // ---------------------------------------------------------------------------
+// Debug Payload Capture
+// ---------------------------------------------------------------------------
+
+/**
+ * Snapshot of the request a backend is about to send. Used by the
+ * `eforge debug-composer` command and other diagnostic tooling to compare how
+ * different backends frame the same agent run (system prompt, tools, model,
+ * etc.) without needing to proxy the actual HTTP traffic.
+ *
+ * The payload captures what the backend hands off to its SDK / subprocess.
+ * Downstream layers (the Claude Code CLI, pi-ai transport) may add their own
+ * framing on top; for those cases, use native SDK debug facilities.
+ */
+export interface BackendDebugPayload {
+  /** Which backend produced this payload. */
+  backend: 'claude-sdk' | 'pi';
+  /** The agent role this payload is for (e.g. `'pipeline-composer'`). */
+  agent: AgentRole;
+  /** The user prompt string passed into the run. */
+  userPrompt: string;
+  /**
+   * The fully-constructed system prompt as the backend sees it.
+   *
+   * - Claude SDK: this is what eforge passes to the SDK. `""` means eforge
+   *   did not set one and the SDK coerces `undefined` to `""`. The Claude
+   *   Code CLI subprocess may still inject its own preset preamble on top
+   *   of this when `systemPreset` is `'claude_code'`.
+   * - Pi: this is the full prompt including the pi-coding-agent preamble,
+   *   tool snippets, ancestor AGENTS.md/CLAUDE.md context, skills, date, cwd.
+   */
+  systemPrompt: string;
+  /** Tool definitions the backend will expose to the model. Empty array means no tools. */
+  tools: Array<{ name: string; description?: string; parameters?: unknown }>;
+  /** Model identifier (id plus provider for pi). */
+  model: { id: string; provider?: string };
+  /** Effort level, if set. */
+  effort?: EffortLevel;
+  /** Thinking config, if set. */
+  thinking?: ThinkingConfig;
+  /** Max turns for the run. */
+  maxTurns: number;
+  /** Tool allowlist, if any. */
+  allowedTools?: string[];
+  /** Tool denylist (after `disableSubagents` is applied on claude-sdk), if any. */
+  disallowedTools?: string[];
+  /** Arbitrary backend-specific context (e.g. settingSources, contextFiles, thinkingLevel). */
+  extra?: Record<string, unknown>;
+}
+
+/** Callback fired by a backend just before it dispatches a run to its SDK. */
+export type BackendDebugCallback = (payload: BackendDebugPayload) => void | Promise<void>;
+
+// ---------------------------------------------------------------------------
 // Typed Terminal Errors
 // ---------------------------------------------------------------------------
 

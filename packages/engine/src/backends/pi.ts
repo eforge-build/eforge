@@ -19,7 +19,7 @@ import type { Model, Api } from '@mariozechner/pi-ai';
 import type { AgentTool, ThinkingLevel } from '@mariozechner/pi-agent-core';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
-import type { AgentBackend, AgentRunOptions, ThinkingConfig, EffortLevel } from '../backend.js';
+import type { AgentBackend, AgentRunOptions, ThinkingConfig, EffortLevel, BackendDebugCallback, BackendDebugPayload } from '../backend.js';
 import type { PiConfig } from '../config.js';
 import { AsyncEventQueue } from '../concurrency.js';
 import { PiMcpBridge } from './pi-mcp-bridge.js';
@@ -40,6 +40,13 @@ export interface PiBackendOptions {
   bare?: boolean;
   /** Pi-specific configuration from eforge.yaml. */
   piConfig?: PiConfig;
+  /**
+   * Optional callback fired just before each `session.prompt` dispatch with a
+   * snapshot of the request (system prompt, tools, model, etc.). Used by
+   * diagnostic tooling like `eforge debug-composer` to compare framing across
+   * backends.
+   */
+  onDebugPayload?: BackendDebugCallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +242,7 @@ export class PiBackend implements AgentBackend {
   private readonly extensions?: PiExtensionConfig;
   private readonly bare: boolean;
   private readonly piConfig?: PiConfig;
+  private readonly onDebugPayload?: BackendDebugCallback;
   private mcpBridge: PiMcpBridge | null = null;
 
   constructor(options?: PiBackendOptions) {
@@ -242,6 +250,7 @@ export class PiBackend implements AgentBackend {
     this.extensions = options?.extensions;
     this.bare = options?.bare ?? false;
     this.piConfig = options?.piConfig;
+    this.onDebugPayload = options?.onDebugPayload;
   }
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
@@ -496,6 +505,46 @@ export class PiBackend implements AgentBackend {
         options.abortSignal.addEventListener('abort', () => {
           session.abort();
         }, { once: true });
+      }
+
+      // Fire debug capture hook with the fully-constructed request. At this
+      // point session.state.systemPrompt includes the pi-coding-agent preamble,
+      // tool snippets, ancestor AGENTS.md/CLAUDE.md context, skills, and
+      // date/cwd metadata. session.state.tools is the final tool list visible
+      // to the model.
+      if (this.onDebugPayload) {
+        const sessionState = session.state as { systemPrompt?: string; tools?: Array<{ name: string; description?: string; parameters?: unknown }> };
+        const sessionTools = Array.isArray(sessionState.tools) ? sessionState.tools : [];
+        const debugPayload: BackendDebugPayload = {
+          backend: 'pi',
+          agent,
+          userPrompt: options.prompt,
+          systemPrompt: sessionState.systemPrompt ?? '',
+          tools: sessionTools.map((t) => ({
+            name: t.name,
+            ...(t.description !== undefined ? { description: t.description } : {}),
+            ...(t.parameters !== undefined ? { parameters: t.parameters } : {}),
+          })),
+          model: { id: options.model.id, provider: options.model.provider },
+          ...(options.effort !== undefined ? { effort: options.effort } : {}),
+          ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
+          maxTurns: options.maxTurns,
+          ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
+          ...(options.disallowedTools !== undefined ? { disallowedTools: options.disallowedTools } : {}),
+          extra: {
+            toolsMode: options.tools,
+            thinkingLevel,
+            bare: this.bare,
+            mcpServerNames: this.mcpServers ? Object.keys(this.mcpServers) : [],
+            extensionPathCount: extensionPaths.length,
+            baseToolCount: filteredBaseTools.length,
+            mcpToolCount: filteredMcpTools.length,
+            customToolCount: options.customTools?.length ?? 0,
+            systemPromptBytes: (sessionState.systemPrompt ?? '').length,
+            note: 'systemPrompt reflects what pi-coding-agent constructed: the coding-assistant preamble + tool snippets + ancestor AGENTS.md/CLAUDE.md + skills + date/cwd.',
+          },
+        };
+        await this.onDebugPayload(debugPayload);
       }
 
       // Send prompt — non-blocking so events stream through the queue concurrently

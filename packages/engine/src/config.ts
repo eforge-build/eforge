@@ -499,7 +499,7 @@ export class ConfigMigrationError extends Error {
  * @param context  `'config'` (default) for config.yaml parsing — rejects and strips `backend:`.
  *                 `'profile'` for profile file parsing — keeps `backend:`.
  */
-function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
+export function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
   // Config.yaml context: reject backend: field (hard break — must migrate)
   if (context === 'config' && data.backend !== undefined) {
     throw new ConfigMigrationError(
