@@ -49,6 +49,7 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
     async reload() {}
   },
   discoverAndLoadExtensions: vi.fn(async () => ({ extensions: [] })),
+  getAgentDir: vi.fn(() => '/tmp/test-agent-dir'),
 }));
 
 import { PiBackend } from '@eforge-build/engine/backends/pi';
@@ -235,9 +236,7 @@ describe('PiBackend MCP tool wiring', () => {
 
     expect(createAgentSession).toHaveBeenCalledOnce();
     const sessionOptions = createAgentSession.mock.calls[0]?.[0];
-    expect(sessionOptions.tools).toEqual([
-      expect.objectContaining({ name: 'read' }),
-    ]);
+    expect(sessionOptions.tools).toEqual(['read']);
     expect(sessionOptions.customTools).toEqual([
       expect.objectContaining({ name: 'mcp_eforge_status' }),
     ]);

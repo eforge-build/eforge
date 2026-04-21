@@ -47,6 +47,7 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
     async reload() {}
   },
   discoverAndLoadExtensions: vi.fn(async () => ({ extensions: [] })),
+  getAgentDir: vi.fn(() => '/tmp/test-agent-dir'),
 }));
 
 import { PiBackend } from '@eforge-build/engine/backends/pi';

@@ -13,7 +13,9 @@ import {
   AuthStorage,
   DefaultResourceLoader,
   discoverAndLoadExtensions,
+  getAgentDir,
   type AgentSessionEvent,
+  type ToolDefinition,
 } from '@mariozechner/pi-coding-agent';
 import { getModel } from '@mariozechner/pi-ai';
 import type { Model, Api } from '@mariozechner/pi-ai';
@@ -402,6 +404,7 @@ export class PiBackend implements AgentBackend {
       let eforgeThemesFiltered = 0;
       const resourceLoader = new DefaultResourceLoader({
         cwd: options.cwd,
+        agentDir: getAgentDir(),
         settingsManager,
         extensionsOverride: (base) => ({
           ...base,
@@ -457,8 +460,8 @@ export class PiBackend implements AgentBackend {
         cwd: options.cwd,
         model,
         thinkingLevel,
-        tools: filteredBaseTools,
-        customTools: filteredMcpTools,
+        tools: filteredBaseTools.map((t) => t.name),
+        customTools: filteredMcpTools as unknown as ToolDefinition[],
         authStorage,
         modelRegistry,
         sessionManager,
