@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.10] - 2026-04-21
+
+### Features
+
+- prevent eforge recursion in agent contexts
+- add debug-composer CLI and backend debug payload capture
+- add claudeSdk.disableSubagents config option
+
+### Maintenance
+
+- bump pi packages, claude-agent-sdk, and marked
+
 ## [0.5.9] - 2026-04-17
 
 ### Features
@@ -306,16 +318,6 @@
 ### Maintenance
 
 - Add name frontmatter to skills and configure Pi skill sharing
-
-## [0.3.2] - 2026-04-02
-
-### Features
-
-- Evaluator Agent Continuation Support
-
-### Bug Fixes
-
-- Fix Evaluator Reset Target
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
