@@ -26,6 +26,14 @@ export { DAEMON_API_VERSION } from './api-version.js';
 
 export { sanitizeProfileName, parseRawConfigLegacy } from './profile-utils.js';
 
+export { subscribeToSession, parseSseChunk } from './session-stream.js';
+export type {
+  SessionSummary,
+  SubscribeOptions,
+  DaemonStreamEvent,
+  ParsedSseBlock,
+} from './session-stream.js';
+
 export type {
   HealthResponse,
   AutoBuildState,

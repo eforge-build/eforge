@@ -12,6 +12,7 @@ Zero-dependency HTTP client for the eforge daemon.
 
 - **Lockfile operations** - read, write, update, remove the daemon lockfile
 - **Daemon client** - `ensureDaemon`, `daemonRequest`, `daemonRequestIfRunning`
+- **Session stream** - `subscribeToSession()` helper and `SessionSummary` type for consuming the daemon's `/api/events/{sessionId}` SSE stream with reconnect/backoff, resolving on `session:end`
 - **Response types** - TypeScript interfaces for all daemon HTTP endpoints
 - **API version** - `DAEMON_API_VERSION` constant for version negotiation
 
