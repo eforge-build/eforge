@@ -1,0 +1,72 @@
+name: real-time-build-feedback-for-the-eforge-claude-code-plugin-and-pi-parity
+description: Deliver live in-conversation build progress for the eforge Claude
+  Code plugin (via MCP notifications/progress on a new eforge_follow tool) and
+  the Pi extension (via onUpdate), reusing the existing daemon SSE stream. Also
+  extract a shared subscribeToSession helper in @eforge-build/client and remove
+  the now-redundant MCP logging-notification forwarder.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-client-subscribe-helper
+    name: Extract subscribeToSession helper into @eforge-build/client
+    depends_on: []
+    branch: real-time-build-feedback-for-the-eforge-claude-code-plugin-and-pi-parity/client-subscribe-helper
+    build: &a1
+      - implement
+      - - review-cycle
+        - doc-update
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+        - integration
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+  - id: plan-02-mcp-follow-tool
+    name: Add eforge_follow MCP tool and deprecate logging forwarder
+    depends_on:
+      - plan-01-client-subscribe-helper
+    branch: real-time-build-feedback-for-the-eforge-claude-code-plugin-and-pi-parity/mcp-follow-tool
+    build: *a1
+    review: *a2
+  - id: plan-03-pi-follow-parity
+    name: "Pi extension parity: eforge_follow tool and command wiring"
+    depends_on:
+      - plan-01-client-subscribe-helper
+      - plan-02-mcp-follow-tool
+    branch: real-time-build-feedback-for-the-eforge-claude-code-plugin-and-pi-parity/pi-follow-parity
+    build: *a1
+    review: *a2
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This PRD touches multiple coordinated pieces (a new MCP tool, a
+    shared client helper, Pi parity, skill updates, and removal of the old
+    logging-forwarding path) but all changes can be planned in a single planner
+    session with clear sequential dependencies: the shared subscribeToSession()
+    helper in @eforge-build/client must land first, then the MCP tool and Pi
+    tool consume it, then skills/plugin version bumps follow. That is a classic
+    excursion shape (one foundation plan + dependent consumer plans), not
+    independent subsystems warranting expedition-scale module planning.
+    plan-review-cycle is included because the work spans the engine/plugin
+    boundary and the cross-consumer parity rule (AGENTS.md) makes scope/coverage
+    mistakes costly - a quality gate on the plan catches missing Pi updates or
+    skipped deprecation cleanup before build. For build stages, implement runs
+    first, then review-cycle runs in parallel with doc-update (doc-update does
+    not declare implement... wait, it does - so doc-update must come after
+    implement, which it does here since it's in a later group). Review uses
+    correctness + integration perspectives because the critical risks are (a)
+    correct SSE/reconnect/abort handling in the shared helper and (b)
+    integration across MCP progress notifications, Pi onUpdate, and the daemon
+    SSE endpoint. maxRounds=2 with standard strictness fits feature-level risk -
+    not security/data critical, but the long-running tool and abort-signal
+    semantics warrant more than a single pass."
