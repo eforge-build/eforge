@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.11] - 2026-04-21
+
+### Features
+
+- **fix-planner-submission-tools-on-the-pi-backend:** Backend-aware submission tool naming and Pi 0.68 ToolDefinition conformance
+
+### Bug Fixes
+
+- **engine:** register custom tools in Pi session allowlist and retry-frame submission validation errors
+
+### Maintenance
+
+- **deps:** bump pi packages to 0.68.0 and adapt backend
+
 ## [0.5.10] - 2026-04-21
 
 ### Features
@@ -303,21 +317,6 @@
 
 - Note Pi-specific plan skill in README
 - Add eforge-plugin / pi-package parity convention to AGENTS.md
-
-## [0.3.3] - 2026-04-03
-
-### Features
-
-- Add Pi extension package with full eforge integration
-
-### Bug Fixes
-
-- Wire MCP tools through Pi backend and update Pi config guidance
-- Style fallback swimlane labels as pills
-
-### Maintenance
-
-- Add name frontmatter to skills and configure Pi skill sharing
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
