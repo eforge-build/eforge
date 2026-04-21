@@ -485,11 +485,28 @@ export class PiBackend implements AgentBackend {
       await resourceLoader.reload();
 
       // Create agent session using the filtered resource loader.
+      //
+      // `tools` on `createAgentSession` is an allowlist that gates BOTH
+      // built-in tools AND the `customTools` array (see pi-coding-agent
+      // `agent-session.ts#_refreshToolRegistry`: `isAllowedTool(name)` is
+      // applied to every custom tool). If we only pass built-in tool names,
+      // pi strips every bridged MCP tool and every planner submission tool
+      // before the model ever sees them - the model then reads the planner
+      // prompt, tries to call `submit_plan_set`, gets a "tool not registered"
+      // response from pi's dispatch, and declares the tool "isn't available
+      // in this environment" before falling back to Write.
+      //
+      // Include the bridged + eforge custom tool names in the allowlist so
+      // they survive pi's filter.
       ({ session } = await createAgentSession({
         cwd: options.cwd,
         model,
         thinkingLevel,
-        tools: filteredBaseTools.map((t) => t.name),
+        tools: [
+          ...filteredBaseTools.map((t) => t.name),
+          ...filteredBridgedMcpTools.map((t) => t.name),
+          ...filteredEforgeCustomTools.map((t) => t.name),
+        ],
         customTools: [...filteredBridgedMcpTools, ...filteredEforgeCustomTools],
         authStorage,
         modelRegistry,

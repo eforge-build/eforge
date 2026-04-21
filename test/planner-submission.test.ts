@@ -281,3 +281,64 @@ describe('Planner submission tool: plan:submission event metadata', () => {
     expect(submission.hasMigrations).toBe(true);
   });
 });
+
+describe('Planner submission tool: validation error formatting', () => {
+  const makeTempDir = useTempDir('eforge-planner-submission-validation-test-');
+
+  it('returns a per-path, retry-oriented error when submit_plan_set receives invalid input', async () => {
+    // Payload with two common model mistakes, both structural so zod reports
+    // them in a single pass: an optional object set to null, and a required
+    // array field set to null. Both failures should appear in the tool's
+    // output, each keyed to a concrete JSON path, so the model can retry
+    // with corrections rather than abandoning the tool.
+    const payload = validPlanSetPayload() as unknown as Record<string, unknown>;
+    const firstPlan = (payload.plans as Array<Record<string, unknown>>)[0];
+    const firstFrontmatter = firstPlan.frontmatter as Record<string, unknown>;
+    firstPlan.frontmatter = {
+      ...firstFrontmatter,
+      agents: null,
+      dependsOn: null,
+    };
+
+    const backend = new StubBackend([{
+      toolCalls: [{
+        tool: 'submit_plan_set',
+        toolUseId: 'tu-1',
+        input: payload,
+        output: '',
+      }],
+      text: 'attempted submit',
+    }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runPlanner('Build widgets', {
+      backend,
+      cwd,
+      auto: true,
+      scope: 'excursion',
+    }));
+
+    const toolResult = events.find(
+      (e): e is EforgeEvent & { type: 'agent:tool_result' } =>
+        e.type === 'agent:tool_result' && e.tool === 'submit_plan_set',
+    );
+    expect(toolResult).toBeDefined();
+    const output = toolResult!.output;
+
+    // Retry framing — without these, the model abandons the tool and falls
+    // back to Write. See the "tool not available" symptom in
+    // eval/results/2026-04-21T21-19-00/.../eforge.log.
+    expect(output).toContain('Submission rejected');
+    expect(output).toContain('call the submission tool again');
+    expect(output).toContain('Do NOT fall back to Write');
+
+    // Per-path breakdown — one line per zod issue.
+    expect(output).toMatch(/plans\.0\.frontmatter\.agents:/);
+    expect(output).toMatch(/plans\.0\.frontmatter\.dependsOn:/);
+
+    // No plan files should have been written; the handler's `onSubmit`
+    // callback must not have been invoked for an invalid payload.
+    const errorEvents = events.filter(e => e.type === 'plan:error');
+    expect(errorEvents).toHaveLength(1);
+  });
+});

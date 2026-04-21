@@ -238,7 +238,9 @@ describe('PiBackend MCP tool wiring', () => {
 
     expect(createAgentSession).toHaveBeenCalledOnce();
     const sessionOptions = createAgentSession.mock.calls[0]?.[0];
-    expect(sessionOptions.tools).toEqual(['read']);
+    // `tools` is an allowlist that gates customTools too; both the surviving
+    // built-in and the surviving bridged MCP tool must appear there.
+    expect(sessionOptions.tools).toEqual(['read', 'mcp_eforge_status']);
     expect(sessionOptions.customTools).toEqual([
       expect.objectContaining({ name: 'mcp_eforge_status' }),
     ]);
@@ -591,5 +593,85 @@ describe('PiBackend custom tool wiring', () => {
     // Planner tool is blocked, bridged tool still passes through.
     expect(names).not.toContain('submit_plan_set');
     expect(names).toContain('mcp_eforge_status');
+  });
+});
+
+/**
+ * End-to-end wiring check: a real `runPlanner` call against a real
+ * `PiBackend` (only `createAgentSession` is mocked) must result in
+ * `submit_plan_set` being among the `customTools` the Pi session receives.
+ *
+ * This catches the class of regression where the planner submission tool
+ * reaches the CustomTool array but gets stripped before `createAgentSession`
+ * - e.g. because of upstream tool filtering, name-mapping drift, or a change
+ * to how the planner wires custom tools. The symptom in production is the
+ * model claiming `submit_plan_set` "isn't available in this environment"
+ * because it genuinely isn't registered on Pi's session.
+ */
+describe('PiBackend + runPlanner integration: submission tool reaches Pi session', () => {
+  beforeEach(() => {
+    createAgentSession.mockReset();
+    createCodingTools.mockReset();
+    createReadOnlyTools.mockReset();
+    createCodingTools.mockReturnValue([{ name: 'read' }, { name: 'bash' }, { name: 'write' }]);
+    createReadOnlyTools.mockReturnValue([{ name: 'read' }]);
+    createAgentSession.mockImplementation(async () => {
+      const listeners = new Set<(event: { type: string; messages?: unknown[] }) => void>();
+      const session = {
+        subscribe(listener: (event: { type: string; messages?: unknown[] }) => void) {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+        getSessionStats() {
+          return { tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0 };
+        },
+        async prompt(_prompt: string) {
+          for (const listener of listeners) {
+            listener({ type: 'agent_end', messages: [] });
+          }
+        },
+        abort() {},
+        async bindExtensions(_options: unknown) {},
+        state: { systemPrompt: '', tools: [] },
+      };
+      return { session };
+    });
+  });
+
+  it.each([
+    ['errand' as const, 'submit_plan_set'],
+    ['excursion' as const, 'submit_plan_set'],
+    ['expedition' as const, 'submit_architecture'],
+  ])('scope=%s registers %s on the Pi session', async (scope, expectedTool) => {
+    const { runPlanner } = await import('@eforge-build/engine/agents/planner');
+    const backend = makeBackend();
+    setMcpTools(backend, []);
+
+    for await (const _event of runPlanner('Add a widget feature to the app.', {
+      cwd: process.cwd(),
+      name: 'widgets',
+      auto: true,
+      scope,
+      backend,
+      model: { provider: 'anthropic', id: 'claude-opus-4-7' },
+    })) {
+      // Drain events; we only care about the session wiring assertion below.
+    }
+
+    expect(createAgentSession).toHaveBeenCalledOnce();
+    const sessionOptions = createAgentSession.mock.calls[0]?.[0];
+    const customTools = (sessionOptions.customTools ?? []) as Array<{ name: string }>;
+    const names = customTools.map((t) => t.name);
+
+    // Primary assertion: the submission tool for this scope is registered.
+    expect(names).toContain(expectedTool);
+
+    // pi-coding-agent's `tools` option doubles as an allowlist applied to
+    // `customTools` in `AgentSession#_refreshToolRegistry`. If the submission
+    // tool name is missing from that list, pi filters the tool out before the
+    // model ever sees it, and the planner dies with "tool isn't available in
+    // this environment". Make that invariant explicit here.
+    const allowlist = (sessionOptions.tools ?? []) as string[];
+    expect(allowlist).toContain(expectedTool);
   });
 });

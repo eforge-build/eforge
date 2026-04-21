@@ -55,6 +55,28 @@ ${rows.join('\n')}`;
 }
 
 /**
+ * Format zod validation issues into a retry-oriented error message.
+ *
+ * The previous `Validation error: ${result.error.message}` served up a raw
+ * JSON-stringified issues array, which models read as "the tool is broken"
+ * and abandon in favor of Write. An explicit per-path breakdown plus an
+ * explicit "call the tool again" instruction flips that behavior to a retry.
+ */
+function formatSubmissionValidationError(issues: readonly { path: readonly (string | number | symbol)[]; message: string }[]): string {
+  const lines = issues.map((issue) => {
+    const path = issue.path.length > 0 ? issue.path.map(String).join('.') : '(root)';
+    return `  - ${path}: ${issue.message}`;
+  });
+  return [
+    'Submission rejected: the payload did not validate against the schema.',
+    'Fix each issue below and call the submission tool again with the corrected payload.',
+    'Do NOT fall back to Write - this tool is the only way to complete the turn.',
+    '',
+    ...lines,
+  ].join('\n');
+}
+
+/**
  * Create a custom tool for submitting a plan set (errand/excursion mode).
  * The handler validates the payload against the schema and captures it via the callback.
  */
@@ -68,7 +90,7 @@ function createPlanSetSubmissionTool(
     handler: async (input: unknown) => {
       const result = planSetSubmissionSchema.safeParse(input);
       if (!result.success) {
-        return `Validation error: ${result.error.message}`;
+        return formatSubmissionValidationError(result.error.issues);
       }
       if (!onSubmit(result.data)) {
         return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
@@ -92,7 +114,7 @@ function createArchitectureSubmissionTool(
     handler: async (input: unknown) => {
       const result = architectureSubmissionSchema.safeParse(input);
       if (!result.success) {
-        return `Validation error: ${result.error.message}`;
+        return formatSubmissionValidationError(result.error.issues);
       }
       if (!onSubmit(result.data)) {
         return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
