@@ -33,18 +33,24 @@ describe('AGENT_MAX_CONTINUATIONS_DEFAULTS', () => {
 // --- builderEvaluate error handling ---
 
 describe('builderEvaluate', () => {
-  it('re-throws error_max_turns errors', async () => {
+  it('yields build:failed with terminalSubtype on error_max_turns (no re-throw — retry is owned by withRetry)', async () => {
     const backend = new StubBackend([{
       error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).'),
     }]);
     const plan = makePlanFile();
 
-    await expect(async () => {
-      await collectEvents(builderEvaluate(plan, {
-        backend,
-        cwd: '/tmp',
-      }));
-    }).rejects.toBeInstanceOf(AgentTerminalError);
+    // Prior behavior re-threw so the pipeline-level retry loop could catch it.
+    // With the policy model, builderEvaluate yields a terminal `build:failed`
+    // event carrying the subtype; `withRetry` inspects the event and decides
+    // whether to retry.
+    const events = await collectEvents(builderEvaluate(plan, {
+      backend,
+      cwd: '/tmp',
+    }));
+
+    const failed = findEvent(events, 'build:failed');
+    expect(failed).toBeDefined();
+    expect(failed!.terminalSubtype).toBe('error_max_turns');
   });
 
   it('catches non-max_turns errors and yields build:failed', async () => {

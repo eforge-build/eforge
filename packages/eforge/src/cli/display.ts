@@ -781,6 +781,18 @@ export function renderEvent(event: EforgeEvent): void {
       failSpinner('plan', `Planning failed: ${event.reason}`);
       break;
 
+    case 'agent:retry':
+      // Generic retry notification — agent-specific continuation events
+      // (plan:continuation, build:implement:continuation, build:evaluate:continuation)
+      // already render the user-facing progress message, so we just surface a
+      // dim trace here for debuggability.
+      console.log(
+        chalk.dim(
+          `  retry: ${event.agent} attempt ${event.attempt}/${event.maxAttempts} (${event.subtype})`,
+        ),
+      );
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

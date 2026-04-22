@@ -1312,3 +1312,46 @@ describe('agent:warning event for thinking coercion', () => {
     expect(warning).toBeUndefined();
   });
 });
+
+// --- Retry policy wiring ---
+//
+// These tests pin the contract between pipeline agent call sites and the
+// shared `withRetry` wrapper from `retry.ts`. They do not re-test policy
+// internals (covered in `retry.test.ts`), but confirm that the default
+// policies are registered for each agent role the pipeline uses.
+
+describe('DEFAULT_RETRY_POLICIES registration (pipeline-facing)', () => {
+  it('registers a policy for every agent that previously had inline retry logic', async () => {
+    const { DEFAULT_RETRY_POLICIES } = await import('@eforge-build/engine/retry');
+
+    // Roles that formerly had ad-hoc retry loops in pipeline.ts.
+    const requiredRoles = [
+      'planner',
+      'builder',
+      'evaluator',
+      'plan-evaluator',
+      'cohesion-evaluator',
+      'architecture-evaluator',
+    ] as const;
+
+    for (const role of requiredRoles) {
+      const policy = DEFAULT_RETRY_POLICIES[role];
+      expect(policy, `policy missing for ${role}`).toBeDefined();
+      expect(policy!.retryableSubtypes.has('error_max_turns')).toBe(true);
+      expect(policy!.maxAttempts).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('preserves prior AGENT_MAX_CONTINUATIONS_DEFAULTS semantics (attempts = maxContinuations + 1)', async () => {
+    const { DEFAULT_RETRY_POLICIES } = await import('@eforge-build/engine/retry');
+
+    // AGENT_MAX_CONTINUATIONS_DEFAULTS (maxAttempts = maxContinuations + 1):
+    //   planner: 2 => 3 attempts
+    //   evaluator / plan-evaluator / cohesion-evaluator / architecture-evaluator: 1 => 2 attempts
+    expect(DEFAULT_RETRY_POLICIES.planner!.maxAttempts).toBe(3);
+    expect(DEFAULT_RETRY_POLICIES.evaluator!.maxAttempts).toBe(2);
+    expect(DEFAULT_RETRY_POLICIES['plan-evaluator']!.maxAttempts).toBe(2);
+    expect(DEFAULT_RETRY_POLICIES['cohesion-evaluator']!.maxAttempts).toBe(2);
+    expect(DEFAULT_RETRY_POLICIES['architecture-evaluator']!.maxAttempts).toBe(2);
+  });
+});
