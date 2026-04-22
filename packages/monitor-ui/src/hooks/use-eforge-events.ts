@@ -90,10 +90,9 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
         setConnectionStatus('connected');
 
         const lastEventId = data.events.length > 0 ? data.events[data.events.length - 1].id : 0;
-        const hasSessionEnd = parsed.some((ev) => ev.event.type === 'session:end');
         const isServerComplete = data.status === 'completed' || data.status === 'failed';
 
-        if (hasSessionEnd || isServerComplete) {
+        if (isServerComplete) {
           // Session is done — cache it and skip SSE
           const finalState = parsed.reduce(
             (st, ev) => eforgeReducer(st, { type: 'ADD_EVENT', ...ev }),
