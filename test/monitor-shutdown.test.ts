@@ -306,40 +306,6 @@ describe('maxWaitForActivityMs', () => {
   });
 });
 
-describe('lockfile watcherPid backward compatibility', () => {
-  const makeTempDir = useTempDir();
-
-  it('lockfile with watcherPid round-trips through writeLockfile and readLockfile', () => {
-    const cwd = makeTempDir();
-    const data: LockfileData = {
-      pid: 12345,
-      port: 4567,
-      startedAt: new Date().toISOString(),
-      watcherPid: 99999,
-    };
-    writeLockfile(cwd, data);
-    // Read directly from disk to bypass mock
-    const raw = JSON.parse(readFileSync(lockfilePath(cwd), 'utf-8')) as LockfileData;
-    expect(raw.pid).toBe(12345);
-    expect(raw.port).toBe(4567);
-    expect(raw.watcherPid).toBe(99999);
-  });
-
-  it('lockfile without watcherPid parses correctly', () => {
-    const cwd = makeTempDir();
-    const data: LockfileData = {
-      pid: 12345,
-      port: 4567,
-      startedAt: new Date().toISOString(),
-    };
-    writeLockfile(cwd, data);
-    // Read directly from disk — existing lockfiles without watcherPid should parse fine
-    const raw = JSON.parse(readFileSync(lockfilePath(cwd), 'utf-8')) as LockfileData;
-    expect(raw.pid).toBe(12345);
-    expect(raw.watcherPid).toBeUndefined();
-  });
-});
-
 describe('updateLockfile', () => {
   const makeTempDir = useTempDir();
 
@@ -358,14 +324,14 @@ describe('updateLockfile', () => {
 
     updateLockfile(cwd, (existing) => ({
       ...existing,
-      watcherPid: 77777,
+      port: 9999,
     }));
 
     // Verify the file on disk was updated
     const raw = JSON.parse(readFileSync(lockfilePath(cwd), 'utf-8')) as LockfileData;
     expect(raw.pid).toBe(12345);
-    expect(raw.port).toBe(4567);
-    expect(raw.watcherPid).toBe(77777);
+    expect(raw.port).toBe(9999);
+    expect(raw.startedAt).toBe(startedAt);
   });
 
   it('does not throw and does not create a file when lockfile is missing', () => {
@@ -376,7 +342,7 @@ describe('updateLockfile', () => {
     expect(() => {
       updateLockfile(cwd, (existing) => ({
         ...existing,
-        watcherPid: 77777,
+        port: 9999,
       }));
     }).not.toThrow();
 
@@ -392,177 +358,3 @@ describe('killPidIfAlive', () => {
   });
 });
 
-/**
- * Tests for the watcher exit handler logic in server-main.ts.
- *
- * The exit handler is a closure inside spawnWatcher() and cannot be imported directly.
- * These tests verify the decision logic by replicating the handler's branching in isolation.
- * This ensures the algorithm is correct without requiring a real daemon process.
- */
-describe('daemon watcher exit handler logic', () => {
-  /**
-   * Replicates the exit handler's decision logic from server-main.ts child.on('exit').
-   * Returns the action taken: 'noop' | 'disable-nonzero' | 'disable-signal' | 'respawn' | 'disable-circuit-breaker'
-   */
-  function evaluateExitHandler(opts: {
-    code: number | null;
-    signal: string | null;
-    watcherKilledByUs: boolean;
-    autoBuild: boolean;
-    respawnTimestamps: number[];
-  }): { action: string; autoBuild: boolean; respawnTimestamps: number[] } {
-    let { autoBuild } = opts;
-    const respawnTimestamps = [...opts.respawnTimestamps];
-
-    if (opts.watcherKilledByUs) {
-      return { action: 'noop-killed-by-us', autoBuild, respawnTimestamps };
-    }
-
-    if (opts.code !== 0 && opts.code !== null) {
-      autoBuild = false;
-      return { action: 'disable-nonzero', autoBuild, respawnTimestamps };
-    }
-
-    if (opts.signal !== null) {
-      autoBuild = false;
-      return { action: 'disable-signal', autoBuild, respawnTimestamps };
-    }
-
-    // code === 0
-    if (autoBuild) {
-      const now = Date.now();
-      respawnTimestamps.push(now);
-      // Filter out entries older than 60 seconds
-      while (respawnTimestamps.length > 0 && respawnTimestamps[0] < now - 60_000) {
-        respawnTimestamps.shift();
-      }
-      if (respawnTimestamps.length >= 3) {
-        autoBuild = false;
-        return { action: 'disable-circuit-breaker', autoBuild, respawnTimestamps };
-      }
-      return { action: 'respawn', autoBuild, respawnTimestamps };
-    }
-
-    return { action: 'noop', autoBuild, respawnTimestamps };
-  }
-
-  it('signal kill with watcherKilledByUs=false disables autoBuild', () => {
-    const result = evaluateExitHandler({
-      code: null,
-      signal: 'SIGTERM',
-      watcherKilledByUs: false,
-      autoBuild: true,
-      respawnTimestamps: [],
-    });
-
-    expect(result.action).toBe('disable-signal');
-    expect(result.autoBuild).toBe(false);
-  });
-
-  it('signal kill with watcherKilledByUs=true does nothing', () => {
-    const result = evaluateExitHandler({
-      code: null,
-      signal: 'SIGTERM',
-      watcherKilledByUs: true,
-      autoBuild: true,
-      respawnTimestamps: [],
-    });
-
-    expect(result.action).toBe('noop-killed-by-us');
-    expect(result.autoBuild).toBe(true);
-  });
-
-  it('code-0 exit with autoBuild=true triggers respawn', () => {
-    const result = evaluateExitHandler({
-      code: 0,
-      signal: null,
-      watcherKilledByUs: false,
-      autoBuild: true,
-      respawnTimestamps: [],
-    });
-
-    expect(result.action).toBe('respawn');
-    expect(result.autoBuild).toBe(true);
-  });
-
-  it('code-0 exit with autoBuild=false does nothing', () => {
-    const result = evaluateExitHandler({
-      code: 0,
-      signal: null,
-      watcherKilledByUs: false,
-      autoBuild: false,
-      respawnTimestamps: [],
-    });
-
-    expect(result.action).toBe('noop');
-    expect(result.autoBuild).toBe(false);
-  });
-
-  it('non-zero exit disables autoBuild', () => {
-    const result = evaluateExitHandler({
-      code: 1,
-      signal: null,
-      watcherKilledByUs: false,
-      autoBuild: true,
-      respawnTimestamps: [],
-    });
-
-    expect(result.action).toBe('disable-nonzero');
-    expect(result.autoBuild).toBe(false);
-  });
-
-  it('circuit breaker disables autoBuild after 3 respawns within 60 seconds', () => {
-    const now = Date.now();
-    // Two recent respawns already recorded
-    const timestamps = [now - 5000, now - 2000];
-
-    const result = evaluateExitHandler({
-      code: 0,
-      signal: null,
-      watcherKilledByUs: false,
-      autoBuild: true,
-      respawnTimestamps: timestamps,
-    });
-
-    expect(result.action).toBe('disable-circuit-breaker');
-    expect(result.autoBuild).toBe(false);
-    expect(result.respawnTimestamps.length).toBe(3);
-  });
-
-  it('circuit breaker does not trigger when old timestamps are outside 60s window', () => {
-    const now = Date.now();
-    // Two old respawns outside the 60s window
-    const timestamps = [now - 120_000, now - 90_000];
-
-    const result = evaluateExitHandler({
-      code: 0,
-      signal: null,
-      watcherKilledByUs: false,
-      autoBuild: true,
-      respawnTimestamps: timestamps,
-    });
-
-    expect(result.action).toBe('respawn');
-    expect(result.autoBuild).toBe(true);
-    // Old timestamps should be filtered out, only the new one remains
-    expect(result.respawnTimestamps.length).toBe(1);
-  });
-
-  it('circuit breaker cleans up stale timestamps', () => {
-    const now = Date.now();
-    // Mix of old and recent timestamps: 2 old + 1 recent
-    const timestamps = [now - 120_000, now - 90_000, now - 5000];
-
-    const result = evaluateExitHandler({
-      code: 0,
-      signal: null,
-      watcherKilledByUs: false,
-      autoBuild: true,
-      respawnTimestamps: timestamps,
-    });
-
-    // After filtering old ones: 1 recent + 1 new = 2, below threshold
-    expect(result.action).toBe('respawn');
-    expect(result.respawnTimestamps.length).toBe(2);
-  });
-});

@@ -15,15 +15,17 @@
 
 import { openDatabase, type MonitorDB } from './db.js';
 import { startServer, type WorkerTracker, type DaemonState } from './server.js';
-import { writeLockfile, removeLockfile, updateLockfile, isPidAlive, readLockfile, isServerAlive } from '@eforge-build/client';
+import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive } from '@eforge-build/client';
 import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig } from '@eforge-build/engine/config';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { withRecording } from './recorder.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { openSync, closeSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-let respawnDelayMs = 5000;
+const WATCHER_DRAIN_TIMEOUT_MS = 5000;
 const ORPHAN_CHECK_INTERVAL_MS = 5000;
 const STATE_CHECK_INTERVAL_MS = 2000;
 const COUNTDOWN_WITH_SUBSCRIBERS_MS = 60_000;
@@ -173,7 +175,7 @@ export function reconcileOrphanedState(db: MonitorDB, cwd: string): void {
   }
 }
 
-function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string, reason = 'Watcher exited with non-zero code'): void {
+function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string, reason: string): void {
   try {
     db.insertEvent({
       runId: sessionId,
@@ -325,10 +327,13 @@ async function main(): Promise<void> {
 
   const workerTracker = persistent ? createWorkerTracker() : undefined;
 
-  // --- Watcher lifecycle for auto-build (persistent mode only) ---
-  let watcherProcess: ChildProcess | null = null;
-  let watcherKilledByUs = false;
-  const respawnTimestamps: number[] = [];
+  // --- In-process watcher lifecycle for auto-build (persistent mode only) ---
+  // The watcher runs engine.watchQueue() inside the daemon itself. Each start
+  // owns an AbortController; stopping aborts it and waits for the generator to
+  // drain. In-flight PRD build subprocesses are not killed by stopping the
+  // watcher — they complete or are reconciled on next daemon startup.
+  let watcherAbort: AbortController | null = null;
+  let watcherDone: Promise<void> | null = null;
 
   const daemonState: DaemonState | undefined = persistent ? {
     autoBuild: false, // will be set from config below
@@ -337,113 +342,88 @@ async function main(): Promise<void> {
       pid: null,
       sessionId: null,
     },
-    onSpawnWatcher: () => spawnWatcher(),
-    onKillWatcher: () => killWatcher(),
+    onSpawnWatcher: () => { void startWatcher(); },
+    onKillWatcher: () => { void stopWatcher(); },
     onShutdown: undefined as (() => void) | undefined,
   } : undefined;
 
-  function spawnWatcher(): void {
+  async function startWatcher(): Promise<void> {
     if (!daemonState) return;
-    if (watcherProcess) return; // already running
+    if (watcherAbort) return; // already running
 
-    watcherKilledByUs = false;
     const sessionId = `watcher-${Date.now()}-${randomBytes(6).toString('hex')}`;
-
-    const child = spawn('eforge', ['run', '--queue', '--watch', '--auto', '--no-monitor'], {
-      cwd,
-      detached: true,
-      stdio: 'ignore',
-    });
-    child.unref();
-    watcherProcess = child;
-
+    const controller = new AbortController();
+    watcherAbort = controller;
     daemonState.watcher = {
       running: true,
-      pid: child.pid ?? null,
+      // Watcher runs in-process with the daemon; no distinct PID to report.
+      pid: null,
       sessionId,
     };
 
-    // Track watcher PID in lockfile for external lifecycle management
-    if (child.pid) {
-      updateLockfile(cwd, { watcherPid: child.pid });
+    let engine: EforgeEngine;
+    try {
+      engine = await EforgeEngine.create({ cwd });
+    } catch (err) {
+      watcherAbort = null;
+      daemonState.watcher = { running: false, pid: null, sessionId: null };
+      daemonState.autoBuild = false;
+      const reason = `Watcher failed to initialize: ${err instanceof Error ? err.message : String(err)}`;
+      writeAutoBuildPausedEvent(db, sessionId, reason);
+      return;
     }
 
-    // Capture reference so exit/error handlers only act on THIS child,
-    // not a replacement spawned after killWatcher() + spawnWatcher().
-    const thisChild = child;
-
-    child.on('error', () => {
-      if (watcherProcess !== thisChild) return; // stale — a new watcher replaced us
-      watcherProcess = null;
-      daemonState.watcher = { running: false, pid: null, sessionId: null };
-      // Remove watcher PID from lockfile on error
-      updateLockfile(cwd, { watcherPid: undefined });
-      // Spawn failure — pause auto-build (same as non-zero exit)
-      daemonState.autoBuild = false;
-      writeAutoBuildPausedEvent(db, sessionId);
-    });
-
-    child.on('exit', (code, signal) => {
-      if (watcherProcess !== thisChild) return; // stale — a new watcher replaced us
-      watcherProcess = null;
-      daemonState.watcher = { running: false, pid: null, sessionId: null };
-      // Remove watcher PID from lockfile on exit (crash resilience)
-      updateLockfile(cwd, { watcherPid: undefined });
-
-      if (watcherKilledByUs) {
-        // Intentional kill — do not respawn
-        return;
+    // If shutdown was requested during engine init, bail out now rather than
+    // spinning up watchQueue just to tear it down immediately.
+    if (controller.signal.aborted) {
+      if (watcherAbort === controller) {
+        watcherAbort = null;
+        daemonState.watcher = { running: false, pid: null, sessionId: null };
       }
+      return;
+    }
 
-      if (code !== 0 && code !== null) {
-        // Build failure — pause auto-build and write event to SQLite
-        daemonState.autoBuild = false;
-        writeAutoBuildPausedEvent(db, sessionId);
-        return;
-      }
-
-      if (signal !== null) {
-        // Signal kill (code is null) — something unexpected killed the watcher
-        daemonState.autoBuild = false;
-        writeAutoBuildPausedEvent(db, sessionId, `Watcher killed by signal ${signal}`);
-        return;
-      }
-
-      // Clean exit (code 0) — respawn if autoBuild is still enabled
-      if (daemonState.autoBuild) {
-        // Circuit breaker: prevent runaway respawning
-        const now = Date.now();
-        respawnTimestamps.push(now);
-        // Filter out entries older than 60 seconds
-        while (respawnTimestamps.length > 0 && respawnTimestamps[0] < now - 60_000) {
-          respawnTimestamps.shift();
-        }
-        if (respawnTimestamps.length >= 3) {
+    watcherDone = (async () => {
+      try {
+        const events = withRecording(
+          engine.watchQueue({ auto: true, abortController: controller }),
+          db,
+          cwd,
+          process.pid,
+        );
+        // Drain the event stream; withRecording persists each event to SQLite.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        for await (const _event of events) { /* persisted by withRecording */ }
+      } catch (err) {
+        // Only pause if this controller is still the active one — otherwise
+        // a newer startWatcher() has already taken over.
+        if (watcherAbort === controller && daemonState) {
           daemonState.autoBuild = false;
-          writeAutoBuildPausedEvent(db, sessionId, 'Watcher respawn circuit breaker triggered (3 respawns within 60s)');
-          return;
+          const reason = `Watcher crashed: ${err instanceof Error ? err.message : String(err)}`;
+          writeAutoBuildPausedEvent(db, sessionId, reason);
         }
-        setTimeout(() => spawnWatcher(), 1000);
+      } finally {
+        if (watcherAbort === controller) {
+          watcherAbort = null;
+          watcherDone = null;
+          if (daemonState) {
+            daemonState.watcher = { running: false, pid: null, sessionId: null };
+          }
+        }
       }
-    });
+    })();
   }
 
-  function killWatcher(): void {
-    if (!watcherProcess) return;
-    watcherKilledByUs = true;
-    try {
-      if (watcherProcess.pid) {
-        process.kill(watcherProcess.pid, 'SIGTERM');
-      }
-    } catch {
-      // Process may have already exited
-    }
-    watcherProcess = null;
-    if (daemonState) {
-      daemonState.watcher = { running: false, pid: null, sessionId: null };
-    }
-    // Remove watcher PID from lockfile
-    updateLockfile(cwd, { watcherPid: undefined });
+  async function stopWatcher(): Promise<void> {
+    if (!watcherAbort) return;
+    const done = watcherDone;
+    watcherAbort.abort();
+    if (!done) return;
+    // Bounded wait so shutdown cannot hang on a stuck generator
+    await Promise.race([
+      done,
+      new Promise<void>((resolveWait) => setTimeout(resolveWait, WATCHER_DRAIN_TIMEOUT_MS).unref()),
+    ]);
   }
 
   // Load config before starting server so we can pass it for validation
@@ -489,10 +469,9 @@ async function main(): Promise<void> {
 
   // --- Start watcher if autoBuild enabled + idle shutdown (persistent mode) ---
   if (persistent && daemonState && config) {
-    respawnDelayMs = config.prdQueue.watchPollIntervalMs;
     daemonState.autoBuild = config.prdQueue.autoBuild;
     if (daemonState.autoBuild) {
-      spawnWatcher();
+      void startWatcher();
     }
     // Enable idle auto-shutdown for persistent mode when configured (0 = disabled)
     if (config.daemon.idleShutdownMs > 0) {
@@ -500,23 +479,15 @@ async function main(): Promise<void> {
     }
   }
 
-  // Orphan detection loop (also checks watcher health in persistent mode)
+  // Orphan detection loop: mark dead PRD build subprocesses as killed.
+  // The in-process watcher doesn't need a health check — if it dies, the
+  // daemon dies with it, and the next startup's reconciler cleans up.
   const orphanTimer = setInterval(() => {
     try {
       const runningRuns = db.getRunningRuns();
       for (const run of runningRuns) {
         if (run.pid && !isPidAlive(run.pid)) {
           db.updateRunStatus(run.id, 'killed');
-        }
-      }
-
-      // Check watcher health in persistent mode
-      if (persistent && daemonState?.watcher.running && watcherProcess?.pid) {
-        if (!isPidAlive(watcherProcess.pid)) {
-          // Watcher died without exit event — clean up
-          watcherProcess = null;
-          daemonState.watcher = { running: false, pid: null, sessionId: null };
-          updateLockfile(cwd, { watcherPid: undefined });
         }
       }
     } catch {
@@ -611,18 +582,20 @@ async function main(): Promise<void> {
     clearInterval(orphanTimer);
     if (stateTimer) clearInterval(stateTimer);
 
-    // Kill watcher before removing lockfile
-    killWatcher();
+    // Abort the in-process watcher and wait (with timeout) for it to drain.
+    // In-flight PRD build subprocesses are orphaned here; the next daemon
+    // startup's reconciler cleans up their stale locks.
+    void stopWatcher().finally(() => {
+      deregisterPort(cwd);
+      removeLockfile(cwd);
 
-    deregisterPort(cwd);
-    removeLockfile(cwd);
-
-    server.stop().then(() => {
-      db.close();
-      process.exit(0);
-    }).catch(() => {
-      db.close();
-      process.exit(1);
+      server.stop().then(() => {
+        db.close();
+        process.exit(0);
+      }).catch(() => {
+        db.close();
+        process.exit(1);
+      });
     });
   }
 

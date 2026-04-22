@@ -6,7 +6,6 @@ export interface LockfileData {
   pid: number;
   port: number;
   startedAt: string;
-  watcherPid?: number;
 }
 
 export const LOCKFILE_NAME = 'daemon.lock';
@@ -92,7 +91,11 @@ export function updateLockfile(cwd: string, partialOrUpdater: Partial<LockfileDa
     ? partialOrUpdater(existing)
     : (() => {
         const merged = { ...existing, ...partialOrUpdater };
-        // Remove undefined keys (e.g., watcherPid: undefined removes the field)
+        // Shallow merges may pass `undefined` to clear an optional field
+        // (e.g. `{ somePartialField: undefined }` removes it from the stored
+        // lockfile rather than writing `"somePartialField": undefined`).
+        // `LockfileData` has no optional fields today, but keep the cleanup so
+        // future optional additions behave the same way.
         for (const key of Object.keys(merged) as (keyof LockfileData)[]) {
           if (merged[key] === undefined) {
             delete merged[key];

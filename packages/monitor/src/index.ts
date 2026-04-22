@@ -62,11 +62,8 @@ export async function ensureMonitor(cwd: string, options?: EnsureMonitorOptions)
     if (alive) {
       return buildMonitor(db, existingLock.port, cwd);
     }
-    // Stale lockfile — kill stale PIDs before spawning new server
+    // Stale lockfile — kill stale daemon before spawning new server
     killPidIfAlive(existingLock.pid);
-    if (existingLock.watcherPid) {
-      killPidIfAlive(existingLock.watcherPid);
-    }
     removeLockfile(cwd);
   }
 

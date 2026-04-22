@@ -676,20 +676,14 @@ export function createProgram(abortController?: AbortController): Command {
           console.log(chalk.yellow(`Daemon already running at http://localhost:${existingLock.port} (PID ${existingLock.pid})`));
           process.exit(0);
         }
-        // Stale lockfile — kill stale processes before spawning
+        // Stale lockfile — kill stale daemon before spawning
         // SIGTERM first
         killPidIfAlive(existingLock.pid);
-        if (existingLock.watcherPid) {
-          killPidIfAlive(existingLock.watcherPid);
-        }
         // Wait 500ms for graceful shutdown
         await new Promise((r) => setTimeout(r, 500));
-        // SIGKILL survivors
+        // SIGKILL survivor
         if (isPidAlive(existingLock.pid)) {
           killPidIfAlive(existingLock.pid, 'SIGKILL');
-        }
-        if (existingLock.watcherPid && isPidAlive(existingLock.watcherPid)) {
-          killPidIfAlive(existingLock.watcherPid, 'SIGKILL');
         }
         removeLockfile(cwd);
       }
@@ -760,10 +754,6 @@ export function createProgram(abortController?: AbortController): Command {
       }
 
       if (!isPidAlive(lock.pid)) {
-        // Stale lockfile — also kill watcher if tracked
-        if (lock.watcherPid) {
-          killPidIfAlive(lock.watcherPid, 'SIGKILL');
-        }
         removeLockfile(cwd);
         console.log(chalk.yellow('Daemon was not running (stale lockfile removed)'));
         process.exit(0);
@@ -807,14 +797,12 @@ export function createProgram(abortController?: AbortController): Command {
         }
       }
 
-      // Send SIGTERM to both monitor PID and watcher PID (belt-and-suspenders)
+      // Send SIGTERM to the daemon; its shutdown handler aborts the in-process
+      // watcher and tears down the lockfile.
       try {
         process.kill(lock.pid, 'SIGTERM');
       } catch {
         // Process may have already exited
-      }
-      if (lock.watcherPid) {
-        killPidIfAlive(lock.watcherPid, 'SIGTERM');
       }
 
       // Wait for lockfile removal (daemon's shutdown handler removes it)
@@ -833,9 +821,6 @@ export function createProgram(abortController?: AbortController): Command {
       // Force-kill escalation after 5s timeout
       console.log(chalk.yellow('Daemon did not shut down gracefully, escalating to SIGKILL...'));
       killPidIfAlive(lock.pid, 'SIGKILL');
-      if (lock.watcherPid) {
-        killPidIfAlive(lock.watcherPid, 'SIGKILL');
-      }
       removeLockfile(cwd);
       console.log(chalk.green('Daemon force-stopped'));
       process.exit(0);
@@ -893,17 +878,6 @@ export function createProgram(abortController?: AbortController): Command {
       console.log(`  URL:     http://localhost:${lock.port}`);
       console.log(`  Uptime:  ${uptimeStr}`);
       console.log(`  Builds:  ${runningCount} running`);
-
-      // Show watcher PID and alive/stale status
-      if (lock.watcherPid) {
-        const watcherAlive = isPidAlive(lock.watcherPid);
-        const watcherStatus = watcherAlive
-          ? chalk.green('alive')
-          : chalk.red('stale');
-        console.log(`  Watcher: PID ${lock.watcherPid} (${watcherStatus})`);
-      } else {
-        console.log(`  Watcher: ${chalk.dim('none')}`);
-      }
     });
 
   daemon
@@ -921,14 +895,9 @@ export function createProgram(abortController?: AbortController): Command {
 
       const killed: string[] = [];
 
-      // SIGKILL monitor PID
+      // SIGKILL daemon PID — kills the in-process watcher with it
       if (killPidIfAlive(lock.pid, 'SIGKILL')) {
-        killed.push(`monitor (PID ${lock.pid})`);
-      }
-
-      // SIGKILL watcher PID
-      if (lock.watcherPid && killPidIfAlive(lock.watcherPid, 'SIGKILL')) {
-        killed.push(`watcher (PID ${lock.watcherPid})`);
+        killed.push(`daemon (PID ${lock.pid})`);
       }
 
       removeLockfile(cwd);
