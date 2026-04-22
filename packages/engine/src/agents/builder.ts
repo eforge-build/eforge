@@ -18,7 +18,7 @@ export interface BuilderOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
-  /** Override max conversation turns (defaults: implement=50, evaluate=30) */
+  /** Override max conversation turns (defaults: implement=80, evaluate=30) */
   maxTurns?: number;
   /** Evaluator strictness level — controls the accept/reject threshold text injected into the prompt */
   strictness?: 'strict' | 'standard' | 'lenient';
@@ -117,13 +117,16 @@ export async function* builderImplement(
 
 **This is continuation attempt ${attempt} of ${maxContinuations}.**
 
-The previous builder run was interrupted because it ran out of conversation turns. All progress has been committed. Do NOT redo any of the completed work shown below — pick up where it left off.
+The previous builder run exhausted its turn budget. All prior progress has been committed. Do NOT redo any of the completed work — pick up where it left off.
+
+**Budget discipline for this attempt:**
+- Do NOT re-explore the codebase from scratch. The diff below is your ground truth for what's already done — consult it instead of re-reading the files it covers.
+- Batch remaining file reads and edits into single responses (see rule 8 above).
+- Jump straight to the remaining plan items — skim the plan, compare against the diff, and act.
 
 <completed_diff>
 ${completedDiff}
-</completed_diff>
-
-Review the diff above, then continue implementing the remaining parts of the plan. Use the Agent tool to parallelize bulk edits when many files remain.`;
+</completed_diff>`;
   }
 
   const prompt = await loadPrompt('builder', {
@@ -137,7 +140,7 @@ Review the diff above, then continue implementing the remaining parts of the pla
 
   try {
     for await (const event of options.backend.run(
-      { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 50, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
+      { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 80, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
       'builder',
       plan.id,
     )) {

@@ -419,7 +419,7 @@ export async function hasUnstagedChanges(cwd: string): Promise<boolean> {
 /** Per-role built-in defaults. Agents that need different settings than the global default declare them here. */
 export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, Partial<import('./config.js').ResolvedAgentConfig>>> = {
   planner: { effort: 'high' },
-  builder: { maxTurns: 50, effort: 'high' },
+  builder: { maxTurns: 80, effort: 'high' },
   'module-planner': { maxTurns: 20, effort: 'high' },
   'architecture-reviewer': { effort: 'high' },
   'architecture-evaluator': { effort: 'high' },
@@ -531,7 +531,7 @@ export function resolveAgentConfig(
   const planOverride = planEntry?.agents?.[role];
 
   // For each field: planEntry override > user per-role > user global > built-in per-role > built-in global
-  // Special case for maxTurns: built-in per-role beats user global (e.g. builder's 50 beats global 30)
+  // Special case for maxTurns: built-in per-role beats user global (e.g. builder's 80 beats global 30)
   // but user per-role always wins.
   const SDK_FIELDS = ['thinking', 'effort', 'maxBudgetUsd', 'fallbackModel', 'allowedTools', 'disallowedTools', 'promptAppend'] as const;
 

@@ -500,24 +500,24 @@ describe('agent config threading', () => {
   it('resolveAgentConfig uses role default for builder', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(50); // builder role default
+    expect(result.maxTurns).toBe(80); // builder role default
   });
 
   it('resolveAgentConfig returns role default when no profile config set', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
 
-    // Builder has a role default of 50, so it should return 50 (not the global 30)
+    // Builder has a role default of 80, so it should return 80 (not the global 30)
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(50);
+    expect(result.maxTurns).toBe(80);
   });
 
   it('resolveAgentConfig returns role default over global config', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
 
-    // Builder has a role default of 50 - even with global maxTurns set differently
+    // Builder has a role default of 80 - even with global maxTurns set differently
     const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 25 } };
     const result = resolveAgentConfig('builder', config);
-    expect(result.maxTurns).toBe(50);
+    expect(result.maxTurns).toBe(80);
   });
 
   it('resolveAgentConfig falls back to global maxTurns for roles without a specific default', async () => {
@@ -532,7 +532,7 @@ describe('agent config threading', () => {
   it('resolveAgentConfig returns model class default for SDK fields when not configured', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG, 'claude-sdk');
-    expect(result.maxTurns).toBe(50);
+    expect(result.maxTurns).toBe(80);
     // builder defaults to 'balanced' class, so claude-sdk default is { id: 'claude-sonnet-4-6' }
     expect(result.model).toEqual({ id: 'claude-sonnet-4-6' });
     expect(result.thinking).toBeUndefined();
@@ -591,9 +591,9 @@ describe('agent config threading', () => {
       ...DEFAULT_CONFIG,
       agents: { ...DEFAULT_CONFIG.agents, maxTurns: 20 },
     };
-    // builder has built-in default of 50 which beats user global 20
+    // builder has built-in default of 80 which beats user global 20
     const result = resolveAgentConfig('builder', config);
-    expect(result.maxTurns).toBe(50);
+    expect(result.maxTurns).toBe(80);
   });
 
   it('resolveAgentConfig: user global model propagates to roles without overrides (overriding class)', async () => {

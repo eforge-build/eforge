@@ -446,6 +446,60 @@ describe('executePlans - build:failed handling', () => {
     // Overall build status should be failed
     expect(state.status).toBe('failed');
   });
+
+  it('promotes plan failure to run-level state.status without requiring finalize', async () => {
+    // Regression: after the throw->stream switch for build:failed, executePlans
+    // must itself mark state.status='failed' so prdValidate/validate guards in
+    // orchestrator.ts short-circuit before finalize runs.
+    const stateDir = makeTempDir();
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+
+    const state = initializeState(stateDir, config, '/tmp/repo').state;
+
+    const planRunner: PlanRunner = async function* () {
+      yield { type: 'build:failed', planId: 'plan-a', error: 'max turns', timestamp: new Date().toISOString() } as EforgeEvent;
+    };
+
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      mergePlan: async () => 'abc123',
+      reconcile: async () => ({ valid: [], recovered: [], orphaned: [] }),
+    } as unknown as WorktreeManager;
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      stateDir,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      featureBranchMerged: false,
+      resumed: false,
+    };
+
+    for await (const _event of executePlans(ctx)) {
+      // drain
+    }
+
+    // Without calling finalize, state.status must already be 'failed'.
+    expect(state.status).toBe('failed');
+    expect(state.completedAt).toBeDefined();
+  });
 });
 
 // --- initializeState helpers ---

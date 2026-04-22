@@ -424,6 +424,19 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
     // Ensure sentinel is removed on abort or unexpected exit
     removeSentinel();
   }
+
+  // Promote plan-level terminal failure to run-level status so post-execute
+  // phase guards in orchestrator.ts (validate, prdValidate, finalize) short-
+  // circuit. Before the throw→stream switch for build:failed, generator
+  // unwinding handled this implicitly; now we signal it explicitly.
+  const anyTerminalFailure = Object.values(state.plans).some(
+    (p) => p.status === 'failed' || p.status === 'blocked',
+  );
+  if (anyTerminalFailure && (state.status as string) !== 'failed') {
+    state.status = 'failed';
+    state.completedAt = new Date().toISOString();
+    saveState(stateDir, state);
+  }
 }
 
 /**

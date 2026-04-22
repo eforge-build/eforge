@@ -255,12 +255,12 @@ describe('continuationContext threads reason into prompt', () => {
   });
 });
 
-// --- resolveAgentConfig for builder is 50 ---
+// --- resolveAgentConfig for builder is 80 ---
 
 describe('resolveAgentConfig for builder', () => {
-  it('returns maxTurns of 50', () => {
+  it('returns maxTurns of 80', () => {
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(50);
+    expect(result.maxTurns).toBe(80);
   });
 });
 

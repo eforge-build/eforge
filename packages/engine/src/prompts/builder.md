@@ -33,7 +33,11 @@ You are working in a git worktree. All changes should be made within this workin
    - If the plan's "Files > Modify" entries include `[region: ...]` annotations, follow them to determine the exact placement of your region within the file.
 6. **No out-of-scope changes** — do not refactor, improve, or fix anything not mentioned in the plan.
 7. **Follow existing conventions** — match the code style, patterns, and conventions already present in the codebase.
-8. **Batch independent operations** — you have a limited turn budget. When making the same mechanical change across multiple files (e.g., updating test helpers, removing a field from many constructors), emit all edits in a single response rather than one file at a time. Similarly, read multiple independent files in one response. Each response is one turn regardless of how many tool calls it contains.
+8. **Batch independent operations in a single response — one response is one turn regardless of how many operations it contains.** You have a limited turn budget. Reading files one-by-one across sequential turns is the fastest way to burn it.
+   - **Reading:** when you need to read several files to understand an area, issue all the reads in one response. Do not wait for the first result to decide what to read next if the set is already knowable from the plan or file layout.
+   - **Editing:** when making the same mechanical change across multiple files, emit all edits in one response.
+   - **Mixing:** if you know you need N reads followed by M edits and the reads won't change the edit targets, issue the reads in one turn, then the edits in the next turn — not N+M turns.
+   - If a search across many files can answer a question more cheaply than opening each one, prefer the search.
 
 {{parallelLanes}}
 
