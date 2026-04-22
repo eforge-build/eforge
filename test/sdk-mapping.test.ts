@@ -38,7 +38,7 @@ describe('mapSDKMessages', () => {
         type: 'assistant',
         message: {
           content: [
-            { type: 'tool_use', name: 'read_file', input: { path: '/foo.ts' } },
+            { type: 'tool_use', id: 'toolu_abc123', name: 'read_file', input: { path: '/foo.ts' } },
           ],
         },
       },
@@ -50,6 +50,7 @@ describe('mapSDKMessages', () => {
       type: 'agent:tool_use',
       agent: 'builder',
       tool: 'read_file',
+      toolUseId: 'toolu_abc123',
       input: { path: '/foo.ts' },
     });
   });
@@ -101,9 +102,19 @@ describe('mapSDKMessages', () => {
 
     const events = await collectEvents(mapSDKMessages(messages, 'planner', 'test-agent-id'));
     // Result text is NOT re-emitted as agent:message (already came from assistant message).
-    // Only agent:result is emitted with resultText captured for tracing.
-    expect(events).toHaveLength(1);
+    // Per the unified usage cadence contract, a final `agent:usage` (final: true)
+    // carrying the cumulative session totals is yielded immediately before agent:result.
+    expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
+      type: 'agent:usage',
+      agent: 'planner',
+      agentId: 'test-agent-id',
+      usage: { input: 100, output: 200, total: 300, cacheRead: 30, cacheCreation: 10 },
+      costUsd: 0.05,
+      numTurns: 3,
+      final: true,
+    });
+    expect(events[1]).toMatchObject({
       type: 'agent:result',
       agent: 'planner',
       result: {
@@ -242,7 +253,7 @@ describe('mapSDKMessages', () => {
         message: {
           content: [
             { type: 'text', text: 'Starting...' },
-            { type: 'tool_use', name: 'write_file', input: { path: '/a.ts' } },
+            { type: 'tool_use', id: 'toolu_multi1', name: 'write_file', input: { path: '/a.ts' } },
             { type: 'text', text: 'Done.' },
           ],
         },
