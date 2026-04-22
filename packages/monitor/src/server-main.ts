@@ -20,7 +20,7 @@ import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig } from '@eforge-build/engine/config';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { openSync, closeSync, mkdirSync } from 'node:fs';
+import { openSync, closeSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 let respawnDelayMs = 5000;
@@ -98,6 +98,79 @@ export function evaluateStateCheck(ctx: StateCheckContext): {
   }
 
   return { state, lastActivityTimestamp, hasSeenActivity };
+}
+
+/**
+ * Reconcile orphaned queue state on daemon startup.
+ *
+ * Two classes of orphan:
+ *  1. Runs in the SQLite DB with status='running' whose PID is no longer
+ *     alive (crash, hard-kill). Marked as 'failed' with a reconcile reason.
+ *  2. Lock files under `.eforge/queue-locks/*.lock` whose PID is no longer
+ *     alive. Deleted so the PRD can be re-claimed.
+ *
+ * Ordering note: the PRD file itself is left wherever it was (usually in
+ * `queue/` root) so the scheduler can pick it up again. We do NOT move it
+ * to `queue/failed/` here, because that would be destructive on every
+ * daemon restart — the user may want the next auto-build pass to retry.
+ *
+ * This runs exactly once at daemon startup. The periodic orphan-detection
+ * loop still handles live-running daemons.
+ */
+export function reconcileOrphanedState(db: MonitorDB, cwd: string): void {
+  // 1) Runs whose PID is dead
+  try {
+    const runningRuns = db.getRunningRuns();
+    const now = new Date().toISOString();
+    for (const run of runningRuns) {
+      if (run.pid && !isPidAlive(run.pid)) {
+        db.updateRunStatus(run.id, 'failed', now);
+        try {
+          db.insertEvent({
+            runId: run.id,
+            type: 'phase:end',
+            data: JSON.stringify({
+              runId: run.id,
+              result: { status: 'failed', summary: 'reconciled: process not alive at daemon startup' },
+              timestamp: now,
+            }),
+            timestamp: now,
+          });
+        } catch {
+          // insertEvent may fail if run row was removed between queries — best-effort
+        }
+      }
+    }
+  } catch {
+    // DB may be in an inconsistent state on first-ever startup — best-effort
+  }
+
+  // 2) Lock files whose PID is dead
+  const lockDir = resolve(cwd, '.eforge', 'queue-locks');
+  let entries: string[];
+  try {
+    entries = readdirSync(lockDir);
+  } catch {
+    return; // Dir doesn't exist yet — nothing to reconcile
+  }
+  for (const file of entries) {
+    if (!file.endsWith('.lock')) continue;
+    const lockPath = resolve(lockDir, file);
+    let pid: number;
+    try {
+      pid = parseInt(readFileSync(lockPath, 'utf-8').trim(), 10);
+    } catch {
+      continue;
+    }
+    if (!Number.isFinite(pid) || pid <= 0) {
+      // Corrupt lock file — remove it
+      try { unlinkSync(lockPath); } catch { /* ignore */ }
+      continue;
+    }
+    if (!isPidAlive(pid)) {
+      try { unlinkSync(lockPath); } catch { /* ignore */ }
+    }
+  }
 }
 
 function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string, reason = 'Watcher exited with non-zero code'): void {
@@ -404,6 +477,11 @@ async function main(): Promise<void> {
 
   // Register in global port registry
   registerPort(cwd, server.port, process.pid);
+
+  // One-shot reconciliation for state left behind by a previous crash or
+  // hard-kill. Runs after we own the lockfile so no other daemon instance
+  // can be touching the same files.
+  reconcileOrphanedState(db, cwd);
 
   // Declare state-machine variables before use (setupStateMachine assigns stateTimer)
   let stateTimer: ReturnType<typeof setInterval> | undefined;

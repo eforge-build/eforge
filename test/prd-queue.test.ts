@@ -217,7 +217,7 @@ describe('claimPrd', () => {
     expect(second).toBe(false);
   });
 
-  it('returns true and re-acquires when lock file contains a dead PID', async () => {
+  it('returns false when lock file contains a dead PID (stale-lock cleanup is the reconciler\'s job, not claimPrd\'s)', async () => {
     const dir = makeTempDir();
     const prdId = 'test';
     const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
@@ -226,12 +226,14 @@ describe('claimPrd', () => {
     mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
     writeFileSync(lockPath, '999999');
 
+    // claimPrd treats any existing lock as held. The daemon's startup
+    // reconciler is responsible for sweeping dead-PID locks.
     const result = await claimPrd(prdId, dir);
-    expect(result).toBe(true);
+    expect(result).toBe(false);
 
-    // Lock file should now contain our PID
+    // Lock file is untouched by claimPrd
     const lockContent = readFileSync(lockPath, 'utf-8');
-    expect(lockContent).toBe(String(process.pid));
+    expect(lockContent).toBe('999999');
   });
 
   it('returns false when lock file contains a live PID', async () => {

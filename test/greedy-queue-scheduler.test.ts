@@ -188,9 +188,12 @@ describe('discoverNewPrds in runQueue', () => {
     let secondPrdWritten = false;
     for await (const event of gen) {
       events.push(event);
-      // Write the second PRD after the first build starts (queue:prd:start),
-      // so it is NOT found during the initial loadQueue() call.
-      if (event.type === 'queue:prd:start' && !secondPrdWritten) {
+      // Write the second PRD after the scheduler has emitted queue:start
+      // (and begun spawning the first child), so it is NOT found during the
+      // initial loadQueue() call. Per-build events (queue:prd:start, etc.)
+      // are emitted by the child subprocess and go straight to SQLite; they
+      // do not flow through the parent scheduler's event stream.
+      if (event.type === 'queue:start' && !secondPrdWritten) {
         secondPrdWritten = true;
         await writeFile(
           join(queueDir, 'prd-second.md'),
@@ -237,7 +240,7 @@ describe('git reset --hard removal verification', () => {
 
     // Extract the runQueue and buildSinglePrd method bodies (rough check)
     const runQueueStart = eforgeSrc.indexOf('async *runQueue(');
-    const buildSinglePrdStart = eforgeSrc.indexOf('private async *buildSinglePrd(');
+    const buildSinglePrdStart = eforgeSrc.indexOf('async *buildSinglePrd(');
     expect(runQueueStart).toBeGreaterThan(-1);
     expect(buildSinglePrdStart).toBeGreaterThan(-1);
 

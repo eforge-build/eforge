@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 declare const EFORGE_VERSION: string;
 
 import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { QueueExecExitCode, queueExecExitCode } from '@eforge-build/engine/prd-queue';
 import {
   validatePlanSet,
   parseOrchestrationConfig,
@@ -540,6 +541,74 @@ export function createProgram(abortController?: AbortController): Command {
           // In watch mode, abort is a clean exit
           process.exit(options.watch ? 0 : (result === 'completed' ? 0 : 1));
         });
+      },
+    );
+
+  queue
+    .command('exec <prdId>')
+    .description('Build a single PRD directly (subprocess entry point for the queue scheduler)')
+    .option('--auto', 'Run without approval gates')
+    .option('--verbose', 'Stream agent output')
+    .option('--no-monitor', 'Disable web monitor')
+    .option('--no-plugins', 'Disable plugin loading')
+    .action(
+      async (
+        prdId: string,
+        options: {
+          auto?: boolean;
+          verbose?: boolean;
+          monitor?: boolean;
+          plugins?: boolean;
+        },
+      ) => {
+        process.title = `eforge-build:${prdId}`;
+        initDisplay({ verbose: options.verbose });
+
+        const configOverrides = buildConfigOverrides(options);
+
+        const engine = await EforgeEngine.create({
+          onClarification: createClarificationHandler(options.auto ?? false),
+          onApproval: createApprovalHandler(options.auto ?? false),
+          ...(configOverrides && { config: configOverrides }),
+        });
+
+        const { loadQueue } = await import('@eforge-build/engine/prd-queue');
+        const prds = await loadQueue(engine.resolvedConfig.prdQueue.dir, process.cwd());
+        const prd = prds.find((p) => p.id === prdId);
+        if (!prd) {
+          console.error(chalk.red(`PRD not found in queue: ${prdId}`));
+          process.exit(QueueExecExitCode.NotFound);
+        }
+
+        const exitCode = await withMonitor(options.monitor === false, async (monitor) => {
+          const buildEvents = engine.buildSinglePrd(prd, {
+            auto: options.auto,
+            verbose: options.verbose,
+            abortController,
+          });
+
+          const wrapped = wrapEvents(buildEvents, monitor, engine.resolvedConfig.hooks);
+
+          let completionStatus: 'completed' | 'failed' | 'skipped' | undefined;
+          let skipReason: string | undefined;
+          for await (const event of wrapped) {
+            renderEvent(event);
+            // Narrow via event.type rather than raw `as` casts — the
+            // EforgeEvent union already carries these fields.
+            if (event.type === 'queue:prd:complete') {
+              completionStatus = event.status;
+            } else if (event.type === 'queue:prd:skip') {
+              skipReason = event.reason;
+            }
+          }
+
+          return queueExecExitCode(completionStatus, skipReason);
+        });
+
+        // Exit *after* withMonitor's finally has torn down the monitor /
+        // spinners / hooks. Calling process.exit inside the callback would
+        // leak the monitor subprocess when --no-monitor is omitted.
+        process.exit(exitCode);
       },
     );
 

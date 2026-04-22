@@ -4,7 +4,7 @@
  * Engine emits, consumers render — never writes to stdout.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, watch as fsWatch, type FSWatcher } from 'node:fs';
 import { readFile, readdir, mkdir, rm, stat, writeFile } from 'node:fs/promises';
@@ -21,7 +21,7 @@ import type {
   PlanFile,
   ClarificationQuestion,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, QueueExecExitCode, QueueSkipReason } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runFormatter } from './agents/formatter.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
@@ -806,10 +806,15 @@ export class EforgeEngine {
   }
 
   /**
-   * Process a single PRD: claim, staleness check, compile, build, release.
-   * Extracted from runQueue() so the greedy scheduler can run PRDs concurrently.
+   * Process a single PRD: claim, staleness check, compile, build.
+   *
+   * This method is the subprocess entry point: the scheduler spawns one child
+   * process per PRD that calls this directly. It emits events (which the child's
+   * monitor recorder writes to SQLite) and returns. The parent scheduler handles
+   * lock release and file-location transitions in its child.on('exit') handler
+   * based on the child's exit code.
    */
-  private async *buildSinglePrd(
+  async *buildSinglePrd(
     prd: import('./prd-queue.js').QueuedPrd,
     options: QueueOptions,
   ): AsyncGenerator<EforgeEvent> {
@@ -827,7 +832,7 @@ export class EforgeEngine {
     // Claim this PRD exclusively — skip if another process already holds it
     const claimed = await claimPrd(prd.id, cwd);
     if (!claimed) {
-      yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'claimed by another process' };
+      yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: QueueSkipReason.AlreadyClaimed };
       yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
       return;
     }
@@ -858,9 +863,7 @@ export class EforgeEngine {
       }
 
       if (stalenessVerdict === 'obsolete') {
-        await releasePrd(prd.id, cwd);
-        await movePrdToSubdir(prd.filePath, 'skipped', cwd);
-        yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
+        yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: QueueSkipReason.Obsolete };
         yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
         return;
       }
@@ -882,8 +885,7 @@ export class EforgeEngine {
           }
         } else {
           // Skip — needs manual revision
-          await releasePrd(prd.id, cwd);
-          yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
+          yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: QueueSkipReason.NeedsRevision };
           yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
           return;
         }
@@ -960,18 +962,9 @@ export class EforgeEngine {
     } catch (err) {
       prdResult = { status: 'failed', summary: (err as Error).message };
     } finally {
-      try {
-        await releasePrd(prd.id, cwd);
-      } catch { /* best-effort lock cleanup */ }
-      try {
-        if (prdResult.status === 'failed') {
-          await movePrdToSubdir(prd.filePath, 'failed', cwd);
-        } else if (prdResult.status === 'skipped') {
-          await movePrdToSubdir(prd.filePath, 'skipped', cwd);
-        }
-        // completed: no-op — cleanupCompletedPrd handles deletion during build
-      } catch { /* prevent double-throw */ }
-
+      // Lock release and PRD file-location transitions are the parent
+      // scheduler's responsibility (via child.on('exit')). This child only
+      // emits terminal events and returns.
       yield {
         type: 'session:end',
         sessionId: prdSessionId,
@@ -981,6 +974,124 @@ export class EforgeEngine {
 
       yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: prdResult.status };
     }
+  }
+
+  /**
+   * Spawn a child process to build a single PRD, and do all file/lock
+   * cleanup in the exit handler.
+   *
+   * This is the sole cleanup path for normal and crash scenarios alike: when
+   * the child exits (cleanly, via signal, or via spawn error), the parent
+   * decides what to do with the PRD file and the lock based on the exit
+   * code contract defined by `QueueExecExitCode`. This replaces the
+   * finally-block cleanup in `buildSinglePrd` so a SIGTERM mid-build cannot
+   * leave stale state behind — the parent's exit handler runs regardless.
+   */
+  private spawnPrdChild(
+    prd: import('./prd-queue.js').QueuedPrd,
+    options: QueueOptions,
+  ): Promise<'completed' | 'failed' | 'skipped'> {
+    const cwd = this.cwd;
+    const prdId = prd.id;
+    const filePath = prd.filePath;
+    const abortController = options.abortController;
+
+    return new Promise((resolvePromise) => {
+      const args = ['queue', 'exec', prdId];
+      if (options.auto) args.push('--auto');
+      if (options.verbose) args.push('--verbose');
+      args.push('--no-monitor');
+
+      // Use the current Node binary + the current CLI entrypoint so the child
+      // is guaranteed to be the same build as the parent. Spawning bare
+      // `eforge` from PATH would risk parent/child version skew (the exit
+      // code contract could be interpreted differently on each side).
+      const cliEntrypoint = process.argv[1];
+      const child = cliEntrypoint
+        ? spawn(process.execPath, [cliEntrypoint, ...args], { cwd, stdio: 'ignore' })
+        : spawn('eforge', args, { cwd, stdio: 'ignore' });
+
+      let abortListener: (() => void) | undefined;
+      if (abortController?.signal) {
+        abortListener = (): void => {
+          if (child.pid) {
+            try { process.kill(child.pid, 'SIGTERM'); } catch { /* child may have exited */ }
+          }
+        };
+        abortController.signal.addEventListener('abort', abortListener, { once: true });
+      }
+
+      // `exit` and `error` can both fire (e.g. ENOENT during spawn emits
+      // `error` plus a synthetic `exit` with code=null). Guard so cleanup
+      // runs exactly once.
+      let finalized = false;
+
+      const finalize = async (exitCode: number | null, signal: NodeJS.Signals | null): Promise<void> => {
+        if (finalized) return;
+        finalized = true;
+
+        if (abortListener) {
+          abortController?.signal.removeEventListener('abort', abortListener);
+        }
+
+        const isSignalKill = signal !== null;
+        const wasAborted = abortController?.signal.aborted === true;
+        const isAlreadyClaimed = exitCode === QueueExecExitCode.SkippedAlreadyClaimed;
+        const needsRevision = exitCode === QueueExecExitCode.SkippedNeedsRevision;
+
+        let status: 'completed' | 'failed' | 'skipped';
+        let moveTo: 'failed' | 'skipped' | null;
+        const shouldRelease = !isAlreadyClaimed;
+
+        if (isSignalKill && wasAborted) {
+          // User-requested cancel (parent sent SIGTERM in response to abort).
+          // Leave the PRD in queue/ so a subsequent run can pick it up;
+          // don't mark it failed — that would trip the "don't retry failed
+          // builds" behavior.
+          status = 'skipped';
+          moveTo = null;
+        } else if (isSignalKill) {
+          // Unsolicited signal (OOM kill, SIGKILL from outside). Treat as failure.
+          status = 'failed';
+          moveTo = 'failed';
+        } else if (exitCode === QueueExecExitCode.Completed) {
+          status = 'completed';
+          moveTo = null;
+        } else if (exitCode === QueueExecExitCode.Skipped) {
+          status = 'skipped';
+          moveTo = 'skipped';
+        } else if (isAlreadyClaimed || needsRevision) {
+          status = 'skipped';
+          moveTo = null;
+        } else {
+          status = 'failed';
+          moveTo = 'failed';
+        }
+
+        try {
+          if (shouldRelease) {
+            try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
+          }
+          if (moveTo) {
+            try {
+              await movePrdToSubdir(filePath, moveTo, cwd);
+            } catch {
+              // File may already be moved, deleted (completed), or missing.
+              // Best-effort — the startup reconciler is the backstop.
+            }
+          }
+        } finally {
+          resolvePromise(status);
+        }
+      };
+
+      child.on('exit', (code, signal) => {
+        void finalize(code, signal);
+      });
+      child.on('error', () => {
+        void finalize(QueueExecExitCode.Failed, null);
+      });
+    });
   }
 
   /**
@@ -1096,22 +1207,26 @@ export class EforgeEngine {
 
         eventQueue.addProducer();
 
-        // Launch asynchronously — semaphore gates actual execution
+        // Launch asynchronously — semaphore gates actual execution.
+        // Each PRD runs as its own OS process via spawnPrdChild, which
+        // owns lock release and PRD file transitions in its exit handler.
         void (async () => {
           let acquired = false;
-          let lastCompletionStatus: string | undefined;
+          let status: 'completed' | 'failed' | 'skipped' = 'failed';
           try {
             await semaphore.acquire();
             acquired = true;
 
-            for await (const event of this.buildSinglePrd(prd, options)) {
-              if (event.type === 'queue:prd:complete') {
-                lastCompletionStatus = (event as { status: string }).status;
-              }
-              eventQueue.push(event);
-            }
-          } catch (err) {
-            lastCompletionStatus = 'failed';
+            status = await this.spawnPrdChild(prd, options);
+
+            eventQueue.push({
+              timestamp: new Date().toISOString(),
+              type: 'queue:prd:complete',
+              prdId: prd.id,
+              status,
+            } as EforgeEvent);
+          } catch {
+            status = 'failed';
             eventQueue.push({
               timestamp: new Date().toISOString(),
               type: 'queue:prd:complete',
@@ -1121,19 +1236,11 @@ export class EforgeEngine {
           } finally {
             if (acquired) semaphore.release();
 
-            // Update state based on the actual completion status from buildSinglePrd
             const finalState = prdState.get(prd.id)!;
             if (finalState.status === 'running') {
-              if (lastCompletionStatus === 'completed') {
-                finalState.status = 'completed';
-              } else if (lastCompletionStatus === 'skipped') {
-                finalState.status = 'skipped';
-              } else {
-                finalState.status = 'failed';
-              }
+              finalState.status = status;
             }
 
-            // Propagate blocked on failure
             if (finalState.status === 'failed') {
               propagateBlocked(prd.id);
             }
@@ -1339,19 +1446,21 @@ export class EforgeEngine {
 
         void (async () => {
           let acquired = false;
-          let lastCompletionStatus: string | undefined;
+          let status: 'completed' | 'failed' | 'skipped' = 'failed';
           try {
             await semaphore.acquire();
             acquired = true;
 
-            for await (const event of this.buildSinglePrd(prd, options)) {
-              if (event.type === 'queue:prd:complete') {
-                lastCompletionStatus = (event as { status: string }).status;
-              }
-              eventQueue.push(event);
-            }
-          } catch (err) {
-            lastCompletionStatus = 'failed';
+            status = await this.spawnPrdChild(prd, options);
+
+            eventQueue.push({
+              timestamp: new Date().toISOString(),
+              type: 'queue:prd:complete',
+              prdId: prd.id,
+              status,
+            } as EforgeEvent);
+          } catch {
+            status = 'failed';
             eventQueue.push({
               timestamp: new Date().toISOString(),
               type: 'queue:prd:complete',
@@ -1363,13 +1472,7 @@ export class EforgeEngine {
 
             const finalState = prdState.get(prd.id)!;
             if (finalState.status === 'running') {
-              if (lastCompletionStatus === 'completed') {
-                finalState.status = 'completed';
-              } else if (lastCompletionStatus === 'skipped') {
-                finalState.status = 'skipped';
-              } else {
-                finalState.status = 'failed';
-              }
+              finalState.status = status;
             }
 
             if (finalState.status === 'failed') {

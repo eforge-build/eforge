@@ -321,6 +321,74 @@ export async function isPrdRunning(prdId: string, cwd: string): Promise<boolean>
 }
 
 // ---------------------------------------------------------------------------
+// Subprocess-per-build exit code contract
+// ---------------------------------------------------------------------------
+
+/**
+ * Exit codes for the `eforge queue exec <prdId>` subprocess, used by the
+ * queue scheduler to determine how to clean up after the child exits.
+ *
+ * The scheduler spawns one child process per PRD; this is the sole channel
+ * by which the child tells the parent what happened and what cleanup is
+ * needed. Any exit code not listed here (or signal kill) is treated as
+ * `Failed` and the parent performs the safety-net cleanup (release lock,
+ * move PRD to failed/).
+ */
+export const QueueExecExitCode = {
+  /** PRD built successfully; file already deleted during build. */
+  Completed: 0,
+  /** Build failed; parent should release lock and move PRD to failed/. */
+  Failed: 1,
+  /** Skipped (e.g. obsolete); parent should release lock and move PRD to skipped/. */
+  Skipped: 2,
+  /** PRD not found in queue (bad prdId). */
+  NotFound: 127,
+  /** Skipped because another process holds the claim; parent must NOT release the lock and must NOT move the file. */
+  SkippedAlreadyClaimed: 10,
+  /** Skipped because the PRD needs manual revision; parent should release the lock but leave the file in queue/. */
+  SkippedNeedsRevision: 11,
+} as const;
+
+export type QueueExecExit = typeof QueueExecExitCode[keyof typeof QueueExecExitCode];
+
+/**
+ * Canonical skip reasons emitted on `queue:prd:skip` events.
+ *
+ * These strings are load-bearing: they are how the subprocess entry point
+ * communicates *why* a PRD was skipped back through the exit code, and in
+ * turn how the parent scheduler decides whether to release the lock and/or
+ * move the PRD file. Do not inline the literals — always reference this
+ * const so emitter and interpreter can't drift.
+ */
+export const QueueSkipReason = {
+  AlreadyClaimed: 'claimed by another process',
+  NeedsRevision: 'needs revision',
+  Obsolete: 'obsolete',
+} as const;
+
+export type QueueSkipReasonValue = typeof QueueSkipReason[keyof typeof QueueSkipReason];
+
+/**
+ * Map a terminal `queue:prd:complete` status (+ skip reason, if any) to the
+ * exit code the child should return. Called by the subprocess entry point
+ * after events drain.
+ */
+export function queueExecExitCode(
+  completionStatus: 'completed' | 'failed' | 'skipped' | undefined,
+  skipReason: string | undefined,
+): number {
+  if (completionStatus === 'completed') return QueueExecExitCode.Completed;
+  if (completionStatus === 'failed') return QueueExecExitCode.Failed;
+  if (completionStatus === 'skipped') {
+    if (skipReason === QueueSkipReason.AlreadyClaimed) return QueueExecExitCode.SkippedAlreadyClaimed;
+    if (skipReason === QueueSkipReason.NeedsRevision) return QueueExecExitCode.SkippedNeedsRevision;
+    return QueueExecExitCode.Skipped;
+  }
+  // No terminal event was emitted — treat as failed so the parent cleans up.
+  return QueueExecExitCode.Failed;
+}
+
+// ---------------------------------------------------------------------------
 // Lockfile-based PRD claim
 // ---------------------------------------------------------------------------
 
@@ -341,58 +409,10 @@ export async function claimPrd(prdId: string, cwd: string): Promise<boolean> {
     return true;
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
-      // Check if the lock is stale (owning process no longer alive)
-      let lockContent: string;
-      try {
-        lockContent = await readFile(lockPath, 'utf-8');
-      } catch {
-        // Can't read lock file - treat as actively held
-        return false;
-      }
-
-      const pid = parseInt(lockContent.trim(), 10);
-      if (!Number.isFinite(pid) || pid <= 0) {
-        // Corrupt/invalid lock file content - treat as actively held
-        return false;
-      }
-
-      // Check if the PID is alive
-      let isPidAlive = false;
-      try {
-        process.kill(pid, 0);
-        isPidAlive = true;
-      } catch (killErr: unknown) {
-        // EPERM means the process exists but is owned by a different user
-        if ((killErr as NodeJS.ErrnoException).code === 'EPERM') {
-          isPidAlive = true;
-        }
-        // ESRCH or other errors mean the process is dead - stale lock
-      }
-
-      if (isPidAlive) {
-        // Process is alive - lock is legitimately held
-        return false;
-      }
-
-      try {
-        await rm(lockPath);
-      } catch {
-        // Can't remove stale lock - treat as actively held
-        return false;
-      }
-
-      try {
-        const fd = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY);
-        await fd.writeFile(String(process.pid), 'utf-8');
-        await fd.close();
-        return true;
-      } catch (retryErr: unknown) {
-        if ((retryErr as NodeJS.ErrnoException).code === 'EEXIST') {
-          // Another process claimed it between our remove and retry
-          return false;
-        }
-        throw retryErr;
-      }
+      // Lock is held by another process. Stale locks (owning PID dead) are
+      // the startup reconciler's job, not ours — we assume a live lock means
+      // a live owner.
+      return false;
     }
     throw err;
   }
