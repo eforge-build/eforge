@@ -533,8 +533,8 @@ describe('agent config threading', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG, 'claude-sdk');
     expect(result.maxTurns).toBe(50);
-    // builder defaults to 'max' class, so claude-sdk default is { id: 'claude-opus-4-7' }
-    expect(result.model).toEqual({ id: 'claude-opus-4-7' });
+    // builder defaults to 'balanced' class, so claude-sdk default is { id: 'claude-sonnet-4-6' }
+    expect(result.model).toEqual({ id: 'claude-sonnet-4-6' });
     expect(result.thinking).toBeUndefined();
     expect(result.effort).toBe('high'); // builder per-role default
     expect(result.effortSource).toBe('default');
@@ -753,9 +753,18 @@ describe('EforgeEngineOptions type', () => {
 // ---------------------------------------------------------------------------
 
 describe('model class resolution', () => {
-  it('most roles default to max class, three roles default to balanced', async () => {
+  it('eight roles default to balanced class, the rest default to max', async () => {
     const { resolveAgentConfig, AGENT_MODEL_CLASSES } = await import('@eforge-build/engine/pipeline');
-    const balancedRoles = ['staleness-assessor', 'prd-validator', 'dependency-detector'];
+    const balancedRoles = [
+      'builder',
+      'review-fixer',
+      'validation-fixer',
+      'test-writer',
+      'tester',
+      'staleness-assessor',
+      'prd-validator',
+      'dependency-detector',
+    ];
     for (const role of Object.keys(AGENT_MODEL_CLASSES) as Array<keyof typeof AGENT_MODEL_CLASSES>) {
       if (balancedRoles.includes(role)) {
         expect(AGENT_MODEL_CLASSES[role]).toBe('balanced');
@@ -769,19 +778,19 @@ describe('model class resolution', () => {
     }
   });
 
-  it('per-role modelClass override to balanced resolves to sonnet on claude-sdk', async () => {
+  it('per-role modelClass override to max resolves to opus on claude-sdk over the balanced default', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
         roles: {
-          builder: { modelClass: 'balanced' as const },
+          builder: { modelClass: 'max' as const },
         },
       },
     };
     const result = resolveAgentConfig('builder', config, 'claude-sdk');
-    expect(result.model).toEqual({ id: 'claude-sonnet-4-6' });
+    expect(result.model).toEqual({ id: 'claude-opus-4-7' });
   });
 
   it('per-role model overrides class-based resolution', async () => {
@@ -809,10 +818,10 @@ describe('model class resolution', () => {
     expect(result.model).toEqual({ id: 'global-override' });
   });
 
-  it('pi backend with no model config throws for default max class with fallback tiers listed', async () => {
+  it('pi backend with no model config throws for default balanced class with fallback tiers listed', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     expect(() => resolveAgentConfig('builder', DEFAULT_CONFIG, 'pi')).toThrow(
-      /No model configured for role "builder".*model class "max".*backend "pi".*Tried fallback: balanced, fast/,
+      /No model configured for role "builder".*model class "balanced".*backend "pi".*Tried fallback: max, fast/,
     );
   });
 
@@ -840,7 +849,7 @@ describe('model class resolution', () => {
         models: { balanced: { provider: 'openrouter', id: 'medium-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
-    const result = resolveAgentConfig('builder', config, 'pi');
+    const result = resolveAgentConfig('reviewer', config, 'pi');
     expect(result.model).toEqual({ provider: 'openrouter', id: 'medium-model' });
     expect(result.fallbackFrom).toBe('max');
   });
@@ -848,7 +857,7 @@ describe('model class resolution', () => {
   it('fallback total failure lists attempted tiers in error', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     expect(() => resolveAgentConfig('builder', DEFAULT_CONFIG, 'pi')).toThrow(
-      /Tried fallback: balanced, fast/,
+      /Tried fallback: max, fast/,
     );
   });
 

@@ -1169,14 +1169,17 @@ describe('resolveAgentConfig per-role effort defaults', () => {
   });
 
   it('plan override effort overrides both user config and built-in default', () => {
+    // reviewer defaults to the 'max' model class (claude-opus-4-7), which
+    // supports the 'max' effort value without clamping - keeping this test
+    // focused on the override-chain precedence rather than effort clamping.
     const config = makeConfig({
       roles: {
-        builder: { effort: 'xhigh' },
+        reviewer: { effort: 'xhigh' },
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
-      agents: { builder: { effort: 'max' } },
+    const result = resolveAgentConfig('reviewer', config, 'claude-sdk', {
+      agents: { reviewer: { effort: 'max' } },
     });
     expect(result.effort).toBe('max');
     expect(result.effortSource).toBe('planner');
