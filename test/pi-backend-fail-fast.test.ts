@@ -139,9 +139,13 @@ describe('PiBackend fail-fast on unreachable backend', () => {
 
     expect(error).toBeInstanceOf(Error);
     expect(error?.message).toBe('Backend error: connect ECONNREFUSED 127.0.0.1:8080');
-    // The failing turn must not emit agent:usage
-    const usageEvents = events.filter((e) => e.type === 'agent:usage');
-    expect(usageEvents).toHaveLength(0);
+    // The failing turn must not emit a per-turn agent:usage delta.
+    // Per the unified cadence contract a final cumulative agent:usage
+    // (final: true) may still be emitted immediately before agent:result.
+    const perTurnUsage = events.filter(
+      (e) => e.type === 'agent:usage' && (e as { final?: boolean }).final !== true,
+    );
+    expect(perTurnUsage).toHaveLength(0);
   });
 
   it('uses fallback message when errorMessage is absent', async () => {

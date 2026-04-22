@@ -638,7 +638,10 @@ describe('agent:usage event handling', () => {
     });
   });
 
-  it('overwrites liveAgentUsage on subsequent agent:usage (cumulative)', () => {
+  it('replaces liveAgentUsage when a final:true agent:usage arrives (last-wins cumulative)', () => {
+    // Per the unified cadence contract, an agent:usage event with
+    // final: true is the authoritative cumulative total and should
+    // replace any running delta sums last-wins.
     let state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
       event: {
@@ -660,10 +663,11 @@ describe('agent:usage event handling', () => {
         usage: { input: 1000, output: 400, total: 1400, cacheRead: 100, cacheCreation: 20 },
         costUsd: 0.10,
         numTurns: 4,
+        final: true,
       } as unknown as EforgeEvent,
       eventId: '2',
     });
-    // Should be overwritten, not accumulated
+    // Final event replaces the running delta total last-wins.
     expect(state.liveAgentUsage['a1']).toEqual({
       input: 1000,
       output: 400,
@@ -672,6 +676,89 @@ describe('agent:usage event handling', () => {
       cost: 0.10,
       turns: 4,
     });
+  });
+
+  it('sums non-final agent:usage deltas into the running live totals', () => {
+    // Non-final agent:usage events carry per-turn deltas under the
+    // unified cadence contract; the reducer must additively accumulate
+    // them into the running live overlay, seeding from zero when the
+    // entry is missing.
+    let state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:usage',
+        agentId: 'a1',
+        agent: 'builder',
+        usage: { input: 500, output: 200, total: 700, cacheRead: 50, cacheCreation: 10 },
+        costUsd: 0.05,
+        numTurns: 1,
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+    state = eforgeReducer(state, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:usage',
+        agentId: 'a1',
+        agent: 'builder',
+        usage: { input: 300, output: 150, total: 450, cacheRead: 20, cacheCreation: 5 },
+        costUsd: 0.03,
+        numTurns: 1,
+      } as unknown as EforgeEvent,
+      eventId: '2',
+    });
+    // Deltas summed (500+300 in, 200+150 out, etc.).
+    expect(state.liveAgentUsage['a1']).toEqual({
+      input: 800,
+      output: 350,
+      cacheRead: 70,
+      cacheCreation: 15,
+      cost: 0.08,
+      turns: 2,
+    });
+  });
+
+  it('sum of non-final deltas equals the authoritative final cumulative total', () => {
+    // This mirrors how PiBackend emits: per-turn deltas whose sum equals
+    // the final: true cumulative emission that lands just before agent:result.
+    const deltas = [
+      { input: 500, output: 200, cacheRead: 50, cacheCreation: 10, cost: 0.05 },
+      { input: 300, output: 100, cacheRead: 20, cacheCreation: 5, cost: 0.03 },
+      { input: 400, output: 200, cacheRead: 30, cacheCreation: 5, cost: 0.07 },
+    ];
+    let state = initialRunState;
+    deltas.forEach((d, i) => {
+      state = eforgeReducer(state, {
+        type: 'ADD_EVENT',
+        event: {
+          type: 'agent:usage',
+          agentId: 'a1',
+          agent: 'builder',
+          usage: { input: d.input, output: d.output, total: d.input + d.output, cacheRead: d.cacheRead, cacheCreation: d.cacheCreation },
+          costUsd: d.cost,
+          numTurns: 1,
+        } as unknown as EforgeEvent,
+        eventId: `delta-${i}`,
+      });
+    });
+    // Expected cumulative total derived from deltas.
+    const expected = deltas.reduce(
+      (acc, d) => ({
+        input: acc.input + d.input,
+        output: acc.output + d.output,
+        cacheRead: acc.cacheRead + d.cacheRead,
+        cacheCreation: acc.cacheCreation + d.cacheCreation,
+        cost: acc.cost + d.cost,
+      }),
+      { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0 },
+    );
+    const live = state.liveAgentUsage['a1'];
+    expect(live?.input).toBe(expected.input);
+    expect(live?.output).toBe(expected.output);
+    expect(live?.cacheRead).toBe(expected.cacheRead);
+    expect(live?.cacheCreation).toBe(expected.cacheCreation);
+    expect(live?.cost).toBeCloseTo(expected.cost);
+    expect(live?.turns).toBe(deltas.length);
   });
 
   it('deletes liveAgentUsage entry on agent:stop', () => {
