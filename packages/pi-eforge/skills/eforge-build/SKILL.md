@@ -135,6 +135,7 @@ After successful enqueue:
 
 If the monitor is running, also include the monitor URL.
 
+<!-- parity-skip-start -->
 ### Step 6: Follow the Build
 
 Call the `eforge_follow` tool with `{ sessionId: "<sessionId>" }` using the `sessionId` returned from `eforge_build`.
@@ -150,7 +151,7 @@ Report the final summary back to the user:
 If `status` is `failed` or `error`, surface the error message from the response and suggest `/eforge:status` for more detail.
 
 If the user cancels or the tool is interrupted, acknowledge and point them at `/eforge:status` to re-check progress.
-
+<!-- parity-skip-end -->
 ## Error Handling
 
 | Error | Action |
