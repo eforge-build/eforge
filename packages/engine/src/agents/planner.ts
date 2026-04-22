@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { AgentBackend, SdkPassthroughConfig, CustomTool } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import { pickSdkOptions, PlannerSubmissionError } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
 import { parseClarificationBlocks, parseSkipBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
@@ -19,8 +19,8 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   scope?: string;
   /** Override max conversation turns (default: 30) */
   maxTurns?: number;
-  /** Continuation context when restarting after hitting max turns */
-  continuationContext?: { attempt: number; maxContinuations: number; existingPlans: string };
+  /** Continuation context when restarting after hitting max turns or a dropped submission. */
+  continuationContext?: { attempt: number; maxContinuations: number; existingPlans: string; reason: 'max_turns' | 'dropped_submission' };
   /** Plan output directory (defaults to 'eforge/plans'). */
   outputDir?: string;
 }
@@ -169,18 +169,6 @@ export async function* runPlanner(
   const allClarifications: Array<{ questions: ClarificationQuestion[]; answers: Record<string, string> }> = [];
 
   function buildPrompt(): Promise<string> {
-    let continuationContextText = '';
-    if (options.continuationContext) {
-      const { attempt, maxContinuations, existingPlans } = options.continuationContext;
-      continuationContextText = `## Continuation Context
-
-This is continuation attempt ${attempt} of ${maxContinuations}. The planner hit the max turns limit on the previous attempt. The following plan files have already been written. Do NOT redo any of the completed work below.
-
-### Existing Plans
-
-${existingPlans}`;
-    }
-
     // Resolve the backend-visible name for the submission tool(s) currently
     // injected into this planner run. The planner prompt uses `{{submitTool}}`
     // placeholders; each backend maps the bare `CustomTool.name` to the name
@@ -190,6 +178,24 @@ ${existingPlans}`;
     // prompt still names the exact per-backend identifiers.
     const effectiveNames = customTools.map(t => backend.effectiveCustomToolName(t.name));
     const submitTool = effectiveNames.join(' or ');
+
+    let continuationContextText = '';
+    if (options.continuationContext) {
+      const { attempt, maxContinuations, existingPlans, reason } = options.continuationContext;
+      if (reason === 'dropped_submission') {
+        continuationContextText = `## Continuation Context
+
+This is continuation attempt ${attempt} of ${maxContinuations}. The previous attempt completed reasoning but did not call ${submitTool}. You MUST call ${submitTool} with your final plan set to complete this run — reasoning alone does not submit plans.`;
+      } else {
+        continuationContextText = `## Continuation Context
+
+This is continuation attempt ${attempt} of ${maxContinuations}. The planner hit the max turns limit on the previous attempt. The following plan files have already been written. Do NOT redo any of the completed work below.
+
+### Existing Plans
+
+${existingPlans}`;
+      }
+    }
 
     return loadPrompt('planner', {
       source: sourceContent,
@@ -340,15 +346,13 @@ ${existingPlans}`;
     return;
   }
 
-  // Neither submission tool was called and no <skip> was emitted — this is an error.
-  // Tailor the error to the tools that were actually injected for this scope so the
-  // message matches what the agent had available. Report the backend-visible names
-  // (each backend translates the bare name via effectiveCustomToolName) so the
-  // message reflects what the agent was actually told to call.
+  // Neither submission tool was called and no <skip> was emitted — this is a
+  // retryable terminal error. Tailor the error to the tools that were actually
+  // injected for this scope so the message matches what the agent had available.
+  // Report the backend-visible names (each backend translates the bare name via
+  // effectiveCustomToolName) so the message reflects what the agent was actually
+  // told to call. The pipeline's continuation loop catches this and retries
+  // within the shared planner-continuation budget.
   const injectedNames = customTools.map(t => backend.effectiveCustomToolName(t.name)).join(' / ');
-  yield {
-    timestamp: new Date().toISOString(),
-    type: 'plan:error',
-    reason: `Planner agent completed without calling a submission tool (${injectedNames}) or emitting <skip>`,
-  };
+  throw new PlannerSubmissionError(`Planner agent completed without calling a submission tool (${injectedNames}) or emitting <skip>`);
 }

@@ -28,7 +28,7 @@ import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig, ModelClass } fr
 import { DEFAULT_REVIEW, MODEL_CLASSES } from './config.js';
 import type { PipelineComposition } from './schemas.js';
 import type { AgentBackend, AgentTerminalSubtype, EffortLevel, ThinkingConfig } from './backend.js';
-import { AgentTerminalError, isMaxTurnsError } from './backend.js';
+import { AgentTerminalError, isMaxTurnsError, isPlannerSubmissionError } from './backend.js';
 import { clampEffort, lookupCapabilities } from './model-capabilities.js';
 import type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
@@ -819,37 +819,51 @@ registerCompileStage({
   const agentConfig = resolveAgentConfig('planner', ctx.config, ctx.config.backend);
   const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['planner'] ?? 0;
 
+  // Tracks the failure reason from the previous attempt so the next iteration's
+  // continuationContext can tailor the retry prompt (max-turns vs. dropped submission).
+  let lastRetryReason: 'max_turns' | 'dropped_submission' | undefined;
+
   for (let attempt = 0; attempt <= maxContinuations; attempt++) {
     const span = ctx.tracing.createSpan('planner', { source: ctx.sourceContent, planSet: ctx.planSetName, ...(attempt > 0 && { attempt }) });
     span.setInput({ source: ctx.sourceContent, planSet: ctx.planSetName, ...(attempt > 0 && { attempt }) });
     const tracker = createToolTracker(span);
 
     // Build continuation context for retry attempts
-    let continuationContext: { attempt: number; maxContinuations: number; existingPlans: string } | undefined;
+    let continuationContext: { attempt: number; maxContinuations: number; existingPlans: string; reason: 'max_turns' | 'dropped_submission' } | undefined;
     if (attempt > 0) {
-      const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
-      let existingPlans = '[No existing plans found]';
-      if (existsSync(planDir)) {
-        try {
-          const entries = await readdir(planDir);
-          const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
-          const summaries: string[] = [];
-          for (const file of mdFiles) {
-            try {
-              const plan = await parsePlanFile(resolve(planDir, file));
-              summaries.push(`- **${plan.id}**: ${plan.name}`);
-            } catch {
-              summaries.push(`- ${file} (could not parse frontmatter)`);
+      // `??` fallback handles the theoretical case where `attempt > 0` is reached
+      // without a prior error (shouldn't happen, but keeps TypeScript happy).
+      const reason: 'max_turns' | 'dropped_submission' = lastRetryReason ?? 'max_turns';
+      let existingPlans: string;
+      if (reason === 'dropped_submission') {
+        // The planner didn't submit anything, so the plan directory is empty.
+        // Skip the filesystem scan and signal this explicitly in the prompt.
+        existingPlans = '[No existing plans — previous attempt did not submit]';
+      } else {
+        const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
+        existingPlans = '[No existing plans found]';
+        if (existsSync(planDir)) {
+          try {
+            const entries = await readdir(planDir);
+            const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
+            const summaries: string[] = [];
+            for (const file of mdFiles) {
+              try {
+                const plan = await parsePlanFile(resolve(planDir, file));
+                summaries.push(`- **${plan.id}**: ${plan.name}`);
+              } catch {
+                summaries.push(`- ${file} (could not parse frontmatter)`);
+              }
             }
+            if (summaries.length > 0) {
+              existingPlans = summaries.join('\n');
+            }
+          } catch {
+            // If we can't read the directory, continue with default text
           }
-          if (summaries.length > 0) {
-            existingPlans = summaries.join('\n');
-          }
-        } catch {
-          // If we can't read the directory, continue with default text
         }
       }
-      continuationContext = { attempt, maxContinuations, existingPlans };
+      continuationContext = { attempt, maxContinuations, existingPlans, reason };
     }
 
     let plannerFailed = false;
@@ -926,19 +940,32 @@ registerCompileStage({
     } catch (err) {
       tracker.cleanup();
 
-      // Check if this is an error_max_turns failure eligible for continuation
-      if (isMaxTurnsError(err) && attempt < maxContinuations) {
-        // Commit any plan files written so far as a checkpoint
+      // Determine whether this failure is eligible for a planner continuation retry.
+      // `error_max_turns` and dropped-submission share the same retry budget because
+      // both indicate the model is struggling to produce a final submission.
+      const retryReason: 'max_turns' | 'dropped_submission' | null = isMaxTurnsError(err)
+        ? 'max_turns'
+        : isPlannerSubmissionError(err)
+          ? 'dropped_submission'
+          : null;
+
+      if (retryReason && attempt < maxContinuations) {
+        // Commit any plan files written so far as a checkpoint. `commitPlanArtifacts`
+        // no-ops safely when the plan directory does not exist, which is the case
+        // on a dropped-submission retry where no files were written.
         await commitPlanArtifacts(ctx.planCommitCwd ?? ctx.cwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir);
 
         span.end();
 
+        // Record the reason for the next iteration's continuationContext.
+        lastRetryReason = retryReason;
+
         // Yield continuation event and retry
-        yield { timestamp: new Date().toISOString(), type: 'plan:continuation', attempt: attempt + 1, maxContinuations } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'plan:continuation', attempt: attempt + 1, maxContinuations, reason: retryReason } as EforgeEvent;
         continue; // Next iteration of the continuation loop
       }
 
-      // Non-max_turns error or exhausted continuations — rethrow
+      // Non-retryable error or exhausted continuations — rethrow
       span.error(err as Error);
       throw err;
     }
