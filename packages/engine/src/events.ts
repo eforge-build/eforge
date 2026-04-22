@@ -239,6 +239,11 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'agent:tool_result'; planId?: string; agentId: string; agent: AgentRole; tool: string; toolUseId: string; output: string }
   | { type: 'agent:result'; planId?: string; agent: AgentRole; result: AgentResultData }
 
+  // Generic retry notification emitted by the shared retry wrapper (in addition to
+  // any agent-specific continuation event such as plan:continuation,
+  // build:implement:continuation, or build:evaluate:continuation).
+  | { type: 'agent:retry'; agent: AgentRole; attempt: number; maxAttempts: number; subtype: AgentTerminalSubtype; label: string; planId?: string }
+
   // Validation (post-merge)
   | { type: 'validation:start'; commands: string[] }
   | { type: 'validation:command:start'; command: string }

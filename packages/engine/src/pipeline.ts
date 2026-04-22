@@ -7,8 +7,8 @@
  */
 
 import { execFile } from 'node:child_process';
-import { readFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { parse as parseYaml } from 'yaml';
@@ -28,7 +28,15 @@ import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig, ModelClass } fr
 import { DEFAULT_REVIEW, MODEL_CLASSES } from './config.js';
 import type { PipelineComposition } from './schemas.js';
 import type { AgentBackend, AgentTerminalSubtype, EffortLevel, ThinkingConfig } from './backend.js';
-import { AgentTerminalError, isMaxTurnsError, isPlannerSubmissionError } from './backend.js';
+import { AgentTerminalError } from './backend.js';
+import {
+  withRetry,
+  DEFAULT_RETRY_POLICIES,
+  type RetryPolicy,
+  type PlannerContinuationInput,
+  type BuilderContinuationInput,
+  type EvaluatorContinuationInput,
+} from './retry.js';
 import { clampEffort, lookupCapabilities } from './model-capabilities.js';
 import type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
@@ -817,58 +825,20 @@ registerCompileStage({
   }
 
   const agentConfig = resolveAgentConfig('planner', ctx.config, ctx.config.backend);
-  const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['planner'] ?? 0;
 
-  // Tracks the failure reason from the previous attempt so the next iteration's
-  // continuationContext can tailor the retry prompt (max-turns vs. dropped submission).
-  let lastRetryReason: 'max_turns' | 'dropped_submission' | undefined;
-
-  for (let attempt = 0; attempt <= maxContinuations; attempt++) {
-    const span = ctx.tracing.createSpan('planner', { source: ctx.sourceContent, planSet: ctx.planSetName, ...(attempt > 0 && { attempt }) });
-    span.setInput({ source: ctx.sourceContent, planSet: ctx.planSetName, ...(attempt > 0 && { attempt }) });
+  // Wrap runPlanner so the withRetry pipeline threads `continuationContext`
+  // from the retry policy through to the real planner options, while still
+  // performing the pipeline-level event transformations (modules block
+  // detection, plan:complete backfill, expedition suppression).
+  //
+  // The tracing span and tool tracker are created per-attempt (inside this
+  // wrapper) so each retry gets its own span and a fresh tool-call state —
+  // sharing a tracker across attempts accumulates pending-call state from
+  // abandoned turns and collapses per-attempt telemetry into a single span.
+  const runPlannerWrapped = async function* (input: PlannerContinuationInput): AsyncGenerator<EforgeEvent> {
+    const span = ctx.tracing.createSpan('planner', { source: ctx.sourceContent, planSet: ctx.planSetName });
+    span.setInput({ source: ctx.sourceContent, planSet: ctx.planSetName });
     const tracker = createToolTracker(span);
-
-    // Build continuation context for retry attempts
-    let continuationContext: { attempt: number; maxContinuations: number; existingPlans: string; reason: 'max_turns' | 'dropped_submission' } | undefined;
-    if (attempt > 0) {
-      // `??` fallback handles the theoretical case where `attempt > 0` is reached
-      // without a prior error (shouldn't happen, but keeps TypeScript happy).
-      const reason: 'max_turns' | 'dropped_submission' = lastRetryReason ?? 'max_turns';
-      let existingPlans: string;
-      if (reason === 'dropped_submission') {
-        // The planner didn't submit anything, so the plan directory is empty.
-        // Skip the filesystem scan and signal this explicitly in the prompt.
-        existingPlans = '[No existing plans — previous attempt did not submit]';
-      } else {
-        const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
-        existingPlans = '[No existing plans found]';
-        if (existsSync(planDir)) {
-          try {
-            const entries = await readdir(planDir);
-            const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
-            const summaries: string[] = [];
-            for (const file of mdFiles) {
-              try {
-                const plan = await parsePlanFile(resolve(planDir, file));
-                summaries.push(`- **${plan.id}**: ${plan.name}`);
-              } catch {
-                summaries.push(`- ${file} (could not parse frontmatter)`);
-              }
-            }
-            if (summaries.length > 0) {
-              existingPlans = summaries.join('\n');
-            }
-          } catch {
-            // If we can't read the directory, continue with default text
-          }
-        }
-      }
-      continuationContext = { attempt, maxContinuations, existingPlans, reason };
-    }
-
-    let plannerFailed = false;
-    let failedError = '';
-
     try {
       for await (const event of runPlanner(ctx.sourceContent, {
         cwd: ctx.cwd,
@@ -881,9 +851,9 @@ registerCompileStage({
         scope: ctx.pipeline.scope,
         outputDir: ctx.config.plan.outputDir,
         ...agentConfig,
-        continuationContext,
+        ...(input.plannerOptions.continuationContext && { continuationContext: input.plannerOptions.continuationContext }),
       })) {
-        // Detect <modules> block in agent messages (expedition mode, first match only)
+        // Detect <modules> block in agent messages (expedition mode, first match only).
         if (event.type === 'agent:message' && event.agent === 'planner' && ctx.expeditionModules.length === 0) {
           const modules = parseModulesBlock(event.content);
           if (modules.length > 0) {
@@ -894,17 +864,17 @@ registerCompileStage({
 
         tracker.handleEvent(event);
 
-        // Track skip — halts further compile stages
+        // Track skip — halts further compile stages.
         if (event.type === 'plan:skip') {
           ctx.skipped = true;
         }
 
-        // Suppress planner's plan:complete in expedition mode (compilation emits the real one)
+        // Suppress planner's plan:complete in expedition mode (compilation emits the real one).
         if (event.type === 'plan:complete' && ctx.expeditionModules.length > 0) {
           continue;
         }
 
-        // Track final plans for review phase and inject pipeline into orchestration.yaml
+        // Track final plans for review phase and inject pipeline into orchestration.yaml.
         if (event.type === 'plan:complete') {
           const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
 
@@ -927,7 +897,7 @@ registerCompileStage({
             yield { ...event, plans: enrichedPlans };
             continue;
           } catch {
-            // Graceful fallback - yield the original event unchanged
+            // Graceful fallback — yield the original event unchanged.
             ctx.plans = event.plans;
           }
         }
@@ -936,40 +906,26 @@ registerCompileStage({
       }
       tracker.cleanup();
       span.end();
-      break; // Success — exit the continuation loop
     } catch (err) {
       tracker.cleanup();
-
-      // Determine whether this failure is eligible for a planner continuation retry.
-      // `error_max_turns` and dropped-submission share the same retry budget because
-      // both indicate the model is struggling to produce a final submission.
-      const retryReason: 'max_turns' | 'dropped_submission' | null = isMaxTurnsError(err)
-        ? 'max_turns'
-        : isPlannerSubmissionError(err)
-          ? 'dropped_submission'
-          : null;
-
-      if (retryReason && attempt < maxContinuations) {
-        // Commit any plan files written so far as a checkpoint. `commitPlanArtifacts`
-        // no-ops safely when the plan directory does not exist, which is the case
-        // on a dropped-submission retry where no files were written.
-        await commitPlanArtifacts(ctx.planCommitCwd ?? ctx.cwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir);
-
-        span.end();
-
-        // Record the reason for the next iteration's continuationContext.
-        lastRetryReason = retryReason;
-
-        // Yield continuation event and retry
-        yield { timestamp: new Date().toISOString(), type: 'plan:continuation', attempt: attempt + 1, maxContinuations, reason: retryReason } as EforgeEvent;
-        continue; // Next iteration of the continuation loop
-      }
-
-      // Non-retryable error or exhausted continuations — rethrow
       span.error(err as Error);
       throw err;
     }
-  }
+  };
+
+  const initialInput: PlannerContinuationInput = {
+    sideEffects: {
+      cwd: ctx.cwd,
+      planCommitCwd: ctx.planCommitCwd,
+      planSetName: ctx.planSetName,
+      outputDir: ctx.config.plan.outputDir,
+    },
+    plannerOptions: {},
+  };
+
+  const plannerPolicy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
+
+  yield* withRetry(runPlannerWrapped, plannerPolicy, initialInput);
 });
 
 registerCompileStage({
@@ -1019,7 +975,6 @@ registerCompileStage({
           continuationContext,
         }),
       },
-      continuationEventType: 'plan:evaluate:continuation',
     });
   } catch (err) {
     // Plan review failure is non-fatal - plan artifacts are already committed
@@ -1073,7 +1028,6 @@ registerCompileStage({
         metadata: { planSet: planSetName },
         run: (continuationContext) => runArchitectureEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...archEvaluatorConfig, continuationContext }),
       },
-      continuationEventType: 'plan:architecture:evaluate:continuation',
     });
   } catch (err) {
     yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Architecture review skipped: ${(err as Error).message}` };
@@ -1247,7 +1201,6 @@ registerCompileStage({
         metadata: { planSet: planSetName },
         run: (continuationContext) => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...cohesionEvaluatorConfig, continuationContext }),
       },
-      continuationEventType: 'plan:cohesion:evaluate:continuation',
     });
   } catch (err) {
     yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
@@ -1446,26 +1399,19 @@ registerBuildStage({
 
   const verificationScope = hasTestStages(ctx.build) ? 'build-only' : 'full';
 
-  for (let attempt = 0; attempt <= maxContinuations; attempt++) {
-    const implSpan = ctx.tracing.createSpan('builder', { planId: ctx.planId, phase: 'implement', ...(attempt > 0 && { attempt }) });
-    implSpan.setInput({ planId: ctx.planId, phase: 'implement', ...(attempt > 0 && { attempt }) });
+  // Wrap builderImplement (with periodic file-check) so withRetry threads
+  // `continuationContext` from the builder policy into the real builder
+  // options.
+  //
+  // The tracing span and tool tracker are created per-attempt (inside this
+  // wrapper) so each retry gets its own span and a fresh tool-call state.
+  // Sharing a single tracker across attempts accumulates pending-call state
+  // from abandoned turns and collapses per-attempt telemetry into a single
+  // span.
+  const runBuilderWrapped = async function* (input: BuilderContinuationInput): AsyncGenerator<EforgeEvent> {
+    const implSpan = ctx.tracing.createSpan('builder', { planId: ctx.planId, phase: 'implement' });
+    implSpan.setInput({ planId: ctx.planId, phase: 'implement' });
     const implTracker = createToolTracker(implSpan);
-    let implFailed = false;
-    let failedError = '';
-    let failedTerminalSubtype: AgentTerminalSubtype | undefined;
-
-    // Build continuation context for retry attempts
-    let continuationContext: { attempt: number; maxContinuations: number; completedDiff: string } | undefined;
-    if (attempt > 0) {
-      try {
-        const completedDiff = await buildContinuationDiff(ctx.worktreePath, ctx.orchConfig.baseBranch);
-        continuationContext = { attempt, maxContinuations, completedDiff };
-      } catch {
-        // If we can't build the diff, continue without it
-        continuationContext = { attempt, maxContinuations, completedDiff: '[Unable to generate diff]' };
-      }
-    }
-
     try {
       for await (const event of withPeriodicFileCheck(builderImplement(ctx.planFile, {
         backend: ctx.backend,
@@ -1475,80 +1421,52 @@ registerBuildStage({
         ...agentConfig,
         parallelStages,
         verificationScope,
-        continuationContext,
+        ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
       }), ctx)) {
         implTracker.handleEvent(event);
         if (event.type === 'build:failed') {
-          implFailed = true;
-          failedError = event.error;
-          failedTerminalSubtype = event.terminalSubtype;
-        } else {
-          yield event;
+          implSpan.error('Implementation failed');
         }
+        yield event;
       }
+      implTracker.cleanup();
+      implSpan.end();
     } catch (err) {
       implTracker.cleanup();
       implSpan.error(err as Error);
-      const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
-      yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) } as EforgeEvent;
-      ctx.buildFailed = true;
-      return;
+      throw err;
     }
+  };
 
-    if (implFailed) {
-      implTracker.cleanup();
+  const initialInput: BuilderContinuationInput = {
+    worktreePath: ctx.worktreePath,
+    baseBranch: ctx.orchConfig.baseBranch,
+    planId: ctx.planId,
+    builderOptions: {},
+  };
 
-      // Check if this is an error_max_turns failure eligible for continuation
-      const isMaxTurns = failedTerminalSubtype === 'error_max_turns';
-      if (isMaxTurns && attempt < maxContinuations) {
-        // Check if the worktree has changes worth checkpointing
-        let hasChanges = false;
-        try {
-          const { stdout: status } = await exec('git', ['status', '--porcelain'], { cwd: ctx.worktreePath });
-          hasChanges = status.trim().length > 0;
-        } catch {
-          // If we can't check, assume no changes
-        }
+  // Policy with a per-plan override for maxAttempts (prior behavior: maxContinuations + 1).
+  const builderPolicyBase = DEFAULT_RETRY_POLICIES.builder as RetryPolicy<BuilderContinuationInput>;
+  const builderPolicy: RetryPolicy<BuilderContinuationInput> = {
+    ...builderPolicyBase,
+    maxAttempts: maxContinuations + 1,
+  };
 
-        if (!hasChanges) {
-          // No changes to checkpoint — fail immediately
-          implSpan.error('Implementation failed: error_max_turns with no changes');
-          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: failedError, terminalSubtype: failedTerminalSubtype } as EforgeEvent;
-          ctx.buildFailed = true;
-          return;
-        }
-
-        // Checkpoint progress: stage all and commit
-        try {
-          await exec('git', ['add', '-A'], { cwd: ctx.worktreePath });
-          await forgeCommit(ctx.worktreePath, `wip(${ctx.planId}): continuation checkpoint (attempt ${attempt + 1})`);
-        } catch (checkpointErr) {
-          // If commit fails, emit build:failed and stop
-          const msg = `Continuation checkpoint failed: ${(checkpointErr as Error).message}`;
-          implSpan.error(msg);
-          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: msg } as EforgeEvent;
-          ctx.buildFailed = true;
-          return;
-        }
-
-        implSpan.end();
-
-        // Yield continuation event and retry
-        yield { timestamp: new Date().toISOString(), type: 'build:implement:continuation', planId: ctx.planId, attempt: attempt + 1, maxContinuations } as EforgeEvent;
-        continue; // Next iteration of the continuation loop
+  try {
+    for await (const event of withRetry(runBuilderWrapped, builderPolicy, initialInput)) {
+      if (event.type === 'build:failed') {
+        // Surface the terminal failure downstream and halt the pipeline for this plan.
+        yield event;
+        ctx.buildFailed = true;
+        return;
       }
-
-      // Non-max_turns error or exhausted continuations — fail
-      implSpan.error('Implementation failed');
-      yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: failedError, ...(failedTerminalSubtype && { terminalSubtype: failedTerminalSubtype }) } as EforgeEvent;
-      ctx.buildFailed = true;
-      return;
+      yield event;
     }
-
-    // Success — clean exit from the loop
-    implTracker.cleanup();
-    implSpan.end();
-    break;
+  } catch (err) {
+    const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
+    yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) } as EforgeEvent;
+    ctx.buildFailed = true;
+    return;
   }
 
   // Emit files changed by implementation (non-critical)
@@ -1625,19 +1543,21 @@ async function* evaluateStageInner(
 
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
   const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.config.backend, ctx.planEntry);
-  const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['evaluator'] ?? 0;
 
-  for (let attempt = 0; attempt <= maxContinuations; attempt++) {
-    const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId, ...(attempt > 0 && { attempt }) });
-    evalSpan.setInput({ planId: ctx.planId, ...(attempt > 0 && { attempt }) });
+  // Wrap builderEvaluate so withRetry threads `evaluatorContinuationContext`
+  // from the policy into the real evaluator options. builderEvaluate yields
+  // `build:failed` with `terminalSubtype` on terminal errors instead of
+  // throwing, so the retry wrapper inspects the event rather than a thrown
+  // error.
+  //
+  // The tracing span and tool tracker are created per-attempt (inside this
+  // wrapper) so each retry gets its own span and fresh tool-call state.
+  const runEvaluatorWrapped = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+    const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId });
+    evalSpan.setInput({ planId: ctx.planId });
     const evalTracker = createToolTracker(evalSpan);
-
-    let evaluatorContinuationContext: { attempt: number; maxContinuations: number } | undefined;
-    if (attempt > 0) {
-      evaluatorContinuationContext = { attempt, maxContinuations };
-    }
-
     try {
+      const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
       for await (const event of builderEvaluate(ctx.planFile, {
         backend: ctx.backend,
         cwd: ctx.worktreePath,
@@ -1645,39 +1565,39 @@ async function* evaluateStageInner(
         abortController: ctx.abortController,
         ...evalAgentConfig,
         strictness,
-        evaluatorContinuationContext,
+        ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
         preImplementCommit: ctx.preImplementCommit,
       })) {
         evalTracker.handleEvent(event);
+        if (event.type === 'build:failed') {
+          evalSpan.error('Evaluation failed');
+        }
         yield event;
       }
       evalTracker.cleanup();
       evalSpan.end();
-      break; // Success — exit loop
     } catch (err) {
       evalTracker.cleanup();
-
-      const isMaxTurns = isMaxTurnsError(err);
-      if (isMaxTurns && attempt < maxContinuations) {
-        // Check if there are still unstaged changes to process
-        if (!(await hasUnstagedChanges(ctx.worktreePath))) {
-          // All files processed — treat as success
-          evalSpan.end();
-          break;
-        }
-        evalSpan.end();
-        yield { timestamp: new Date().toISOString(), type: 'build:evaluate:continuation', planId: ctx.planId, attempt: attempt + 1, maxContinuations } as EforgeEvent;
-        continue;
-      }
-
       evalSpan.error(err as Error);
-      // Yield build:failed so the pipeline knows evaluation did not complete
-      // (builderEvaluate re-throws error_max_turns instead of yielding build:failed)
-      if (isMaxTurns) {
-        yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: (err as Error).message, terminalSubtype: 'error_max_turns' } as EforgeEvent;
-      }
-      break; // Non-max_turns error or exhausted continuations
+      throw err;
     }
+  };
+
+  const initialInput: EvaluatorContinuationInput = {
+    worktreePath: ctx.worktreePath,
+    planId: ctx.planId,
+    evaluatorOptions: {},
+  };
+
+  const evaluatorPolicy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
+
+  try {
+    for await (const event of withRetry(runEvaluatorWrapped, evaluatorPolicy, initialInput)) {
+      yield event;
+    }
+  } catch {
+    // Per-attempt spans already recorded the error inside the wrapper;
+    // swallow so the evaluator stage remains non-fatal.
   }
 }
 
@@ -1955,15 +1875,14 @@ interface ReviewCycleConfig {
     metadata: Record<string, unknown>;
     run: (continuationContext?: { attempt: number; maxContinuations: number }) => AsyncGenerator<EforgeEvent>;
   };
-  /** Event type to emit on evaluator continuation. */
-  continuationEventType?: EforgeEvent['type'];
 }
 
 /**
  * Run a review -> evaluate cycle. The reviewer runs first (non-fatal on error).
  * If the reviewer left unstaged changes, the evaluator runs to accept/reject them.
- * Both phases are traced with Langfuse spans. The evaluator phase supports
- * continuation loops on error_max_turns.
+ * Both phases are traced with Langfuse spans. The evaluator phase delegates
+ * continuation handling to `withRetry` using the role-specific policy from
+ * `DEFAULT_RETRY_POLICIES`.
  */
 async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator<EforgeEvent> {
   // Phase: Review (non-fatal on error)
@@ -1985,43 +1904,56 @@ async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator<Eforge
 
   // Phase: Evaluate (only if reviewer left unstaged changes, non-fatal)
   if (await hasUnstagedChanges(config.cwd)) {
-    const evalRole = config.evaluator.role as keyof typeof AGENT_MAX_CONTINUATIONS_DEFAULTS;
-    const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS[evalRole] ?? 0;
-
-    for (let attempt = 0; attempt <= maxContinuations; attempt++) {
-      const evalSpan = config.tracing.createSpan(config.evaluator.role, { ...config.evaluator.metadata, ...(attempt > 0 && { attempt }) });
-      evalSpan.setInput({ ...config.evaluator.metadata, ...(attempt > 0 && { attempt }) });
+    // Wrap the evaluator.run() callback so it pulls continuationContext out of
+    // the retry input. The policy's buildContinuationInput splices it in.
+    //
+    // The tracing span and tool tracker are created per-attempt (inside this
+    // wrapper) so each retry gets its own span and fresh tool-call state.
+    const runEvaluatorWrapped = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+      const evalSpan = config.tracing.createSpan(config.evaluator.role, config.evaluator.metadata);
+      evalSpan.setInput(config.evaluator.metadata);
       const evalTracker = createToolTracker(evalSpan);
-
-      const continuationContext = attempt > 0 ? { attempt, maxContinuations } : undefined;
-
       try {
+        const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
         for await (const event of config.evaluator.run(continuationContext)) {
           evalTracker.handleEvent(event);
           yield event;
         }
         evalTracker.cleanup();
         evalSpan.end();
-        break; // Success
       } catch (err) {
         evalTracker.cleanup();
-
-        if (isMaxTurnsError(err) && attempt < maxContinuations) {
-          // Check if there are still unstaged changes to process
-          if (!(await hasUnstagedChanges(config.cwd))) {
-            evalSpan.end();
-            break; // All files processed
-          }
-          evalSpan.end();
-          if (config.continuationEventType) {
-            yield { timestamp: new Date().toISOString(), type: config.continuationEventType, attempt: attempt + 1, maxContinuations } as EforgeEvent;
-          }
-          continue;
-        }
-
         evalSpan.error(err as Error);
-        break; // Non-max_turns error or exhausted continuations
+        throw err;
       }
+    };
+
+    const initialInput: EvaluatorContinuationInput = {
+      worktreePath: config.cwd,
+      evaluatorOptions: {},
+    };
+
+    const evalPolicy = DEFAULT_RETRY_POLICIES[config.evaluator.role] as RetryPolicy<EvaluatorContinuationInput> | undefined;
+    if (!evalPolicy) {
+      // No policy registered for this role — run without retry. The wrapper
+      // still handles span lifecycle internally.
+      try {
+        for await (const event of runEvaluatorWrapped(initialInput)) {
+          yield event;
+        }
+      } catch {
+        // Wrapper already recorded span error; swallow so evaluate stays non-fatal.
+      }
+      return;
+    }
+
+    try {
+      for await (const event of withRetry(runEvaluatorWrapped, evalPolicy, initialInput)) {
+        yield event;
+      }
+    } catch {
+      // Per-attempt spans already recorded errors inside the wrapper;
+      // swallow so evaluate remains non-fatal.
     }
   }
 }

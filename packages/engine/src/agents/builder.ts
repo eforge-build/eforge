@@ -1,5 +1,5 @@
 import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions, AgentTerminalError, isMaxTurnsError } from '../backend.js';
+import { pickSdkOptions, AgentTerminalError } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
@@ -203,10 +203,11 @@ Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again 
       }
     }
   } catch (err) {
-    // Re-throw error_max_turns to enable pipeline continuation loop
-    if (isMaxTurnsError(err)) {
-      throw err;
-    }
+    // Emit a terminal `build:failed` event carrying the subtype. The
+    // pipeline's retry wrapper (`withRetry` in `retry.ts`) inspects the
+    // yielded event and decides whether to retry via the evaluator policy.
+    // Continuation is owned entirely by the policy — this agent no longer
+    // re-throws max-turn errors for the pipeline to catch.
     const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
     yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) };
     return;
