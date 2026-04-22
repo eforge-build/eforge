@@ -21,6 +21,8 @@ import {
   type PlannerContinuationInput,
   type BuilderContinuationInput,
 } from '@eforge-build/engine/retry';
+import { builderEvaluate } from '@eforge-build/engine/agents/builder';
+import { StubBackend } from './stub-backend.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -576,6 +578,158 @@ describe('withRetry — stream-based terminal via build:failed with terminalSubt
     const failures = out.filter((e) => e.type === 'build:failed') as Array<Extract<EforgeEvent, { type: 'build:failed' }>>;
     expect(failures).toHaveLength(1);
     expect(failures[0].error).toBe('maxed out 2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// withRetry + StubBackend + builderEvaluate — end-to-end integration
+// ---------------------------------------------------------------------------
+//
+// These tests exercise the retry wrapper through a real agent generator
+// (`builderEvaluate`) backed by `StubBackend`, which is the integration
+// configuration the plan's verification criteria explicitly call out.
+
+const makePlanFile = (id = 'plan-01') => ({
+  id,
+  name: 'Test Plan',
+  dependsOn: [],
+  branch: 'test/main',
+  body: '# Test\n\nImplement something.',
+  filePath: '/tmp/test-plan.md',
+});
+
+describe('withRetry + StubBackend + builderEvaluate', () => {
+  it('scripts error_max_turns on attempt 1, success on attempt 2, and returns second-attempt events', async () => {
+    // First backend call throws max-turns; second returns a normal evaluation.
+    const backend = new StubBackend([
+      { error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).') },
+      { text: '<evaluation></evaluation>' },
+    ]);
+    const plan = makePlanFile();
+
+    // Wrap builderEvaluate with the evaluator retry policy. The policy's
+    // buildContinuationInput would normally run hasUnstagedChanges against
+    // the worktree; override via the `checkHasUnstagedChanges` hook so the
+    // retry proceeds (rather than short-circuiting to abort-success).
+    const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+      yield* builderEvaluate(plan, {
+        backend,
+        cwd: input.worktreePath,
+      });
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp',
+      planId: plan.id,
+      evaluatorOptions: {},
+      checkHasUnstagedChanges: async () => true, // force retry
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(runEvaluator, policy, initial)) {
+      out.push(ev);
+    }
+
+    // First attempt's terminal build:failed was held back (retry consumed it)
+    // and not re-yielded because retry succeeded.
+    expect(out.find((e) => e.type === 'build:failed')).toBeUndefined();
+
+    // agent:retry was emitted between attempts.
+    const retryEvt = out.find((e) => e.type === 'agent:retry') as
+      | Extract<EforgeEvent, { type: 'agent:retry' }>
+      | undefined;
+    expect(retryEvt).toBeDefined();
+    expect(retryEvt!.agent).toBe('evaluator');
+    expect(retryEvt!.subtype).toBe('error_max_turns');
+    expect(retryEvt!.attempt).toBe(1);
+    expect(retryEvt!.maxAttempts).toBe(2);
+
+    // Second attempt ran to completion — builderEvaluate emits two
+    // build:evaluate:start events (one per attempt) and at least one
+    // completion-style event from the second successful attempt.
+    const starts = out.filter((e) => e.type === 'build:evaluate:start');
+    expect(starts.length).toBeGreaterThanOrEqual(2);
+    const completes = out.filter((e) => e.type === 'build:evaluate:complete');
+    expect(completes.length).toBe(1);
+
+    // Backend was called exactly twice (once per attempt).
+    expect(backend.prompts).toHaveLength(2);
+  });
+
+  it('exhausts retries and surfaces the final build:failed when both attempts throw error_max_turns', async () => {
+    const backend = new StubBackend([
+      { error: new AgentTerminalError('error_max_turns', 'first attempt max turns') },
+      { error: new AgentTerminalError('error_max_turns', 'second attempt max turns') },
+    ]);
+    const plan = makePlanFile();
+
+    const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+      yield* builderEvaluate(plan, {
+        backend,
+        cwd: input.worktreePath,
+      });
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp',
+      planId: plan.id,
+      evaluatorOptions: {},
+      checkHasUnstagedChanges: async () => true,
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(runEvaluator, policy, initial)) {
+      out.push(ev);
+    }
+
+    // Only the held-back build:failed from the LAST attempt is yielded.
+    const failures = out.filter(
+      (e) => e.type === 'build:failed',
+    ) as Array<Extract<EforgeEvent, { type: 'build:failed' }>>;
+    expect(failures).toHaveLength(1);
+    expect(failures[0].error).toContain('second attempt max turns');
+    expect(failures[0].terminalSubtype).toBe('error_max_turns');
+
+    // No third attempt was made.
+    expect(backend.prompts).toHaveLength(2);
+  });
+
+  it('evaluator abort-success: first attempt throws error_max_turns but worktree is clean — no retry', async () => {
+    const backend = new StubBackend([
+      { error: new AgentTerminalError('error_max_turns', 'turns exhausted') },
+    ]);
+    const plan = makePlanFile();
+
+    const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+      yield* builderEvaluate(plan, {
+        backend,
+        cwd: input.worktreePath,
+      });
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp',
+      planId: plan.id,
+      evaluatorOptions: {},
+      // Clean worktree => evaluator policy short-circuits to abort-success.
+      checkHasUnstagedChanges: async () => false,
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(runEvaluator, policy, initial)) {
+      out.push(ev);
+    }
+
+    // Only one backend call — no retry ran.
+    expect(backend.prompts).toHaveLength(1);
+    // No agent:retry event emitted.
+    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
+    // Held-back terminal build:failed was dropped (abort-success treats the
+    // state as success).
+    expect(out.find((e) => e.type === 'build:failed')).toBeUndefined();
   });
 });
 
