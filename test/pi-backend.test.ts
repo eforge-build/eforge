@@ -644,19 +644,26 @@ describe('PiBackend + runPlanner integration: submission tool reaches Pi session
     ['expedition' as const, 'submit_architecture'],
   ])('scope=%s registers %s on the Pi session', async (scope, expectedTool) => {
     const { runPlanner } = await import('@eforge-build/engine/agents/planner');
+    const { PlannerSubmissionError } = await import('@eforge-build/engine/backend');
     const backend = makeBackend();
     setMcpTools(backend, []);
 
-    for await (const _event of runPlanner('Add a widget feature to the app.', {
-      cwd: process.cwd(),
-      name: 'widgets',
-      auto: true,
-      scope,
-      backend,
-      model: { provider: 'anthropic', id: 'claude-opus-4-7' },
-    })) {
-      // Drain events; we only care about the session wiring assertion below.
-    }
+    // The mocked Pi session emits agent_end without invoking the submission
+    // tool, so runPlanner throws PlannerSubmissionError after createAgentSession
+    // has already been called. We only care about the session wiring assertions
+    // below, so swallow the expected throw while still draining events.
+    await expect((async () => {
+      for await (const _event of runPlanner('Add a widget feature to the app.', {
+        cwd: process.cwd(),
+        name: 'widgets',
+        auto: true,
+        scope,
+        backend,
+        model: { provider: 'anthropic', id: 'claude-opus-4-7' },
+      })) {
+        // Drain events; we only care about the session wiring assertion below.
+      }
+    })()).rejects.toThrow(PlannerSubmissionError);
 
     expect(createAgentSession).toHaveBeenCalledOnce();
     const sessionOptions = createAgentSession.mock.calls[0]?.[0];
