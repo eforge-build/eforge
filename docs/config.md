@@ -31,7 +31,7 @@ agents:
   # models:                    # Map model classes to model refs (override backend defaults)
   #   max:                     # Used by most roles by default
   #     id: claude-opus-4-7
-  #   balanced:                # Default for staleness-assessor, prd-validator, dependency-detector
+  #   balanced:                # Default for builder, review-fixer, validation-fixer, test-writer, tester, staleness-assessor, prd-validator, dependency-detector
   #     id: claude-sonnet-4-6
   #   fast:                    # Available via per-role modelClass override
   #     id: claude-haiku-4-5
@@ -107,8 +107,8 @@ eforge uses a three-tier model class system to assign models to agent roles. Eac
 
 | Class | Default model ref (claude-sdk) | Notes |
 |-------|-------------------------------|-------|
-| `max` | `{ id: claude-opus-4-7 }` | Most capable - used by 20 of 23 roles |
-| `balanced` | `{ id: claude-sonnet-4-6 }` | Mid-tier - used by roles that don't need max capability |
+| `max` | `{ id: claude-opus-4-7 }` | Most capable - used by 15 of 23 roles |
+| `balanced` | `{ id: claude-sonnet-4-6 }` | Mid-tier - used by 8 of 23 roles that don't need max capability |
 | `fast` | `{ id: claude-haiku-4-5 }` | Lightweight - available via per-role `modelClass` override |
 
 The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles) using `{ provider, id }` model refs.
@@ -121,7 +121,7 @@ Each of the 23 agent roles has a built-in default model class:
 |------|--------------|----------|
 | `planner` | `max` | Planning |
 | `module-planner` | `max` | Planning |
-| `builder` | `max` | Building |
+| `builder` | `balanced` | Building |
 | `reviewer` | `max` | Review/Eval |
 | `evaluator` | `max` | Review/Eval |
 | `plan-reviewer` | `max` | Review/Eval |
@@ -130,13 +130,13 @@ Each of the 23 agent roles has a built-in default model class:
 | `architecture-evaluator` | `max` | Review/Eval |
 | `cohesion-reviewer` | `max` | Review/Eval |
 | `cohesion-evaluator` | `max` | Review/Eval |
-| `validation-fixer` | `max` | Fixers |
-| `review-fixer` | `max` | Fixers |
+| `validation-fixer` | `balanced` | Fixers |
+| `review-fixer` | `balanced` | Fixers |
 | `merge-conflict-resolver` | `max` | Fixers |
 | `formatter` | `max` | Utilities |
 | `doc-updater` | `max` | Utilities |
-| `test-writer` | `max` | Utilities |
-| `tester` | `max` | Utilities |
+| `test-writer` | `balanced` | Utilities |
+| `tester` | `balanced` | Utilities |
 | `pipeline-composer` | `max` | Utilities |
 | `gap-closer` | `max` | Utilities |
 | `staleness-assessor` | `balanced` | Utilities |
@@ -192,7 +192,7 @@ agents:
       id: anthropic/claude-haiku-4-5
 ```
 
-Roles defaulting to `max` (like `builder`) find no `max` model configured. The fallback walks descending from `max` to `balanced` and resolves to `anthropic/claude-sonnet-4-6`. Roles defaulting to `balanced` (like `staleness-assessor`) resolve directly. No role uses the `fast` model unless explicitly assigned via `modelClass`.
+Roles defaulting to `max` (like `reviewer`) find no `max` model configured. The fallback walks descending from `max` to `balanced` and resolves to `anthropic/claude-sonnet-4-6`. Roles defaulting to `balanced` (like `staleness-assessor`) resolve directly. No role uses the `fast` model unless explicitly assigned via `modelClass`.
 
 ```yaml
 # Example: downgrade some roles to cheaper models (claude-sdk backend)
@@ -203,8 +203,8 @@ agents:
     fast:                              # Define what 'fast' class maps to
       id: claude-haiku-4-5
   roles:
-    builder:
-      modelClass: balanced             # Move builder from 'max' to 'balanced' class
+    reviewer:
+      modelClass: balanced             # Move reviewer from 'max' to 'balanced' class
     formatter:
       modelClass: fast                 # Move formatter to 'fast' class
     staleness-assessor:
