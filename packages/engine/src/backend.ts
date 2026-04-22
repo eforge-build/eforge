@@ -214,3 +214,27 @@ export class AgentTerminalError extends Error {
 export function isMaxTurnsError(err: unknown): err is AgentTerminalError {
   return err instanceof AgentTerminalError && err.subtype === 'error_max_turns';
 }
+
+/**
+ * Thrown by the planner agent runner when the agent stream ends without ever
+ * calling a submission tool (`submit_plan_set` / `submit_architecture`) and
+ * without emitting a `<skip>` block. This is an engine-level detection — not
+ * an SDK-level `AgentTerminalError` subtype — because eforge is observing that
+ * the required structured-tool-use did not occur, rather than the SDK reporting
+ * a structural failure.
+ *
+ * The pipeline's planner continuation loop treats this as retryable, sharing
+ * the existing `AGENT_MAX_CONTINUATIONS_DEFAULTS['planner']` budget with
+ * `error_max_turns` retries.
+ */
+export class PlannerSubmissionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PlannerSubmissionError';
+  }
+}
+
+/** True when `err` is a `PlannerSubmissionError`. */
+export function isPlannerSubmissionError(err: unknown): err is PlannerSubmissionError {
+  return err instanceof PlannerSubmissionError;
+}

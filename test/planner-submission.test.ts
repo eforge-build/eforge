@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { PlanSetSubmission, ArchitectureSubmission } from '@eforge-build/engine/schemas';
+import { PlannerSubmissionError } from '@eforge-build/engine/backend';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -125,25 +126,23 @@ describe('Planner submission tool: plan set', () => {
 describe('Planner submission tool: no submission and no skip', () => {
   const makeTempDir = useTempDir('eforge-planner-no-submission-test-');
 
-  it('yields plan:error when neither submission nor skip occurs', async () => {
+  it('throws PlannerSubmissionError when neither submission nor skip occurs', async () => {
     const backend = new StubBackend([{ text: 'I generated some plans.' }]);
     const cwd = makeTempDir();
 
-    const events = await collectEvents(runPlanner('Build widgets', {
+    await expect(collectEvents(runPlanner('Build widgets', {
       backend,
       cwd,
       auto: true,
       scope: 'excursion',
-    }));
+    }))).rejects.toThrow(PlannerSubmissionError);
 
-    const errorEvents = events.filter(e => e.type === 'plan:error');
-    expect(errorEvents).toHaveLength(1);
-    const error = errorEvents[0] as EforgeEvent & { type: 'plan:error' };
-    expect(error.reason).toContain('submit_plan_set');
-
-    // Should NOT yield plan:skip
-    const skipEvents = events.filter(e => e.type === 'plan:skip');
-    expect(skipEvents).toHaveLength(0);
+    await expect(collectEvents(runPlanner('Build widgets', {
+      backend: new StubBackend([{ text: 'I generated some plans.' }]),
+      cwd: makeTempDir(),
+      auto: true,
+      scope: 'excursion',
+    }))).rejects.toThrow('submit_plan_set');
   });
 });
 
@@ -311,12 +310,20 @@ describe('Planner submission tool: validation error formatting', () => {
     }]);
     const cwd = makeTempDir();
 
-    const events = await collectEvents(runPlanner('Build widgets', {
-      backend,
-      cwd,
-      auto: true,
-      scope: 'excursion',
-    }));
+    // Collect events up to the point the planner throws PlannerSubmissionError
+    // (the payload is invalid, so onSubmit is never called). We inspect the
+    // accumulated events for the tool_result, then assert the rejection.
+    const events: EforgeEvent[] = [];
+    await expect((async () => {
+      for await (const ev of runPlanner('Build widgets', {
+        backend,
+        cwd,
+        auto: true,
+        scope: 'excursion',
+      })) {
+        events.push(ev);
+      }
+    })()).rejects.toThrow(PlannerSubmissionError);
 
     const toolResult = events.find(
       (e): e is EforgeEvent & { type: 'agent:tool_result' } =>
@@ -335,10 +342,5 @@ describe('Planner submission tool: validation error formatting', () => {
     // Per-path breakdown — one line per zod issue.
     expect(output).toMatch(/plans\.0\.frontmatter\.agents:/);
     expect(output).toMatch(/plans\.0\.frontmatter\.dependsOn:/);
-
-    // No plan files should have been written; the handler's `onSubmit`
-    // callback must not have been invoked for an invalid payload.
-    const errorEvents = events.filter(e => e.type === 'plan:error');
-    expect(errorEvents).toHaveLength(1);
   });
 });

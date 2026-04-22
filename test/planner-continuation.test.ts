@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { AgentTerminalError } from '@eforge-build/engine/backend';
+import { AgentTerminalError, PlannerSubmissionError } from '@eforge-build/engine/backend';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -17,7 +17,9 @@ describe('runPlanner with continuation context', () => {
     const backend = new StubBackend([{ text: 'Plan complete.' }]);
     const cwd = makeTempDir();
 
-    await collectEvents(runPlanner('Build a widget', {
+    // Planner throws PlannerSubmissionError because no submit tool was called,
+    // but the prompt has already been captured by the stub.
+    await expect(collectEvents(runPlanner('Build a widget', {
       backend,
       cwd,
       auto: true,
@@ -25,8 +27,9 @@ describe('runPlanner with continuation context', () => {
         attempt: 1,
         maxContinuations: 2,
         existingPlans: 'plan-01.md: Widget scaffolding',
+        reason: 'max_turns',
       },
-    }));
+    }))).rejects.toThrow(PlannerSubmissionError);
 
     expect(backend.prompts).toHaveLength(1);
     const prompt = backend.prompts[0];
@@ -46,11 +49,12 @@ describe('runPlanner without continuation context', () => {
     const backend = new StubBackend([{ text: 'Plan complete.' }]);
     const cwd = makeTempDir();
 
-    await collectEvents(runPlanner('Build a widget', {
+    // Planner throws PlannerSubmissionError because no submit tool was called.
+    await expect(collectEvents(runPlanner('Build a widget', {
       backend,
       cwd,
       auto: true,
-    }));
+    }))).rejects.toThrow(PlannerSubmissionError);
 
     expect(backend.prompts).toHaveLength(1);
     const prompt = backend.prompts[0];
@@ -73,6 +77,26 @@ describe('plan:continuation event type', () => {
     expect(event.attempt).toBe(1);
     expect(event.maxContinuations).toBe(2);
   });
+
+  it('accepts an optional reason of max_turns', () => {
+    const event: EforgeEvent = {
+      type: 'plan:continuation',
+      attempt: 1,
+      maxContinuations: 2,
+      reason: 'max_turns',
+    };
+    expect(event.reason).toBe('max_turns');
+  });
+
+  it('accepts an optional reason of dropped_submission', () => {
+    const event: EforgeEvent = {
+      type: 'plan:continuation',
+      attempt: 1,
+      maxContinuations: 2,
+      reason: 'dropped_submission',
+    };
+    expect(event.reason).toBe('dropped_submission');
+  });
 });
 
 // --- Continuation context coexists with prior clarifications ---
@@ -88,17 +112,22 @@ describe('Continuation context coexists with prior clarifications', () => {
     ]);
     const cwd = makeTempDir();
 
-    await collectEvents(runPlanner('Build a widget', {
-      backend,
-      cwd,
-      auto: false,
-      continuationContext: {
-        attempt: 1,
-        maxContinuations: 2,
-        existingPlans: 'plan-01.md: Widget scaffolding',
-      },
-      onClarification: async () => ({ q1: 'React' }),
-    }));
+    // The planner throws PlannerSubmissionError after the second iteration
+    // (no submit tool call). Both prompts are captured before the throw.
+    try {
+      await collectEvents(runPlanner('Build a widget', {
+        backend,
+        cwd,
+        auto: false,
+        continuationContext: {
+          attempt: 1,
+          maxContinuations: 2,
+          existingPlans: 'plan-01.md: Widget scaffolding',
+          reason: 'max_turns',
+        },
+        onClarification: async () => ({ q1: 'React' }),
+      }));
+    } catch { /* expected PlannerSubmissionError */ }
 
     // First prompt should contain continuation context
     expect(backend.prompts.length).toBeGreaterThanOrEqual(2);
@@ -132,6 +161,97 @@ describe('StubBackend error_max_turns propagation', () => {
         auto: true,
       })),
     ).rejects.toThrow('error_max_turns');
+  });
+});
+
+// --- runPlanner throws PlannerSubmissionError on dropped submission ---
+
+describe('runPlanner throws PlannerSubmissionError on dropped submission', () => {
+  const makeTempDir = useTempDir('eforge-planner-dropped-submission-test-');
+
+  it('rejects with PlannerSubmissionError when no submission tool is called and no skip', async () => {
+    const backend = new StubBackend([{ text: 'I thought about it but never called submit.' }]);
+    const cwd = makeTempDir();
+
+    let thrown: unknown;
+    try {
+      await collectEvents(runPlanner('Build a widget', {
+        backend,
+        cwd,
+        auto: true,
+        scope: 'excursion',
+      }));
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeInstanceOf(PlannerSubmissionError);
+    expect((thrown as Error).message).toMatch(/Planner agent completed without calling a submission tool/);
+    expect((thrown as Error).message).toContain('submit_plan_set');
+    expect((thrown as Error).message).toContain('<skip>');
+  });
+});
+
+// --- continuationContext threads reason into prompt ---
+
+describe('continuationContext threads reason into prompt', () => {
+  const makeTempDir = useTempDir('eforge-planner-continuation-reason-test-');
+
+  it('reason=dropped_submission produces submission-focused wording without the existing-plans list', async () => {
+    const backend = new StubBackend([{ text: 'Thinking...' }]);
+    const cwd = makeTempDir();
+
+    try {
+      await collectEvents(runPlanner('Build a widget', {
+        backend,
+        cwd,
+        auto: true,
+        scope: 'excursion',
+        continuationContext: {
+          attempt: 1,
+          maxContinuations: 2,
+          existingPlans: 'plan-01.md: Should NOT appear',
+          reason: 'dropped_submission',
+        },
+      }));
+    } catch { /* expected PlannerSubmissionError */ }
+
+    expect(backend.prompts).toHaveLength(1);
+    const prompt = backend.prompts[0];
+    // Submission-focused wording
+    expect(prompt).toContain('did not call');
+    expect(prompt).toContain('MUST call');
+    // max-turns wording must be absent
+    expect(prompt).not.toContain('hit the max turns limit');
+    // existing-plans list must be omitted for dropped_submission
+    expect(prompt).not.toContain('plan-01.md: Should NOT appear');
+  });
+
+  it('reason=max_turns produces the existing max-turns wording with the existing-plans list', async () => {
+    const backend = new StubBackend([{ text: 'Thinking...' }]);
+    const cwd = makeTempDir();
+
+    try {
+      await collectEvents(runPlanner('Build a widget', {
+        backend,
+        cwd,
+        auto: true,
+        scope: 'excursion',
+        continuationContext: {
+          attempt: 1,
+          maxContinuations: 2,
+          existingPlans: 'plan-01.md: Widget scaffolding',
+          reason: 'max_turns',
+        },
+      }));
+    } catch { /* expected PlannerSubmissionError */ }
+
+    expect(backend.prompts).toHaveLength(1);
+    const prompt = backend.prompts[0];
+    expect(prompt).toContain('hit the max turns limit');
+    expect(prompt).toContain('plan-01.md: Widget scaffolding');
+    // Dropped-submission wording must be absent for max_turns
+    expect(prompt).not.toContain('MUST call');
   });
 });
 

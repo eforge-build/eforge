@@ -156,7 +156,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'plan:clarification'; questions: ClarificationQuestion[] }
   | { type: 'plan:clarification:answer'; answers: Record<string, string> }
   | { type: 'plan:progress'; message: string }
-  | { type: 'plan:continuation'; attempt: number; maxContinuations: number }
+  | { type: 'plan:continuation'; attempt: number; maxContinuations: number; reason?: 'max_turns' | 'dropped_submission' }
   | { type: 'plan:pipeline'; scope: string; compile: string[]; defaultBuild: BuildStageSpec[]; defaultReview: ReviewProfileConfig; rationale: string }
   | { type: 'plan:complete'; plans: PlanFile[] }
 

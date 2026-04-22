@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
+import { PlannerSubmissionError } from '@eforge-build/engine/backend';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -21,23 +22,30 @@ import type { EforgeConfig } from '@eforge-build/engine/config';
 describe('runPlanner wiring', () => {
   const makeTempDir = useTempDir('eforge-planner-test-');
 
-  it('emits plan lifecycle events for a basic run', async () => {
+  it('throws PlannerSubmissionError when neither submission tool nor <skip> fires', async () => {
     const backend = new StubBackend([{ text: 'Planning done.' }]);
     const cwd = makeTempDir();
 
-    const events = await collectEvents(runPlanner('Build a widget', {
-      backend,
-      cwd,
-    }));
+    // Collect events until the throw. plan:start and agent:result are yielded
+    // before the terminal throw, so we can verify lifecycle emission too.
+    const events: EforgeEvent[] = [];
+    let thrown: unknown;
+    try {
+      for await (const ev of runPlanner('Build a widget', { backend, cwd })) {
+        events.push(ev);
+      }
+    } catch (err) {
+      thrown = err;
+    }
 
+    expect(thrown).toBeInstanceOf(PlannerSubmissionError);
+    expect((thrown as Error).message).toContain('submit_plan_set');
     expect(findEvent(events, 'plan:start')).toBeDefined();
-    // When neither submission tool nor <skip> fires, planner emits plan:error
-    const error = findEvent(events, 'plan:error');
-    expect(error).toBeDefined();
-    expect(error!.reason).toContain('submit_plan_set');
     expect(findEvent(events, 'plan:complete')).toBeUndefined();
-    // agent:result should be yielded (always yielded regardless of verbose)
+    // agent:result should have been yielded before the throw
     expect(findEvent(events, 'agent:result')).toBeDefined();
+    // No plan:error events are yielded any more — the terminal is always thrown.
+    expect(events.filter(e => e.type === 'plan:error')).toHaveLength(0);
   });
 
   it('emits plan:skip when agent output contains a skip block', async () => {
@@ -71,14 +79,21 @@ describe('runPlanner wiring', () => {
     const cwd = makeTempDir();
 
     const clarificationCalls: Array<{ id: string; question: string }[]> = [];
-    const events = await collectEvents(runPlanner('Add a feature', {
-      backend,
-      cwd,
-      onClarification: async (questions) => {
-        clarificationCalls.push(questions);
-        return { q1: 'Postgres' };
-      },
-    }));
+    const events: EforgeEvent[] = [];
+    // Second iteration emits no submission tool so the planner throws
+    // PlannerSubmissionError — collect pre-throw events for lifecycle asserts.
+    try {
+      for await (const ev of runPlanner('Add a feature', {
+        backend,
+        cwd,
+        onClarification: async (questions) => {
+          clarificationCalls.push(questions);
+          return { q1: 'Postgres' };
+        },
+      })) {
+        events.push(ev);
+      }
+    } catch { /* expected PlannerSubmissionError */ }
 
     // Callback was invoked
     expect(clarificationCalls).toHaveLength(1);
@@ -103,14 +118,20 @@ describe('runPlanner wiring', () => {
     ]);
     const cwd = makeTempDir();
 
-    const events = await collectEvents(runPlanner('Add feature', {
-      backend,
-      cwd,
-      onClarification: async (questions) => {
-        const id = questions[0].id;
-        return { [id]: id === 'q1' ? 'Postgres' : 'Drizzle' };
-      },
-    }));
+    const events: EforgeEvent[] = [];
+    // Third iteration emits no submission tool so the planner throws.
+    try {
+      for await (const ev of runPlanner('Add feature', {
+        backend,
+        cwd,
+        onClarification: async (questions) => {
+          const id = questions[0].id;
+          return { [id]: id === 'q1' ? 'Postgres' : 'Drizzle' };
+        },
+      })) {
+        events.push(ev);
+      }
+    } catch { /* expected PlannerSubmissionError */ }
 
     expect(backend.prompts).toHaveLength(3);
     // Third prompt should contain both prior answers
@@ -129,16 +150,16 @@ describe('runPlanner wiring', () => {
     const backend = new StubBackend(responses);
     const cwd = makeTempDir();
 
-    const events = await collectEvents(runPlanner('Loop forever', {
+    // After max iterations without submission or skip, planner throws
+    // PlannerSubmissionError instead of yielding plan:error.
+    await expect(collectEvents(runPlanner('Loop forever', {
       backend,
       cwd,
       onClarification: async () => ({ q1: 'yes' }),
-    }));
+    }))).rejects.toThrow(PlannerSubmissionError);
 
     // Should stop at 5 iterations, not use the 6th response
     expect(backend.prompts).toHaveLength(5);
-    // After max iterations without submission or skip, planner emits plan:error
-    expect(findEvent(events, 'plan:error')).toBeDefined();
   });
 
   it('skips clarification in auto mode', async () => {
@@ -148,7 +169,9 @@ describe('runPlanner wiring', () => {
     const cwd = makeTempDir();
 
     let callbackCalled = false;
-    const events = await collectEvents(runPlanner('Auto plan', {
+    // In auto mode the clarification callback must not fire, and the planner
+    // throws PlannerSubmissionError because no submission tool was called.
+    await expect(collectEvents(runPlanner('Auto plan', {
       backend,
       cwd,
       auto: true,
@@ -156,26 +179,36 @@ describe('runPlanner wiring', () => {
         callbackCalled = true;
         return {};
       },
-    }));
+    }))).rejects.toThrow(PlannerSubmissionError);
 
     expect(callbackCalled).toBe(false);
     // No restart — only one backend call
     expect(backend.prompts).toHaveLength(1);
-    // After auto mode skips clarification without submission, planner emits plan:error
-    expect(findEvent(events, 'plan:error')).toBeDefined();
   });
 
   it('suppresses agent:message when verbose is false, emits when true', async () => {
     const makeBackend = () => new StubBackend([{ text: 'Some output.' }]);
     const cwd = makeTempDir();
 
-    // verbose=false (default): agent:message should be suppressed
-    const quietEvents = await collectEvents(runPlanner('Test', { backend: makeBackend(), cwd }));
+    // verbose=false (default): agent:message should be suppressed. Planner
+    // throws PlannerSubmissionError after the stream completes without a
+    // submission tool call, but pre-throw events are still collected.
+    const quietEvents: EforgeEvent[] = [];
+    try {
+      for await (const ev of runPlanner('Test', { backend: makeBackend(), cwd })) {
+        quietEvents.push(ev);
+      }
+    } catch { /* expected PlannerSubmissionError */ }
     expect(filterEvents(quietEvents, 'agent:message')).toHaveLength(0);
 
     // verbose=true: agent:message should be emitted
     const cwd2 = makeTempDir();
-    const verboseEvents = await collectEvents(runPlanner('Test', { backend: makeBackend(), cwd: cwd2, verbose: true }));
+    const verboseEvents: EforgeEvent[] = [];
+    try {
+      for await (const ev of runPlanner('Test', { backend: makeBackend(), cwd: cwd2, verbose: true })) {
+        verboseEvents.push(ev);
+      }
+    } catch { /* expected PlannerSubmissionError */ }
     expect(filterEvents(verboseEvents, 'agent:message').length).toBeGreaterThan(0);
   });
 
@@ -250,11 +283,14 @@ describe('runPlanner submission tool naming', () => {
     const backend = new PrefixedStubBackend([{ text: '' }]);
     const cwd = makeTempDir();
 
-    await collectEvents(runPlanner('Add a thing', {
+    // No submission tool is called in this stub response so the planner throws
+    // PlannerSubmissionError after recording the prompt. The prompt capture
+    // is what this test verifies.
+    await expect(collectEvents(runPlanner('Add a thing', {
       backend,
       cwd,
       scope: 'excursion',
-    }));
+    }))).rejects.toThrow(PlannerSubmissionError);
 
     expect(backend.prompts).toHaveLength(1);
     const prompt = backend.prompts[0];
@@ -271,11 +307,13 @@ describe('runPlanner submission tool naming', () => {
     const backend = new PrefixedStubBackend([{ text: '' }]);
     const cwd = makeTempDir();
 
-    await collectEvents(runPlanner('Design a system', {
+    // No submission tool is called in this stub response so the planner throws
+    // PlannerSubmissionError after recording the prompt.
+    await expect(collectEvents(runPlanner('Design a system', {
       backend,
       cwd,
       scope: 'expedition',
-    }));
+    }))).rejects.toThrow(PlannerSubmissionError);
 
     expect(backend.prompts).toHaveLength(1);
     const prompt = backend.prompts[0];
@@ -283,20 +321,25 @@ describe('runPlanner submission tool naming', () => {
     expect(prompt).not.toContain('mcp__eforge_engine__');
   });
 
-  it('reports backend-visible names in plan:error when no submission tool was called', async () => {
+  it('reports backend-visible names in the thrown PlannerSubmissionError when no submission tool was called', async () => {
     const backend = new PrefixedStubBackend([{ text: 'Nothing to do.' }]);
     const cwd = makeTempDir();
 
-    const events = await collectEvents(runPlanner('Hmm', {
-      backend,
-      cwd,
-      scope: 'excursion',
-    }));
+    let thrown: unknown;
+    try {
+      await collectEvents(runPlanner('Hmm', {
+        backend,
+        cwd,
+        scope: 'excursion',
+      }));
+    } catch (err) {
+      thrown = err;
+    }
 
-    const error = findEvent(events, 'plan:error');
-    expect(error).toBeDefined();
-    expect(error!.reason).toContain('stub__submit_plan_set');
-    expect(error!.reason).not.toContain('mcp__eforge_engine__');
+    expect(thrown).toBeInstanceOf(PlannerSubmissionError);
+    const message = (thrown as Error).message;
+    expect(message).toContain('stub__submit_plan_set');
+    expect(message).not.toContain('mcp__eforge_engine__');
   });
 });
 
