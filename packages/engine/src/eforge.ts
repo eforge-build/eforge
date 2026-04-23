@@ -1016,15 +1016,11 @@ export class EforgeEngine {
         ? spawn(process.execPath, [cliEntrypoint, ...args], { cwd, stdio: 'ignore' })
         : spawn('eforge', args, { cwd, stdio: 'ignore' });
 
-      let abortListener: (() => void) | undefined;
-      if (abortController?.signal) {
-        abortListener = (): void => {
-          if (child.pid) {
-            try { process.kill(child.pid, 'SIGTERM'); } catch { /* child may have exited */ }
-          }
-        };
-        abortController.signal.addEventListener('abort', abortListener, { once: true });
-      }
+      // Aborting the scheduler does not kill this child — children are
+      // always left to drain. When the user wants to cancel a specific
+      // build, the daemon's cancelWorker path sends SIGTERM directly by
+      // PID; on terminal Ctrl+C, the signal reaches children via the
+      // shared process group without needing a listener here.
 
       // `exit` and `error` can both fire (e.g. ENOENT during spawn emits
       // `error` plus a synthetic `exit` with code=null). Guard so cleanup
@@ -1034,10 +1030,6 @@ export class EforgeEngine {
       const finalize = async (exitCode: number | null, signal: NodeJS.Signals | null): Promise<void> => {
         if (finalized) return;
         finalized = true;
-
-        if (abortListener) {
-          abortController?.signal.removeEventListener('abort', abortListener);
-        }
 
         const isSignalKill = signal !== null;
         const wasAborted = abortController?.signal.aborted === true;
