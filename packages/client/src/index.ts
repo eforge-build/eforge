@@ -1,5 +1,5 @@
 export { API_ROUTES, buildPath } from './routes.js';
-export type { ApiRoute, EnqueueRequest, AutoBuildSetRequest, StopDaemonRequest } from './routes.js';
+export type { ApiRoute, EnqueueRequest, AutoBuildSetRequest, StopDaemonRequest, VersionResponse } from './routes.js';
 
 export {
   apiEnqueue,
@@ -70,7 +70,7 @@ export {
   DaemonInWorktreeError,
 } from './daemon-client.js';
 
-export { DAEMON_API_VERSION } from './api-version.js';
+export { DAEMON_API_VERSION, verifyApiVersion, clearApiVersionCache } from './api-version.js';
 
 export { sanitizeProfileName, parseRawConfigLegacy } from './profile-utils.js';
 

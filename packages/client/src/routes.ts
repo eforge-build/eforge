@@ -46,6 +46,7 @@ export const API_ROUTES = {
   modelList: '/api/models/list',
   projectContext: '/api/project-context',
   health: '/api/health',
+  version: '/api/version',
   configShow: '/api/config/show',
   configValidate: '/api/config/validate',
   queue: '/api/queue',
@@ -59,6 +60,11 @@ export const API_ROUTES = {
   plans: '/api/plans/:runId',
   diff: '/api/diff/:sessionId/:planId',
 } as const;
+
+/** Response body for GET /api/version */
+export interface VersionResponse {
+  version: number;
+}
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];
 
