@@ -551,6 +551,7 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--verbose', 'Stream agent output')
     .option('--no-monitor', 'Disable web monitor')
     .option('--no-plugins', 'Disable plugin loading')
+    .option('--session-id <uuid>', 'Session ID injected by parent scheduler (skips child session:start emission)')
     .action(
       async (
         prdId: string,
@@ -559,6 +560,7 @@ export function createProgram(abortController?: AbortController): Command {
           verbose?: boolean;
           monitor?: boolean;
           plugins?: boolean;
+          sessionId?: string;
         },
       ) => {
         process.title = `eforge-build:${prdId}`;
@@ -585,7 +587,7 @@ export function createProgram(abortController?: AbortController): Command {
             auto: options.auto,
             verbose: options.verbose,
             abortController,
-          });
+          }, options.sessionId);
 
           const wrapped = wrapEvents(buildEvents, monitor, engine.resolvedConfig.hooks);
 
