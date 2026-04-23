@@ -1,0 +1,56 @@
+name: hardening-03-daemon-api-version-negotiation
+description: "Implement daemon API version negotiation: daemon exposes GET
+  /api/version, clients verify once per daemon process, mismatches throw a clear
+  error classified by classifyDaemonError."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-api-version-negotiation
+    name: Daemon API Version Negotiation
+    depends_on: []
+    branch: hardening-03-daemon-api-version-negotiation/api-version-negotiation
+    build: &a1
+      - implement
+      - - review-cycle
+        - test-write
+      - doc-update
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+        - api-contract
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This PRD is a focused hardening task touching a small, well-defined
+    set of files (client api-version/routes, monitor server, CLI error
+    classifier, plus a unit test). It's not trivial (multiple packages, new HTTP
+    route, client-side caching logic, error classification integration, and
+    testing requirements), but it's also far from expedition-scale - a single
+    planner session can enumerate all plans and file changes without difficulty,
+    and the dependencies are sequential (define route -> add client check ->
+    wire classifier -> test). Hence excursion. Compile uses planner +
+    plan-review-cycle to catch any scope drift before build, given the PRD
+    explicitly calls out cross-package coordination and a specific error-string
+    contract with classifyDaemonError. For build: implement first, then
+    review-cycle in parallel with test-write (both depend on implement but not
+    on each other, and the PRD mandates a new unit test for verifyApiVersion
+    covering happy path and mismatch), followed by doc-update to capture the
+    comment block about when to bump DAEMON_API_VERSION and any README/roadmap
+    touch-ups. Review is single-strategy with correctness and api-contract
+    perspectives - the critical risks are the error-message string matching
+    classifyDaemonError, the cache key correctness, and avoiding recursion on
+    the version route itself; api-contract matters because this establishes a
+    versioning contract. Standard strictness and maxRounds of 2 is appropriate
+    for a contained, contract-shaped change."
