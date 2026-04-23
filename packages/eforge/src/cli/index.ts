@@ -92,8 +92,8 @@ function wrapEvents(
 async function consumeEvents(
   events: AsyncGenerator<EforgeEvent>,
   opts?: { afterStart?: () => void },
-): Promise<'completed' | 'failed'> {
-  let result: 'completed' | 'failed' = 'completed';
+): Promise<'completed' | 'failed' | 'skipped'> {
+  let result: 'completed' | 'failed' | 'skipped' = 'completed';
   for await (const event of events) {
     renderEvent(event);
     if (event.type === 'phase:start' && opts?.afterStart) {
@@ -301,7 +301,7 @@ export function createProgram(abortController?: AbortController): Command {
 
         // Phase 1: Enqueue — format and add to queue, capture file path and name
         let enqueuedName: string | undefined;
-        let enqueueResult = 'completed' as 'completed' | 'failed';
+        let enqueueResult = 'completed' as 'completed' | 'failed' | 'skipped';
 
         const enqueueSessionId = randomUUID();
 
@@ -339,7 +339,7 @@ export function createProgram(abortController?: AbortController): Command {
           // For dry-run, we need to compile the enqueued PRD to generate plans,
           // then display the execution plan without building
           let planSetName: string | undefined;
-          let compileResult: 'completed' | 'failed' = 'completed';
+          let compileResult: 'completed' | 'failed' | 'skipped' = 'completed';
 
           await withMonitor(options.monitor === false, async (monitor) => {
             const compileSessionId = randomUUID();
