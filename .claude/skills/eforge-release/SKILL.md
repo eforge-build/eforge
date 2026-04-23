@@ -72,8 +72,27 @@ git log <PREV_TAG>..HEAD --oneline
 
 **Clean up commit messages:**
 - Strip the leading commit hash
-- Strip `plan-NN-` prefixes from conventional commit scopes (e.g., `feat(plan-01-foo): bar` becomes `feat(foo): bar`)
-- Extract the description after the `: ` separator
+- Strip `plan-NN-` and `hardening-NN-` prefixes from conventional commit scopes (e.g., `feat(plan-01-foo): bar` becomes `feat(foo): bar`, `feat(hardening-03-foo): bar` becomes `feat(foo): bar`)
+- Extract the scope (text inside parentheses) and the description (text after `: `)
+- Normalize the scope: if it maps to a known package/module, use that; if no scope, use `core`
+
+Known scope → package mappings:
+- `engine` → **engine**
+- `client` → **client**
+- `monitor` → **monitor**
+- `monitor-ui` → **monitor-ui**
+- `eforge` → **eforge** (CLI)
+- `pi-eforge` → **pi-eforge**
+- `plugin` → **plugin** (Claude Code plugin)
+- `mcp` → **mcp**
+- `backends` → **backends**
+- `deps`, `dependencies` → **deps**
+- `queue` → **queue**
+- `revert-*` or `revert` → **core**
+- `gap-close` → **core**
+- `cleanup` → skip these commits entirely (they're PRD cleanup)
+- Any other scope → use as-is (e.g., `backend-new` → **backend-new**)
+- No scope → **core**
 
 **Deduplicate** by description text - keep only the first occurrence of each description.
 
@@ -85,6 +104,20 @@ git log <PREV_TAG>..HEAD --oneline
 - `docs` - `### Documentation`
 - `chore`, `ci`, `build`, `test` - `### Maintenance`
 - Anything else - `### Other`
+
+Within each section, format entries as:
+```markdown
+- **<package>**: <description>
+```
+
+For example:
+```markdown
+- **pi-eforge**: add searchable overlays for provider and model selection
+- **engine**: subprocess-per-build with crash-safe reconciler
+- **core**: Parent scheduler owns sessionId and emits session:start at spawn
+```
+
+Sort entries alphabetically by package name within each section.
 
 Omit empty sections. If no meaningful commits remain after filtering, use "Maintenance release" as the release notes.
 
