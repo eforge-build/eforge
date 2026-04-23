@@ -15,7 +15,7 @@ const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
 import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
-import { API_ROUTES } from '@eforge-build/client';
+import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
 
 // Derived prefix constants for parameterised routes (used in startsWith checks)
 const CANCEL_BASE = API_ROUTES.cancel.slice(0, API_ROUTES.cancel.indexOf('/:'));
@@ -1143,6 +1143,8 @@ export async function startServer(
       serveProjectContext(req, res);
     } else if (url === API_ROUTES.health) {
       serveHealth(req, res);
+    } else if (req.method === 'GET' && url === API_ROUTES.version) {
+      sendJson(res, { version: DAEMON_API_VERSION });
     } else if (url === API_ROUTES.configShow) {
       try {
         const { loadConfig } = await import('@eforge-build/engine/config');

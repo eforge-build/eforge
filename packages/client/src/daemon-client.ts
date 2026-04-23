@@ -6,6 +6,8 @@
  */
 
 import { readLockfile, isServerAlive } from './lockfile.js';
+import { verifyApiVersion } from './api-version.js';
+import { API_ROUTES } from './routes.js';
 import { spawn } from 'node:child_process';
 import { basename, resolve } from 'node:path';
 
@@ -125,6 +127,9 @@ export async function daemonRequest<T = unknown>(
   path: string,
   body?: unknown,
 ): Promise<{ data: T; port: number }> {
+  if (path !== API_ROUTES.version) {
+    await verifyApiVersion(cwd);
+  }
   const port = await ensureDaemon(cwd);
   return daemonRequestWithPort<T>(port, method, path, body);
 }
