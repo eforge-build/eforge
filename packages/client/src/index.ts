@@ -1,3 +1,6 @@
+export { API_ROUTES, buildPath } from './routes.js';
+export type { ApiRoute } from './routes.js';
+
 export {
   type LockfileData,
   LOCKFILE_NAME,
@@ -65,6 +68,7 @@ export type {
   KeepAliveResponse,
   BackendProfileInfo,
   BackendProfileSource,
+  BackendListRequest,
   BackendListResponse,
   BackendShowResponse,
   BackendUseRequest,
