@@ -7,7 +7,7 @@
  */
 
 import { DynamicBorder, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import { Container, Markdown, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
+import { Container, Input, Markdown, type SelectItem, SelectList, Text, matchesKey, Key, fuzzyFilter } from "@mariozechner/pi-tui";
 
 /** Minimal UI context type for overlay helpers. */
 export interface UIContext {
@@ -64,6 +64,100 @@ export async function showSelectOverlay(
       invalidate: () => container.invalidate(),
       handleInput: (data: string) => {
         selectList.handleInput(data);
+        tui.requestRender();
+      },
+    };
+  });
+}
+
+/**
+ * Show a searchable select-list overlay with a filter input and return
+ * the chosen item's value, or null if the user cancelled.
+ */
+export async function showSearchableSelectOverlay(
+  ctx: UIContext,
+  title: string,
+  items: SelectItem[],
+): Promise<string | null> {
+  return ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+    const MAX_VISIBLE = 15;
+    const container = new Container();
+
+    const topBorder = new DynamicBorder((s: string) => theme.fg("accent", s));
+    const titleText = new Text(theme.fg("accent", theme.bold(title)), 1, 0);
+    const helpText = new Text(
+      theme.fg("dim", "type to filter • ↑↓ navigate • enter select • esc cancel"),
+      1,
+      0,
+    );
+    const bottomBorder = new DynamicBorder((s: string) => theme.fg("accent", s));
+
+    const listTheme = {
+      selectedPrefix: (text: string) => theme.fg("accent", text),
+      selectedText: (text: string) => theme.fg("accent", text),
+      description: (text: string) => theme.fg("muted", text),
+      scrollInfo: (text: string) => theme.fg("dim", text),
+      noMatch: (text: string) => theme.fg("warning", text),
+    };
+
+    let selectList = new SelectList(items, Math.min(items.length, MAX_VISIBLE), listTheme);
+
+    const input = new Input();
+    input.onSubmit = () => {
+      const item = selectList.getSelectedItem();
+      if (item) done(item.value);
+    };
+    input.onEscape = () => done(null);
+
+    selectList.onSelect = (item) => done(item.value);
+    selectList.onCancel = () => done(null);
+
+    function rebuildContainer(filteredItems: SelectItem[]) {
+      container.clear();
+      container.addChild(topBorder);
+      container.addChild(titleText);
+      container.addChild(input);
+      selectList = new SelectList(filteredItems, Math.min(filteredItems.length, MAX_VISIBLE), listTheme);
+      selectList.onSelect = (item) => done(item.value);
+      selectList.onCancel = () => done(null);
+      container.addChild(selectList);
+      container.addChild(helpText);
+      container.addChild(bottomBorder);
+    }
+
+    rebuildContainer(items);
+
+    return {
+      get focused() {
+        return input.focused;
+      },
+      set focused(value: boolean) {
+        input.focused = value;
+      },
+      render(width: number) {
+        return container.render(width);
+      },
+      invalidate() {
+        container.invalidate();
+      },
+      handleInput(data: string) {
+        if (matchesKey(data, Key.up) || matchesKey(data, Key.down)) {
+          selectList.handleInput(data);
+        } else if (matchesKey(data, Key.enter) || matchesKey(data, Key.escape)) {
+          input.handleInput(data);
+        } else {
+          const before = input.getValue();
+          input.handleInput(data);
+          const after = input.getValue();
+          if (before !== after) {
+            if (!after) {
+              rebuildContainer(items);
+            } else {
+              const filtered = fuzzyFilter(items, after, (item) => item.label);
+              rebuildContainer(filtered);
+            }
+          }
+        }
         tui.requestRender();
       },
     };

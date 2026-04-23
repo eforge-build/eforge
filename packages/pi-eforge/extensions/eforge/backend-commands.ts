@@ -9,7 +9,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { daemonRequest, API_ROUTES, buildPath } from "@eforge-build/client";
-import { showSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
+import { showSelectOverlay, showSearchableSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
 
 // ---------------------------------------------------------------------------
 // Inline response types for daemon API calls
@@ -219,7 +219,7 @@ export async function handleBackendNewCommand(
       description: `Provider: ${p}`,
     }));
 
-    const selectedProvider = await showSelectOverlay(ctx, "eforge - New Profile: Provider", providerItems);
+    const selectedProvider = await showSearchableSelectOverlay(ctx, "eforge - New Profile: Provider", providerItems);
     if (!selectedProvider) return;
     provider = selectedProvider;
   }
@@ -252,13 +252,13 @@ export async function handleBackendNewCommand(
     return;
   }
 
-  const modelItems = models.slice(0, 20).map((m) => ({
+  const modelItems = models.map((m) => ({
     value: m.id,
     label: m.id,
     description: [m.provider, m.releasedAt].filter(Boolean).join(" - ") || undefined,
   }));
 
-  const maxModel = await showSelectOverlay(ctx, "eforge - New Profile: Max Model", modelItems);
+  const maxModel = await showSearchableSelectOverlay(ctx, "eforge - New Profile: Max Model", modelItems);
   if (!maxModel) return;
 
   // Step 5: Balanced model (default: same as max)
@@ -266,7 +266,7 @@ export async function handleBackendNewCommand(
     { value: maxModel, label: `Same as max (${maxModel})`, description: "Use the same model for balanced class" },
     ...modelItems.filter((m) => m.value !== maxModel),
   ];
-  const balancedModel = await showSelectOverlay(ctx, "eforge - New Profile: Balanced Model", balancedItems);
+  const balancedModel = await showSearchableSelectOverlay(ctx, "eforge - New Profile: Balanced Model", balancedItems);
   if (!balancedModel) return;
 
   // Step 6: Fast model (default: same as balanced)
@@ -274,7 +274,7 @@ export async function handleBackendNewCommand(
     { value: balancedModel, label: `Same as balanced (${balancedModel})`, description: "Use the same model for fast class" },
     ...modelItems.filter((m) => m.value !== balancedModel),
   ];
-  const fastModel = await showSelectOverlay(ctx, "eforge - New Profile: Fast Model", fastItems);
+  const fastModel = await showSearchableSelectOverlay(ctx, "eforge - New Profile: Fast Model", fastItems);
   if (!fastModel) return;
 
   // Step 7: Optional tuning
