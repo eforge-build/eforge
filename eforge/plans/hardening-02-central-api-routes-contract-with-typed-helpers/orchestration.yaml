@@ -1,7 +1,7 @@
 name: hardening-02-central-api-routes-contract-with-typed-helpers
 description: Introduce an API_ROUTES contract and typed per-route helpers in
   @eforge-build/client, then migrate every daemon HTTP consumer (CLI, MCP proxy,
-  Pi extension, monitor UI, test) to go through the helpers. Also removes the
+  Pi extension, monitor UI, tests) to go through the helpers. Also removes the
   remaining @eforge-build/engine/config import from mcp-proxy.ts.
 base_branch: main
 mode: excursion
@@ -19,7 +19,7 @@ plans:
         effort: xhigh
         rationale: "Surface-wide type contract refactor: must harvest ~28 daemon routes
           with accurate request/response shapes, define a new helper surface,
-          and migrate six consumer files (two of them with 30+ hardcoded paths)
+          and migrate ten consumer files (two of them with 30+ hardcoded paths)
           in a single pass. A missed signature or response-type mismatch
           cascades into type-check failures across five packages."
       reviewer:
@@ -35,7 +35,8 @@ plans:
       strategy: single
       perspectives:
         - correctness
-        - api-design
+        - api-contract
+        - type-safety
       maxRounds: 2
       autoAcceptBelow: suggestion
       evaluatorStrictness: standard
@@ -46,18 +47,22 @@ pipeline:
     - plan-review-cycle
   defaultBuild: *a1
   defaultReview: *a2
-  rationale: "This is a classic refactor that introduces a shared contract
-    (API_ROUTES + typed helpers) and sweeps ~8 consumers to use it. It touches
-    multiple packages but is a sequential dependency chain: define routes/types
-    in client, then migrate each consumer. A single planner session can
-    enumerate all ~31 routes, list every consumer file, and sequence the work -
-    no independent subsystems requiring delegated module planning, so excursion
-    (not expedition) is correct. plan-review-cycle is worth the cost because
-    completeness matters (missing a route or consumer breaks the acceptance
-    criteria's rg audit). For build: implement does the refactor, then
+  rationale: This PRD is a cross-cutting refactor that touches ~8 consumer files
+    plus new client modules, but the work is a single coherent transformation
+    (centralize API routes + typed helpers) that one planner session can fully
+    enumerate. Dependency is linear (define routes -> define helpers -> migrate
+    consumers -> drop engine import), not parallel subsystems, so excursion is
+    correct rather than expedition. plan-review-cycle is included because the
+    PRD has a precise acceptance contract (one helper per route, ~31 routes,
+    zero stray '/api/' literals, zero engine imports in mcp-proxy) that benefits
+    from a plan quality gate before build. For build, implement runs first, then
     review-cycle runs in parallel with doc-update since doc-update does not
-    depend on review. review-cycle with maxRounds=2 and correctness + api-design
-    perspectives fits a typed-contract refactor where the risk is route/type
-    mismatches and helper ergonomics rather than security. Standard strictness;
-    no test-write since the PRD relies on existing tests plus type-check and the
-    rg audit as acceptance gates."
+    depend on implement's review outputs and the PRD touches public client API
+    surface (README/usage docs for @eforge-build/client helpers may need
+    refreshing). Review uses correctness + api-contract + type-safety
+    perspectives because the risk profile is entirely about typed
+    request/response contracts and route-string consistency across packages;
+    maxRounds=2 is sufficient for a mechanical refactor with strong compile-time
+    checks (tsc + rg audit in acceptance criteria catch most regressions).
+    Standard strictness matches a feature-level refactor without security or
+    data-integrity implications.
