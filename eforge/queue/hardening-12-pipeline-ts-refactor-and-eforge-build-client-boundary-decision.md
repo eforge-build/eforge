@@ -10,14 +10,16 @@ depends_on: ["hardening-04-engine-emission-hygiene"]
 
 Two cleanup items that benefit from landing together because they both touch boundaries that earlier PRDs have already reshaped:
 
-1. **`packages/engine/src/pipeline.ts` contains very large async generator functions** with deep nesting:
-   - `resolveAgentConfig` (~180 lines starting near line 179)
-   - `validatePipeline` (~110 lines starting near line 111)
-   - Each `*Stage` generator (planner / review / implement / evaluator) is 50-100+ lines
+1. **`packages/engine/src/pipeline.ts` contains very large async generator functions** with deep nesting (~2,081 lines total):
+   - `resolveAgentConfig` (~180 lines starting near line 515)
+   - `validatePipeline` (~110 lines starting near line 187)
+   - Each `*Stage` generator (planner / review / implement / evaluator) is 50-137+ lines
 
    Continuation logic, error handling, git ops, and event emission are all interleaved. After PRD 06 factors retry out, the remaining complexity is still high and makes future changes risky.
 
-2. **`@eforge-build/client` is marked internal in `package.json` but consumed publicly** by both `eforge-plugin/` (via the MCP proxy) and `packages/pi-eforge/` (directly). This creates an ambiguity: breaking-change discipline differs for public vs internal packages, and consumers can't know which rules apply.
+2. **`@eforge-build/client` is marked internal in `package.json` and README but consumed publicly** by both `eforge-plugin/` (via the MCP proxy) and `packages/pi-eforge/` (directly). The README even lists these consumers explicitly in a "Consumers" section, yet then contradicts itself with a "Note" saying "application consumers should depend on `@eforge-build/eforge` rather than taking a direct dependency on `@eforge-build/client`." The `package.json` description still says "not intended for direct consumption." This creates an ambiguity: breaking-change discipline differs for public vs internal packages, and consumers can't know which rules apply.
+
+   Since the PRD was first written, the client package has grown further: a new `api/` subdirectory now contains 6 typed route helper files (`backend.ts`, `config.ts`, `daemon.ts`, `models.ts`, `queue.ts`, `status.ts`), and `routes.ts` has expanded significantly. The mixed messaging is increasingly untenable.
 
 This PRD is lower-priority polish - fine to defer if timelines are tight.
 
@@ -46,7 +48,7 @@ Extract:
 
 1. **Stage context builders.** For each stage (`plannerStage`, `reviewStage`, `implementStage`, `evaluatorStage`), pull the `buildStageContext` into a named helper. The stage body then becomes "build context → invoke agent (with retry) → handle result".
 
-2. **Post-stage git ops.** The inline `exec('git', [...])` calls in pipeline.ts (e.g., lines 2077-2079 staging flows, 2111-2114 commit flows) already move to `forgeCommit` in PRD 04. What's left - diff capture, status checks - can live in a `packages/engine/src/pipeline/git-helpers.ts` file.
+2. **Post-stage git ops.** The inline `exec('git', [...])` calls in pipeline.ts already move to `forgeCommit` in PRD 04. What's left - diff capture, status checks - can live in a `packages/engine/src/pipeline/git-helpers.ts` file.
 
 3. **Error translator.** The mapping of agent errors to user-facing review events / retry decisions. One helper, one test.
 
@@ -60,14 +62,15 @@ Consider whether `pipeline.ts` should become a directory (`pipeline/index.ts`, `
 
 Inspect current consumers:
 
-- `packages/pi-eforge/extensions/eforge/index.ts` imports ~10 symbols from `@eforge-build/client`.
+- `packages/pi-eforge/extensions/eforge/index.ts` imports symbols from `@eforge-build/client`.
 - `packages/eforge/src/cli/mcp-proxy.ts` is a sibling package but behaves like a consumer.
 - `eforge-plugin/` runs the `eforge` CLI's MCP proxy, so indirectly it depends on client too.
-- After PRDs 02, 07, 08, the surface expands: `API_ROUTES`, typed helpers, etc. More, not less.
+- The README "Consumers" section already lists all three consumers explicitly.
+- The client now has a full `api/` subdirectory with typed per-route helpers (`apiEnqueue`, `apiCancel`, `apiHealth`, `apiListBackends`, etc.) and an expanded `routes.ts` — the surface is large and growing.
 
-Given the breadth of consumption, the current `"not intended for direct consumption"` label is out of touch with reality. Two options:
+Given the breadth of consumption and the contradictory current README, the `"not intended for direct consumption"` label is out of touch with reality. Two options:
 
-**Option 1 (recommended): declare client public.** Update `packages/client/package.json` description to: "Shared types, route constants, and daemon client helpers consumed by the eforge CLI, Claude Code plugin, and Pi extension." Add a short `packages/client/README.md` stating the stability policy:
+**Option 1 (recommended): declare client public.** Update `packages/client/package.json` description to: "Shared types, route constants, and daemon client helpers consumed by the eforge CLI, Claude Code plugin, and Pi extension." Update `packages/client/README.md` by removing the contradictory "Note" section and replacing it with a short stability policy:
 
 - Public exports are stability-promised within a major version.
 - Breaking changes bump the major version and are noted in the release.
@@ -84,7 +87,7 @@ Go with Option 1 unless there's a specific case for Option 2 that surfaces durin
 - `packages/engine/src/pipeline.ts` (+ optional `pipeline/` directory split)
 - `packages/engine/src/pipeline/*.ts` (new helper files)
 - `packages/client/package.json` (description)
-- `packages/client/README.md` (new, stability policy)
+- `packages/client/README.md` (update: remove contradictory "Note" section, add stability policy)
 - Tests: `test/pipeline.test.ts` if it exists, otherwise `test/agent-wiring.test.ts` continues to cover
 
 ### Out of scope
@@ -101,6 +104,6 @@ Go with Option 1 unless there's a specific case for Option 2 that surfaces durin
 - Stage context builders are extracted into named helpers for `plannerStage`, `reviewStage`, `implementStage`, and `evaluatorStage`.
 - Post-stage git ops (diff capture, status checks) live in `packages/engine/src/pipeline/git-helpers.ts`.
 - A single error translator helper maps agent errors to user-facing review events / retry decisions, with one test.
-- `packages/client/README.md` exists and clearly states public-vs-breaking-change policy (public exports stability-promised within a major version; breaking changes bump the major version and are noted in the release; `DAEMON_API_VERSION` bumped independently when the HTTP contract breaks).
+- `packages/client/README.md` no longer contains the contradictory "Note" section calling it internal; it clearly states public-vs-breaking-change policy (public exports stability-promised within a major version; breaking changes bump the major version and are noted in the release; `DAEMON_API_VERSION` bumped independently when the HTTP contract breaks).
 - `packages/client/package.json` description matches the new public stance: "Shared types, route constants, and daemon client helpers consumed by the eforge CLI, Claude Code plugin, and Pi extension."
 - End-to-end build still produces identical outputs - refactor is pure structural with no behavior change.
