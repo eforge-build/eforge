@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.6.0] - 2026-04-23
+
+### Features
+
+- Consolidate SSE subscription on @eforge-build/client
+- Daemon API version negotiation
+- Decompose pipeline.ts into a pipeline/ directory with named helpers, and declare @eforge-build/client public with a stability policy
+- Decompose pipeline.ts into pipeline/ directory
+- MCP tool factory + runOrDelegate helper + shared error formatting
+- PRD Gap Close
+- Declare @eforge-build/client public with stability policy
+- Eliminate engine emission violations: remove console.* from packages/engine/src, route warnings through EforgeEvents, route commits through forgeCommit(), and make loadPrompt() throw on unresolved vars
+- Replace engine console.* with warning events and warnings return shape
+- loadPrompt() throws on unresolved template variables
+- Route every engine commit through forgeCommit()
+- Parent scheduler owns sessionId and emits session:start at spawn
+- Central API_ROUTES contract and typed helper migration
+- Add typed api helper files and missing request types
+- Subprocess-per-build with crash-safe reconciler
+- Raise builder turn budget to 80 and tighten batching guidance
+- Unified retry policy for pipeline agents
+- Revert Claude Code build skill to fire-and-forget
+- Consolidate shared types and constants into @eforge-build/client
+- Backend Common Helpers and Unified Usage Cadence
+- Bring Claude Code plugin to parity with Pi extension: port eforge-plan skill, align paired-skill narrative, and add a parity-check script
+- Align paired-skill narrative across plugin and Pi
+- Migrate raw button/input to shadcn components
+- Port plan skill to plugin and add parity-check script
+- Lower default model class to balanced for builder/fixers/test agents
+- Retry planner on dropped submission tool call
+
+### Bug Fixes
+
+- Resolve validation failures
+- Add 'skipped' to EforgeResult status union type
+- Hydrate event type from DB column and fix emission sites
+- Locate CLI in daemon via EFORGE_CLI_PATH
+- Rely on server status to detect session completion
+- Kill watcher when auto-build toggled off
+
+### Refactoring
+
+- Use CircleStop icon for session cancel button
+- Let build subprocesses drain on scheduler abort
+- Run auto-build watcher in-process
+
+### Other
+
+- Upgrade deps
+
 ## [0.5.12] - 2026-04-21
 
 ### Features
