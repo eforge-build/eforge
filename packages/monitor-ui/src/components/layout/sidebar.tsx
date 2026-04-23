@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, XCircle, Loader2, Square, X } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CircleStop, X } from 'lucide-react';
 import type { RunInfo, SessionMetadata } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
 import { cancelSession } from '@/lib/api';
@@ -80,7 +80,7 @@ function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
                     cancelSession(group.key);
                   }}
                 >
-                  <Square size={14} />
+                  <CircleStop size={14} />
                 </Button>
               )}
               <span className="text-[11px] text-text-dim">{relative}</span>
