@@ -1,0 +1,91 @@
+name: hardening-04-engine-emission-hygiene
+description: "Eliminate engine emission violations: remove console.* from
+  packages/engine/src by routing config and plan warnings through EforgeEvents,
+  route every engine commit through forgeCommit(), and make loadPrompt() throw
+  on unresolved {{vars}}."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-console-to-events
+    name: Replace engine console.* with warning events and warnings return shape
+    depends_on: []
+    branch: hardening-04-engine-emission-hygiene/console-to-events
+    agents:
+      builder:
+        effort: high
+        rationale: Signature change ripples across 4 packages and 2 test files; missed
+          call sites caused 9 test failures in the previous attempt.
+      reviewer:
+        effort: high
+        rationale: Verifying zero console.* in engine and that every
+          loadConfig/parseRawConfig/resolveActiveProfileName caller destructures
+          the new shape requires a complete sweep.
+    build: &a1
+      - implement
+      - review-cycle
+      - - test-write
+        - doc-update
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+        - consistency
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: strict
+  - id: plan-02-forgecommit-sweep
+    name: Route every engine commit through forgeCommit()
+    depends_on: []
+    branch: hardening-04-engine-emission-hygiene/forgecommit-sweep
+    build: *a1
+    review: *a2
+  - id: plan-03-prompt-var-enforcement
+    name: loadPrompt() throws on unresolved template variables
+    depends_on: []
+    branch: hardening-04-engine-emission-hygiene/prompt-var-enforcement
+    agents:
+      builder:
+        effort: high
+        rationale: Discovering and fixing callers that silently rely on unresolved vars
+          requires running the full test suite and chasing each failure to its
+          caller.
+    build: *a1
+    review: *a2
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This PRD is a focused hardening effort touching a well-defined set
+    of files in packages/engine/src plus their consumers (CLI renderer, monitor
+    reducer, tests). It's not trivial - it changes a public API signature
+    (loadConfig now returns {config, warnings}), threads new event types through
+    multiple subscribers, requires a forgeCommit() sweep with possible widening
+    of its API, and adds strict prompt-variable enforcement that may surface
+    hidden breakages. But it's also a single coherent refactor, not 4+
+    independent subsystems, so excursion is the right scope. The PRD itself
+    explicitly calls out scope: excursion. planner + plan-review-cycle in
+    compile because the previous attempt missed
+    test/config-backend-profile.test.ts entirely and caused 9 failures - a
+    plan-review pass is cheap insurance against the same miss recurring (the PRD
+    literally enumerates the exact call sites and line numbers that must be
+    updated, which a plan review can verify are all covered). defaultBuild:
+    implement first (required), then review-cycle for quality-critical
+    correctness (strictness matters because silent regressions in git trailer
+    attachment or event emission are exactly the kind of drift this PRD is
+    fixing), then test-write parallel with doc-update (doc-update is cheap and
+    the invariants deserve documentation; test-write can add the
+    forgeCommit-trailer unit test and prompt-enforcement test called out in
+    acceptance criteria). Review uses strict evaluator because the PRD is about
+    enforcing invariants - any fix that re-introduces a console.* call or
+    bypasses forgeCommit() must be rejected. Two perspectives (correctness to
+    verify every call site is migrated and every commit routes through
+    forgeCommit; consistency to verify the event/warning shape matches across
+    engine, CLI renderer, and monitor reducer). maxRounds 2 is enough given the
+    narrow scope."
