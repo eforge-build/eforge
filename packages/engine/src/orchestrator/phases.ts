@@ -516,7 +516,7 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 /**
  * Run PRD validation after post-merge validation passes.
  * Compares the original PRD against the implementation to detect gaps.
- * Agent errors are non-fatal — the build continues if the validator crashes.
+ * Validator errors fail the build — a crashed validator cannot certify passing.
  */
 export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   const { state, stateDir, prdValidator } = ctx;
@@ -524,9 +524,11 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
   if (!prdValidator) return;
   if ((state.status as string) === 'failed') return;
 
+  let terminalEmitted = false;
   try {
     for await (const event of prdValidator(ctx.mergeWorktreePath)) {
       yield event;
+      if (event.type === 'prd_validation:complete') terminalEmitted = true;
 
       // If PRD validation fails, check viability gate before attempting gap closing
       if (event.type === 'prd_validation:complete' && !event.passed) {
@@ -556,12 +558,22 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') throw err;
-    // Non-abort errors from the validator now fail the build. A crashed
-    // validator can no longer silently certify a build as passing; mirror the
-    // viability-gate failure path so the build is marked failed and the
-    // progress log makes the reason visible.
+    // A crashed validator must fail the build. The outer build loop derives
+    // final status from events, so emit a terminal prd_validation:complete in
+    // addition to the progress log — otherwise the earlier validation:complete
+    // verdict stands and the build silently reports as completed. Skip the
+    // synthetic terminal event if the validator already yielded one before
+    // throwing; downstream consumers assume a single terminal per phase.
     const message = err instanceof Error ? err.message : String(err);
     yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `PRD validation failed: ${message}` };
+    if (!terminalEmitted) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'prd_validation:complete',
+        passed: false,
+        gaps: [{ requirement: 'PRD validator crashed', explanation: message }],
+      };
+    }
     state.status = 'failed';
     state.completedAt = new Date().toISOString();
     saveState(stateDir, state);
