@@ -1,4 +1,25 @@
 /**
+ * Missing request type shapes not yet declared in types.ts.
+ * Re-export from index so callers can import the request/response pair together.
+ */
+
+/** POST /api/enqueue */
+export interface EnqueueRequest {
+  source: string;
+  flags?: string[];
+}
+
+/** POST /api/auto-build */
+export interface AutoBuildSetRequest {
+  enabled: boolean;
+}
+
+/** POST /api/daemon/stop */
+export interface StopDaemonRequest {
+  force?: boolean;
+}
+
+/**
  * Central API route map for the eforge daemon HTTP API.
  *
  * Single source of truth for all `/api/...` path patterns. Consumers import

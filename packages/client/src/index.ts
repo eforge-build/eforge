@@ -1,5 +1,48 @@
 export { API_ROUTES, buildPath } from './routes.js';
-export type { ApiRoute } from './routes.js';
+export type { ApiRoute, EnqueueRequest, AutoBuildSetRequest, StopDaemonRequest } from './routes.js';
+
+export {
+  apiEnqueue,
+  apiCancel,
+  apiGetQueue,
+  apiGetRuns,
+  apiGetLatestRun,
+  apiGetLatestRunIfRunning,
+  apiGetRunSummary,
+  apiGetRunSummaryIfRunning,
+  apiGetRunState,
+  apiGetPlans,
+  apiGetDiff,
+  apiGetOrchestration,
+  apiGetSessionMetadata,
+} from './api/queue.js';
+
+export {
+  apiListBackends,
+  apiShowBackend,
+  apiUseBackend,
+  apiCreateBackend,
+  apiDeleteBackend,
+} from './api/backend.js';
+
+export {
+  apiHealth,
+  apiKeepAlive,
+  apiGetProjectContext,
+  apiGetAutoBuild,
+  apiSetAutoBuild,
+} from './api/status.js';
+
+export {
+  apiShowConfig,
+  apiShowConfigIfRunning,
+  apiValidateConfig,
+  apiValidateConfigIfRunning,
+} from './api/config.js';
+
+export { apiListModelProviders, apiListModels } from './api/models.js';
+
+export { apiStopDaemon } from './api/daemon.js';
 
 export {
   type LockfileData,
