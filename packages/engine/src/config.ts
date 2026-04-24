@@ -112,6 +112,8 @@ const SETTING_SOURCES = ['user', 'project', 'local'] as const;
 
 export const backendSchema = z.enum(['claude-sdk', 'pi']).describe('Backend provider for agent execution');
 
+export const harnessSchema = z.enum(['claude-sdk', 'pi']).describe('Harness kind for agent runtime entry');
+
 export const piThinkingLevelSchema = z.enum(['off', 'low', 'medium', 'high', 'xhigh']).describe('Pi-native thinking level');
 
 export const claudeSdkConfigSchema = z.object({
@@ -136,6 +138,25 @@ export const piConfigSchema = z.object({
     backoffMs: z.number().int().positive().optional().describe('Initial backoff in milliseconds'),
   }).optional().describe('Retry configuration for Pi API calls'),
 }).describe('Configuration for the Pi coding agent backend');
+
+export const agentRuntimeEntrySchema = z.object({
+  harness: harnessSchema.describe('Which harness to use for this runtime'),
+  pi: piConfigSchema.optional(),
+  claudeSdk: claudeSdkConfigSchema.optional(),
+}).superRefine((data, ctx) => {
+  if (data.harness === 'pi' && data.claudeSdk !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `agentRuntime with harness "pi" cannot include "claudeSdk" configuration.`,
+    });
+  }
+  if (data.harness === 'claude-sdk' && data.pi !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `agentRuntime with harness "claude-sdk" cannot include "pi" configuration.`,
+    });
+  }
+}).describe('An agent runtime entry declaring harness kind and its configuration');
 
 /** Base object schema without refinements — .partial() is derived from this. */
 const eforgeConfigBaseSchema = z.object({
@@ -162,6 +183,7 @@ const eforgeConfigBaseSchema = z.object({
       maxTurns: z.number().int().positive().optional(),
       modelClass: modelClassSchema.optional().describe('Override the model class for this role'),
       promptAppend: z.string().optional().describe('Text appended to the agent prompt after variable substitution'),
+      agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this role'),
     }).optional()).optional().describe('Per-agent role overrides'),
   }).optional(),
   build: z.object({
@@ -189,46 +211,44 @@ const eforgeConfigBaseSchema = z.object({
   pi: piConfigSchema.optional(),
   claudeSdk: claudeSdkConfigSchema.optional(),
   hooks: z.array(hookConfigSchema).optional(),
+  agentRuntimes: z.record(z.string(), agentRuntimeEntrySchema).optional().describe('Named agent runtime configurations'),
+  defaultAgentRuntime: z.string().optional().describe('Default agent runtime name used when a role does not specify one'),
 });
 
-/** Exported schema with backend-conditional model ref validation. */
+/** Exported schema with agentRuntimes cross-field validation. */
 export const eforgeConfigSchema = eforgeConfigBaseSchema.superRefine((data, ctx) => {
-  const backend = data.backend;
-  if (!backend) return;
+  const agentRuntimes = data.agentRuntimes;
+  const runtimeKeys = agentRuntimes ? Object.keys(agentRuntimes) : [];
 
-  /** Validate a single ModelRef against the backend. */
-  function checkModelRef(ref: { id: string; provider?: string } | undefined, path: string) {
-    if (!ref) return;
-    if (backend === 'pi' && !ref.provider) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Pi backend requires "provider" in model ref at ${path}. Got { id: "${ref.id}" }.`,
-        path: path.split('.'),
-      });
-    }
-    if (backend === 'claude-sdk' && ref.provider) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Claude SDK backend does not accept "provider" in model ref at ${path}. Got { provider: "${ref.provider}", id: "${ref.id}" }.`,
-        path: path.split('.'),
-      });
-    }
+  // When agentRuntimes is present (non-empty), defaultAgentRuntime is required.
+  if (runtimeKeys.length > 0 && !data.defaultAgentRuntime) {
+    ctx.addIssue({
+      code: 'custom',
+      message: '"defaultAgentRuntime" is required when "agentRuntimes" is declared.',
+      path: ['defaultAgentRuntime'],
+    });
   }
 
-  // Check agents.model
-  checkModelRef(data.agents?.model, 'agents.model');
-
-  // Check agents.models.*
-  if (data.agents?.models) {
-    for (const [cls, ref] of Object.entries(data.agents.models)) {
-      if (ref) checkModelRef(ref, `agents.models.${cls}`);
-    }
+  // defaultAgentRuntime must reference an existing agentRuntimes entry.
+  if (data.defaultAgentRuntime && runtimeKeys.length > 0 && !agentRuntimes![data.defaultAgentRuntime]) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `"defaultAgentRuntime" references "${data.defaultAgentRuntime}" which is not declared in "agentRuntimes". Declared: ${runtimeKeys.join(', ')}.`,
+      path: ['defaultAgentRuntime'],
+    });
   }
 
-  // Check agents.roles.*.model
-  if (data.agents?.roles) {
+  // Every agents.roles.*.agentRuntime must reference an existing agentRuntimes entry.
+  if (runtimeKeys.length > 0 && data.agents?.roles) {
     for (const [role, roleConfig] of Object.entries(data.agents.roles)) {
-      if (roleConfig?.model) checkModelRef(roleConfig.model, `agents.roles.${role}.model`);
+      const roleRuntime = (roleConfig as { agentRuntime?: string } | undefined)?.agentRuntime;
+      if (roleRuntime && !agentRuntimes![roleRuntime]) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `agents.roles.${role}.agentRuntime references "${roleRuntime}" which is not declared in "agentRuntimes". Declared: ${runtimeKeys.join(', ')}.`,
+          path: ['agents', 'roles', role, 'agentRuntime'],
+        });
+      }
     }
   }
 });
@@ -242,6 +262,7 @@ export type ToolPresetConfig = z.output<typeof toolPresetConfigSchema>;
 // and re-exported at the top of this file.
 export type HookConfig = z.output<typeof hookConfigSchema>;
 export type PluginConfig = z.output<typeof pluginConfigSchema>;
+export type AgentRuntimeEntry = z.output<typeof agentRuntimeEntrySchema>;
 
 /** Resolved agent config for a specific role, combining SDK passthrough fields with maxTurns. */
 export interface ResolvedAgentConfig {
@@ -270,6 +291,12 @@ export interface ResolvedAgentConfig {
   thinkingCoerced?: boolean;
   /** The original thinking config before coercion was applied. */
   thinkingOriginal?: import('./backend.js').ThinkingConfig;
+  /** The name of the resolved agentRuntime entry (from agentRuntimes map or legacy backend name). */
+  agentRuntimeName: string;
+  /** The harness kind resolved for this role. */
+  harness: 'claude-sdk' | 'pi';
+  /** Per-role agentRuntime name override from config (input field, used during resolution). */
+  agentRuntime?: string;
 }
 
 export interface PiConfig {
@@ -314,6 +341,10 @@ export interface EforgeConfig {
   pi: PiConfig;
   claudeSdk: ClaudeSdkConfig;
   hooks: readonly HookConfig[];
+  /** Named agent runtime configurations. When present, roles resolve their harness from this map. */
+  agentRuntimes?: Record<string, AgentRuntimeEntry>;
+  /** Default agent runtime name used when a role does not specify one. Required when agentRuntimes is non-empty. */
+  defaultAgentRuntime?: string;
 }
 
 /** Deep-partial version of EforgeConfig used for parsing and merging — derived from the zod schema. */
@@ -474,6 +505,8 @@ export function resolveConfig(
       disableSubagents: fileConfig.claudeSdk?.disableSubagents ?? DEFAULT_CONFIG.claudeSdk.disableSubagents,
     }),
     hooks: Object.freeze(fileConfig.hooks ?? DEFAULT_CONFIG.hooks) as HookConfig[],
+    agentRuntimes: fileConfig.agentRuntimes as Record<string, AgentRuntimeEntry> | undefined,
+    defaultAgentRuntime: fileConfig.defaultAgentRuntime,
   });
 }
 

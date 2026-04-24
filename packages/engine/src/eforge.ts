@@ -374,7 +374,7 @@ export class EforgeEngine {
     // Run formatter agent to normalize content
     let formattedBody = sourceContent;
     try {
-      const formatterConfig = resolveAgentConfig('formatter', this.config, this.config.backend);
+      const formatterConfig = resolveAgentConfig('formatter', this.config);
       const gen = runFormatter({ backend: this.backend, sourceContent, verbose, abortController, ...formatterConfig });
       let result = await gen.next();
       while (!result.done) {
@@ -409,7 +409,7 @@ export class EforgeEngine {
         }
 
         if (queueItems.length > 0 || runningBuilds.length > 0) {
-          const depDetectorConfig = resolveAgentConfig('dependency-detector', this.config, this.config.backend);
+          const depDetectorConfig = resolveAgentConfig('dependency-detector', this.config);
           const depGen = runDependencyDetector({
             backend: this.backend,
             prdContent: formattedBody,
@@ -592,7 +592,7 @@ export class EforgeEngine {
         fixerSpan.setInput({ failures: failures.map((f) => f.command) });
         const fixerTracker = createToolTracker(fixerSpan);
         try {
-          const validationFixerConfig = resolveAgentConfig('validation-fixer', config, config.backend);
+          const validationFixerConfig = resolveAgentConfig('validation-fixer', config);
           for await (const event of runValidationFixer({
             backend,
             cwd: fixerCwd,
@@ -626,7 +626,7 @@ export class EforgeEngine {
         const resolverTracker = createToolTracker(resolverSpan);
         let resolved = false;
         try {
-          const mergeResolverConfig = resolveAgentConfig('merge-conflict-resolver', config, config.backend);
+          const mergeResolverConfig = resolveAgentConfig('merge-conflict-resolver', config);
           for await (const event of runMergeConflictResolver({
             backend,
             cwd: resolverCwd,
@@ -685,7 +685,7 @@ export class EforgeEngine {
         });
         const prdTracker = createToolTracker(prdSpan);
         try {
-          const prdValidatorConfig = resolveAgentConfig('prd-validator', config, config.backend);
+          const prdValidatorConfig = resolveAgentConfig('prd-validator', config);
           for await (const event of runPrdValidator({
             backend,
             cwd: validatorCwd,
@@ -724,7 +724,7 @@ export class EforgeEngine {
         gapSpan.setInput({ gapCount: gaps.length, completionPercent });
         const gapTracker = createToolTracker(gapSpan);
         try {
-          const gapCloserConfig = resolveAgentConfig('gap-closer', config, config.backend);
+          const gapCloserConfig = resolveAgentConfig('gap-closer', config);
           for await (const event of runGapCloser({
             backend,
             cwd: gapCloserCwd,
@@ -881,7 +881,7 @@ export class EforgeEngine {
       let stalenessVerdict: 'proceed' | 'revise' | 'obsolete' = 'proceed';
       let revision: string | undefined;
 
-      const stalenessConfig = resolveAgentConfig('staleness-assessor', this.config, this.config.backend);
+      const stalenessConfig = resolveAgentConfig('staleness-assessor', this.config);
       for await (const event of runStalenessAssessor({
         backend: this.backend,
         prdContent: prd.content,

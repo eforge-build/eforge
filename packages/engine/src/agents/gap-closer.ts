@@ -53,7 +53,7 @@ export async function* runGapCloser(
   }, options.promptAppend);
 
   // Stage 1: Plan generation
-  const agentConfig = resolveAgentConfig('gap-closer', options.pipelineContext.config, options.pipelineContext.config.backend);
+  const agentConfig = resolveAgentConfig('gap-closer', options.pipelineContext.config);
   const maxTurns = agentConfig.maxTurns ?? 20;
 
   let planMarkdown: string | undefined;

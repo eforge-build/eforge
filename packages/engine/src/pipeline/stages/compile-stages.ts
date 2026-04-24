@@ -196,7 +196,7 @@ registerCompileStage({
   parallelizable: false,
 }, async function* plannerStage(ctx) {
   // Run pipeline composition first (fast LLM call to determine scope and stages)
-  const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, ctx.config.backend);
+  const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config);
   for await (const event of composePipeline({
     backend: ctx.backend,
     source: ctx.sourceContent,
@@ -224,7 +224,7 @@ registerCompileStage({
     return;
   }
 
-  const agentConfig = resolveAgentConfig('planner', ctx.config, ctx.config.backend);
+  const agentConfig = resolveAgentConfig('planner', ctx.config);
   const initialInput: PlannerContinuationInput = {
     sideEffects: {
       cwd: ctx.cwd,
@@ -261,8 +261,8 @@ registerCompileStage({
 }, async function* planReviewCycleStage(ctx) {
   const verbose = ctx.verbose;
   const abortController = ctx.abortController;
-  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config, ctx.config.backend);
-  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config, ctx.config.backend);
+  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config);
+  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config);
 
   try {
     yield* runReviewCycle({
@@ -333,8 +333,8 @@ registerCompileStage({
     return;
   }
 
-  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config, ctx.config.backend);
-  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config, ctx.config.backend);
+  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config);
+  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config);
 
   try {
     yield* runReviewCycle({
@@ -389,7 +389,7 @@ registerCompileStage({
   const { waves } = resolveDependencyGraph(plansForGraph);
   const moduleMap = new Map(ctx.expeditionModules.map((m) => [m.id, m]));
   const completedPlans = new Map<string, string>(); // moduleId -> plan file content
-  const agentConfig = resolveAgentConfig('module-planner', ctx.config, ctx.config.backend);
+  const agentConfig = resolveAgentConfig('module-planner', ctx.config);
 
   // 2. Plan each wave (parallel within wave, sequential across waves)
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
@@ -445,8 +445,8 @@ registerCompileStage({
     // Architecture file may not exist
   }
 
-  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config, ctx.config.backend);
-  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config, ctx.config.backend);
+  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config);
+  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config);
 
   try {
     yield* runReviewCycle({

@@ -150,7 +150,7 @@ function resolveSdkPassthrough(
 
 /** Walk MODEL_CLASS_TIER ascending then descending from effectiveClass to find any configured model. */
 function resolveFallbackModel(
-  backend: 'claude-sdk' | 'pi',
+  harness: 'claude-sdk' | 'pi',
   effectiveClass: ModelClass,
   config: EforgeConfig,
 ): { model?: ModelRef; fallbackFrom?: ModelClass; attempted: ModelClass[] } {
@@ -163,8 +163,8 @@ function resolveFallbackModel(
     attempted.push(tier);
     const userModel = config.agents.models?.[tier];
     if (userModel !== undefined) return { model: userModel, fallbackFrom: effectiveClass, attempted };
-    const backendModel = MODEL_CLASS_DEFAULTS[backend]?.[tier];
-    if (backendModel !== undefined) return { model: backendModel, fallbackFrom: effectiveClass, attempted };
+    const harnessModel = MODEL_CLASS_DEFAULTS[harness]?.[tier];
+    if (harnessModel !== undefined) return { model: harnessModel, fallbackFrom: effectiveClass, attempted };
   }
 
   // Descending (toward less capable)
@@ -173,8 +173,8 @@ function resolveFallbackModel(
     attempted.push(tier);
     const userModel = config.agents.models?.[tier];
     if (userModel !== undefined) return { model: userModel, fallbackFrom: effectiveClass, attempted };
-    const backendModel = MODEL_CLASS_DEFAULTS[backend]?.[tier];
-    if (backendModel !== undefined) return { model: backendModel, fallbackFrom: effectiveClass, attempted };
+    const harnessModel = MODEL_CLASS_DEFAULTS[harness]?.[tier];
+    if (harnessModel !== undefined) return { model: harnessModel, fallbackFrom: effectiveClass, attempted };
   }
 
   return { model: undefined, attempted };
@@ -185,44 +185,44 @@ function resolveFallbackModel(
  *   1. User per-role model
  *   2. User global model
  *   3. User model class override
- *   4. Backend model class default
+ *   4. Harness model class default
  *   5. Fallback tier traversal (ascending then descending)
  */
 function resolveModel(
   role: AgentRole,
   config: EforgeConfig,
-  backend: 'claude-sdk' | 'pi' | undefined,
+  harness: 'claude-sdk' | 'pi' | undefined,
   builtinRoleDefaults: Partial<ResolvedAgentConfig>,
-): { model?: ModelRef; fallbackFrom?: ModelClass } {
+): { model?: ModelRef; fallbackFrom?: ModelClass; provenance?: string } {
   const userRole = config.agents.roles?.[role] ?? {};
   const perRoleModel = userRole.model ?? builtinRoleDefaults.model;
   const globalModel = config.agents.model;
   const effectiveClass: ModelClass = userRole.modelClass ?? AGENT_MODEL_CLASSES[role];
 
-  if (perRoleModel !== undefined) return { model: perRoleModel };
-  if (globalModel !== undefined) return { model: globalModel };
+  if (perRoleModel !== undefined) return { model: perRoleModel, provenance: `agents.roles.${role}.model` };
+  if (globalModel !== undefined) return { model: globalModel, provenance: 'agents.model' };
 
   const userClassModel = config.agents.models?.[effectiveClass];
-  if (userClassModel !== undefined) return { model: userClassModel };
+  if (userClassModel !== undefined) return { model: userClassModel, provenance: `agents.models.${effectiveClass}` };
 
-  if (backend) {
-    const backendModel = MODEL_CLASS_DEFAULTS[backend]?.[effectiveClass];
-    if (backendModel !== undefined) return { model: backendModel };
-    const fallback = resolveFallbackModel(backend, effectiveClass, config);
+  if (harness) {
+    const harnessModel = MODEL_CLASS_DEFAULTS[harness]?.[effectiveClass];
+    if (harnessModel !== undefined) return { model: harnessModel };
+    const fallback = resolveFallbackModel(harness, effectiveClass, config);
     if (fallback.model !== undefined) return { model: fallback.model, fallbackFrom: fallback.fallbackFrom };
-    if (backend !== 'claude-sdk') {
+    if (harness !== 'claude-sdk') {
       throw new Error(
-        `No model configured for role "${role}" (model class "${effectiveClass}") on backend "${backend}". ` +
+        `No model configured for role "${role}" (model class "${effectiveClass}") on harness "${harness}". ` +
         `Tried fallback: ${fallback.attempted.join(', ')}. ` +
         `Set agents.models.${effectiveClass} in eforge/config.yaml.`,
       );
     }
   }
 
-  // Non-claude-sdk backends without built-in defaults require user-configured model mappings.
-  if (backend !== 'claude-sdk' && backend !== undefined) {
+  // Non-claude-sdk harnesses without built-in defaults require user-configured model mappings.
+  if (harness !== 'claude-sdk' && harness !== undefined) {
     throw new Error(
-      `No model configured for role "${role}" (model class "${effectiveClass}") on backend "${backend}". ` +
+      `No model configured for role "${role}" (model class "${effectiveClass}") on harness "${harness}". ` +
       `Set agents.models.${effectiveClass} in eforge/config.yaml.`,
     );
   }
@@ -257,12 +257,57 @@ function applyThinkingCoercion(result: ResolvedAgentConfig): void {
 }
 
 /**
+ * Resolve the agentRuntime name and harness kind for a given role.
+ *
+ * Precedence (highest → lowest):
+ *   1. Plan-entry agentRuntime override (accepted but unused until plan-04 wires plan input)
+ *   2. Per-role agentRuntime (config.agents.roles[role].agentRuntime)
+ *   3. defaultAgentRuntime
+ *
+ * Legacy fallback: if config.agentRuntimes is absent or empty, synthesize a single
+ * implicit entry keyed by the legacy config.backend scalar.
+ */
+export function resolveAgentRuntimeForRole(
+  role: AgentRole,
+  config: EforgeConfig,
+  _planEntry?: { agentRuntime?: string },
+): { agentRuntimeName: string; harness: 'claude-sdk' | 'pi' } {
+  const agentRuntimes = config.agentRuntimes;
+
+  // Legacy fallback: no agentRuntimes declared — synthesize from config.backend
+  if (!agentRuntimes || Object.keys(agentRuntimes).length === 0) {
+    const backend = config.backend ?? 'claude-sdk';
+    return { agentRuntimeName: backend, harness: backend };
+  }
+
+  // New path: resolve from role > defaultAgentRuntime
+  const roleConfig = config.agents.roles?.[role];
+  const runtimeName = roleConfig?.agentRuntime ?? config.defaultAgentRuntime;
+
+  if (!runtimeName) {
+    throw new Error(
+      `Role "${role}" could not resolve an agentRuntime: no agentRuntime set on the role and no defaultAgentRuntime configured.`,
+    );
+  }
+
+  const entry = agentRuntimes[runtimeName];
+  if (!entry) {
+    throw new Error(
+      `Role "${role}" has agentRuntime "${runtimeName}" which is not declared in agentRuntimes. ` +
+      `Declared: ${Object.keys(agentRuntimes).join(', ')}.`,
+    );
+  }
+
+  return { agentRuntimeName: runtimeName, harness: entry.harness };
+}
+
+/**
  * Resolve agent config for a given role.
  * Five-tier model resolution (highest → lowest):
  *   1. User per-role model (config.agents.roles[role].model)
  *   2. User global model (config.agents.model)
  *   3. User model class override (config.agents.models[effectiveClass])
- *   4. Backend model class default (MODEL_CLASS_DEFAULTS[backend][effectiveClass])
+ *   4. Harness model class default (MODEL_CLASS_DEFAULTS[harness][effectiveClass])
  *   5. undefined (no model set)
  *
  * Other fields use the existing four-tier priority:
@@ -274,14 +319,32 @@ function applyThinkingCoercion(result: ResolvedAgentConfig): void {
 export function resolveAgentConfig(
   role: AgentRole,
   config: EforgeConfig,
-  backend?: 'claude-sdk' | 'pi',
   planEntry?: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string }> },
 ): ResolvedAgentConfig {
+  const { agentRuntimeName, harness } = resolveAgentRuntimeForRole(role, config, planEntry);
   const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
   const { fields, effortSource, thinkingSource } = resolveSdkPassthrough(role, config, planEntry, builtinRoleDefaults);
-  const { model, fallbackFrom } = resolveModel(role, config, backend, builtinRoleDefaults);
+  const { model, fallbackFrom, provenance: modelProvenance } = resolveModel(role, config, harness, builtinRoleDefaults);
 
-  const result: ResolvedAgentConfig = { ...fields };
+  // Per-role provider-ness validation at resolve time (moved from schema-time)
+  if (model !== undefined) {
+    if (harness === 'pi' && !model.provider) {
+      throw new Error(
+        `Role "${role}" resolved to agentRuntime "${agentRuntimeName}" (harness "pi") ` +
+        `but the model ref at ${modelProvenance ?? 'unknown'} is missing "provider". ` +
+        `Got { id: "${model.id}" }.`,
+      );
+    }
+    if (harness === 'claude-sdk' && model.provider !== undefined) {
+      throw new Error(
+        `Role "${role}" resolved to agentRuntime "${agentRuntimeName}" (harness "claude-sdk") ` +
+        `but the model ref at ${modelProvenance ?? 'unknown'} has a forbidden "provider" field. ` +
+        `Got { provider: "${model.provider}", id: "${model.id}" }.`,
+      );
+    }
+  }
+
+  const result: ResolvedAgentConfig = { ...fields, agentRuntimeName, harness };
   if (model !== undefined) result.model = model;
   if (fallbackFrom !== undefined) result.fallbackFrom = fallbackFrom;
 
