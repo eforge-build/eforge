@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.4] - 2026-04-23
+
+### Refactoring
+
+- **compile**: split pipeline injection from expedition compiler
+
 ## [0.6.3] - 2026-04-23
 
 ### Bug Fixes
@@ -305,56 +311,6 @@
 ### Maintenance
 
 - deps: bump pi-ai, monitor-ui, and dev tooling
-
-## [0.4.1] - 2026-04-10
-
-### Features
-
-- Restructure into workspace packages and migrate to @eforge-build/* scope
-- Create @eforge-build/client package and migrate callers
-- Add pi-package to workspace and migrate Pi extension
-- Extract @eforge-build/client package to eliminate duplication
-- Remove dead endpoints and update documentation
-- Documentation, plugin, and skill updates
-- Publish pi-package as eforge-pi to npm
-
-### Bug Fixes
-
-- Align CI workflow with publish-all script
-- Resolve server-main entry via relative URL
-- Tolerate first-time publish in verify and deprecate steps
-- Complete monorepo gaps and fix validation pipeline
-- Resolve validation failures
-
-### Documentation
-
-- Rescope plugin-engine version compatibility to minimal observability
-- Prune shipped and decided items from roadmap
-
-### Maintenance
-
-- Add unified publish-all script
-- Bundle @eforge-build/client into eforge-pi tarball
-- Bundle @eforge-build/* workspace packages into executables
-- Remove one-time deprecate step from publish-all
-
-## [0.3.6] - 2026-04-03
-
-### Features
-
-- Emit and consume gap_close:plan_ready event
-
-### Bug Fixes
-
-- Resolve model config for eforge-level agents
-
-### Refactoring
-
-- Move Changes/Graph into lower panel with DevTools-style tabs
-
-### Documentation
-
-- Remove stale "default backend" and "experimental" labels
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
