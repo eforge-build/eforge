@@ -318,6 +318,12 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
+    case 'plan:build:progress': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} \u2014 ${event.message}`;
+      break;
+    }
+
     case 'plan:build:implement:continuation': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 continuing (attempt ${event.attempt}/${event.maxContinuations})`;
@@ -654,7 +660,7 @@ export function renderEvent(event: EforgeEvent): void {
       console.error(`[eforge] config warning: ${event.message}`);
       break;
 
-    case 'plan:warning':
+    case 'planning:warning':
       console.error(`[eforge] plan warning${event.planId ? ` (${event.planId})` : ''}: ${event.message}`);
       break;
 
@@ -790,10 +796,10 @@ export function renderEvent(event: EforgeEvent): void {
       succeedSpinner('gap-close', 'Gap closing complete');
       break;
 
-    case 'plan:submission':
+    case 'planning:submission':
       break;
 
-    case 'plan:error':
+    case 'planning:error':
       failSpinner('plan', `Planning failed: ${event.reason}`);
       break;
 
