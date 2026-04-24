@@ -8,7 +8,7 @@ import {
   buildAgentRuntimeRegistry,
   type AgentRuntimeRegistry,
 } from '@eforge-build/engine/agent-runtime-registry';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { DEFAULT_CONFIG, resolveConfig } from '@eforge-build/engine/config';
 
 // ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ import { DEFAULT_CONFIG, resolveConfig } from '@eforge-build/engine/config';
 
 describe('singletonRegistry', () => {
   it('returns the same backend instance for all roles', () => {
-    const stub = new StubBackend([]);
+    const stub = new StubHarness([]);
     const registry = singletonRegistry(stub);
 
     const forBuilder = registry.forRole('builder');
@@ -30,7 +30,7 @@ describe('singletonRegistry', () => {
   });
 
   it('returns the same backend for all byName calls', () => {
-    const stub = new StubBackend([]);
+    const stub = new StubHarness([]);
     const registry = singletonRegistry(stub);
 
     expect(registry.byName('any-name')).toBe(stub);
@@ -38,13 +38,13 @@ describe('singletonRegistry', () => {
   });
 
   it('configured() returns ["singleton"]', () => {
-    const stub = new StubBackend([]);
+    const stub = new StubHarness([]);
     const registry = singletonRegistry(stub);
     expect(registry.configured()).toEqual(['singleton']);
   });
 
   it('nameForRole returns "singleton" for any role', () => {
-    const stub = new StubBackend([]);
+    const stub = new StubHarness([]);
     const registry = singletonRegistry(stub);
     expect(registry.nameForRole('builder')).toBe('singleton');
     expect(registry.nameForRole('planner')).toBe('singleton');

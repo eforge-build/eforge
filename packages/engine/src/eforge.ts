@@ -26,8 +26,8 @@ import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runFormatter } from './agents/formatter.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
 import type { EforgeConfig, PluginConfig, ReviewProfileConfig, BuildStageSpec } from './config.js';
-import type { AgentBackend } from './backend.js';
-import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
+import type { AgentHarness } from './harness.js';
+import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
 import { loadConfig, DEFAULT_REVIEW } from './config.js';
 import { setPromptDir } from './prompts.js';
@@ -57,10 +57,10 @@ export interface EforgeEngineOptions {
   cwd?: string;
   /** Config overrides (deep-merged with loaded config) */
   config?: Partial<EforgeConfig>;
-  /** Agent runtime registry. Accepts a registry, a bare AgentBackend (auto-wrapped in singletonRegistry), or omit to build from config. */
-  agentRuntimes?: AgentRuntimeRegistry | AgentBackend;
-  /** MCP servers to make available to agents (Claude SDK backend only, ignored if agentRuntimes is provided) */
-  mcpServers?: ClaudeSDKBackendOptions['mcpServers'];
+  /** Agent runtime registry. Accepts a registry, a bare AgentHarness (auto-wrapped in singletonRegistry), or omit to build from config. */
+  agentRuntimes?: AgentRuntimeRegistry | AgentHarness;
+  /** MCP servers to make available to agents (Claude SDK harness only, ignored if agentRuntimes is provided) */
+  mcpServers?: ClaudeSDKHarnessOptions['mcpServers'];
   /** Claude Code plugins to load (Claude SDK backend only, ignored if agentRuntimes is provided) */
   plugins?: SdkPluginConfig[];
   /** Which settings sources to load — 'user', 'project', 'local' (Claude SDK backend only) */
@@ -175,10 +175,10 @@ export class EforgeEngine {
     let agentRuntimes: AgentRuntimeRegistry;
     const provided = options.agentRuntimes;
     if (provided !== undefined) {
-      // Accept either a full registry or a bare AgentBackend (auto-wrap for test ergonomics)
+      // Accept either a full registry or a bare AgentHarness (auto-wrap for test ergonomics)
       agentRuntimes = 'forRole' in (provided as object)
         ? (provided as AgentRuntimeRegistry)
-        : singletonRegistry(provided as AgentBackend);
+        : singletonRegistry(provided as AgentHarness);
     } else {
       // Build registry from config (handles Pi lazy import, memoization, etc.)
       agentRuntimes = await buildAgentRuntimeRegistry(config, {
@@ -1712,7 +1712,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
  * Load MCP server configs from .mcp.json in the given directory.
  * Returns the mcpServers record, or undefined if no .mcp.json exists.
  */
-async function loadMcpServers(cwd: string): Promise<ClaudeSDKBackendOptions['mcpServers'] | undefined> {
+async function loadMcpServers(cwd: string): Promise<ClaudeSDKHarnessOptions['mcpServers'] | undefined> {
   const mcpPath = resolve(cwd, '.mcp.json');
   let content: string;
   try {

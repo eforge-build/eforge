@@ -1,8 +1,8 @@
 /**
- * StubBackend — test helper that implements AgentBackend with scripted responses.
+ * StubHarness — test helper that implements AgentHarness with scripted responses.
  * Lives in test/ (not src/) since it's only for testing.
  */
-import type { AgentBackend, AgentRunOptions } from '@eforge-build/engine/backend';
+import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import type { EforgeEvent, AgentRole, AgentResultData } from '@eforge-build/engine/events';
 
 export interface StubToolCall {
@@ -37,19 +37,19 @@ const STUB_RESULT: AgentResultData = {
 };
 
 /**
- * A test backend that yields scripted EforgeEvents.
+ * A test harness that yields scripted EforgeEvents.
  *
  * Responses are consumed sequentially across multiple `run()` calls.
  * This enables testing multi-iteration flows (e.g., planner clarification
  * restarts) by providing a response for each call.
  *
- * Fidelity notes vs. real ClaudeSDKBackend:
+ * Fidelity notes vs. real ClaudeSDKHarness:
  * - Text is emitted as a single agent:message, not streamed as many small deltas.
  *   XML parsers run on accumulated text so single-vs-chunked doesn't affect wiring tests.
- * - Tool calls are emitted before text. Real backends interleave text and tool_use
+ * - Tool calls are emitted before text. Real harnesses interleave text and tool_use
  *   blocks within a single assistant turn. No wiring logic depends on ordering.
  */
-export class StubBackend implements AgentBackend {
+export class StubHarness implements AgentHarness {
   private readonly responses: StubResponse[];
   private callIndex = 0;
 
@@ -66,10 +66,10 @@ export class StubBackend implements AgentBackend {
 
   /**
    * Default identity mapping: the stub treats a bare `CustomTool.name` as the
-   * name the "model" calls directly, mirroring the Pi backend's convention.
-   * Tests that need to verify backend-specific prompt rendering (e.g. that
-   * the planner injects the per-backend effective name into the prompt) can
-   * subclass `StubBackend` and override this method to return a
+   * name the "model" calls directly, mirroring the Pi harness's convention.
+   * Tests that need to verify harness-specific prompt rendering (e.g. that
+   * the planner injects the per-harness effective name into the prompt) can
+   * subclass `StubHarness` and override this method to return a
    * distinguishable prefix.
    */
   effectiveCustomToolName(name: string): string {
@@ -96,7 +96,7 @@ export class StubBackend implements AgentBackend {
     try {
       const response = this.responses[this.callIndex++];
       if (!response) {
-        throw new Error(`StubBackend: no response at index ${this.callIndex - 1} (only ${this.responses.length} responses provided)`);
+        throw new Error(`StubHarness: no response at index ${this.callIndex - 1} (only ${this.responses.length} responses provided)`);
       }
 
       if (response.error) {
@@ -124,7 +124,7 @@ export class StubBackend implements AgentBackend {
         yield { type: 'agent:message', planId, agentId, agent, content: response.text };
       }
 
-      // Always emit agent:result to match real backend behavior
+      // Always emit agent:result to match real harness behavior
       const resultText = response.resultText ?? response.text;
       yield {
         type: 'agent:result',

@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
@@ -8,7 +8,7 @@ import { loadPrompt } from '../prompts.js';
  */
 export interface FormatterOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** The raw source content to format */
   sourceContent: string;
   /** Whether to emit verbose agent-level events */

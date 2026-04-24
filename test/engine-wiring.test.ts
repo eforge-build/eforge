@@ -2,8 +2,8 @@
  * Tests for backend selection logic in EforgeEngine.create().
  *
  * Verifies three paths:
- * 1. config.backend: 'pi' -> PiBackend instantiated via dynamic import
- * 2. default config (claude-sdk) -> ClaudeSDKBackend
+ * 1. config.backend: 'pi' -> PiHarness instantiated via dynamic import
+ * 2. default config (claude-sdk) -> ClaudeSDKHarness
  * 3. explicit options.backend overrides config.backend
  */
 
@@ -18,16 +18,16 @@ vi.mock('@eforge-build/engine/config', async (importOriginal) => {
   };
 });
 
-// Mock PiBackend dynamic import to avoid requiring actual Pi SDK
-vi.mock('@eforge-build/engine/backends/pi', () => {
-  class MockPiBackend {
-    readonly _isPiBackend = true;
+// Mock PiHarness dynamic import to avoid requiring actual Pi SDK
+vi.mock('@eforge-build/engine/harnesses/pi', () => {
+  class MockPiHarness {
+    readonly _isPiHarness = true;
     constructor(public options: unknown) {}
     async *run() {
       // stub
     }
   }
-  return { PiBackend: MockPiBackend };
+  return { PiHarness: MockPiHarness };
 });
 
 // Mock MCP server and plugin loading to prevent filesystem access
@@ -39,8 +39,8 @@ vi.mock('@eforge-build/engine/eforge', async (importOriginal) => {
 import { loadConfig } from '@eforge-build/engine/config';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
-import { ClaudeSDKBackend } from '@eforge-build/engine/backends/claude-sdk';
-import { StubBackend } from './stub-backend.js';
+import { ClaudeSDKHarness } from '@eforge-build/engine/harnesses/claude-sdk';
+import { StubHarness } from './stub-harness.js';
 
 const mockedLoadConfig = vi.mocked(loadConfig);
 
@@ -53,29 +53,29 @@ describe('EforgeEngine.create() backend selection', () => {
     vi.clearAllMocks();
   });
 
-  it('instantiates PiBackend when config.backend is "pi"', async () => {
+  it('instantiates PiHarness when config.backend is "pi"', async () => {
     mockedLoadConfig.mockResolvedValue(makeConfig({ backend: 'pi' }));
 
     const engine = await EforgeEngine.create({ cwd: '/tmp/test' });
 
-    // Access private backend via resolvedConfig check - the engine was created with PiBackend
+    // Access private backend via resolvedConfig check - the engine was created with PiHarness
     // We verify by checking the backend field through the engine's internals
     const backend = (engine as unknown as { backend: unknown }).backend;
-    expect(backend).toHaveProperty('_isPiBackend', true);
+    expect(backend).toHaveProperty('_isPiHarness', true);
   });
 
-  it('uses ClaudeSDKBackend when config.backend is "claude-sdk" (default)', async () => {
+  it('uses ClaudeSDKHarness when config.backend is "claude-sdk" (default)', async () => {
     mockedLoadConfig.mockResolvedValue(makeConfig({ backend: 'claude-sdk' }));
 
     const engine = await EforgeEngine.create({ cwd: '/tmp/test' });
 
     const backend = (engine as unknown as { backend: unknown }).backend;
-    expect(backend).toBeInstanceOf(ClaudeSDKBackend);
+    expect(backend).toBeInstanceOf(ClaudeSDKHarness);
   });
 
   it('explicit options.backend overrides config.backend', async () => {
     mockedLoadConfig.mockResolvedValue(makeConfig({ backend: 'pi' }));
-    const explicitBackend = new StubBackend([]);
+    const explicitBackend = new StubHarness([]);
 
     const engine = await EforgeEngine.create({ cwd: '/tmp/test', backend: explicitBackend });
 

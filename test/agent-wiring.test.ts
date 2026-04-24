@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { PlannerSubmissionError } from '@eforge-build/engine/backend';
-import type { AgentBackend } from '@eforge-build/engine/backend';
-import { StubBackend } from './stub-backend.js';
+import { PlannerSubmissionError } from '@eforge-build/engine/harness';
+import type { AgentHarness } from '@eforge-build/engine/harness';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { runPlanner } from '@eforge-build/engine/agents/planner';
@@ -25,7 +25,7 @@ describe('runPlanner wiring', () => {
   const makeTempDir = useTempDir('eforge-planner-test-');
 
   it('throws PlannerSubmissionError when neither submission tool nor <skip> fires', async () => {
-    const backend = new StubBackend([{ text: 'Planning done.' }]);
+    const backend = new StubHarness([{ text: 'Planning done.' }]);
     const cwd = makeTempDir();
 
     // Collect events until the throw. plan:start and agent:result are yielded
@@ -51,7 +51,7 @@ describe('runPlanner wiring', () => {
   });
 
   it('emits plan:skip when agent output contains a skip block', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<skip>Already implemented in a previous PR.</skip>',
     }]);
     const cwd = makeTempDir();
@@ -72,7 +72,7 @@ describe('runPlanner wiring', () => {
   });
 
   it('triggers clarification callback and restarts with answers', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       // First run: agent asks a clarification question
       { text: '<clarification><question id="q1">Which database?</question></clarification>' },
       // Second run: agent produces final output (answers baked into prompt)
@@ -113,7 +113,7 @@ describe('runPlanner wiring', () => {
   });
 
   it('handles multiple clarification rounds', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       { text: '<clarification><question id="q1">Database?</question></clarification>' },
       { text: '<clarification><question id="q2">ORM?</question></clarification>' },
       { text: 'Final plan.' },
@@ -149,7 +149,7 @@ describe('runPlanner wiring', () => {
     const responses = Array.from({ length: 6 }, () => ({
       text: '<clarification><question id="q1">Again?</question></clarification>',
     }));
-    const backend = new StubBackend(responses);
+    const backend = new StubHarness(responses);
     const cwd = makeTempDir();
 
     // After max iterations without submission or skip, planner throws
@@ -165,7 +165,7 @@ describe('runPlanner wiring', () => {
   });
 
   it('skips clarification in auto mode', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<clarification><question id="q1">Database?</question></clarification> Done.',
     }]);
     const cwd = makeTempDir();
@@ -189,7 +189,7 @@ describe('runPlanner wiring', () => {
   });
 
   it('suppresses agent:message when verbose is false, emits when true', async () => {
-    const makeBackend = () => new StubBackend([{ text: 'Some output.' }]);
+    const makeBackend = () => new StubHarness([{ text: 'Some output.' }]);
     const cwd = makeTempDir();
 
     // verbose=false (default): agent:message should be suppressed. Planner
@@ -217,7 +217,7 @@ describe('runPlanner wiring', () => {
   it('writes plans via submission tool and yields plan:complete', async () => {
     const cwd = makeTempDir();
 
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       toolCalls: [{
         tool: 'submit_plan_set',
         toolUseId: 'tu-1',
@@ -270,19 +270,19 @@ describe('runPlanner submission tool naming', () => {
   const makeTempDir = useTempDir('eforge-planner-submit-name-');
 
   /**
-   * StubBackend subclass whose `effectiveCustomToolName` returns a
+   * StubHarness subclass whose `effectiveCustomToolName` returns a
    * distinguishable prefix so tests can verify that the planner asks the
    * backend for the per-backend tool name and interpolates it into the
    * rendered prompt.
    */
-  class PrefixedStubBackend extends StubBackend {
+  class PrefixedStubHarness extends StubHarness {
     override effectiveCustomToolName(name: string): string {
       return `stub__${name}`;
     }
   }
 
   it('injects backend-provided effective tool name into the rendered prompt (excursion)', async () => {
-    const backend = new PrefixedStubBackend([{ text: '' }]);
+    const backend = new PrefixedStubHarness([{ text: '' }]);
     const cwd = makeTempDir();
 
     // No submission tool is called in this stub response so the planner throws
@@ -306,7 +306,7 @@ describe('runPlanner submission tool naming', () => {
   });
 
   it('injects backend-provided effective tool name into the rendered prompt (expedition)', async () => {
-    const backend = new PrefixedStubBackend([{ text: '' }]);
+    const backend = new PrefixedStubHarness([{ text: '' }]);
     const cwd = makeTempDir();
 
     // No submission tool is called in this stub response so the planner throws
@@ -324,7 +324,7 @@ describe('runPlanner submission tool naming', () => {
   });
 
   it('reports backend-visible names in the thrown PlannerSubmissionError when no submission tool was called', async () => {
-    const backend = new PrefixedStubBackend([{ text: 'Nothing to do.' }]);
+    const backend = new PrefixedStubHarness([{ text: 'Nothing to do.' }]);
     const cwd = makeTempDir();
 
     let thrown: unknown;
@@ -349,7 +349,7 @@ describe('runPlanner submission tool naming', () => {
 
 describe('runReview wiring', () => {
   it('parses review issues from agent output', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<review-issues>
   <issue severity="critical" category="bug" file="src/a.ts" line="42">Memory leak in handler</issue>
   <issue severity="warning" category="perf" file="src/b.ts">Slow query<fix>Add index</fix></issue>
@@ -380,7 +380,7 @@ describe('runReview wiring', () => {
   });
 
   it('yields empty issues for plain text output', async () => {
-    const backend = new StubBackend([{ text: 'Code looks good. No issues found.' }]);
+    const backend = new StubHarness([{ text: 'Code looks good. No issues found.' }]);
 
     const events = await collectEvents(runReview({
       harness: backend,
@@ -400,7 +400,7 @@ describe('runReview wiring', () => {
 
 describe('builderImplement wiring', () => {
   it('emits implement lifecycle events on success', async () => {
-    const backend = new StubBackend([{ text: 'Implementation done.' }]);
+    const backend = new StubHarness([{ text: 'Implementation done.' }]);
 
     const events = await collectEvents(builderImplement(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
@@ -413,7 +413,7 @@ describe('builderImplement wiring', () => {
   });
 
   it('emits build:failed when backend throws', async () => {
-    const backend = new StubBackend([{ error: new Error('Agent timeout') }]);
+    const backend = new StubHarness([{ error: new Error('Agent timeout') }]);
 
     const events = await collectEvents(builderImplement(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
@@ -430,7 +430,7 @@ describe('builderImplement wiring', () => {
 
 describe('builderEvaluate wiring', () => {
   it('counts verdicts correctly', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="a.ts" action="accept">Good change</verdict>
   <verdict file="b.ts" action="accept">Also good</verdict>
@@ -462,7 +462,7 @@ describe('builderEvaluate wiring', () => {
   // Contrast with runPlanEvaluate which re-throws after yielding zero counts,
   // because plan evaluation errors propagate to the engine's plan() method.
   it('emits build:failed when backend throws', async () => {
-    const backend = new StubBackend([{ error: new Error('Evaluate failed') }]);
+    const backend = new StubHarness([{ error: new Error('Evaluate failed') }]);
 
     const events = await collectEvents(builderEvaluate(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
@@ -478,7 +478,7 @@ describe('builderEvaluate wiring', () => {
 
 describe('runPlanReview wiring', () => {
   it('parses review issues from plan review output', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<review-issues>
   <issue severity="warning" category="scope" file="plans/feature.md">Missing edge case</issue>
 </review-issues>`,
@@ -503,7 +503,7 @@ describe('runPlanReview wiring', () => {
 
 describe('runPlanEvaluate wiring', () => {
   it('counts evaluation verdicts', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="plans/a.md" action="accept">Good fix</verdict>
   <verdict file="plans/b.md" action="reject">Over-scoped</verdict>
@@ -532,7 +532,7 @@ describe('runPlanEvaluate wiring', () => {
   // the engine's plan() method catches this and reports it as non-fatal.
   // Contrast with builderEvaluate which swallows errors into build:failed.
   it('emits zero counts and re-throws on error', async () => {
-    const backend = new StubBackend([{ error: new Error('Evaluate crash') }]);
+    const backend = new StubHarness([{ error: new Error('Evaluate crash') }]);
 
     let thrown: Error | undefined;
     const events: EforgeEvent[] = [];
@@ -563,7 +563,7 @@ describe('runPlanEvaluate wiring', () => {
 
 describe('runModulePlanner wiring', () => {
   it('emits expedition module lifecycle events', async () => {
-    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+    const backend = new StubHarness([{ text: 'Module plan written.' }]);
 
     const events = await collectEvents(runModulePlanner({
       harness: backend,
@@ -589,7 +589,7 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('suppresses agent:message when verbose is false', async () => {
-    const backend = new StubBackend([{ text: 'Module details.' }]);
+    const backend = new StubHarness([{ text: 'Module details.' }]);
 
     const events = await collectEvents(runModulePlanner({
       harness: backend,
@@ -607,7 +607,7 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('emits agent:message when verbose is true', async () => {
-    const backend = new StubBackend([{ text: 'Module details.' }]);
+    const backend = new StubHarness([{ text: 'Module details.' }]);
 
     const events = await collectEvents(runModulePlanner({
       harness: backend,
@@ -625,7 +625,7 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('includes dependencyPlanContent in prompt when provided', async () => {
-    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+    const backend = new StubHarness([{ text: 'Module plan written.' }]);
     const depContent = '# Foundation\n\nCreates auth tables and user model.';
 
     await collectEvents(runModulePlanner({
@@ -644,7 +644,7 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('uses fallback text when dependencyPlanContent is omitted', async () => {
-    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+    const backend = new StubHarness([{ text: 'Module plan written.' }]);
 
     await collectEvents(runModulePlanner({
       harness: backend,
@@ -661,7 +661,7 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('uses fallback text when dependencyPlanContent is undefined', async () => {
-    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+    const backend = new StubHarness([{ text: 'Module plan written.' }]);
 
     await collectEvents(runModulePlanner({
       harness: backend,
@@ -683,7 +683,7 @@ describe('runModulePlanner wiring', () => {
 
 describe('runArchitectureReview wiring', () => {
   it('emits architecture review lifecycle events with parsed issues', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<review-issues>
   <issue severity="warning" category="completeness" file="plans/my-plan/architecture.md">Missing integration contract between auth and api modules</issue>
 </review-issues>`,
@@ -706,7 +706,7 @@ describe('runArchitectureReview wiring', () => {
   });
 
   it('yields empty issues for clean architecture', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: 'Architecture looks solid. <review-issues></review-issues>',
     }]);
 
@@ -728,7 +728,7 @@ describe('runArchitectureReview wiring', () => {
 
 describe('runArchitectureEvaluate wiring', () => {
   it('counts evaluation verdicts correctly', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="plans/my-plan/architecture.md" action="accept">Good clarification</verdict>
   <verdict file="plans/my-plan/architecture.md" action="reject">Changes module decomposition</verdict>
@@ -756,7 +756,7 @@ describe('runArchitectureEvaluate wiring', () => {
   });
 
   it('emits zero counts and re-throws on error (architecture)', async () => {
-    const backend = new StubBackend([{ error: new Error('Architecture evaluate crash') }]);
+    const backend = new StubHarness([{ error: new Error('Architecture evaluate crash') }]);
 
     let thrown: Error | undefined;
     const events: EforgeEvent[] = [];
@@ -787,7 +787,7 @@ describe('runArchitectureEvaluate wiring', () => {
 
 describe('runPrdValidator wiring', () => {
   it('emits prd_validation:start and prd_validation:complete with no gaps when agent finds none', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '```json\n{ "gaps": [] }\n```',
     }]);
 
@@ -806,7 +806,7 @@ describe('runPrdValidator wiring', () => {
   });
 
   it('emits prd_validation:complete with gaps when agent finds issues', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `\`\`\`json
 {
   "gaps": [
@@ -839,7 +839,7 @@ describe('runPrdValidator wiring', () => {
   });
 
   it('re-throws non-abort agent errors (fail-closed)', async () => {
-    const backend = new StubBackend([{ error: new Error('Agent crashed') }]);
+    const backend = new StubHarness([{ error: new Error('Agent crashed') }]);
 
     // Fail-closed: a crashed validator must not silently certify a build.
     await expect(async () => {
@@ -855,7 +855,7 @@ describe('runPrdValidator wiring', () => {
   });
 
   it('yields agent:result event (always yielded)', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '```json\n{ "gaps": [] }\n```',
     }]);
 
@@ -1248,7 +1248,7 @@ describe('resolveAgentConfig thinking coercion', () => {
 
 describe('agent:warning event for thinking coercion', () => {
   it('emits agent:warning with code thinking-coerced when thinkingCoerced is true', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
 
     const events = await collectEvents(backend.run(
       {
@@ -1276,7 +1276,7 @@ describe('agent:warning event for thinking coercion', () => {
   });
 
   it('does not emit agent:warning when thinkingCoerced is absent', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
 
     const events = await collectEvents(backend.run(
       {
@@ -1296,7 +1296,7 @@ describe('agent:warning event for thinking coercion', () => {
   });
 
   it('does not emit agent:warning when thinkingCoerced is false', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
 
     const events = await collectEvents(backend.run(
       {
@@ -1369,8 +1369,8 @@ describe('AgentRuntimeRegistry dual-stub dispatch', () => {
    * harness per role without needing a full config + buildAgentRuntimeRegistry.
    */
   function makeRoleMappedRegistry(
-    roleMap: Map<string, AgentBackend>,
-    fallback: AgentBackend,
+    roleMap: Map<string, AgentHarness>,
+    fallback: AgentHarness,
   ): AgentRuntimeRegistry {
     return {
       forRole(role) { return roleMap.get(role) ?? fallback; },
@@ -1381,11 +1381,11 @@ describe('AgentRuntimeRegistry dual-stub dispatch', () => {
   }
 
   it('dispatches planner role to plannerStub and reviewer to reviewerStub', () => {
-    const plannerStub = new StubBackend([]);
-    const reviewerStub = new StubBackend([]);
+    const plannerStub = new StubHarness([]);
+    const reviewerStub = new StubHarness([]);
 
     const registry = makeRoleMappedRegistry(
-      new Map<string, AgentBackend>([
+      new Map<string, AgentHarness>([
         ['planner', plannerStub],
         ['reviewer', reviewerStub],
       ]),
@@ -1401,8 +1401,8 @@ describe('AgentRuntimeRegistry dual-stub dispatch', () => {
   });
 
   it('two singletonRegistry instances are distinct registries dispatching to their own stub', () => {
-    const stubA = new StubBackend([]);
-    const stubB = new StubBackend([]);
+    const stubA = new StubHarness([]);
+    const stubB = new StubHarness([]);
 
     const registryA = singletonRegistry(stubA);
     const registryB = singletonRegistry(stubB);
@@ -1419,11 +1419,11 @@ describe('AgentRuntimeRegistry dual-stub dispatch', () => {
   });
 
   it('forRole reference equality holds across multiple calls (consistent dispatch)', () => {
-    const builderStub = new StubBackend([]);
-    const plannerStub = new StubBackend([]);
+    const builderStub = new StubHarness([]);
+    const plannerStub = new StubHarness([]);
 
     const registry = makeRoleMappedRegistry(
-      new Map<string, AgentBackend>([
+      new Map<string, AgentHarness>([
         ['builder', builderStub],
         ['planner', plannerStub],
       ]),
@@ -1438,11 +1438,11 @@ describe('AgentRuntimeRegistry dual-stub dispatch', () => {
   });
 
   it('builder and planner stubs do not accumulate calls from each other', async () => {
-    const builderStub = new StubBackend([{ text: 'Build done.' }]);
-    const plannerStub = new StubBackend([{ text: 'Plan done.' }]);
+    const builderStub = new StubHarness([{ text: 'Build done.' }]);
+    const plannerStub = new StubHarness([{ text: 'Plan done.' }]);
 
     const registry = makeRoleMappedRegistry(
-      new Map<string, AgentBackend>([
+      new Map<string, AgentHarness>([
         ['builder', builderStub],
         ['planner', plannerStub],
       ]),

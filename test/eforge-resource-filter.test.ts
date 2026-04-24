@@ -5,7 +5,7 @@ import {
   EFORGE_MCP_SERVER_NAME,
   EFORGE_PI_PACKAGE_NAME,
   isEforgePiResource,
-} from '@eforge-build/engine/backends/eforge-resource-filter';
+} from '@eforge-build/engine/harnesses/eforge-resource-filter';
 
 describe('eforge-resource-filter constants', () => {
   it('pins the Pi package name that ships eforge\'s extension + skills', () => {

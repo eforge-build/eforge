@@ -4,7 +4,7 @@ import type { z } from 'zod/v4';
 import type { BuildStageSpec, ReviewProfileConfig } from './config.js';
 import type { ReviewPerspective } from './review-heuristics.js';
 import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSchema, PipelineComposition } from './schemas.js';
-import type { AgentTerminalSubtype } from './backend.js';
+import type { AgentTerminalSubtype } from './harness.js';
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 

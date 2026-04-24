@@ -32,8 +32,8 @@ import { parse as parseYaml } from 'yaml';
 
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
 import { resolveAgentConfig } from '@eforge-build/engine/pipeline';
-import { ClaudeSDKBackend } from '@eforge-build/engine/backends/claude-sdk';
-import type { AgentBackend, BackendDebugPayload } from '@eforge-build/engine/backend';
+import { ClaudeSDKHarness } from '@eforge-build/engine/harnesses/claude-sdk';
+import type { AgentHarness, HarnessDebugPayload } from '@eforge-build/engine/harness';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 
 interface DebugComposerOptions {
@@ -133,14 +133,14 @@ async function loadConfigForProfile(
   return { config, profileName: resolvedName, configDir };
 }
 
-/** Construct the right backend instance from a resolved config, with debug capture wired. */
+/** Construct the right harness instance from a resolved config, with debug capture wired. */
 async function buildBackendForDebug(
   config: EforgeConfig,
-  onDebugPayload: (p: BackendDebugPayload) => void,
-): Promise<AgentBackend> {
+  onDebugPayload: (p: HarnessDebugPayload) => void,
+): Promise<AgentHarness> {
   if (config.backend === 'pi') {
-    const { PiBackend } = await import('@eforge-build/engine/backends/pi');
-    return new PiBackend({
+    const { PiHarness } = await import('@eforge-build/engine/harnesses/pi');
+    return new PiHarness({
       piConfig: config.pi,
       bare: config.agents.bare,
       extensions: {
@@ -154,7 +154,7 @@ async function buildBackendForDebug(
   }
 
   // default: claude-sdk
-  return new ClaudeSDKBackend({
+  return new ClaudeSDKHarness({
     settingSources: config.agents.settingSources as never,
     bare: config.agents.bare,
     disableSubagents: config.claudeSdk.disableSubagents,
@@ -172,7 +172,7 @@ async function runForProfile(
   outDir: string,
   verbose: boolean,
 ): Promise<{ profileName: string; outPath: string; backend: 'claude-sdk' | 'pi'; scope: string }> {
-  let captured: BackendDebugPayload | undefined;
+  let captured: HarnessDebugPayload | undefined;
   const backend = await buildBackendForDebug(config, (p) => {
     captured = p;
   });

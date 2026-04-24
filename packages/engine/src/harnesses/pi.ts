@@ -1,5 +1,5 @@
 /**
- * Pi coding agent backend — implements AgentBackend using @mariozechner/pi-coding-agent.
+ * Pi coding agent harness — implements AgentHarness using @mariozechner/pi-coding-agent.
  * All Pi SDK imports are isolated to this file and pi-mcp-bridge.ts.
  */
 
@@ -22,7 +22,7 @@ import type { Model, Api } from '@mariozechner/pi-ai';
 import type { AgentTool, ThinkingLevel } from '@mariozechner/pi-agent-core';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
-import type { AgentBackend, AgentRunOptions, ThinkingConfig, EffortLevel, BackendDebugCallback, BackendDebugPayload } from '../backend.js';
+import type { AgentHarness, AgentRunOptions, ThinkingConfig, EffortLevel, HarnessDebugCallback, HarnessDebugPayload } from '../harness.js';
 import type { PiConfig } from '../config.js';
 import { AsyncEventQueue } from '../concurrency.js';
 import { PiMcpBridge } from './pi-mcp-bridge.js';
@@ -36,7 +36,7 @@ import { z } from 'zod/v4';
 // Public types
 // ---------------------------------------------------------------------------
 
-export interface PiBackendOptions {
+export interface PiHarnessOptions {
   /** MCP servers to bridge as Pi AgentTools. */
   mcpServers?: Record<string, McpServerConfig>;
   /** Pi extension discovery configuration. */
@@ -49,9 +49,9 @@ export interface PiBackendOptions {
    * Optional callback fired just before each `session.prompt` dispatch with a
    * snapshot of the request (system prompt, tools, model, etc.). Used by
    * diagnostic tooling like `eforge debug-composer` to compare framing across
-   * backends.
+   * harnesses.
    */
-  onDebugPayload?: BackendDebugCallback;
+  onDebugPayload?: HarnessDebugCallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,18 +243,18 @@ function truncateOutput(output: string, maxLength: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// PiBackend
+// PiHarness
 // ---------------------------------------------------------------------------
 
-export class PiBackend implements AgentBackend {
+export class PiHarness implements AgentHarness {
   private readonly mcpServers?: Record<string, McpServerConfig>;
   private readonly extensions?: PiExtensionConfig;
   private readonly bare: boolean;
   private readonly piConfig?: PiConfig;
-  private readonly onDebugPayload?: BackendDebugCallback;
+  private readonly onDebugPayload?: HarnessDebugCallback;
   private mcpBridge: PiMcpBridge | null = null;
 
-  constructor(options?: PiBackendOptions) {
+  constructor(options?: PiHarnessOptions) {
     this.mcpServers = options?.mcpServers;
     this.extensions = options?.extensions;
     this.bare = options?.bare ?? false;
@@ -706,7 +706,7 @@ export class PiBackend implements AgentBackend {
       if (this.onDebugPayload) {
         const sessionState = session.state as { systemPrompt?: string; tools?: Array<{ name: string; description?: string; parameters?: unknown }> };
         const sessionTools = Array.isArray(sessionState.tools) ? sessionState.tools : [];
-        const debugPayload: BackendDebugPayload = {
+        const debugPayload: HarnessDebugPayload = {
           backend: 'pi',
           agent,
           userPrompt: options.prompt,

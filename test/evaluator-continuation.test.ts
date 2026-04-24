@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { AgentTerminalError } from '@eforge-build/engine/backend';
-import { StubBackend } from './stub-backend.js';
+import { AgentTerminalError } from '@eforge-build/engine/harness';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { builderEvaluate, STRICTNESS_BLOCKS } from '@eforge-build/engine/agents/builder';
 import { AGENT_MAX_CONTINUATIONS_DEFAULTS } from '@eforge-build/engine/pipeline';
@@ -34,7 +34,7 @@ describe('AGENT_MAX_CONTINUATIONS_DEFAULTS', () => {
 
 describe('builderEvaluate', () => {
   it('yields build:failed with terminalSubtype on error_max_turns (no re-throw — retry is owned by withRetry)', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).'),
     }]);
     const plan = makePlanFile();
@@ -54,7 +54,7 @@ describe('builderEvaluate', () => {
   });
 
   it('catches non-max_turns errors and yields build:failed', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       error: new Error('Agent evaluator failed: some_other_error'),
     }]);
     const plan = makePlanFile();
@@ -70,7 +70,7 @@ describe('builderEvaluate', () => {
   });
 
   it('passes continuation_context to prompt when evaluatorContinuationContext is provided', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<evaluation></evaluation>',
     }]);
     const plan = makePlanFile();
@@ -87,7 +87,7 @@ describe('builderEvaluate', () => {
   });
 
   it('passes empty continuation_context when evaluatorContinuationContext is absent', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<evaluation></evaluation>',
     }]);
     const plan = makePlanFile();
@@ -101,7 +101,7 @@ describe('builderEvaluate', () => {
   });
 
   it('emits build:evaluate:start and build:evaluate:complete on success', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="src/foo.ts" action="accept">
     <staged>impl</staged>
@@ -127,7 +127,7 @@ describe('builderEvaluate', () => {
 
 // --- Plan phase evaluator (runPlanEvaluate) continuation context ---
 
-const makePlanEvalOptions = (backend: StubBackend, overrides?: Record<string, unknown>) => ({
+const makePlanEvalOptions = (backend: StubHarness, overrides?: Record<string, unknown>) => ({
   backend,
   planSetName: 'test-set',
   sourceContent: '# Source\n\nSome PRD.',
@@ -137,7 +137,7 @@ const makePlanEvalOptions = (backend: StubBackend, overrides?: Record<string, un
 
 describe('runPlanEvaluate continuation context', () => {
   it('passes continuation_context to prompt when continuationContext is provided', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<evaluation></evaluation>',
     }]);
 
@@ -152,7 +152,7 @@ describe('runPlanEvaluate continuation context', () => {
   });
 
   it('passes empty continuation_context when continuationContext is absent', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<evaluation></evaluation>',
     }]);
 
@@ -162,7 +162,7 @@ describe('runPlanEvaluate continuation context', () => {
   });
 
   it('re-throws error_max_turns errors', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).'),
     }]);
 
@@ -174,7 +174,7 @@ describe('runPlanEvaluate continuation context', () => {
 
 describe('runCohesionEvaluate continuation context', () => {
   it('passes continuation_context to prompt when continuationContext is provided', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<evaluation></evaluation>',
     }]);
 
@@ -190,7 +190,7 @@ describe('runCohesionEvaluate continuation context', () => {
 
 describe('runArchitectureEvaluate continuation context', () => {
   it('passes continuation_context to prompt when continuationContext is provided', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<evaluation></evaluation>',
     }]);
 

@@ -6,8 +6,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import type { ReviewPerspective } from '../review-heuristics.js';
 import { categorizeFiles, determineApplicableReviews, shouldParallelizeReview } from '../review-heuristics.js';
@@ -26,7 +26,7 @@ const exec = promisify(execFile);
 
 export interface ParallelReviewerOptions extends SdkPassthroughConfig {
   /** Harness for running agents */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** The plan content (full markdown body) to review against */
   planContent: string;
   /** The base branch to diff against */

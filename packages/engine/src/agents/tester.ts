@@ -1,12 +1,12 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type TestIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getTestIssueSchemaYaml } from '../schemas.js';
 import { parseTestIssues } from './common.js';
 
 export interface TestWriterOptions extends SdkPassthroughConfig {
-  harness: AgentBackend;
+  harness: AgentHarness;
   cwd: string;
   planId: string;
   planContent: string;
@@ -100,7 +100,7 @@ export async function* runTestWriter(
 }
 
 export interface TesterOptions extends SdkPassthroughConfig {
-  harness: AgentBackend;
+  harness: AgentHarness;
   cwd: string;
   planId: string;
   planContent: string;

@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import type { BuildStageSpec, ReviewProfileConfig } from '../config.js';
 import { loadPrompt } from '../prompts.js';
@@ -12,7 +12,7 @@ import { formatStageRegistry, validatePipeline } from '../pipeline.js';
  */
 export interface PipelineComposerOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** The PRD / source document content */
   source: string;
   /** Working directory */

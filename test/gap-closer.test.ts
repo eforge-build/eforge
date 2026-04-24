@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { runGapCloser, type GapCloserContext } from '@eforge-build/engine/agents/gap-closer';
 import type { BuildStageContext } from '@eforge-build/engine/pipeline';
@@ -22,7 +22,7 @@ function makePipelineContext() {
   };
 }
 
-function makeOptions(backend: StubBackend, overrides?: Partial<GapCloserContext>): GapCloserContext {
+function makeOptions(backend: StubHarness, overrides?: Partial<GapCloserContext>): GapCloserContext {
   return {
     backend,
     cwd: '/tmp',
@@ -39,7 +39,7 @@ function makeOptions(backend: StubBackend, overrides?: Partial<GapCloserContext>
 
 describe('runGapCloser two-stage flow', () => {
   it('emits gap_close:start with gapCount', async () => {
-    const backend = new StubBackend([{ text: '## Overview\nFix dark mode\n\n## Files\n- src/theme.ts: Add dark classes' }]);
+    const backend = new StubHarness([{ text: '## Overview\nFix dark mode\n\n## Files\n- src/theme.ts: Add dark classes' }]);
 
     const events = await collectEvents(runGapCloser(makeOptions(backend)));
 
@@ -49,7 +49,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('calls plan generation agent with maxTurns from AGENT_ROLE_DEFAULTS', async () => {
-    const backend = new StubBackend([{ text: '## Overview\nFix it\n\n## Files\n- src/a.ts: change' }]);
+    const backend = new StubHarness([{ text: '## Overview\nFix it\n\n## Files\n- src/a.ts: change' }]);
 
     await collectEvents(runGapCloser(makeOptions(backend)));
 
@@ -62,7 +62,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('passes generated plan to runBuildPipeline with planId gap-close', async () => {
-    const backend = new StubBackend([{ text: '## Overview\nFix dark mode\n\n## Files\n- src/theme.ts: Add dark classes' }]);
+    const backend = new StubHarness([{ text: '## Overview\nFix dark mode\n\n## Files\n- src/theme.ts: Add dark classes' }]);
 
     let capturedCtx: BuildStageContext | undefined;
     const runBuildPipeline = async function* (ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
@@ -79,7 +79,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('emits gap_close:complete with passed: true on success', async () => {
-    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+    const backend = new StubHarness([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
 
     const events = await collectEvents(runGapCloser(makeOptions(backend)));
 
@@ -89,7 +89,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('emits gap_close:complete with passed: false when plan generation fails', async () => {
-    const backend = new StubBackend([{ error: new Error('Agent crashed') }]);
+    const backend = new StubHarness([{ error: new Error('Agent crashed') }]);
 
     const events = await collectEvents(runGapCloser(makeOptions(backend)));
 
@@ -103,7 +103,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('emits gap_close:complete with passed: false when agent returns no plan', async () => {
-    const backend = new StubBackend([{ text: '' }]);
+    const backend = new StubHarness([{ text: '' }]);
 
     const events = await collectEvents(runGapCloser(makeOptions(backend)));
 
@@ -115,7 +115,7 @@ describe('runGapCloser two-stage flow', () => {
   it('re-throws AbortError', async () => {
     const abortError = new Error('The operation was aborted');
     abortError.name = 'AbortError';
-    const backend = new StubBackend([{ error: abortError }]);
+    const backend = new StubHarness([{ error: abortError }]);
 
     let thrown: Error | undefined;
     const events: EforgeEvent[] = [];
@@ -137,7 +137,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('forwards completionPercent to gap_close:start event', async () => {
-    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+    const backend = new StubHarness([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
 
     const events = await collectEvents(runGapCloser(makeOptions(backend, { completionPercent: 82 })));
 
@@ -147,7 +147,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('omits completionPercent from gap_close:start when not provided', async () => {
-    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+    const backend = new StubHarness([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
 
     const events = await collectEvents(runGapCloser(makeOptions(backend)));
 
@@ -157,7 +157,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('emits gap_close:complete with passed: false when build pipeline throws', async () => {
-    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+    const backend = new StubHarness([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
 
     const runBuildPipeline = async function* (): AsyncGenerator<EforgeEvent> {
       yield { timestamp: new Date().toISOString(), type: 'plan:build:start', planId: 'gap-close' } as EforgeEvent;
@@ -172,7 +172,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('re-throws AbortError from build pipeline', async () => {
-    const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+    const backend = new StubHarness([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
 
     const abortError = new Error('The operation was aborted');
     abortError.name = 'AbortError';
@@ -192,7 +192,7 @@ describe('runGapCloser two-stage flow', () => {
   });
 
   it('formats gaps and PRD content into prompt', async () => {
-    const backend = new StubBackend([{ text: '## Overview\nPlan\n\n## Files\n- f.ts: change' }]);
+    const backend = new StubHarness([{ text: '## Overview\nPlan\n\n## Files\n- f.ts: change' }]);
 
     await collectEvents(runGapCloser(makeOptions(backend)));
 

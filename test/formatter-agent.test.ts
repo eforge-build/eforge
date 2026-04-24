@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { findEvent, filterEvents } from './test-events.js';
 import { runFormatter } from '@eforge-build/engine/agents/formatter';
 
@@ -19,7 +19,7 @@ async function collectEventsAndResult(
 describe('runFormatter wiring', () => {
   it('yields formatted body from agent output', async () => {
     const formattedContent = '## Problem\n\nWidget is broken.\n\n## Goal\n\nFix the widget.';
-    const backend = new StubBackend([{ text: formattedContent }]);
+    const backend = new StubHarness([{ text: formattedContent }]);
 
     const { events, result } = await collectEventsAndResult(
       runFormatter({ backend, sourceContent: 'Fix the broken widget' }),
@@ -33,7 +33,7 @@ describe('runFormatter wiring', () => {
   });
 
   it('emits events in correct sequence', async () => {
-    const backend = new StubBackend([{ text: 'Formatted output.' }]);
+    const backend = new StubHarness([{ text: 'Formatted output.' }]);
 
     const { events } = await collectEventsAndResult(
       runFormatter({ backend, sourceContent: 'raw input' }),
@@ -49,7 +49,7 @@ describe('runFormatter wiring', () => {
   });
 
   it('passes source content to backend prompt', async () => {
-    const backend = new StubBackend([{ text: 'Formatted.' }]);
+    const backend = new StubHarness([{ text: 'Formatted.' }]);
     const sourceContent = 'Please add dark mode support to the app';
 
     await collectEventsAndResult(
@@ -61,7 +61,7 @@ describe('runFormatter wiring', () => {
   });
 
   it('uses tools: none and maxTurns: 1', async () => {
-    const backend = new StubBackend([{ text: 'Formatted.' }]);
+    const backend = new StubHarness([{ text: 'Formatted.' }]);
 
     await collectEventsAndResult(
       runFormatter({ backend, sourceContent: 'test' }),
@@ -73,7 +73,7 @@ describe('runFormatter wiring', () => {
   });
 
   it('suppresses agent:message when verbose is false', async () => {
-    const backend = new StubBackend([{ text: 'Some output.' }]);
+    const backend = new StubHarness([{ text: 'Some output.' }]);
 
     const { events } = await collectEventsAndResult(
       runFormatter({ backend, sourceContent: 'test' }),
@@ -83,7 +83,7 @@ describe('runFormatter wiring', () => {
   });
 
   it('emits agent:message when verbose is true', async () => {
-    const backend = new StubBackend([{ text: 'Some output.' }]);
+    const backend = new StubHarness([{ text: 'Some output.' }]);
 
     const { events } = await collectEventsAndResult(
       runFormatter({ backend, sourceContent: 'test', verbose: true }),
@@ -93,7 +93,7 @@ describe('runFormatter wiring', () => {
   });
 
   it('sets agent role to formatter', async () => {
-    const backend = new StubBackend([{ text: 'Formatted.' }]);
+    const backend = new StubHarness([{ text: 'Formatted.' }]);
 
     const { events } = await collectEventsAndResult(
       runFormatter({ backend, sourceContent: 'test' }),

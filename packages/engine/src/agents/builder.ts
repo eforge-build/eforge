@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions, AgentTerminalError } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions, AgentTerminalError } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
@@ -11,7 +11,7 @@ export type { EvaluationVerdict, EvaluationEvidence } from './common.js';
  */
 export interface BuilderOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** Working directory (typically a worktree path) */
   cwd: string;
   /** Stream verbose agent-level events */

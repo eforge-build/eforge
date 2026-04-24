@@ -4,14 +4,14 @@
  * Uses tools: 'coding' to write fixes, but does NOT stage or commit.
  */
 
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface ReviewFixerOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** Plan identifier for event correlation */
   planId: string;
   /** Working directory */

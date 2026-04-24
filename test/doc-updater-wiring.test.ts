@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent } from './test-events.js';
 import { runDocUpdater } from '@eforge-build/engine/agents/doc-updater';
 
 describe('runDocUpdater wiring', () => {
   it('emits lifecycle events in order: start then complete', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<doc-update-summary count="2">Updated README and API docs.</doc-update-summary>',
     }]);
 
@@ -31,7 +31,7 @@ describe('runDocUpdater wiring', () => {
   });
 
   it('prompt composition includes plan_id and plan_content', async () => {
-    const backend = new StubBackend([{ text: '<doc-update-summary count="0"></doc-update-summary>' }]);
+    const backend = new StubHarness([{ text: '<doc-update-summary count="0"></doc-update-summary>' }]);
 
     await collectEvents(runDocUpdater({
       backend,
@@ -47,7 +47,7 @@ describe('runDocUpdater wiring', () => {
   });
 
   it('backend options include tools: coding and maxTurns: 20', async () => {
-    const backend = new StubBackend([{ text: '' }]);
+    const backend = new StubHarness([{ text: '' }]);
 
     await collectEvents(runDocUpdater({
       backend,
@@ -62,7 +62,7 @@ describe('runDocUpdater wiring', () => {
   });
 
   it('parses docsUpdated count from XML summary', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<doc-update-summary count="3">Updated three files.</doc-update-summary>',
     }]);
 
@@ -78,7 +78,7 @@ describe('runDocUpdater wiring', () => {
   });
 
   it('zero updates when count="0"', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<doc-update-summary count="0">No docs needed updating.</doc-update-summary>',
     }]);
 
@@ -94,7 +94,7 @@ describe('runDocUpdater wiring', () => {
   });
 
   it('missing summary XML defaults to 0', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: 'Done updating docs, all good.',
     }]);
 
@@ -110,7 +110,7 @@ describe('runDocUpdater wiring', () => {
   });
 
   it('verbose gating via isAlwaysYieldedAgentEvent', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: 'Some agent output',
       toolCalls: [
         { tool: 'Read', toolUseId: 'tc-1', input: { path: '/tmp/README.md' }, output: '# Readme' },
@@ -138,7 +138,7 @@ describe('runDocUpdater wiring', () => {
   });
 
   it('verbose mode yields agent:message events', async () => {
-    const backend = new StubBackend([{ text: 'Some output' }]);
+    const backend = new StubHarness([{ text: 'Some output' }]);
 
     const events = await collectEvents(runDocUpdater({
       backend,
@@ -153,7 +153,7 @@ describe('runDocUpdater wiring', () => {
   });
 
   it('non-abort errors are swallowed, complete event still yielded', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       error: new Error('Some random failure'),
     }]);
 
@@ -175,7 +175,7 @@ describe('runDocUpdater wiring', () => {
   it('AbortError is re-thrown', async () => {
     const abortError = new Error('Aborted');
     abortError.name = 'AbortError';
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       error: abortError,
     }]);
 

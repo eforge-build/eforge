@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { discoverPiExtensions } from '@eforge-build/engine/backends/pi-extensions';
+import { discoverPiExtensions } from '@eforge-build/engine/harnesses/pi-extensions';
 import { useTempDir } from './test-tmpdir.js';
 
 describe('discoverPiExtensions', () => {

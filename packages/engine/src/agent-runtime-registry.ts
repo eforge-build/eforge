@@ -1,5 +1,5 @@
 /**
- * AgentRuntimeRegistry — maps agent roles to backend instances.
+ * AgentRuntimeRegistry — maps agent roles to harness instances.
  *
  * Supports multiple named harness configurations with lazy instance creation.
  * Pi module is imported lazily: only when the config declares at least one Pi
@@ -8,10 +8,10 @@
 
 import type { AgentRole } from './events.js';
 import type { EforgeConfig, AgentRuntimeEntry, PiConfig } from './config.js';
-import type { AgentBackend } from './backend.js';
-import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
+import type { AgentHarness } from './harness.js';
+import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
-import { ClaudeSDKBackend } from './backends/claude-sdk.js';
+import { ClaudeSDKHarness } from './harnesses/claude-sdk.js';
 import { resolveAgentRuntimeForRole } from './pipeline/agent-config.js';
 
 // ---------------------------------------------------------------------------
@@ -19,14 +19,14 @@ import { resolveAgentRuntimeForRole } from './pipeline/agent-config.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Registry that maps agent roles (and named entries) to backend instances.
+ * Registry that maps agent roles (and named entries) to harness instances.
  * All methods are synchronous — async work (Pi import) is done in the factory.
  */
 export interface AgentRuntimeRegistry {
-  /** Resolve the backend for an agent role. */
-  forRole(role: AgentRole): AgentBackend;
-  /** Look up a backend instance by agentRuntime entry name. */
-  byName(name: string): AgentBackend;
+  /** Resolve the harness for an agent role. */
+  forRole(role: AgentRole): AgentHarness;
+  /** Look up a harness instance by agentRuntime entry name. */
+  byName(name: string): AgentHarness;
   /** Get the agentRuntime entry name for a role. */
   nameForRole(role: AgentRole): string;
   /** List all configured entry names. */
@@ -38,7 +38,7 @@ export interface AgentRuntimeRegistry {
 // ---------------------------------------------------------------------------
 
 export interface RegistryGlobalOptions {
-  mcpServers?: ClaudeSDKBackendOptions['mcpServers'];
+  mcpServers?: ClaudeSDKHarnessOptions['mcpServers'];
   plugins?: SdkPluginConfig[];
   settingSources?: SettingSource[];
 }
@@ -49,13 +49,13 @@ export interface RegistryGlobalOptions {
 
 /**
  * Create a registry where every role (and every name) resolves to the same
- * harness instance. Used by test code to wrap a single StubBackend so all
+ * harness instance. Used by test code to wrap a single StubHarness so all
  * agent roles dispatch to it.
  */
-export function singletonRegistry(harness: AgentBackend): AgentRuntimeRegistry {
+export function singletonRegistry(harness: AgentHarness): AgentRuntimeRegistry {
   return {
-    forRole(_role: AgentRole): AgentBackend { return harness; },
-    byName(_name: string): AgentBackend { return harness; },
+    forRole(_role: AgentRole): AgentHarness { return harness; },
+    byName(_name: string): AgentHarness { return harness; },
     nameForRole(_role: AgentRole): string { return 'singleton'; },
     configured(): string[] { return ['singleton']; },
   };
@@ -127,15 +127,15 @@ export async function buildAgentRuntimeRegistry(
   const entries = getEffectiveEntries(config);
 
   // Lazily import Pi module only when at least one Pi entry is configured.
-  let PiBackendCtor: (typeof import('./backends/pi.js'))['PiBackend'] | undefined;
+  let PiHarnessCtor: (typeof import('./harnesses/pi.js'))['PiHarness'] | undefined;
   const hasPi = Object.values(entries).some((e) => e.harness === 'pi');
   if (hasPi) {
     try {
-      const piModule = await import('./backends/pi.js');
-      PiBackendCtor = piModule.PiBackend;
+      const piModule = await import('./harnesses/pi.js');
+      PiHarnessCtor = piModule.PiHarness;
     } catch (err) {
       throw new Error(
-        'Failed to load Pi backend. Ensure Pi SDK dependencies are installed ' +
+        'Failed to load Pi harness. Ensure Pi SDK dependencies are installed ' +
         '(@mariozechner/pi-ai and @mariozechner/pi-agent-core). ' +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -143,9 +143,9 @@ export async function buildAgentRuntimeRegistry(
   }
 
   // Memoized instances keyed by entry name.
-  const instances = new Map<string, AgentBackend>();
+  const instances = new Map<string, AgentHarness>();
 
-  function createInstance(name: string): AgentBackend {
+  function createInstance(name: string): AgentHarness {
     const entry = entries[name];
     if (!entry) {
       throw new Error(
@@ -154,9 +154,9 @@ export async function buildAgentRuntimeRegistry(
     }
 
     if (entry.harness === 'pi') {
-      if (!PiBackendCtor) throw new Error('Internal: Pi module not loaded despite pi entry');
+      if (!PiHarnessCtor) throw new Error('Internal: Pi module not loaded despite pi entry');
       const piCfg = mergepiConfig(config.pi, entry.pi);
-      return new PiBackendCtor({
+      return new PiHarnessCtor({
         mcpServers: globalOptions.mcpServers,
         piConfig: piCfg,
         bare: config.agents.bare,
@@ -170,7 +170,7 @@ export async function buildAgentRuntimeRegistry(
     }
 
     // claude-sdk entry
-    return new ClaudeSDKBackend({
+    return new ClaudeSDKHarness({
       mcpServers: globalOptions.mcpServers,
       plugins: globalOptions.plugins,
       settingSources: globalOptions.settingSources ?? config.agents.settingSources as SettingSource[] | undefined,
@@ -180,12 +180,12 @@ export async function buildAgentRuntimeRegistry(
   }
 
   const registry: AgentRuntimeRegistry = {
-    forRole(role: AgentRole): AgentBackend {
+    forRole(role: AgentRole): AgentHarness {
       const { agentRuntimeName } = resolveAgentRuntimeForRole(role, config);
       return registry.byName(agentRuntimeName);
     },
 
-    byName(name: string): AgentBackend {
+    byName(name: string): AgentHarness {
       if (!instances.has(name)) {
         instances.set(name, createInstance(name));
       }

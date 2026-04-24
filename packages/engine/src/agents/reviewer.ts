@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getReviewIssueSchemaYaml } from '../schemas.js';
@@ -9,7 +9,7 @@ import { getReviewIssueSchemaYaml } from '../schemas.js';
  */
 export interface ReviewerOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** The plan content (full markdown body) to review against */
   planContent: string;
   /** The base branch to diff against */

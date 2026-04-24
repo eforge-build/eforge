@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, ConfigMigrationError, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, piThinkingLevelSchema, claudeSdkConfigSchema, modelClassSchema, MODEL_CLASSES, configYamlSchema, sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
-import { pickSdkOptions } from '@eforge-build/engine/backend';
+import { pickSdkOptions } from '@eforge-build/engine/harness';
 import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
 
 describe('resolveConfig', () => {

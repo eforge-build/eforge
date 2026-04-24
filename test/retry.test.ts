@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent, AgentRole } from '@eforge-build/engine/events';
-import { AgentTerminalError, PlannerSubmissionError } from '@eforge-build/engine/backend';
+import { AgentTerminalError, PlannerSubmissionError } from '@eforge-build/engine/harness';
 import {
   withRetry,
   DEFAULT_RETRY_POLICIES,
@@ -22,7 +22,7 @@ import {
   type BuilderContinuationInput,
 } from '@eforge-build/engine/retry';
 import { builderEvaluate } from '@eforge-build/engine/agents/builder';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -582,11 +582,11 @@ describe('withRetry — stream-based terminal via build:failed with terminalSubt
 });
 
 // ---------------------------------------------------------------------------
-// withRetry + StubBackend + builderEvaluate — end-to-end integration
+// withRetry + StubHarness + builderEvaluate — end-to-end integration
 // ---------------------------------------------------------------------------
 //
 // These tests exercise the retry wrapper through a real agent generator
-// (`builderEvaluate`) backed by `StubBackend`, which is the integration
+// (`builderEvaluate`) backed by `StubHarness`, which is the integration
 // configuration the plan's verification criteria explicitly call out.
 
 const makePlanFile = (id = 'plan-01') => ({
@@ -598,10 +598,10 @@ const makePlanFile = (id = 'plan-01') => ({
   filePath: '/tmp/test-plan.md',
 });
 
-describe('withRetry + StubBackend + builderEvaluate', () => {
+describe('withRetry + StubHarness + builderEvaluate', () => {
   it('scripts error_max_turns on attempt 1, success on attempt 2, and returns second-attempt events', async () => {
     // First backend call throws max-turns; second returns a normal evaluation.
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       { error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).') },
       { text: '<evaluation></evaluation>' },
     ]);
@@ -658,7 +658,7 @@ describe('withRetry + StubBackend + builderEvaluate', () => {
   });
 
   it('exhausts retries and surfaces the final build:failed when both attempts throw error_max_turns', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       { error: new AgentTerminalError('error_max_turns', 'first attempt max turns') },
       { error: new AgentTerminalError('error_max_turns', 'second attempt max turns') },
     ]);
@@ -697,7 +697,7 @@ describe('withRetry + StubBackend + builderEvaluate', () => {
   });
 
   it('evaluator abort-success: first attempt throws error_max_turns but worktree is clean — no retry', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       { error: new AgentTerminalError('error_max_turns', 'turns exhausted') },
     ]);
     const plan = makePlanFile();

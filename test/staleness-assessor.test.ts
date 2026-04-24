@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { runStalenessAssessor } from '@eforge-build/engine/agents/staleness-assessor';
 
 describe('runStalenessAssessor wiring', () => {
   it('yields queue:prd:stale with proceed verdict', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="proceed">PRD is still relevant, codebase changes are unrelated.</staleness>',
     }]);
 
@@ -24,7 +24,7 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('yields queue:prd:stale with revise verdict and revision content', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="revise">API has changed since this PRD was written.<revision># Updated PRD\n\nRevised content here.</revision></staleness>',
     }]);
 
@@ -43,7 +43,7 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('yields queue:prd:stale with obsolete verdict', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="obsolete">This feature was already implemented in a different way.</staleness>',
     }]);
 
@@ -61,7 +61,7 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('handles missing staleness block - no queue:prd:stale event emitted', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: 'The PRD looks fine to me. No issues found.',
     }]);
 
@@ -80,7 +80,7 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('gates agent:message on verbose - suppressed when false', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="proceed">Still good.</staleness>',
     }]);
 
@@ -99,7 +99,7 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('emits agent:message when verbose is true', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="proceed">Still good.</staleness>',
     }]);
 

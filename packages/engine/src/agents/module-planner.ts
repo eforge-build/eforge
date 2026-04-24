@@ -1,10 +1,10 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ClarificationQuestion } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface ModulePlannerOptions extends SdkPassthroughConfig {
-  harness: AgentBackend;
+  harness: AgentHarness;
   cwd: string;
   planSetName: string;
   moduleId: string;

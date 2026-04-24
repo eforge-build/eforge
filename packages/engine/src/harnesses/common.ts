@@ -1,9 +1,9 @@
 /**
- * Shared helpers for agent backends.
+ * Shared helpers for agent harnesses.
  *
- * Both `ClaudeSDKBackend` and `PiBackend` emit the same `EforgeEvent` union;
+ * Both `ClaudeSDKHarness` and `PiHarness` emit the same `EforgeEvent` union;
  * this module is the single source of truth for event construction patterns
- * that would otherwise drift between the two backends.
+ * that would otherwise drift between the two harnesses.
  *
  * - `buildAgentStartEvent` constructs the `agent:start` event with an
  *   option-bag API that keeps call sites greppable and trivially extended as
@@ -14,7 +14,7 @@
  */
 
 import type { EforgeEvent, AgentRole } from '../events.js';
-import type { ThinkingConfig, EffortLevel } from '../backend.js';
+import type { ThinkingConfig, EffortLevel } from '../harness.js';
 import type { ModelClass } from '../config.js';
 
 /** The concrete shape of an `agent:start` event on the eforge event stream. */

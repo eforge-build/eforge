@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { singletonRegistry } from '../agent-runtime-registry.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap, type OrchestrationConfig, type PlanFile } from '../events.js';
 import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig } from '../config.js';
@@ -11,7 +11,7 @@ import { resolveAgentConfig } from '../pipeline.js';
 import { ModelTracker } from '../model-tracker.js';
 
 export interface GapCloserContext extends SdkPassthroughConfig {
-  harness: AgentBackend;
+  harness: AgentHarness;
   cwd: string;
   gaps: PrdValidationGap[];
   prdContent: string;

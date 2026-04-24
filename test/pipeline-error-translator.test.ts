@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AgentTerminalError } from '@eforge-build/engine/backend';
+import { AgentTerminalError } from '@eforge-build/engine/harness';
 import { toBuildFailedEvent } from '@eforge-build/engine/pipeline';
 
 describe('toBuildFailedEvent', () => {

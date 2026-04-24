@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { AgentTerminalError } from '@eforge-build/engine/backend';
-import { StubBackend } from './stub-backend.js';
+import { AgentTerminalError } from '@eforge-build/engine/harness';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { builderImplement } from '@eforge-build/engine/agents/builder';
@@ -26,7 +26,7 @@ describe('builderImplement without continuation', () => {
   const makeTempDir = useTempDir('eforge-continuation-test-');
 
   it('succeeds without continuation on normal completion', async () => {
-    const backend = new StubBackend([{ text: 'Implementation complete.' }]);
+    const backend = new StubHarness([{ text: 'Implementation complete.' }]);
     const cwd = makeTempDir();
     const plan = makePlanFile();
 
@@ -44,7 +44,7 @@ describe('builderImplement without continuation', () => {
   });
 
   it('emits build:failed on error_max_turns without continuation context', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (50).'),
     }]);
     const cwd = makeTempDir();
@@ -64,7 +64,7 @@ describe('builderImplement without continuation', () => {
   });
 
   it('emits build:failed on non-max_turns errors', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       error: new Error('Agent builder failed: some_other_error'),
     }]);
     const cwd = makeTempDir();
@@ -88,7 +88,7 @@ describe('builderImplement with continuation context', () => {
   const makeTempDir = useTempDir('eforge-continuation-ctx-test-');
 
   it('includes continuation context in prompt when provided', async () => {
-    const backend = new StubBackend([{ text: 'Continued implementation.' }]);
+    const backend = new StubHarness([{ text: 'Continued implementation.' }]);
     const cwd = makeTempDir();
     const plan = makePlanFile();
 
@@ -111,7 +111,7 @@ describe('builderImplement with continuation context', () => {
   });
 
   it('does not include continuation context when not provided', async () => {
-    const backend = new StubBackend([{ text: 'Normal implementation.' }]);
+    const backend = new StubHarness([{ text: 'Normal implementation.' }]);
     const cwd = makeTempDir();
     const plan = makePlanFile();
 

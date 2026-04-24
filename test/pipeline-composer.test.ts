@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
@@ -35,7 +35,7 @@ describe('composePipeline', () => {
   const makeTempDir = useTempDir('eforge-composer-test-');
 
   it('yields plan:pipeline on a valid first attempt', async () => {
-    const backend = new StubBackend([{ resultText: VALID_SEQUENTIAL }]);
+    const backend = new StubHarness([{ resultText: VALID_SEQUENTIAL }]);
     const cwd = makeTempDir();
 
     const events = await collectEvents(composePipeline({
@@ -56,7 +56,7 @@ describe('composePipeline', () => {
   });
 
   it('retries with prior output and error when validatePipeline rejects a parallel group', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       { resultText: INVALID_PARALLEL },
       { resultText: VALID_SEQUENTIAL },
     ]);
@@ -83,7 +83,7 @@ describe('composePipeline', () => {
   });
 
   it('throws after maxAttempts (3) when every response is unparseable', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       { resultText: 'not json at all' },
       { resultText: 'still not json' },
       { resultText: 'nope' },

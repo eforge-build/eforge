@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAgentStartEvent, normalizeToolUseId } from '@eforge-build/engine/backends/common';
+import { buildAgentStartEvent, normalizeToolUseId } from '@eforge-build/engine/harnesses/common';
 
 describe('buildAgentStartEvent', () => {
   it('emits only required fields when optional options are omitted', () => {

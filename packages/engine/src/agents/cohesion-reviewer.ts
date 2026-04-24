@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
@@ -10,7 +10,7 @@ import { getPlanReviewIssueSchemaYaml } from '../schemas.js';
  */
 export interface CohesionReviewerOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** The original source/PRD content to review plans against */
   sourceContent: string;
   /** The plan set name (directory under plans/) */

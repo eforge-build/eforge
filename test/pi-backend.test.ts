@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod/v4';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
-import type { CustomTool } from '@eforge-build/engine/backend';
+import type { CustomTool } from '@eforge-build/engine/harness';
 
 const { createAgentSession, createCodingTools, createReadOnlyTools } = vi.hoisted(() => ({
   createAgentSession: vi.fn(),
@@ -43,7 +43,7 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
       setRuntimeApiKey: vi.fn(),
     })),
   },
-  // Minimal DefaultResourceLoader stub: the PiBackend constructs one with
+  // Minimal DefaultResourceLoader stub: the PiHarness constructs one with
   // filter overrides to scrub pi-eforge resources, then calls reload(). The
   // overrides are never exercised here because we mock createAgentSession.
   DefaultResourceLoader: class {
@@ -54,7 +54,7 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
   getAgentDir: vi.fn(() => '/tmp/test-agent-dir'),
 }));
 
-import { PiBackend } from '@eforge-build/engine/backends/pi';
+import { PiHarness } from '@eforge-build/engine/harnesses/pi';
 import type { PiConfig } from '@eforge-build/engine/config';
 
 async function collectEvents<T>(iterable: AsyncIterable<T>): Promise<T[]> {
@@ -73,7 +73,7 @@ const PI_CONFIG: PiConfig = {
 };
 
 function makeBackend() {
-  return new PiBackend({
+  return new PiHarness({
     mcpServers: {
       eforge: { command: 'npx', args: ['-y', 'eforge', 'mcp-proxy'] } as never,
     },
@@ -92,13 +92,13 @@ function makeMcpTool(name: string, label = name): AgentTool {
   };
 }
 
-function setMcpTools(backend: PiBackend, tools: AgentTool[]): void {
+function setMcpTools(backend: PiHarness, tools: AgentTool[]): void {
   (backend as unknown as { mcpBridge: { getTools: () => Promise<AgentTool[]> } }).mcpBridge = {
     getTools: async () => tools,
   };
 }
 
-describe('PiBackend MCP tool wiring', () => {
+describe('PiHarness MCP tool wiring', () => {
   beforeEach(() => {
     createAgentSession.mockReset();
     createCodingTools.mockReset();
@@ -388,7 +388,7 @@ describe('PiBackend MCP tool wiring', () => {
   });
 });
 
-describe('PiBackend custom tool wiring', () => {
+describe('PiHarness custom tool wiring', () => {
   beforeEach(() => {
     createAgentSession.mockReset();
     createCodingTools.mockReset();
@@ -519,7 +519,7 @@ describe('PiBackend custom tool wiring', () => {
     expect(result.content[0].text).toBe('Plan set submitted successfully.');
   });
 
-  it('effectiveCustomToolName is identity on PiBackend', () => {
+  it('effectiveCustomToolName is identity on PiHarness', () => {
     const backend = makeBackend();
     expect(backend.effectiveCustomToolName('submit_plan_set')).toBe('submit_plan_set');
     expect(backend.effectiveCustomToolName('submit_architecture')).toBe('submit_architecture');
@@ -598,7 +598,7 @@ describe('PiBackend custom tool wiring', () => {
 
 /**
  * End-to-end wiring check: a real `runPlanner` call against a real
- * `PiBackend` (only `createAgentSession` is mocked) must result in
+ * `PiHarness` (only `createAgentSession` is mocked) must result in
  * `submit_plan_set` being among the `customTools` the Pi session receives.
  *
  * This catches the class of regression where the planner submission tool
@@ -608,7 +608,7 @@ describe('PiBackend custom tool wiring', () => {
  * model claiming `submit_plan_set` "isn't available in this environment"
  * because it genuinely isn't registered on Pi's session.
  */
-describe('PiBackend + runPlanner integration: submission tool reaches Pi session', () => {
+describe('PiHarness + runPlanner integration: submission tool reaches Pi session', () => {
   beforeEach(() => {
     createAgentSession.mockReset();
     createCodingTools.mockReset();

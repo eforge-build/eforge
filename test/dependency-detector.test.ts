@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { findEvent, filterEvents } from './test-events.js';
 import { runDependencyDetector, type DependencyDetectorResult } from '@eforge-build/engine/agents/dependency-detector';
 import { AGENT_ROLES, DEFAULT_CONFIG } from '@eforge-build/engine/config';
@@ -19,7 +19,7 @@ async function collectEventsAndResult(
 
 describe('runDependencyDetector wiring', () => {
   it('returns parsed depends_on array from agent JSON output', async () => {
-    const backend = new StubBackend([{ text: '["prd-auth-system", "prd-user-model"]' }]);
+    const backend = new StubHarness([{ text: '["prd-auth-system", "prd-user-model"]' }]);
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
@@ -34,7 +34,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('returns empty array when agent returns []', async () => {
-    const backend = new StubBackend([{ text: '[]' }]);
+    const backend = new StubHarness([{ text: '[]' }]);
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
@@ -49,7 +49,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('returns empty array when agent output is not valid JSON', async () => {
-    const backend = new StubBackend([{ text: 'I think these PRDs are related but I cannot determine dependencies.' }]);
+    const backend = new StubHarness([{ text: 'I think these PRDs are related but I cannot determine dependencies.' }]);
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
@@ -64,7 +64,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('extracts JSON array from markdown fenced output', async () => {
-    const backend = new StubBackend([{ text: '```json\n["prd-setup"]\n```' }]);
+    const backend = new StubHarness([{ text: '```json\n["prd-setup"]\n```' }]);
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
@@ -79,7 +79,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('returns empty array when JSON contains non-string items', async () => {
-    const backend = new StubBackend([{ text: '[1, 2, 3]' }]);
+    const backend = new StubHarness([{ text: '[1, 2, 3]' }]);
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
@@ -94,7 +94,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('yields agent:start, agent:result, agent:stop events', async () => {
-    const backend = new StubBackend([{ text: '[]' }]);
+    const backend = new StubHarness([{ text: '[]' }]);
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({
@@ -111,7 +111,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('emits events in correct sequence', async () => {
-    const backend = new StubBackend([{ text: '[]' }]);
+    const backend = new StubHarness([{ text: '[]' }]);
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({
@@ -132,7 +132,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('sets agent role to dependency-detector', async () => {
-    const backend = new StubBackend([{ text: '[]' }]);
+    const backend = new StubHarness([{ text: '[]' }]);
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({
@@ -149,7 +149,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('uses tools: none and maxTurns: 1', async () => {
-    const backend = new StubBackend([{ text: '[]' }]);
+    const backend = new StubHarness([{ text: '[]' }]);
 
     await collectEventsAndResult(
       runDependencyDetector({
@@ -166,7 +166,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('passes prdContent and context to backend prompt', async () => {
-    const backend = new StubBackend([{ text: '[]' }]);
+    const backend = new StubHarness([{ text: '[]' }]);
     const prdContent = 'Add payment processing module';
     const queueItems = [{ id: 'prd-auth', title: 'Auth System', scopeSummary: 'Authentication module' }];
     const runningBuilds = [{ planSetName: 'user-model', planTitles: ['User Model Plan'] }];
@@ -187,7 +187,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('suppresses agent:message when verbose is false', async () => {
-    const backend = new StubBackend([{ text: '["prd-1"]' }]);
+    const backend = new StubHarness([{ text: '["prd-1"]' }]);
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({
@@ -202,7 +202,7 @@ describe('runDependencyDetector wiring', () => {
   });
 
   it('emits agent:message when verbose is true', async () => {
-    const backend = new StubBackend([{ text: '["prd-1"]' }]);
+    const backend = new StubHarness([{ text: '["prd-1"]' }]);
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({

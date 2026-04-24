@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import type { AgentBackend, SdkPassthroughConfig, CustomTool } from '../backend.js';
-import { pickSdkOptions, PlannerSubmissionError } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
+import { pickSdkOptions, PlannerSubmissionError } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
 import { parseClarificationBlocks, parseSkipBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
@@ -13,7 +13,7 @@ import {
 } from '../schemas.js';
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
-  harness: AgentBackend;
+  harness: AgentHarness;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
   scope?: string;

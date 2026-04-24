@@ -1,10 +1,10 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface ValidationFixerOptions extends SdkPassthroughConfig {
-  harness: AgentBackend;
+  harness: AgentHarness;
   cwd: string;
   failures: Array<{ command: string; exitCode: number; output: string }>;
   attempt: number;

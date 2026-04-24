@@ -269,8 +269,8 @@ export interface ResolvedAgentConfig {
   maxTurns?: number;
   model?: ModelRef;
   modelClass?: ModelClass;
-  thinking?: import('./backend.js').ThinkingConfig;
-  effort?: import('./backend.js').EffortLevel;
+  thinking?: import('./harness.js').ThinkingConfig;
+  effort?: import('./harness.js').EffortLevel;
   maxBudgetUsd?: number;
   fallbackModel?: string;
   allowedTools?: string[];
@@ -282,7 +282,7 @@ export interface ResolvedAgentConfig {
   /** True when the resolved effort was clamped to the model's maximum supported level. */
   effortClamped?: boolean;
   /** The original effort level before clamping was applied. */
-  effortOriginal?: import('./backend.js').EffortLevel;
+  effortOriginal?: import('./harness.js').EffortLevel;
   /** Provenance of the resolved effort value. */
   effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
   /** Provenance of the resolved thinking value. */
@@ -290,7 +290,7 @@ export interface ResolvedAgentConfig {
   /** True when thinking was coerced from 'enabled' to 'adaptive' for models that only support adaptive thinking. */
   thinkingCoerced?: boolean;
   /** The original thinking config before coercion was applied. */
-  thinkingOriginal?: import('./backend.js').ThinkingConfig;
+  thinkingOriginal?: import('./harness.js').ThinkingConfig;
   /** The name of the resolved agentRuntime entry (from agentRuntimes map or legacy backend name). */
   agentRuntimeName: string;
   /** The harness kind resolved for this role. */
@@ -325,8 +325,8 @@ export interface EforgeConfig {
     settingSources?: string[];
     bare: boolean;
     model?: ModelRef;
-    thinking?: import('./backend.js').ThinkingConfig;
-    effort?: import('./backend.js').EffortLevel;
+    thinking?: import('./harness.js').ThinkingConfig;
+    effort?: import('./harness.js').EffortLevel;
     models?: Partial<Record<ModelClass, ModelRef>>;
     roles?: Record<string, Partial<ResolvedAgentConfig>>;
     /** Directory of .md files that shadow bundled prompts by name match. */

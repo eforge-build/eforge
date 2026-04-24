@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
@@ -17,7 +17,7 @@ export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   /** Evaluator mode */
   mode: EvaluatorMode;
   /** Harness for running the agent */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** The plan set name */
   planSetName: string;
   /** The original source/PRD content for context */
@@ -42,7 +42,7 @@ export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
  */
 export interface PlanEvaluatorOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** The plan set name */
   planSetName: string;
   /** The original source/PRD content for context */

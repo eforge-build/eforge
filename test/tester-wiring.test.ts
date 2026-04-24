@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent, TestIssue } from '@eforge-build/engine/events';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent } from './test-events.js';
 import { runTestWriter, runTester } from '@eforge-build/engine/agents/tester';
 import { parseTestIssues, testIssueToReviewIssue } from '@eforge-build/engine/agents/common';
@@ -124,7 +124,7 @@ describe('testIssueToReviewIssue', () => {
 
 describe('runTestWriter wiring', () => {
   it('yields start/complete lifecycle events with parsed test count', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: 'Tests written.\n<test-write-summary count="3">',
     }]);
 
@@ -146,7 +146,7 @@ describe('runTestWriter wiring', () => {
   });
 
   it('defaults testsWritten to 0 when no summary block is present', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: 'Did some work but no summary block.',
     }]);
 
@@ -163,7 +163,7 @@ describe('runTestWriter wiring', () => {
   });
 
   it('is non-fatal on error — still yields complete event', async () => {
-    const backend = new StubBackend([{ error: new Error('Test writer crashed') }]);
+    const backend = new StubHarness([{ error: new Error('Test writer crashed') }]);
 
     const events = await collectEvents(runTestWriter({
       backend,
@@ -184,7 +184,7 @@ describe('runTestWriter wiring', () => {
 
 describe('runTester wiring', () => {
   it('yields start/complete lifecycle with parsed issues and summary', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<test-issues>
   <issue severity="critical" category="production-bug" file="src/foo.ts" testFile="test/foo.test.ts">
     Bug found in foo
@@ -214,7 +214,7 @@ describe('runTester wiring', () => {
   });
 
   it('handles empty test issues', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<test-issues></test-issues>\n<test-summary passed="5" failed="0" test_bugs_fixed="0">',
     }]);
 
@@ -234,7 +234,7 @@ describe('runTester wiring', () => {
   });
 
   it('is non-fatal on error — still yields complete event with zeroed counts', async () => {
-    const backend = new StubBackend([{ error: new Error('Tester crashed') }]);
+    const backend = new StubHarness([{ error: new Error('Tester crashed') }]);
 
     const events = await collectEvents(runTester({
       backend,

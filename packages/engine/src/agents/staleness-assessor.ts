@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getStalenessSchemaYaml } from '../schemas.js';
@@ -10,7 +10,7 @@ import { parseStalenessBlock } from './common.js';
  */
 export interface StalenessAssessorOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
-  harness: AgentBackend;
+  harness: AgentHarness;
   /** Full PRD file content */
   prdContent: string;
   /** Git diff --stat summary since the PRD was last committed */

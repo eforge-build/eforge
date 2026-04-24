@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
-import type { AgentBackend } from '@eforge-build/engine/backend';
+import type { AgentHarness } from '@eforge-build/engine/harness';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
 
@@ -38,7 +38,7 @@ import {
   type BuildStage,
   type StageDescriptor,
 } from '@eforge-build/engine/pipeline';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ async function collect(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]>
 /** Create a minimal PipelineContext for testing. */
 function makePipelineCtx(overrides: Partial<PipelineContext> = {}): PipelineContext {
   return {
-    backend: {} as AgentBackend,
+    backend: {} as AgentHarness,
     config: DEFAULT_CONFIG,
     pipeline: TEST_PIPELINE,
     tracing: createNoopTracingContext(),
@@ -98,7 +98,7 @@ function makeBuildCtx(overrides: Partial<BuildStageContext> = {}): BuildStageCon
   };
 
   return {
-    backend: {} as AgentBackend,
+    backend: {} as AgentHarness,
     config: DEFAULT_CONFIG,
     pipeline: overrides?.pipeline ?? TEST_PIPELINE,
     tracing: createNoopTracingContext(),
@@ -446,7 +446,7 @@ describe('plannerStage expedition wiring', () => {
   }
 
   it('captures expedition modules into ctx.expeditionModules after planner submits architecture', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       composerResponse(['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition']),
       plannerSubmitArchResponse(),
     ]);
@@ -462,7 +462,7 @@ describe('plannerStage expedition wiring', () => {
   });
 
   it('throws when planner produces modules but compile-expedition is missing from the pipeline', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       composerResponse(['planner', 'architecture-review-cycle']),
       plannerSubmitArchResponse(),
     ]);

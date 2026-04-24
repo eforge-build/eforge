@@ -1,10 +1,10 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface PrdValidatorOptions extends SdkPassthroughConfig {
-  harness: AgentBackend;
+  harness: AgentHarness;
   cwd: string;
   prdContent: string;
   diff: string;

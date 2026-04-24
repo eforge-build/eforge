@@ -775,7 +775,7 @@ describe('agent:usage event handling', () => {
   });
 
   it('sum of non-final deltas equals the authoritative final cumulative total', () => {
-    // This mirrors how PiBackend emits: per-turn deltas whose sum equals
+    // This mirrors how PiHarness emits: per-turn deltas whose sum equals
     // the final: true cumulative emission that lands just before agent:result.
     const deltas = [
       { input: 500, output: 200, cacheRead: 50, cacheCreation: 10, cost: 0.05 },

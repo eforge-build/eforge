@@ -7,7 +7,7 @@
  * clamping.
  */
 
-import type { EffortLevel } from './backend.js';
+import type { EffortLevel } from './harness.js';
 
 // ---------------------------------------------------------------------------
 // Types
