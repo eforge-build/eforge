@@ -611,6 +611,8 @@ function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfi
   if (config.pi !== undefined) out.pi = config.pi;
   if (config.claudeSdk !== undefined) out.claudeSdk = config.claudeSdk;
   if (config.hooks !== undefined) out.hooks = config.hooks;
+  if (config.agentRuntimes !== undefined) out.agentRuntimes = config.agentRuntimes;
+  if (config.defaultAgentRuntime !== undefined) out.defaultAgentRuntime = config.defaultAgentRuntime;
   return out;
 }
 

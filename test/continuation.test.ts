@@ -58,7 +58,7 @@ describe('builderImplement without continuation', () => {
     expect(findEvent(events, 'plan:build:implement:start')).toBeDefined();
     const failed = findEvent(events, 'plan:build:failed');
     expect(failed).toBeDefined();
-    expect(failed!.error).toContain('error_max_turns');
+    expect(failed!.error).toContain('Reached maximum number of turns');
     expect(failed!.terminalSubtype).toBe('error_max_turns');
     expect(findEvent(events, 'plan:build:implement:complete')).toBeUndefined();
   });

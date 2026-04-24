@@ -160,7 +160,7 @@ describe('StubHarness error_max_turns propagation', () => {
         cwd,
         auto: true,
       })),
-    ).rejects.toThrow('error_max_turns');
+    ).rejects.toThrow('Reached maximum number of turns');
   });
 });
 

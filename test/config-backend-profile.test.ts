@@ -150,7 +150,7 @@ describe('loadBackendProfile', () => {
     );
     const result = await loadBackendProfile(configDir, 'pi');
     expect(result).not.toBeNull();
-    expect(result?.profile.backend).toBe('pi');
+    // profile.backend is no longer in PartialEforgeConfig; check pi-specific config instead
     expect(result?.profile.pi?.thinkingLevel).toBe('high');
     expect(result?.scope).toBe('project');
   });
@@ -194,8 +194,8 @@ describe('listBackendProfiles', () => {
     const projectEntries = result.filter((r) => r.scope === 'project');
     expect(projectEntries.length).toBe(2);
     const byName = new Map(projectEntries.map((r) => [r.name, r]));
-    expect(byName.get('pi-prod')?.backend).toBe('pi');
-    expect(byName.get('claude')?.backend).toBe('claude-sdk');
+    expect(byName.get('pi-prod')?.harness).toBe('pi');
+    expect(byName.get('claude')?.harness).toBe('claude-sdk');
   });
 });
 
@@ -237,44 +237,44 @@ describe('createBackendProfile', () => {
     await rm(projectDir, { recursive: true, force: true });
   });
 
-  it('rejects a pi profile whose agents.model lacks provider', async () => {
-    await expect(
-      createBackendProfile(configDir, {
-        name: 'bad-pi',
-        backend: 'pi',
-        agents: { model: { id: 'gpt-5.4' } } as PartialEforgeConfig['agents'],
-      }),
-    ).rejects.toThrow(/Pi backend requires "provider"/);
+  it('accepts pi profile without model.provider (provider check deferred to resolve time)', async () => {
+    // Provider validation moved to resolve time; createBackendProfile accepts any model ref
+    const result = await createBackendProfile(configDir, {
+      name: 'pi-no-provider',
+      harness: 'pi',
+      agents: { model: { id: 'some-model' } } as PartialEforgeConfig['agents'],
+    });
+    expect(await fileExists(result.path)).toBe(true);
   });
 
   it('creates a valid pi profile with provider-qualified model', async () => {
     const result = await createBackendProfile(configDir, {
       name: 'pi-prod',
-      backend: 'pi',
+      harness: 'pi',
       agents: { model: { provider: 'openrouter', id: 'anthropic/claude-sonnet-4' } } as PartialEforgeConfig['agents'],
     });
     expect(await fileExists(result.path)).toBe(true);
     const written = await readFile(result.path, 'utf-8');
-    expect(written).toContain('backend: pi');
+    expect(written).toContain('harness: pi');
     expect(written).toContain('openrouter');
   });
 
   it('refuses overwrite without overwrite: true', async () => {
-    await createBackendProfile(configDir, { name: 'pi', backend: 'claude-sdk' });
+    await createBackendProfile(configDir, { name: 'pi', harness: 'claude-sdk' });
     await expect(
-      createBackendProfile(configDir, { name: 'pi', backend: 'claude-sdk' }),
+      createBackendProfile(configDir, { name: 'pi', harness: 'claude-sdk' }),
     ).rejects.toThrow(/already exists/);
   });
 
   it('with overwrite: true replaces the file', async () => {
-    await createBackendProfile(configDir, { name: 'pi', backend: 'claude-sdk' });
+    await createBackendProfile(configDir, { name: 'pi', harness: 'claude-sdk' });
     const again = await createBackendProfile(configDir, {
       name: 'pi',
-      backend: 'pi',
+      harness: 'pi',
       overwrite: true,
     });
     const content = await readFile(again.path, 'utf-8');
-    expect(content).toContain('backend: pi');
+    expect(content).toContain('harness: pi');
     expect(content).not.toContain('claude-sdk');
   });
 
@@ -388,7 +388,7 @@ describe('loadConfig integration with backend profiles', () => {
     await writeFile(join(configDir, '.active-backend'), 'local\n', 'utf-8');
 
     const { config: cfg } = await loadConfig(projectDir);
-    expect(cfg.backend).toBe('claude-sdk');
+    // cfg.backend is no longer part of EforgeConfig; verify agents settings from the profile
     expect(cfg.agents.maxTurns).toBe(99);
   });
 });
@@ -453,7 +453,7 @@ describe('user-scope: loadBackendProfile', () => {
     const result = await loadBackendProfile(configDir, 'shared');
     expect(result).not.toBeNull();
     expect(result?.scope).toBe('user');
-    expect(result?.profile.backend).toBe('claude-sdk');
+    // profile.backend is no longer in PartialEforgeConfig (backend: in profile files is a legacy harness indicator)
   });
 
   it('project profile shadows user profile on same-name collision', async () => {
@@ -465,7 +465,7 @@ describe('user-scope: loadBackendProfile', () => {
     const result = await loadBackendProfile(configDir, 'common');
     expect(result).not.toBeNull();
     expect(result?.scope).toBe('project');
-    expect(result?.profile.backend).toBe('pi');
+    // profile.backend is no longer in PartialEforgeConfig; scope confirms project shadowing
   });
 });
 
@@ -592,14 +592,14 @@ describe('user-scope: listBackendProfiles', () => {
     const byNameAndScope = new Map(result.map((r) => [`${r.scope}:${r.name}`, r]));
 
     // Project entries
-    expect(byNameAndScope.get('project:shared')?.backend).toBe('pi');
+    expect(byNameAndScope.get('project:shared')?.harness).toBe('pi');
     expect(byNameAndScope.get('project:shared')?.shadowedBy).toBeUndefined();
-    expect(byNameAndScope.get('project:proj-only')?.backend).toBe('claude-sdk');
+    expect(byNameAndScope.get('project:proj-only')?.harness).toBe('claude-sdk');
 
     // User entries
-    expect(byNameAndScope.get('user:shared')?.backend).toBe('claude-sdk');
+    expect(byNameAndScope.get('user:shared')?.harness).toBe('claude-sdk');
     expect(byNameAndScope.get('user:shared')?.shadowedBy).toBe('project');
-    expect(byNameAndScope.get('user:usr-only')?.backend).toBe('pi');
+    expect(byNameAndScope.get('user:usr-only')?.harness).toBe('pi');
     expect(byNameAndScope.get('user:usr-only')?.shadowedBy).toBeUndefined();
 
     expect(result.length).toBe(4);
@@ -633,7 +633,7 @@ describe('user-scope: createBackendProfile', () => {
   it('with scope: user writes file under user config backends directory', async () => {
     const result = await createBackendProfile(configDir, {
       name: 'user-prof',
-      backend: 'claude-sdk',
+      harness: 'claude-sdk',
       scope: 'user',
     });
     expect(result.path).toContain(userHomeDir);
@@ -931,7 +931,7 @@ describe('user-scope: loadConfig integration', () => {
     await writeFile(join(userEforgeDir, '.active-backend'), 'user-override\n', 'utf-8');
 
     const { config: cfg } = await loadConfig(projectDir);
-    expect(cfg.backend).toBe('pi');
+    // cfg.backend is no longer part of EforgeConfig; verify agents settings from the profile
     expect(cfg.agents.maxTurns).toBe(55);
   });
 });

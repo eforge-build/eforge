@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { eforgeConfigSchema, agentRuntimeEntrySchema } from '@eforge-build/engine/config';
+import { eforgeConfigSchema, agentRuntimeEntrySchema, configYamlSchema } from '@eforge-build/engine/config';
 
 // ---------------------------------------------------------------------------
 // agentRuntimeEntrySchema — cross-kind sub-block rejection
@@ -68,7 +68,6 @@ describe('agentRuntimeEntrySchema', () => {
 
 describe('eforgeConfigSchema agentRuntimes cross-field validation', () => {
   const validBase = {
-    backend: 'claude-sdk' as const,
     agents: { maxTurns: 30 },
   };
 
@@ -169,8 +168,13 @@ describe('eforgeConfigSchema agentRuntimes cross-field validation', () => {
     }
   });
 
-  it('accepts config with legacy backend scalar without agentRuntimes', () => {
-    const result = eforgeConfigSchema.safeParse({ backend: 'pi' });
-    expect(result.success).toBe(true);
+  it('rejects config with legacy backend scalar via configYamlSchema (must migrate to agentRuntimes)', () => {
+    const result = configYamlSchema.safeParse({ backend: 'pi' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message).join('\n');
+      expect(messages).toMatch(/agentRuntimes/);
+      expect(messages).toMatch(/defaultAgentRuntime/);
+    }
   });
 });
