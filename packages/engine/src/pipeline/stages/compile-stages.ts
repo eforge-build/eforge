@@ -21,7 +21,7 @@ import { runPlanReview } from '../../agents/plan-reviewer.js';
 import { runPlanEvaluate, runCohesionEvaluate, runArchitectureEvaluate } from '../../agents/plan-evaluator.js';
 import { runCohesionReview } from '../../agents/cohesion-reviewer.js';
 import { runArchitectureReview } from '../../agents/architecture-reviewer.js';
-import { parseModulesBlock, parseBuildConfigBlock } from '../../agents/common.js';
+import { parseBuildConfigBlock } from '../../agents/common.js';
 import { composePipeline } from '../../agents/pipeline-composer.js';
 import { compileExpedition } from '../../compiler.js';
 import { resolveDependencyGraph, injectPipelineIntoOrchestrationYaml, parseOrchestrationConfig } from '../../plan.js';
@@ -63,13 +63,11 @@ async function* runPlannerAttempt(
       ...agentConfig,
       ...(input.plannerOptions.continuationContext && { continuationContext: input.plannerOptions.continuationContext }),
     })) {
-      // Detect <modules> block in agent messages (expedition mode, first match only).
-      if (event.type === 'agent:message' && event.agent === 'planner' && ctx.expeditionModules.length === 0) {
-        const modules = parseModulesBlock(event.content);
-        if (modules.length > 0) {
-          ctx.expeditionModules = modules;
-          yield { timestamp: new Date().toISOString(), type: 'expedition:architecture:complete', modules };
-        }
+      // Capture expedition modules from the planner's architecture submission.
+      // The planner emits this event directly after writing architecture.md +
+      // index.yaml; downstream compile stages gate on ctx.expeditionModules.
+      if (event.type === 'expedition:architecture:complete' && ctx.expeditionModules.length === 0) {
+        ctx.expeditionModules = event.modules;
       }
 
       tracker.handleEvent(event);
@@ -238,6 +236,18 @@ registerCompileStage({
   };
   const plannerPolicy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
   yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
+
+  // Fail loudly if the planner produced expedition modules but compile-expedition
+  // is not queued — that stage is the only source of orchestration.yaml, so a
+  // silent "Compile complete" would leak into the build phase as a confusing
+  // "orchestration.yaml not found" error.
+  if (ctx.expeditionModules.length > 0 && !ctx.pipeline.compile.includes('compile-expedition')) {
+    throw new Error(
+      `Planner identified ${ctx.expeditionModules.length} expedition modules but the compile pipeline `
+      + `does not include 'compile-expedition'. orchestration.yaml will not be generated. `
+      + `Current compile stages: [${ctx.pipeline.compile.join(', ')}]`,
+    );
+  }
 });
 
 registerCompileStage({

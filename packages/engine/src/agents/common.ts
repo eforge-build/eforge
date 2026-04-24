@@ -4,7 +4,7 @@
  * regardless of which LLM backend produced them.
  */
 import { z } from 'zod/v4';
-import type { ClarificationQuestion, ExpeditionModule, TestIssue, ReviewIssue } from '../events.js';
+import type { ClarificationQuestion, TestIssue, ReviewIssue } from '../events.js';
 import type { ReviewProfileConfig, BuildStageSpec } from '../config.js';
 import { buildStageSpecSchema, reviewProfileConfigSchema } from '../config.js';
 import type { stalenessVerdictSchema, evaluationEvidenceSchema, evaluationVerdictSchema } from '../schemas.js';
@@ -76,43 +76,6 @@ export function parseClarificationBlocks(text: string): ClarificationQuestion[] 
   }
 
   return questions;
-}
-
-/**
- * Parse a <modules> XML block from assistant text into ExpeditionModule[].
- *
- * Expected format:
- *   <modules>
- *     <module id="foundation" depends_on="">Core types and utilities</module>
- *     <module id="auth" depends_on="foundation">Auth system</module>
- *   </modules>
- */
-export function parseModulesBlock(text: string): ExpeditionModule[] {
-  const modules: ExpeditionModule[] = [];
-  const blockMatch = text.match(/<modules>([\s\S]*?)<\/modules>/);
-  if (!blockMatch) return modules;
-
-  const blockContent = blockMatch[1];
-  const moduleRegex = /<module\s+([^>]*)>([\s\S]*?)<\/module>/g;
-  let moduleMatch: RegExpExecArray | null;
-
-  while ((moduleMatch = moduleRegex.exec(blockContent)) !== null) {
-    const attrs = moduleMatch[1];
-    const description = moduleMatch[2].trim();
-
-    const idMatch = attrs.match(/id="([^"]+)"/);
-    const depsMatch = attrs.match(/depends_on="([^"]*)"/);
-
-    if (!idMatch || !description) continue;
-
-    const dependsOn = depsMatch && depsMatch[1].trim()
-      ? depsMatch[1].split(',').map((d) => d.trim())
-      : [];
-
-    modules.push({ id: idMatch[1], description, dependsOn });
-  }
-
-  return modules;
 }
 
 /**

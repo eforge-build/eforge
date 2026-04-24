@@ -23,6 +23,7 @@ const TEST_PIPELINE: PipelineComposition = {
   rationale: 'test pipeline',
 };
 import { createNoopTracingContext } from '@eforge-build/engine/tracing';
+import { ModelTracker } from '@eforge-build/engine/model-tracker';
 import {
   getCompileStage,
   getBuildStage,
@@ -37,6 +38,8 @@ import {
   type BuildStage,
   type StageDescriptor,
 } from '@eforge-build/engine/pipeline';
+import { StubBackend } from './stub-backend.js';
+import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -66,6 +69,7 @@ function makePipelineCtx(overrides: Partial<PipelineContext> = {}): PipelineCont
     cwd: '/tmp/test',
     planSetName: 'test-plan',
     sourceContent: '# Test',
+    modelTracker: new ModelTracker(),
     plans: [],
     expeditionModules: [],
     moduleBuildConfigs: new Map(),
@@ -101,6 +105,7 @@ function makeBuildCtx(overrides: Partial<BuildStageContext> = {}): BuildStageCon
     cwd: '/tmp/test',
     planSetName: 'test-plan',
     sourceContent: '',
+    modelTracker: new ModelTracker(),
     plans: [planFile],
     expeditionModules: [],
     moduleBuildConfigs: new Map(),
@@ -151,7 +156,7 @@ describe('stage registry', () => {
   });
 
   it('all built-in compile stages are registered', () => {
-    const builtinCompileStages = ['planner', 'plan-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
+    const builtinCompileStages = ['planner', 'plan-review-cycle', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
     for (const name of builtinCompileStages) {
       expect(() => getCompileStage(name)).not.toThrow();
       expect(typeof getCompileStage(name)).toBe('function');
@@ -383,6 +388,89 @@ describe('runCompilePipeline', () => {
 
     // Stage should run exactly once - no restart despite new object reference
     expect(runCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// plannerStage expedition wiring (regression)
+// ---------------------------------------------------------------------------
+
+describe('plannerStage expedition wiring', () => {
+  const makeTempDir = useTempDir('eforge-planner-stage-expedition-');
+
+  const ARCH_PAYLOAD = {
+    architecture: '# Architecture\n\nTest architecture.',
+    modules: [
+      { id: 'foundation', description: 'Core types and utilities', dependsOn: [] },
+      { id: 'auth', description: 'Authentication system', dependsOn: ['foundation'] },
+    ],
+    index: {
+      name: 'test-plan',
+      description: 'Test',
+      mode: 'expedition' as const,
+      validate: [],
+      modules: {
+        foundation: { description: 'Core types and utilities', depends_on: [] },
+        auth: { description: 'Authentication system', depends_on: ['foundation'] },
+      },
+    },
+  };
+
+  function composerResponse(compile: string[]) {
+    return {
+      resultText: JSON.stringify({
+        scope: 'expedition',
+        compile,
+        defaultBuild: ['implement'],
+        defaultReview: {
+          strategy: 'single',
+          perspectives: ['general'],
+          maxRounds: 1,
+          evaluatorStrictness: 'standard',
+        },
+        rationale: 'test',
+      }),
+    };
+  }
+
+  function plannerSubmitArchResponse() {
+    return {
+      toolCalls: [{
+        tool: 'submit_architecture',
+        toolUseId: 'tu-1',
+        input: ARCH_PAYLOAD,
+        output: '',
+      }],
+      text: 'Architecture submitted.',
+    };
+  }
+
+  it('captures expedition modules into ctx.expeditionModules after planner submits architecture', async () => {
+    const backend = new StubBackend([
+      composerResponse(['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition']),
+      plannerSubmitArchResponse(),
+    ]);
+
+    const ctx = makePipelineCtx({ backend, cwd: makeTempDir(), auto: true });
+    const plannerStageFn = getCompileStage('planner');
+
+    await collect(plannerStageFn(ctx));
+
+    expect(ctx.expeditionModules).toHaveLength(2);
+    expect(ctx.expeditionModules.map((m) => m.id)).toEqual(['foundation', 'auth']);
+    expect(ctx.expeditionModules[1].dependsOn).toEqual(['foundation']);
+  });
+
+  it('throws when planner produces modules but compile-expedition is missing from the pipeline', async () => {
+    const backend = new StubBackend([
+      composerResponse(['planner', 'architecture-review-cycle']),
+      plannerSubmitArchResponse(),
+    ]);
+
+    const ctx = makePipelineCtx({ backend, cwd: makeTempDir(), auto: true });
+    const plannerStageFn = getCompileStage('planner');
+
+    await expect(collect(plannerStageFn(ctx))).rejects.toThrow(/compile-expedition/);
   });
 });
 
