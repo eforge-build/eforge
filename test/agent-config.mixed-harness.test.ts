@@ -33,7 +33,26 @@ describe('resolveAgentConfig mixed-harness config', () => {
   );
 
   it('planner resolves to opus (claude-sdk)', () => {
-    const result = resolveAgentConfig('planner', mixedConfig);
+    // Use a clean config without cross-harness model conflicts
+    const cleanConfig = resolveConfig(
+      {
+        agentRuntimes: {
+          opus: { harness: 'claude-sdk' },
+          'pi-openrouter': { harness: 'pi', pi: { apiKey: 'test-key' } },
+        },
+        defaultAgentRuntime: 'opus',
+        agents: {
+          roles: {
+            builder: {
+              agentRuntime: 'pi-openrouter',
+              model: { id: 'qwen-coder', provider: 'openrouter' },
+            },
+          },
+        },
+      },
+      {},
+    );
+    const result = resolveAgentConfig('planner', cleanConfig);
     expect(result.agentRuntimeName).toBe('opus');
     expect(result.harness).toBe('claude-sdk');
   });
@@ -45,7 +64,6 @@ describe('resolveAgentConfig mixed-harness config', () => {
   });
 
   it('planner uses class-defaults for claude-sdk harness', () => {
-    const result = resolveAgentConfig('planner', mixedConfig);
     // planner is max class; user provides agents.models.max for pi, but planner is on claude-sdk
     // so the user-configured agents.models.max { id: 'qwen-max', provider: 'openrouter' } would be used
     // But it has a provider which is forbidden for claude-sdk — so it should throw
