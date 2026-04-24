@@ -31,7 +31,7 @@ import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
 import { loadConfig, DEFAULT_REVIEW } from './config.js';
 import { setPromptDir } from './prompts.js';
-import { ClaudeSDKBackend } from './backends/claude-sdk.js';
+import { type AgentRuntimeRegistry, singletonRegistry, buildAgentRuntimeRegistry } from './agent-runtime-registry.js';
 import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
@@ -57,11 +57,11 @@ export interface EforgeEngineOptions {
   cwd?: string;
   /** Config overrides (deep-merged with loaded config) */
   config?: Partial<EforgeConfig>;
-  /** Agent backend — falls back to ClaudeSDKBackend when config says `backend: claude-sdk` */
-  backend?: AgentBackend;
-  /** MCP servers to make available to agents (Claude SDK backend only, ignored if backend is provided) */
+  /** Agent runtime registry. Accepts a registry, a bare AgentBackend (auto-wrapped in singletonRegistry), or omit to build from config. */
+  agentRuntimes?: AgentRuntimeRegistry | AgentBackend;
+  /** MCP servers to make available to agents (Claude SDK backend only, ignored if agentRuntimes is provided) */
   mcpServers?: ClaudeSDKBackendOptions['mcpServers'];
-  /** Claude Code plugins to load (Claude SDK backend only, ignored if backend is provided) */
+  /** Claude Code plugins to load (Claude SDK backend only, ignored if agentRuntimes is provided) */
   plugins?: SdkPluginConfig[];
   /** Which settings sources to load — 'user', 'project', 'local' (Claude SDK backend only) */
   settingSources?: SettingSource[];
@@ -118,7 +118,7 @@ export { abortableSleep };
 export class EforgeEngine {
   private readonly config: EforgeConfig;
   private readonly cwd: string;
-  private readonly backend: AgentBackend;
+  private readonly agentRuntimes: AgentRuntimeRegistry;
   private readonly onClarification?: EforgeEngineOptions['onClarification'];
   private readonly onApproval?: EforgeEngineOptions['onApproval'];
   /** Config warnings collected during loadConfig — emitted as config:warning events. */
@@ -128,13 +128,8 @@ export class EforgeEngine {
     this.config = config;
     this.configWarnings = configWarnings;
     this.cwd = options.cwd ?? process.cwd();
-    this.backend = options.backend ?? new ClaudeSDKBackend({
-      mcpServers: options.mcpServers,
-      plugins: options.plugins,
-      settingSources: options.settingSources ?? config.agents.settingSources as SettingSource[] | undefined,
-      bare: config.agents.bare,
-      disableSubagents: config.claudeSdk.disableSubagents,
-    });
+    // agentRuntimes is always resolved to a registry by create() before reaching the constructor
+    this.agentRuntimes = options.agentRuntimes as AgentRuntimeRegistry;
     this.onClarification = options.onClarification;
     this.onApproval = options.onApproval;
   }
@@ -161,7 +156,7 @@ export class EforgeEngine {
     setPromptDir(config.agents.promptDir, cwd);
 
     // Auto-load MCP servers from .mcp.json if not explicitly provided
-    if (!options.mcpServers && !options.backend) {
+    if (!options.mcpServers && !options.agentRuntimes) {
       const discovered = await loadMcpServers(cwd);
       if (discovered) {
         options = { ...options, mcpServers: discovered };
@@ -169,47 +164,30 @@ export class EforgeEngine {
     }
 
     // Auto-load plugins from ~/.claude/plugins/ if not explicitly provided
-    if (!options.plugins && !options.backend) {
+    if (!options.plugins && !options.agentRuntimes) {
       const discovered = await loadPlugins(cwd, config.plugins);
       if (discovered) {
         options = { ...options, plugins: discovered };
       }
     }
 
-    // Validate that a backend is configured
-    if (!options.backend && !config.backend) {
-      throw new Error(
-        'No backend configured. Set `backend: claude-sdk` or `backend: pi` in eforge/config.yaml, ' +
-        'or run /eforge:config to set up your configuration.',
-      );
+    // Build or wrap the agent runtime registry
+    let agentRuntimes: AgentRuntimeRegistry;
+    const provided = options.agentRuntimes;
+    if (provided !== undefined) {
+      // Accept either a full registry or a bare AgentBackend (auto-wrap for test ergonomics)
+      agentRuntimes = 'forRole' in (provided as object)
+        ? (provided as AgentRuntimeRegistry)
+        : singletonRegistry(provided as AgentBackend);
+    } else {
+      // Build registry from config (handles Pi lazy import, memoization, etc.)
+      agentRuntimes = await buildAgentRuntimeRegistry(config, {
+        mcpServers: options.mcpServers,
+        plugins: options.plugins,
+        settingSources: (options.settingSources ?? config.agents.settingSources) as SettingSource[] | undefined,
+      });
     }
-
-    // Select Pi backend from config when no explicit backend is provided
-    if (!options.backend && config.backend === 'pi') {
-      try {
-        const { PiBackend } = await import('./backends/pi.js');
-        options = {
-          ...options,
-          backend: new PiBackend({
-            mcpServers: options.mcpServers,
-            piConfig: config.pi,
-            bare: config.agents.bare,
-            extensions: {
-              autoDiscover: config.pi.extensions.autoDiscover,
-              include: config.pi.extensions.include,
-              exclude: config.pi.extensions.exclude,
-              paths: config.pi.extensions?.paths,
-            },
-          }),
-        };
-      } catch (err) {
-        throw new Error(
-          'Failed to load Pi backend. Ensure Pi SDK dependencies are installed ' +
-          '(@mariozechner/pi-ai and @mariozechner/pi-agent-core). ' +
-          `Original error: ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
-    }
+    options = { ...options, agentRuntimes };
 
     return new EforgeEngine(config, options, configWarnings);
   }
@@ -277,7 +255,7 @@ export class EforgeEngine {
       };
 
       const ctx: PipelineContext = {
-        backend: this.backend,
+        agentRuntimes: this.agentRuntimes,
         config: this.config,
         pipeline: defaultPipeline,
         tracing,
@@ -375,7 +353,7 @@ export class EforgeEngine {
     let formattedBody = sourceContent;
     try {
       const formatterConfig = resolveAgentConfig('formatter', this.config);
-      const gen = runFormatter({ backend: this.backend, sourceContent, verbose, abortController, ...formatterConfig });
+      const gen = runFormatter({ ...formatterConfig, sourceContent, verbose, abortController, harness: this.agentRuntimes.forRole('formatter') });
       let result = await gen.next();
       while (!result.done) {
         yield result.value;
@@ -411,13 +389,13 @@ export class EforgeEngine {
         if (queueItems.length > 0 || runningBuilds.length > 0) {
           const depDetectorConfig = resolveAgentConfig('dependency-detector', this.config);
           const depGen = runDependencyDetector({
-            backend: this.backend,
+            ...depDetectorConfig,
             prdContent: formattedBody,
             queueItems,
             runningBuilds,
             verbose,
             abortController,
-            ...depDetectorConfig,
+            harness: this.agentRuntimes.forRole('dependency-detector'),
           });
           let depResult = await depGen.next();
           while (!depResult.done) {
@@ -537,7 +515,7 @@ export class EforgeEngine {
 
       // Per-plan runner closure — iterates build stages from the composed pipeline
       const config = this.config;
-      const backend = this.backend;
+      const agentRuntimes = this.agentRuntimes;
       const verbose = options.verbose;
       const abortController = options.abortController;
 
@@ -560,7 +538,7 @@ export class EforgeEngine {
         const planReview: ReviewProfileConfig = planEntry.review;
 
         const buildCtx: BuildStageContext = {
-          backend,
+          agentRuntimes,
           config,
           pipeline: buildPipeline,
           tracing: tracing!,
@@ -594,14 +572,14 @@ export class EforgeEngine {
         try {
           const validationFixerConfig = resolveAgentConfig('validation-fixer', config);
           for await (const event of runValidationFixer({
-            backend,
+            ...validationFixerConfig,
             cwd: fixerCwd,
             failures,
             attempt,
             maxAttempts,
             verbose,
             abortController,
-            ...validationFixerConfig,
+            harness: agentRuntimes.forRole('validation-fixer'),
           })) {
             fixerTracker.handleEvent(event);
             yield event;
@@ -628,12 +606,12 @@ export class EforgeEngine {
         try {
           const mergeResolverConfig = resolveAgentConfig('merge-conflict-resolver', config);
           for await (const event of runMergeConflictResolver({
-            backend,
+            ...mergeResolverConfig,
             cwd: resolverCwd,
             conflict,
             verbose,
             abortController,
-            ...mergeResolverConfig,
+            harness: agentRuntimes.forRole('merge-conflict-resolver'),
           })) {
             resolverTracker.handleEvent(event);
             mergeEventSink(event);
@@ -687,13 +665,13 @@ export class EforgeEngine {
         try {
           const prdValidatorConfig = resolveAgentConfig('prd-validator', config);
           for await (const event of runPrdValidator({
-            backend,
+            ...prdValidatorConfig,
             cwd: validatorCwd,
             prdContent,
             diff,
             verbose,
             abortController,
-            ...prdValidatorConfig,
+            harness: agentRuntimes.forRole('prd-validator'),
           })) {
             prdTracker.handleEvent(event);
             yield event;
@@ -726,12 +704,12 @@ export class EforgeEngine {
         try {
           const gapCloserConfig = resolveAgentConfig('gap-closer', config);
           for await (const event of runGapCloser({
-            backend,
+            ...gapCloserConfig,
             cwd: gapCloserCwd,
             gaps,
             prdContent,
             completionPercent,
-            ...gapCloserConfig,
+            harness: agentRuntimes.forRole('gap-closer'),
             pipelineContext: {
               config,
               pipeline: buildPipeline,
@@ -883,13 +861,13 @@ export class EforgeEngine {
 
       const stalenessConfig = resolveAgentConfig('staleness-assessor', this.config);
       for await (const event of runStalenessAssessor({
-        backend: this.backend,
+        ...stalenessConfig,
         prdContent: prd.content,
         diffSummary,
         cwd,
         verbose,
         abortController,
-        ...stalenessConfig,
+        harness: this.agentRuntimes.forRole('staleness-assessor'),
       })) {
         if (event.type === 'queue:prd:stale') {
           stalenessVerdict = event.verdict;

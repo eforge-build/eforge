@@ -10,8 +10,8 @@ import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type Revie
 import { loadPrompt } from '../prompts.js';
 
 export interface ReviewFixerOptions extends SdkPassthroughConfig {
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentBackend;
   /** Plan identifier for event correlation */
   planId: string;
   /** Working directory */
@@ -52,7 +52,7 @@ function formatIssuesForPrompt(issues: ReviewIssue[]): string {
 export async function* runReviewFixer(
   options: ReviewFixerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, planId, cwd, issues, verbose, abortController } = options;
+  const { harness, planId, cwd, issues, verbose, abortController } = options;
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:start', planId, issueCount: issues.length };
 
@@ -62,7 +62,7 @@ export async function* runReviewFixer(
   }, options.promptAppend);
 
   try {
-    for await (const event of backend.run(
+    for await (const event of harness.run(
       {
         prompt,
         cwd,

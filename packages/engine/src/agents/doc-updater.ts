@@ -4,7 +4,7 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface DocUpdaterOptions extends SdkPassthroughConfig {
-  backend: AgentBackend;
+  harness: AgentBackend;
   cwd: string;
   planId: string;
   planContent: string;
@@ -43,7 +43,7 @@ export async function* runDocUpdater(
 
     let fullText = '';
 
-    for await (const event of options.backend.run(
+    for await (const event of options.harness.run(
       {
         prompt,
         cwd: options.cwd,

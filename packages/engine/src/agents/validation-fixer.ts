@@ -4,7 +4,7 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface ValidationFixerOptions extends SdkPassthroughConfig {
-  backend: AgentBackend;
+  harness: AgentBackend;
   cwd: string;
   failures: Array<{ command: string; exitCode: number; output: string }>;
   attempt: number;
@@ -36,7 +36,7 @@ export async function* runValidationFixer(
   }, options.promptAppend);
 
   try {
-    for await (const event of options.backend.run(
+    for await (const event of options.harness.run(
       {
         prompt,
         cwd: options.cwd,

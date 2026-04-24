@@ -24,8 +24,8 @@ export interface RunningBuildSummary {
  * Options for the dependency detector agent.
  */
 export interface DependencyDetectorOptions extends SdkPassthroughConfig {
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentBackend;
   /** The new PRD content to analyze */
   prdContent: string;
   /** Existing queue items */
@@ -62,7 +62,7 @@ export interface DependencyDetectorResult {
 export async function* runDependencyDetector(
   options: DependencyDetectorOptions,
 ): AsyncGenerator<EforgeEvent, DependencyDetectorResult> {
-  const { backend, prdContent, queueItems, runningBuilds, verbose, abortController } = options;
+  const { harness, prdContent, queueItems, runningBuilds, verbose, abortController } = options;
 
   const prompt = await loadPrompt('dependency-detector', {
     prdContent,
@@ -72,7 +72,7 @@ export async function* runDependencyDetector(
 
   let fullText = '';
 
-  for await (const event of backend.run(
+  for await (const event of harness.run(
     { prompt, cwd: process.cwd(), maxTurns: 1, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'dependency-detector',
   )) {

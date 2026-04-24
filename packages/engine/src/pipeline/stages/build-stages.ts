@@ -56,7 +56,6 @@ async function* runBuilderAttempt(
   const implTracker = createToolTracker(implSpan);
   try {
     for await (const event of withPeriodicFileCheck(builderImplement(ctx.planFile, {
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
@@ -64,6 +63,7 @@ async function* runBuilderAttempt(
       parallelStages,
       verificationScope,
       ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
+      harness: ctx.agentRuntimes.forRole('builder'),
     }), ctx)) {
       implTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') implSpan.error('Implementation failed');
@@ -91,7 +91,6 @@ async function* runEvaluatorAttempt(
   try {
     const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
     for await (const event of builderEvaluate(ctx.planFile, {
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
@@ -99,6 +98,7 @@ async function* runEvaluatorAttempt(
       strictness,
       ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
       preImplementCommit: ctx.preImplementCommit,
+      harness: ctx.agentRuntimes.forRole('evaluator'),
     })) {
       evalTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') evalSpan.error('Evaluation failed');
@@ -129,7 +129,6 @@ async function* reviewStageInner(
   const reviewTracker = createToolTracker(reviewSpan);
   try {
     for await (const event of runParallelReview({
-      backend: ctx.backend,
       planContent: ctx.planFile.body,
       baseBranch: ctx.orchConfig.baseBranch,
       planId: ctx.planId,
@@ -139,6 +138,7 @@ async function* reviewStageInner(
       strategy,
       perspectives,
       ...reviewerAgentConfig,
+      harness: ctx.agentRuntimes.forRole('reviewer'),
     })) {
       reviewTracker.handleEvent(event);
       yield event;
@@ -186,13 +186,13 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
   const fixTracker = createToolTracker(fixSpan);
   try {
     for await (const event of withPeriodicFileCheck(runReviewFixer({
-      backend: ctx.backend,
       planId: ctx.planId,
       cwd: ctx.worktreePath,
       issues: ctx.reviewIssues,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...fixerConfig,
+      harness: ctx.agentRuntimes.forRole('review-fixer'),
     }), ctx)) {
       fixTracker.handleEvent(event);
       yield event;
@@ -214,13 +214,13 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
   const tracker = createToolTracker(span);
   try {
     for await (const event of withPeriodicFileCheck(runTester({
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       planId: ctx.planId,
       planContent: ctx.planFile.body,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      harness: ctx.agentRuntimes.forRole('tester'),
     }), ctx)) {
       tracker.handleEvent(event);
       yield event;
@@ -383,13 +383,13 @@ registerBuildStage({
   const docTracker = createToolTracker(docSpan);
   try {
     for await (const event of withPeriodicFileCheck(runDocUpdater({
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       planId: ctx.planId,
       planContent: ctx.planFile.body,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      harness: ctx.agentRuntimes.forRole('doc-updater'),
     }), ctx)) {
       docTracker.handleEvent(event);
       yield event;
@@ -429,7 +429,6 @@ registerBuildStage({
 
   try {
     for await (const event of withPeriodicFileCheck(runTestWriter({
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       planId: ctx.planId,
       planContent: ctx.planFile.body,
@@ -437,6 +436,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      harness: ctx.agentRuntimes.forRole('test-writer'),
     }), ctx)) {
       tracker.handleEvent(event);
       yield event;

@@ -5,7 +5,7 @@ import type { MergeConflictInfo } from '../worktree-ops.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface MergeConflictResolverOptions extends SdkPassthroughConfig {
-  backend: AgentBackend;
+  harness: AgentBackend;
   cwd: string;
   conflict: MergeConflictInfo;
   verbose?: boolean;
@@ -34,7 +34,7 @@ export async function* runMergeConflictResolver(
   }, options.promptAppend);
 
   try {
-    for await (const event of options.backend.run(
+    for await (const event of options.harness.run(
       {
         prompt,
         cwd: options.cwd,

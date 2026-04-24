@@ -12,12 +12,12 @@ import type {
 } from '../events.js';
 import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig } from '../config.js';
 import type { PipelineComposition } from '../schemas.js';
-import type { AgentBackend } from '../backend.js';
+import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import type { TracingContext } from '../tracing.js';
 import type { ModelTracker } from '../model-tracker.js';
 
 export interface PipelineContext {
-  backend: AgentBackend;
+  agentRuntimes: AgentRuntimeRegistry;
   config: EforgeConfig;
   pipeline: PipelineComposition;
   tracing: TracingContext;

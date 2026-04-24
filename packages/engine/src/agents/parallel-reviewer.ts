@@ -25,8 +25,8 @@ import {
 const exec = promisify(execFile);
 
 export interface ParallelReviewerOptions extends SdkPassthroughConfig {
-  /** Backend for running agents */
-  backend: AgentBackend;
+  /** Harness for running agents */
+  harness: AgentBackend;
   /** The plan content (full markdown body) to review against */
   planContent: string;
   /** The base branch to diff against */
@@ -73,12 +73,12 @@ const PERSPECTIVE_SCHEMA_YAML: Record<ReviewPerspective, () => string> = {
 export async function* runParallelReview(
   options: ParallelReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, planContent, baseBranch, planId, cwd, verbose, abortController, strategy, perspectives: perspectivesOverride } = options;
+  const { harness, planContent, baseBranch, planId, cwd, verbose, abortController, strategy, perspectives: perspectivesOverride } = options;
 
   // Short-circuit: strategy 'single' always delegates to single reviewer
   if (strategy === 'single') {
     yield* runReview({
-      backend,
+      harness,
       planContent,
       baseBranch,
       planId,
@@ -117,7 +117,7 @@ export async function* runParallelReview(
   if (strategy !== 'parallel' && !shouldParallelizeReview(changedFiles, { lines: changedLines })) {
     // Below threshold - delegate to existing single reviewer
     yield* runReview({
-      backend,
+      harness,
       planContent,
       baseBranch,
       planId,
@@ -142,7 +142,7 @@ export async function* runParallelReview(
   if (perspectives.length === 0) {
     // No applicable perspectives - fall back to single reviewer
     yield* runReview({
-      backend,
+      harness,
       planContent,
       baseBranch,
       planId,
@@ -172,7 +172,7 @@ export async function* runParallelReview(
 
       let fullText = '';
 
-      for await (const event of backend.run(
+      for await (const event of harness.run(
         { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
         'reviewer',
         planId,

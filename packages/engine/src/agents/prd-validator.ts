@@ -4,7 +4,7 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap } fr
 import { loadPrompt } from '../prompts.js';
 
 export interface PrdValidatorOptions extends SdkPassthroughConfig {
-  backend: AgentBackend;
+  harness: AgentBackend;
   cwd: string;
   prdContent: string;
   diff: string;
@@ -32,7 +32,7 @@ export async function* runPrdValidator(
   try {
     let accumulatedText = '';
 
-    for await (const event of options.backend.run(
+    for await (const event of options.harness.run(
       {
         prompt,
         cwd: options.cwd,

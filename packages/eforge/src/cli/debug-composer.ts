@@ -186,11 +186,11 @@ async function runForProfile(
   let composeError: string | undefined;
   try {
     for await (const event of composePipeline({
-      backend,
+      ...composerConfig,
       source: sourceContent,
       cwd,
       verbose,
-      ...composerConfig,
+      harness: backend,
     })) {
       composerEvents.push(event);
       if (verbose && event.type === 'agent:message') {

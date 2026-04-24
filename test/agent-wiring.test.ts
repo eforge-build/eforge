@@ -31,7 +31,7 @@ describe('runPlanner wiring', () => {
     const events: EforgeEvent[] = [];
     let thrown: unknown;
     try {
-      for await (const ev of runPlanner('Build a widget', { backend, cwd })) {
+      for await (const ev of runPlanner('Build a widget', { harness: backend, cwd })) {
         events.push(ev);
       }
     } catch (err) {
@@ -55,7 +55,7 @@ describe('runPlanner wiring', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Fix a bug', {
-      backend,
+      harness: backend,
       cwd,
     }));
 
@@ -84,7 +84,7 @@ describe('runPlanner wiring', () => {
     // PlannerSubmissionError — collect pre-throw events for lifecycle asserts.
     try {
       for await (const ev of runPlanner('Add a feature', {
-        backend,
+        harness: backend,
         cwd,
         onClarification: async (questions) => {
           clarificationCalls.push(questions);
@@ -122,7 +122,7 @@ describe('runPlanner wiring', () => {
     // Third iteration emits no submission tool so the planner throws.
     try {
       for await (const ev of runPlanner('Add feature', {
-        backend,
+        harness: backend,
         cwd,
         onClarification: async (questions) => {
           const id = questions[0].id;
@@ -153,7 +153,7 @@ describe('runPlanner wiring', () => {
     // After max iterations without submission or skip, planner throws
     // PlannerSubmissionError instead of yielding plan:error.
     await expect(collectEvents(runPlanner('Loop forever', {
-      backend,
+      harness: backend,
       cwd,
       onClarification: async () => ({ q1: 'yes' }),
     }))).rejects.toThrow(PlannerSubmissionError);
@@ -172,7 +172,7 @@ describe('runPlanner wiring', () => {
     // In auto mode the clarification callback must not fire, and the planner
     // throws PlannerSubmissionError because no submission tool was called.
     await expect(collectEvents(runPlanner('Auto plan', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       onClarification: async () => {
@@ -195,7 +195,7 @@ describe('runPlanner wiring', () => {
     // submission tool call, but pre-throw events are still collected.
     const quietEvents: EforgeEvent[] = [];
     try {
-      for await (const ev of runPlanner('Test', { backend: makeBackend(), cwd })) {
+      for await (const ev of runPlanner('Test', { harness: makeBackend(), cwd })) {
         quietEvents.push(ev);
       }
     } catch { /* expected PlannerSubmissionError */ }
@@ -205,7 +205,7 @@ describe('runPlanner wiring', () => {
     const cwd2 = makeTempDir();
     const verboseEvents: EforgeEvent[] = [];
     try {
-      for await (const ev of runPlanner('Test', { backend: makeBackend(), cwd: cwd2, verbose: true })) {
+      for await (const ev of runPlanner('Test', { harness: makeBackend(), cwd: cwd2, verbose: true })) {
         verboseEvents.push(ev);
       }
     } catch { /* expected PlannerSubmissionError */ }
@@ -248,7 +248,7 @@ describe('runPlanner wiring', () => {
       text: 'Done planning.',
     }]);
     const events = await collectEvents(runPlanner('my-plan', {
-      backend,
+      harness: backend,
       cwd,
       name: 'my-plan',
       scope: 'excursion',
@@ -287,7 +287,7 @@ describe('runPlanner submission tool naming', () => {
     // PlannerSubmissionError after recording the prompt. The prompt capture
     // is what this test verifies.
     await expect(collectEvents(runPlanner('Add a thing', {
-      backend,
+      harness: backend,
       cwd,
       scope: 'excursion',
     }))).rejects.toThrow(PlannerSubmissionError);
@@ -310,7 +310,7 @@ describe('runPlanner submission tool naming', () => {
     // No submission tool is called in this stub response so the planner throws
     // PlannerSubmissionError after recording the prompt.
     await expect(collectEvents(runPlanner('Design a system', {
-      backend,
+      harness: backend,
       cwd,
       scope: 'expedition',
     }))).rejects.toThrow(PlannerSubmissionError);
@@ -328,7 +328,7 @@ describe('runPlanner submission tool naming', () => {
     let thrown: unknown;
     try {
       await collectEvents(runPlanner('Hmm', {
-        backend,
+        harness: backend,
         cwd,
         scope: 'excursion',
       }));
@@ -355,7 +355,7 @@ describe('runReview wiring', () => {
     }]);
 
     const events = await collectEvents(runReview({
-      backend,
+      harness: backend,
       planContent: 'test plan',
       baseBranch: 'main',
       planId: 'plan-1',
@@ -381,7 +381,7 @@ describe('runReview wiring', () => {
     const backend = new StubBackend([{ text: 'Code looks good. No issues found.' }]);
 
     const events = await collectEvents(runReview({
-      backend,
+      harness: backend,
       planContent: 'test plan',
       baseBranch: 'main',
       planId: 'plan-1',
@@ -402,7 +402,7 @@ describe('builderImplement wiring', () => {
 
     const events = await collectEvents(builderImplement(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
-      { backend, cwd: '/tmp' },
+      { harness: backend, cwd: '/tmp' },
     ));
 
     expect(findEvent(events, 'plan:build:implement:start')).toBeDefined();
@@ -415,7 +415,7 @@ describe('builderImplement wiring', () => {
 
     const events = await collectEvents(builderImplement(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
-      { backend, cwd: '/tmp' },
+      { harness: backend, cwd: '/tmp' },
     ));
 
     const failed = findEvent(events, 'plan:build:failed');
@@ -439,7 +439,7 @@ describe('builderEvaluate wiring', () => {
 
     const events = await collectEvents(builderEvaluate(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
-      { backend, cwd: '/tmp' },
+      { harness: backend, cwd: '/tmp' },
     ));
 
     const complete = findEvent(events, 'plan:build:evaluate:complete');
@@ -464,7 +464,7 @@ describe('builderEvaluate wiring', () => {
 
     const events = await collectEvents(builderEvaluate(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
-      { backend, cwd: '/tmp' },
+      { harness: backend, cwd: '/tmp' },
     ));
 
     expect(findEvent(events, 'plan:build:failed')).toBeDefined();
@@ -483,7 +483,7 @@ describe('runPlanReview wiring', () => {
     }]);
 
     const events = await collectEvents(runPlanReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-plan',
       cwd: '/tmp',
@@ -509,7 +509,7 @@ describe('runPlanEvaluate wiring', () => {
     }]);
 
     const events = await collectEvents(runPlanEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-plan',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -536,7 +536,7 @@ describe('runPlanEvaluate wiring', () => {
     const events: EforgeEvent[] = [];
     try {
       for await (const event of runPlanEvaluate({
-        backend,
+        harness: backend,
         planSetName: 'my-plan',
         sourceContent: 'PRD content',
         cwd: '/tmp',
@@ -564,7 +564,7 @@ describe('runModulePlanner wiring', () => {
     const backend = new StubBackend([{ text: 'Module plan written.' }]);
 
     const events = await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'auth',
@@ -590,7 +590,7 @@ describe('runModulePlanner wiring', () => {
     const backend = new StubBackend([{ text: 'Module details.' }]);
 
     const events = await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'auth',
@@ -608,7 +608,7 @@ describe('runModulePlanner wiring', () => {
     const backend = new StubBackend([{ text: 'Module details.' }]);
 
     const events = await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'auth',
@@ -627,7 +627,7 @@ describe('runModulePlanner wiring', () => {
     const depContent = '# Foundation\n\nCreates auth tables and user model.';
 
     await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'auth',
@@ -645,7 +645,7 @@ describe('runModulePlanner wiring', () => {
     const backend = new StubBackend([{ text: 'Module plan written.' }]);
 
     await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'foundation',
@@ -662,7 +662,7 @@ describe('runModulePlanner wiring', () => {
     const backend = new StubBackend([{ text: 'Module plan written.' }]);
 
     await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'foundation',
@@ -688,7 +688,7 @@ describe('runArchitectureReview wiring', () => {
     }]);
 
     const events = await collectEvents(runArchitectureReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-plan',
       architectureContent: '# Architecture\nModules: auth, api',
@@ -709,7 +709,7 @@ describe('runArchitectureReview wiring', () => {
     }]);
 
     const events = await collectEvents(runArchitectureReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-plan',
       architectureContent: '# Architecture\nWell defined.',
@@ -735,7 +735,7 @@ describe('runArchitectureEvaluate wiring', () => {
     }]);
 
     const events = await collectEvents(runArchitectureEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-plan',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -760,7 +760,7 @@ describe('runArchitectureEvaluate wiring', () => {
     const events: EforgeEvent[] = [];
     try {
       for await (const event of runArchitectureEvaluate({
-        backend,
+        harness: backend,
         planSetName: 'my-plan',
         sourceContent: 'PRD content',
         cwd: '/tmp',
@@ -790,7 +790,7 @@ describe('runPrdValidator wiring', () => {
     }]);
 
     const events = await collectEvents(runPrdValidator({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       prdContent: '# PRD\n\nAdd a login page.',
       diff: 'diff --git a/src/login.ts b/src/login.ts\n+export function LoginPage() {}',
@@ -822,7 +822,7 @@ describe('runPrdValidator wiring', () => {
     }]);
 
     const events = await collectEvents(runPrdValidator({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       prdContent: '# PRD\n\nAdd a login page with OAuth and friendly errors.',
       diff: 'diff --git a/src/login.ts b/src/login.ts\n+export function LoginPage() {}',
@@ -842,7 +842,7 @@ describe('runPrdValidator wiring', () => {
     // Fail-closed: a crashed validator must not silently certify a build.
     await expect(async () => {
       for await (const _event of runPrdValidator({
-        backend,
+        harness: backend,
         cwd: '/tmp',
         prdContent: 'PRD content',
         diff: 'some diff',
@@ -858,7 +858,7 @@ describe('runPrdValidator wiring', () => {
     }]);
 
     const events = await collectEvents(runPrdValidator({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       prdContent: 'PRD',
       diff: 'diff',
@@ -969,7 +969,7 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const result = resolveAgentConfig('builder', config, {
       agents: { builder: { effort: 'xhigh' } },
     });
 
@@ -984,8 +984,8 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const resultWithPlan = resolveAgentConfig('builder', config, 'claude-sdk');
-    const resultWithoutPlan = resolveAgentConfig('builder', config, 'claude-sdk', undefined);
+    const resultWithPlan = resolveAgentConfig('builder', config);
+    const resultWithoutPlan = resolveAgentConfig('builder', config, undefined);
 
     expect(resultWithPlan.effort).toBe(resultWithoutPlan.effort);
     expect(resultWithPlan.effortSource).toBe('role-config');
@@ -996,13 +996,13 @@ describe('resolveAgentConfig per-plan override', () => {
       model: { id: 'claude-opus-4-7' },
     });
 
-    const resultXhigh = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const resultXhigh = resolveAgentConfig('builder', config, {
       agents: { builder: { effort: 'xhigh' } },
     });
     expect(resultXhigh.effort).toBe('xhigh');
     expect(resultXhigh.effortClamped).toBe(false);
 
-    const resultMax = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const resultMax = resolveAgentConfig('builder', config, {
       agents: { builder: { effort: 'max' } },
     });
     expect(resultMax.effort).toBe('max');
@@ -1014,7 +1014,7 @@ describe('resolveAgentConfig per-plan override', () => {
       model: { id: 'claude-sonnet-4-0' },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const result = resolveAgentConfig('builder', config, {
       agents: { builder: { effort: 'max' } },
     });
 
@@ -1032,7 +1032,7 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const result = resolveAgentConfig('builder', config, {
       agents: { builder: { thinking: { type: 'enabled', budgetTokens: 5000 } } },
     });
 
@@ -1044,7 +1044,7 @@ describe('resolveAgentConfig per-plan override', () => {
       effort: 'medium',
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
 
     expect(result.effort).toBe('medium');
     expect(result.effortSource).toBe('global-config');
@@ -1052,7 +1052,7 @@ describe('resolveAgentConfig per-plan override', () => {
 
   it('effortSource and thinkingSource are default when no effort/thinking is configured', () => {
     const config = makeConfig({});
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     // Builder now has a per-role effort default of 'high'
     expect(result.effort).toBe('high');
     expect(result.effortSource).toBe('default');
@@ -1068,7 +1068,7 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const result = resolveAgentConfig('builder', config, {
       agents: { builder: { thinking: { type: 'enabled', budgetTokens: 5000 } } },
     });
 
@@ -1084,7 +1084,7 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
 
     expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 3000 });
     expect(result.thinkingSource).toBe('role-config');
@@ -1096,7 +1096,7 @@ describe('resolveAgentConfig per-plan override', () => {
       thinking: { type: 'enabled', budgetTokens: 8000 },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
 
     expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 8000 });
     expect(result.thinkingSource).toBe('global-config');
@@ -1107,7 +1107,7 @@ describe('resolveAgentConfig per-plan override', () => {
       effort: 'medium',
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
 
     expect(result.effort).toBe('medium');
     expect(result.effortSource).toBe('global-config');
@@ -1150,7 +1150,7 @@ describe('resolveAgentConfig per-role effort defaults', () => {
   for (const { role, expectedEffort } of effortTable) {
     it(`${role} defaults to effort '${expectedEffort}' with effortSource 'default'`, () => {
       const config = makeConfig({});
-      const result = resolveAgentConfig(role as import('@eforge-build/engine/events').AgentRole, config, 'claude-sdk');
+      const result = resolveAgentConfig(role as import('@eforge-build/engine/events').AgentRole, config);
       expect(result.effort).toBe(expectedEffort);
       expect(result.effortSource).toBe('default');
     });
@@ -1163,7 +1163,7 @@ describe('resolveAgentConfig per-role effort defaults', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.effort).toBe('xhigh');
     expect(result.effortSource).toBe('role-config');
   });
@@ -1178,7 +1178,7 @@ describe('resolveAgentConfig per-role effort defaults', () => {
       },
     });
 
-    const result = resolveAgentConfig('reviewer', config, 'claude-sdk', {
+    const result = resolveAgentConfig('reviewer', config, {
       agents: { reviewer: { effort: 'max' } },
     });
     expect(result.effort).toBe('max');
@@ -1203,7 +1203,7 @@ describe('resolveAgentConfig thinking coercion', () => {
       thinking: { type: 'enabled', budgetTokens: 10000 },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toEqual({ type: 'adaptive' });
     expect(result.thinkingCoerced).toBe(true);
     expect(result.thinkingOriginal).toEqual({ type: 'enabled', budgetTokens: 10000 });
@@ -1215,7 +1215,7 @@ describe('resolveAgentConfig thinking coercion', () => {
       thinking: { type: 'enabled' },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toEqual({ type: 'enabled' });
     expect(result.thinkingCoerced).toBeUndefined();
   });
@@ -1226,7 +1226,7 @@ describe('resolveAgentConfig thinking coercion', () => {
       thinking: { type: 'adaptive' },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toEqual({ type: 'adaptive' });
     expect(result.thinkingCoerced).toBeUndefined();
   });
@@ -1236,7 +1236,7 @@ describe('resolveAgentConfig thinking coercion', () => {
       model: { id: 'claude-opus-4-7' },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toBeUndefined();
     expect(result.thinkingCoerced).toBeUndefined();
   });
