@@ -27,7 +27,6 @@ const exec = promisify(execFile);
 export async function compileExpedition(
   cwd: string,
   planSetName: string,
-  profile?: { description: string; compile: string[] },
   moduleBuildConfigs?: Map<string, { build: BuildStageSpec[]; review: ReviewProfileConfig }>,
   outputDir?: string,
 ): Promise<PlanFile[]> {
@@ -128,7 +127,6 @@ export async function compileExpedition(
     compiled: new Date().toISOString().split('T')[0],
     mode: 'expedition',
     base_branch: baseBranch,
-    ...(profile && { profile }),
     ...(index.validate && index.validate.length > 0 && { validate: index.validate }),
     plans: planFiles.map((p) => {
       // Find the module ID from the plan's branch (branch format: `{planSetName}/{moduleId}`)

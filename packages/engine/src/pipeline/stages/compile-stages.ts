@@ -481,11 +481,14 @@ registerCompileStage({
   if (ctx.expeditionModules.length === 0) return;
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:start' };
-  const profileForCompiler = {
-    description: ctx.pipeline.rationale,
-    compile: ctx.pipeline.compile,
-  };
-  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, profileForCompiler, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
+  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
+
+  // Write the full pipeline composition and backfill per-plan build/review from
+  // defaults for any module whose planner didn't emit a <build-config> block.
+  // Without this, parseOrchestrationConfig rejects the file.
+  const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
+  await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch);
+
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:complete', plans };
   yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
 

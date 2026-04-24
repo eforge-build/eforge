@@ -3,7 +3,13 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { compileExpedition } from '@eforge-build/engine/compiler';
-import { parseExpeditionIndex, indexModulesToExpeditionModules } from '@eforge-build/engine/plan';
+import {
+  parseExpeditionIndex,
+  indexModulesToExpeditionModules,
+  injectPipelineIntoOrchestrationYaml,
+  parseOrchestrationConfig,
+} from '@eforge-build/engine/plan';
+import type { PipelineComposition } from '@eforge-build/engine/schemas';
 
 describe('parseExpeditionIndex', () => {
   let tmpDir: string;
@@ -178,6 +184,132 @@ modules:
     expect(plans[1].id).toBe('plan-02-zebra');
     expect(plans[2].id).toBe('plan-03-beta');
     expect(plans[2].dependsOn).toEqual(['plan-01-alpha', 'plan-02-zebra']);
+  });
+
+  it('produces orchestration.yaml that round-trips through parseOrchestrationConfig after pipeline inject (no per-module configs)', async () => {
+    await writeFile(
+      resolve(planDir, 'index.yaml'),
+      `
+name: test-exp
+description: Round-trip test
+created: "2026-04-23"
+status: architecture-complete
+mode: expedition
+
+architecture:
+  status: complete
+
+modules:
+  foundation:
+    status: planned
+    description: Core types
+  planner:
+    status: planned
+    description: Planner agent
+    depends_on: [foundation]
+`,
+    );
+
+    await writeFile(resolve(planDir, 'modules', 'foundation.md'), '# Foundation');
+    await writeFile(resolve(planDir, 'modules', 'planner.md'), '# Planner');
+
+    await compileExpedition(tmpDir, 'test-exp');
+
+    const pipeline: PipelineComposition = {
+      scope: 'expedition',
+      compile: ['planner', 'compile-expedition'],
+      defaultBuild: ['implement', ['review-cycle', 'doc-update']],
+      defaultReview: {
+        strategy: 'auto',
+        perspectives: ['code'],
+        maxRounds: 1,
+        evaluatorStrictness: 'standard',
+      },
+      rationale: 'test',
+    };
+    const orchPath = resolve(planDir, 'orchestration.yaml');
+    await injectPipelineIntoOrchestrationYaml(orchPath, pipeline, 'main');
+
+    const config = await parseOrchestrationConfig(orchPath);
+    expect(config.plans).toHaveLength(2);
+    expect(config.baseBranch).toBe('main');
+    for (const p of config.plans) {
+      expect(p.build).toEqual(pipeline.defaultBuild);
+      expect(p.review).toEqual(pipeline.defaultReview);
+    }
+  });
+
+  it('preserves per-module build/review when moduleBuildConfigs are provided and backfills defaults for the rest', async () => {
+    await writeFile(
+      resolve(planDir, 'index.yaml'),
+      `
+name: test-exp
+description: Per-module config test
+created: "2026-04-23"
+status: architecture-complete
+mode: expedition
+
+architecture:
+  status: complete
+
+modules:
+  foundation:
+    status: planned
+    description: Core types
+  planner:
+    status: planned
+    description: Planner agent
+    depends_on: [foundation]
+`,
+    );
+
+    await writeFile(resolve(planDir, 'modules', 'foundation.md'), '# Foundation');
+    await writeFile(resolve(planDir, 'modules', 'planner.md'), '# Planner');
+
+    const moduleBuildConfigs = new Map([
+      [
+        'foundation',
+        {
+          build: ['implement'] as Array<string | string[]>,
+          review: {
+            strategy: 'single' as const,
+            perspectives: ['code'],
+            maxRounds: 2,
+            evaluatorStrictness: 'lenient' as const,
+          },
+        },
+      ],
+    ]);
+    await compileExpedition(tmpDir, 'test-exp', moduleBuildConfigs);
+
+    const pipeline: PipelineComposition = {
+      scope: 'expedition',
+      compile: ['planner', 'compile-expedition'],
+      defaultBuild: ['implement', 'review-cycle'],
+      defaultReview: {
+        strategy: 'auto',
+        perspectives: ['code'],
+        maxRounds: 1,
+        evaluatorStrictness: 'standard',
+      },
+      rationale: 'test',
+    };
+    const orchPath = resolve(planDir, 'orchestration.yaml');
+    await injectPipelineIntoOrchestrationYaml(orchPath, pipeline, 'main');
+
+    const config = await parseOrchestrationConfig(orchPath);
+    const foundation = config.plans.find((p) => p.id === 'plan-01-foundation');
+    const planner = config.plans.find((p) => p.id === 'plan-02-planner');
+
+    // Per-module config wins for foundation
+    expect(foundation?.build).toEqual(['implement']);
+    expect(foundation?.review.strategy).toBe('single');
+    expect(foundation?.review.maxRounds).toBe(2);
+    expect(foundation?.review.evaluatorStrictness).toBe('lenient');
+
+    // Planner falls back to pipeline defaults
+    expect(planner?.build).toEqual(pipeline.defaultBuild);
+    expect(planner?.review).toEqual(pipeline.defaultReview);
   });
 
   it('skips modules without .md files', async () => {
