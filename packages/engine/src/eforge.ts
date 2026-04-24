@@ -550,7 +550,7 @@ export class EforgeEngine {
       ): AsyncGenerator<EforgeEvent> {
         const planFile = planFileMap.get(planId);
         if (!planFile) {
-          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId, error: `Plan file not found: ${planId}` };
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId, error: `Plan file not found: ${planId}` };
           return;
         }
 
@@ -637,7 +637,7 @@ export class EforgeEngine {
           })) {
             resolverTracker.handleEvent(event);
             mergeEventSink(event);
-            if (event.type === 'merge:resolve:complete') {
+            if (event.type === 'plan:merge:resolve:complete') {
               resolved = event.resolved;
             }
           }
@@ -785,7 +785,7 @@ export class EforgeEngine {
           yield mergeEvents.shift()!;
         }
         yield event;
-        if (event.type === 'build:failed') {
+        if (event.type === 'plan:build:failed') {
           status = 'failed';
           summary = event.error.startsWith('Merge failed')
             ? `Merge failed for ${event.planId}`
@@ -969,7 +969,7 @@ export class EforgeEngine {
         if (event.type === 'phase:end' && event.result.status === 'failed') {
           compileFailed = true;
         }
-        if (event.type === 'plan:skip') {
+        if (event.type === 'planning:skip') {
           planSkipped = true;
           skipReason = event.reason;
         }
