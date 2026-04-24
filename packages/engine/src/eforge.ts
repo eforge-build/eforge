@@ -520,7 +520,7 @@ export class EforgeEngine {
       const orchConfig = await parseOrchestrationConfig(configPath);
       // Emit any orchestration config warnings as plan:warning events
       for (const warning of orchConfig.warnings ?? []) {
-        yield { timestamp: new Date().toISOString(), type: 'plan:warning', message: warning, source: 'parseOrchestrationConfig' };
+        yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'parseOrchestrationConfig' };
       }
 
       // Pre-load plan files for the runner
@@ -530,7 +530,7 @@ export class EforgeEngine {
         const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
         // Emit any plan file warnings as plan:warning events
         for (const warning of planFile.warnings ?? []) {
-          yield { timestamp: new Date().toISOString(), type: 'plan:warning', planId: plan.id, message: warning, source: 'parsePlanFile' };
+          yield { timestamp: new Date().toISOString(), type: 'planning:warning', planId: plan.id, message: warning, source: 'parsePlanFile' };
         }
         planFileMap.set(plan.id, planFile);
       }
