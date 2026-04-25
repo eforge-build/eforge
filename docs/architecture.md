@@ -170,7 +170,7 @@ Agent roles by function:
 | **Planning** | formatter, planner, module-planner, staleness-assessor, prd-validator, dependency-detector |
 | **Building** | builder, doc-updater, test-writer, tester |
 | **Review** | reviewer, parallel-reviewer, review-fixer, plan-evaluator, cohesion-reviewer, architecture-reviewer |
-| **Recovery** | validation-fixer, merge-conflict-resolver, gap-closer |
+| **Recovery** | validation-fixer, merge-conflict-resolver, gap-closer, recovery-analyst |
 
 Per-role configuration (model, thinking mode, effort level, budget, tool filters) is set via `eforge/config.yaml` under `agents.roles`. See [config.md](config.md).
 
