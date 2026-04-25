@@ -36,7 +36,7 @@ export interface SdkPassthroughConfig {
 }
 
 /** Keys that are part of SdkPassthroughConfig but should NOT be forwarded to the backend SDK. */
-const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource', 'thinkingCoerced', 'thinkingOriginal', 'agentRuntimeName']);
+const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource', 'thinkingCoerced', 'thinkingOriginal', 'agentRuntimeName', 'tier', 'tierSource']);
 
 /**
  * Strip `undefined` values from an SdkPassthroughConfig so the SDK
@@ -117,9 +117,9 @@ export interface AgentRunOptions {
   /** The original effort level before clamping was applied. */
   effortOriginal?: EffortLevel;
   /** Provenance of the resolved effort value. */
-  effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
+  effortSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
   /** Provenance of the resolved thinking value. */
-  thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default';
+  thinkingSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
   /** True when thinking was coerced from 'enabled' to 'adaptive' for models that only support adaptive thinking. */
   thinkingCoerced?: boolean;
   /** The original thinking config before coercion was applied. */
@@ -130,6 +130,10 @@ export interface AgentRunOptions {
    * Not forwarded to the underlying SDK.
    */
   agentRuntimeName?: string;
+  /** The resolved tier for this role. Stamped from resolveAgentConfig. */
+  tier?: string;
+  /** Provenance of the resolved tier value. */
+  tierSource?: string;
 }
 
 /**

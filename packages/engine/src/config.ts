@@ -36,6 +36,11 @@ export const AGENT_ROLES = [
 
 const agentRoleSchema = z.enum(AGENT_ROLES);
 
+/** Agent tiers group agent roles by workload type for batch configuration. */
+export const AGENT_TIERS = ['planning', 'implementation', 'review', 'evaluation'] as const;
+export type AgentTier = (typeof AGENT_TIERS)[number];
+export const agentTierSchema = z.enum(AGENT_TIERS).describe('Agent tier for grouping roles by workload type');
+
 /** Model classes group agents by workload type. */
 export const MODEL_CLASSES = ['max', 'balanced', 'fast'] as const;
 export type ModelClass = (typeof MODEL_CLASSES)[number];
@@ -187,7 +192,13 @@ const eforgeConfigBaseSchema = z.object({
       modelClass: modelClassSchema.optional().describe('Override the model class for this role'),
       promptAppend: z.string().optional().describe('Text appended to the agent prompt after variable substitution'),
       agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this role'),
+      tier: agentTierSchema.optional().describe('Override the tier assignment for this role'),
     }).optional()).optional().describe('Per-agent role overrides'),
+    tiers: z.record(agentTierSchema, sdkPassthroughConfigSchema.extend({
+      maxTurns: z.number().int().positive().optional(),
+      modelClass: modelClassSchema.optional().describe('Override the model class for all roles in this tier'),
+      agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this tier'),
+    }).optional()).optional().describe('Per-agent tier overrides'),
   }).optional(),
   build: z.object({
     worktreeDir: z.string().optional(),
@@ -287,9 +298,9 @@ export interface ResolvedAgentConfig {
   /** The original effort level before clamping was applied. */
   effortOriginal?: import('./harness.js').EffortLevel;
   /** Provenance of the resolved effort value. */
-  effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
+  effortSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
   /** Provenance of the resolved thinking value. */
-  thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default';
+  thinkingSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
   /** True when thinking was coerced from 'enabled' to 'adaptive' for models that only support adaptive thinking. */
   thinkingCoerced?: boolean;
   /** The original thinking config before coercion was applied. */
@@ -300,6 +311,10 @@ export interface ResolvedAgentConfig {
   harness: 'claude-sdk' | 'pi';
   /** Per-role agentRuntime name override from config (input field, used during resolution). */
   agentRuntime?: string;
+  /** The resolved tier for this role. Always set. */
+  tier: AgentTier;
+  /** Provenance of the resolved tier value. */
+  tierSource: 'role-config' | 'role-default';
 }
 
 export interface PiConfig {
@@ -331,6 +346,18 @@ export interface EforgeConfig {
     effort?: import('./harness.js').EffortLevel;
     models?: Partial<Record<ModelClass, ModelRef>>;
     roles?: Record<string, Partial<ResolvedAgentConfig>>;
+    tiers?: Partial<Record<AgentTier, {
+      model?: ModelRef;
+      thinking?: import('./harness.js').ThinkingConfig;
+      effort?: import('./harness.js').EffortLevel;
+      maxBudgetUsd?: number;
+      fallbackModel?: string;
+      allowedTools?: string[];
+      disallowedTools?: string[];
+      maxTurns?: number;
+      modelClass?: ModelClass;
+      agentRuntime?: string;
+    }>>;
     /** Directory of .md files that shadow bundled prompts by name match. */
     promptDir?: string;
   };
@@ -480,6 +507,7 @@ export function resolveConfig(
       effort: fileConfig.agents?.effort,
       models: fileConfig.agents?.models,
       roles: fileConfig.agents?.roles as Record<string, Partial<ResolvedAgentConfig>> | undefined,
+      tiers: fileConfig.agents?.tiers as EforgeConfig['agents']['tiers'],
       promptDir: fileConfig.agents?.promptDir,
     }),
     build: Object.freeze({
@@ -695,6 +723,26 @@ export function mergePartialConfigs(
         }
       }
       mergedAgents.roles = mergedRoles;
+    }
+    // Deep-merge tiers: per-tier shallow merge (project tier fields override global, global-only fields survive)
+    const globalTiers = global.agents?.tiers;
+    const projectTiers = project.agents?.tiers;
+    if (globalTiers || projectTiers) {
+      const mergedTiers: Record<string, Record<string, unknown>> = {};
+      const allTierNames = new Set([
+        ...Object.keys(globalTiers ?? {}),
+        ...Object.keys(projectTiers ?? {}),
+      ]);
+      for (const tierName of allTierNames) {
+        const g = (globalTiers as Record<string, Record<string, unknown>> | undefined)?.[tierName];
+        const p = (projectTiers as Record<string, Record<string, unknown>> | undefined)?.[tierName];
+        if (g && p) {
+          mergedTiers[tierName] = { ...g, ...p };
+        } else {
+          mergedTiers[tierName] = (p ?? g)!;
+        }
+      }
+      mergedAgents.tiers = mergedTiers as typeof mergedAgents.tiers;
     }
     result.agents = mergedAgents;
   }

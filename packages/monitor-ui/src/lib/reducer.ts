@@ -56,6 +56,8 @@ export interface AgentThread {
   effortOriginal?: string;
   effortSource?: string;
   thinkingSource?: string;
+  tier?: string;
+  tierSource?: string;
 }
 
 export interface RunState {
@@ -321,6 +323,8 @@ function processEvent(
       effortOriginal: 'effortOriginal' in event ? (event as { effortOriginal?: string }).effortOriginal : undefined,
       effortSource: 'effortSource' in event ? (event as { effortSource?: string }).effortSource : undefined,
       thinkingSource: 'thinkingSource' in event ? (event as { thinkingSource?: string }).thinkingSource : undefined,
+      tier: 'tier' in event ? (event as { tier?: string }).tier : undefined,
+      tierSource: 'tierSource' in event ? (event as { tierSource?: string }).tierSource : undefined,
     });
   }
 

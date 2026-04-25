@@ -931,6 +931,16 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
                         </span>
                       )}
                     </div>
+                    {thread.tier && (
+                      <div className={thread.tierSource === 'role-config' ? 'text-amber-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
+                        tier: {thread.tier}
+                        {thread.tierSource && (
+                          <span>
+                            {' '}({thread.tierSource === 'role-config' ? 'config' : 'default'})
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="opacity-70">{duration}</div>
                     {thread.totalTokens != null && (
                       <div className="opacity-70">

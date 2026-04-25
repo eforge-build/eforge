@@ -125,6 +125,8 @@ export class ClaudeSDKHarness implements AgentHarness {
       thinkingSource: options.thinkingSource,
       thinkingCoerced: options.thinkingCoerced,
       thinkingOriginal: options.thinkingOriginal,
+      tier: options.tier,
+      tierSource: options.tierSource,
     });
 
     if (options.thinkingCoerced) {
