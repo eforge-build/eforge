@@ -19,11 +19,11 @@ function readRepoFile(relative: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin backend skill - scope column and precedence docs
+// Plugin profile skill - scope column and precedence docs
 // ---------------------------------------------------------------------------
 
-describe('eforge-plugin/skills/backend/backend.md - user-scope updates', () => {
-  const raw = readRepoFile('eforge-plugin/skills/backend/backend.md');
+describe('eforge-plugin/skills/profile/profile.md - user-scope updates', () => {
+  const raw = readRepoFile('eforge-plugin/skills/profile/profile.md');
 
   it('contains "Scope" in the list output table header', () => {
     // The table header should include a Scope column
@@ -58,8 +58,8 @@ describe('eforge-plugin/skills/backend/backend.md - user-scope updates', () => {
   });
 
   it('mentions user-scope paths', () => {
-    expect(raw).toContain('~/.config/eforge/backends/');
-    expect(raw).toContain('~/.config/eforge/.active-backend');
+    expect(raw).toContain('~/.config/eforge/profiles/');
+    expect(raw).toContain('~/.config/eforge/.active-profile');
   });
 
   it('notes scope parameter availability on list, use, create, delete', () => {
@@ -72,11 +72,11 @@ describe('eforge-plugin/skills/backend/backend.md - user-scope updates', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Plugin backend-new skill - Step 0 scope prompt
+// Plugin profile-new skill - Step 0 scope prompt
 // ---------------------------------------------------------------------------
 
-describe('eforge-plugin/skills/backend-new/backend-new.md - user-scope updates', () => {
-  const raw = readRepoFile('eforge-plugin/skills/backend-new/backend-new.md');
+describe('eforge-plugin/skills/profile-new/profile-new.md - user-scope updates', () => {
+  const raw = readRepoFile('eforge-plugin/skills/profile-new/profile-new.md');
 
   it('contains Step 0 scope prompt before Step 1', () => {
     const step0Idx = raw.indexOf('Step 0');
@@ -92,8 +92,8 @@ describe('eforge-plugin/skills/backend-new/backend-new.md - user-scope updates',
     const step0Content = raw.slice(step0Start, step1Start);
     expect(step0Content).toContain('Project scope');
     expect(step0Content).toContain('User scope');
-    expect(step0Content).toContain('eforge/backends/');
-    expect(step0Content).toContain('~/.config/eforge/backends/');
+    expect(step0Content).toContain('eforge/profiles/');
+    expect(step0Content).toContain('~/.config/eforge/profiles/');
   });
 
   it('passes scope to create action in Step 7', () => {
@@ -108,16 +108,16 @@ describe('eforge-plugin/skills/backend-new/backend-new.md - user-scope updates',
   });
 
   it('mentions user scope in the file path description', () => {
-    expect(raw).toContain('user: `~/.config/eforge/backends/<name>.yaml`');
+    expect(raw).toContain('user: `~/.config/eforge/profiles/<name>.yaml`');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Pi backend skill - mirrors plugin backend changes
+// Pi profile skill - mirrors plugin profile changes
 // ---------------------------------------------------------------------------
 
-describe('packages/pi-eforge/skills/eforge-backend/SKILL.md - user-scope updates', () => {
-  const raw = readRepoFile('packages/pi-eforge/skills/eforge-backend/SKILL.md');
+describe('packages/pi-eforge/skills/eforge-profile/SKILL.md - user-scope updates', () => {
+  const raw = readRepoFile('packages/pi-eforge/skills/eforge-profile/SKILL.md');
 
   it('contains "Scope" in the list output table header', () => {
     expect(raw).toMatch(/\|\s*Name\s*\|\s*Scope\s*\|\s*Backend\s*\|\s*Active\s*\|/);
@@ -150,17 +150,17 @@ describe('packages/pi-eforge/skills/eforge-backend/SKILL.md - user-scope updates
   });
 
   it('mentions user-scope paths', () => {
-    expect(raw).toContain('~/.config/eforge/backends/');
-    expect(raw).toContain('~/.config/eforge/.active-backend');
+    expect(raw).toContain('~/.config/eforge/profiles/');
+    expect(raw).toContain('~/.config/eforge/.active-profile');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Pi backend-new skill - mirrors plugin backend-new changes
+// Pi profile-new skill - mirrors plugin profile-new changes
 // ---------------------------------------------------------------------------
 
-describe('packages/pi-eforge/skills/eforge-backend-new/SKILL.md - user-scope updates', () => {
-  const raw = readRepoFile('packages/pi-eforge/skills/eforge-backend-new/SKILL.md');
+describe('packages/pi-eforge/skills/eforge-profile-new/SKILL.md - user-scope updates', () => {
+  const raw = readRepoFile('packages/pi-eforge/skills/eforge-profile-new/SKILL.md');
 
   it('contains Step 0 scope prompt before Step 1', () => {
     const step0Idx = raw.indexOf('Step 0');
@@ -176,7 +176,7 @@ describe('packages/pi-eforge/skills/eforge-backend-new/SKILL.md - user-scope upd
     const step0Content = raw.slice(step0Start, step1Start);
     expect(step0Content).toContain('Project scope');
     expect(step0Content).toContain('User scope');
-    expect(step0Content).toContain('~/.config/eforge/backends/');
+    expect(step0Content).toContain('~/.config/eforge/profiles/');
   });
 
   it('passes scope to create action in Step 7', () => {
@@ -195,12 +195,12 @@ describe('packages/pi-eforge/skills/eforge-backend-new/SKILL.md - user-scope upd
 describe('eforge-plugin/skills/init/init.md - user-scope one-liner', () => {
   const raw = readRepoFile('eforge-plugin/skills/init/init.md');
 
-  it('mentions ~/.config/eforge/backends/ for user-scope profiles', () => {
-    expect(raw).toContain('~/.config/eforge/backends/');
+  it('mentions ~/.config/eforge/profiles/ for user-scope profiles', () => {
+    expect(raw).toContain('~/.config/eforge/profiles/');
   });
 
-  it('mentions scope in the context of /eforge:backend:new', () => {
-    expect(raw).toContain('/eforge:backend:new');
+  it('mentions scope in the context of /eforge:profile:new', () => {
+    expect(raw).toContain('/eforge:profile:new');
     expect(raw).toMatch(/scope/i);
   });
 });
@@ -212,12 +212,12 @@ describe('eforge-plugin/skills/init/init.md - user-scope one-liner', () => {
 describe('packages/pi-eforge/skills/eforge-init/SKILL.md - user-scope one-liner', () => {
   const raw = readRepoFile('packages/pi-eforge/skills/eforge-init/SKILL.md');
 
-  it('mentions ~/.config/eforge/backends/ for user-scope profiles', () => {
-    expect(raw).toContain('~/.config/eforge/backends/');
+  it('mentions ~/.config/eforge/profiles/ for user-scope profiles', () => {
+    expect(raw).toContain('~/.config/eforge/profiles/');
   });
 
-  it('mentions scope in the context of /eforge:backend:new', () => {
-    expect(raw).toContain('/eforge:backend:new');
+  it('mentions scope in the context of /eforge:profile:new', () => {
+    expect(raw).toContain('/eforge:profile:new');
     expect(raw).toMatch(/scope/i);
   });
 });
@@ -287,14 +287,14 @@ describe('docs/config.md - Backend Profiles section', () => {
 // ---------------------------------------------------------------------------
 
 describe('plugin <-> Pi skill parity for user-scope updates', () => {
-  const pluginBackend = readRepoFile('eforge-plugin/skills/backend/backend.md');
-  const piBackend = readRepoFile('packages/pi-eforge/skills/eforge-backend/SKILL.md');
-  const pluginBackendNew = readRepoFile('eforge-plugin/skills/backend-new/backend-new.md');
-  const piBackendNew = readRepoFile('packages/pi-eforge/skills/eforge-backend-new/SKILL.md');
+  const pluginBackend = readRepoFile('eforge-plugin/skills/profile/profile.md');
+  const piBackend = readRepoFile('packages/pi-eforge/skills/eforge-profile/SKILL.md');
+  const pluginBackendNew = readRepoFile('eforge-plugin/skills/profile-new/profile-new.md');
+  const piBackendNew = readRepoFile('packages/pi-eforge/skills/eforge-profile-new/SKILL.md');
   const pluginInit = readRepoFile('eforge-plugin/skills/init/init.md');
   const piInit = readRepoFile('packages/pi-eforge/skills/eforge-init/SKILL.md');
 
-  it('both backend skills have the same 5-step precedence list', () => {
+  it('both profile skills have the same 5-step precedence list', () => {
     // Both should document all 5 steps
     for (const raw of [pluginBackend, piBackend]) {
       expect(raw).toMatch(/1\.\s+\*\*Project marker\*\*/);
@@ -302,22 +302,22 @@ describe('plugin <-> Pi skill parity for user-scope updates', () => {
     }
   });
 
-  it('both backend skills have the Scope column in the table', () => {
+  it('both profile skills have the Scope column in the table', () => {
     for (const raw of [pluginBackend, piBackend]) {
       expect(raw).toMatch(/\|\s*Scope\s*\|/);
     }
   });
 
-  it('both backend-new skills have Step 0 scope prompt', () => {
+  it('both profile-new skills have Step 0 scope prompt', () => {
     for (const raw of [pluginBackendNew, piBackendNew]) {
       expect(raw).toContain('Step 0');
-      expect(raw).toContain('~/.config/eforge/backends/');
+      expect(raw).toContain('~/.config/eforge/profiles/');
     }
   });
 
-  it('both init skills mention ~/.config/eforge/backends/', () => {
+  it('both init skills mention ~/.config/eforge/profiles/', () => {
     for (const raw of [pluginInit, piInit]) {
-      expect(raw).toContain('~/.config/eforge/backends/');
+      expect(raw).toContain('~/.config/eforge/profiles/');
     }
   });
 });
@@ -327,8 +327,8 @@ describe('plugin <-> Pi skill parity for user-scope updates', () => {
 // ---------------------------------------------------------------------------
 
 describe('enum drift - piThinkingLevel and effortLevel values', () => {
-  const piBackendNew = readRepoFile('packages/pi-eforge/skills/eforge-backend-new/SKILL.md');
-  const pluginBackendNew = readRepoFile('eforge-plugin/skills/backend-new/backend-new.md');
+  const piBackendNew = readRepoFile('packages/pi-eforge/skills/eforge-profile-new/SKILL.md');
+  const pluginBackendNew = readRepoFile('eforge-plugin/skills/profile-new/profile-new.md');
   const piConfig = readRepoFile('packages/pi-eforge/skills/eforge-config/SKILL.md');
   const pluginConfig = readRepoFile('eforge-plugin/skills/config/config.md');
   const docsConfig = readRepoFile('docs/config.md');

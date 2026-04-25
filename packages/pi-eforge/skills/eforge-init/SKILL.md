@@ -7,7 +7,7 @@ disable-model-invocation: true
 # /eforge:init
 
 <!-- parity-skip-start -->
-Initialize eforge in this project. Detects project context, asks the user for provider and model preferences, then creates a named backend profile under `eforge/backends/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.).
+Initialize eforge in this project. Detects project context, asks the user for provider and model preferences, then creates a named agent runtime profile under `eforge/profiles/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.) with `agentRuntimes:` and `defaultAgentRuntime:` as top-level keys.
 <!-- parity-skip-end -->
 
 ## Workflow
@@ -32,7 +32,7 @@ Present your suggested commands to the user briefly: "I'd suggest these postMerg
 Since Pi is the backend:
 
 1. **Provider**: Call `eforge_models` with `{ action: "providers", backend: "pi" }` to get available providers. Ask the user to pick one (e.g. "anthropic", "openrouter").
-2. **Max model**: Call `eforge_models` with `{ action: "list", backend: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Default to the newest model. The max model is used for all three model classes (max, balanced, fast) initially - users can refine later with `/eforge:backend:new`.
+2. **Max model**: Call `eforge_models` with `{ action: "list", backend: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Default to the newest model. The max model is used for all three model classes (max, balanced, fast) initially - users can refine later with `/eforge:profile-new`.
 
 ### Step 2: Call the tool
 
@@ -43,21 +43,21 @@ Call the `eforge_init` tool with:
 - `maxModel`: the model ID from Step 1.5
 <!-- parity-skip-end -->
 
-The tool will create a named backend profile under `eforge/backends/`, activate it via `eforge/.active-backend`, and write `eforge/config.yaml` with only team-wide settings (no `backend:` field).
+The tool will create a named agent runtime profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` with `agentRuntimes:` (listing available profiles) and `defaultAgentRuntime:` (the default profile name) as top-level keys alongside other team-wide settings.
 
 ### Step 2.5: Migrate existing config
 
 If `$ARGUMENTS` contains `--migrate`, skip Steps 1.5 and 2 above. Instead call `eforge_init` with `migrate: true`. This extracts the `backend:`, `pi:`, and `agents.models`/`agents.model`/`agents.effort`/`agents.thinking` fields from the existing `config.yaml` into a named profile, activates it, and strips those fields from `config.yaml`.
 
-### Step 3: Ensure `.gitignore` covers the active-backend marker
+### Step 3: Ensure `.gitignore` covers the active-profile marker
 
-The `eforge/.active-backend` file is a per-developer marker that tracks which named backend profile is active. It should never be committed - each developer can pick their own profile. The `eforge_init` tool already manages the main `.gitignore` entries, but also ensure the repo's `.gitignore` contains `eforge/.active-backend`. If it is missing, append it.
+The `eforge/.active-profile` file is a per-developer marker that tracks which named agent runtime profile is active. It should never be committed - each developer can pick their own profile. The `eforge_init` tool already manages the main `.gitignore` entries, but also ensure the repo's `.gitignore` contains `eforge/.active-profile`. If it is missing, append it.
 
 ### Step 4: Report
 
 Once the tool completes successfully, inform the user:
 
-> eforge initialized with profile `<profileName>`. The profile lives at `eforge/backends/<profileName>.yaml` and is now active. You can customize further with `/eforge:config --edit`, switch profiles with `/eforge:backend`, or create additional profiles with `/eforge:backend:new`. Use `/eforge:backend:new --scope user` to create a user-scope profile under `~/.config/eforge/backends/` that applies across all your projects.
+> eforge initialized with profile `<profileName>`. The profile lives at `eforge/profiles/<profileName>.yaml` and is now active. You can customize further with `/eforge:config --edit`, switch profiles with `/eforge:profile`, or create additional profiles with `/eforge:profile-new`. Use `/eforge:profile-new --scope user` to create a user-scope profile under `~/.config/eforge/profiles/` that applies across all your projects.
 
 ## Related Skills
 
@@ -65,8 +65,8 @@ Once the tool completes successfully, inform the user:
 |-------|---------|----------------|
 | Build | `eforge_build` | User wants to enqueue work for the daemon to build |
 | Config | `eforge_config` | User wants to view, edit, or validate the eforge config |
-| Backend | `eforge_backend` | User wants to inspect or switch backend profiles |
-| Backend (new) | `/eforge:backend:new` | User wants to create a personal backend profile |
+| Profile | `eforge_profile` | User wants to inspect or switch agent runtime profiles |
+| Profile (new) | `/eforge:profile-new` | User wants to create a personal agent runtime profile |
 | Plan | `eforge_plan` | User wants to plan changes before building |
 | Status | `eforge_status` | User wants to check build progress or queue state |
 | Restart | `eforge_restart` | User wants to restart the eforge daemon |

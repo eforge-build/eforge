@@ -42,8 +42,8 @@ const repoRoot = resolve(__dirname, "..");
 
 // Explicit pairing — the 9 consumer-facing skills that must stay in sync.
 const SKILL_PAIRS = [
-  { plugin: "backend", pi: "eforge-backend" },
-  { plugin: "backend-new", pi: "eforge-backend-new" },
+  { plugin: "profile", pi: "eforge-profile" },
+  { plugin: "profile-new", pi: "eforge-profile-new" },
   { plugin: "build", pi: "eforge-build" },
   { plugin: "config", pi: "eforge-config" },
   { plugin: "init", pi: "eforge-init" },

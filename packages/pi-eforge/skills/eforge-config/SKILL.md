@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 Create or modify an `eforge/config.yaml` configuration file interactively. Supports two modes - init for new projects and edit for existing configs. Validation uses the eforge daemon.
 
-`eforge/config.yaml` holds **team-wide settings only** (postMergeCommands, agent tuning, hooks, queue config, etc.). Backend selection and backend-specific tuning live in named profile files (`eforge/backends/<name>.yaml` for project scope, or `~/.config/eforge/backends/<name>.yaml` for user scope) and are managed by `/eforge:init` and `/eforge:backend:new`. The `backend:` field is **not valid** in `eforge/config.yaml`; the schema rejects it.
+`eforge/config.yaml` holds **team-wide settings only** (postMergeCommands, agent tuning, hooks, queue config, etc.). Agent runtime profiles live in named profile files (`eforge/profiles/<name>.yaml` for project scope, or `~/.config/eforge/profiles/<name>.yaml` for user scope) and are managed by `/eforge:init` and `/eforge:profile-new`. The `agentRuntimes:` and `defaultAgentRuntime:` fields are **top-level keys** in `eforge/config.yaml` for registering and selecting profiles.
 
 ## Mode Detection
 
@@ -27,12 +27,12 @@ Determine the mode from arguments and file state:
 
 If `eforge/config.yaml` already exists, ask the user whether they want to switch to edit mode or overwrite. Respect their choice.
 
-### Step 2: Require an active backend profile
+### Step 2: Require an active agent runtime profile
 
-This skill does not create backend profiles. Before gathering team-wide settings, confirm a backend profile is already active by calling `eforge_backend` with `{ action: "show" }`. Inspect the response:
+This skill does not create agent runtime profiles. Before gathering team-wide settings, confirm a profile is already active by calling `eforge_profile` with `{ action: "show" }`. Inspect the response:
 
 - If `active` is `null` (no profile is active for this project) or `resolved.backend` is missing, **stop**. Tell the user:
-  > `/eforge:config` only manages team-wide settings. This project has no active backend profile. Run `/eforge:init` to set up eforge in a fresh project (creates a profile and `config.yaml`), or `/eforge:backend:new` to add a profile to an existing setup. Come back to `/eforge:config` once a profile is active.
+  > `/eforge:config` only manages team-wide settings. This project has no active agent runtime profile. Run `/eforge:init` to set up eforge in a fresh project (creates a profile and `config.yaml`), or `/eforge:profile-new` to add a profile to an existing setup. Come back to `/eforge:config` once a profile is active.
   Do not proceed with the interview and do not write `eforge/config.yaml`.
 - Otherwise note the resolved backend kind (`resolved.backend` is `claude-sdk` or `pi`) and, for Pi, the profile's provider. Use these when suggesting models later.
 
@@ -48,7 +48,7 @@ Share a brief summary of what you found.
 
 ### Step 4: Interview
 
-Walk the user through configuration sections, asking about each one. Only include sections where the user wants non-default behavior. **Do not** collect backend, provider, or Pi-specific tuning here - those belong in backend profile files.
+Walk the user through configuration sections, asking about each one. Only include sections where the user wants non-default behavior. **Do not** collect backend, provider, or Pi-specific tuning here - those belong in agent runtime profile files.
 
 **Sections to cover:**
 
@@ -68,7 +68,7 @@ For each section, explain what it controls and suggest values based on the proje
 
 ### Step 5: Present Draft
 
-Show the user the complete `eforge/config.yaml` content before writing. Confirm it contains no `backend:` key (that field belongs only in profile files and will fail validation if it appears here). Ask for any changes.
+Show the user the complete `eforge/config.yaml` content before writing. Confirm it contains no standalone `backend:` key at the top level (backend-specific config belongs only in agent runtime profile files under `eforge/profiles/`). Ask for any changes.
 
 ### Step 6: Write
 
@@ -88,11 +88,11 @@ Read the existing `eforge/config.yaml` file and summarize its current settings f
 
 ### Step 2: Identify Changes
 
-Ask the user what they want to change. If `$ARGUMENTS` contains additional context beyond `--edit`, use that to understand the desired changes. If the requested change is really about the backend (switching backend kind, provider, or the profile's own model/tuning), stop and redirect them to `/eforge:backend` (switch active profile) or `/eforge:backend:new` (create a new profile) - that configuration does not belong in `eforge/config.yaml`.
+Ask the user what they want to change. If `$ARGUMENTS` contains additional context beyond `--edit`, use that to understand the desired changes. If the requested change is really about the backend (switching backend kind, provider, or the profile's own model/tuning), stop and redirect them to `/eforge:profile` (switch active profile) or `/eforge:profile-new` (create a new profile) - that configuration does not belong in `eforge/config.yaml`.
 
 ### Step 3: Apply Changes
 
-Modify the config based on the user's requests. Present the updated content before writing. If the change involves a model ID anywhere (`agents.models.*`, `agents.model`, per-role `model`), first resolve the active backend by calling `eforge_backend` with `{ action: "show" }`, then call `eforge_models` with `{ action: "list", backend: "<resolved-backend>" }` (and `provider` for Pi) to fetch the live list. Pick from that list; do not suggest model IDs from memory.
+Modify the config based on the user's requests. Present the updated content before writing. If the change involves a model ID anywhere (`agents.models.*`, `agents.model`, per-role `model`), first resolve the active profile by calling `eforge_profile` with `{ action: "show" }`, then call `eforge_models` with `{ action: "list", backend: "<resolved-backend>" }` (and `provider` for Pi) to fetch the live list. Pick from that list; do not suggest model IDs from memory.
 
 ### Step 4: Write
 
@@ -114,7 +114,7 @@ This returns the merged result of defaults + global config + project config + ac
 
 ## Configuration Reference
 
-Available top-level sections in `eforge/config.yaml`. Note: `backend:` and backend-specific sections (`pi:`, `claudeSdk:`) are **not valid here** - they live in backend profile files under `eforge/backends/` or `~/.config/eforge/backends/`.
+Available top-level sections in `eforge/config.yaml`. Note: backend-specific sections (`pi:`, `claudeSdk:`) are **not valid here** - they live in agent runtime profile files under `eforge/profiles/` or `~/.config/eforge/profiles/`. The `agentRuntimes:` and `defaultAgentRuntime:` keys are valid top-level keys for registering and selecting profiles.
 
 ```yaml
 # Queue concurrency
@@ -219,9 +219,9 @@ profiles:
 
 | Condition | Action |
 |-----------|--------|
-| No active backend profile | Stop and direct the user to `/eforge:init` or `/eforge:backend:new` |
+| No active agent runtime profile | Stop and direct the user to `/eforge:init` or `/eforge:profile-new` |
 | `eforge_config` validate returns errors | Show errors, offer to fix |
-| Validation error mentions `backend:` is not valid here | Remove the key; backend lives in profile files, not `config.yaml` |
+| Validation error mentions a backend key is not valid here | Remove the key; backend-specific config lives in profile files, not `config.yaml` |
 | User provides invalid profile stage name | Warn and suggest valid stage names |
 | YAML syntax error in existing file | Report the error, offer to recreate |
 | Daemon connection failure | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
@@ -230,9 +230,9 @@ profiles:
 
 | Skill | Command | When to suggest |
 |-------|---------|----------------|
-| Init | `eforge_init` | No eforge config found in the project, or no active backend profile |
-| Backend | `eforge_backend` | User wants to list, inspect, or switch backend profiles |
-| Backend (new) | `/eforge:backend:new` | User wants to create a new backend profile (project or user scope) |
+| Init | `eforge_init` | No eforge config found in the project, or no active agent runtime profile |
+| Profile | `eforge_profile` | User wants to list, inspect, or switch agent runtime profiles |
+| Profile (new) | `/eforge:profile-new` | User wants to create a new agent runtime profile (project or user scope) |
 | Build | `eforge_build` | User wants to enqueue work for the daemon to build |
 | Plan | `eforge_plan` | User wants to plan changes before building |
 | Status | `eforge_status` | User wants to check build progress or queue state |
