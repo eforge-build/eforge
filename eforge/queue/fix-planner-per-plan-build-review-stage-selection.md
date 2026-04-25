@@ -1,7 +1,7 @@
 ---
 title: Fix planner per-plan build/review stage selection
 created: 2026-04-25
-depends_on: ["add-a-tier-layer-above-agent-roles"]
+depends_on: []
 ---
 
 # Fix planner per-plan build/review stage selection
@@ -12,14 +12,14 @@ The user observed in the monitor UI that every plan in every run shows the same 
 
 Investigation found a **prompt/schema mismatch introduced in commit `f618a48`** (`feat(plan-02-runtime-override-events): ... Planner Prompt`):
 
-- `packages/engine/src/prompts/planner.md:380-443` — the planner prompt instructs the model to emit per-plan `build` and `review` blocks in `orchestration.plans[]`, with detailed guidance ("Tailor build and review config to each plan's complexity", TDD examples, doc-update guidance, perspectives, maxRounds, etc.).
-- `packages/engine/src/schemas.ts:356-361` — but `orchestrationPlanSchema` (the per-plan entry shape inside `planSetSubmissionSchema`, which is wired in as the `submit_plan_set` tool's `inputSchema` at `packages/engine/src/agents/planner.ts:89`) only declares `id`, `name`, `dependsOn`, `branch`. Zod's default `.strip()` silently drops any `build`/`review` the planner produces.
-- `packages/engine/src/plan.ts:692-701` — `writePlanSet` would not pass them through anyway: it explicitly maps just `id`, `name`, `depends_on`, `branch`, `agents` into orchestration.yaml.
-- `packages/engine/src/plan.ts:767-776` — `injectPipelineIntoOrchestrationYaml` then backfills the missing per-plan fields from `pipeline.defaultBuild` / `pipeline.defaultReview` produced by the pipeline composer. The comment even acknowledges the planner schema omits them: "The planner's submission schema omits these (composer decisions)".
+- `packages/engine/src/prompts/planner.md` — the planner prompt instructs the model to emit per-plan `build` and `review` blocks in `orchestration.plans[]`, with detailed guidance ("Tailor build and review config to each plan's complexity", TDD examples, doc-update guidance, perspectives, maxRounds, etc.).
+- `packages/engine/src/schemas.ts:388-393` — but `orchestrationPlanSchema` (the per-plan entry shape inside `planSetSubmissionSchema`, which is wired in as the `submit_plan_set` tool's `inputSchema` at `packages/engine/src/agents/planner.ts`) only declares `id`, `name`, `dependsOn`, `branch`. Zod's default `.strip()` silently drops any `build`/`review` the planner produces.
+- `packages/engine/src/plan.ts:691-700` — `writePlanSet` would not pass them through anyway: it explicitly maps just `id`, `name`, `depends_on`, `branch`, `agents` into orchestration.yaml.
+- `packages/engine/src/plan.ts:766-774` — `injectPipelineIntoOrchestrationYaml` then backfills the missing per-plan fields using `p.build ?? pipeline.defaultBuild` / `p.review ?? pipeline.defaultReview`. The comment acknowledges the planner schema omits them: "The planner's submission schema omits these (composer decisions)".
 
 Net effect: every plan ends up with **the same** `pipeline.defaultBuild` array, which is exactly what the breadcrumbs show. Confirmed by inspecting `eforge/plans/real-time-build-feedback-.../orchestration.yaml`, where every plan literally has `build: *a1` (a YAML alias to a single shared object) — they are the same object reference, written that way because they all came from `pipeline.defaultBuild`.
 
-The wiring on the read side is fine: `parseOrchestrationConfig` (`packages/engine/src/plan.ts:204-251`) already validates per-plan `build`/`review` with `buildStageSpecSchema` / `reviewProfileConfigSchema`, the runner reads `planEntry.build` / `planEntry.review` per plan in `packages/engine/src/eforge.ts:535-562`, the daemon serves them per-plan in `packages/monitor/src/server.ts:294-343`, and `packages/monitor-ui/src/components/pipeline/thread-pipeline.tsx:551-562` already builds a `buildStagesByPlan` map. The only thing missing is the planner's submission ever actually carrying per-plan values.
+The wiring on the read side is fine: `parseOrchestrationConfig` (`packages/engine/src/plan.ts`) already validates per-plan `build`/`review` with `buildStageSpecSchema` / `reviewProfileConfigSchema`, the runner reads `planEntry.build` / `planEntry.review` per plan in `packages/engine/src/eforge.ts`, the daemon serves them per-plan in `packages/monitor/src/server.ts`, and `packages/monitor-ui/src/components/pipeline/thread-pipeline.tsx` already builds a `buildStagesByPlan` map. The only thing missing is the planner's submission ever actually carrying per-plan values.
 
 This is the issue the user is asking us to fix.
 
@@ -33,18 +33,17 @@ Open the planner submission schema for per-plan `build` and `review`, and pass t
 
 ### Critical files to modify
 
-1. **`packages/engine/src/schemas.ts`** (around line 356-361)
-   - Extend `orchestrationPlanSchema` with optional `build` and `review` fields, reusing the existing `pipelineBuildStageSpecSchema` (line 561) and `pipelineReviewProfileConfigSchema` (line 574). They live in the same file.
+1. **`packages/engine/src/schemas.ts`** (around line 388-393)
+   - Extend `orchestrationPlanSchema` with optional `build` and `review` fields, reusing the existing `pipelineBuildStageSpecSchema` (line 593) and `pipelineReviewProfileConfigSchema` (line 606). They live in the same file.
    - Make them optional, not required: omitting them must remain valid so the existing backfill in `injectPipelineIntoOrchestrationYaml` keeps working as the safety net. The planner prompt already strongly nudges the model to specify them, so the typical case will fill them in; an optional schema lets us land this without forcing every planner run to emit them.
-   - The schema YAML the planner sees is auto-generated by `getPlanSetSubmissionSchemaYaml()` (line 545) from this Zod schema, so the new fields surface to the model automatically with no separate prompt change required.
+   - The schema YAML the planner sees is auto-generated by `getPlanSetSubmissionSchemaYaml()` (line 576) from this Zod schema, so the new fields surface to the model automatically with no separate prompt change required.
 
-2. **`packages/engine/src/plan.ts`** — `writePlanSet`, around line 692-701
+2. **`packages/engine/src/plan.ts`** — `writePlanSet`, around line 691-700
    - When mapping `payload.orchestration.plans` into the YAML, conditionally include `build` and `review` if present on the submission entry, e.g. `...(p.build ? { build: p.build } : {})` and `...(p.review ? { review: p.review } : {})`. Mirror the existing optional `agents` pattern at line 699.
    - Leave the rest of the function alone.
 
-3. **No changes to `injectPipelineIntoOrchestrationYaml`** (`packages/engine/src/plan.ts:755-778`)
-   - Its existing backfill `build: p.build ?? pipeline.defaultBuild` already does the right thing once the planner can supply `p.build`. It will only fill in defaults for plans the planner left blank.
-   - The comment at lines 767-769 should be updated to reflect that `build`/`review` are now planner-overridable with composer defaults as a fallback (the comment currently says the schema "omits these (composer decisions)", which will be stale).
+3. **Update stale comment in `injectPipelineIntoOrchestrationYaml`** (`packages/engine/src/plan.ts:766-768`)
+   - The comment currently says "The planner's submission schema omits these (composer decisions), so writePlanSet emits orchestration.yaml without them". Update it to reflect that `build`/`review` are now planner-overridable with composer defaults as a fallback.
 
 ## Scope
 
@@ -52,8 +51,8 @@ Open the planner submission schema for per-plan `build` and `review`, and pass t
 
 - Extending `orchestrationPlanSchema` in `packages/engine/src/schemas.ts` with optional `build` and `review` fields reusing `pipelineBuildStageSpecSchema` and `pipelineReviewProfileConfigSchema`.
 - Updating `writePlanSet` in `packages/engine/src/plan.ts` to conditionally pass through `build` and `review` per plan.
-- Updating the stale comment at `packages/engine/src/plan.ts:767-769` to reflect that `build`/`review` are now planner-overridable with composer defaults as a fallback.
-- Adding/extending a unit test in `test/plan-parsing.test.ts` to round-trip a payload with per-plan `build`/`review` set on one plan and omitted on another.
+- Updating the stale comment at `packages/engine/src/plan.ts:766-768` to reflect that `build`/`review` are now planner-overridable with composer defaults as a fallback.
+- Adding a new unit test in `test/plan-parsing.test.ts` to round-trip a payload with per-plan `build`/`review` set on one plan and omitted on another. Note: a test at line 265 ("backfills per-plan build/review from pipeline defaults when absent") already covers the backfill-only path; the new test must additionally verify the planner-override path (plan A with custom build/review preserved, plan B receiving pipeline.defaultBuild).
 
 ### Explicitly out of scope (files NOT to modify)
 
@@ -64,7 +63,7 @@ Open the planner submission schema for per-plan `build` and `review`, and pass t
 
 ## Acceptance Criteria
 
-1. **Unit-level**: extend an existing test in `test/plan-parsing.test.ts` (or add a sibling test) that round-trips a `planSetSubmissionSchema` payload with per-plan `build` / `review` set on one plan and omitted on another, then runs `writePlanSet` + `injectPipelineIntoOrchestrationYaml` and reads back via `parseOrchestrationConfig`. Assert plan A keeps its planner-chosen stages and plan B receives `pipeline.defaultBuild`.
+1. **Unit-level**: add a new test in `test/plan-parsing.test.ts` (alongside the existing "backfills per-plan build/review" test at line 265) that round-trips a `planSetSubmissionSchema` payload with per-plan `build` / `review` set on one plan and omitted on another, then runs `writePlanSet` + `injectPipelineIntoOrchestrationYaml` and reads back via `parseOrchestrationConfig`. Assert plan A keeps its planner-chosen stages and plan B receives `pipeline.defaultBuild`.
 2. **End-to-end via daemon**: with the changes built (`pnpm build`) and the daemon restarted (use the `eforge-daemon-restart` skill), enqueue a small multi-plan PRD and confirm in the monitor UI that different plans show different breadcrumbs when the planner chooses to differentiate (e.g. one plan with `[implement, review-cycle]` vs another with `[[implement, doc-update], review-cycle]`). The orchestration.yaml that lands under `eforge/plans/<set>/orchestration.yaml` should no longer have every plan aliased to the same `*a1` block when the planner customizes per plan.
 3. **Type-check**: `pnpm type-check` passes, confirming the new optional fields propagate cleanly through `PlanSetSubmission` consumers.
 4. The optional `build` and `review` fields on `orchestrationPlanSchema` surface automatically into the schema YAML produced by `getPlanSetSubmissionSchemaYaml()` (no separate prompt change required).
