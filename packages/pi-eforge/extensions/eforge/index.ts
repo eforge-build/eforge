@@ -41,7 +41,7 @@ import type {
   SessionSummary,
   FollowCounters,
 } from '@eforge-build/client';
-import { handleBackendCommand, handleBackendNewCommand } from './backend-commands';
+import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
 import type { UIContext } from './ui-helpers';
 
@@ -172,7 +172,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         active: string | null;
         source: string;
         resolved: { backend?: string; name?: string } | null;
-      }>(ctx.cwd, 'GET', API_ROUTES.backendShow);
+      }>(ctx.cwd, 'GET', API_ROUTES.profileShow);
       if (data.active && data.resolved?.backend) {
         ctx.ui.setStatus('eforge', `eforge: ${data.active} (${data.resolved.backend})`);
       } else {
@@ -595,13 +595,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   });
 
   // ------------------------------------------------------------------
-  // Tool: eforge_backend
+  // Tool: eforge_profile
   // ------------------------------------------------------------------
   pi.registerTool({
-    name: "eforge_backend",
-    label: "eforge backend",
+    name: "eforge_profile",
+    label: "eforge profile",
     description:
-      'Manage named backend profiles in eforge/backends/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-backend to switch profiles; "create" writes a new eforge/backends/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+      'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
     parameters: Type.Object({
       action: StringEnum(["list", "show", "use", "create", "delete"] as const, {
         description:
@@ -657,12 +657,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const params = new URLSearchParams();
         if (scope) params.set("scope", scope);
         const qs = params.toString();
-        const { data } = await daemonRequest(ctx.cwd, "GET", `${API_ROUTES.backendList}${qs ? `?${qs}` : ""}`);
+        const { data } = await daemonRequest(ctx.cwd, "GET", `${API_ROUTES.profileList}${qs ? `?${qs}` : ""}`);
         return jsonResult(data);
       }
 
       if (action === "show") {
-        const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.backendShow);
+        const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.profileShow);
         return jsonResult(data);
       }
 
@@ -675,7 +675,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const { data } = await daemonRequest(
           ctx.cwd,
           "POST",
-          API_ROUTES.backendUse,
+          API_ROUTES.profileUse,
           useBody,
         );
         if (_latestCtx) await refreshStatus(_latestCtx);
@@ -699,7 +699,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const { data } = await daemonRequest(
           ctx.cwd,
           "POST",
-          API_ROUTES.backendCreate,
+          API_ROUTES.profileCreate,
           body,
         );
         if (_latestCtx) await refreshStatus(_latestCtx);
@@ -716,7 +716,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const { data } = await daemonRequest(
         ctx.cwd,
         "DELETE",
-        buildPath(API_ROUTES.backendDelete, { name }),
+        buildPath(API_ROUTES.profileDelete, { name }),
         body,
       );
       return jsonResult(data);
@@ -980,7 +980,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_init",
     label: "eforge init",
     description:
-      "Initialize eforge in a project: creates a named backend profile under eforge/backends/, activates it, and writes eforge/config.yaml for team-wide settings. Backend is hardcoded to 'pi'. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.",
+      "Initialize eforge in a project: creates a named backend profile under eforge/profiles/, activates it, and writes eforge/config.yaml for team-wide settings. Backend is hardcoded to 'pi'. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.",
     parameters: Type.Object({
       force: Type.Optional(
         Type.Boolean({
@@ -1017,8 +1017,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const configDir = join(ctx.cwd, "eforge");
       const configPath = join(configDir, "config.yaml");
 
-      // Ensure .gitignore has daemon state and active-backend marker
-      ensureGitignoreEntries(ctx.cwd, [".eforge/", "eforge/.active-backend"]);
+      // Ensure .gitignore has daemon state and active-profile marker
+      ensureGitignoreEntries(ctx.cwd, [".eforge/", "eforge/.active-profile"]);
 
       // --- Migrate mode ---
       if (params.migrate) {
@@ -1073,7 +1073,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (profile.agents) createBody.agents = profile.agents;
         if (profile.pi) createBody.pi = profile.pi;
 
-        await daemonRequest(ctx.cwd, "POST", API_ROUTES.backendCreate, createBody);
+        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
 
         // Rewrite config.yaml with remaining fields only (no backend:) before
         // activating the profile, so a failed write leaves the profile inactive
@@ -1083,7 +1083,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           : "";
         writeFileSync(configPath, yamlOut, "utf-8");
 
-        await daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name: profileName });
+        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
 
         if (_latestCtx) await refreshStatus(_latestCtx);
 
@@ -1091,7 +1091,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           status: "migrated",
           configPath: "eforge/config.yaml",
           profileName,
-          profilePath: `eforge/backends/${profileName}.yaml`,
+          profilePath: `eforge/profiles/${profileName}.yaml`,
           backend,
           moved: Object.keys(profile),
           kept: Object.keys(remaining),
@@ -1144,10 +1144,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         },
       };
       if (params.force) createBody.overwrite = true;
-      await daemonRequest(ctx.cwd, "POST", API_ROUTES.backendCreate, createBody);
+      await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
 
       // Activate the profile
-      await daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name: profileName });
+      await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
 
       // Create eforge/ directory
       try {
@@ -1185,7 +1185,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         status: "initialized",
         configPath: "eforge/config.yaml",
         profileName,
-        profilePath: `eforge/backends/${profileName}.yaml`,
+        profilePath: `eforge/profiles/${profileName}.yaml`,
         backend,
       };
 
@@ -1345,22 +1345,22 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   }
 
   // ------------------------------------------------------------------
-  // Native commands - /eforge:backend, /eforge:backend:new, /eforge:config
+  // Native commands - /eforge:profile, /eforge:profile:new, /eforge:config
   // ------------------------------------------------------------------
 
-  pi.registerCommand("eforge:backend", {
-    description: "List, inspect, and switch backend profiles",
+  pi.registerCommand("eforge:profile", {
+    description: "List, inspect, and switch profiles",
     handler: async (args) => {
-      await handleBackendCommand(pi, _latestCtx, args, async () => {
+      await handleProfileCommand(pi, _latestCtx, args, async () => {
         if (_latestCtx) await refreshStatus(_latestCtx);
       });
     },
   });
 
-  pi.registerCommand("eforge:backend:new", {
-    description: "Create a new backend profile in eforge/backends/",
+  pi.registerCommand("eforge:profile:new", {
+    description: "Create a new profile in eforge/profiles/",
     handler: async (args) => {
-      await handleBackendNewCommand(pi, _latestCtx, args, async () => {
+      await handleProfileNewCommand(pi, _latestCtx, args, async () => {
         if (_latestCtx) await refreshStatus(_latestCtx);
       });
     },

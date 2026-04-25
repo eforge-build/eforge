@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { PlanSetSubmission, ArchitectureSubmission } from '@eforge-build/engine/schemas';
-import { PlannerSubmissionError } from '@eforge-build/engine/backend';
-import { StubBackend } from './stub-backend.js';
+import { PlannerSubmissionError } from '@eforge-build/engine/harness';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { runPlanner } from '@eforge-build/engine/agents/planner';
@@ -73,7 +73,7 @@ describe('Planner submission tool: plan set', () => {
 
   it('writes plan files via writePlanSet and yields plan:complete when submit_plan_set is called', async () => {
     const payload = validPlanSetPayload();
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       toolCalls: [{
         tool: 'submit_plan_set',
         toolUseId: 'tu-1',
@@ -85,7 +85,7 @@ describe('Planner submission tool: plan set', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Build widgets', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'excursion',
@@ -127,18 +127,18 @@ describe('Planner submission tool: no submission and no skip', () => {
   const makeTempDir = useTempDir('eforge-planner-no-submission-test-');
 
   it('throws PlannerSubmissionError when neither submission nor skip occurs', async () => {
-    const backend = new StubBackend([{ text: 'I generated some plans.' }]);
+    const backend = new StubHarness([{ text: 'I generated some plans.' }]);
     const cwd = makeTempDir();
 
     await expect(collectEvents(runPlanner('Build widgets', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'excursion',
     }))).rejects.toThrow(PlannerSubmissionError);
 
     await expect(collectEvents(runPlanner('Build widgets', {
-      backend: new StubBackend([{ text: 'I generated some plans.' }]),
+      harness: new StubHarness([{ text: 'I generated some plans.' }]),
       cwd: makeTempDir(),
       auto: true,
       scope: 'excursion',
@@ -150,13 +150,13 @@ describe('Planner submission tool: skip behavior preserved', () => {
   const makeTempDir = useTempDir('eforge-planner-skip-test-');
 
   it('yields plan:skip when <skip> XML block is present', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<skip>All requirements are already implemented.</skip>',
     }]);
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Build widgets', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'excursion',
@@ -178,7 +178,7 @@ describe('Planner submission tool: architecture', () => {
 
   it('writes architecture files and yields expedition events when submit_architecture is called', async () => {
     const payload = validArchitecturePayload();
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       toolCalls: [{
         tool: 'submit_architecture',
         toolUseId: 'tu-1',
@@ -190,7 +190,7 @@ describe('Planner submission tool: architecture', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Build modular system', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'expedition',
@@ -253,7 +253,7 @@ describe('Planner submission tool: plan:submission event metadata', () => {
       branch: 'test-plan/gadgets',
     });
 
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       toolCalls: [{
         tool: 'submit_plan_set',
         toolUseId: 'tu-1',
@@ -264,7 +264,7 @@ describe('Planner submission tool: plan:submission event metadata', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Build widgets', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'excursion',
@@ -299,7 +299,7 @@ describe('Planner submission tool: validation error formatting', () => {
       dependsOn: null,
     };
 
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       toolCalls: [{
         tool: 'submit_plan_set',
         toolUseId: 'tu-1',
@@ -316,7 +316,7 @@ describe('Planner submission tool: validation error formatting', () => {
     const events: EforgeEvent[] = [];
     await expect((async () => {
       for await (const ev of runPlanner('Build widgets', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
         scope: 'excursion',

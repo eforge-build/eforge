@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { PlannerSubmissionError } from '@eforge-build/engine/backend';
-import { StubBackend } from './stub-backend.js';
+import { PlannerSubmissionError } from '@eforge-build/engine/harness';
+import type { AgentHarness } from '@eforge-build/engine/harness';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { runPlanner } from '@eforge-build/engine/agents/planner';
@@ -16,6 +17,7 @@ import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
 import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig, AGENT_ROLE_DEFAULTS } from '@eforge-build/engine/pipeline';
 import { DEFAULT_CONFIG, resolveConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
+import { singletonRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
 
 // --- Planner ---
 
@@ -23,7 +25,7 @@ describe('runPlanner wiring', () => {
   const makeTempDir = useTempDir('eforge-planner-test-');
 
   it('throws PlannerSubmissionError when neither submission tool nor <skip> fires', async () => {
-    const backend = new StubBackend([{ text: 'Planning done.' }]);
+    const backend = new StubHarness([{ text: 'Planning done.' }]);
     const cwd = makeTempDir();
 
     // Collect events until the throw. plan:start and agent:result are yielded
@@ -31,7 +33,7 @@ describe('runPlanner wiring', () => {
     const events: EforgeEvent[] = [];
     let thrown: unknown;
     try {
-      for await (const ev of runPlanner('Build a widget', { backend, cwd })) {
+      for await (const ev of runPlanner('Build a widget', { harness: backend, cwd })) {
         events.push(ev);
       }
     } catch (err) {
@@ -49,13 +51,13 @@ describe('runPlanner wiring', () => {
   });
 
   it('emits plan:skip when agent output contains a skip block', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<skip>Already implemented in a previous PR.</skip>',
     }]);
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Fix a bug', {
-      backend,
+      harness: backend,
       cwd,
     }));
 
@@ -70,7 +72,7 @@ describe('runPlanner wiring', () => {
   });
 
   it('triggers clarification callback and restarts with answers', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       // First run: agent asks a clarification question
       { text: '<clarification><question id="q1">Which database?</question></clarification>' },
       // Second run: agent produces final output (answers baked into prompt)
@@ -84,7 +86,7 @@ describe('runPlanner wiring', () => {
     // PlannerSubmissionError — collect pre-throw events for lifecycle asserts.
     try {
       for await (const ev of runPlanner('Add a feature', {
-        backend,
+        harness: backend,
         cwd,
         onClarification: async (questions) => {
           clarificationCalls.push(questions);
@@ -111,7 +113,7 @@ describe('runPlanner wiring', () => {
   });
 
   it('handles multiple clarification rounds', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       { text: '<clarification><question id="q1">Database?</question></clarification>' },
       { text: '<clarification><question id="q2">ORM?</question></clarification>' },
       { text: 'Final plan.' },
@@ -122,7 +124,7 @@ describe('runPlanner wiring', () => {
     // Third iteration emits no submission tool so the planner throws.
     try {
       for await (const ev of runPlanner('Add feature', {
-        backend,
+        harness: backend,
         cwd,
         onClarification: async (questions) => {
           const id = questions[0].id;
@@ -147,13 +149,13 @@ describe('runPlanner wiring', () => {
     const responses = Array.from({ length: 6 }, () => ({
       text: '<clarification><question id="q1">Again?</question></clarification>',
     }));
-    const backend = new StubBackend(responses);
+    const backend = new StubHarness(responses);
     const cwd = makeTempDir();
 
     // After max iterations without submission or skip, planner throws
     // PlannerSubmissionError instead of yielding plan:error.
     await expect(collectEvents(runPlanner('Loop forever', {
-      backend,
+      harness: backend,
       cwd,
       onClarification: async () => ({ q1: 'yes' }),
     }))).rejects.toThrow(PlannerSubmissionError);
@@ -163,7 +165,7 @@ describe('runPlanner wiring', () => {
   });
 
   it('skips clarification in auto mode', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<clarification><question id="q1">Database?</question></clarification> Done.',
     }]);
     const cwd = makeTempDir();
@@ -172,7 +174,7 @@ describe('runPlanner wiring', () => {
     // In auto mode the clarification callback must not fire, and the planner
     // throws PlannerSubmissionError because no submission tool was called.
     await expect(collectEvents(runPlanner('Auto plan', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       onClarification: async () => {
@@ -187,7 +189,7 @@ describe('runPlanner wiring', () => {
   });
 
   it('suppresses agent:message when verbose is false, emits when true', async () => {
-    const makeBackend = () => new StubBackend([{ text: 'Some output.' }]);
+    const makeBackend = () => new StubHarness([{ text: 'Some output.' }]);
     const cwd = makeTempDir();
 
     // verbose=false (default): agent:message should be suppressed. Planner
@@ -195,7 +197,7 @@ describe('runPlanner wiring', () => {
     // submission tool call, but pre-throw events are still collected.
     const quietEvents: EforgeEvent[] = [];
     try {
-      for await (const ev of runPlanner('Test', { backend: makeBackend(), cwd })) {
+      for await (const ev of runPlanner('Test', { harness: makeBackend(), cwd })) {
         quietEvents.push(ev);
       }
     } catch { /* expected PlannerSubmissionError */ }
@@ -205,7 +207,7 @@ describe('runPlanner wiring', () => {
     const cwd2 = makeTempDir();
     const verboseEvents: EforgeEvent[] = [];
     try {
-      for await (const ev of runPlanner('Test', { backend: makeBackend(), cwd: cwd2, verbose: true })) {
+      for await (const ev of runPlanner('Test', { harness: makeBackend(), cwd: cwd2, verbose: true })) {
         verboseEvents.push(ev);
       }
     } catch { /* expected PlannerSubmissionError */ }
@@ -215,7 +217,7 @@ describe('runPlanner wiring', () => {
   it('writes plans via submission tool and yields plan:complete', async () => {
     const cwd = makeTempDir();
 
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       toolCalls: [{
         tool: 'submit_plan_set',
         toolUseId: 'tu-1',
@@ -248,7 +250,7 @@ describe('runPlanner wiring', () => {
       text: 'Done planning.',
     }]);
     const events = await collectEvents(runPlanner('my-plan', {
-      backend,
+      harness: backend,
       cwd,
       name: 'my-plan',
       scope: 'excursion',
@@ -268,26 +270,26 @@ describe('runPlanner submission tool naming', () => {
   const makeTempDir = useTempDir('eforge-planner-submit-name-');
 
   /**
-   * StubBackend subclass whose `effectiveCustomToolName` returns a
+   * StubHarness subclass whose `effectiveCustomToolName` returns a
    * distinguishable prefix so tests can verify that the planner asks the
    * backend for the per-backend tool name and interpolates it into the
    * rendered prompt.
    */
-  class PrefixedStubBackend extends StubBackend {
+  class PrefixedStubHarness extends StubHarness {
     override effectiveCustomToolName(name: string): string {
       return `stub__${name}`;
     }
   }
 
   it('injects backend-provided effective tool name into the rendered prompt (excursion)', async () => {
-    const backend = new PrefixedStubBackend([{ text: '' }]);
+    const backend = new PrefixedStubHarness([{ text: '' }]);
     const cwd = makeTempDir();
 
     // No submission tool is called in this stub response so the planner throws
     // PlannerSubmissionError after recording the prompt. The prompt capture
     // is what this test verifies.
     await expect(collectEvents(runPlanner('Add a thing', {
-      backend,
+      harness: backend,
       cwd,
       scope: 'excursion',
     }))).rejects.toThrow(PlannerSubmissionError);
@@ -304,13 +306,13 @@ describe('runPlanner submission tool naming', () => {
   });
 
   it('injects backend-provided effective tool name into the rendered prompt (expedition)', async () => {
-    const backend = new PrefixedStubBackend([{ text: '' }]);
+    const backend = new PrefixedStubHarness([{ text: '' }]);
     const cwd = makeTempDir();
 
     // No submission tool is called in this stub response so the planner throws
     // PlannerSubmissionError after recording the prompt.
     await expect(collectEvents(runPlanner('Design a system', {
-      backend,
+      harness: backend,
       cwd,
       scope: 'expedition',
     }))).rejects.toThrow(PlannerSubmissionError);
@@ -322,13 +324,13 @@ describe('runPlanner submission tool naming', () => {
   });
 
   it('reports backend-visible names in the thrown PlannerSubmissionError when no submission tool was called', async () => {
-    const backend = new PrefixedStubBackend([{ text: 'Nothing to do.' }]);
+    const backend = new PrefixedStubHarness([{ text: 'Nothing to do.' }]);
     const cwd = makeTempDir();
 
     let thrown: unknown;
     try {
       await collectEvents(runPlanner('Hmm', {
-        backend,
+        harness: backend,
         cwd,
         scope: 'excursion',
       }));
@@ -347,7 +349,7 @@ describe('runPlanner submission tool naming', () => {
 
 describe('runReview wiring', () => {
   it('parses review issues from agent output', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<review-issues>
   <issue severity="critical" category="bug" file="src/a.ts" line="42">Memory leak in handler</issue>
   <issue severity="warning" category="perf" file="src/b.ts">Slow query<fix>Add index</fix></issue>
@@ -355,7 +357,7 @@ describe('runReview wiring', () => {
     }]);
 
     const events = await collectEvents(runReview({
-      backend,
+      harness: backend,
       planContent: 'test plan',
       baseBranch: 'main',
       planId: 'plan-1',
@@ -378,10 +380,10 @@ describe('runReview wiring', () => {
   });
 
   it('yields empty issues for plain text output', async () => {
-    const backend = new StubBackend([{ text: 'Code looks good. No issues found.' }]);
+    const backend = new StubHarness([{ text: 'Code looks good. No issues found.' }]);
 
     const events = await collectEvents(runReview({
-      backend,
+      harness: backend,
       planContent: 'test plan',
       baseBranch: 'main',
       planId: 'plan-1',
@@ -398,11 +400,11 @@ describe('runReview wiring', () => {
 
 describe('builderImplement wiring', () => {
   it('emits implement lifecycle events on success', async () => {
-    const backend = new StubBackend([{ text: 'Implementation done.' }]);
+    const backend = new StubHarness([{ text: 'Implementation done.' }]);
 
     const events = await collectEvents(builderImplement(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
-      { backend, cwd: '/tmp' },
+      { harness: backend, cwd: '/tmp' },
     ));
 
     expect(findEvent(events, 'plan:build:implement:start')).toBeDefined();
@@ -411,11 +413,11 @@ describe('builderImplement wiring', () => {
   });
 
   it('emits build:failed when backend throws', async () => {
-    const backend = new StubBackend([{ error: new Error('Agent timeout') }]);
+    const backend = new StubHarness([{ error: new Error('Agent timeout') }]);
 
     const events = await collectEvents(builderImplement(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
-      { backend, cwd: '/tmp' },
+      { harness: backend, cwd: '/tmp' },
     ));
 
     const failed = findEvent(events, 'plan:build:failed');
@@ -428,7 +430,7 @@ describe('builderImplement wiring', () => {
 
 describe('builderEvaluate wiring', () => {
   it('counts verdicts correctly', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="a.ts" action="accept">Good change</verdict>
   <verdict file="b.ts" action="accept">Also good</verdict>
@@ -439,7 +441,7 @@ describe('builderEvaluate wiring', () => {
 
     const events = await collectEvents(builderEvaluate(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
-      { backend, cwd: '/tmp' },
+      { harness: backend, cwd: '/tmp' },
     ));
 
     const complete = findEvent(events, 'plan:build:evaluate:complete');
@@ -460,11 +462,11 @@ describe('builderEvaluate wiring', () => {
   // Contrast with runPlanEvaluate which re-throws after yielding zero counts,
   // because plan evaluation errors propagate to the engine's plan() method.
   it('emits build:failed when backend throws', async () => {
-    const backend = new StubBackend([{ error: new Error('Evaluate failed') }]);
+    const backend = new StubHarness([{ error: new Error('Evaluate failed') }]);
 
     const events = await collectEvents(builderEvaluate(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
-      { backend, cwd: '/tmp' },
+      { harness: backend, cwd: '/tmp' },
     ));
 
     expect(findEvent(events, 'plan:build:failed')).toBeDefined();
@@ -476,14 +478,14 @@ describe('builderEvaluate wiring', () => {
 
 describe('runPlanReview wiring', () => {
   it('parses review issues from plan review output', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<review-issues>
   <issue severity="warning" category="scope" file="plans/feature.md">Missing edge case</issue>
 </review-issues>`,
     }]);
 
     const events = await collectEvents(runPlanReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-plan',
       cwd: '/tmp',
@@ -501,7 +503,7 @@ describe('runPlanReview wiring', () => {
 
 describe('runPlanEvaluate wiring', () => {
   it('counts evaluation verdicts', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="plans/a.md" action="accept">Good fix</verdict>
   <verdict file="plans/b.md" action="reject">Over-scoped</verdict>
@@ -509,7 +511,7 @@ describe('runPlanEvaluate wiring', () => {
     }]);
 
     const events = await collectEvents(runPlanEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-plan',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -530,13 +532,13 @@ describe('runPlanEvaluate wiring', () => {
   // the engine's plan() method catches this and reports it as non-fatal.
   // Contrast with builderEvaluate which swallows errors into build:failed.
   it('emits zero counts and re-throws on error', async () => {
-    const backend = new StubBackend([{ error: new Error('Evaluate crash') }]);
+    const backend = new StubHarness([{ error: new Error('Evaluate crash') }]);
 
     let thrown: Error | undefined;
     const events: EforgeEvent[] = [];
     try {
       for await (const event of runPlanEvaluate({
-        backend,
+        harness: backend,
         planSetName: 'my-plan',
         sourceContent: 'PRD content',
         cwd: '/tmp',
@@ -561,10 +563,10 @@ describe('runPlanEvaluate wiring', () => {
 
 describe('runModulePlanner wiring', () => {
   it('emits expedition module lifecycle events', async () => {
-    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+    const backend = new StubHarness([{ text: 'Module plan written.' }]);
 
     const events = await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'auth',
@@ -587,10 +589,10 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('suppresses agent:message when verbose is false', async () => {
-    const backend = new StubBackend([{ text: 'Module details.' }]);
+    const backend = new StubHarness([{ text: 'Module details.' }]);
 
     const events = await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'auth',
@@ -605,10 +607,10 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('emits agent:message when verbose is true', async () => {
-    const backend = new StubBackend([{ text: 'Module details.' }]);
+    const backend = new StubHarness([{ text: 'Module details.' }]);
 
     const events = await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'auth',
@@ -623,11 +625,11 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('includes dependencyPlanContent in prompt when provided', async () => {
-    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+    const backend = new StubHarness([{ text: 'Module plan written.' }]);
     const depContent = '# Foundation\n\nCreates auth tables and user model.';
 
     await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'auth',
@@ -642,10 +644,10 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('uses fallback text when dependencyPlanContent is omitted', async () => {
-    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+    const backend = new StubHarness([{ text: 'Module plan written.' }]);
 
     await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'foundation',
@@ -659,10 +661,10 @@ describe('runModulePlanner wiring', () => {
   });
 
   it('uses fallback text when dependencyPlanContent is undefined', async () => {
-    const backend = new StubBackend([{ text: 'Module plan written.' }]);
+    const backend = new StubHarness([{ text: 'Module plan written.' }]);
 
     await collectEvents(runModulePlanner({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planSetName: 'my-expedition',
       moduleId: 'foundation',
@@ -681,14 +683,14 @@ describe('runModulePlanner wiring', () => {
 
 describe('runArchitectureReview wiring', () => {
   it('emits architecture review lifecycle events with parsed issues', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<review-issues>
   <issue severity="warning" category="completeness" file="plans/my-plan/architecture.md">Missing integration contract between auth and api modules</issue>
 </review-issues>`,
     }]);
 
     const events = await collectEvents(runArchitectureReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-plan',
       architectureContent: '# Architecture\nModules: auth, api',
@@ -704,12 +706,12 @@ describe('runArchitectureReview wiring', () => {
   });
 
   it('yields empty issues for clean architecture', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: 'Architecture looks solid. <review-issues></review-issues>',
     }]);
 
     const events = await collectEvents(runArchitectureReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-plan',
       architectureContent: '# Architecture\nWell defined.',
@@ -726,7 +728,7 @@ describe('runArchitectureReview wiring', () => {
 
 describe('runArchitectureEvaluate wiring', () => {
   it('counts evaluation verdicts correctly', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="plans/my-plan/architecture.md" action="accept">Good clarification</verdict>
   <verdict file="plans/my-plan/architecture.md" action="reject">Changes module decomposition</verdict>
@@ -735,7 +737,7 @@ describe('runArchitectureEvaluate wiring', () => {
     }]);
 
     const events = await collectEvents(runArchitectureEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-plan',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -754,13 +756,13 @@ describe('runArchitectureEvaluate wiring', () => {
   });
 
   it('emits zero counts and re-throws on error (architecture)', async () => {
-    const backend = new StubBackend([{ error: new Error('Architecture evaluate crash') }]);
+    const backend = new StubHarness([{ error: new Error('Architecture evaluate crash') }]);
 
     let thrown: Error | undefined;
     const events: EforgeEvent[] = [];
     try {
       for await (const event of runArchitectureEvaluate({
-        backend,
+        harness: backend,
         planSetName: 'my-plan',
         sourceContent: 'PRD content',
         cwd: '/tmp',
@@ -785,12 +787,12 @@ describe('runArchitectureEvaluate wiring', () => {
 
 describe('runPrdValidator wiring', () => {
   it('emits prd_validation:start and prd_validation:complete with no gaps when agent finds none', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '```json\n{ "gaps": [] }\n```',
     }]);
 
     const events = await collectEvents(runPrdValidator({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       prdContent: '# PRD\n\nAdd a login page.',
       diff: 'diff --git a/src/login.ts b/src/login.ts\n+export function LoginPage() {}',
@@ -804,7 +806,7 @@ describe('runPrdValidator wiring', () => {
   });
 
   it('emits prd_validation:complete with gaps when agent finds issues', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `\`\`\`json
 {
   "gaps": [
@@ -822,7 +824,7 @@ describe('runPrdValidator wiring', () => {
     }]);
 
     const events = await collectEvents(runPrdValidator({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       prdContent: '# PRD\n\nAdd a login page with OAuth and friendly errors.',
       diff: 'diff --git a/src/login.ts b/src/login.ts\n+export function LoginPage() {}',
@@ -837,12 +839,12 @@ describe('runPrdValidator wiring', () => {
   });
 
   it('re-throws non-abort agent errors (fail-closed)', async () => {
-    const backend = new StubBackend([{ error: new Error('Agent crashed') }]);
+    const backend = new StubHarness([{ error: new Error('Agent crashed') }]);
 
     // Fail-closed: a crashed validator must not silently certify a build.
     await expect(async () => {
       for await (const _event of runPrdValidator({
-        backend,
+        harness: backend,
         cwd: '/tmp',
         prdContent: 'PRD content',
         diff: 'some diff',
@@ -853,12 +855,12 @@ describe('runPrdValidator wiring', () => {
   });
 
   it('yields agent:result event (always yielded)', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '```json\n{ "gaps": [] }\n```',
     }]);
 
     const events = await collectEvents(runPrdValidator({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       prdContent: 'PRD',
       diff: 'diff',
@@ -956,6 +958,8 @@ describe('formatStageRegistry', () => {
 describe('resolveAgentConfig per-plan override', () => {
   function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
     return resolveConfig({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'main',
       agents: {
         ...overrides,
       },
@@ -969,7 +973,7 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const result = resolveAgentConfig('builder', config, {
       agents: { builder: { effort: 'xhigh' } },
     });
 
@@ -984,8 +988,8 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const resultWithPlan = resolveAgentConfig('builder', config, 'claude-sdk');
-    const resultWithoutPlan = resolveAgentConfig('builder', config, 'claude-sdk', undefined);
+    const resultWithPlan = resolveAgentConfig('builder', config);
+    const resultWithoutPlan = resolveAgentConfig('builder', config, undefined);
 
     expect(resultWithPlan.effort).toBe(resultWithoutPlan.effort);
     expect(resultWithPlan.effortSource).toBe('role-config');
@@ -996,13 +1000,13 @@ describe('resolveAgentConfig per-plan override', () => {
       model: { id: 'claude-opus-4-7' },
     });
 
-    const resultXhigh = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const resultXhigh = resolveAgentConfig('builder', config, {
       agents: { builder: { effort: 'xhigh' } },
     });
     expect(resultXhigh.effort).toBe('xhigh');
     expect(resultXhigh.effortClamped).toBe(false);
 
-    const resultMax = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const resultMax = resolveAgentConfig('builder', config, {
       agents: { builder: { effort: 'max' } },
     });
     expect(resultMax.effort).toBe('max');
@@ -1014,7 +1018,7 @@ describe('resolveAgentConfig per-plan override', () => {
       model: { id: 'claude-sonnet-4-0' },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const result = resolveAgentConfig('builder', config, {
       agents: { builder: { effort: 'max' } },
     });
 
@@ -1032,7 +1036,7 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const result = resolveAgentConfig('builder', config, {
       agents: { builder: { thinking: { type: 'enabled', budgetTokens: 5000 } } },
     });
 
@@ -1044,7 +1048,7 @@ describe('resolveAgentConfig per-plan override', () => {
       effort: 'medium',
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
 
     expect(result.effort).toBe('medium');
     expect(result.effortSource).toBe('global-config');
@@ -1052,7 +1056,7 @@ describe('resolveAgentConfig per-plan override', () => {
 
   it('effortSource and thinkingSource are default when no effort/thinking is configured', () => {
     const config = makeConfig({});
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     // Builder now has a per-role effort default of 'high'
     expect(result.effort).toBe('high');
     expect(result.effortSource).toBe('default');
@@ -1068,7 +1072,7 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+    const result = resolveAgentConfig('builder', config, {
       agents: { builder: { thinking: { type: 'enabled', budgetTokens: 5000 } } },
     });
 
@@ -1084,7 +1088,7 @@ describe('resolveAgentConfig per-plan override', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
 
     expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 3000 });
     expect(result.thinkingSource).toBe('role-config');
@@ -1096,7 +1100,7 @@ describe('resolveAgentConfig per-plan override', () => {
       thinking: { type: 'enabled', budgetTokens: 8000 },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
 
     expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 8000 });
     expect(result.thinkingSource).toBe('global-config');
@@ -1107,7 +1111,7 @@ describe('resolveAgentConfig per-plan override', () => {
       effort: 'medium',
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
 
     expect(result.effort).toBe('medium');
     expect(result.effortSource).toBe('global-config');
@@ -1120,6 +1124,8 @@ describe('resolveAgentConfig per-plan override', () => {
 describe('resolveAgentConfig per-role effort defaults', () => {
   function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
     return resolveConfig({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'main',
       agents: {
         ...overrides,
       },
@@ -1150,7 +1156,7 @@ describe('resolveAgentConfig per-role effort defaults', () => {
   for (const { role, expectedEffort } of effortTable) {
     it(`${role} defaults to effort '${expectedEffort}' with effortSource 'default'`, () => {
       const config = makeConfig({});
-      const result = resolveAgentConfig(role as import('@eforge-build/engine/events').AgentRole, config, 'claude-sdk');
+      const result = resolveAgentConfig(role as import('@eforge-build/engine/events').AgentRole, config);
       expect(result.effort).toBe(expectedEffort);
       expect(result.effortSource).toBe('default');
     });
@@ -1163,7 +1169,7 @@ describe('resolveAgentConfig per-role effort defaults', () => {
       },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.effort).toBe('xhigh');
     expect(result.effortSource).toBe('role-config');
   });
@@ -1178,7 +1184,7 @@ describe('resolveAgentConfig per-role effort defaults', () => {
       },
     });
 
-    const result = resolveAgentConfig('reviewer', config, 'claude-sdk', {
+    const result = resolveAgentConfig('reviewer', config, {
       agents: { reviewer: { effort: 'max' } },
     });
     expect(result.effort).toBe('max');
@@ -1191,6 +1197,8 @@ describe('resolveAgentConfig per-role effort defaults', () => {
 describe('resolveAgentConfig thinking coercion', () => {
   function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
     return resolveConfig({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'main',
       agents: {
         ...overrides,
       },
@@ -1203,7 +1211,7 @@ describe('resolveAgentConfig thinking coercion', () => {
       thinking: { type: 'enabled', budgetTokens: 10000 },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toEqual({ type: 'adaptive' });
     expect(result.thinkingCoerced).toBe(true);
     expect(result.thinkingOriginal).toEqual({ type: 'enabled', budgetTokens: 10000 });
@@ -1215,7 +1223,7 @@ describe('resolveAgentConfig thinking coercion', () => {
       thinking: { type: 'enabled' },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toEqual({ type: 'enabled' });
     expect(result.thinkingCoerced).toBeUndefined();
   });
@@ -1226,7 +1234,7 @@ describe('resolveAgentConfig thinking coercion', () => {
       thinking: { type: 'adaptive' },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toEqual({ type: 'adaptive' });
     expect(result.thinkingCoerced).toBeUndefined();
   });
@@ -1236,7 +1244,7 @@ describe('resolveAgentConfig thinking coercion', () => {
       model: { id: 'claude-opus-4-7' },
     });
 
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toBeUndefined();
     expect(result.thinkingCoerced).toBeUndefined();
   });
@@ -1246,7 +1254,7 @@ describe('resolveAgentConfig thinking coercion', () => {
 
 describe('agent:warning event for thinking coercion', () => {
   it('emits agent:warning with code thinking-coerced when thinkingCoerced is true', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
 
     const events = await collectEvents(backend.run(
       {
@@ -1274,7 +1282,7 @@ describe('agent:warning event for thinking coercion', () => {
   });
 
   it('does not emit agent:warning when thinkingCoerced is absent', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
 
     const events = await collectEvents(backend.run(
       {
@@ -1294,7 +1302,7 @@ describe('agent:warning event for thinking coercion', () => {
   });
 
   it('does not emit agent:warning when thinkingCoerced is false', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
 
     const events = await collectEvents(backend.run(
       {
@@ -1353,5 +1361,120 @@ describe('DEFAULT_RETRY_POLICIES registration (pipeline-facing)', () => {
     expect(DEFAULT_RETRY_POLICIES['plan-evaluator']!.maxAttempts).toBe(2);
     expect(DEFAULT_RETRY_POLICIES['cohesion-evaluator']!.maxAttempts).toBe(2);
     expect(DEFAULT_RETRY_POLICIES['architecture-evaluator']!.maxAttempts).toBe(2);
+  });
+});
+
+// --- AgentRuntimeRegistry dual-stub dispatch ---
+
+describe('AgentRuntimeRegistry dual-stub dispatch', () => {
+  /**
+   * Build a minimal AgentRuntimeRegistry where specific roles map to specific
+   * stubs, and a fallback stub is used for all other roles.
+   *
+   * This helper lets tests verify that stage wiring dispatches the correct
+   * harness per role without needing a full config + buildAgentRuntimeRegistry.
+   */
+  function makeRoleMappedRegistry(
+    roleMap: Map<string, AgentHarness>,
+    fallback: AgentHarness,
+  ): AgentRuntimeRegistry {
+    return {
+      forRole(role) { return roleMap.get(role) ?? fallback; },
+      byName(name) { return roleMap.get(name) ?? fallback; },
+      nameForRole(role) { return roleMap.has(role) ? role : 'default'; },
+      configured() { return [...roleMap.keys()]; },
+    };
+  }
+
+  it('dispatches planner role to plannerStub and reviewer to reviewerStub', () => {
+    const plannerStub = new StubHarness([]);
+    const reviewerStub = new StubHarness([]);
+
+    const registry = makeRoleMappedRegistry(
+      new Map<string, AgentHarness>([
+        ['planner', plannerStub],
+        ['reviewer', reviewerStub],
+      ]),
+      plannerStub,
+    );
+
+    // Each role resolves to its mapped stub
+    expect(registry.forRole('planner')).toBe(plannerStub);
+    expect(registry.forRole('reviewer')).toBe(reviewerStub);
+    // Cross-checks: stubs are distinct
+    expect(registry.forRole('planner')).not.toBe(reviewerStub);
+    expect(registry.forRole('reviewer')).not.toBe(plannerStub);
+  });
+
+  it('two singletonRegistry instances are distinct registries dispatching to their own stub', () => {
+    const stubA = new StubHarness([]);
+    const stubB = new StubHarness([]);
+
+    const registryA = singletonRegistry(stubA);
+    const registryB = singletonRegistry(stubB);
+
+    // Each singleton registry dispatches every role to its own stub
+    expect(registryA.forRole('planner')).toBe(stubA);
+    expect(registryA.forRole('builder')).toBe(stubA);
+    expect(registryB.forRole('planner')).toBe(stubB);
+    expect(registryB.forRole('builder')).toBe(stubB);
+
+    // The two registries dispatch to different stubs for the same role
+    expect(registryA.forRole('planner')).not.toBe(registryB.forRole('planner'));
+    expect(registryA.forRole('builder')).not.toBe(registryB.forRole('builder'));
+  });
+
+  it('forRole reference equality holds across multiple calls (consistent dispatch)', () => {
+    const builderStub = new StubHarness([]);
+    const plannerStub = new StubHarness([]);
+
+    const registry = makeRoleMappedRegistry(
+      new Map<string, AgentHarness>([
+        ['builder', builderStub],
+        ['planner', plannerStub],
+      ]),
+      builderStub,
+    );
+
+    // Same role resolved twice yields the same reference
+    expect(registry.forRole('builder')).toBe(registry.forRole('builder'));
+    expect(registry.forRole('planner')).toBe(registry.forRole('planner'));
+    // Different roles remain distinct
+    expect(registry.forRole('builder')).not.toBe(registry.forRole('planner'));
+  });
+
+  it('builder and planner stubs do not accumulate calls from each other', async () => {
+    const builderStub = new StubHarness([{ text: 'Build done.' }]);
+    const plannerStub = new StubHarness([{ text: 'Plan done.' }]);
+
+    const registry = makeRoleMappedRegistry(
+      new Map<string, AgentHarness>([
+        ['builder', builderStub],
+        ['planner', plannerStub],
+      ]),
+      builderStub,
+    );
+
+    const builderBackend = registry.forRole('builder');
+    const plannerBackend = registry.forRole('planner');
+
+    // Drive the builder stub via a direct run call
+    await collectEvents(builderBackend.run(
+      { prompt: 'build something', cwd: '/tmp', maxTurns: 1, tools: 'none' },
+      'builder',
+    ));
+
+    // Builder stub accumulated one call, planner stub accumulated zero
+    expect(builderStub.prompts).toHaveLength(1);
+    expect(plannerStub.prompts).toHaveLength(0);
+
+    // Drive the planner stub
+    await collectEvents(plannerBackend.run(
+      { prompt: 'plan something', cwd: '/tmp', maxTurns: 1, tools: 'none' },
+      'planner',
+    ));
+
+    expect(plannerStub.prompts).toHaveLength(1);
+    expect(builderStub.prompts).toHaveLength(1); // unchanged
   });
 });

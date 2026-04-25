@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { mapSDKMessages, resolveDisallowedTools, SUBAGENT_TOOL_NAME } from '@eforge-build/engine/backends/claude-sdk';
-import { EFORGE_DISALLOWED_TOOL_PATTERNS } from '@eforge-build/engine/backends/eforge-resource-filter';
-import { AgentTerminalError } from '@eforge-build/engine/backend';
+import { mapSDKMessages, resolveDisallowedTools, SUBAGENT_TOOL_NAME } from '@eforge-build/engine/harnesses/claude-sdk';
+import { EFORGE_DISALLOWED_TOOL_PATTERNS } from '@eforge-build/engine/harnesses/eforge-resource-filter';
+import { AgentTerminalError } from '@eforge-build/engine/harness';
 
 async function* iter<T>(items: T[]): AsyncGenerator<T> {
   for (const item of items) yield item;

@@ -1,6 +1,6 @@
 /**
- * Claude Agent SDK backend — the sole file that imports @anthropic-ai/claude-agent-sdk.
- * All other engine code uses the AgentBackend interface.
+ * Claude Agent SDK harness — the sole file that imports @anthropic-ai/claude-agent-sdk.
+ * All other engine code uses the AgentHarness interface.
  */
 import { query as sdkQuery, createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import type {
@@ -15,13 +15,13 @@ import type {
   SettingSource,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
-import type { AgentBackend, AgentRunOptions, AgentTerminalSubtype, BackendDebugCallback, BackendDebugPayload } from '../backend.js';
-import { AgentTerminalError } from '../backend.js';
+import type { AgentHarness, AgentRunOptions, AgentTerminalSubtype, HarnessDebugCallback, HarnessDebugPayload } from '../harness.js';
+import { AgentTerminalError } from '../harness.js';
 import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
 import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
 import { EFORGE_DISALLOWED_TOOL_PATTERNS } from './eforge-resource-filter.js';
 
-export interface ClaudeSDKBackendOptions {
+export interface ClaudeSDKHarnessOptions {
   /** MCP servers to make available to all agent runs. */
   mcpServers?: Record<string, McpServerConfig>;
   /** Claude Code plugins to load (skills, hooks, plugin MCP servers). */
@@ -41,7 +41,7 @@ export interface ClaudeSDKBackendOptions {
    * of the request (system prompt, tools, model, etc.). Used by diagnostic
    * tooling like `eforge debug-composer` to compare framing across backends.
    */
-  onDebugPayload?: BackendDebugCallback;
+  onDebugPayload?: HarnessDebugCallback;
 }
 
 /** The tool name Claude Code exposes for subagent spawning. */
@@ -79,15 +79,15 @@ export function resolveDisallowedTools(
   return Array.from(acc);
 }
 
-export class ClaudeSDKBackend implements AgentBackend {
+export class ClaudeSDKHarness implements AgentHarness {
   private readonly mcpServers?: Record<string, McpServerConfig>;
   private readonly plugins?: SdkPluginConfig[];
   private readonly settingSources?: SettingSource[];
   private readonly bare: boolean;
   private readonly disableSubagents: boolean;
-  private readonly onDebugPayload?: BackendDebugCallback;
+  private readonly onDebugPayload?: HarnessDebugCallback;
 
-  constructor(options?: ClaudeSDKBackendOptions) {
+  constructor(options?: ClaudeSDKHarnessOptions) {
     this.mcpServers = options?.mcpServers;
     this.plugins = options?.plugins;
     this.settingSources = options?.settingSources;
@@ -114,7 +114,8 @@ export class ClaudeSDKBackend implements AgentBackend {
       agentId,
       agent,
       model: options.model?.id ?? 'default',
-      backend: 'claude-sdk',
+      agentRuntime: options.agentRuntimeName ?? 'claude-sdk',
+      harness: 'claude-sdk',
       fallbackFrom: options.fallbackFrom,
       effort: options.effort,
       thinking: options.thinking,
@@ -172,8 +173,8 @@ export class ClaudeSDKBackend implements AgentBackend {
       // The Claude Code CLI subprocess may add its own preset preamble on top when
       // `tools === 'coding'`; that extra framing is not visible here.
       if (this.onDebugPayload) {
-        const debugPayload: BackendDebugPayload = {
-          backend: 'claude-sdk',
+        const debugPayload: HarnessDebugPayload = {
+          harness: 'claude-sdk',
           agent,
           userPrompt: options.prompt,
           systemPrompt: '', // eforge never sets systemPrompt; SDK coerces undefined to ""

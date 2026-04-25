@@ -1,5 +1,6 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
+import { singletonRegistry } from '../agent-runtime-registry.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap, type OrchestrationConfig, type PlanFile } from '../events.js';
 import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig } from '../config.js';
 import { DEFAULT_REVIEW } from '../config.js';
@@ -10,7 +11,7 @@ import { resolveAgentConfig } from '../pipeline.js';
 import { ModelTracker } from '../model-tracker.js';
 
 export interface GapCloserContext extends SdkPassthroughConfig {
-  backend: AgentBackend;
+  harness: AgentHarness;
   cwd: string;
   gaps: PrdValidationGap[];
   prdContent: string;
@@ -53,14 +54,14 @@ export async function* runGapCloser(
   }, options.promptAppend);
 
   // Stage 1: Plan generation
-  const agentConfig = resolveAgentConfig('gap-closer', options.pipelineContext.config, options.pipelineContext.config.backend);
+  const agentConfig = resolveAgentConfig('gap-closer', options.pipelineContext.config);
   const maxTurns = agentConfig.maxTurns ?? 20;
 
   let planMarkdown: string | undefined;
 
   try {
     let lastMessage = '';
-    for await (const event of options.backend.run(
+    for await (const event of options.harness.run(
       {
         prompt,
         cwd: options.cwd,
@@ -117,7 +118,7 @@ export async function* runGapCloser(
   const review: ReviewProfileConfig = { ...DEFAULT_REVIEW };
 
   const buildCtx: import('../pipeline.js').BuildStageContext = {
-    backend: options.backend,
+    agentRuntimes: singletonRegistry(options.harness),
     config,
     pipeline,
     tracing,

@@ -1,7 +1,11 @@
 import { readFile, readdir, rename, rm, unlink, writeFile, mkdir, access } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { resolve, dirname, basename, extname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
+
+const execFileAsync = promisify(execFile);
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
@@ -110,7 +114,7 @@ const pluginConfigSchema = z.object({
 
 const SETTING_SOURCES = ['user', 'project', 'local'] as const;
 
-export const backendSchema = z.enum(['claude-sdk', 'pi']).describe('Backend provider for agent execution');
+export const harnessSchema = z.enum(['claude-sdk', 'pi']).describe('Harness kind for agent runtime entry');
 
 export const piThinkingLevelSchema = z.enum(['off', 'low', 'medium', 'high', 'xhigh']).describe('Pi-native thinking level');
 
@@ -137,9 +141,27 @@ export const piConfigSchema = z.object({
   }).optional().describe('Retry configuration for Pi API calls'),
 }).describe('Configuration for the Pi coding agent backend');
 
+export const agentRuntimeEntrySchema = z.object({
+  harness: harnessSchema.describe('Which harness to use for this runtime'),
+  pi: piConfigSchema.optional(),
+  claudeSdk: claudeSdkConfigSchema.optional(),
+}).superRefine((data, ctx) => {
+  if (data.harness === 'pi' && data.claudeSdk !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `agentRuntime with harness "pi" cannot include "claudeSdk" configuration.`,
+    });
+  }
+  if (data.harness === 'claude-sdk' && data.pi !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `agentRuntime with harness "claude-sdk" cannot include "pi" configuration.`,
+    });
+  }
+}).describe('An agent runtime entry declaring harness kind and its configuration');
+
 /** Base object schema without refinements — .partial() is derived from this. */
 const eforgeConfigBaseSchema = z.object({
-  backend: backendSchema,
   maxConcurrentBuilds: z.number().int().positive().optional(),
   langfuse: z.object({
     enabled: z.boolean().optional(),
@@ -162,6 +184,7 @@ const eforgeConfigBaseSchema = z.object({
       maxTurns: z.number().int().positive().optional(),
       modelClass: modelClassSchema.optional().describe('Override the model class for this role'),
       promptAppend: z.string().optional().describe('Text appended to the agent prompt after variable substitution'),
+      agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this role'),
     }).optional()).optional().describe('Per-agent role overrides'),
   }).optional(),
   build: z.object({
@@ -189,46 +212,44 @@ const eforgeConfigBaseSchema = z.object({
   pi: piConfigSchema.optional(),
   claudeSdk: claudeSdkConfigSchema.optional(),
   hooks: z.array(hookConfigSchema).optional(),
+  agentRuntimes: z.record(z.string(), agentRuntimeEntrySchema).optional().describe('Named agent runtime configurations'),
+  defaultAgentRuntime: z.string().optional().describe('Default agent runtime name used when a role does not specify one'),
 });
 
-/** Exported schema with backend-conditional model ref validation. */
+/** Exported schema with agentRuntimes cross-field validation. */
 export const eforgeConfigSchema = eforgeConfigBaseSchema.superRefine((data, ctx) => {
-  const backend = data.backend;
-  if (!backend) return;
+  const agentRuntimes = data.agentRuntimes;
+  const runtimeKeys = agentRuntimes ? Object.keys(agentRuntimes) : [];
 
-  /** Validate a single ModelRef against the backend. */
-  function checkModelRef(ref: { id: string; provider?: string } | undefined, path: string) {
-    if (!ref) return;
-    if (backend === 'pi' && !ref.provider) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Pi backend requires "provider" in model ref at ${path}. Got { id: "${ref.id}" }.`,
-        path: path.split('.'),
-      });
-    }
-    if (backend === 'claude-sdk' && ref.provider) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Claude SDK backend does not accept "provider" in model ref at ${path}. Got { provider: "${ref.provider}", id: "${ref.id}" }.`,
-        path: path.split('.'),
-      });
-    }
+  // When agentRuntimes is present (non-empty), defaultAgentRuntime is required.
+  if (runtimeKeys.length > 0 && !data.defaultAgentRuntime) {
+    ctx.addIssue({
+      code: 'custom',
+      message: '"defaultAgentRuntime" is required when "agentRuntimes" is declared.',
+      path: ['defaultAgentRuntime'],
+    });
   }
 
-  // Check agents.model
-  checkModelRef(data.agents?.model, 'agents.model');
-
-  // Check agents.models.*
-  if (data.agents?.models) {
-    for (const [cls, ref] of Object.entries(data.agents.models)) {
-      if (ref) checkModelRef(ref, `agents.models.${cls}`);
-    }
+  // defaultAgentRuntime must reference an existing agentRuntimes entry.
+  if (data.defaultAgentRuntime && runtimeKeys.length > 0 && !agentRuntimes![data.defaultAgentRuntime]) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `"defaultAgentRuntime" references "${data.defaultAgentRuntime}" which is not declared in "agentRuntimes". Declared: ${runtimeKeys.join(', ')}.`,
+      path: ['defaultAgentRuntime'],
+    });
   }
 
-  // Check agents.roles.*.model
-  if (data.agents?.roles) {
+  // Every agents.roles.*.agentRuntime must reference an existing agentRuntimes entry.
+  if (runtimeKeys.length > 0 && data.agents?.roles) {
     for (const [role, roleConfig] of Object.entries(data.agents.roles)) {
-      if (roleConfig?.model) checkModelRef(roleConfig.model, `agents.roles.${role}.model`);
+      const roleRuntime = (roleConfig as { agentRuntime?: string } | undefined)?.agentRuntime;
+      if (roleRuntime && !agentRuntimes![roleRuntime]) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `agents.roles.${role}.agentRuntime references "${roleRuntime}" which is not declared in "agentRuntimes". Declared: ${runtimeKeys.join(', ')}.`,
+          path: ['agents', 'roles', role, 'agentRuntime'],
+        });
+      }
     }
   }
 });
@@ -242,14 +263,15 @@ export type ToolPresetConfig = z.output<typeof toolPresetConfigSchema>;
 // and re-exported at the top of this file.
 export type HookConfig = z.output<typeof hookConfigSchema>;
 export type PluginConfig = z.output<typeof pluginConfigSchema>;
+export type AgentRuntimeEntry = z.output<typeof agentRuntimeEntrySchema>;
 
 /** Resolved agent config for a specific role, combining SDK passthrough fields with maxTurns. */
 export interface ResolvedAgentConfig {
   maxTurns?: number;
   model?: ModelRef;
   modelClass?: ModelClass;
-  thinking?: import('./backend.js').ThinkingConfig;
-  effort?: import('./backend.js').EffortLevel;
+  thinking?: import('./harness.js').ThinkingConfig;
+  effort?: import('./harness.js').EffortLevel;
   maxBudgetUsd?: number;
   fallbackModel?: string;
   allowedTools?: string[];
@@ -261,7 +283,7 @@ export interface ResolvedAgentConfig {
   /** True when the resolved effort was clamped to the model's maximum supported level. */
   effortClamped?: boolean;
   /** The original effort level before clamping was applied. */
-  effortOriginal?: import('./backend.js').EffortLevel;
+  effortOriginal?: import('./harness.js').EffortLevel;
   /** Provenance of the resolved effort value. */
   effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
   /** Provenance of the resolved thinking value. */
@@ -269,7 +291,13 @@ export interface ResolvedAgentConfig {
   /** True when thinking was coerced from 'enabled' to 'adaptive' for models that only support adaptive thinking. */
   thinkingCoerced?: boolean;
   /** The original thinking config before coercion was applied. */
-  thinkingOriginal?: import('./backend.js').ThinkingConfig;
+  thinkingOriginal?: import('./harness.js').ThinkingConfig;
+  /** The name of the resolved agentRuntime entry (from agentRuntimes map or legacy backend name). */
+  agentRuntimeName: string;
+  /** The harness kind resolved for this role. */
+  harness: 'claude-sdk' | 'pi';
+  /** Per-role agentRuntime name override from config (input field, used during resolution). */
+  agentRuntime?: string;
 }
 
 export interface PiConfig {
@@ -288,7 +316,6 @@ export interface ClaudeSdkConfig {
 }
 
 export interface EforgeConfig {
-  backend?: 'claude-sdk' | 'pi';
   maxConcurrentBuilds: number;
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
   agents: {
@@ -298,8 +325,8 @@ export interface EforgeConfig {
     settingSources?: string[];
     bare: boolean;
     model?: ModelRef;
-    thinking?: import('./backend.js').ThinkingConfig;
-    effort?: import('./backend.js').EffortLevel;
+    thinking?: import('./harness.js').ThinkingConfig;
+    effort?: import('./harness.js').EffortLevel;
     models?: Partial<Record<ModelClass, ModelRef>>;
     roles?: Record<string, Partial<ResolvedAgentConfig>>;
     /** Directory of .md files that shadow bundled prompts by name match. */
@@ -314,6 +341,10 @@ export interface EforgeConfig {
   pi: PiConfig;
   claudeSdk: ClaudeSdkConfig;
   hooks: readonly HookConfig[];
+  /** Named agent runtime configurations. When present, roles resolve their harness from this map. */
+  agentRuntimes?: Record<string, AgentRuntimeEntry>;
+  /** Default agent runtime name used when a role does not specify one. Required when agentRuntimes is non-empty. */
+  defaultAgentRuntime?: string;
 }
 
 /** Deep-partial version of EforgeConfig used for parsing and merging — derived from the zod schema. */
@@ -321,16 +352,20 @@ const partialEforgeConfigSchema = eforgeConfigBaseSchema.partial();
 export type PartialEforgeConfig = z.output<typeof partialEforgeConfigSchema>;
 
 /**
- * Schema for config.yaml validation — rejects `backend:` which now belongs in profile files.
- * Uses passthrough to detect the `backend` key and superRefine to produce a validation error.
+ * Schema for config.yaml validation — `backend:`, `pi:`, and `claudeSdk:` at the top level
+ * are rejected (they must migrate to agentRuntimes + defaultAgentRuntime).
+ * Uses passthrough to detect these legacy keys via superRefine.
  */
-export const configYamlSchema = eforgeConfigBaseSchema.omit({ backend: true }).partial().passthrough().superRefine((data, ctx) => {
-  if (data && typeof data === 'object' && 'backend' in (data as Record<string, unknown>)) {
-    ctx.addIssue({
-      code: 'custom',
-      message: '"backend:" is no longer valid in config.yaml. Backend configuration now lives in named profiles under eforge/backends/. Run eforge init --migrate to extract it.',
-      path: ['backend'],
-    });
+export const configYamlSchema = eforgeConfigBaseSchema.partial().passthrough().superRefine((data, ctx) => {
+  const legacyFields = ['backend', 'pi', 'claudeSdk'] as const;
+  for (const field of legacyFields) {
+    if (data && typeof data === 'object' && field in (data as Record<string, unknown>)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `"${field}:" is no longer valid in config.yaml. Use agentRuntimes + defaultAgentRuntime instead.`,
+        path: [field],
+      });
+    }
   }
 });
 
@@ -362,6 +397,8 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   }),
   claudeSdk: Object.freeze({ disableSubagents: false }),
   hooks: Object.freeze([]),
+  agentRuntimes: Object.freeze({ 'claude-sdk': Object.freeze({ harness: 'claude-sdk' as const }) }) as Record<string, AgentRuntimeEntry>,
+  defaultAgentRuntime: 'claude-sdk',
 });
 
 /**
@@ -404,7 +441,6 @@ export function resolveConfig(
   const langfuseEnabled = !!(langfusePublicKey && langfuseSecretKey);
 
   return Object.freeze({
-    backend: fileConfig.backend,
     maxConcurrentBuilds: fileConfig.maxConcurrentBuilds ?? DEFAULT_CONFIG.maxConcurrentBuilds,
     langfuse: Object.freeze({
       enabled: langfuseEnabled,
@@ -474,12 +510,14 @@ export function resolveConfig(
       disableSubagents: fileConfig.claudeSdk?.disableSubagents ?? DEFAULT_CONFIG.claudeSdk.disableSubagents,
     }),
     hooks: Object.freeze(fileConfig.hooks ?? DEFAULT_CONFIG.hooks) as HookConfig[],
+    agentRuntimes: fileConfig.agentRuntimes as Record<string, AgentRuntimeEntry> | undefined,
+    defaultAgentRuntime: fileConfig.defaultAgentRuntime,
   });
 }
 
 /**
  * Error thrown when config.yaml contains `backend:` which must be migrated
- * to a named profile under eforge/backends/.
+ * to a named profile under eforge/profiles/.
  */
 export class ConfigMigrationError extends Error {
   constructor(message: string) {
@@ -497,13 +535,28 @@ export class ConfigMigrationError extends Error {
  *                 `'profile'` for profile file parsing — keeps `backend:`.
  */
 export function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): { config: PartialEforgeConfig; warnings: string[] } {
-  // Config.yaml context: reject backend: field (hard break — must migrate)
-  if (context === 'config' && data.backend !== undefined) {
-    throw new ConfigMigrationError(
-      '"backend:" is no longer valid in config.yaml. ' +
-      'Backend configuration now lives in named profiles under eforge/backends/. ' +
-      'Run eforge init --migrate to extract it.',
-    );
+  // Config.yaml context: reject legacy top-level fields that must migrate to agentRuntimes.
+  if (context === 'config') {
+    const offending: string[] = [];
+    if (data.backend !== undefined) offending.push('backend');
+    if (data.pi !== undefined) offending.push('pi');
+    if (data.claudeSdk !== undefined) offending.push('claudeSdk');
+
+    if (offending.length > 0) {
+      const fieldList = offending.map((f) => `"${f}:"`).join(', ');
+      const backendValue = typeof data.backend === 'string' ? data.backend : 'claude-sdk';
+      const harnessValue = backendValue === 'pi' ? 'pi' : 'claude-sdk';
+      const exampleName = harnessValue === 'pi' ? 'my-pi' : 'main';
+      throw new ConfigMigrationError(
+        `Legacy field(s) ${fieldList} are no longer valid in config.yaml. ` +
+        `Use agentRuntimes + defaultAgentRuntime instead. Example:\n\n` +
+        `  agentRuntimes:\n` +
+        `    ${exampleName}:\n` +
+        `      harness: ${harnessValue}\n` +
+        `  defaultAgentRuntime: ${exampleName}\n\n` +
+        `Offending field(s): ${offending.join(', ')}`,
+      );
+    }
   }
 
   const result = partialEforgeConfigSchema.safeParse(data);
@@ -523,13 +576,8 @@ export function parseRawConfig(data: Record<string, unknown>, context: 'config' 
  */
 function parseRawConfigFallback(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
   const result: PartialEforgeConfig = {};
-  // Handle top-level scalar fields — backend: only allowed in profile context
-  if (context === 'profile' && data.backend !== undefined) {
-    const backendResult = backendSchema.safeParse(data.backend);
-    if (backendResult.success) {
-      (result as Record<string, unknown>).backend = backendResult.data;
-    }
-  }
+  // Suppress unused-parameter warning: context is retained for future profile-specific handling
+  void context;
   if (data.maxConcurrentBuilds !== undefined) {
     const mcbSchema = z.number().int().positive();
     const mcbResult = mcbSchema.safeParse(data.maxConcurrentBuilds);
@@ -556,7 +604,6 @@ function parseRawConfigFallback(data: Record<string, unknown>, context: 'config'
  */
 function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfig {
   const out: PartialEforgeConfig = {};
-  if (config.backend !== undefined) out.backend = config.backend;
   if (config.maxConcurrentBuilds !== undefined) out.maxConcurrentBuilds = config.maxConcurrentBuilds;
   if (config.langfuse !== undefined) out.langfuse = config.langfuse;
   if (config.agents !== undefined) out.agents = config.agents;
@@ -568,6 +615,8 @@ function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfi
   if (config.pi !== undefined) out.pi = config.pi;
   if (config.claudeSdk !== undefined) out.claudeSdk = config.claudeSdk;
   if (config.hooks !== undefined) out.hooks = config.hooks;
+  if (config.agentRuntimes !== undefined) out.agentRuntimes = config.agentRuntimes;
+  if (config.defaultAgentRuntime !== undefined) out.defaultAgentRuntime = config.defaultAgentRuntime;
   return out;
 }
 
@@ -596,9 +645,6 @@ export function mergePartialConfigs(
   const result: PartialEforgeConfig = {};
 
   // Scalar fields: project wins
-  if (project.backend !== undefined || global.backend !== undefined) {
-    result.backend = project.backend ?? global.backend;
-  }
   if (project.maxConcurrentBuilds !== undefined || global.maxConcurrentBuilds !== undefined) {
     result.maxConcurrentBuilds = project.maxConcurrentBuilds ?? global.maxConcurrentBuilds;
   }
@@ -692,7 +738,7 @@ export async function loadUserConfig(
  * merged with user-level global config (~/.config/eforge/config.yaml).
  * Returns DEFAULT_CONFIG when no config files exist.
  *
- * When an active backend profile is found (via `eforge/.active-backend`
+ * When an active profile is found (via `eforge/.active-profile`
  * marker), the profile is merged on top of the project config before
  * env-var resolution.
  *
@@ -745,7 +791,23 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
     }
   }
 
-  // Resolve and merge active backend profile, if present
+  // Auto-migrate eforge/backends/ -> eforge/profiles/ on first load after upgrade
+  if (configPath) {
+    const configDir = dirname(configPath);
+    try {
+      await migrateBackendsToProfiles(configDir);
+    } catch {
+      // best-effort: migration failure should not break config loading
+    }
+  }
+  // Auto-migrate user-scope backends/ -> profiles/ (always, independent of project config)
+  try {
+    await migrateUserBackendsToProfiles();
+  } catch {
+    // best-effort: migration failure should not break config loading
+  }
+
+  // Resolve and merge active profile, if present
   let profileConfig: PartialEforgeConfig | null = null;
   if (configPath) {
     const configDir = dirname(configPath);
@@ -753,7 +815,7 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
       const { name, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
       allWarnings.push(...warnings);
       if (name) {
-        const result = await loadBackendProfile(configDir, name);
+        const result = await loadProfile(configDir, name);
         if (result) {
           profileConfig = result.profile;
         }
@@ -769,14 +831,14 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
 }
 
 // ---------------------------------------------------------------------------
-// Backend Profile Loader
+// Profile Loader
 // ---------------------------------------------------------------------------
 
 /**
- * Source of the active backend profile resolution.
+ * Source of the active profile resolution.
  *
- * - `local`: marker file `eforge/.active-backend` selected the profile (dev-local override)
- * - `user-local`: user-scope marker `~/.config/eforge/.active-backend` selected the profile
+ * - `local`: marker file `eforge/.active-profile` selected the profile (dev-local override)
+ * - `user-local`: user-scope marker `~/.config/eforge/.active-profile` selected the profile
  * - `missing`: marker present, but the referenced profile file is missing
  *   (a one-shot stderr warning is logged; fallback to user-marker or none)
  * - `none`: no profile applied (no marker found)
@@ -784,38 +846,42 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
 export type ActiveProfileSource = 'local' | 'user-local' | 'missing' | 'none';
 
 /** Marker filename inside the eforge config directory. */
-const ACTIVE_BACKEND_MARKER = '.active-backend';
+const ACTIVE_PROFILE_MARKER = '.active-profile';
 
 /** Profile subdirectory inside the eforge config directory. */
-const BACKENDS_SUBDIR = 'backends';
+const PROFILES_SUBDIR = 'profiles';
 
 function profilePath(configDir: string, name: string): string {
-  return resolve(configDir, BACKENDS_SUBDIR, `${name}.yaml`);
+  return resolve(configDir, PROFILES_SUBDIR, `${name}.yaml`);
 }
 
-function backendsDir(configDir: string): string {
-  return resolve(configDir, BACKENDS_SUBDIR);
+function profilesDir(configDir: string): string {
+  return resolve(configDir, PROFILES_SUBDIR);
 }
 
 function markerPath(configDir: string): string {
-  return resolve(configDir, ACTIVE_BACKEND_MARKER);
+  return resolve(configDir, ACTIVE_PROFILE_MARKER);
 }
 
-/** Return the user-scope backends directory (~/.config/eforge/backends/). */
-function userBackendsDir(): string {
+/** Return the user eforge config directory (~/.config/eforge/). */
+function userEforgeConfigDir(): string {
   const base = process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config');
-  return resolve(base, 'eforge', BACKENDS_SUBDIR);
+  return resolve(base, 'eforge');
+}
+
+/** Return the user-scope profiles directory (~/.config/eforge/profiles/). */
+function userProfilesDir(): string {
+  return resolve(userEforgeConfigDir(), PROFILES_SUBDIR);
 }
 
 /** Return the path to a user-scope profile file. */
 function userProfilePath(name: string): string {
-  return resolve(userBackendsDir(), `${name}.yaml`);
+  return resolve(userProfilesDir(), `${name}.yaml`);
 }
 
-/** Return the path to the user-scope active-backend marker file. */
+/** Return the path to the user-scope active-profile marker file. */
 function userMarkerPath(): string {
-  const base = process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config');
-  return resolve(base, 'eforge', ACTIVE_BACKEND_MARKER);
+  return resolve(userEforgeConfigDir(), ACTIVE_PROFILE_MARKER);
 }
 
 /** Check whether a profile file exists in either project or user scope. */
@@ -846,6 +912,162 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 /**
+ * Auto-migrate `eforge/backends/` -> `eforge/profiles/` and
+ * `.active-backend` -> `.active-profile` on first load after upgrade.
+ *
+ * Strategy:
+ * - If only `backends/` exists: perform migration (git mv with fs.rename fallback).
+ * - If both directories exist: log a warning and leave `backends/` untouched.
+ * - If only `profiles/` or neither: do nothing.
+ * - If `profiles/` exists and `.active-backend` exists without `.active-profile`:
+ *   the directory was previously migrated but the marker rename failed — retry
+ *   the marker migration (idempotent recovery).
+ * Marker file migration is tied to directory migration.
+ */
+async function migrateBackendsToProfiles(configDir: string): Promise<void> {
+  const oldDir = resolve(configDir, 'backends');
+  const newDir = profilesDir(configDir);
+  const oldMarker = resolve(configDir, '.active-backend');
+  const newMarker = markerPath(configDir);
+
+  const [oldDirExists, newDirExists, oldMarkerExists, newMarkerExists] = await Promise.all([
+    fileExists(oldDir),
+    fileExists(newDir),
+    fileExists(oldMarker),
+    fileExists(newMarker),
+  ]);
+
+  if (!oldDirExists) {
+    // Detect orphaned marker: directory already migrated but marker rename failed previously
+    if (newDirExists && oldMarkerExists && !newMarkerExists) {
+      try {
+        await rename(oldMarker, newMarker);
+        process.stderr.write('[eforge] Migrated orphaned eforge/.active-backend -> .active-profile\n');
+      } catch {
+        process.stderr.write(
+          '[eforge] Failed to migrate orphaned eforge/.active-backend marker. ' +
+          'To fix manually, run: mv eforge/.active-backend eforge/.active-profile\n',
+        );
+      }
+    }
+    return;
+  }
+
+  if (newDirExists) {
+    // Both directories exist — warn and leave backends/ untouched for manual resolution
+    process.stderr.write(
+      '[eforge] Both eforge/backends/ and eforge/profiles/ exist. ' +
+      'Migration skipped; please resolve manually and remove eforge/backends/.\n',
+    );
+    return;
+  }
+
+  // Migrate directory: try git mv, fall back to fs.rename
+  const projectRoot = dirname(configDir);
+  let migrated = false;
+  try {
+    await execFileAsync('git', ['-C', projectRoot, 'mv', 'eforge/backends', 'eforge/profiles']);
+    migrated = true;
+  } catch {
+    // git mv failed (not a git repo, or other error) — try fs.rename
+    try {
+      await rename(oldDir, newDir);
+      migrated = true;
+    } catch {
+      process.stderr.write('[eforge] Failed to migrate eforge/backends/ to eforge/profiles/.\n');
+      return;
+    }
+  }
+
+  if (migrated) {
+    process.stderr.write('[eforge] Migrated eforge/backends/ -> eforge/profiles/\n');
+
+    // Also migrate the marker file (tied to directory migration)
+    if (oldMarkerExists) {
+      try {
+        await rename(oldMarker, newMarker);
+        process.stderr.write('[eforge] Migrated .active-backend -> .active-profile\n');
+      } catch {
+        process.stderr.write(
+          '[eforge] Failed to migrate .active-backend marker. ' +
+          'To fix manually, run: mv eforge/.active-backend eforge/.active-profile\n',
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Auto-migrate user-scope `~/.config/eforge/backends/` -> `~/.config/eforge/profiles/` and
+ * `~/.config/eforge/.active-backend` -> `~/.config/eforge/.active-profile` on first load after upgrade.
+ *
+ * Strategy mirrors `migrateBackendsToProfiles` but operates on the user config directory
+ * and uses only `fs.rename` (the user config dir is not a git repo).
+ */
+async function migrateUserBackendsToProfiles(): Promise<void> {
+  const userDir = userEforgeConfigDir();
+  const oldDir = resolve(userDir, 'backends');
+  const newDir = userProfilesDir();
+  const oldMarker = resolve(userDir, '.active-backend');
+  const newMarker = userMarkerPath();
+
+  const [oldDirExists, newDirExists, oldMarkerExists, newMarkerExists] = await Promise.all([
+    fileExists(oldDir),
+    fileExists(newDir),
+    fileExists(oldMarker),
+    fileExists(newMarker),
+  ]);
+
+  if (!oldDirExists) {
+    // Detect orphaned marker: directory already migrated but marker rename failed previously
+    if (newDirExists && oldMarkerExists && !newMarkerExists) {
+      try {
+        await rename(oldMarker, newMarker);
+        process.stderr.write('[eforge] Migrated orphaned ~/.config/eforge/.active-backend -> .active-profile\n');
+      } catch {
+        process.stderr.write(
+          '[eforge] Failed to migrate orphaned ~/.config/eforge/.active-backend marker. ' +
+          'To fix manually, run: mv ~/.config/eforge/.active-backend ~/.config/eforge/.active-profile\n',
+        );
+      }
+    }
+    return;
+  }
+
+  if (newDirExists) {
+    // Both directories exist — warn and leave backends/ untouched for manual resolution
+    process.stderr.write(
+      '[eforge] Both ~/.config/eforge/backends/ and ~/.config/eforge/profiles/ exist. ' +
+      'Migration skipped; please resolve manually and remove ~/.config/eforge/backends/.\n',
+    );
+    return;
+  }
+
+  // Migrate using fs.rename (user config dir is not a git repo)
+  try {
+    await rename(oldDir, newDir);
+  } catch {
+    process.stderr.write('[eforge] Failed to migrate ~/.config/eforge/backends/ to ~/.config/eforge/profiles/.\n');
+    return;
+  }
+
+  process.stderr.write('[eforge] Migrated ~/.config/eforge/backends/ -> ~/.config/eforge/profiles/\n');
+
+  // Also migrate the marker file (tied to directory migration)
+  if (oldMarkerExists) {
+    try {
+      await rename(oldMarker, newMarker);
+      process.stderr.write('[eforge] Migrated ~/.config/eforge/.active-backend -> .active-profile\n');
+    } catch {
+      process.stderr.write(
+        '[eforge] Failed to migrate ~/.config/eforge/.active-backend marker. ' +
+        'To fix manually, run: mv ~/.config/eforge/.active-backend ~/.config/eforge/.active-profile\n',
+      );
+    }
+  }
+}
+
+/**
  * Return the directory containing `eforge/config.yaml` from the given start
  * directory, or null when no config file is found.
  */
@@ -859,9 +1081,9 @@ export async function getConfigDir(cwd?: string): Promise<string | null> {
  * Resolve the active backend profile name and how it was selected.
  *
  * Resolution precedence:
- * 1. Project marker `eforge/.active-backend` (dev-local) — wins when present and the
+ * 1. Project marker `eforge/.active-profile` (dev-local) — wins when present and the
  *    referenced profile file exists in either project or user scope.
- * 2. User marker `~/.config/eforge/.active-backend` — user-level dev-local override.
+ * 2. User marker `~/.config/eforge/.active-profile` — user-level dev-local override.
  * 3. Otherwise no profile is applied.
  *
  * Returns `{ name, source, warnings }` where `warnings` carries any diagnostic
@@ -883,7 +1105,7 @@ export async function resolveActiveProfileName(
     }
     // Marker is stale — collect warning, then attempt fallbacks
     warnings.push(
-      `[eforge] Active backend marker ${markerPath(configDir)} points at ` +
+      `[eforge] Active profile marker ${markerPath(configDir)} points at ` +
       `"${projectMarkerName}" but no profile file exists in project or user scope. ` +
       `Falling back to next available source.`,
     );
@@ -930,12 +1152,12 @@ async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | 
 }
 
 /**
- * Load and parse a backend profile file. Looks up in project scope first
- * (`eforge/backends/`), then user scope (`~/.config/eforge/backends/`).
+ * Load and parse a profile file. Looks up in project scope first
+ * (`eforge/profiles/`), then user scope (`~/.config/eforge/profiles/`).
  * Returns null when the profile file does not exist in either scope.
  * Profile files use the same partial-config schema as `config.yaml`.
  */
-export async function loadBackendProfile(
+export async function loadProfile(
   configDir: string,
   name: string,
 ): Promise<{ profile: PartialEforgeConfig; scope: 'project' | 'user' } | null> {
@@ -953,17 +1175,17 @@ export async function loadBackendProfile(
 }
 
 /**
- * List all backend profile files from both project (`eforge/backends/`) and
- * user (`~/.config/eforge/backends/`) scopes. Each entry includes the profile
+ * List all profile files from both project (`eforge/profiles/`) and
+ * user (`~/.config/eforge/profiles/`) scopes. Each entry includes the profile
  * name, its declared `backend`, the absolute file path, the scope it belongs to,
  * and `shadowedBy: 'project'` when a user-scope entry is shadowed by a
  * project-scope entry with the same name. Unreadable or non-YAML files are
  * skipped silently.
  */
-export async function listBackendProfiles(
+export async function listProfiles(
   configDir: string,
-): Promise<Array<{ name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' }>> {
-  type ProfileEntry = { name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' };
+): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' }>> {
+  type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' };
 
   async function scanDir(dir: string, scope: 'project' | 'user'): Promise<ProfileEntry[]> {
     let entries: string[];
@@ -977,26 +1199,29 @@ export async function listBackendProfiles(
       if (extname(entry) !== '.yaml') continue;
       const name = basename(entry, '.yaml');
       const path = resolve(dir, entry);
-      let backend: 'claude-sdk' | 'pi' | undefined;
+      let harness: 'claude-sdk' | 'pi' | undefined;
       try {
         const raw = await readFile(path, 'utf-8');
         const data = parseYaml(raw);
         if (data && typeof data === 'object') {
-          const parsed = backendSchema.safeParse((data as Record<string, unknown>).backend);
+          // Support both new `harness:` key and legacy `backend:` key in profile files.
+          const raw_data = data as Record<string, unknown>;
+          const harnessVal = raw_data.harness ?? raw_data.backend;
+          const parsed = harnessSchema.safeParse(harnessVal);
           if (parsed.success) {
-            backend = parsed.data;
+            harness = parsed.data;
           }
         }
       } catch {
-        // unreadable — still include the entry with backend=undefined
+        // unreadable — still include the entry with harness=undefined
       }
-      out.push({ name, backend, path, scope });
+      out.push({ name, harness, path, scope });
     }
     return out;
   }
 
-  const projectEntries = await scanDir(backendsDir(configDir), 'project');
-  const userEntries = await scanDir(userBackendsDir(), 'user');
+  const projectEntries = await scanDir(profilesDir(configDir), 'project');
+  const userEntries = await scanDir(userProfilesDir(), 'user');
 
   // Mark user entries that are shadowed by project entries with the same name
   const projectNames = new Set(projectEntries.map((e) => e.name));
@@ -1010,14 +1235,14 @@ export async function listBackendProfiles(
 }
 
 /**
- * Set the active backend profile by writing the marker file atomically.
+ * Set the active profile by writing the marker file atomically.
  * Validates that the profile file exists (in at least one scope) and that
  * the merged result (global + project + profile) passes `eforgeConfigSchema`.
  *
  * When `opts.scope` is `'user'`, the user-scope marker
- * (`~/.config/eforge/.active-backend`) is written instead of the project marker.
+ * (`~/.config/eforge/.active-profile`) is written instead of the project marker.
  */
-export async function setActiveBackend(
+export async function setActiveProfile(
   configDir: string,
   name: string,
   opts?: { scope?: 'project' | 'user' },
@@ -1025,12 +1250,12 @@ export async function setActiveBackend(
   const scope = opts?.scope ?? 'project';
   name = name.trim();
   if (name.length === 0) {
-    throw new Error('Backend profile name must be a non-empty string');
+    throw new Error('Profile name must be a non-empty string');
   }
 
   // Validate profile exists in at least one scope
   if (!(await profileExistsInAnyScope(configDir, name))) {
-    throw new Error(`Backend profile "${name}" not found in project or user scope`);
+    throw new Error(`Profile "${name}" not found in project or user scope`);
   }
 
   // Load project config and global config to validate the merged result
@@ -1048,9 +1273,9 @@ export async function setActiveBackend(
     // no project config
   }
 
-  const profileResult = await loadBackendProfile(configDir, name);
+  const profileResult = await loadProfile(configDir, name);
   if (!profileResult) {
-    throw new Error(`Backend profile "${name}" could not be parsed`);
+    throw new Error(`Profile "${name}" could not be parsed`);
   }
 
   const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
@@ -1059,7 +1284,7 @@ export async function setActiveBackend(
   const result = eforgeConfigSchema.safeParse(merged);
   if (!result.success) {
     throw new Error(
-      `Backend profile "${name}" produces an invalid merged config: ` +
+      `Profile "${name}" produces an invalid merged config: ` +
       z.prettifyError(result.error),
     );
   }
@@ -1077,21 +1302,21 @@ export async function setActiveBackend(
  * the merged result (global + project + profile) before writing. Refuses
  * to overwrite an existing profile unless `overwrite: true` is supplied.
  *
- * When `scope` is `'user'`, writes to the user-scope backends directory
- * (`~/.config/eforge/backends/`) instead of the project directory.
+ * When `scope` is `'user'`, writes to the user-scope profiles directory
+ * (`~/.config/eforge/profiles/`) instead of the project directory.
  */
 export async function createBackendProfile(
   configDir: string,
   input: {
     name: string;
-    backend: 'claude-sdk' | 'pi';
+    harness: 'claude-sdk' | 'pi';
     pi?: PartialEforgeConfig['pi'];
     agents?: PartialEforgeConfig['agents'];
     overwrite?: boolean;
     scope?: 'project' | 'user';
   },
 ): Promise<{ path: string }> {
-  const { name, backend, pi, agents, overwrite, scope: inputScope } = input;
+  const { name, harness, pi, agents, overwrite, scope: inputScope } = input;
   const scope = inputScope ?? 'project';
   if (!name || typeof name !== 'string' || !/^[A-Za-z0-9._-]+$/.test(name)) {
     throw new Error(
@@ -1099,24 +1324,27 @@ export async function createBackendProfile(
     );
   }
 
-  const targetDir = scope === 'user' ? userBackendsDir() : backendsDir(configDir);
+  const targetDir = scope === 'user' ? userProfilesDir() : profilesDir(configDir);
   const path = resolve(targetDir, `${name}.yaml`);
   if (await fileExists(path)) {
     if (!overwrite) {
-      throw new Error(`Backend profile "${name}" already exists at ${path}. Pass overwrite: true to replace it.`);
+      throw new Error(`Profile "${name}" already exists at ${path}. Pass overwrite: true to replace it.`);
     }
   }
 
-  // Build the partial config
-  const partial: PartialEforgeConfig = { backend };
-  if (pi !== undefined) (partial as Record<string, unknown>).pi = pi;
-  if (agents !== undefined) (partial as Record<string, unknown>).agents = agents;
+  // Build the partial config using the new agentRuntimes format.
+  const runtimeEntry: AgentRuntimeEntry = { harness, ...(pi && { pi }) };
+  const partial: PartialEforgeConfig = {
+    agentRuntimes: { main: runtimeEntry },
+    defaultAgentRuntime: 'main',
+  };
+  if (agents !== undefined) partial.agents = agents as PartialEforgeConfig['agents'];
 
   // Validate against the partial schema first
   const partialResult = partialEforgeConfigSchema.safeParse(partial);
   if (!partialResult.success) {
     throw new Error(
-      `Backend profile "${name}" failed partial-config validation: ` +
+      `Profile "${name}" failed partial-config validation: ` +
       z.prettifyError(partialResult.error),
     );
   }
@@ -1141,7 +1369,7 @@ export async function createBackendProfile(
   const mergedResult = eforgeConfigSchema.safeParse(merged);
   if (!mergedResult.success) {
     throw new Error(
-      `Backend profile "${name}" produces an invalid merged config: ` +
+      `Profile "${name}" produces an invalid merged config: ` +
       z.prettifyError(mergedResult.error),
     );
   }
@@ -1163,13 +1391,13 @@ export async function createBackendProfile(
       const verifyResult = partialEforgeConfigSchema.safeParse(verifyData);
       if (!verifyResult.success) {
         throw new Error(
-          `Backend profile "${name}" failed round-trip validation after write: ` +
+          `Profile "${name}" failed round-trip validation after write: ` +
           z.prettifyError(verifyResult.error),
         );
       }
     }
   } catch (err) {
-    if (err instanceof Error && err.message.startsWith(`Backend profile "${name}"`)) {
+    if (err instanceof Error && err.message.startsWith(`Profile "${name}"`)) {
       throw err;
     }
     // ignore verify-read errors
@@ -1198,7 +1426,7 @@ export async function deleteBackendProfile(
 ): Promise<void> {
   name = name.trim();
   if (name.length === 0) {
-    throw new Error('Backend profile name must be a non-empty string');
+    throw new Error('Profile name must be a non-empty string');
   }
 
   const projectPath = profilePath(configDir, name);
@@ -1210,7 +1438,7 @@ export async function deleteBackendProfile(
     // Infer scope — error if ambiguous
     if (existsInProject && existsInUser) {
       throw new Error(
-        `Backend profile "${name}" exists in both project and user scope. ` +
+        `Profile "${name}" exists in both project and user scope. ` +
         `Specify scope: 'project' or 'user' to disambiguate.`,
       );
     }
@@ -1219,13 +1447,13 @@ export async function deleteBackendProfile(
     } else if (existsInUser) {
       scope = 'user';
     } else {
-      throw new Error(`Backend profile "${name}" not found in project or user scope`);
+      throw new Error(`Profile "${name}" not found in project or user scope`);
     }
   }
 
   const targetPath = scope === 'user' ? userPath : projectPath;
   if (!(await fileExists(targetPath))) {
-    throw new Error(`Backend profile "${name}" not found in ${scope} scope at ${targetPath}`);
+    throw new Error(`Profile "${name}" not found in ${scope} scope at ${targetPath}`);
   }
 
   // Determine if this profile is currently active via either marker
@@ -1234,7 +1462,7 @@ export async function deleteBackendProfile(
 
   if ((projectMarkerName === name || userMarkerName === name) && !force) {
     throw new Error(
-      `Backend profile "${name}" is currently active. ` +
+      `Profile "${name}" is currently active. ` +
       `Pass force: true to delete it.`,
     );
   }

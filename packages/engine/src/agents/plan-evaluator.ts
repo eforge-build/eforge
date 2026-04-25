@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
@@ -16,8 +16,8 @@ export type EvaluatorMode = 'plan' | 'cohesion' | 'architecture';
 export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   /** Evaluator mode */
   mode: EvaluatorMode;
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentHarness;
   /** The plan set name */
   planSetName: string;
   /** The original source/PRD content for context */
@@ -41,8 +41,8 @@ export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
  * Options for the plan evaluator agent.
  */
 export interface PlanEvaluatorOptions extends SdkPassthroughConfig {
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentHarness;
   /** The plan set name */
   planSetName: string;
   /** The original source/PRD content for context */
@@ -139,7 +139,7 @@ const MODE_CONFIG = {
 async function* runEvaluate(
   options: PlanPhaseEvaluatorOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { mode, backend, planSetName, sourceContent, cwd, verbose, abortController } = options;
+  const { mode, harness, planSetName, sourceContent, cwd, verbose, abortController } = options;
   const config = MODE_CONFIG[mode];
 
   yield { timestamp: new Date().toISOString(), type: config.startEvent };
@@ -167,7 +167,7 @@ Do NOT run \`git reset --soft HEAD~1\` again - the staged vs unstaged comparison
 
   let fullText = '';
   try {
-    for await (const event of backend.run(
+    for await (const event of harness.run(
       { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
       config.role,
     )) {

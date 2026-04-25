@@ -1,23 +1,20 @@
 ---
-name: eforge-backend-new
-description: Create a new backend profile in eforge/backends/
-disable-model-invocation: true
+description: Create a new agent runtime profile in eforge/profiles/
+argument-hint: "[name]"
 ---
 
-> **Note:** In Pi, the native `/eforge:backend:new` command provides a richer interactive experience with a guided overlay-based creation wizard. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
+# /eforge:profile-new
 
-# /eforge:backend:new
-
-Interactively create a new named backend profile (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`). The profile can live at project scope (`eforge/backends/<name>.yaml`) or user scope (`~/.config/eforge/backends/<name>.yaml`). It selects a backend kind, provider, model, and optional tuning, then optionally activates itself.
+Interactively create a new named agent runtime profile (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`). The profile can live at project scope (`eforge/profiles/<name>.yaml`) or user scope (`~/.config/eforge/profiles/<name>.yaml`). It selects a backend kind, provider, model, and optional tuning, then optionally activates itself.
 
 ## Workflow
 
 ### Step 0: Ask scope
 
-Ask: "Where should this profile live? **Project scope** (`eforge/backends/`) or **user scope** (`~/.config/eforge/backends/`)?"
+Ask: "Where should this profile live? **Project scope** (`eforge/profiles/`) or **user scope** (`~/.config/eforge/profiles/`)?"
 
 - **Project scope** (default) - profile is committed with the project, shared with the team.
-- **User scope** - profile lives in `~/.config/eforge/backends/`, reusable across all projects on this machine.
+- **User scope** - profile lives in `~/.config/eforge/profiles/`, reusable across all projects on this machine.
 
 If the user does not specify, default to project scope. Remember the chosen scope for Step 7 (pass it as `scope` to the `create` action) and Step 8 (pass it to `use` if activating).
 
@@ -26,7 +23,7 @@ If the user does not specify, default to project scope. Remember the chosen scop
 - If `$ARGUMENTS` is non-empty, treat the first token as the profile name.
 - Otherwise ask the user: "What should this profile be called? (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`)"
 
-The name will be used as the filename (project: `eforge/backends/<name>.yaml`, user: `~/.config/eforge/backends/<name>.yaml`).
+The name will be used as the filename (project: `eforge/profiles/<name>.yaml`, user: `~/.config/eforge/profiles/<name>.yaml`).
 
 ### Step 2: Pick the backend kind
 
@@ -41,7 +38,7 @@ Use a smart default based on the name hint:
 
 Only if `backend === "pi"`:
 
-Call `eforge_models` with `{ action: "providers", backend: "pi" }`.
+Call `mcp__eforge__eforge_models` with `{ action: "providers", backend: "pi" }`.
 
 Parse the `{ providers: string[] }` response and show the list. Use a smart default based on the name hint (e.g. `pi-anthropic` -> `anthropic`, `pi-glm` -> `zai`, `pi-openrouter` -> `openrouter`). Ask the user to confirm or pick another.
 
@@ -57,7 +54,7 @@ Eforge routes agent roles through three model classes:
 
 A profile sets one model per class via `agents.models.{max,balanced,fast}`, so each agent role picks up the right tier.
 
-Call `eforge_models` with:
+Call `mcp__eforge__eforge_models` with:
 - `{ action: "list", backend: "claude-sdk" }` for claude-sdk, or
 - `{ action: "list", backend: "pi", provider: "<chosen>" }` for pi.
 
@@ -101,7 +98,7 @@ Build the profile object that will go to the tool:
 }
 ```
 
-Show the user a rendered preview of the YAML that will land in the chosen scope directory (project: `eforge/backends/<name>.yaml`, user: `~/.config/eforge/backends/<name>.yaml`):
+Show the user a rendered preview of the YAML that will land in the chosen scope directory (project: `eforge/profiles/<name>.yaml`, user: `~/.config/eforge/profiles/<name>.yaml`):
 
 ```yaml
 backend: pi
@@ -125,7 +122,7 @@ Ask for confirmation or corrections before writing.
 
 ### Step 7: Create the profile
 
-Call `eforge_backend` with:
+Call `mcp__eforge__eforge_profile` with:
 
 ```
 {
@@ -145,9 +142,9 @@ If the tool reports the profile already exists, ask the user whether to retry wi
 
 Ask: "Make `{name}` the active profile for this project?"
 
-If yes, call `eforge_backend` with `{ action: "use", name: "<name>", scope: "<project|user>" }` (using the scope from Step 0). This writes the active-backend marker at the chosen scope. Confirm success and let the user know the next eforge build will use the new profile.
+If yes, call `mcp__eforge__eforge_profile` with `{ action: "use", name: "<name>", scope: "<project|user>" }` (using the scope from Step 0). This writes the active-profile marker at the chosen scope. Confirm success and let the user know the next eforge build will use the new profile.
 
-If no, remind the user they can switch later with `/eforge:backend <name>`.
+If no, remind the user they can switch later with `/eforge:profile <name>`.
 
 ## Error Handling
 
@@ -162,6 +159,6 @@ If no, remind the user they can switch later with `/eforge:backend <name>`.
 
 | Skill | When to suggest |
 |-------|----------------|
-| `/eforge:backend` | Inspect or switch between existing profiles |
+| `/eforge:profile` | Inspect or switch between existing profiles |
 | `/eforge:config` | Edit the team default `eforge/config.yaml` |
 | `/eforge:init` | Initialize eforge in a project that has no config yet |

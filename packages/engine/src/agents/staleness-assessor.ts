@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getStalenessSchemaYaml } from '../schemas.js';
@@ -9,8 +9,8 @@ import { parseStalenessBlock } from './common.js';
  * Options for the staleness assessor agent.
  */
 export interface StalenessAssessorOptions extends SdkPassthroughConfig {
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentHarness;
   /** Full PRD file content */
   prdContent: string;
   /** Git diff --stat summary since the PRD was last committed */
@@ -37,7 +37,7 @@ export interface StalenessAssessorOptions extends SdkPassthroughConfig {
 export async function* runStalenessAssessor(
   options: StalenessAssessorOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, prdContent, diffSummary, cwd, verbose, abortController } = options;
+  const { harness, prdContent, diffSummary, cwd, verbose, abortController } = options;
 
   const prompt = await loadPrompt('staleness-assessor', {
     prdContent,
@@ -48,7 +48,7 @@ export async function* runStalenessAssessor(
 
   let fullText = '';
 
-  for await (const event of backend.run(
+  for await (const event of harness.run(
     { prompt, cwd, maxTurns: 20, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'staleness-assessor',
   )) {

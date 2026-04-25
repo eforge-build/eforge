@@ -24,8 +24,8 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
-import type { AgentTerminalSubtype } from './backend.js';
-import { AgentTerminalError, isPlannerSubmissionError } from './backend.js';
+import type { AgentTerminalSubtype } from './harness.js';
+import { AgentTerminalError, isPlannerSubmissionError } from './harness.js';
 import { forgeCommit } from './git.js';
 import { composeCommitMessage } from './model-tracker.js';
 import { parsePlanFile } from './plan.js';

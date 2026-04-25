@@ -26,9 +26,9 @@ graph TD
         Agents["Agents"]
     end
 
-    subgraph Backends
-        Claude["ClaudeSDKBackend"]
-        Pi["PiBackend"]
+    subgraph Harnesses
+        Claude["ClaudeSDKHarness"]
+        Pi["PiHarness"]
     end
 
     CLI -->|"daemon client"| Client
@@ -42,8 +42,8 @@ graph TD
     EforgeEngine --> Pipeline
     EforgeEngine --> Orchestrator
     Pipeline --> Agents
-    Agents -->|"AgentBackend interface"| Claude
-    Agents -->|"AgentBackend interface"| Pi
+    Agents -->|"AgentHarness interface"| Claude
+    Agents -->|"AgentHarness interface"| Pi
 ```
 
 ### Engine
@@ -64,7 +64,7 @@ graph TD
 
 ### Pi Package
 
-`packages/pi-eforge/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, and daemon management. Native Pi overlay commands handle backend profile management (`/eforge:backend`, `/eforge:backend:new`) and config viewing (`/eforge:config`) with interactive TUI overlays, while skill-based slash commands (`/eforge:build`, `/eforge:init`, `/eforge:plan`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity. The Claude Code MCP proxy and the Pi extension both use `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. Routes are centralised there too: `API_ROUTES` plus a typed helper per route (`apiEnqueue`, `apiCancel`, `apiHealth`, ...) live under `packages/client/src/api/`, and the daemon (`packages/monitor/src/server.ts`), CLI, MCP proxy, Pi extension, and monitor-ui all dispatch off the same constants so a route rename surfaces as a type error.
+`packages/pi-eforge/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, and daemon management. Native Pi overlay commands handle agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive TUI overlays, while skill-based slash commands (`/eforge:build`, `/eforge:init`, `/eforge:plan`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity. The Claude Code MCP proxy and the Pi extension both use `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. Routes are centralised there too: `API_ROUTES` plus a typed helper per route (`apiEnqueue`, `apiCancel`, `apiHealth`, ...) live under `packages/client/src/api/`, and the daemon (`packages/monitor/src/server.ts`), CLI, MCP proxy, Pi extension, and monitor-ui all dispatch off the same constants so a route rename surfaces as a type error.
 
 ## Event System
 
@@ -123,7 +123,7 @@ graph LR
 
 | Stage | Description |
 |-------|-------------|
-| `planner` | Agent explores codebase, selects profile, submits plan set via `submit_plan_set` or `submit_architecture` custom tool - engine writes plan files and `orchestration.yaml` from validated payload. The `AgentBackend` translates bare tool names into the backend-visible identifier (Claude SDK prefixes `mcp__eforge_engine__`; Pi uses the bare name). |
+| `planner` | Agent explores codebase, selects profile, submits plan set via `submit_plan_set` or `submit_architecture` custom tool - engine writes plan files and `orchestration.yaml` from validated payload. The `AgentHarness` translates bare tool names into the harness-visible identifier (Claude SDK prefixes `mcp__eforge_engine__`; Pi uses the bare name). |
 | `plan-review-cycle` | Blind review of plans against PRD, with fix and evaluate loop |
 | `architecture-review-cycle` | Reviews architecture doc for module boundary soundness and integration contracts |
 | `module-planning` | Writes detailed plans for each module using architecture context |
@@ -157,11 +157,11 @@ Custom profiles can be defined in `eforge/config.yaml` with `extends` chains for
 
 ## Agents
 
-Agents are stateless async generators. Each accepts options (including an `AgentBackend`) and yields `EforgeEvent`s. Agents never import AI SDKs directly - all LLM interaction goes through the `AgentBackend` interface.
+Agents are stateless async generators. Each accepts options (including an `AgentHarness`) and yields `EforgeEvent`s. Agents never import AI SDKs directly - all LLM interaction goes through the `AgentHarness` interface.
 
-Two backend implementations exist:
-- **ClaudeSDKBackend** - uses `@anthropic-ai/claude-agent-sdk`
-- **PiBackend** - uses pi-mono for multi-provider support (OpenAI, Google, Mistral, and more)
+Two harness implementations exist:
+- **ClaudeSDKHarness** - uses `@anthropic-ai/claude-agent-sdk`
+- **PiHarness** - uses pi-mono for multi-provider support (OpenAI, Google, Mistral, and more)
 
 Agent roles by function:
 

@@ -56,7 +56,6 @@ async function* runBuilderAttempt(
   const implTracker = createToolTracker(implSpan);
   try {
     for await (const event of withPeriodicFileCheck(builderImplement(ctx.planFile, {
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
@@ -64,6 +63,7 @@ async function* runBuilderAttempt(
       parallelStages,
       verificationScope,
       ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
+      harness: ctx.agentRuntimes.forRole('builder'),
     }), ctx)) {
       implTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') implSpan.error('Implementation failed');
@@ -91,7 +91,6 @@ async function* runEvaluatorAttempt(
   try {
     const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
     for await (const event of builderEvaluate(ctx.planFile, {
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
@@ -99,6 +98,7 @@ async function* runEvaluatorAttempt(
       strictness,
       ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
       preImplementCommit: ctx.preImplementCommit,
+      harness: ctx.agentRuntimes.forRole('evaluator'),
     })) {
       evalTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') evalSpan.error('Evaluation failed');
@@ -123,13 +123,12 @@ async function* reviewStageInner(
 ): AsyncGenerator<EforgeEvent> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
-  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.config.backend, ctx.planEntry);
+  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.planFile);
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
   const reviewTracker = createToolTracker(reviewSpan);
   try {
     for await (const event of runParallelReview({
-      backend: ctx.backend,
       planContent: ctx.planFile.body,
       baseBranch: ctx.orchConfig.baseBranch,
       planId: ctx.planId,
@@ -139,6 +138,7 @@ async function* reviewStageInner(
       strategy,
       perspectives,
       ...reviewerAgentConfig,
+      harness: ctx.agentRuntimes.forRole('reviewer'),
     })) {
       reviewTracker.handleEvent(event);
       yield event;
@@ -158,7 +158,7 @@ async function* evaluateStageInner(
 ): AsyncGenerator<EforgeEvent> {
   if (!(await hasUnstagedChanges(ctx.worktreePath))) return;
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
-  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.config.backend, ctx.planEntry);
+  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.planFile);
   const initialInput: EvaluatorContinuationInput = {
     worktreePath: ctx.worktreePath,
     planId: ctx.planId,
@@ -180,19 +180,19 @@ async function* evaluateStageInner(
 
 async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
   if (ctx.reviewIssues.length === 0) return;
-  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.config.backend, ctx.planEntry);
+  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile);
   const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
   const fixTracker = createToolTracker(fixSpan);
   try {
     for await (const event of withPeriodicFileCheck(runReviewFixer({
-      backend: ctx.backend,
       planId: ctx.planId,
       cwd: ctx.worktreePath,
       issues: ctx.reviewIssues,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...fixerConfig,
+      harness: ctx.agentRuntimes.forRole('review-fixer'),
     }), ctx)) {
       fixTracker.handleEvent(event);
       yield event;
@@ -208,19 +208,19 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
 }
 
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
-  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.config.backend, ctx.planEntry);
+  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.planFile);
   const span = ctx.tracing.createSpan('tester', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
   try {
     for await (const event of withPeriodicFileCheck(runTester({
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       planId: ctx.planId,
       planContent: ctx.planFile.body,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      harness: ctx.agentRuntimes.forRole('tester'),
     }), ctx)) {
       tracker.handleEvent(event);
       yield event;
@@ -258,7 +258,7 @@ registerBuildStage({
   }
 
   // Resolve maxContinuations: per-plan > global config > default (3)
-  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.config.backend, ctx.planEntry);
+  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.planFile);
   const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
   const parallelStages = ctx.build.filter((spec): spec is string[] => Array.isArray(spec));
   const verificationScope = hasTestStages(ctx.build) ? 'build-only' : 'full';
@@ -377,19 +377,19 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* docUpdateStage(ctx) {
-  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.config.backend, ctx.planEntry);
+  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.planFile);
   const docSpan = ctx.tracing.createSpan('doc-updater', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
   try {
     for await (const event of withPeriodicFileCheck(runDocUpdater({
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       planId: ctx.planId,
       planContent: ctx.planFile.body,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      harness: ctx.agentRuntimes.forRole('doc-updater'),
     }), ctx)) {
       docTracker.handleEvent(event);
       yield event;
@@ -413,7 +413,7 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* testWriteStage(ctx) {
-  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.config.backend, ctx.planEntry);
+  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.planFile);
   const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -429,7 +429,6 @@ registerBuildStage({
 
   try {
     for await (const event of withPeriodicFileCheck(runTestWriter({
-      backend: ctx.backend,
       cwd: ctx.worktreePath,
       planId: ctx.planId,
       planContent: ctx.planFile.body,
@@ -437,6 +436,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      harness: ctx.agentRuntimes.forRole('test-writer'),
     }), ctx)) {
       tracker.handleEvent(event);
       yield event;

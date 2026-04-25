@@ -19,7 +19,7 @@ import { dirname, resolve } from 'node:path';
 
 import {
   findConfigFile,
-  loadBackendProfile,
+  loadProfile,
   loadUserConfig,
   mergePartialConfigs,
   parseRawConfig,
@@ -32,8 +32,8 @@ import { parse as parseYaml } from 'yaml';
 
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
 import { resolveAgentConfig } from '@eforge-build/engine/pipeline';
-import { ClaudeSDKBackend } from '@eforge-build/engine/backends/claude-sdk';
-import type { AgentBackend, BackendDebugPayload } from '@eforge-build/engine/backend';
+import { ClaudeSDKHarness } from '@eforge-build/engine/harnesses/claude-sdk';
+import type { AgentHarness, HarnessDebugPayload } from '@eforge-build/engine/harness';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 
 interface DebugComposerOptions {
@@ -114,7 +114,7 @@ async function loadConfigForProfile(
     resolvedName = active.name;
   }
 
-  const profileResult = await loadBackendProfile(configDir, resolvedName);
+  const profileResult = await loadProfile(configDir, resolvedName);
   if (!profileResult) {
     throw new Error(`Backend profile "${resolvedName}" not found in project or user scope.`);
   }
@@ -123,41 +123,60 @@ async function loadConfigForProfile(
   const merged = mergePartialConfigs(baseMerged, profileResult.profile);
   const config = resolveConfig(merged);
 
-  if (!config.backend) {
+  if (!config.agentRuntimes || Object.keys(config.agentRuntimes).length === 0) {
     throw new Error(
-      `Backend profile "${resolvedName}" has no backend: field. ` +
-      `Add 'backend: claude-sdk' or 'backend: pi' to the profile file.`,
+      `Backend profile "${resolvedName}" has no agentRuntimes configured. ` +
+      `Add agentRuntimes and defaultAgentRuntime to the profile or config.`,
     );
   }
 
   return { config, profileName: resolvedName, configDir };
 }
 
-/** Construct the right backend instance from a resolved config, with debug capture wired. */
+/** Construct the right harness instance from a resolved config, with debug capture wired. */
 async function buildBackendForDebug(
   config: EforgeConfig,
-  onDebugPayload: (p: BackendDebugPayload) => void,
-): Promise<AgentBackend> {
-  if (config.backend === 'pi') {
-    const { PiBackend } = await import('@eforge-build/engine/backends/pi');
-    return new PiBackend({
-      piConfig: config.pi,
+  onDebugPayload: (p: HarnessDebugPayload) => void,
+): Promise<AgentHarness> {
+  const defaultRuntime = config.defaultAgentRuntime;
+  const entry = defaultRuntime ? config.agentRuntimes?.[defaultRuntime] : undefined;
+
+  if (entry?.harness === 'pi') {
+    const { PiHarness } = await import('@eforge-build/engine/harnesses/pi');
+    const piCfg: import('@eforge-build/engine/config').PiConfig = entry.pi
+      ? {
+          apiKey: entry.pi.apiKey ?? config.pi.apiKey,
+          thinkingLevel: entry.pi.thinkingLevel ?? config.pi.thinkingLevel,
+          extensions: {
+            autoDiscover: entry.pi.extensions?.autoDiscover ?? config.pi.extensions.autoDiscover,
+            include: entry.pi.extensions?.include ?? config.pi.extensions.include,
+            exclude: entry.pi.extensions?.exclude ?? config.pi.extensions.exclude,
+            paths: entry.pi.extensions?.paths ?? config.pi.extensions.paths,
+          },
+          compaction: {
+            enabled: entry.pi.compaction?.enabled ?? config.pi.compaction.enabled,
+            threshold: entry.pi.compaction?.threshold ?? config.pi.compaction.threshold,
+          },
+          retry: {
+            maxRetries: entry.pi.retry?.maxRetries ?? config.pi.retry.maxRetries,
+            backoffMs: entry.pi.retry?.backoffMs ?? config.pi.retry.backoffMs,
+          },
+        }
+      : config.pi;
+    return new PiHarness({
+      piConfig: piCfg,
       bare: config.agents.bare,
-      extensions: {
-        autoDiscover: config.pi.extensions.autoDiscover,
-        include: config.pi.extensions.include,
-        exclude: config.pi.extensions.exclude,
-        paths: config.pi.extensions?.paths,
-      },
+      extensions: piCfg.extensions,
       onDebugPayload,
     });
   }
 
   // default: claude-sdk
-  return new ClaudeSDKBackend({
+  const disableSubagents = entry?.claudeSdk?.disableSubagents ?? config.claudeSdk.disableSubagents;
+  return new ClaudeSDKHarness({
     settingSources: config.agents.settingSources as never,
     bare: config.agents.bare,
-    disableSubagents: config.claudeSdk.disableSubagents,
+    disableSubagents,
     onDebugPayload,
   });
 }
@@ -171,13 +190,13 @@ async function runForProfile(
   profileName: string,
   outDir: string,
   verbose: boolean,
-): Promise<{ profileName: string; outPath: string; backend: 'claude-sdk' | 'pi'; scope: string }> {
-  let captured: BackendDebugPayload | undefined;
+): Promise<{ profileName: string; outPath: string; harness: 'claude-sdk' | 'pi'; scope: string }> {
+  let captured: HarnessDebugPayload | undefined;
   const backend = await buildBackendForDebug(config, (p) => {
     captured = p;
   });
 
-  const composerConfig = resolveAgentConfig('pipeline-composer', config, config.backend);
+  const composerConfig = resolveAgentConfig('pipeline-composer', config);
 
   // Drive composePipeline and collect the terminal composition event.
   // We keep a non-fatal try/catch so a failed compose still writes whatever
@@ -186,11 +205,11 @@ async function runForProfile(
   let composeError: string | undefined;
   try {
     for await (const event of composePipeline({
-      backend,
+      ...composerConfig,
       source: sourceContent,
       cwd,
       verbose,
-      ...composerConfig,
+      harness: backend,
     })) {
       composerEvents.push(event);
       if (verbose && event.type === 'agent:message') {
@@ -219,11 +238,10 @@ async function runForProfile(
     source,
     capturedAt: new Date().toISOString(),
     config: {
-      backend: config.backend,
+      defaultAgentRuntime: config.defaultAgentRuntime,
       model: config.agents.model,
       effort: config.agents.effort,
       thinking: config.agents.thinking,
-      claudeSdk: config.claudeSdk,
     },
     resolvedComposer: composerConfig,
     payload: captured,
@@ -246,7 +264,7 @@ async function runForProfile(
   // Also write the system prompt alone as markdown for easy diffing.
   const sysOutPath = resolve(outDir, `${profileName}.system-prompt.md`);
   const header = [
-    `<!-- Captured for backend profile: ${profileName} (${captured.backend}) -->`,
+    `<!-- Captured for backend profile: ${profileName} (${captured.harness}) -->`,
     `<!-- Agent: ${captured.agent}  -->`,
     `<!-- Model: ${captured.model.id}${captured.model.provider ? ` @ ${captured.model.provider}` : ''} -->`,
     `<!-- systemPrompt bytes: ${captured.systemPrompt.length} | tools: ${captured.tools.length} -->`,
@@ -257,7 +275,7 @@ async function runForProfile(
   return {
     profileName,
     outPath,
-    backend: captured.backend,
+    harness: captured.harness,
     scope: pipelineEvent?.scope ?? '(compose failed)',
   };
 }
@@ -291,7 +309,7 @@ export function registerDebugComposerCommand(program: Command): void {
         ? options.backend
         : [undefined]; // undefined = use active profile
 
-      const results: Array<{ profileName: string; outPath: string; backend?: 'claude-sdk' | 'pi'; scope: string; error?: string }> = [];
+      const results: Array<{ profileName: string; outPath: string; harness?: 'claude-sdk' | 'pi'; scope: string; error?: string }> = [];
 
       for (const profile of profiles) {
         const label = profile ?? '(active)';
@@ -301,7 +319,7 @@ export function registerDebugComposerCommand(program: Command): void {
           const result = await runForProfile(cwd, source, sourceContent, config, profileName, outDir, options.verbose ?? false);
           process.stdout.write(
             chalk.green('✔') +
-            ` ${chalk.dim(`[${result.backend}]`)} ${chalk.bold(`scope=${result.scope}`)} ${chalk.dim('→')} ${result.outPath}\n`,
+            ` ${chalk.dim(`[${result.harness}]`)} ${chalk.bold(`scope=${result.scope}`)} ${chalk.dim('→')} ${result.outPath}\n`,
           );
           results.push(result);
         } catch (err) {

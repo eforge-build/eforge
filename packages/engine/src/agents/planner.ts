@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import type { AgentBackend, SdkPassthroughConfig, CustomTool } from '../backend.js';
-import { pickSdkOptions, PlannerSubmissionError } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
+import { pickSdkOptions, PlannerSubmissionError } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
 import { parseClarificationBlocks, parseSkipBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
@@ -13,7 +13,7 @@ import {
 } from '../schemas.js';
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
-  backend: AgentBackend;
+  harness: AgentHarness;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
   scope?: string;
@@ -141,7 +141,7 @@ export async function* runPlanner(
   options: PlannerOptions,
 ): AsyncGenerator<EforgeEvent> {
   const cwd = options.cwd ?? process.cwd();
-  const { backend } = options;
+  const { harness } = options;
 
   // Resolve source: file path → read contents, otherwise use as inline string
   let sourceContent: string;
@@ -176,7 +176,7 @@ export async function* runPlanner(
     // in-process MCP-server prefix, Pi uses the bare name). When both tools
     // are injected (unknown scope), list both names joined by " or " so the
     // prompt still names the exact per-backend identifiers.
-    const effectiveNames = customTools.map(t => backend.effectiveCustomToolName(t.name));
+    const effectiveNames = customTools.map(t => harness.effectiveCustomToolName(t.name));
     const submitTool = effectiveNames.join(' or ');
 
     let continuationContextText = '';
@@ -256,7 +256,7 @@ ${existingPlans}`;
 
     let needsRestart = false;
 
-    for await (const event of backend.run(
+    for await (const event of harness.run(
       { prompt, cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal, customTools, ...pickSdkOptions(options) },
       'planner',
     )) {
@@ -355,6 +355,6 @@ ${existingPlans}`;
   // effectiveCustomToolName) so the message reflects what the agent was actually
   // told to call. The pipeline's continuation loop catches this and retries
   // within the shared planner-continuation budget.
-  const injectedNames = customTools.map(t => backend.effectiveCustomToolName(t.name)).join(' / ');
+  const injectedNames = customTools.map(t => harness.effectiveCustomToolName(t.name)).join(' / ');
   throw new PlannerSubmissionError(`Planner agent completed without calling a submission tool (${injectedNames}) or emitting <skip>`);
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeUsage, toModelUsageEntry } from '@eforge-build/engine/backends/usage';
+import { normalizeUsage, toModelUsageEntry } from '@eforge-build/engine/harnesses/usage';
 
 describe('normalizeUsage', () => {
   it('inflates input with cacheRead and cacheCreation', () => {

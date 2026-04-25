@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getReviewIssueSchemaYaml } from '../schemas.js';
@@ -8,8 +8,8 @@ import { getReviewIssueSchemaYaml } from '../schemas.js';
  * Options for the reviewer agent.
  */
 export interface ReviewerOptions extends SdkPassthroughConfig {
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentHarness;
   /** The plan content (full markdown body) to review against */
   planContent: string;
   /** The base branch to diff against */
@@ -141,7 +141,7 @@ function mapSeverity(raw: string): ReviewIssue['severity'] | undefined {
 export async function* runReview(
   options: ReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, planContent, baseBranch, planId, cwd, verbose, abortController } = options;
+  const { harness, planContent, baseBranch, planId, cwd, verbose, abortController } = options;
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId };
 
@@ -149,7 +149,7 @@ export async function* runReview(
 
   let fullText = '';
 
-  for await (const event of backend.run(
+  for await (const event of harness.run(
     { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'reviewer',
     planId,

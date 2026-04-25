@@ -9,7 +9,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
-import type { AgentBackend } from '@eforge-build/engine/backend';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
 
@@ -38,7 +37,8 @@ import {
   type BuildStage,
   type StageDescriptor,
 } from '@eforge-build/engine/pipeline';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
+import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ async function collect(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]>
 /** Create a minimal PipelineContext for testing. */
 function makePipelineCtx(overrides: Partial<PipelineContext> = {}): PipelineContext {
   return {
-    backend: {} as AgentBackend,
+    agentRuntimes: singletonRegistry({} as AgentHarness),
     config: DEFAULT_CONFIG,
     pipeline: TEST_PIPELINE,
     tracing: createNoopTracingContext(),
@@ -98,7 +98,7 @@ function makeBuildCtx(overrides: Partial<BuildStageContext> = {}): BuildStageCon
   };
 
   return {
-    backend: {} as AgentBackend,
+    agentRuntimes: singletonRegistry({} as AgentHarness),
     config: DEFAULT_CONFIG,
     pipeline: overrides?.pipeline ?? TEST_PIPELINE,
     tracing: createNoopTracingContext(),
@@ -446,12 +446,12 @@ describe('plannerStage expedition wiring', () => {
   }
 
   it('captures expedition modules into ctx.expeditionModules after planner submits architecture', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       composerResponse(['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition']),
       plannerSubmitArchResponse(),
     ]);
 
-    const ctx = makePipelineCtx({ backend, cwd: makeTempDir(), auto: true });
+    const ctx = makePipelineCtx({ agentRuntimes: singletonRegistry(backend), cwd: makeTempDir(), auto: true });
     const plannerStageFn = getCompileStage('planner');
 
     await collect(plannerStageFn(ctx));
@@ -462,12 +462,12 @@ describe('plannerStage expedition wiring', () => {
   });
 
   it('throws when planner produces modules but compile-expedition is missing from the pipeline', async () => {
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       composerResponse(['planner', 'architecture-review-cycle']),
       plannerSubmitArchResponse(),
     ]);
 
-    const ctx = makePipelineCtx({ backend, cwd: makeTempDir(), auto: true });
+    const ctx = makePipelineCtx({ agentRuntimes: singletonRegistry(backend), cwd: makeTempDir(), auto: true });
     const plannerStageFn = getCompileStage('planner');
 
     await expect(collect(plannerStageFn(ctx))).rejects.toThrow(/compile-expedition/);
@@ -906,10 +906,11 @@ describe('model class resolution', () => {
     expect(result.model).toEqual({ id: 'global-override' });
   });
 
-  it('pi backend with no model config throws for default balanced class with fallback tiers listed', async () => {
+  it('pi harness with no model config throws for default balanced class with fallback tiers listed', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    expect(() => resolveAgentConfig('builder', DEFAULT_CONFIG, 'pi')).toThrow(
-      /No model configured for role "builder".*model class "balanced".*backend "pi".*Tried fallback: max, fast/,
+    const piConfig = { ...DEFAULT_CONFIG, agentRuntimes: { pi: { harness: 'pi' as const } }, defaultAgentRuntime: 'pi' };
+    expect(() => resolveAgentConfig('builder', piConfig)).toThrow(
+      /No model configured for role "builder".*model class "balanced".*harness "pi".*Tried fallback: max, fast/,
     );
   });
 
@@ -917,13 +918,15 @@ describe('model class resolution', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
+      agentRuntimes: { pi: { harness: 'pi' as const } },
+      defaultAgentRuntime: 'pi',
       agents: {
         ...DEFAULT_CONFIG.agents,
         models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
     // staleness-assessor defaults to balanced
-    const result = resolveAgentConfig('staleness-assessor', config, 'pi');
+    const result = resolveAgentConfig('staleness-assessor', config);
     expect(result.model).toEqual({ provider: 'openrouter', id: 'big-model' });
     expect(result.fallbackFrom).toBe('balanced');
   });
@@ -932,19 +935,22 @@ describe('model class resolution', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
+      agentRuntimes: { pi: { harness: 'pi' as const } },
+      defaultAgentRuntime: 'pi',
       agents: {
         ...DEFAULT_CONFIG.agents,
         models: { balanced: { provider: 'openrouter', id: 'medium-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
-    const result = resolveAgentConfig('reviewer', config, 'pi');
+    const result = resolveAgentConfig('reviewer', config);
     expect(result.model).toEqual({ provider: 'openrouter', id: 'medium-model' });
     expect(result.fallbackFrom).toBe('max');
   });
 
   it('fallback total failure lists attempted tiers in error', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    expect(() => resolveAgentConfig('builder', DEFAULT_CONFIG, 'pi')).toThrow(
+    const piConfig = { ...DEFAULT_CONFIG, agentRuntimes: { pi: { harness: 'pi' as const } }, defaultAgentRuntime: 'pi' };
+    expect(() => resolveAgentConfig('builder', piConfig)).toThrow(
       /Tried fallback: max, fast/,
     );
   });
@@ -953,27 +959,31 @@ describe('model class resolution', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
+      agentRuntimes: { pi: { harness: 'pi' as const } },
+      defaultAgentRuntime: 'pi',
       agents: {
         ...DEFAULT_CONFIG.agents,
         models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
     // prd-validator defaults to balanced, should fall back to max
-    const result = resolveAgentConfig('prd-validator', config, 'pi');
+    const result = resolveAgentConfig('prd-validator', config);
     expect(result.fallbackFrom).toBe('balanced');
     expect(result.model).toEqual({ provider: 'openrouter', id: 'big-model' });
   });
 
-  it('pi backend with agents.models.max configured resolves correctly', async () => {
+  it('pi harness with agents.models.max configured resolves correctly', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
+      agentRuntimes: { pi: { harness: 'pi' as const } },
+      defaultAgentRuntime: 'pi',
       agents: {
         ...DEFAULT_CONFIG.agents,
         models: { max: { provider: 'openrouter', id: 'auto' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
-    const result = resolveAgentConfig('builder', config, 'pi');
+    const result = resolveAgentConfig('builder', config);
     expect(result.model).toEqual({ provider: 'openrouter', id: 'auto' });
   });
 

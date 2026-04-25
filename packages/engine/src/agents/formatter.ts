@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
@@ -7,8 +7,8 @@ import { loadPrompt } from '../prompts.js';
  * Options for the formatter agent.
  */
 export interface FormatterOptions extends SdkPassthroughConfig {
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentHarness;
   /** The raw source content to format */
   sourceContent: string;
   /** Whether to emit verbose agent-level events */
@@ -40,7 +40,7 @@ export interface FormatterResult {
 export async function* runFormatter(
   options: FormatterOptions,
 ): AsyncGenerator<EforgeEvent, FormatterResult> {
-  const { backend, sourceContent, verbose, abortController } = options;
+  const { harness, sourceContent, verbose, abortController } = options;
 
   const prompt = await loadPrompt('formatter', {
     source: sourceContent,
@@ -48,7 +48,7 @@ export async function* runFormatter(
 
   let fullText = '';
 
-  for await (const event of backend.run(
+  for await (const event of harness.run(
     { prompt, cwd: process.cwd(), maxTurns: 1, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'formatter',
   )) {

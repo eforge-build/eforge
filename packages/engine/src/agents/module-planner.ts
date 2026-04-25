@@ -1,10 +1,10 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ClarificationQuestion } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface ModulePlannerOptions extends SdkPassthroughConfig {
-  backend: AgentBackend;
+  harness: AgentHarness;
   cwd: string;
   planSetName: string;
   moduleId: string;
@@ -45,7 +45,7 @@ export async function* runModulePlanner(
     outputDir: options.outputDir ?? 'eforge/plans',
   }, options.promptAppend);
 
-  for await (const event of options.backend.run(
+  for await (const event of options.harness.run(
     { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 20, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
     'module-planner',
   )) {

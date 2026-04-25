@@ -36,7 +36,7 @@ export interface SdkPassthroughConfig {
 }
 
 /** Keys that are part of SdkPassthroughConfig but should NOT be forwarded to the backend SDK. */
-const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource', 'thinkingCoerced', 'thinkingOriginal']);
+const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource', 'thinkingCoerced', 'thinkingOriginal', 'agentRuntimeName']);
 
 /**
  * Strip `undefined` values from an SdkPassthroughConfig so the SDK
@@ -62,16 +62,16 @@ export function pickSdkOptions(config: SdkPassthroughConfig): Partial<SdkPassthr
 /**
  * Tool-call identifier normalization.
  *
- * Every `agent:tool_use` and `agent:tool_result` event on the `AgentBackend`
+ * Every `agent:tool_use` and `agent:tool_result` event on the `AgentHarness`
  * event stream carries a stable identifier under the name `toolUseId`.
  * Provider SDKs use different names natively:
  *
  *  - Claude Agent SDK: `block.id` on `tool_use` content blocks.
  *  - Pi coding agent: `toolCallId` on `tool_execution_start` / `tool_execution_end` events.
  *
- * Backends are responsible for mapping their provider-native name onto
+ * Harnesses are responsible for mapping their provider-native name onto
  * `toolUseId` before emission. The shared helper `normalizeToolUseId` in
- * `./backends/common.ts` is the single source of truth for that mapping so
+ * `./harnesses/common.ts` is the single source of truth for that mapping so
  * downstream consumers (monitor UI, CLI renderer, tracing) only ever see the
  * unified `toolUseId` name.
  */
@@ -124,13 +124,19 @@ export interface AgentRunOptions {
   thinkingCoerced?: boolean;
   /** The original thinking config before coercion was applied. */
   thinkingOriginal?: ThinkingConfig;
+  /**
+   * The resolved agentRuntime config name (e.g. "opus"). Injected by the
+   * AgentRuntimeRegistry wrapper so harnesses can include it in agent:start events.
+   * Not forwarded to the underlying SDK.
+   */
+  agentRuntimeName?: string;
 }
 
 /**
- * Backend abstraction for running AI agents.
+ * Harness abstraction for running AI agents.
  * Agent runners consume this interface — they never import the AI SDK directly.
  */
-export interface AgentBackend {
+export interface AgentHarness {
   /** Run an agent with the given prompt and yield EforgeEvents. */
   run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent>;
   /**
@@ -161,9 +167,9 @@ export interface AgentBackend {
  * Downstream layers (the Claude Code CLI, pi-ai transport) may add their own
  * framing on top; for those cases, use native SDK debug facilities.
  */
-export interface BackendDebugPayload {
-  /** Which backend produced this payload. */
-  backend: 'claude-sdk' | 'pi';
+export interface HarnessDebugPayload {
+  /** Which harness produced this payload. */
+  harness: 'claude-sdk' | 'pi';
   /** The agent role this payload is for (e.g. `'pipeline-composer'`). */
   agent: AgentRole;
   /** The user prompt string passed into the run. */
@@ -197,8 +203,8 @@ export interface BackendDebugPayload {
   extra?: Record<string, unknown>;
 }
 
-/** Callback fired by a backend just before it dispatches a run to its SDK. */
-export type BackendDebugCallback = (payload: BackendDebugPayload) => void | Promise<void>;
+/** Callback fired by a harness just before it dispatches a run to its SDK. */
+export type HarnessDebugCallback = (payload: HarnessDebugPayload) => void | Promise<void>;
 
 // ---------------------------------------------------------------------------
 // Typed Terminal Errors
@@ -225,7 +231,7 @@ export class AgentTerminalError extends Error {
   readonly subtype: AgentTerminalSubtype;
 
   constructor(subtype: AgentTerminalSubtype, detail: string) {
-    super(`${subtype}: ${detail}`);
+    super(detail);
     this.name = 'AgentTerminalError';
     this.subtype = subtype;
   }

@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import type { BuildStageSpec, ReviewProfileConfig } from '../config.js';
 import { loadPrompt } from '../prompts.js';
@@ -11,8 +11,8 @@ import { formatStageRegistry, validatePipeline } from '../pipeline.js';
  * Options for the pipeline composer agent.
  */
 export interface PipelineComposerOptions extends SdkPassthroughConfig {
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentHarness;
   /** The PRD / source document content */
   source: string;
   /** Working directory */
@@ -75,7 +75,7 @@ function extractJson(text: string): unknown {
 export async function* composePipeline(
   options: PipelineComposerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, source, cwd, verbose, abortController } = options;
+  const { harness, source, cwd, verbose, abortController } = options;
 
   const stageRegistry = formatStageRegistry();
   const schema = getPipelineCompositionSchemaYaml();
@@ -107,7 +107,7 @@ export async function* composePipeline(
 
     let resultText: string | undefined;
 
-    for await (const event of backend.run(
+    for await (const event of harness.run(
       {
         prompt: promptText,
         cwd,

@@ -19,7 +19,7 @@ import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
 
 // Derived prefix constants for parameterised routes (used in startsWith checks)
 const CANCEL_BASE = API_ROUTES.cancel.slice(0, API_ROUTES.cancel.indexOf('/:'));
-const BACKEND_BASE = API_ROUTES.backendDelete.slice(0, API_ROUTES.backendDelete.indexOf('/:'));
+const PROFILE_BASE = API_ROUTES.profileDelete.slice(0, API_ROUTES.profileDelete.indexOf('/:'));
 const EVENTS_BASE = API_ROUTES.events.slice(0, API_ROUTES.events.indexOf('/:'));
 const ORCHESTRATION_BASE = API_ROUTES.orchestration.slice(0, API_ROUTES.orchestration.indexOf('/:'));
 const RUN_SUMMARY_BASE = API_ROUTES.runSummary.slice(0, API_ROUTES.runSummary.indexOf('/:'));
@@ -114,7 +114,7 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'backend' | 'monitor'> },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agentRuntimes' | 'defaultAgentRuntime'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -790,8 +790,8 @@ export async function startServer(
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
       }
-      if (options.config && !options.config.backend) {
-        sendJsonError(res, 422, 'No backend configured. Set backend: claude-sdk or backend: pi in eforge/config.yaml');
+      if (options.config && (!options.config.agentRuntimes || Object.keys(options.config.agentRuntimes).length === 0)) {
+        sendJsonError(res, 422, 'No agentRuntimes configured. Add agentRuntimes and defaultAgentRuntime to eforge/config.yaml');
         return;
       }
       try {
@@ -900,10 +900,10 @@ export async function startServer(
       return;
     }
 
-    // --- Backend profile management (DAEMON_API_VERSION 2) ---
-    if (req.method === 'GET' && (url === API_ROUTES.backendList || url.startsWith(`${API_ROUTES.backendList}?`))) {
+    // --- Backend profile management ---
+    if (req.method === 'GET' && (url === API_ROUTES.profileList || url.startsWith(`${API_ROUTES.profileList}?`))) {
       try {
-        const { getConfigDir, listBackendProfiles, resolveActiveProfileName, loadUserConfig } =
+        const { getConfigDir, listProfiles, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -913,7 +913,7 @@ export async function startServer(
         const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
         const params = new URLSearchParams(queryString);
         const scopeParam = params.get('scope') as 'project' | 'user' | 'all' | null;
-        let profiles = await listBackendProfiles(configDir);
+        let profiles = await listProfiles(configDir);
         if (scopeParam === 'project' || scopeParam === 'user') {
           profiles = profiles.filter((p) => p.scope === scopeParam);
         }
@@ -934,9 +934,9 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'GET' && url === API_ROUTES.backendShow) {
+    if (req.method === 'GET' && url === API_ROUTES.profileShow) {
       try {
-        const { getConfigDir, loadBackendProfile, resolveActiveProfileName, loadUserConfig } =
+        const { getConfigDir, loadProfile, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -957,7 +957,7 @@ export async function startServer(
         let backend: 'claude-sdk' | 'pi' | undefined;
         let profileScope: 'project' | 'user' | undefined;
         if (name) {
-          const result = await loadBackendProfile(configDir, name);
+          const result = await loadProfile(configDir, name);
           if (result) {
             profile = result.profile;
             profileScope = result.scope;
@@ -974,7 +974,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url === API_ROUTES.backendUse) {
+    if (req.method === 'POST' && url === API_ROUTES.profileUse) {
       try {
         const body = await parseJsonBody(req) as { name?: unknown; scope?: unknown };
         if (!body.name || typeof body.name !== 'string') {
@@ -982,7 +982,7 @@ export async function startServer(
           return;
         }
         const scopeVal = body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
-        const { getConfigDir, setActiveBackend } =
+        const { getConfigDir, setActiveProfile } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -990,7 +990,7 @@ export async function startServer(
           return;
         }
         try {
-          await setActiveBackend(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined);
+          await setActiveProfile(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined);
           sendJson(res, { active: body.name });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Failed to set active backend';
@@ -1006,7 +1006,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url === API_ROUTES.backendCreate) {
+    if (req.method === 'POST' && url === API_ROUTES.profileCreate) {
       try {
         const body = await parseJsonBody(req) as {
           name?: unknown;
@@ -1035,7 +1035,7 @@ export async function startServer(
         try {
           const result = await createBackendProfile(configDir, {
             name: body.name,
-            backend: body.backend,
+            harness: body.backend as 'claude-sdk' | 'pi',
             pi: body.pi as PartialEforgeConfig['pi'],
             agents: body.agents as PartialEforgeConfig['agents'],
             overwrite: body.overwrite === true,
@@ -1056,8 +1056,8 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'DELETE' && url.startsWith(`${BACKEND_BASE}/`)) {
-      const name = url.slice(`${BACKEND_BASE}/`.length);
+    if (req.method === 'DELETE' && url.startsWith(`${PROFILE_BASE}/`)) {
+      const name = url.slice(`${PROFILE_BASE}/`.length);
       if (!name || !/^[A-Za-z0-9._-]+$/.test(name)) {
         sendJsonError(res, 400, 'Invalid backend profile name');
         return;

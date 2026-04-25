@@ -47,12 +47,12 @@ describe('eforge-plugin/.claude-plugin/plugin.json', () => {
     commands: string[];
   };
 
-  it('registers the /eforge:backend skill in commands', () => {
-    expect(manifest.commands).toContain('./skills/backend/backend.md');
+  it('registers the /eforge:profile skill in commands', () => {
+    expect(manifest.commands).toContain('./skills/profile/profile.md');
   });
 
-  it('registers the /eforge:backend:new skill in commands', () => {
-    expect(manifest.commands).toContain('./skills/backend-new/backend-new.md');
+  it('registers the /eforge:profile:new skill in commands', () => {
+    expect(manifest.commands).toContain('./skills/profile-new/profile-new.md');
   });
 
   it('preserves the pre-existing skill entries', () => {
@@ -83,32 +83,32 @@ describe('eforge-plugin/.claude-plugin/plugin.json', () => {
 // ---------------------------------------------------------------------------
 
 describe('repo-root .gitignore', () => {
-  it('contains an `eforge/.active-backend` entry', () => {
+  it('contains an `eforge/.active-profile` entry', () => {
     const contents = readRepoFile('.gitignore');
     const lines = contents.split('\n').map((l) => l.trim());
-    expect(lines).toContain('eforge/.active-backend');
+    expect(lines).toContain('eforge/.active-profile');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Claude Code plugin skills (eforge-plugin/skills/backend, backend-new)
+// Claude Code plugin skills (eforge-plugin/skills/profile, profile-new)
 // ---------------------------------------------------------------------------
 
-describe('eforge-plugin/skills/backend/backend.md', () => {
-  const path = 'eforge-plugin/skills/backend/backend.md';
+describe('eforge-plugin/skills/profile/profile.md', () => {
+  const path = 'eforge-plugin/skills/profile/profile.md';
   const raw = readRepoFile(path);
   const fm = parseFrontmatter(raw);
 
   it('has the expected description frontmatter', () => {
-    expect(fm.description).toBe('List, inspect, and switch backend profiles');
+    expect(fm.description).toBe('List, inspect, and switch agent runtime profiles');
   });
 
   it('has the expected argument-hint frontmatter', () => {
     expect(fm['argument-hint']).toBe('[name]');
   });
 
-  it('references the MCP-namespaced eforge_backend tool', () => {
-    expect(raw).toContain('mcp__eforge__eforge_backend');
+  it('references the MCP-namespaced eforge_profile tool', () => {
+    expect(raw).toContain('mcp__eforge__eforge_profile');
   });
 
   it('documents both inspect (show) and switch (use) flows', () => {
@@ -116,50 +116,50 @@ describe('eforge-plugin/skills/backend/backend.md', () => {
     expect(raw).toMatch(/action:\s*["']use["']/);
   });
 
-  it('includes a Related Skills table that mentions /eforge:backend:new', () => {
+  it('includes a Related Skills table that mentions /eforge:profile-new', () => {
     expect(raw).toMatch(/##\s+Related Skills/);
-    expect(raw).toContain('/eforge:backend:new');
+    expect(raw).toContain('/eforge:profile-new');
   });
 });
 
-describe('eforge-plugin/skills/backend-new/backend-new.md', () => {
-  const path = 'eforge-plugin/skills/backend-new/backend-new.md';
+describe('eforge-plugin/skills/profile-new/profile-new.md', () => {
+  const path = 'eforge-plugin/skills/profile-new/profile-new.md';
   const raw = readRepoFile(path);
   const fm = parseFrontmatter(raw);
 
   it('has the expected description frontmatter', () => {
-    expect(fm.description).toBe('Create a new backend profile in eforge/backends/');
+    expect(fm.description).toBe('Create a new agent runtime profile in eforge/profiles/');
   });
 
   it('has the expected argument-hint frontmatter', () => {
     expect(fm['argument-hint']).toBe('[name]');
   });
 
-  it('chains eforge_models (providers + list) -> eforge_backend create', () => {
+  it('chains eforge_models (providers + list) -> eforge_profile create', () => {
     // Must reference both tools with MCP namespacing.
     expect(raw).toContain('mcp__eforge__eforge_models');
-    expect(raw).toContain('mcp__eforge__eforge_backend');
+    expect(raw).toContain('mcp__eforge__eforge_profile');
     // Must mention both model actions and the create action.
     expect(raw).toMatch(/action:\s*["']providers["']/);
     expect(raw).toMatch(/action:\s*["']list["']/);
     expect(raw).toMatch(/action:\s*["']create["']/);
   });
 
-  it('covers the activation step (eforge_backend action=use)', () => {
+  it('covers the activation step (eforge_profile action=use)', () => {
     expect(raw).toMatch(/action:\s*["']use["']/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Pi extension skills (packages/pi-eforge/skills/eforge-backend, eforge-backend-new)
+// Pi extension skills (packages/pi-eforge/skills/eforge-profile, eforge-profile-new)
 // ---------------------------------------------------------------------------
 
-describe('packages/pi-eforge/skills/eforge-backend/SKILL.md', () => {
-  const raw = readRepoFile('packages/pi-eforge/skills/eforge-backend/SKILL.md');
+describe('packages/pi-eforge/skills/eforge-profile/SKILL.md', () => {
+  const raw = readRepoFile('packages/pi-eforge/skills/eforge-profile/SKILL.md');
   const fm = parseFrontmatter(raw);
 
-  it('has name: eforge-backend', () => {
-    expect(fm.name).toBe('eforge-backend');
+  it('has name: eforge-profile', () => {
+    expect(fm.name).toBe('eforge-profile');
   });
 
   it('has disable-model-invocation: true (Pi convention)', () => {
@@ -168,16 +168,16 @@ describe('packages/pi-eforge/skills/eforge-backend/SKILL.md', () => {
 
   it('uses bare tool names (no mcp__eforge__ prefix)', () => {
     expect(raw).not.toContain('mcp__eforge__');
-    expect(raw).toMatch(/`eforge_backend`/);
+    expect(raw).toMatch(/`eforge_profile`/);
   });
 });
 
-describe('packages/pi-eforge/skills/eforge-backend-new/SKILL.md', () => {
-  const raw = readRepoFile('packages/pi-eforge/skills/eforge-backend-new/SKILL.md');
+describe('packages/pi-eforge/skills/eforge-profile-new/SKILL.md', () => {
+  const raw = readRepoFile('packages/pi-eforge/skills/eforge-profile-new/SKILL.md');
   const fm = parseFrontmatter(raw);
 
-  it('has name: eforge-backend-new', () => {
-    expect(fm.name).toBe('eforge-backend-new');
+  it('has name: eforge-profile-new', () => {
+    expect(fm.name).toBe('eforge-profile-new');
   });
 
   it('has disable-model-invocation: true (Pi convention)', () => {
@@ -186,7 +186,7 @@ describe('packages/pi-eforge/skills/eforge-backend-new/SKILL.md', () => {
 
   it('uses bare tool names (no mcp__eforge__ prefix)', () => {
     expect(raw).not.toContain('mcp__eforge__');
-    expect(raw).toMatch(/`eforge_backend`/);
+    expect(raw).toMatch(/`eforge_profile`/);
     expect(raw).toMatch(/`eforge_models`/);
   });
 });
@@ -196,16 +196,16 @@ describe('packages/pi-eforge/skills/eforge-backend-new/SKILL.md', () => {
 // ---------------------------------------------------------------------------
 
 describe('init skill updates (plugin + Pi parity)', () => {
-  it('plugin /eforge:init mentions `eforge/.active-backend` and suggests /eforge:backend:new', () => {
+  it('plugin /eforge:init mentions `eforge/.active-profile` and suggests /eforge:profile-new', () => {
     const raw = readRepoFile('eforge-plugin/skills/init/init.md');
-    expect(raw).toContain('eforge/.active-backend');
-    expect(raw).toContain('/eforge:backend:new');
+    expect(raw).toContain('eforge/.active-profile');
+    expect(raw).toContain('/eforge:profile-new');
   });
 
-  it('Pi eforge-init skill mentions `eforge/.active-backend` and suggests /eforge:backend:new', () => {
+  it('Pi eforge-init skill mentions `eforge/.active-profile` and suggests /eforge:profile-new', () => {
     const raw = readRepoFile('packages/pi-eforge/skills/eforge-init/SKILL.md');
-    expect(raw).toContain('eforge/.active-backend');
-    expect(raw).toContain('/eforge:backend:new');
+    expect(raw).toContain('eforge/.active-profile');
+    expect(raw).toContain('/eforge:profile-new');
   });
 });
 
@@ -216,18 +216,18 @@ describe('init skill updates (plugin + Pi parity)', () => {
 describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () => {
   const source = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
 
-  it("registers the 'eforge_backend' tool via createDaemonTool(...)", () => {
+  it("registers the 'eforge_profile' tool via createDaemonTool(...)", () => {
     // Tools are now registered via the factory; verify name appears in a createDaemonTool call.
-    expect(source).toMatch(/createDaemonTool\(server,\s*cwd,\s*\{[\s\S]*?name:\s*'eforge_backend'/);
+    expect(source).toMatch(/createDaemonTool\(server,\s*cwd,\s*\{[\s\S]*?name:\s*'eforge_profile'/);
   });
 
   it("registers the 'eforge_models' tool via createDaemonTool(...)", () => {
     expect(source).toMatch(/createDaemonTool\(server,\s*cwd,\s*\{[\s\S]*?name:\s*'eforge_models'/);
   });
 
-  it('declares the full action enum for eforge_backend (list|show|use|create|delete)', () => {
-    // Find the eforge_backend registration block and verify each action literal appears.
-    const idx = source.indexOf("name: 'eforge_backend',");
+  it('declares the full action enum for eforge_profile (list|show|use|create|delete)', () => {
+    // Find the eforge_profile registration block and verify each action literal appears.
+    const idx = source.indexOf("name: 'eforge_profile',");
     expect(idx).toBeGreaterThan(-1);
     const block = source.slice(idx, idx + 3000);
     for (const action of ['list', 'show', 'use', 'create', 'delete']) {
@@ -247,20 +247,20 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
     expect(block).toContain("'pi'");
   });
 
-  it('dispatches eforge_backend actions to the expected daemon endpoints', () => {
-    // After the API_ROUTES migration, the source uses API_ROUTES.* constants
-    // instead of literal path strings. Verify the constants are referenced.
-    expect(source).toContain('API_ROUTES.backendList');
-    expect(source).toContain('API_ROUTES.backendShow');
-    expect(source).toContain('API_ROUTES.backendUse');
-    expect(source).toContain('API_ROUTES.backendCreate');
-    expect(source).toContain('API_ROUTES.backendDelete');
+  it('dispatches eforge_profile actions to the expected daemon endpoints', () => {
+    // After the HTTP route rename (plan-05), the source uses the renamed API_ROUTES.*
+    // constants (profile* instead of backend*). Verify the constants are referenced.
+    expect(source).toContain('API_ROUTES.profileList');
+    expect(source).toContain('API_ROUTES.profileShow');
+    expect(source).toContain('API_ROUTES.profileUse');
+    expect(source).toContain('API_ROUTES.profileCreate');
+    expect(source).toContain('API_ROUTES.profileDelete');
     // Verify the routes resolve to the correct paths via the shared constant.
-    expect(API_ROUTES.backendList).toBe('/api/backend/list');
-    expect(API_ROUTES.backendShow).toBe('/api/backend/show');
-    expect(API_ROUTES.backendUse).toBe('/api/backend/use');
-    expect(API_ROUTES.backendCreate).toBe('/api/backend/create');
-    expect(API_ROUTES.backendDelete).toBe('/api/backend/:name');
+    expect(API_ROUTES.profileList).toBe('/api/profile/list');
+    expect(API_ROUTES.profileShow).toBe('/api/profile/show');
+    expect(API_ROUTES.profileUse).toBe('/api/profile/use');
+    expect(API_ROUTES.profileCreate).toBe('/api/profile/create');
+    expect(API_ROUTES.profileDelete).toBe('/api/profile/:name');
   });
 
   it('dispatches eforge_models actions to the expected daemon endpoints', () => {
@@ -271,10 +271,10 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
     expect(API_ROUTES.modelList).toBe('/api/models/list');
   });
 
-  it("adds 'eforge/.active-backend' to the init tool's managed gitignore block", () => {
-    // ensureGitignoreEntries(cwd, [..., 'eforge/.active-backend']) inside eforge_init.
+  it("adds 'eforge/.active-profile' to the init tool's managed gitignore block", () => {
+    // ensureGitignoreEntries(cwd, [..., 'eforge/.active-profile']) inside eforge_init.
     expect(source).toMatch(
-      /ensureGitignoreEntries\([^)]*['"]eforge\/\.active-backend['"]/,
+      /ensureGitignoreEntries\([^)]*['"]eforge\/\.active-profile['"]/,
     );
   });
 });
@@ -286,31 +286,32 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
 describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index.ts)', () => {
   const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
 
-  it("registers the 'eforge_backend' tool via pi.registerTool", () => {
-    expect(source).toMatch(/name:\s*["']eforge_backend["']/);
+  it("registers the 'eforge_profile' tool via pi.registerTool", () => {
+    expect(source).toMatch(/name:\s*["']eforge_profile["']/);
   });
 
   it("registers the 'eforge_models' tool via pi.registerTool", () => {
     expect(source).toMatch(/name:\s*["']eforge_models["']/);
   });
 
-  it('registers the /eforge:backend command natively (not as skill alias)', () => {
-    expect(source).toContain('"eforge:backend"');
-    expect(source).toMatch(/from\s+['"]\.\/backend-commands['"]/);
+  it('registers the /eforge:profile command natively (not as skill alias)', () => {
+    expect(source).toContain('"eforge:profile"');
+    expect(source).toMatch(/from\s+['"]\.\/profile-commands['"]/);
   });
 
-  it('registers the /eforge:backend:new command natively (not as skill alias)', () => {
-    expect(source).toContain('"eforge:backend:new"');
-    expect(source).toMatch(/from\s+['"]\.\/backend-commands['"]/);
+  it('registers the /eforge:profile:new command natively (not as skill alias)', () => {
+    expect(source).toContain('"eforge:profile:new"');
+    expect(source).toMatch(/from\s+['"]\.\/profile-commands['"]/);
   });
 
-  it('dispatches eforge_backend to the daemon via daemonRequest', () => {
-    // After the API_ROUTES migration, the source uses API_ROUTES.* constants.
-    expect(source).toContain('API_ROUTES.backendList');
-    expect(source).toContain('API_ROUTES.backendShow');
-    expect(source).toContain('API_ROUTES.backendUse');
-    expect(source).toContain('API_ROUTES.backendCreate');
-    expect(source).toContain('API_ROUTES.backendDelete');
+  it('dispatches eforge_profile to the daemon via daemonRequest', () => {
+    // After the HTTP route rename (plan-05), the source uses the renamed API_ROUTES.*
+    // constants (profile* instead of backend*).
+    expect(source).toContain('API_ROUTES.profileList');
+    expect(source).toContain('API_ROUTES.profileShow');
+    expect(source).toContain('API_ROUTES.profileUse');
+    expect(source).toContain('API_ROUTES.profileCreate');
+    expect(source).toContain('API_ROUTES.profileDelete');
   });
 
   it('dispatches eforge_models to the daemon via daemonRequest', () => {
@@ -323,22 +324,22 @@ describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index
 // Scope field parity (MCP proxy + Pi extension)
 // ---------------------------------------------------------------------------
 
-describe('eforge_backend scope field parity', () => {
+describe('eforge_profile scope field parity', () => {
   const mcpSource = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
   const piSource = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
 
-  it('MCP proxy eforge_backend schema includes a scope field accepting project, user, all', () => {
-    // Find the eforge_backend registration block (now registered via createDaemonTool)
-    const idx = mcpSource.indexOf("name: 'eforge_backend',");
+  it('MCP proxy eforge_profile schema includes a scope field accepting project, user, all', () => {
+    // Find the eforge_profile registration block (now registered via createDaemonTool)
+    const idx = mcpSource.indexOf("name: 'eforge_profile',");
     expect(idx).toBeGreaterThan(-1);
     const block = mcpSource.slice(idx, idx + 3000);
     // Verify scope enum includes all three values
     expect(block).toMatch(/scope:\s*z\.enum\(\[.*'project'.*'user'.*'all'.*\]\)/s);
   });
 
-  it('Pi extension eforge_backend schema includes a scope field accepting project, user, all', () => {
-    // Find the eforge_backend registration block
-    const idx = piSource.indexOf('name: "eforge_backend"');
+  it('Pi extension eforge_profile schema includes a scope field accepting project, user, all', () => {
+    // Find the eforge_profile registration block
+    const idx = piSource.indexOf('name: "eforge_profile"');
     expect(idx).toBeGreaterThan(-1);
     const block = piSource.slice(idx - 200, idx + 3000);
     // Verify scope with Type.Union containing all three literals
@@ -353,8 +354,8 @@ describe('eforge_backend scope field parity', () => {
   });
 
   it('MCP proxy threads scope in request body for use, create, delete actions', () => {
-    // Extract the full eforge_backend tool block (now registered via createDaemonTool)
-    const idx = mcpSource.indexOf("name: 'eforge_backend',");
+    // Extract the full eforge_profile tool block (now registered via createDaemonTool)
+    const idx = mcpSource.indexOf("name: 'eforge_profile',");
     expect(idx).toBeGreaterThan(-1);
     const nextTool = mcpSource.indexOf("name: 'eforge_models',", idx + 1);
     const block = nextTool > idx ? mcpSource.slice(idx, nextTool) : mcpSource.slice(idx);
@@ -372,8 +373,8 @@ describe('eforge_backend scope field parity', () => {
   });
 
   it('Pi extension threads scope in request body for use, create, delete actions', () => {
-    // Extract the full eforge_backend tool block (from tool name to the next pi.registerTool call)
-    const idx = piSource.indexOf('name: "eforge_backend"');
+    // Extract the full eforge_profile tool block (from tool name to the next pi.registerTool call)
+    const idx = piSource.indexOf('name: "eforge_profile"');
     expect(idx).toBeGreaterThan(-1);
     const nextTool = piSource.indexOf('pi.registerTool(', idx + 1);
     const block = nextTool > idx ? piSource.slice(idx - 200, nextTool) : piSource.slice(idx - 200);
@@ -391,8 +392,8 @@ describe('eforge_backend scope field parity', () => {
 // ---------------------------------------------------------------------------
 
 describe('Pi extension native command modules (plan-02-native-pi-ux)', () => {
-  it('backend-commands.ts exists', () => {
-    const path = resolve(REPO_ROOT, 'packages/pi-eforge/extensions/eforge/backend-commands.ts');
+  it('profile-commands.ts exists', () => {
+    const path = resolve(REPO_ROOT, 'packages/pi-eforge/extensions/eforge/profile-commands.ts');
     expect(existsSync(path)).toBe(true);
     expect(statSync(path).isFile()).toBe(true);
   });
@@ -409,9 +410,9 @@ describe('Pi extension native command modules (plan-02-native-pi-ux)', () => {
     expect(statSync(path).isFile()).toBe(true);
   });
 
-  it('index.ts imports from ./backend-commands and ./config-command', () => {
+  it('index.ts imports from ./profile-commands and ./config-command', () => {
     const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
-    expect(source).toMatch(/from\s+['"]\.\/backend-commands['"]/);
+    expect(source).toMatch(/from\s+['"]\.\/profile-commands['"]/);
     expect(source).toMatch(/from\s+['"]\.\/config-command['"]/);
   });
 
@@ -421,13 +422,13 @@ describe('Pi extension native command modules (plan-02-native-pi-ux)', () => {
   });
 
   it('Pi skill files contain fallback notes for native commands', () => {
-    const backendSkill = readRepoFile('packages/pi-eforge/skills/eforge-backend/SKILL.md');
+    const backendSkill = readRepoFile('packages/pi-eforge/skills/eforge-profile/SKILL.md');
     expect(backendSkill.toLowerCase()).toContain('fallback');
-    expect(backendSkill).toContain('/eforge:backend');
+    expect(backendSkill).toContain('/eforge:profile');
 
-    const backendNewSkill = readRepoFile('packages/pi-eforge/skills/eforge-backend-new/SKILL.md');
+    const backendNewSkill = readRepoFile('packages/pi-eforge/skills/eforge-profile-new/SKILL.md');
     expect(backendNewSkill.toLowerCase()).toContain('fallback');
-    expect(backendNewSkill).toContain('/eforge:backend:new');
+    expect(backendNewSkill).toContain('/eforge:profile-new');
 
     const configSkill = readRepoFile('packages/pi-eforge/skills/eforge-config/SKILL.md');
     expect(configSkill.toLowerCase()).toContain('fallback');
@@ -460,14 +461,14 @@ describe('Native command module exports (plan-02-native-pi-ux)', () => {
     expect(source).toMatch(/export\s+interface\s+UIContext/);
   });
 
-  it('backend-commands.ts exports handleBackendCommand', () => {
-    const source = readRepoFile('packages/pi-eforge/extensions/eforge/backend-commands.ts');
-    expect(source).toMatch(/export\s+async\s+function\s+handleBackendCommand/);
+  it('profile-commands.ts exports handleProfileCommand', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/profile-commands.ts');
+    expect(source).toMatch(/export\s+async\s+function\s+handleProfileCommand/);
   });
 
-  it('backend-commands.ts exports handleBackendNewCommand', () => {
-    const source = readRepoFile('packages/pi-eforge/extensions/eforge/backend-commands.ts');
-    expect(source).toMatch(/export\s+async\s+function\s+handleBackendNewCommand/);
+  it('profile-commands.ts exports handleProfileNewCommand', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/profile-commands.ts');
+    expect(source).toMatch(/export\s+async\s+function\s+handleProfileNewCommand/);
   });
 
   it('config-command.ts exports handleConfigCommand', () => {
@@ -483,22 +484,22 @@ describe('Native command module exports (plan-02-native-pi-ux)', () => {
 describe('Skill-forwarding removed for 3 native commands (plan-02-native-pi-ux)', () => {
   const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
 
-  it('eforge:backend is NOT in the skillCommands array', () => {
-    // The skillCommands array should not contain eforge:backend
+  it('eforge:profile is NOT in the skillCommands array', () => {
+    // The skillCommands array should not contain eforge:profile
     const skillCommandsStart = source.indexOf('const skillCommands');
     expect(skillCommandsStart).toBeGreaterThan(-1);
     const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
     const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
-    expect(skillCommandsBlock).not.toContain('"eforge:backend"');
-    expect(skillCommandsBlock).not.toContain("'eforge:backend'");
+    expect(skillCommandsBlock).not.toContain('"eforge:profile"');
+    expect(skillCommandsBlock).not.toContain("'eforge:profile'");
   });
 
-  it('eforge:backend:new is NOT in the skillCommands array', () => {
+  it('eforge:profile:new is NOT in the skillCommands array', () => {
     const skillCommandsStart = source.indexOf('const skillCommands');
     const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
     const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
-    expect(skillCommandsBlock).not.toContain('"eforge:backend:new"');
-    expect(skillCommandsBlock).not.toContain("'eforge:backend:new'");
+    expect(skillCommandsBlock).not.toContain('"eforge:profile:new"');
+    expect(skillCommandsBlock).not.toContain("'eforge:profile:new'");
   });
 
   it('eforge:config is NOT in the skillCommands array', () => {
@@ -509,33 +510,33 @@ describe('Skill-forwarding removed for 3 native commands (plan-02-native-pi-ux)'
     expect(skillCommandsBlock).not.toContain("'eforge:config'");
   });
 
-  it('eforge:backend is registered natively via pi.registerCommand', () => {
+  it('eforge:profile is registered natively via pi.registerCommand', () => {
     // Should appear as a native command registration, not in skillCommands
-    expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:backend["']/);
+    expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:profile["']/);
   });
 
-  it('eforge:backend:new is registered natively via pi.registerCommand', () => {
-    expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:backend:new["']/);
+  it('eforge:profile:new is registered natively via pi.registerCommand', () => {
+    expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:profile:new["']/);
   });
 
   it('eforge:config is registered natively via pi.registerCommand', () => {
     expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:config["']/);
   });
 
-  it('native eforge:backend handler calls handleBackendCommand (not skill forwarding)', () => {
-    // Find the native eforge:backend registration block
-    const idx = source.indexOf('pi.registerCommand("eforge:backend"');
+  it('native eforge:profile handler calls handleProfileCommand (not skill forwarding)', () => {
+    // Find the native eforge:profile registration block
+    const idx = source.indexOf('pi.registerCommand("eforge:profile"');
     expect(idx).toBeGreaterThan(-1);
     const block = source.slice(idx, idx + 300);
-    expect(block).toContain('handleBackendCommand');
+    expect(block).toContain('handleProfileCommand');
     expect(block).not.toContain('sendUserMessage');
   });
 
-  it('native eforge:backend:new handler calls handleBackendNewCommand (not skill forwarding)', () => {
-    const idx = source.indexOf('pi.registerCommand("eforge:backend:new"');
+  it('native eforge:profile:new handler calls handleProfileNewCommand (not skill forwarding)', () => {
+    const idx = source.indexOf('pi.registerCommand("eforge:profile:new"');
     expect(idx).toBeGreaterThan(-1);
     const block = source.slice(idx, idx + 300);
-    expect(block).toContain('handleBackendNewCommand');
+    expect(block).toContain('handleProfileNewCommand');
     expect(block).not.toContain('sendUserMessage');
   });
 
@@ -645,12 +646,12 @@ describe('docs/architecture.md - native command mentions (plan-02-native-pi-ux)'
     expect(piSection.toLowerCase()).toContain('native');
   });
 
-  it('Pi Package section mentions overlay commands for backend management', () => {
+  it('Pi Package section mentions overlay commands for profile management', () => {
     const piStart = raw.indexOf('### Pi Package');
     const nextSection = raw.indexOf('\n## ', piStart);
     const piSection = raw.slice(piStart, nextSection > -1 ? nextSection : undefined);
-    expect(piSection).toContain('/eforge:backend');
-    expect(piSection).toContain('/eforge:backend:new');
+    expect(piSection).toContain('/eforge:profile');
+    expect(piSection).toContain('/eforge:profile-new');
   });
 
   it('Pi Package section mentions overlay commands for config', () => {
@@ -666,16 +667,16 @@ describe('docs/architecture.md - native command mentions (plan-02-native-pi-ux)'
     const piSection = raw.slice(piStart, nextSection > -1 ? nextSection : undefined);
     // The section should not say ALL commands are skill-based
     expect(piSection).not.toMatch(/Skill-based slash commands.*\/eforge:config/);
-    expect(piSection).not.toMatch(/Skill-based slash commands.*\/eforge:backend/);
+    expect(piSection).not.toMatch(/Skill-based slash commands.*\/eforge:profile/);
   });
 });
 
 describe('packages/pi-eforge/README.md - native command UX (plan-02-native-pi-ux)', () => {
   const raw = readRepoFile('packages/pi-eforge/README.md');
 
-  it('mentions native commands for backend management', () => {
-    expect(raw).toContain('/eforge:backend');
-    expect(raw).toContain('/eforge:backend:new');
+  it('mentions native commands for agent runtime profile management', () => {
+    expect(raw).toContain('/eforge:profile');
+    expect(raw).toContain('/eforge:profile-new');
   });
 
   it('mentions native config command', () => {

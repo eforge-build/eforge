@@ -6,7 +6,7 @@
  */
 
 import type { EforgeEvent } from '../events.js';
-import { AgentTerminalError } from '../backend.js';
+import { AgentTerminalError } from '../harness.js';
 
 /**
  * Build a `plan:build:failed` event from a thrown value.

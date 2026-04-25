@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { MergeConflictInfo } from '@eforge-build/engine/worktree';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent } from './test-events.js';
 import { runMergeConflictResolver } from '@eforge-build/engine/agents/merge-conflict-resolver';
 
@@ -16,11 +16,11 @@ function makeConflict(overrides?: Partial<MergeConflictInfo>): MergeConflictInfo
 
 describe('runMergeConflictResolver wiring', () => {
   it('emits lifecycle events for a successful run', async () => {
-    const backend = new StubBackend([{ text: 'Conflicts resolved.' }]);
+    const backend = new StubHarness([{ text: 'Conflicts resolved.' }]);
     const conflict = makeConflict();
 
     const events = await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -41,11 +41,11 @@ describe('runMergeConflictResolver wiring', () => {
   });
 
   it('emits resolved: false on non-abort error', async () => {
-    const backend = new StubBackend([{ error: new Error('LLM failed') }]);
+    const backend = new StubHarness([{ error: new Error('LLM failed') }]);
     const conflict = makeConflict();
 
     const events = await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -58,12 +58,12 @@ describe('runMergeConflictResolver wiring', () => {
   it('re-throws AbortError', async () => {
     const abortError = new Error('Aborted');
     abortError.name = 'AbortError';
-    const backend = new StubBackend([{ error: abortError }]);
+    const backend = new StubHarness([{ error: abortError }]);
     const conflict = makeConflict();
 
     await expect(
       collectEvents(runMergeConflictResolver({
-        backend,
+        harness: backend,
         cwd: '/tmp/test-repo',
         conflict,
       })),
@@ -71,11 +71,11 @@ describe('runMergeConflictResolver wiring', () => {
   });
 
   it('passes correct options to backend.run()', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
     const conflict = makeConflict();
 
     await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -88,7 +88,7 @@ describe('runMergeConflictResolver wiring', () => {
   });
 
   it('includes plan context in prompt when provided', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
     const conflict = makeConflict({
       planName: 'Add user authentication',
       planSummary: 'Implements JWT-based auth with login/logout endpoints',
@@ -97,7 +97,7 @@ describe('runMergeConflictResolver wiring', () => {
     });
 
     await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -110,7 +110,7 @@ describe('runMergeConflictResolver wiring', () => {
   });
 
   it('includes conflict details in prompt', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
     const conflict = makeConflict({
       branch: 'feat/my-feature',
       baseBranch: 'develop',
@@ -119,7 +119,7 @@ describe('runMergeConflictResolver wiring', () => {
     });
 
     await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -133,11 +133,11 @@ describe('runMergeConflictResolver wiring', () => {
   });
 
   it('runs without error when optional plan context is omitted', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
     const conflict = makeConflict(); // no planName, planSummary, etc.
 
     const events = await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));

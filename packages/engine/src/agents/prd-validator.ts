@@ -1,10 +1,10 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
 export interface PrdValidatorOptions extends SdkPassthroughConfig {
-  backend: AgentBackend;
+  harness: AgentHarness;
   cwd: string;
   prdContent: string;
   diff: string;
@@ -32,7 +32,7 @@ export async function* runPrdValidator(
   try {
     let accumulatedText = '';
 
-    for await (const event of options.backend.run(
+    for await (const event of options.harness.run(
       {
         prompt,
         cwd: options.cwd,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ReviewIssue } from '@eforge-build/engine/events';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { deduplicateIssues } from '@eforge-build/engine/agents/parallel-reviewer';
 import { runReviewFixer } from '@eforge-build/engine/agents/review-fixer';
@@ -65,7 +65,7 @@ describe('deduplicateIssues', () => {
 
 describe('runReviewFixer', () => {
   it('emits fix start and complete events', async () => {
-    const backend = new StubBackend([{ text: 'Fixed all issues.' }]);
+    const backend = new StubHarness([{ text: 'Fixed all issues.' }]);
 
     const issues: ReviewIssue[] = [
       { severity: 'critical', category: 'bugs', file: 'a.ts', line: 10, description: 'Null pointer', fix: 'Add null check' },
@@ -73,7 +73,7 @@ describe('runReviewFixer', () => {
 
     const events = await collectEvents(
       runReviewFixer({
-        backend,
+        harness: backend,
         planId: 'plan-01',
         cwd: '/tmp/test',
         issues,
@@ -91,11 +91,11 @@ describe('runReviewFixer', () => {
   });
 
   it('runs with coding tools', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
 
     await collectEvents(
       runReviewFixer({
-        backend,
+        harness: backend,
         planId: 'plan-01',
         cwd: '/tmp/test',
         issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],
@@ -107,11 +107,11 @@ describe('runReviewFixer', () => {
   });
 
   it('uses review-fixer agent role', async () => {
-    const backend = new StubBackend([{ text: 'Done.' }]);
+    const backend = new StubHarness([{ text: 'Done.' }]);
 
     const events = await collectEvents(
       runReviewFixer({
-        backend,
+        harness: backend,
         planId: 'plan-01',
         cwd: '/tmp/test',
         issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],
@@ -124,12 +124,12 @@ describe('runReviewFixer', () => {
   });
 
   it('survives backend errors gracefully', async () => {
-    const backend = new StubBackend([{ error: new Error('Backend failed') }]);
+    const backend = new StubHarness([{ error: new Error('Backend failed') }]);
 
     // Should not throw — review fixer errors are non-fatal
     const events = await collectEvents(
       runReviewFixer({
-        backend,
+        harness: backend,
         planId: 'plan-01',
         cwd: '/tmp/test',
         issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],

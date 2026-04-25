@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { AgentTerminalError, PlannerSubmissionError } from '@eforge-build/engine/backend';
-import { StubBackend } from './stub-backend.js';
+import { AgentTerminalError, PlannerSubmissionError } from '@eforge-build/engine/harness';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { runPlanner } from '@eforge-build/engine/agents/planner';
@@ -14,13 +14,13 @@ describe('runPlanner with continuation context', () => {
   const makeTempDir = useTempDir('eforge-planner-continuation-test-');
 
   it('includes continuation context in prompt when provided', async () => {
-    const backend = new StubBackend([{ text: 'Plan complete.' }]);
+    const backend = new StubHarness([{ text: 'Plan complete.' }]);
     const cwd = makeTempDir();
 
     // Planner throws PlannerSubmissionError because no submit tool was called,
     // but the prompt has already been captured by the stub.
     await expect(collectEvents(runPlanner('Build a widget', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       continuationContext: {
@@ -46,12 +46,12 @@ describe('runPlanner without continuation context', () => {
   const makeTempDir = useTempDir('eforge-planner-no-continuation-test-');
 
   it('does not include continuation context when not provided', async () => {
-    const backend = new StubBackend([{ text: 'Plan complete.' }]);
+    const backend = new StubHarness([{ text: 'Plan complete.' }]);
     const cwd = makeTempDir();
 
     // Planner throws PlannerSubmissionError because no submit tool was called.
     await expect(collectEvents(runPlanner('Build a widget', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
     }))).rejects.toThrow(PlannerSubmissionError);
@@ -106,7 +106,7 @@ describe('Continuation context coexists with prior clarifications', () => {
 
   it('includes both continuation context and prior clarifications in prompt', async () => {
     // First call: emit clarification questions, second call: complete
-    const backend = new StubBackend([
+    const backend = new StubHarness([
       { text: '<clarification><question id="q1">What framework?</question></clarification>' },
       { text: 'Plan complete after clarification.' },
     ]);
@@ -116,7 +116,7 @@ describe('Continuation context coexists with prior clarifications', () => {
     // (no submit tool call). Both prompts are captured before the throw.
     try {
       await collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: false,
         continuationContext: {
@@ -143,24 +143,24 @@ describe('Continuation context coexists with prior clarifications', () => {
   });
 });
 
-// --- StubBackend error_max_turns propagation ---
+// --- StubHarness error_max_turns propagation ---
 
-describe('StubBackend error_max_turns propagation', () => {
+describe('StubHarness error_max_turns propagation', () => {
   const makeTempDir = useTempDir('eforge-planner-maxturns-test-');
 
   it('propagates error_max_turns from runPlanner', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).'),
     }]);
     const cwd = makeTempDir();
 
     await expect(
       collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
       })),
-    ).rejects.toThrow('error_max_turns');
+    ).rejects.toThrow('Reached maximum number of turns');
   });
 });
 
@@ -170,13 +170,13 @@ describe('runPlanner throws PlannerSubmissionError on dropped submission', () =>
   const makeTempDir = useTempDir('eforge-planner-dropped-submission-test-');
 
   it('rejects with PlannerSubmissionError when no submission tool is called and no skip', async () => {
-    const backend = new StubBackend([{ text: 'I thought about it but never called submit.' }]);
+    const backend = new StubHarness([{ text: 'I thought about it but never called submit.' }]);
     const cwd = makeTempDir();
 
     let thrown: unknown;
     try {
       await collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
         scope: 'excursion',
@@ -198,12 +198,12 @@ describe('continuationContext threads reason into prompt', () => {
   const makeTempDir = useTempDir('eforge-planner-continuation-reason-test-');
 
   it('reason=dropped_submission produces submission-focused wording without the existing-plans list', async () => {
-    const backend = new StubBackend([{ text: 'Thinking...' }]);
+    const backend = new StubHarness([{ text: 'Thinking...' }]);
     const cwd = makeTempDir();
 
     try {
       await collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
         scope: 'excursion',
@@ -228,12 +228,12 @@ describe('continuationContext threads reason into prompt', () => {
   });
 
   it('reason=max_turns produces the existing max-turns wording with the existing-plans list', async () => {
-    const backend = new StubBackend([{ text: 'Thinking...' }]);
+    const backend = new StubHarness([{ text: 'Thinking...' }]);
     const cwd = makeTempDir();
 
     try {
       await collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
         scope: 'excursion',

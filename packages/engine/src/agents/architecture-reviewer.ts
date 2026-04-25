@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
@@ -9,8 +9,8 @@ import { getPlanReviewIssueSchemaYaml } from '../schemas.js';
  * Options for the architecture reviewer agent.
  */
 export interface ArchitectureReviewerOptions extends SdkPassthroughConfig {
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentHarness;
   /** The original source/PRD content to review architecture against */
   sourceContent: string;
   /** The plan set name (directory under plans/) */
@@ -43,7 +43,7 @@ export interface ArchitectureReviewerOptions extends SdkPassthroughConfig {
 export async function* runArchitectureReview(
   options: ArchitectureReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController } = options;
+  const { harness, sourceContent, planSetName, architectureContent, cwd, verbose, abortController } = options;
 
   yield { timestamp: new Date().toISOString(), type: 'planning:architecture:review:start' };
 
@@ -57,7 +57,7 @@ export async function* runArchitectureReview(
 
   let fullText = '';
 
-  for await (const event of backend.run(
+  for await (const event of harness.run(
     { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'architecture-reviewer',
   )) {

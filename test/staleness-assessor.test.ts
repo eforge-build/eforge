@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { runStalenessAssessor } from '@eforge-build/engine/agents/staleness-assessor';
 
 describe('runStalenessAssessor wiring', () => {
   it('yields queue:prd:stale with proceed verdict', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="proceed">PRD is still relevant, codebase changes are unrelated.</staleness>',
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Add auth\n\nImplement user authentication.',
       diffSummary: 'src/utils.ts | 5 ++',
       cwd: '/tmp',
@@ -24,12 +24,12 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('yields queue:prd:stale with revise verdict and revision content', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="revise">API has changed since this PRD was written.<revision># Updated PRD\n\nRevised content here.</revision></staleness>',
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Old feature\n\nOutdated content.',
       diffSummary: 'src/api.ts | 50 +++---',
       cwd: '/tmp',
@@ -43,12 +43,12 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('yields queue:prd:stale with obsolete verdict', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="obsolete">This feature was already implemented in a different way.</staleness>',
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Feature X\n\nBuild feature X.',
       diffSummary: 'src/feature-x.ts | 200 ++++++',
       cwd: '/tmp',
@@ -61,12 +61,12 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('handles missing staleness block - no queue:prd:stale event emitted', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: 'The PRD looks fine to me. No issues found.',
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
       cwd: '/tmp',
@@ -80,12 +80,12 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('gates agent:message on verbose - suppressed when false', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="proceed">Still good.</staleness>',
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
       cwd: '/tmp',
@@ -99,12 +99,12 @@ describe('runStalenessAssessor wiring', () => {
   });
 
   it('emits agent:message when verbose is true', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: '<staleness verdict="proceed">Still good.</staleness>',
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
       cwd: '/tmp',

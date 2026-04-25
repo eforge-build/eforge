@@ -1,5 +1,5 @@
-import type { AgentBackend, SdkPassthroughConfig } from '../backend.js';
-import { pickSdkOptions, AgentTerminalError } from '../backend.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { pickSdkOptions, AgentTerminalError } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
@@ -10,8 +10,8 @@ export type { EvaluationVerdict, EvaluationEvidence } from './common.js';
  * Options for builder agent functions.
  */
 export interface BuilderOptions extends SdkPassthroughConfig {
-  /** Backend for running the agent */
-  backend: AgentBackend;
+  /** Harness for running the agent */
+  harness: AgentHarness;
   /** Working directory (typically a worktree path) */
   cwd: string;
   /** Stream verbose agent-level events */
@@ -139,7 +139,7 @@ ${completedDiff}
   }, options.promptAppend);
 
   try {
-    for await (const event of options.backend.run(
+    for await (const event of options.harness.run(
       { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 80, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
       'builder',
       plan.id,
@@ -193,7 +193,7 @@ Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again 
 
   let fullText = '';
   try {
-    for await (const event of options.backend.run(
+    for await (const event of options.harness.run(
       { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
       'evaluator',
       plan.id,

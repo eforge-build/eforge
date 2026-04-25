@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapSDKMessages, truncateOutput } from '@eforge-build/engine/backends/claude-sdk';
+import { mapSDKMessages, truncateOutput } from '@eforge-build/engine/harnesses/claude-sdk';
 import { collectEvents } from './test-events.js';
 
 /**

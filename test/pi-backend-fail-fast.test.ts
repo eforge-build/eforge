@@ -40,7 +40,7 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
       setRuntimeApiKey: vi.fn(),
     })),
   },
-  // Minimal DefaultResourceLoader stub: the PiBackend constructs one with
+  // Minimal DefaultResourceLoader stub: the PiHarness constructs one with
   // filter overrides to scrub pi-eforge resources, then calls reload().
   DefaultResourceLoader: class {
     constructor(_options: unknown) {}
@@ -50,7 +50,7 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
   getAgentDir: vi.fn(() => '/tmp/test-agent-dir'),
 }));
 
-import { PiBackend } from '@eforge-build/engine/backends/pi';
+import { PiHarness } from '@eforge-build/engine/harnesses/pi';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 
 type Listener = (event: unknown) => void;
@@ -104,7 +104,7 @@ async function collect(iterable: AsyncIterable<EforgeEvent>): Promise<{ events: 
 }
 
 function makeBackend() {
-  return new PiBackend({ bare: true });
+  return new PiHarness({ bare: true });
 }
 
 beforeEach(() => {
@@ -115,7 +115,7 @@ beforeEach(() => {
   createReadOnlyTools.mockReturnValue([{ name: 'read' }]);
 });
 
-describe('PiBackend fail-fast on unreachable backend', () => {
+describe('PiHarness fail-fast on unreachable backend', () => {
   it('throws with backend error message when turn_end carries stopReason=error', async () => {
     installSession({
       events: [

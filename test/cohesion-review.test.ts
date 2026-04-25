@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { StubBackend } from './stub-backend.js';
+import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { runCohesionReview } from '@eforge-build/engine/agents/cohesion-reviewer';
 import { runCohesionEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
@@ -8,10 +8,10 @@ import { runCohesionEvaluate } from '@eforge-build/engine/agents/plan-evaluator'
 
 describe('runCohesionReview wiring', () => {
   it('emits cohesion review lifecycle events', async () => {
-    const backend = new StubBackend([{ text: '<review-issues></review-issues>' }]);
+    const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-expedition',
       architectureContent: '# Architecture\nModular design.',
@@ -27,7 +27,7 @@ describe('runCohesionReview wiring', () => {
   });
 
   it('parses review issues from cohesion review output', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<review-issues>
   <issue severity="critical" category="cohesion" file="plans/mod-a.md" line="15">File overlap: src/index.ts modified by both mod-a and mod-b without dependency</issue>
   <issue severity="warning" category="feasibility" file="plans/mod-b.md">Vague criterion: "tests pass properly" — replace with "pnpm test exits with code 0"<fix>Replaced "tests pass properly" with "pnpm test exits with code 0"</fix></issue>
@@ -36,7 +36,7 @@ describe('runCohesionReview wiring', () => {
     }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-expedition',
       architectureContent: '# Architecture',
@@ -65,10 +65,10 @@ describe('runCohesionReview wiring', () => {
   });
 
   it('yields empty issues for plain text output (no XML)', async () => {
-    const backend = new StubBackend([{ text: 'Everything looks good. No cross-module issues found.' }]);
+    const backend = new StubHarness([{ text: 'Everything looks good. No cross-module issues found.' }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-expedition',
       architectureContent: '# Architecture',
@@ -81,10 +81,10 @@ describe('runCohesionReview wiring', () => {
   });
 
   it('uses coding tools', async () => {
-    const backend = new StubBackend([{ text: '<review-issues></review-issues>' }]);
+    const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
 
     await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD',
       planSetName: 'test',
       architectureContent: '',
@@ -96,10 +96,10 @@ describe('runCohesionReview wiring', () => {
   });
 
   it('suppresses agent:message when verbose is false', async () => {
-    const backend = new StubBackend([{ text: 'Some output.' }]);
+    const backend = new StubHarness([{ text: 'Some output.' }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD',
       planSetName: 'test',
       architectureContent: '',
@@ -110,10 +110,10 @@ describe('runCohesionReview wiring', () => {
   });
 
   it('emits agent:message when verbose is true', async () => {
-    const backend = new StubBackend([{ text: 'Some output.' }]);
+    const backend = new StubHarness([{ text: 'Some output.' }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD',
       planSetName: 'test',
       architectureContent: '',
@@ -125,12 +125,12 @@ describe('runCohesionReview wiring', () => {
   });
 
   it('propagates errors (non-fatal handling is engine responsibility)', async () => {
-    const backend = new StubBackend([{ error: new Error('Cohesion review crashed') }]);
+    const backend = new StubHarness([{ error: new Error('Cohesion review crashed') }]);
 
     let thrown: Error | undefined;
     try {
       await collectEvents(runCohesionReview({
-        backend,
+        harness: backend,
         sourceContent: 'PRD',
         planSetName: 'test',
         architectureContent: '',
@@ -149,7 +149,7 @@ describe('runCohesionReview wiring', () => {
 
 describe('runCohesionEvaluate wiring', () => {
   it('emits cohesion evaluation lifecycle events', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="plans/mod-a.md" action="accept">
     <original>No dependency on mod-b</original>
@@ -162,7 +162,7 @@ describe('runCohesionEvaluate wiring', () => {
     }]);
 
     const events = await collectEvents(runCohesionEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-expedition',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -181,7 +181,7 @@ describe('runCohesionEvaluate wiring', () => {
   });
 
   it('counts evaluation verdicts correctly', async () => {
-    const backend = new StubBackend([{
+    const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="plans/a.md" action="accept">
     <original>Original</original>
@@ -215,7 +215,7 @@ describe('runCohesionEvaluate wiring', () => {
     }]);
 
     const events = await collectEvents(runCohesionEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-expedition',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -234,13 +234,13 @@ describe('runCohesionEvaluate wiring', () => {
   });
 
   it('emits zero counts and re-throws on error', async () => {
-    const backend = new StubBackend([{ error: new Error('Evaluate crash') }]);
+    const backend = new StubHarness([{ error: new Error('Evaluate crash') }]);
 
     let thrown: Error | undefined;
     const events: EforgeEvent[] = [];
     try {
       for await (const event of runCohesionEvaluate({
-        backend,
+        harness: backend,
         planSetName: 'my-expedition',
         sourceContent: 'PRD content',
         cwd: '/tmp',
@@ -261,10 +261,10 @@ describe('runCohesionEvaluate wiring', () => {
   });
 
   it('handles empty evaluation output', async () => {
-    const backend = new StubBackend([{ text: 'No fixes to evaluate.' }]);
+    const backend = new StubHarness([{ text: 'No fixes to evaluate.' }]);
 
     const events = await collectEvents(runCohesionEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-expedition',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -277,10 +277,10 @@ describe('runCohesionEvaluate wiring', () => {
   });
 
   it('uses coding tools', async () => {
-    const backend = new StubBackend([{ text: '<evaluation></evaluation>' }]);
+    const backend = new StubHarness([{ text: '<evaluation></evaluation>' }]);
 
     await collectEvents(runCohesionEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'test',
       sourceContent: 'PRD',
       cwd: '/tmp',
