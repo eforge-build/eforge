@@ -77,7 +77,7 @@ let server: MonitorServer;
 let tracker: WorkerTracker;
 let spawnCalls: SpawnCall[];
 
-async function setupServer(planOutputDir?: string): Promise<void> {
+async function setupServer(failedPrdDir?: string): Promise<void> {
   const { tracker: t, calls } = makeStubTracker();
   tracker = t;
   spawnCalls = calls;
@@ -88,7 +88,7 @@ async function setupServer(planOutputDir?: string): Promise<void> {
     {
       strictPort: true,
       cwd: tmpDir,
-      planOutputDir,
+      failedPrdDir,
       workerTracker: tracker,
     },
   );
@@ -182,12 +182,10 @@ describe('GET /api/recovery/sidecar', () => {
   });
 
   it('returns markdown and json sidecar content', async () => {
-    // Write fixture sidecar files
-    const sidecarDir = resolve(tmpDir, 'my-set');
-    await mkdir(sidecarDir, { recursive: true });
-    await writeFile(resolve(sidecarDir, 'plan-01.recovery.md'), '# Recovery Summary\nAll good.');
+    // Write fixture sidecar files directly in failedPrdDir (tmpDir), no setName subdir
+    await writeFile(resolve(tmpDir, 'plan-01.recovery.md'), '# Recovery Summary\nAll good.');
     await writeFile(
-      resolve(sidecarDir, 'plan-01.recovery.json'),
+      resolve(tmpDir, 'plan-01.recovery.json'),
       JSON.stringify({ verdict: 'retry', summary: 'retry is recommended', prdId: 'plan-01', setName: 'my-set', timestamp: '2024-01-01T00:00:00Z' }),
     );
 
@@ -266,10 +264,9 @@ describe('idempotency: existing sidecar prevents re-spawn', () => {
     await mkdir(planOutputDir, { recursive: true });
 
     // Write the sidecar before the server starts (simulating prior recovery run)
-    const sidecarDir = resolve(planOutputDir, 'test-set');
-    await mkdir(sidecarDir, { recursive: true });
+    // Files live directly in failedPrdDir — no setName subdir
     await writeFile(
-      resolve(sidecarDir, 'plan-02.recovery.json'),
+      resolve(planOutputDir, 'plan-02.recovery.json'),
       JSON.stringify({ verdict: 'skip', summary: 'already recovered', prdId: 'plan-02', setName: 'test-set', timestamp: '2024-01-01T00:00:00Z' }),
     );
 
@@ -345,10 +342,9 @@ describe('idempotency: existing sidecar prevents re-spawn', () => {
     expect(firstSpawnCount).toBe(1);
 
     // Now write the sidecar (simulating recovery agent completing)
-    const sidecarDir = resolve(planOutputDir, 'test-set');
-    await mkdir(sidecarDir, { recursive: true });
+    // Files live directly in failedPrdDir — no setName subdir
     await writeFile(
-      resolve(sidecarDir, 'plan-03.recovery.json'),
+      resolve(planOutputDir, 'plan-03.recovery.json'),
       JSON.stringify({ verdict: 'fixed', summary: 'recovery done', prdId: 'plan-03', setName: 'test-set', timestamp: new Date().toISOString() }),
     );
 

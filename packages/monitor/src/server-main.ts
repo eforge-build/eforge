@@ -445,7 +445,8 @@ async function main(): Promise<void> {
 
   let server: Awaited<ReturnType<typeof startServer>>;
   try {
-    server = await startServer(db, preferredPort, { cwd, workerTracker, daemonState, config });
+    const failedPrdDir = config ? resolve(cwd, config.prdQueue.dir, 'failed') : undefined;
+    server = await startServer(db, preferredPort, { cwd, workerTracker, daemonState, config, failedPrdDir });
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       // Another server won the race — exit cleanly

@@ -141,7 +141,7 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agentRuntimes' | 'defaultAgentRuntime'> },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; failedPrdDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agentRuntimes' | 'defaultAgentRuntime'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -317,7 +317,7 @@ export async function startServer(
 
     // --- eforge:region plan-03-daemon-mcp-pi ---
     // Auto-trigger recovery for new plan:build:failed events (daemon mode only).
-    if (options?.workerTracker && options?.planOutputDir) {
+    if (options?.workerTracker && options?.failedPrdDir) {
       try {
         const failedEvents = db.getNewBuildFailedEvents(lastRecoveryCheckId);
         for (const event of failedEvents) {
@@ -333,7 +333,7 @@ export async function startServer(
           // if the sidecar file already exists on disk (persisted check).
           const recoveryKey = `${setName}/${prdId}`;
           if (inFlightRecoveries.has(recoveryKey)) continue;
-          const sidecarPath = resolve(options.planOutputDir, setName, `${prdId}.recovery.json`);
+          const sidecarPath = resolve(options.failedPrdDir, `${prdId}.recovery.json`);
           try {
             statSync(sidecarPath);
             continue; // sidecar exists — recovery already ran
@@ -1300,8 +1300,8 @@ export async function startServer(
       }
     // --- eforge:region plan-03-daemon-mcp-pi ---
     } else if (req.method === 'GET' && url.startsWith(RECOVERY_SIDECAR_BASE)) {
-      if (!options?.planOutputDir) {
-        sendJsonError(res, 503, 'Plan output directory not configured');
+      if (!options?.failedPrdDir) {
+        sendJsonError(res, 503, 'Failed PRD directory not configured');
         return;
       }
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
@@ -1316,10 +1316,10 @@ export async function startServer(
         sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
         return;
       }
-      const mdPath = resolve(options.planOutputDir, setName, `${prdId}.recovery.md`);
-      const jsonPath = resolve(options.planOutputDir, setName, `${prdId}.recovery.json`);
-      if (!isWithinDir(mdPath, options.planOutputDir) || !isWithinDir(jsonPath, options.planOutputDir)) {
-        sendJsonError(res, 400, 'Invalid setName or prdId: resolved path escapes plan output directory');
+      const mdPath = resolve(options.failedPrdDir, `${prdId}.recovery.md`);
+      const jsonPath = resolve(options.failedPrdDir, `${prdId}.recovery.json`);
+      if (!isWithinDir(mdPath, options.failedPrdDir) || !isWithinDir(jsonPath, options.failedPrdDir)) {
+        sendJsonError(res, 400, 'Invalid setName or prdId: resolved path escapes failed PRD directory');
         return;
       }
       let mdContent: string;
