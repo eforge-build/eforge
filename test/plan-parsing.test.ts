@@ -37,15 +37,36 @@ describe('parsePlanFile', () => {
     expect(plan.body).toContain('This is the plan body.');
   });
 
-  it('parses dependencies and migrations', async () => {
+  it('parses migrations and always returns dependsOn: []', async () => {
     const plan = await parsePlanFile(resolve(fixturesDir, 'plans/with-dependencies.md'));
     expect(plan.id).toBe('dependent-plan');
-    expect(plan.dependsOn).toEqual(['core', 'config']);
+    expect(plan.dependsOn).toEqual([]);
     expect(plan.migrations).toHaveLength(2);
     expect(plan.migrations![0]).toEqual({
       timestamp: '20260101000000',
       description: 'Add users table',
     });
+  });
+
+  it('returns dependsOn: [] even when frontmatter contains legacy depends_on field', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eforge-legacy-deps-'));
+    const planPath = join(dir, 'legacy-plan.md');
+    writeFileSync(planPath, `---
+id: legacy-plan
+name: Legacy Plan
+depends_on:
+  - plan-99
+branch: legacy/main
+---
+
+# Legacy plan body
+`);
+    try {
+      const plan = await parsePlanFile(planPath);
+      expect(plan.dependsOn).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('throws on missing frontmatter', async () => {

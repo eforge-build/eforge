@@ -6,7 +6,6 @@ function makePlan(overrides: Record<string, unknown> = {}) {
     frontmatter: {
       id: 'plan-01-auth',
       name: 'Auth Plan',
-      dependsOn: [],
       branch: 'auth/main',
       ...overrides,
     },
@@ -22,7 +21,7 @@ function makeValidPayload(overrides: Record<string, unknown> = {}) {
     baseBranch: 'main',
     plans: [
       makePlan(),
-      makePlan({ id: 'plan-02-api', name: 'API Plan', dependsOn: ['plan-01-auth'], branch: 'api/main' }),
+      makePlan({ id: 'plan-02-api', name: 'API Plan', branch: 'api/main' }),
     ],
     orchestration: {
       validate: [],
@@ -65,7 +64,7 @@ describe('planSetSubmissionSchema', () => {
   it('rejects dangling dependsOn references', () => {
     const payload = makeValidPayload({
       plans: [
-        makePlan({ id: 'plan-01-a', dependsOn: ['plan-99-nonexistent'] }),
+        makePlan({ id: 'plan-01-a' }),
       ],
       orchestration: {
         validate: [],
@@ -85,8 +84,8 @@ describe('planSetSubmissionSchema', () => {
   it('rejects dependency cycles (A depends on B, B depends on A)', () => {
     const payload = makeValidPayload({
       plans: [
-        makePlan({ id: 'plan-a', dependsOn: ['plan-b'], branch: 'a/main' }),
-        makePlan({ id: 'plan-b', name: 'B', dependsOn: ['plan-a'], branch: 'b/main' }),
+        makePlan({ id: 'plan-a', branch: 'a/main' }),
+        makePlan({ id: 'plan-b', name: 'B', branch: 'b/main' }),
       ],
       orchestration: {
         validate: [],
@@ -158,6 +157,38 @@ describe('planSetSubmissionSchema', () => {
     });
     const result = planSetSubmissionSchema.safeParse(payload);
     expect(result.success).toBe(true);
+  });
+
+  it('strips dependsOn from plan frontmatter (orchestration.yaml is canonical source)', () => {
+    // A planner that emits dependsOn in plan frontmatter has it stripped silently by Zod.
+    // deps belong in orchestration.plans[].dependsOn only.
+    const payload = {
+      name: 'my-plan-set',
+      description: 'A plan set',
+      mode: 'excursion' as const,
+      baseBranch: 'main',
+      plans: [{
+        frontmatter: {
+          id: 'plan-01-auth',
+          name: 'Auth Plan',
+          dependsOn: ['plan-02-api'],  // unknown field — Zod strips it
+          branch: 'auth/main',
+        },
+        body: '# Auth Plan',
+      }],
+      orchestration: {
+        validate: [],
+        plans: [
+          { id: 'plan-01-auth', name: 'Auth Plan', dependsOn: [], branch: 'auth/main' },
+        ],
+      },
+    };
+    const result = planSetSubmissionSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Zod strips unknown fields by default — dependsOn must not appear on frontmatter
+      expect((result.data.plans[0].frontmatter as Record<string, unknown>).dependsOn).toBeUndefined();
+    }
   });
 });
 

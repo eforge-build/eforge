@@ -24,7 +24,6 @@ function validPlanSetPayload(): PlanSetSubmission {
         frontmatter: {
           id: 'plan-01-widgets',
           name: 'Widget Feature',
-          dependsOn: [],
           branch: 'test-plan/widgets',
         },
         body: '# Widget Feature\n\n## Implementation\n\nAdd widget support.',
@@ -111,7 +110,7 @@ describe('Planner submission tool: plan set', () => {
     const content = await readFile(planPath, 'utf-8');
     expect(content).toContain('id: plan-01-widgets');
     expect(content).toContain('name: Widget Feature');
-    expect(content).toContain('depends_on: []');
+    expect(content).not.toContain('depends_on:');
     expect(content).toContain('branch: test-plan/widgets');
     expect(content).toContain('# Widget Feature');
 
@@ -240,7 +239,6 @@ describe('Planner submission tool: plan:submission event metadata', () => {
       frontmatter: {
         id: 'plan-02-gadgets',
         name: 'Gadget Feature',
-        dependsOn: ['plan-01-widgets'],
         branch: 'test-plan/gadgets',
         migrations: [{ timestamp: '20260415120000', description: 'Add gadgets table' }],
       },
@@ -285,18 +283,16 @@ describe('Planner submission tool: validation error formatting', () => {
   const makeTempDir = useTempDir('eforge-planner-submission-validation-test-');
 
   it('returns a per-path, retry-oriented error when submit_plan_set receives invalid input', async () => {
-    // Payload with two common model mistakes, both structural so zod reports
-    // them in a single pass: an optional object set to null, and a required
-    // array field set to null. Both failures should appear in the tool's
-    // output, each keyed to a concrete JSON path, so the model can retry
-    // with corrections rather than abandoning the tool.
+    // Payload with a common model mistake: an optional object set to null.
+    // This failure should appear in the tool's output keyed to a concrete
+    // JSON path, so the model can retry with corrections rather than
+    // abandoning the tool.
     const payload = validPlanSetPayload() as unknown as Record<string, unknown>;
     const firstPlan = (payload.plans as Array<Record<string, unknown>>)[0];
     const firstFrontmatter = firstPlan.frontmatter as Record<string, unknown>;
     firstPlan.frontmatter = {
       ...firstFrontmatter,
       agents: null,
-      dependsOn: null,
     };
 
     const backend = new StubHarness([{
@@ -341,6 +337,5 @@ describe('Planner submission tool: validation error formatting', () => {
 
     // Per-path breakdown — one line per zod issue.
     expect(output).toMatch(/plans\.0\.frontmatter\.agents:/);
-    expect(output).toMatch(/plans\.0\.frontmatter\.dependsOn:/);
   });
 });

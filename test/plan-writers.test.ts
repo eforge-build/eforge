@@ -23,7 +23,6 @@ describe('writePlanSet', () => {
         frontmatter: {
           id: 'plan-01-auth',
           name: 'Auth Plan',
-          dependsOn: [],
           branch: 'auth/main',
         },
         body: '# Auth Plan\n\nImplement authentication.',
@@ -32,7 +31,6 @@ describe('writePlanSet', () => {
         frontmatter: {
           id: 'plan-02-api',
           name: 'API Plan',
-          dependsOn: ['plan-01-auth'],
           branch: 'api/main',
           migrations: [{ timestamp: '20260415120000', description: 'add users table' }],
         },
@@ -56,13 +54,13 @@ describe('writePlanSet', () => {
     expect(plan1Content).toMatch(/\n---\n\n/);
     expect(plan1Content).toContain('id: plan-01-auth');
     expect(plan1Content).toContain('name: Auth Plan');
+    expect(plan1Content).not.toContain('depends_on:');
     expect(plan1Content).toContain('# Auth Plan');
     expect(plan1Content).toContain('Implement authentication.');
 
     const plan2Content = await readFile(join(tempDir, 'eforge/plans/test-set/plan-02-api.md'), 'utf-8');
     expect(plan2Content).toContain('id: plan-02-api');
-    expect(plan2Content).toContain('depends_on:');
-    expect(plan2Content).toContain('plan-01-auth');
+    expect(plan2Content).not.toContain('depends_on:');
     expect(plan2Content).toContain('migrations:');
   });
 
@@ -93,7 +91,7 @@ describe('writePlanSet', () => {
     const frontmatter = parseYaml(match![1]) as Record<string, unknown>;
     expect(frontmatter.id).toBe('plan-01-auth');
     expect(frontmatter.name).toBe('Auth Plan');
-    expect(frontmatter.depends_on).toEqual([]);
+    expect(frontmatter.depends_on).toBeUndefined();
     expect(frontmatter.branch).toBe('auth/main');
   });
 });

@@ -101,7 +101,6 @@ export async function compileExpedition(
     const frontmatter = {
       id: planId,
       name: mod.description,
-      depends_on: dependsOn,
       branch: `${planSetName}/${moduleId}`,
     };
 

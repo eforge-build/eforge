@@ -185,7 +185,7 @@ export async function parsePlanFile(mdPath: string, agentRuntimes?: Record<strin
   return {
     id: frontmatter.id,
     name: frontmatter.name,
-    dependsOn: Array.isArray(frontmatter.depends_on) ? frontmatter.depends_on : [],
+    dependsOn: [],
     branch: typeof frontmatter.branch === 'string' ? frontmatter.branch : '',
     migrations: Array.isArray(frontmatter.migrations) ? frontmatter.migrations : undefined,
     ...(agents && { agents }),
@@ -669,7 +669,6 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
     const frontmatter: Record<string, unknown> = {
       id: plan.frontmatter.id,
       name: plan.frontmatter.name,
-      depends_on: plan.frontmatter.dependsOn,
       branch: plan.frontmatter.branch,
     };
     if (plan.frontmatter.migrations && plan.frontmatter.migrations.length > 0) {
