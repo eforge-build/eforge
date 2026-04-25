@@ -30,6 +30,7 @@ export const AGENT_ROLES = [
   'validation-fixer', 'merge-conflict-resolver',
   'staleness-assessor', 'formatter', 'doc-updater',
   'test-writer', 'tester', 'prd-validator', 'dependency-detector', 'pipeline-composer',
+  'gap-closer',
 ] as const;
 
 const agentRoleSchema = z.enum(AGENT_ROLES);
@@ -352,18 +353,37 @@ const partialEforgeConfigSchema = eforgeConfigBaseSchema.partial();
 export type PartialEforgeConfig = z.output<typeof partialEforgeConfigSchema>;
 
 /**
- * Schema for config.yaml validation — `backend:`, `pi:`, and `claudeSdk:` at the top level
- * are rejected (they must migrate to agentRuntimes + defaultAgentRuntime).
- * Uses passthrough to detect these legacy keys via superRefine.
+ * Set of top-level keys recognized by config.yaml. Derived from the base schema's
+ * shape so it stays in sync with the source of truth — adding a new top-level
+ * field updates this automatically.
+ */
+const knownConfigYamlKeys = new Set(Object.keys(eforgeConfigBaseSchema.shape));
+
+/**
+ * Schema for config.yaml validation. Unknown top-level keys are rejected.
+ * The three legacy keys (`backend:`, `pi:`, `claudeSdk:`) get a migration hint
+ * pointing to agentRuntimes + defaultAgentRuntime. Other unknown keys get a
+ * generic "unrecognized key" error with the recognized-key list.
+ *
+ * Implemented via .passthrough() + superRefine rather than .strict() so the
+ * legacy migration hint always wins over the generic message and ordering is
+ * fully under our control.
  */
 export const configYamlSchema = eforgeConfigBaseSchema.partial().passthrough().superRefine((data, ctx) => {
-  const legacyFields = ['backend', 'pi', 'claudeSdk'] as const;
-  for (const field of legacyFields) {
-    if (data && typeof data === 'object' && field in (data as Record<string, unknown>)) {
+  if (!data || typeof data !== 'object') return;
+  const legacyFields = new Set(['backend', 'pi', 'claudeSdk']);
+  for (const key of Object.keys(data as Record<string, unknown>)) {
+    if (legacyFields.has(key)) {
       ctx.addIssue({
         code: 'custom',
-        message: `"${field}:" is no longer valid in config.yaml. Use agentRuntimes + defaultAgentRuntime instead.`,
-        path: [field],
+        message: `"${key}:" is no longer valid in config.yaml. Use agentRuntimes + defaultAgentRuntime instead.`,
+        path: [key],
+      });
+    } else if (!knownConfigYamlKeys.has(key)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Unrecognized key "${key}" in config.yaml. Recognized keys: ${Array.from(knownConfigYamlKeys).sort().join(', ')}.`,
+        path: [key],
       });
     }
   }

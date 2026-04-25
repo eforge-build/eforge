@@ -55,12 +55,11 @@ Walk the user through configuration sections, asking about each one. Only includ
 3. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false)
 4. **Per-role agent overrides** (opt-in - "Would you like to tune specific agent roles differently? Most users skip this.") - Override settings per agent role. Available roles grouped: planning (`planner`, `module-planner`), building (`builder`), review/eval (`reviewer`, `evaluator`, `plan-reviewer`, `plan-evaluator`, `architecture-reviewer`, `architecture-evaluator`, `cohesion-reviewer`, `cohesion-evaluator`), fixers (`validation-fixer`, `review-fixer`, `merge-conflict-resolver`), utilities (`formatter`, `doc-updater`, `test-writer`, `tester`, `staleness-assessor`, `prd-validator`, `dependency-detector`, `pipeline-composer`, `gap-closer`). Note: Eight roles (`builder`, `review-fixer`, `validation-fixer`, `test-writer`, `tester`, `staleness-assessor`, `prd-validator`, `dependency-detector`) default to `balanced`; all others default to `max`. Per-role options: `model`, `modelClass` (override which class the role belongs to: `max`/`balanced`/`fast`), `thinking`, `effort`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`, `maxTurns`, `promptAppend` (text appended to the agent's prompt - useful for project-specific rules like "flag raw SQL queries" for the reviewer). Same rule as section 2: call `mcp__eforge__eforge_models` before proposing any model ID.
 5. **Prompt customization** (opt-in - "Would you like to customize agent prompts?") - `agents.promptDir` points to a directory of `.md` files that shadow bundled prompts by name (e.g. `eforge/prompts/reviewer.md` replaces the built-in reviewer prompt). Per-role `promptAppend` is safer - it appends instructions without replacing the full prompt.
-6. **Profiles** - Custom workflow profiles or overrides of built-in profiles (`errand`, `excursion`, `expedition`). A profile defines compile stages only - build stages and review config are per-plan in orchestration.yaml. A profile can `extends` a built-in and override compile stages or agent settings.
-7. **Hooks** - Event-driven commands that run on specific eforge events (e.g. `session:start`, `phase:end`). Each hook has `event` (pattern), `command`, and optional `timeout`.
-8. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
-9. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
-10. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue)
-11. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
+6. **Hooks** - Event-driven commands that run on specific eforge events (e.g. `session:start`, `phase:end`). Each hook has `event` (pattern), `command`, and optional `timeout`.
+7. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
+8. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
+9. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue)
+10. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
 
 For each section, explain what it controls and suggest values based on the project context gathered in Step 3. Skip sections the user isn't interested in.
 
@@ -202,15 +201,6 @@ hooks:
   - event: "session:start"
     command: "echo 'Starting eforge session'"
     timeout: 5000
-
-# Workflow profiles (compile stages only - build/review config is per-plan)
-profiles:
-  my-profile:
-    extends: excursion                 # Inherit from a built-in
-    description: "Custom profile for my project"
-    compile:
-      - planner
-      - plan-review-cycle
 ```
 
 ## Error Handling
@@ -220,7 +210,7 @@ profiles:
 | No active agent runtime profile | Stop and direct the user to `/eforge:init` or `/eforge:profile-new` |
 | `mcp__eforge__eforge_config` validate returns errors | Show errors, offer to fix |
 | Validation error mentions a backend key is not valid here | Remove the key; backend-specific config lives in profile files, not `config.yaml` |
-| User provides invalid profile stage name | Warn and suggest valid stage names |
+| Validation error mentions an unrecognized top-level key | Remove the key (typo or stale feature reference) - the error includes the recognized-key list |
 | YAML syntax error in existing file | Report the error, offer to recreate |
 | Daemon connection failure | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
 
