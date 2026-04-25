@@ -289,6 +289,40 @@ describe('mergePartialConfigs', () => {
     const merged = mergePartialConfigs(global, project);
     expect(merged.maxConcurrentBuilds).toBe(5);
   });
+
+  it('agentRuntimes survive merging when only project declares them', () => {
+    const project: PartialEforgeConfig = {
+      agentRuntimes: { 'claude-sdk': { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'claude-sdk',
+    };
+    const merged = mergePartialConfigs({}, project);
+    expect(merged.agentRuntimes).toEqual({ 'claude-sdk': { harness: 'claude-sdk' } });
+    expect(merged.defaultAgentRuntime).toBe('claude-sdk');
+  });
+
+  it('agentRuntimes shallow-merge by entry name with project overriding global on collision', () => {
+    const global: PartialEforgeConfig = {
+      agentRuntimes: {
+        shared: { harness: 'claude-sdk' },
+        'global-only': { harness: 'pi' },
+      },
+      defaultAgentRuntime: 'shared',
+    };
+    const project: PartialEforgeConfig = {
+      agentRuntimes: {
+        shared: { harness: 'pi' },
+        'project-only': { harness: 'claude-sdk' },
+      },
+      defaultAgentRuntime: 'project-only',
+    };
+    const merged = mergePartialConfigs(global, project);
+    expect(merged.agentRuntimes).toEqual({
+      shared: { harness: 'pi' },
+      'global-only': { harness: 'pi' },
+      'project-only': { harness: 'claude-sdk' },
+    });
+    expect(merged.defaultAgentRuntime).toBe('project-only');
+  });
 });
 
 // ---------------------------------------------------------------------------

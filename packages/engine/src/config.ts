@@ -727,6 +727,16 @@ export function mergePartialConfigs(
     result.hooks = [...(global.hooks ?? []), ...(project.hooks ?? [])];
   }
 
+  // agentRuntimes: shallow-merge by entry name, project overrides global on collision
+  if (global.agentRuntimes || project.agentRuntimes) {
+    result.agentRuntimes = { ...global.agentRuntimes, ...project.agentRuntimes };
+  }
+
+  // defaultAgentRuntime scalar: project wins
+  if (project.defaultAgentRuntime !== undefined || global.defaultAgentRuntime !== undefined) {
+    result.defaultAgentRuntime = project.defaultAgentRuntime ?? global.defaultAgentRuntime;
+  }
+
   return result;
 }
 

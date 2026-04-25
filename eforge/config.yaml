@@ -1,4 +1,8 @@
 maxConcurrentBuilds: 2
+agentRuntimes:
+  claude-sdk:
+    harness: claude-sdk
+defaultAgentRuntime: claude-sdk
 build:
   postMergeCommands:
     - pnpm install
