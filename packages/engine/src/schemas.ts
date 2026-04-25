@@ -375,7 +375,6 @@ const planSetSubmissionPlanSchema = z.object({
   frontmatter: z.object({
     id: z.string().min(1).describe('Plan identifier (e.g., plan-01-auth)'),
     name: z.string().min(1).describe('Human-readable plan name'),
-    dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
     branch: z.string().min(1).describe('Git branch name for this plan'),
     migrations: z.array(z.object({
       timestamp: z.string().regex(/^\d{14}$/, 'Migration timestamp must be 14 digits (YYYYMMDDHHmmss)').describe('Migration timestamp in YYYYMMDDHHmmss format'),
@@ -420,23 +419,23 @@ export const planSetSubmissionSchema = z.object({
 
   const planIdSet = new Set(planIds);
 
-  // Check for dangling dependsOn references
-  for (let i = 0; i < data.plans.length; i++) {
-    for (const dep of data.plans[i].frontmatter.dependsOn) {
+  // Check for dangling dependsOn references (orchestration.yaml is the canonical source)
+  for (let i = 0; i < data.orchestration.plans.length; i++) {
+    for (const dep of data.orchestration.plans[i].dependsOn) {
       if (!planIdSet.has(dep)) {
         ctx.addIssue({
           code: 'custom',
-          message: `Plan "${data.plans[i].frontmatter.id}" depends on unknown plan "${dep}"`,
-          path: ['plans', i, 'frontmatter', 'dependsOn'],
+          message: `Plan "${data.orchestration.plans[i].id}" depends on unknown plan "${dep}"`,
+          path: ['orchestration', 'plans', i, 'dependsOn'],
         });
       }
     }
   }
 
-  // Check for dependency cycles using DFS
+  // Check for dependency cycles using DFS (orchestration.yaml is the canonical source)
   const adjMap = new Map<string, string[]>();
-  for (const plan of data.plans) {
-    adjMap.set(plan.frontmatter.id, plan.frontmatter.dependsOn);
+  for (const orchPlan of data.orchestration.plans) {
+    adjMap.set(orchPlan.id, orchPlan.dependsOn);
   }
 
   const WHITE = 0, GRAY = 1, BLACK = 2;

@@ -5,7 +5,7 @@
 import { parse as parseYaml } from 'yaml';
 
 import { SEVERITY_ORDER } from '../events.js';
-import type { ReviewIssue, PlanFile, OrchestrationConfig } from '../events.js';
+import type { ReviewIssue } from '../events.js';
 import { extractPlanTitle } from '../plan.js';
 
 /** Convert kebab-case name to a human-readable title. */
@@ -65,21 +65,3 @@ export function filterIssuesBySeverity(
   return { filtered, autoAccepted };
 }
 
-/**
- * Enrich plan files with dependsOn from orchestration config.
- * The planner writes depends_on only to orchestration.yaml, not to individual
- * plan file frontmatter. This function cross-references the two sources.
- */
-export function backfillDependsOn(
-  plans: PlanFile[],
-  orchConfig: OrchestrationConfig,
-): PlanFile[] {
-  const depsMap = new Map(orchConfig.plans.map((p) => [p.id, p.dependsOn]));
-  return plans.map((plan) => {
-    const deps = depsMap.get(plan.id);
-    if (deps && deps.length > 0 && plan.dependsOn.length === 0) {
-      return { ...plan, dependsOn: deps };
-    }
-    return plan;
-  });
-}

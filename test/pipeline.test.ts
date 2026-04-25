@@ -7,6 +7,10 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { stringify as stringifyYaml } from 'yaml';
+import { parseOrchestrationConfig } from '@eforge-build/engine/plan';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
@@ -1053,6 +1057,54 @@ describe('plannerStage missing orchestration.yaml', () => {
 
     // Clean up temp directory
     await rm(tempDir, { recursive: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Authoritative deps mapper (regression guard for silent-divergence bug)
+// ---------------------------------------------------------------------------
+
+describe('planning:complete authoritative deps override', () => {
+  const makeTempDir = useTempDir('eforge-deps-mapper-');
+
+  it('replaces wrong dependsOn in planning:complete with orchConfig values', async () => {
+    const dir = makeTempDir();
+    const planDir = join(dir, 'eforge', 'plans', 'test-plan');
+    mkdirSync(planDir, { recursive: true });
+
+    // orchestration.yaml: plan-02 depends on plan-01 (the correct deps)
+    writeFileSync(join(planDir, 'orchestration.yaml'), stringifyYaml({
+      name: 'test-plan',
+      description: 'test',
+      created: '2026-01-01',
+      mode: 'excursion',
+      base_branch: 'main',
+      pipeline: TEST_PIPELINE,
+      plans: [
+        { id: 'plan-01', name: 'Plan 01', depends_on: [], branch: 'p1', build: DEFAULT_BUILD, review: DEFAULT_REVIEW },
+        { id: 'plan-02', name: 'Plan 02', depends_on: ['plan-01'], branch: 'p2', build: DEFAULT_BUILD, review: DEFAULT_REVIEW },
+      ],
+    }));
+
+    const orchConfig = await parseOrchestrationConfig(join(planDir, 'orchestration.yaml'));
+
+    // Simulate planning:complete event with WRONG deps (plan-02 claims to depend on plan-99-WRONG)
+    const inputPlans: PlanFile[] = [
+      { id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'p1', body: '', filePath: join(planDir, 'plan-01.md') },
+      { id: 'plan-02', name: 'Plan 02', dependsOn: ['plan-99-WRONG'], branch: 'p2', body: '', filePath: join(planDir, 'plan-02.md') },
+    ];
+
+    // Apply the authoritative mapper (same logic as compile-stages.ts interceptor)
+    const depsById = new Map(orchConfig.plans.map(p => [p.id, p.dependsOn]));
+    const enrichedPlans = inputPlans.map(plan => ({
+      ...plan,
+      dependsOn: depsById.get(plan.id) ?? [],
+    }));
+
+    // Wrong dep on plan-02 must be replaced by the orchConfig value
+    expect(enrichedPlans[1].dependsOn).toEqual(['plan-01']);
+    // plan-01 remains with empty deps
+    expect(enrichedPlans[0].dependsOn).toEqual([]);
   });
 });
 

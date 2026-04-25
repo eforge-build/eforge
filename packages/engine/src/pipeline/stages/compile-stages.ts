@@ -32,7 +32,6 @@ import type { PipelineContext } from '../types.js';
 import { registerCompileStage } from '../registry.js';
 import { resolveAgentConfig } from '../agent-config.js';
 import { createToolTracker, createStageSpanWiring } from '../span-wiring.js';
-import { backfillDependsOn } from '../misc.js';
 import { runReviewCycle } from '../runners.js';
 
 // ---------------------------------------------------------------------------
@@ -99,7 +98,11 @@ async function* runPlannerAttempt(
           for (const warning of orchConfig.warnings ?? []) {
             yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'parseOrchestrationConfig' };
           }
-          const enrichedPlans = backfillDependsOn(event.plans, orchConfig);
+          const depsById = new Map(orchConfig.plans.map(p => [p.id, p.dependsOn]));
+          const enrichedPlans = event.plans.map(plan => ({
+            ...plan,
+            dependsOn: depsById.get(plan.id) ?? [],
+          }));
           ctx.plans = enrichedPlans;
           yield { ...event, plans: enrichedPlans };
           continue;
