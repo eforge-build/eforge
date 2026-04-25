@@ -292,6 +292,8 @@ export class PiHarness implements AgentHarness {
         thinkingSource: options.thinkingSource,
         thinkingCoerced: options.thinkingCoerced,
         thinkingOriginal: options.thinkingOriginal,
+        tier: options.tier,
+        tierSource: options.tierSource,
       });
       yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set agents.models.max (or the appropriate model class) in eforge/config.yaml.', timestamp: new Date().toISOString() };
       return;
@@ -314,6 +316,8 @@ export class PiHarness implements AgentHarness {
         thinkingSource: options.thinkingSource,
         thinkingCoerced: options.thinkingCoerced,
         thinkingOriginal: options.thinkingOriginal,
+        tier: options.tier,
+        tierSource: options.tierSource,
       });
       yield { type: 'agent:stop', planId, agent, agentId, error: `No provider in model ref for Pi backend. Model refs must include "provider" (e.g. { provider: "openrouter", id: "${options.model.id}" }).`, timestamp: new Date().toISOString() };
       return;
@@ -337,6 +341,8 @@ export class PiHarness implements AgentHarness {
       thinkingSource: options.thinkingSource,
       thinkingCoerced: options.thinkingCoerced,
       thinkingOriginal: options.thinkingOriginal,
+      tier: options.tier,
+      tierSource: options.tierSource,
     });
 
     if (options.thinkingCoerced) {

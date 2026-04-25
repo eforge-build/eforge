@@ -38,10 +38,14 @@ export interface BuildAgentStartEventOptions {
   thinking?: ThinkingConfig;
   effortClamped?: boolean;
   effortOriginal?: EffortLevel;
-  effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
-  thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default';
+  effortSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
+  thinkingSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
   thinkingCoerced?: boolean;
   thinkingOriginal?: ThinkingConfig;
+  /** The resolved tier for this role. */
+  tier?: string;
+  /** Provenance of the resolved tier value. */
+  tierSource?: string;
 }
 
 /**
@@ -72,6 +76,8 @@ export function buildAgentStartEvent(opts: BuildAgentStartEventOptions): AgentSt
   if (opts.thinkingSource !== undefined) event.thinkingSource = opts.thinkingSource;
   if (opts.thinkingCoerced !== undefined) event.thinkingCoerced = opts.thinkingCoerced;
   if (opts.thinkingOriginal !== undefined) event.thinkingOriginal = opts.thinkingOriginal;
+  if (opts.tier !== undefined) event.tier = opts.tier;
+  if (opts.tierSource !== undefined) event.tierSource = opts.tierSource;
   return event;
 }
 

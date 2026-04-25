@@ -237,7 +237,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'expedition:compile:complete'; plans: PlanFile[] }
 
   // Agent lifecycle (emitted by backend for every agent invocation)
-  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; model: string; agentRuntime: string; harness: 'claude-sdk' | 'pi'; fallbackFrom?: string; effort?: string; thinking?: object; effortClamped?: boolean; effortOriginal?: string; effortSource?: 'planner' | 'role-config' | 'global-config' | 'default'; thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default'; thinkingCoerced?: boolean; thinkingOriginal?: object }
+  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; model: string; agentRuntime: string; harness: 'claude-sdk' | 'pi'; fallbackFrom?: string; effort?: string; thinking?: object; effortClamped?: boolean; effortOriginal?: string; effortSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default'; thinkingSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default'; thinkingCoerced?: boolean; thinkingOriginal?: object; tier?: string; tierSource?: string }
   | { type: 'agent:warning'; planId?: string; agentId: string; agent: AgentRole; code: string; message: string }
   | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string }
   /**
