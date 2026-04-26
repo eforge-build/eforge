@@ -519,6 +519,16 @@ registerBuildStage({
     // Coordinator phase: scope enforcement → verification → single commit
     // -----------------------------------------------------------------------
 
+    // Safety sweep: stage any working-tree changes left unstaged by shard agents so
+    // they are visible to scope enforcement rather than silently dropped or bypassed.
+    try {
+      await exec('git', ['add', '-A'], { cwd: ctx.worktreePath });
+    } catch (err) {
+      yield toBuildFailedEvent(ctx.planId, err);
+      ctx.buildFailed = true;
+      return;
+    }
+
     // Scope enforcement: every staged file must be claimed by exactly one shard
     try {
       const { stdout: stagedOut } = await exec('git', ['diff', '--cached', '--name-only'], { cwd: ctx.worktreePath });
