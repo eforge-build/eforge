@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.1] - 2026-04-25
+
+### Maintenance
+
+- **deps**: bump pi-* packages to 0.70.2 (clears uuid <14 advisory GHSA-w5hq-g745-h8pq)
+
 ## [0.7.0] - 2026-04-25
 
 ### Features
@@ -341,12 +347,6 @@
 ### Maintenance
 
 - publish: publish workspace packages in lockstep via pnpm -r
-
-## [0.4.3] - 2026-04-11
-
-### Bug Fixes
-
-- engine: avoid re-running compile stage after composer shrinks list
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
