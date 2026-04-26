@@ -915,7 +915,7 @@ describe('model class resolution', () => {
 
   it('pi harness with no model config throws for default balanced class with fallback tiers listed', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const piConfig = { ...DEFAULT_CONFIG, agentRuntimes: { pi: { harness: 'pi' as const } }, defaultAgentRuntime: 'pi' };
+    const piConfig = { ...DEFAULT_CONFIG, agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } }, defaultAgentRuntime: 'pi' };
     expect(() => resolveAgentConfig('builder', piConfig)).toThrow(
       /No model configured for role "builder".*model class "balanced".*harness "pi".*Tried fallback: max, fast/,
     );
@@ -925,14 +925,14 @@ describe('model class resolution', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
-      agentRuntimes: { pi: { harness: 'pi' as const } },
+      agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } },
       defaultAgentRuntime: 'pi',
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
+        models: { max: { id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
-    // staleness-assessor defaults to balanced
+    // staleness-assessor defaults to balanced; provider spliced from runtime entry
     const result = resolveAgentConfig('staleness-assessor', config);
     expect(result.model).toEqual({ provider: 'openrouter', id: 'big-model' });
     expect(result.fallbackFrom).toBe('balanced');
@@ -942,13 +942,14 @@ describe('model class resolution', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
-      agentRuntimes: { pi: { harness: 'pi' as const } },
+      agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } },
       defaultAgentRuntime: 'pi',
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { balanced: { provider: 'openrouter', id: 'medium-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
+        models: { balanced: { id: 'medium-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
+    // provider spliced from runtime entry
     const result = resolveAgentConfig('reviewer', config);
     expect(result.model).toEqual({ provider: 'openrouter', id: 'medium-model' });
     expect(result.fallbackFrom).toBe('max');
@@ -956,7 +957,7 @@ describe('model class resolution', () => {
 
   it('fallback total failure lists attempted tiers in error', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const piConfig = { ...DEFAULT_CONFIG, agentRuntimes: { pi: { harness: 'pi' as const } }, defaultAgentRuntime: 'pi' };
+    const piConfig = { ...DEFAULT_CONFIG, agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } }, defaultAgentRuntime: 'pi' };
     expect(() => resolveAgentConfig('builder', piConfig)).toThrow(
       /Tried fallback: max, fast/,
     );
@@ -966,14 +967,14 @@ describe('model class resolution', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
-      agentRuntimes: { pi: { harness: 'pi' as const } },
+      agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } },
       defaultAgentRuntime: 'pi',
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: { provider: 'openrouter', id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
+        models: { max: { id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
-    // prd-validator defaults to balanced, should fall back to max
+    // prd-validator defaults to balanced, should fall back to max; provider spliced from runtime entry
     const result = resolveAgentConfig('prd-validator', config);
     expect(result.fallbackFrom).toBe('balanced');
     expect(result.model).toEqual({ provider: 'openrouter', id: 'big-model' });
@@ -983,13 +984,14 @@ describe('model class resolution', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
-      agentRuntimes: { pi: { harness: 'pi' as const } },
+      agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } },
       defaultAgentRuntime: 'pi',
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: { provider: 'openrouter', id: 'auto' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
+        models: { max: { id: 'auto' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
       },
     };
+    // provider spliced from runtime entry
     const result = resolveAgentConfig('builder', config);
     expect(result.model).toEqual({ provider: 'openrouter', id: 'auto' });
   });

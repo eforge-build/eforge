@@ -356,7 +356,7 @@ export function resolveAgentRuntimeForRole(
   role: AgentRole,
   config: EforgeConfig,
   planEntry?: { agents?: Record<string, { agentRuntime?: string; [key: string]: unknown }>; filePath?: string },
-): { agentRuntimeName: string; harness: 'claude-sdk' | 'pi' } {
+): { agentRuntimeName: string; harness: 'claude-sdk' | 'pi'; provider?: string } {
   const agentRuntimes = config.agentRuntimes;
 
   if (!agentRuntimes || Object.keys(agentRuntimes).length === 0) {
@@ -377,7 +377,8 @@ export function resolveAgentRuntimeForRole(
         `Declared: ${Object.keys(agentRuntimes).join(', ')}.`,
       );
     }
-    return { agentRuntimeName: planAgentRuntime, harness: entry.harness };
+    const provider = entry.pi?.provider;
+    return { agentRuntimeName: planAgentRuntime, harness: entry.harness, ...(provider !== undefined && { provider }) };
   }
 
   // Config-level role override, then tier override, then default
@@ -400,7 +401,8 @@ export function resolveAgentRuntimeForRole(
     );
   }
 
-  return { agentRuntimeName: runtimeName, harness: entry.harness };
+  const provider = entry.pi?.provider;
+  return { agentRuntimeName: runtimeName, harness: entry.harness, ...(provider !== undefined && { provider }) };
 }
 
 /**
@@ -421,31 +423,21 @@ export function resolveAgentConfig(
   config: EforgeConfig,
   planEntry?: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string; agentRuntime?: string }>; filePath?: string },
 ): ResolvedAgentConfig {
-  const { agentRuntimeName, harness } = resolveAgentRuntimeForRole(role, config, planEntry);
+  const { agentRuntimeName, harness, provider } = resolveAgentRuntimeForRole(role, config, planEntry);
   const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
 
   // Resolve tier for this role
   const { tier, tierSource } = resolveTierForRole(role, config);
 
   const { fields, effortSource, thinkingSource } = resolveSdkPassthrough(role, config, planEntry, builtinRoleDefaults, tier);
-  const { model, fallbackFrom, provenance: modelProvenance } = resolveModel(role, config, harness, builtinRoleDefaults, tier);
+  let { model, fallbackFrom } = resolveModel(role, config, harness, builtinRoleDefaults, tier);
 
-  // Per-role provider-ness validation at resolve time (moved from schema-time)
-  if (model !== undefined) {
-    if (harness === 'pi' && !model.provider) {
-      throw new Error(
-        `Role "${role}" resolved to agentRuntime "${agentRuntimeName}" (harness "pi") ` +
-        `but the model ref at ${modelProvenance ?? 'unknown'} is missing "provider". ` +
-        `Got { id: "${model.id}" }.`,
-      );
-    }
-    if (harness === 'claude-sdk' && model.provider !== undefined) {
-      throw new Error(
-        `Role "${role}" resolved to agentRuntime "${agentRuntimeName}" (harness "claude-sdk") ` +
-        `but the model ref at ${modelProvenance ?? 'unknown'} has a forbidden "provider" field. ` +
-        `Got { provider: "${model.provider}", id: "${model.id}" }.`,
-      );
-    }
+  // Splice provider from agentRuntime entry into resolved model ref for Pi harness.
+  // Schema validation ensures pi.provider is set on every pi runtime entry; this
+  // preserves the wire shape (ResolvedAgentConfig.model.provider) for downstream
+  // consumers (Pi harness, monitor UI, traces) without any other code changes.
+  if (harness === 'pi' && model !== undefined) {
+    model = { ...model, provider };
   }
 
   const result: ResolvedAgentConfig = { ...fields, agentRuntimeName, harness, tier, tierSource };

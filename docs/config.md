@@ -29,8 +29,7 @@ agents:
     - project                 # Loads CLAUDE.md and project settings
   bare: false                 # Pass --bare to Claude Code subprocess (auto-true when ANTHROPIC_API_KEY set)
   # model:                             # Global model override for all agents (bypasses class system)
-  #   id: claude-sonnet-4-6            #   Claude SDK: { id: "model-name" }
-  #                                    #   Pi: { provider: "provider-name", id: "model-name" }
+  #   id: claude-sonnet-4-6            #   Shape: { id: "model-name" } - provider lives on the agentRuntime entry
   # thinking:                 # Global thinking config
   #   type: adaptive          # 'adaptive', 'enabled' (with optional budgetTokens), or 'disabled'
   # effort: high              # Global effort level: 'low', 'medium', 'high', 'xhigh', 'max'
@@ -118,12 +117,13 @@ claudeSdk:                     # Claude SDK backend config (ignored under backen
 
 ## Model References
 
-Model references are **objects**, not plain strings. The shape depends on your backend:
+Model references are **objects**, not plain strings. The shape is the same regardless of harness:
 
-- **Claude SDK**: `{ id: "model-name" }` - e.g. `{ id: claude-sonnet-4-6 }`
-- **Pi**: `{ provider: "provider-name", id: "model-name" }` - e.g. `{ provider: openrouter, id: anthropic/claude-opus-4-6 }`
+- `{ id: "model-name" }` - e.g. `{ id: claude-sonnet-4-6 }` or `{ id: anthropic/claude-opus-4-6 }`
 
-> **Migration note:** String model refs (e.g. `model: claude-sonnet-4-6`) are no longer valid. Use the object form instead. The `pi.provider` config field has been removed - provider selection now lives in each model ref.
+For the Pi harness, the provider is **not** part of the model ref. Provider selection is a property of the runtime/harness binding and lives on the agentRuntime entry under `agentRuntimes.<name>.pi.provider`. The resolver splices the runtime's provider onto the resolved model at run time.
+
+> **Migration note:** String model refs (e.g. `model: claude-sonnet-4-6`) are no longer valid. Use the object form instead. The `provider:` field on a model ref is also no longer accepted - move it to `agentRuntimes.<name>.pi.provider`.
 
 ## Model Classes
 
@@ -135,7 +135,7 @@ eforge uses a three-tier model class system to assign models to agent roles. Eac
 | `balanced` | `{ id: claude-sonnet-4-6 }` | Mid-tier - used by 9 of 24 roles that don't need max capability |
 | `fast` | `{ id: claude-haiku-4-5 }` | Lightweight - available via per-role `modelClass` override |
 
-The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles) using `{ provider, id }` model refs.
+The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles) using `{ id }` model refs. The provider is taken from the active `agentRuntime` entry's `pi.provider`, not from the model ref.
 
 ### Per-Role Default Model Classes
 
@@ -192,27 +192,34 @@ The algorithm:
 **Example 1: Pi backend with only `max` configured**
 
 ```yaml
-backend: pi
+agentRuntimes:
+  default:
+    harness: pi
+    pi:
+      provider: openrouter
+defaultAgentRuntime: default
 agents:
   models:
     max:
-      provider: openrouter
       id: anthropic/claude-opus-4-6
 ```
 
-The `staleness-assessor` role defaults to `balanced`, but no `balanced` model is configured. The fallback chain walks ascending from `balanced` to `max` and finds the configured model. All 23 roles resolve to `anthropic/claude-opus-4-6`.
+The `staleness-assessor` role defaults to `balanced`, but no `balanced` model is configured. The fallback chain walks ascending from `balanced` to `max` and finds the configured model. All 23 roles resolve to `anthropic/claude-opus-4-6` on the `openrouter` provider.
 
 **Example 2: Pi backend with `balanced` and `fast` configured**
 
 ```yaml
-backend: pi
+agentRuntimes:
+  default:
+    harness: pi
+    pi:
+      provider: openrouter
+defaultAgentRuntime: default
 agents:
   models:
     balanced:
-      provider: openrouter
       id: anthropic/claude-sonnet-4-6
     fast:
-      provider: openrouter
       id: anthropic/claude-haiku-4-5
 ```
 
@@ -237,20 +244,28 @@ agents:
 ```
 
 ```yaml
-# Example: Pi backend with per-provider model refs
+# Example: Pi backend with multiple named runtimes for cross-provider routing
+agentRuntimes:
+  default:
+    harness: pi
+    pi:
+      provider: openrouter
+  gemini:
+    harness: pi
+    pi:
+      provider: google
+defaultAgentRuntime: default
 agents:
   models:
     max:
-      provider: openrouter
       id: anthropic/claude-opus-4-6
     balanced:
-      provider: openrouter
       id: anthropic/claude-sonnet-4-6
   roles:
     staleness-assessor:
+      agentRuntime: gemini       # Route this role to the gemini runtime
       model:
-        provider: openrouter
-        id: google/gemini-flash
+        id: gemini-flash
 ```
 
 ## Profiles
@@ -289,7 +304,7 @@ claudeSdk:
 
 ## Pi Backend
 
-Set `backend: pi` to use the Pi multi-provider backend instead of the Claude SDK. The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which supports API keys, environment variables, and OAuth tokens automatically. Configure model refs (using `{ provider, id }` form) via `agents.models.*` or `agents.model`, and other Pi-specific settings in the `pi` section of `eforge/config.yaml`. The Pi backend supports the same compile/build pipeline as the Claude SDK backend.
+Declare an `agentRuntimes` entry with `harness: pi` (and set it as `defaultAgentRuntime` or assign it per-role/tier) to use the Pi multi-provider backend instead of the Claude SDK. The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which supports API keys, environment variables, and OAuth tokens automatically. Configure model refs (using `{ id }` form) via `agents.models.*` or `agents.model`, declare the provider on the runtime entry as `agentRuntimes.<name>.pi.provider`, and put any other Pi-specific settings under that runtime entry's `pi:` block. The Pi backend supports the same compile/build pipeline as the Claude SDK backend.
 
 ### Authentication
 
@@ -306,7 +321,7 @@ The `pi.apiKey` config option is optional. Most users should rely on environment
 Providers like `openai-codex` and `github-copilot` use OAuth for authentication. To set up an OAuth provider:
 
 1. Run `pi auth login <provider>` to authenticate (this writes tokens to `~/.pi/agent/auth.json`)
-2. Use the provider name in your model refs - e.g. `{ provider: openai-codex, id: codex-mini }`
+2. Set the provider on the agentRuntime entry - e.g. `agentRuntimes.default.pi.provider: openai-codex` - and use a plain `{ id: codex-mini }` model ref
 3. No `pi.apiKey` or environment variable is needed - tokens are read from the auth file automatically
 
 ## Backend Profiles

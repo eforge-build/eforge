@@ -236,21 +236,23 @@ describe('createBackendProfile', () => {
     await rm(projectDir, { recursive: true, force: true });
   });
 
-  it('accepts pi profile without model.provider (provider check deferred to resolve time)', async () => {
-    // Provider validation moved to resolve time; createBackendProfile accepts any model ref
+  it('accepts pi profile with pi.provider (provider now schema-required on pi runtimes)', async () => {
+    // Provider is now required at schema time on agentRuntimes.<name>.pi.provider
     const result = await createBackendProfile(configDir, {
-      name: 'pi-no-provider',
+      name: 'pi-with-provider',
       harness: 'pi',
+      pi: { provider: 'openrouter' },
       agents: { model: { id: 'some-model' } } as PartialEforgeConfig['agents'],
     });
     expect(await fileExists(result.path)).toBe(true);
   });
 
-  it('creates a valid pi profile with provider-qualified model', async () => {
+  it('creates a valid pi profile with provider in pi config', async () => {
     const result = await createBackendProfile(configDir, {
       name: 'pi-prod',
       harness: 'pi',
-      agents: { model: { provider: 'openrouter', id: 'anthropic/claude-sonnet-4' } } as PartialEforgeConfig['agents'],
+      pi: { provider: 'openrouter' },
+      agents: { model: { id: 'anthropic/claude-sonnet-4' } } as PartialEforgeConfig['agents'],
     });
     expect(await fileExists(result.path)).toBe(true);
     const written = await readFile(result.path, 'utf-8');
@@ -270,6 +272,7 @@ describe('createBackendProfile', () => {
     const again = await createBackendProfile(configDir, {
       name: 'pi',
       harness: 'pi',
+      pi: { provider: 'openrouter' },
       overwrite: true,
     });
     const content = await readFile(again.path, 'utf-8');

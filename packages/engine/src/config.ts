@@ -50,10 +50,11 @@ export const modelClassSchema = z.enum(MODEL_CLASSES).describe('Model class for 
 const toolPresetConfigSchema = z.enum(['coding', 'none']);
 
 // ---------------------------------------------------------------------------
-// ModelRef — backend-aware model references
+// ModelRef — model references
 // ---------------------------------------------------------------------------
 
-/** A model reference: id is always required, provider is required for Pi backend. */
+/** A model reference: id is always required. When resolved for a Pi harness, `provider` is spliced
+ * in by the resolver from `agentRuntimes.<name>.pi.provider`. Do not set `provider` on config model refs. */
 export interface ModelRef {
   id: string;
   provider?: string;
@@ -61,8 +62,16 @@ export interface ModelRef {
 
 export const modelRefSchema = z.object({
   id: z.string().describe('Model identifier (e.g. "claude-opus-4-7", "gpt-5.4")'),
-  provider: z.string().optional().describe('Provider name (required for Pi backend, forbidden for Claude SDK)'),
-}).describe('Model reference with optional provider');
+  provider: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.provider !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      message: '"provider" must not be set on model refs. Set provider on agentRuntimes.<name>.pi.provider instead.',
+      path: ['provider'],
+    });
+  }
+}).describe('Model reference (provider must not be set here; use agentRuntimes.<name>.pi.provider)');
 
 // ---------------------------------------------------------------------------
 // SDK Passthrough Config Schemas
@@ -130,6 +139,7 @@ export const claudeSdkConfigSchema = z.object({
 }).describe('Configuration specific to the Claude SDK backend');
 
 export const piConfigSchema = z.object({
+  provider: z.string().optional().describe('Pi provider name (required when used as an agentRuntime entry)'),
   apiKey: z.string().optional().describe('API key for the Pi provider'),
   thinkingLevel: piThinkingLevelSchema.optional().describe('Thinking level for Pi agents'),
   extensions: z.object({
@@ -163,6 +173,13 @@ export const agentRuntimeEntrySchema = z.object({
     ctx.addIssue({
       code: 'custom',
       message: `agentRuntime with harness "claude-sdk" cannot include "pi" configuration.`,
+    });
+  }
+  if (data.harness === 'pi' && (!data.pi?.provider || data.pi.provider.trim() === '')) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'agentRuntime with harness "pi" requires non-empty "pi.provider".',
+      path: ['pi', 'provider'],
     });
   }
 }).describe('An agent runtime entry declaring harness kind and its configuration');
