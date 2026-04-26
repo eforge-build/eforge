@@ -422,6 +422,70 @@ describe('eforgeConfigSchema model ref validation', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('rejects model refs with "provider" field (provider belongs on agentRuntimes.<name>.pi.provider)', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agents: { models: { max: { id: 'x', provider: 'y' } } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issues = result.error.issues;
+      const providerIssue = issues.find((i) => i.path[i.path.length - 1] === 'provider');
+      expect(providerIssue).toBeDefined();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// agentRuntimeEntrySchema pi.provider validation
+// ---------------------------------------------------------------------------
+
+describe('agentRuntimeEntrySchema pi.provider validation', () => {
+  it('rejects a pi runtime with no pi.provider', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agentRuntimes: { default: { harness: 'pi' } },
+      defaultAgentRuntime: 'default',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issues = result.error.issues;
+      const providerIssue = issues.find(
+        (i) => i.path.includes('agentRuntimes') && i.path[i.path.length - 1] === 'provider',
+      );
+      expect(providerIssue).toBeDefined();
+    }
+  });
+
+  it('rejects a pi runtime with empty pi.provider', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agentRuntimes: { default: { harness: 'pi', pi: { provider: '' } } },
+      defaultAgentRuntime: 'default',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issues = result.error.issues;
+      const providerIssue = issues.find(
+        (i) => i.path.includes('agentRuntimes') && i.path[i.path.length - 1] === 'provider',
+      );
+      expect(providerIssue).toBeDefined();
+    }
+  });
+
+  it('accepts a pi runtime with non-empty pi.provider', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agentRuntimes: { default: { harness: 'pi', pi: { provider: 'openai-codex' } } },
+      defaultAgentRuntime: 'default',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a claude-sdk runtime without pi.provider', () => {
+    const result = eforgeConfigSchema.safeParse({
+      agentRuntimes: { default: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'default',
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

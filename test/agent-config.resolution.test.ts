@@ -33,7 +33,7 @@ describe('resolveAgentRuntimeForRole', () => {
       {
         agentRuntimes: {
           opus: { harness: 'claude-sdk' },
-          'pi-openrouter': { harness: 'pi', pi: { apiKey: 'test' } },
+          'pi-openrouter': { harness: 'pi', pi: { apiKey: 'test', provider: 'openrouter' } },
         },
         defaultAgentRuntime: 'opus',
       },
@@ -50,7 +50,7 @@ describe('resolveAgentRuntimeForRole', () => {
         {
           agentRuntimes: {
             opus: { harness: 'claude-sdk' },
-            'pi-openrouter': { harness: 'pi', pi: { apiKey: 'test' } },
+            'pi-openrouter': { harness: 'pi', pi: { apiKey: 'test', provider: 'openrouter' } },
           },
           defaultAgentRuntime: 'opus',
           agents: {
@@ -62,7 +62,7 @@ describe('resolveAgentRuntimeForRole', () => {
         {},
       );
       const builderResult = resolveAgentRuntimeForRole('builder', config);
-      expect(builderResult).toEqual({ agentRuntimeName: 'pi-openrouter', harness: 'pi' });
+      expect(builderResult).toEqual({ agentRuntimeName: 'pi-openrouter', harness: 'pi', provider: 'openrouter' });
       const plannerResult = resolveAgentRuntimeForRole('planner', config);
       expect(plannerResult).toEqual({ agentRuntimeName: 'opus', harness: 'claude-sdk' });
     });
@@ -113,12 +113,12 @@ describe('resolveAgentConfig new fields', () => {
       {
         agentRuntimes: {
           opus: { harness: 'claude-sdk' },
-          'pi-openrouter': { harness: 'pi', pi: { apiKey: 'test' } },
+          'pi-openrouter': { harness: 'pi', pi: { apiKey: 'test', provider: 'openrouter' } },
         },
         defaultAgentRuntime: 'opus',
         agents: {
           roles: {
-            builder: { agentRuntime: 'pi-openrouter', model: { id: 'qwen-coder', provider: 'openrouter' } },
+            builder: { agentRuntime: 'pi-openrouter', model: { id: 'qwen-coder' } },
           },
         },
       },
@@ -146,81 +146,65 @@ describe('resolveAgentConfig new fields', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Per-role provider-ness validation at resolve time
+// Provider splice: resolver populates model.provider from agentRuntime entry
 // ---------------------------------------------------------------------------
 
-describe('resolveAgentConfig provider-ness validation', () => {
-  it('throws at resolve time when harness is pi but agents.model lacks provider', () => {
+describe('resolveAgentConfig provider splice', () => {
+  it('provider round-trip: pi harness with pi.provider splices provider into model', () => {
     const config = resolveConfig(
       {
-        agentRuntimes: { mypi: { harness: 'pi', pi: { apiKey: 'key' } } },
-        defaultAgentRuntime: 'mypi',
-        agents: { model: { id: 'claude-opus-4-7' } },
-      },
-      {},
-    );
-    expect(() => resolveAgentConfig('planner', config)).toThrow(
-      /harness "pi".*missing "provider"/,
-    );
-    // Error message names the role, agentRuntimeName, and provenance
-    expect(() => resolveAgentConfig('planner', config)).toThrow(/"planner"/);
-    expect(() => resolveAgentConfig('planner', config)).toThrow(/"mypi"/);
-    expect(() => resolveAgentConfig('planner', config)).toThrow(/agents\.model/);
-  });
-
-  it('throws at resolve time when harness is pi but per-role model lacks provider', () => {
-    const config = resolveConfig(
-      {
-        agentRuntimes: { mypi: { harness: 'pi', pi: { apiKey: 'key' } } },
-        defaultAgentRuntime: 'mypi',
+        agentRuntimes: {
+          default: { harness: 'pi', pi: { provider: 'anthropic' } },
+        },
+        defaultAgentRuntime: 'default',
         agents: {
-          roles: {
-            builder: {
-              model: { id: 'claude-sonnet-4-6' },
-              agentRuntime: 'mypi',
-            },
+          models: {
+            max: { id: 'claude-opus-4-7' },
           },
         },
       },
       {},
     );
-    expect(() => resolveAgentConfig('builder', config)).toThrow(
-      /harness "pi".*missing "provider"/,
-    );
-    expect(() => resolveAgentConfig('builder', config)).toThrow(/agents\.roles\.builder\.model/);
+    // builder (balanced class) falls back to max since only max is configured
+    const result = resolveAgentConfig('builder', config);
+    expect(result.harness).toBe('pi');
+    expect(result.model?.provider).toBe('anthropic');
+    expect(result.model?.id).toBe('claude-opus-4-7');
   });
 
-  it('throws when harness is claude-sdk but model has a provider', () => {
+  it('claude-sdk harness produces model.provider === undefined (no splice)', () => {
     const config = resolveConfig(
       {
-        agentRuntimes: { myclaudesdk: { harness: 'claude-sdk' } },
-        defaultAgentRuntime: 'myclaudesdk',
+        agentRuntimes: {
+          default: { harness: 'claude-sdk' },
+        },
+        defaultAgentRuntime: 'default',
         agents: {
-          roles: {
-            reviewer: {
-              model: { id: 'claude-opus-4-7', provider: 'anthropic' },
-            },
+          models: {
+            max: { id: 'claude-opus-4-7' },
           },
         },
       },
       {},
     );
-    expect(() => resolveAgentConfig('reviewer', config)).toThrow(
-      /harness "claude-sdk".*forbidden "provider"/,
-    );
-    expect(() => resolveAgentConfig('reviewer', config)).toThrow(/agents\.roles\.reviewer\.model/);
+    const result = resolveAgentConfig('builder', config);
+    expect(result.harness).toBe('claude-sdk');
+    expect(result.model?.provider).toBeUndefined();
+    // builder is balanced class; claude-sdk has built-in balanced default (claude-sonnet-4-6)
+    // since no balanced is configured, the harness default is used (not the user-configured max)
+    expect(result.model?.id).toBe('claude-sonnet-4-6');
   });
 
-  it('does not throw when pi harness has model with provider', () => {
+  it('pi harness with pi.provider resolves model correctly', () => {
     const config = resolveConfig(
       {
-        agentRuntimes: { mypi: { harness: 'pi', pi: { apiKey: 'key' } } },
+        agentRuntimes: { mypi: { harness: 'pi', pi: { apiKey: 'key', provider: 'openrouter' } } },
         defaultAgentRuntime: 'mypi',
         agents: {
           models: {
-            max: { id: 'qwen-coder', provider: 'openrouter' },
-            balanced: { id: 'gpt-4o', provider: 'openai' },
-            fast: { id: 'gpt-4o-mini', provider: 'openai' },
+            max: { id: 'qwen-coder' },
+            balanced: { id: 'gpt-4o' },
+            fast: { id: 'gpt-4o-mini' },
           },
         },
       },
@@ -228,6 +212,7 @@ describe('resolveAgentConfig provider-ness validation', () => {
     );
     const result = resolveAgentConfig('planner', config);
     expect(result.harness).toBe('pi');
+    // planner is max class; provider spliced from runtime entry
     expect(result.model).toEqual({ id: 'qwen-coder', provider: 'openrouter' });
   });
 });

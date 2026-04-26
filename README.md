@@ -123,6 +123,8 @@ defaultAgentRuntime: claude-sdk
 # agentRuntimes:
 #   pi:
 #     harness: pi
+#     pi:
+#       provider: openai-codex   # Required for harness: pi - selects the Pi provider
 # defaultAgentRuntime: pi
 ```
 

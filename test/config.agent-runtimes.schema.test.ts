@@ -11,8 +11,8 @@ describe('agentRuntimeEntrySchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts harness pi without sub-blocks', () => {
-    const result = agentRuntimeEntrySchema.safeParse({ harness: 'pi' });
+  it('accepts harness pi with required pi.provider', () => {
+    const result = agentRuntimeEntrySchema.safeParse({ harness: 'pi', pi: { provider: 'openrouter' } });
     expect(result.success).toBe(true);
   });
 
@@ -24,10 +24,10 @@ describe('agentRuntimeEntrySchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts harness pi with pi config', () => {
+  it('accepts harness pi with pi config including required provider', () => {
     const result = agentRuntimeEntrySchema.safeParse({
       harness: 'pi',
-      pi: { apiKey: 'test-key', thinkingLevel: 'medium' },
+      pi: { provider: 'openrouter', apiKey: 'test-key', thinkingLevel: 'medium' },
     });
     expect(result.success).toBe(true);
   });
@@ -81,7 +81,7 @@ describe('eforgeConfigSchema agentRuntimes cross-field validation', () => {
       ...validBase,
       agentRuntimes: {
         opus: { harness: 'claude-sdk' },
-        mypi: { harness: 'pi' },
+        mypi: { harness: 'pi', pi: { provider: 'openrouter' } },
       },
       defaultAgentRuntime: 'opus',
     });
@@ -140,7 +140,7 @@ describe('eforgeConfigSchema agentRuntimes cross-field validation', () => {
       ...validBase,
       agentRuntimes: {
         opus: { harness: 'claude-sdk' },
-        mypi: { harness: 'pi' },
+        mypi: { harness: 'pi', pi: { provider: 'openrouter' } },
       },
       defaultAgentRuntime: 'opus',
       agents: {

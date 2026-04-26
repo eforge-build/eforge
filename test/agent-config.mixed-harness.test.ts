@@ -1,160 +1,86 @@
 import { describe, it, expect } from 'vitest';
-import { resolveAgentConfig, MODEL_CLASS_DEFAULTS } from '@eforge-build/engine/pipeline';
+import { resolveAgentConfig } from '@eforge-build/engine/pipeline';
 import { resolveConfig } from '@eforge-build/engine/config';
 
 // ---------------------------------------------------------------------------
-// Mixed-harness config: planner on claude-sdk, builder on pi
+// Mixed Pi provider config: two named Pi runtimes with distinct pi.provider values
+// routed to different roles via agents.roles.<role>.agentRuntime.
 // ---------------------------------------------------------------------------
 
-describe('resolveAgentConfig mixed-harness config', () => {
+describe('resolveAgentConfig mixed pi-provider config', () => {
   const mixedConfig = resolveConfig(
     {
       agentRuntimes: {
-        opus: { harness: 'claude-sdk' },
-        'pi-openrouter': {
+        'pi-anthropic': {
           harness: 'pi',
-          pi: { apiKey: 'test-key' },
+          pi: { provider: 'anthropic' },
+        },
+        'pi-mlx': {
+          harness: 'pi',
+          pi: { provider: 'mlx-lm' },
         },
       },
-      defaultAgentRuntime: 'opus',
+      defaultAgentRuntime: 'pi-anthropic',
       agents: {
         roles: {
+          planner: {
+            agentRuntime: 'pi-anthropic',
+          },
           builder: {
-            agentRuntime: 'pi-openrouter',
-            model: { id: 'qwen-coder', provider: 'openrouter' },
+            agentRuntime: 'pi-mlx',
           },
         },
         models: {
-          max: { id: 'qwen-max', provider: 'openrouter' },
+          max: { id: 'claude-opus-4-7' },
+          balanced: { id: 'claude-sonnet-4-6' },
         },
       },
     },
     {},
   );
 
-  it('planner resolves to opus (claude-sdk)', () => {
-    // Use a clean config without cross-harness model conflicts
-    const cleanConfig = resolveConfig(
-      {
-        agentRuntimes: {
-          opus: { harness: 'claude-sdk' },
-          'pi-openrouter': { harness: 'pi', pi: { apiKey: 'test-key' } },
-        },
-        defaultAgentRuntime: 'opus',
-        agents: {
-          roles: {
-            builder: {
-              agentRuntime: 'pi-openrouter',
-              model: { id: 'qwen-coder', provider: 'openrouter' },
-            },
-          },
-        },
-      },
-      {},
-    );
-    const result = resolveAgentConfig('planner', cleanConfig);
-    expect(result.agentRuntimeName).toBe('opus');
-    expect(result.harness).toBe('claude-sdk');
-  });
-
-  it('builder resolves to pi-openrouter (pi)', () => {
-    const result = resolveAgentConfig('builder', mixedConfig);
-    expect(result.agentRuntimeName).toBe('pi-openrouter');
+  it('planner resolves to pi-anthropic with provider === "anthropic"', () => {
+    const result = resolveAgentConfig('planner', mixedConfig);
+    expect(result.agentRuntimeName).toBe('pi-anthropic');
     expect(result.harness).toBe('pi');
+    expect(result.model?.provider).toBe('anthropic');
   });
 
-  it('planner uses class-defaults for claude-sdk harness', () => {
-    // planner is max class; user provides agents.models.max for pi, but planner is on claude-sdk
-    // so the user-configured agents.models.max { id: 'qwen-max', provider: 'openrouter' } would be used
-    // But it has a provider which is forbidden for claude-sdk — so it should throw
-    expect(() => resolveAgentConfig('planner', mixedConfig)).toThrow(
-      /harness "claude-sdk".*forbidden "provider"/,
-    );
+  it('builder resolves to pi-mlx with provider === "mlx-lm"', () => {
+    const result = resolveAgentConfig('builder', mixedConfig);
+    expect(result.agentRuntimeName).toBe('pi-mlx');
+    expect(result.harness).toBe('pi');
+    expect(result.model?.provider).toBe('mlx-lm');
   });
 
-  it('each role resolves to its correct class-defaults entry', () => {
-    const cleanConfig = resolveConfig(
-      {
-        agentRuntimes: {
-          opus: { harness: 'claude-sdk' },
-          'pi-openrouter': {
-            harness: 'pi',
-            pi: { apiKey: 'test-key' },
-          },
-        },
-        defaultAgentRuntime: 'opus',
-        agents: {
-          roles: {
-            builder: {
-              agentRuntime: 'pi-openrouter',
-              model: { id: 'qwen-coder', provider: 'openrouter' },
-            },
-          },
-        },
-      },
-      {},
-    );
+  it('each role resolves to its runtime\'s declared provider via model.provider', () => {
+    const plannerResult = resolveAgentConfig('planner', mixedConfig);
+    const builderResult = resolveAgentConfig('builder', mixedConfig);
 
-    // planner is on claude-sdk → max class → claude-sdk default is claude-opus-4-7
-    const plannerResult = resolveAgentConfig('planner', cleanConfig);
-    expect(plannerResult.harness).toBe('claude-sdk');
-    expect(plannerResult.model).toEqual(MODEL_CLASS_DEFAULTS['claude-sdk']['max']);
+    // provider comes from the runtime entry, not the model ref
+    expect(plannerResult.model?.provider).toBe('anthropic');
+    expect(builderResult.model?.provider).toBe('mlx-lm');
 
-    // builder is on pi with per-role model override
-    const builderResult = resolveAgentConfig('builder', cleanConfig);
-    expect(builderResult.harness).toBe('pi');
-    expect(builderResult.model).toEqual({ id: 'qwen-coder', provider: 'openrouter' });
+    // model ids come from agents.models class defaults
+    // planner is planning tier → max class → claude-opus-4-7
+    expect(plannerResult.model?.id).toBe('claude-opus-4-7');
+    // builder is implementation tier → balanced class → claude-sonnet-4-6
+    expect(builderResult.model?.id).toBe('claude-sonnet-4-6');
   });
 
-  it('reviewer also defaults to opus (claude-sdk) via defaultAgentRuntime', () => {
-    const cleanConfig = resolveConfig(
-      {
-        agentRuntimes: {
-          opus: { harness: 'claude-sdk' },
-          'pi-openrouter': { harness: 'pi', pi: { apiKey: 'key' } },
-        },
-        defaultAgentRuntime: 'opus',
-        agents: {
-          roles: {
-            builder: {
-              agentRuntime: 'pi-openrouter',
-              model: { id: 'qwen-coder', provider: 'openrouter' },
-            },
-          },
-        },
-      },
-      {},
-    );
-    const reviewerResult = resolveAgentConfig('reviewer', cleanConfig);
-    expect(reviewerResult.agentRuntimeName).toBe('opus');
-    expect(reviewerResult.harness).toBe('claude-sdk');
+  it('reviewer defaults to pi-anthropic (defaultAgentRuntime) with provider === "anthropic"', () => {
+    const result = resolveAgentConfig('reviewer', mixedConfig);
+    expect(result.agentRuntimeName).toBe('pi-anthropic');
+    expect(result.harness).toBe('pi');
+    expect(result.model?.provider).toBe('anthropic');
   });
 
   it('agentRuntimeName and harness are present on every resolved config', () => {
-    const cleanConfig = resolveConfig(
-      {
-        agentRuntimes: {
-          opus: { harness: 'claude-sdk' },
-          'pi-openrouter': { harness: 'pi', pi: { apiKey: 'key' } },
-        },
-        defaultAgentRuntime: 'opus',
-        agents: {
-          roles: {
-            builder: {
-              agentRuntime: 'pi-openrouter',
-              model: { id: 'qwen-coder', provider: 'openrouter' },
-            },
-          },
-        },
-      },
-      {},
-    );
     const roles = ['planner', 'reviewer', 'evaluator'] as const;
     for (const role of roles) {
-      const result = resolveAgentConfig(role, cleanConfig);
+      const result = resolveAgentConfig(role, mixedConfig);
       expect(result.agentRuntimeName).toBeDefined();
-      expect(result.harness).toBeDefined();
-      expect(['claude-sdk', 'pi']).toContain(result.harness);
+      expect(result.harness).toBe('pi');
     }
   });
 });
