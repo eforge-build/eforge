@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.7.0] - 2026-04-25
+
+### Features
+
+- **add-a-tier-layer-above-agent-roles**: Add tier layer above agent roles
+- **build-failure-recovery-agent**: Add advisory build-failure recovery analyst with sidecar verdicts and Pi/CLI/MCP parity
+- **cli-and-engine-api**: CLI Subcommand + EforgeEngine.recover
+- **config**: reject unrecognized top-level keys in config.yaml
+- **core**: PRD Gap Close
+- **daemon-mcp-pi**: Daemon Trigger + MCP Tool + Pi Parity
+- **docs-sweep**: Documentation Terminology Sweep
+- **engine-core**: Engine Core: Schema, Agent, Summary, Sidecar
+- **event-id-renames**: Rename Event IDs Across Engine, Consumers, and Tests
+- **finish-plan-04**: Finish Plan-04: Source Fix, Test Fixture Migration, New Tests, Plan-Load Validation
+- **fix-planner-per-plan-build-review-stage-selection**: Pass per-plan build/review through planner submission
+- **harness-rename**: Mechanical Rename: Backend -> Harness
+- **http-route-client**: HTTP Route Rename + Client Helpers + DAEMON_API_VERSION Bump
+- **make-orchestration-yaml-the-single-canonical-source-for-plan-dependencies**: Canonicalize plan deps in orchestration.yaml
+- **monitor-ui**: Monitor UI: Verdict Chip + Sidecar Link
+- **monitor-ui-session-rename**: Monitor-UI Session Backend to Harness Rename
+- **pipeline-plan-dependency-depth-replace-indentation-with-vertical-guide-bars**: Replace depth indentation with vertical guide bars in thread-pipeline.tsx
+- **profile-loader-mcp**: Profile Directory and Loader Rename + MCP Tool Rename
+- **registry-pipeline**: Agent Runtime Registry + Engine + Pipeline Wiring
+- **schema-resolver**: Config Schema + Resolver (Non-Breaking Additions)
+- **slash-skills-plugin**: Slash Command Rename + Init Skill Update + Plugin Version Bump
+- **surface-tiers-within-eforge-config**: Tier-aware /eforge:config skill bodies
+- **wire-withhooks-into-daemon-s-in-process-auto-build-watcher**: Wire withHooks into daemon watcher
+
+### Bug Fixes
+
+- **complete-per-agent-runtime-configuration**: finish missed Pi extension renames
+- **config**: merge agentRuntimes and defaultAgentRuntime in partial configs
+- **core**: add thinkingLevel YAML comment to config skills
+- **core**: resolve validation failures
+- **prompts**: treat {{...}} in substituted values as literal text
+
+### Maintenance
+
+- **core**: remove mock-heavy Pi backend tests
+- **core**: upgrade pi
+- **core**: Upgrade deps
+- **harness-rename**: add rename acceptance-criteria tests
+- **monitor-ui**: add API route path hygiene grep assertion
+- **registry-pipeline**: add dual-stub dispatch tests and fix Pi lazy-load test
+- **schema-resolver**: fix two failing tests in agent-config.mixed-harness
+
 ## [0.6.4] - 2026-04-23
 
 ### Refactoring
@@ -301,16 +347,6 @@
 ### Bug Fixes
 
 - engine: avoid re-running compile stage after composer shrinks list
-
-## [0.4.2] - 2026-04-11
-
-### Bug Fixes
-
-- engine: use ModelRegistry.create factory in PiBackend
-
-### Maintenance
-
-- deps: bump pi-ai, monitor-ui, and dev tooling
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
