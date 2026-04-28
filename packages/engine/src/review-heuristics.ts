@@ -3,7 +3,7 @@
  * Ported from the review plugin's categorization patterns.
  */
 
-export type ReviewPerspective = 'code' | 'security' | 'api' | 'docs' | 'test';
+export type ReviewPerspective = 'code' | 'security' | 'api' | 'docs' | 'test' | 'verify';
 
 export interface FileCategories {
   code: string[];
