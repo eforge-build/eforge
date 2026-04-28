@@ -1,0 +1,105 @@
+name: replace-backend-with-harness-across-the-eforge-mcp-http-skill-stack
+description: 'Rename "backend" to "harness" across the public surface (MCP
+  tools, daemon HTTP API, client types, engine helpers, skills) so the entire
+  stack uses the term that matches the agentRuntimes schema and the
+  mixed-harness reality of agent runtime profiles. Breaking change: bump
+  DAEMON_API_VERSION from 9 to 10.'
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-rename-backend-to-harness
+    name: Rename backend → harness across MCP, HTTP, client types, engine helpers,
+      and skills
+    depends_on: []
+    branch: replace-backend-with-harness-across-the-eforge-mcp-http-skill-stack/plan-01-rename-backend-to-harness
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: "Cross-package coordinated rename touching ~18 files. Mechanical but
+          unforgiving: a missed callsite breaks pnpm type-check. Sharded across
+          three parallel scope groups (types/engine, MCP tools, skills+tests) so
+          each shard has tight focus while the merged result must compile
+          coherently."
+        shards:
+          - id: shard-types-engine-monitor
+            roots:
+              - packages/client/
+            files:
+              - packages/engine/src/config.ts
+              - packages/monitor/src/server.ts
+          - id: shard-mcp
+            files:
+              - packages/eforge/src/cli/mcp-proxy.ts
+              - packages/pi-eforge/extensions/eforge/index.ts
+          - id: shard-skills-tests
+            roots:
+              - eforge-plugin/skills/
+              - packages/pi-eforge/skills/
+            files:
+              - test/config-backend-profile.test.ts
+      reviewer:
+        effort: high
+        rationale: Reviewer must catch any missed callsite or stale 'backend' reference
+          outside the legitimate-leftover allowlist (legacy YAML field, plan
+          codename comment, parseRawConfigLegacy). Acceptance criterion 8
+          mandates a clean grep audit.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - correctness
+      - consistency
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: This is a wide but mechanical rename refactor (backend → harness)
+    across the public surface of multiple packages (engine helpers, daemon HTTP
+    API, client types, MCP tools, and skill markdown). The PRD itself enumerates
+    every file and line to change, so a single planner session can clearly
+    decompose this into ordered plans (engine helpers → client types + daemon
+    API + version bump → Plugin MCP tools → Pi extension parity → skill files →
+    test fixture updates). The guidelines explicitly call out
+    'rename-and-update-all-callers refactors' and 'type/interface refactors
+    where changing a definition breaks all consumers' as negative signals for
+    expedition - both apply here. There are sequential dependency chains (types
+    must change before consumers compile) rather than independent parallel
+    subsystems, so excursion with ordered plans is the right shape. Compile uses
+    planner + plan-review-cycle because this is a breaking public API change
+    (DAEMON_API_VERSION 9→10) with strict Plugin/Pi parity requirements, so an
+    extra plan-quality gate is worth the cost to catch any missed call sites or
+    asymmetries between Plugin and Pi before build. Build uses implement
+    followed by review-cycle (sequential, since review-cycle declares implement
+    as a predecessor and conflicts with review). doc-update is omitted because
+    the documentation changes (skill markdown, JSDoc comments) are an integral
+    part of the rename and live alongside the code edits in implement.
+    test-write is omitted because the AC only requires updating existing
+    fixtures, not authoring new tests. Review uses parallel strategy with
+    'correctness' (catch missed call sites, broken type imports, asymmetric
+    Plugin/Pi changes, forgotten DAEMON_API_VERSION bump or query string rename)
+    and 'consistency' (verify Plugin and Pi extensions stay in lock-step per the
+    AGENTS.md parity rule, and that legacy YAML 'backend:' references are
+    intentionally preserved per the PRD scope). maxRounds 2 is sufficient for a
+    mechanical rename. Strictness is standard - this is a refactor with no
+    security or data implications, but it is a breaking API change with parity
+    invariants worth enforcing.
