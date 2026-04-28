@@ -66,40 +66,35 @@ pipeline:
     - implement
     - review-cycle
   defaultReview:
-    strategy: parallel
+    strategy: single
     perspectives:
       - correctness
       - consistency
+      - api-contract
     maxRounds: 2
     autoAcceptBelow: suggestion
     evaluatorStrictness: standard
-  rationale: This is a wide but mechanical rename refactor (backend → harness)
-    across the public surface of multiple packages (engine helpers, daemon HTTP
-    API, client types, MCP tools, and skill markdown). The PRD itself enumerates
-    every file and line to change, so a single planner session can clearly
-    decompose this into ordered plans (engine helpers → client types + daemon
-    API + version bump → Plugin MCP tools → Pi extension parity → skill files →
-    test fixture updates). The guidelines explicitly call out
-    'rename-and-update-all-callers refactors' and 'type/interface refactors
-    where changing a definition breaks all consumers' as negative signals for
-    expedition - both apply here. There are sequential dependency chains (types
-    must change before consumers compile) rather than independent parallel
-    subsystems, so excursion with ordered plans is the right shape. Compile uses
-    planner + plan-review-cycle because this is a breaking public API change
-    (DAEMON_API_VERSION 9→10) with strict Plugin/Pi parity requirements, so an
-    extra plan-quality gate is worth the cost to catch any missed call sites or
-    asymmetries between Plugin and Pi before build. Build uses implement
-    followed by review-cycle (sequential, since review-cycle declares implement
-    as a predecessor and conflicts with review). doc-update is omitted because
-    the documentation changes (skill markdown, JSDoc comments) are an integral
-    part of the rename and live alongside the code edits in implement.
-    test-write is omitted because the AC only requires updating existing
-    fixtures, not authoring new tests. Review uses parallel strategy with
-    'correctness' (catch missed call sites, broken type imports, asymmetric
-    Plugin/Pi changes, forgotten DAEMON_API_VERSION bump or query string rename)
-    and 'consistency' (verify Plugin and Pi extensions stay in lock-step per the
-    AGENTS.md parity rule, and that legacy YAML 'backend:' references are
-    intentionally preserved per the PRD scope). maxRounds 2 is sufficient for a
-    mechanical rename. Strictness is standard - this is a refactor with no
-    security or data implications, but it is a breaking API change with parity
-    invariants worth enforcing.
+  rationale: "This is a coordinated rename refactor (`backend` -> `harness`) that
+    ripples through TypeScript types, MCP tool params, daemon HTTP API, client
+    types, engine helpers, and skill markdown across multiple packages. Per the
+    user's feedback memory, type/interface refactors and
+    rename-and-update-all-callers refactors are negative signals for expedition
+    - the TypeScript compiler is the safety net and changes are tightly coupled,
+    so a single planner session can enumerate every file/line listed in the PRD.
+    Excursion is the right scope. Compile uses `planner` + `plan-review-cycle`
+    because the PRD spans 5 distinct surfaces (engine helpers, daemon API +
+    version bump, client types, MCP tools for both Plugin and Pi, four skill
+    files) and plan quality matters for catching missed call sites and
+    preserving the legitimate legacy `backend:` YAML references that must NOT be
+    renamed. Build uses sequential `implement` -> `review-cycle` (no parallelism
+    needed; review must read the final implemented state to verify the grep
+    audit acceptance criterion). `doc-update` is omitted because the skill
+    markdown updates are themselves part of the implementation scope.
+    `test-cycle` is omitted because acceptance criteria #2 only requires
+    updating existing fixtures (a `pnpm test` pass), not authoring new tests;
+    the TypeScript build (criterion #1) is the primary safety net. Review uses
+    `single` strategy with three perspectives (`correctness` for the rename
+    mechanics, `consistency` for Plugin/Pi parity, `api-contract` for the
+    DAEMON_API_VERSION bump and breaking field renames). `standard` strictness
+    fits a non-security refactor; `maxRounds: 2` is sufficient given the rename
+    is mechanical and the PRD enumerates exact line numbers."
