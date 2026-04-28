@@ -57,6 +57,7 @@ import { ModelTracker, composeCommitMessage } from './model-tracker.js';
 import { cleanupPlanFiles } from './cleanup.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { withRunId } from './session.js';
+import { applyShardedPlanGuard } from './sharded-plan-guard.js';
 
 const exec = promisify(execFile);
 
@@ -567,16 +568,16 @@ export class EforgeEngine {
         // Belt-and-suspenders against planner-prompt omissions. Shards do not self-verify,
         // so the review-cycle's verify perspective is the integration gate.
         const builderShards = planFile.agents?.['builder']?.shards;
-        if (builderShards && builderShards.length > 0) {
-          const flatStages = planBuild.flat();
-          if (!flatStages.includes('review-cycle')) {
-            planBuild = [...planBuild, 'review-cycle'];
-            console.debug(`[eforge] Runtime guard: injected review-cycle into plan ${planId} (sharded plan missing review-cycle)`);
-          }
-          if (!planReview.perspectives.includes('verify')) {
-            planReview = { ...planReview, perspectives: [...planReview.perspectives, 'verify'] };
-            console.debug(`[eforge] Runtime guard: injected verify into plan ${planId} review perspectives (sharded plan)`);
-          }
+        const guardResult = applyShardedPlanGuard(planBuild, planReview, builderShards);
+        planBuild = guardResult.planBuild;
+        planReview = guardResult.planReview;
+        for (const item of guardResult.injected) {
+          yield {
+            timestamp: new Date().toISOString(),
+            type: 'plan:build:progress',
+            planId,
+            message: `Runtime guard: injected ${item} into sharded plan (shards do not self-verify; review-cycle is the integration gate)`,
+          };
         }
 
         const buildCtx: BuildStageContext = {

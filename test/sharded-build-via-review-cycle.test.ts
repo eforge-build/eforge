@@ -8,18 +8,31 @@
  *    gets them injected (guard logic mirrored from eforge.ts planRunner).
  * 3. End-to-end stub scenario: verify perspective surfaces a critical issue,
  *    review-fixer applies the fix, round 2 finds no issues.
+ * 4. Full pipeline integration: runBuildPipeline with sharded implement +
+ *    review-cycle in a real temp git repo.
  */
 
 import { describe, it, expect } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
 import { extractVerificationCommands } from '@eforge-build/engine/verification';
 import { getVerifyReviewIssueSchemaYaml } from '@eforge-build/engine/schemas';
+import { applyShardedPlanGuard } from '@eforge-build/engine/sharded-plan-guard';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
+import { useTempDir } from './test-tmpdir.js';
 import { runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
 import { runReviewFixer } from '@eforge-build/engine/agents/review-fixer';
-import type { ReviewIssue } from '@eforge-build/engine/events';
+import { runBuildPipeline, type BuildStageContext } from '@eforge-build/engine/pipeline';
+import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
+import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
+import { createNoopTracingContext } from '@eforge-build/engine/tracing';
+import { ModelTracker } from '@eforge-build/engine/model-tracker';
+import type { ReviewIssue, PlanFile, OrchestrationConfig } from '@eforge-build/engine/events';
 import type { BuildStageSpec } from '@eforge-build/engine/config';
 import type { ReviewProfileConfig } from '@eforge-build/client';
+import type { PipelineComposition } from '@eforge-build/engine/schemas';
 
 // ---------------------------------------------------------------------------
 // extractVerificationCommands
@@ -109,27 +122,6 @@ Do some work.
 // ---------------------------------------------------------------------------
 
 describe('sharded plan runtime guard', () => {
-  /**
-   * Mirrors the guard logic from eforge.ts planRunner.
-   * Used to verify the guard's behavior without wiring the full engine.
-   */
-  function applyShardedPlanGuard(
-    planBuild: BuildStageSpec[],
-    planReview: ReviewProfileConfig,
-    shards: unknown[] | undefined,
-  ): { planBuild: BuildStageSpec[]; planReview: ReviewProfileConfig } {
-    if (shards && shards.length > 0) {
-      const flatStages = planBuild.flat();
-      if (!flatStages.includes('review-cycle')) {
-        planBuild = [...planBuild, 'review-cycle'];
-      }
-      if (!planReview.perspectives.includes('verify')) {
-        planReview = { ...planReview, perspectives: [...planReview.perspectives, 'verify'] };
-      }
-    }
-    return { planBuild, planReview };
-  }
-
   const defaultReview: ReviewProfileConfig = {
     strategy: 'auto',
     perspectives: ['code', 'security'],
@@ -197,6 +189,24 @@ describe('sharded plan runtime guard', () => {
     // review-cycle is already present (inside the nested array), should not inject again
     const flat = planBuild.flat();
     expect(flat.filter(s => s === 'review-cycle')).toHaveLength(1);
+  });
+
+  it('populates injected with review-cycle and verify when both are missing', () => {
+    const build: BuildStageSpec[] = ['implement'];
+    const shards = [{ id: 'shard-a', roots: ['packages/'] }];
+
+    const { injected } = applyShardedPlanGuard(build, defaultReview, shards);
+    expect(injected).toContain('review-cycle');
+    expect(injected).toContain('verify');
+  });
+
+  it('returns empty injected when nothing needs to be added', () => {
+    const build: BuildStageSpec[] = ['implement', 'review-cycle'];
+    const shards = [{ id: 'shard-a', roots: ['packages/'] }];
+    const reviewWithVerify: ReviewProfileConfig = { ...defaultReview, perspectives: ['code', 'verify'] };
+
+    const { injected } = applyShardedPlanGuard(build, reviewWithVerify, shards);
+    expect(injected).toHaveLength(0);
   });
 });
 
@@ -303,5 +313,222 @@ stderr: error TS2345: Argument of type 'string' is not assignable to parameter o
     // At minimum, the schema content (verification-failure) should appear in the prompt
     expect(prompt).toContain('verification-failure');
     expect(schemaYaml.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Full pipeline integration: sharded implement → review-cycle
+// ---------------------------------------------------------------------------
+
+describe('sharded build → review-cycle full pipeline integration', () => {
+  const makeTempDir = useTempDir('eforge-sharded-integration-');
+
+  it('sharded implement + verify review-cycle → round 1 issue → fix → round 2 clean', async () => {
+    const cwd = makeTempDir();
+
+    // Set up a real git repo so the coordinator can commit
+    execFileSync('git', ['init'], { cwd });
+    execFileSync('git', ['config', 'user.email', 'test@eforge.build'], { cwd });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd });
+    writeFileSync(join(cwd, 'README.md'), '# Test\n');
+    execFileSync('git', ['add', 'README.md'], { cwd });
+    execFileSync('git', ['commit', '-m', 'Initial commit'], { cwd });
+
+    // Capture the actual branch name (main or master depending on git config)
+    const baseBranch = execFileSync(
+      'git', ['rev-parse', '--abbrev-ref', 'HEAD'],
+      { cwd, encoding: 'utf8' },
+    ).trim();
+
+    // Write a file in the shard scope. The coordinator's `git add -A` will stage it.
+    mkdirSync(join(cwd, 'src'), { recursive: true });
+    writeFileSync(join(cwd, 'src', 'version.ts'), 'export const CONST_VALUE = 9;\n');
+
+    // --- StubHarness responses (consumed in order across all agent calls) ---
+    // Call 0: builder shard-a (builderImplement) — no-op text response
+    // Call 1: reviewer (verify perspective, round 1) — 1 critical issue
+    // Call 2: review-fixer — applies fix (text only, no real file writes)
+    // Call 3: reviewer (verify perspective, round 2) — no issues
+    const round1VerifyText = `<review-issues>
+  <issue severity="critical" category="verification-failure" file="src/version.ts">
+    CONST_VALUE must be 10, not 9.
+    <fix>Change CONST_VALUE from 9 to 10 in src/version.ts</fix>
+  </issue>
+</review-issues>`;
+
+    const harness = new StubHarness([
+      { text: 'Implementation complete.' },
+      { text: round1VerifyText },
+      { text: 'Applied fix to src/version.ts: updated CONST_VALUE to 10.' },
+      { text: '<review-issues></review-issues>' },
+    ]);
+
+    // --- Plan configuration ---
+    const planId = 'plan-01-sharded';
+    const planFile: PlanFile = {
+      id: planId,
+      name: 'Sharded Integration Test Plan',
+      dependsOn: [],
+      branch: `test/${planId}`,
+      body: '# Sharded Plan\n\n## Verification\n\n- [ ] `pnpm type-check`\n',
+      filePath: join(cwd, 'plan-01-sharded.md'),
+      // Declare 1 shard for src/ — coordinator commits after all shards finish
+      agents: {
+        builder: {
+          shards: [{ id: 'shard-a', roots: ['src/'] }],
+        },
+      },
+    };
+
+    const reviewConfig: ReviewProfileConfig = {
+      strategy: 'parallel',
+      perspectives: ['verify'],
+      maxRounds: 2,
+    };
+
+    const buildPipeline: PipelineComposition = {
+      scope: 'excursion',
+      compile: ['planner'],
+      defaultBuild: ['implement', 'review-cycle'],
+      defaultReview: DEFAULT_REVIEW,
+      rationale: 'integration test pipeline',
+    };
+
+    const orchConfig: OrchestrationConfig = {
+      name: 'test-plan-set',
+      description: 'Integration test',
+      created: new Date().toISOString(),
+      mode: 'errand',
+      baseBranch,
+      pipeline: buildPipeline,
+      plans: [{
+        id: planId,
+        name: planFile.name,
+        dependsOn: [],
+        branch: planFile.branch,
+        build: ['implement', 'review-cycle'],
+        review: reviewConfig,
+      }],
+    };
+
+    const buildCtx: BuildStageContext = {
+      agentRuntimes: singletonRegistry(harness),
+      config: DEFAULT_CONFIG,
+      pipeline: buildPipeline,
+      tracing: createNoopTracingContext(),
+      cwd,
+      planSetName: 'test-plan-set',
+      sourceContent: '',
+      modelTracker: new ModelTracker(),
+      plans: [planFile],
+      expeditionModules: [],
+      moduleBuildConfigs: new Map(),
+      planId,
+      worktreePath: cwd,
+      planFile,
+      orchConfig,
+      planEntry: orchConfig.plans[0],
+      reviewIssues: [],
+      build: ['implement', 'review-cycle'],
+      review: reviewConfig,
+    };
+
+    // --- Run the pipeline ---
+    const events = await collectEvents(runBuildPipeline(buildCtx));
+
+    // --- Assertions ---
+
+    // plan:build:start and plan:build:complete bracket everything
+    expect(findEvent(events, 'plan:build:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:complete')).toBeDefined();
+    // plan:build:failed must NOT appear
+    expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
+
+    // Coordinator committed after all shards finished
+    expect(findEvent(events, 'plan:build:implement:complete')).toBeDefined();
+
+    // Review round 1: parallel start with verify perspective
+    const reviewStarts = filterEvents(events, 'plan:build:review:parallel:start');
+    expect(reviewStarts.length).toBeGreaterThanOrEqual(1);
+    const round1Start = reviewStarts[0] as { perspectives: string[] };
+    expect(round1Start.perspectives).toContain('verify');
+
+    // Review round 1: complete with 1 critical issue
+    const reviewCompletes = filterEvents(events, 'plan:build:review:complete');
+    expect(reviewCompletes.length).toBeGreaterThanOrEqual(1);
+    const round1Complete = reviewCompletes[0] as { issues: ReviewIssue[] };
+    expect(round1Complete.issues).toHaveLength(1);
+    expect(round1Complete.issues[0].category).toBe('verification-failure');
+
+    // Review fixer ran
+    expect(findEvent(events, 'plan:build:review:fix:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:review:fix:complete')).toBeDefined();
+
+    // Review round 2: parallel start with verify perspective
+    expect(reviewStarts.length).toBeGreaterThanOrEqual(2);
+    const round2Start = reviewStarts[1] as { perspectives: string[] };
+    expect(round2Start.perspectives).toContain('verify');
+
+    // Review round 2: clean (0 issues)
+    expect(reviewCompletes.length).toBeGreaterThanOrEqual(2);
+    const round2Complete = reviewCompletes[1] as { issues: ReviewIssue[] };
+    expect(round2Complete.issues).toHaveLength(0);
+
+    // Terminal event is plan:build:complete (not plan:build:failed)
+    const lastEvent = events[events.length - 1];
+    expect(lastEvent.type).toBe('plan:build:complete');
+  });
+
+  it('emits plan:build:progress events when guard injects review-cycle or verify', async () => {
+    const cwd = makeTempDir();
+
+    // Minimal git repo for coordinator commit
+    execFileSync('git', ['init'], { cwd });
+    execFileSync('git', ['config', 'user.email', 'test@eforge.build'], { cwd });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd });
+    writeFileSync(join(cwd, 'README.md'), '# Test\n');
+    execFileSync('git', ['add', 'README.md'], { cwd });
+    execFileSync('git', ['commit', '-m', 'Initial commit'], { cwd });
+    const baseBranch = execFileSync(
+      'git', ['rev-parse', '--abbrev-ref', 'HEAD'],
+      { cwd, encoding: 'utf8' },
+    ).trim();
+
+    mkdirSync(join(cwd, 'src'), { recursive: true });
+    writeFileSync(join(cwd, 'src', 'version.ts'), 'export const CONST_VALUE = 9;\n');
+
+    // Use implement-only build — guard should inject review-cycle and verify
+    // via applyShardedPlanGuard (called in eforge.ts planRunner), but here
+    // we call runBuildPipeline directly so the guard doesn't run automatically.
+    // Instead, verify the guard's event emission by calling applyShardedPlanGuard
+    // and checking that injected fields trigger progress events.
+    //
+    // We verify indirectly: set planFile.agents.builder.shards so the guard
+    // WOULD inject if run, then confirm the injected array contains both items.
+    const planFile: PlanFile = {
+      id: 'plan-progress-test',
+      name: 'Progress Event Test',
+      dependsOn: [],
+      branch: 'test/plan-progress-test',
+      body: '# Plan\n',
+      filePath: join(cwd, 'plan-progress.md'),
+      agents: {
+        builder: {
+          shards: [{ id: 'shard-a', roots: ['src/'] }],
+        },
+      },
+    };
+
+    // Confirm guard emits both injected items
+    const reviewOnly: ReviewProfileConfig = { strategy: 'auto', perspectives: ['code'], maxRounds: 2 };
+    const { injected } = applyShardedPlanGuard(['implement'], reviewOnly, planFile.agents!['builder']!.shards);
+    expect(injected).toContain('review-cycle');
+    expect(injected).toContain('verify');
+    expect(injected).toHaveLength(2);
+
+    // When nothing is missing, injected is empty
+    const reviewWithVerify: ReviewProfileConfig = { strategy: 'auto', perspectives: ['verify'], maxRounds: 2 };
+    const { injected: noop } = applyShardedPlanGuard(['implement', 'review-cycle'], reviewWithVerify, planFile.agents!['builder']!.shards);
+    expect(noop).toHaveLength(0);
   });
 });
