@@ -255,8 +255,8 @@ stderr: error TS2345: Argument of type 'string' is not assignable to parameter o
       }),
     );
 
-    expect(findEvent(fixerEvents, 'plan:build:review-fix:start')).toBeDefined();
-    expect(findEvent(fixerEvents, 'plan:build:review-fix:complete')).toBeDefined();
+    expect(findEvent(fixerEvents, 'plan:build:review:fix:start')).toBeDefined();
+    expect(findEvent(fixerEvents, 'plan:build:review:fix:complete')).toBeDefined();
 
     // The fixer prompt should include the issues with the verify failure details
     expect(fixerBackend.prompts[0]).toContain('verification-failure');

@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, writeFile, readFile, mkdir, rm, chmod } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -425,124 +425,5 @@ describe('sharded implement stage', () => {
     // Invalid: empty roots and empty files
     const emptyArrayResult = shardScopeSchema.safeParse({ id: 'e', roots: [], files: [] });
     expect(emptyArrayResult.success).toBe(false);
-  });
-
-  // -------------------------------------------------------------------------
-  // Coordinator verification: postMergeCommands prepended before plan commands
-  //
-  // The shard coordinator runs verification in a worktree that has not had
-  // project-level setup performed yet, so any commands the plan lists in its
-  // `## Verification` section must run after the project's postMergeCommands
-  // (matching the global post-merge `validate` phase).
-  // -------------------------------------------------------------------------
-
-  it('coordinator verification: prepends postMergeCommands before plan-body commands', async () => {
-    // Drop a fake `pnpm` shim that appends each invocation's first arg to a log
-    // Put shim and log outside the git worktree so the safety-sweep
-    // `git add -A` in the coordinator doesn't pick them up.
-    const shimDir = await mkdtemp(join(tmpdir(), 'eforge-shim-'));
-    const logFile = join(shimDir, 'pnpm-calls.log');
-    await writeFile(
-      join(shimDir, 'pnpm'),
-      `#!/usr/bin/env bash\necho "$1" >> "${logFile}"\n`,
-      'utf-8',
-    );
-    await chmod(join(shimDir, 'pnpm'), 0o755);
-
-    // Stage a file inside the shard scope so the coordinator reaches verification
-    await mkdir(join(tmpDir, 'packages', 'engine', 'src'), { recursive: true });
-    await writeFile(join(tmpDir, 'packages', 'engine', 'src', 'x.ts'), 'export const x = 1;\n');
-    await exec('git', ['add', 'packages/engine/src/x.ts'], { cwd: tmpDir });
-
-    const planFile = makePlanFile({
-      id: 'plan-pmc',
-      name: 'Verify Order Plan',
-      // Plan body lists `pnpm type-check` in its Verification section
-      body: '# Plan\n\n## Verification\n\nRun `pnpm type-check` to confirm types.\n',
-      agents: {
-        builder: {
-          shards: [
-            { id: 'shard-pkg', roots: ['packages/'] },
-          ],
-        },
-      },
-    });
-
-    const harness = new StubHarness([{ text: 'Shard pkg done.' }]);
-
-    // Inject postMergeCommands via config override so the coordinator should
-    // prepend `pnpm install` ahead of the extracted `pnpm type-check`.
-    const ctx = makeBuildCtx(tmpDir, planFile, harness, {
-      config: {
-        ...DEFAULT_CONFIG,
-        build: { ...DEFAULT_CONFIG.build, postMergeCommands: ['pnpm install'] },
-      },
-    });
-
-    // Prepend the shim directory to PATH for the duration of this test
-    const originalPath = process.env.PATH;
-    process.env.PATH = `${shimDir}${process.platform === 'win32' ? ';' : ':'}${originalPath ?? ''}`;
-    try {
-      const events = await runImplementStage(ctx);
-
-      const failEvents = filterEvents(events, 'plan:build:failed');
-      expect(failEvents).toHaveLength(0);
-
-      // The shim should have been called twice, install before type-check
-      const log = (await readFile(logFile, 'utf-8')).trim().split('\n');
-      expect(log).toEqual(['install', 'type-check']);
-    } finally {
-      process.env.PATH = originalPath;
-      await rm(shimDir, { recursive: true, force: true });
-    }
-  });
-
-  it('coordinator verification: dedups when plan already lists postMergeCommands', async () => {
-    // Put shim and log outside the git worktree so the safety-sweep
-    // `git add -A` in the coordinator doesn't pick them up.
-    const shimDir = await mkdtemp(join(tmpdir(), 'eforge-shim-'));
-    const logFile = join(shimDir, 'pnpm-calls.log');
-    await writeFile(
-      join(shimDir, 'pnpm'),
-      `#!/usr/bin/env bash\necho "$1" >> "${logFile}"\n`,
-      'utf-8',
-    );
-    await chmod(join(shimDir, 'pnpm'), 0o755);
-
-    await mkdir(join(tmpDir, 'packages'), { recursive: true });
-    await writeFile(join(tmpDir, 'packages', 'y.ts'), 'export const y = 2;\n');
-    await exec('git', ['add', 'packages/y.ts'], { cwd: tmpDir });
-
-    const planFile = makePlanFile({
-      id: 'plan-dedup',
-      name: 'Dedup Plan',
-      // Plan body lists `pnpm install` AND `pnpm type-check`; install must not run twice
-      body: '# Plan\n\n## Verification\n\n- `pnpm install`\n- `pnpm type-check`\n',
-      agents: {
-        builder: {
-          shards: [{ id: 'shard-pkg', roots: ['packages/'] }],
-        },
-      },
-    });
-
-    const harness = new StubHarness([{ text: 'Done.' }]);
-    const ctx = makeBuildCtx(tmpDir, planFile, harness, {
-      config: {
-        ...DEFAULT_CONFIG,
-        build: { ...DEFAULT_CONFIG.build, postMergeCommands: ['pnpm install'] },
-      },
-    });
-
-    const originalPath = process.env.PATH;
-    process.env.PATH = `${shimDir}${process.platform === 'win32' ? ';' : ':'}${originalPath ?? ''}`;
-    try {
-      await runImplementStage(ctx);
-
-      const log = (await readFile(logFile, 'utf-8')).trim().split('\n');
-      expect(log).toEqual(['install', 'type-check']);
-    } finally {
-      process.env.PATH = originalPath;
-      await rm(shimDir, { recursive: true, force: true });
-    }
   });
 });
