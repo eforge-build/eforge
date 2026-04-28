@@ -49,7 +49,7 @@ function parseModelsFromLog(logBody: string): string[] {
  * @param dbPath - Optional path to monitor.db for event-history synthesis
  * @param prdContent - Optional PRD file content (unused currently, reserved for future)
  */
-export async function buildFailureSummary({ setName, prdId, cwd, dbPath }: {
+export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdContent }: {
   setName: string;
   prdId: string;
   cwd: string;
@@ -59,7 +59,7 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath }: {
   const state = loadState(cwd);
   if (!state) {
     // Partial path: state.json is missing — synthesize from available sources
-    return buildPartialSummary({ setName, prdId, cwd, dbPath });
+    return buildPartialSummary({ setName, prdId, cwd, dbPath, prdContent });
   }
 
   const baseBranch = state.baseBranch;
@@ -147,11 +147,12 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath }: {
  * Synthesizes from monitor.db events and git history on the feature branch.
  * Returns `partial: true` always.
  */
-async function buildPartialSummary({ setName, prdId, cwd, dbPath }: {
+async function buildPartialSummary({ setName, prdId, cwd, dbPath, prdContent }: {
   setName: string;
   prdId: string;
   cwd: string;
   dbPath?: string;
+  prdContent?: string;
 }): Promise<BuildFailureSummary> {
   const featureBranch = `eforge/${setName}`;
 
@@ -230,5 +231,6 @@ async function buildPartialSummary({ setName, prdId, cwd, dbPath }: {
     modelsUsed,
     failedAt,
     partial: true,
+    ...(prdContent !== undefined ? { prdContent } : {}),
   };
 }

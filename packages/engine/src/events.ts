@@ -363,6 +363,8 @@ export interface BuildFailureSummary {
   failedAt: string;
   /** When true, the summary was synthesized from partial context (state.json was missing). */
   partial?: boolean;
+  /** Raw PRD markdown content, included in the partial path when state.json is missing. */
+  prdContent?: string;
 }
 
 export type QueueEvent =

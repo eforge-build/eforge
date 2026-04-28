@@ -916,6 +916,12 @@ export async function startServer(
         sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
         return;
       }
+      // NOTE: The daemon's recovery polling loop (which called broadcast('recovery:start', ...))
+      // was intentionally removed in favour of inline recovery in the queue parent. The monitor
+      // UI's onNamedEvent handler (packages/monitor-ui/src/hooks/use-eforge-events.ts) only
+      // processes 'monitor:shutdown-pending' and 'monitor:shutdown-cancelled' named SSE events;
+      // it does not consume 'recovery:start' broadcasts. No migration to phase:end is needed.
+      // Recovery results are surfaced via the sidecar polling in queue-section.tsx.
       try {
         const result = options.workerTracker.spawnWorker(
           'recover',
