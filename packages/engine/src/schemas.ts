@@ -57,6 +57,14 @@ const testCategorySchema = z.enum([
   'fixtures', 'assertions', 'flaky-patterns', 'test-design',
 ]).describe('Review category for the test perspective');
 
+/** Verify perspective category — always verification-failure. */
+const verifyCategorySchema = z.enum(['verification-failure'])
+  .describe('Review category for the verify perspective — always verification-failure');
+
+/** Verify perspective severity — always critical. */
+const verifySeveritySchema = z.enum(['critical'])
+  .describe('Verify issue severity: always critical — a failing command must be fixed before merge');
+
 // ---------------------------------------------------------------------------
 // TestIssue schemas
 // ---------------------------------------------------------------------------
@@ -332,6 +340,10 @@ const apiReviewIssueSchema = makeReviewIssueSchemaWithCategory(apiCategorySchema
 const docsReviewIssueSchema = makeReviewIssueSchemaWithCategory(docsCategorySchema);
 const testReviewIssueSchema = makeReviewIssueSchemaWithCategory(testCategorySchema);
 const planReviewIssueSchema = makeReviewIssueSchemaWithCategory(planReviewCategorySchema);
+export const verifyReviewIssueSchema = reviewIssueSchema.extend({
+  severity: verifySeveritySchema,
+  category: verifyCategorySchema,
+});
 
 // ---------------------------------------------------------------------------
 // Convenience getters — one per perspective
@@ -365,6 +377,11 @@ export function getDocsReviewIssueSchemaYaml(): string {
 /** Schema YAML for the test quality perspective. */
 export function getTestsReviewIssueSchemaYaml(): string {
   return getSchemaYaml('review-issue-test', testReviewIssueSchema);
+}
+
+/** Schema YAML for the verify perspective (subprocess command failures). */
+export function getVerifyReviewIssueSchemaYaml(): string {
+  return getSchemaYaml('review-issue-verify', verifyReviewIssueSchema);
 }
 
 /** Schema YAML for test issues (used by tester agent). */

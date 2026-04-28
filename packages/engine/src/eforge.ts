@@ -560,8 +560,24 @@ export class EforgeEngine {
 
         // Read per-plan build/review from orchestration.yaml plan entry (required fields)
         const planEntry = orchConfig.plans.find((p) => p.id === planId)!;
-        const planBuild: BuildStageSpec[] = planEntry.build;
-        const planReview: ReviewProfileConfig = planEntry.review;
+        let planBuild: BuildStageSpec[] = planEntry.build;
+        let planReview: ReviewProfileConfig = planEntry.review;
+
+        // Runtime guard: sharded plans must run review-cycle with the verify perspective.
+        // Belt-and-suspenders against planner-prompt omissions. Shards do not self-verify,
+        // so the review-cycle's verify perspective is the integration gate.
+        const builderShards = planFile.agents?.['builder']?.shards;
+        if (builderShards && builderShards.length > 0) {
+          const flatStages = planBuild.flat();
+          if (!flatStages.includes('review-cycle')) {
+            planBuild = [...planBuild, 'review-cycle'];
+            console.debug(`[eforge] Runtime guard: injected review-cycle into plan ${planId} (sharded plan missing review-cycle)`);
+          }
+          if (!planReview.perspectives.includes('verify')) {
+            planReview = { ...planReview, perspectives: [...planReview.perspectives, 'verify'] };
+            console.debug(`[eforge] Runtime guard: injected verify into plan ${planId} review perspectives (sharded plan)`);
+          }
+        }
 
         const buildCtx: BuildStageContext = {
           agentRuntimes,

@@ -18,6 +18,10 @@ The following issues were identified by specialist reviewers, sorted by severity
 6. Keep fixes minimal - only change what is necessary to resolve each issue.
 7. Do not alter the implementation's design or architecture.
 
+# Cross-Diff Fixes
+
+For issues with `category="verification-failure"`, the fix may require editing files **outside the original diff**. Verification failures often reveal coupling between changed code and unchanged tests, configuration, or documentation. Edit whatever file the issue's `<fix>` element identifies as the root cause — do not restrict yourself to the original diff when resolving these issues.
+
 # Constraints
 
 - Do NOT run `git add` - all fixes must remain unstaged

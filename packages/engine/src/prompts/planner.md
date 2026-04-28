@@ -89,6 +89,8 @@ Errand skips plan review entirely - the plan goes directly to build without any 
 
 When emitting shards, use `roots` for directory subtrees and `files` for explicit paths. Scope enforcement is automatic — overlapping shards will be rejected. Keep shard IDs short and descriptive.
 
+**Required pipeline rule:** When you set an `agents.builder.shards` block, the plan's build pipeline MUST include `review-cycle`. Shards do not self-verify, so the review-cycle's `verify` perspective is the integration gate; the engine will refuse to run a sharded plan without it. The runtime will inject `review-cycle` and the `verify` perspective as a safety net, but the planner should emit them explicitly so the orchestration config is self-documenting.
+
 Example frontmatter shape:
 
 ```yaml

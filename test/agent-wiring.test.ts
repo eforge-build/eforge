@@ -8,6 +8,7 @@ import { useTempDir } from './test-tmpdir.js';
 import { runPlanner } from '@eforge-build/engine/agents/planner';
 import { runReview } from '@eforge-build/engine/agents/reviewer';
 import { builderImplement, builderEvaluate } from '@eforge-build/engine/agents/builder';
+import { runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
 import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
 import { runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
@@ -1476,5 +1477,90 @@ describe('AgentRuntimeRegistry dual-stub dispatch', () => {
 
     expect(plannerStub.prompts).toHaveLength(1);
     expect(builderStub.prompts).toHaveLength(1); // unchanged
+  });
+});
+
+// --- Parallel Reviewer: verify perspective ---
+
+describe('runParallelReview verify perspective', () => {
+  it('accepts verify as an override perspective and dispatches to reviewer-verify prompt', async () => {
+    const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\n## Verification\n\n- [ ] `pnpm build`',
+        baseBranch: 'main',
+        planId: 'plan-verify-wiring',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['verify'],
+      }),
+    );
+
+    // The stub should have been invoked once (one perspective = one agent call)
+    expect(backend.prompts).toHaveLength(1);
+
+    // The prompt should be the reviewer-verify prompt (contains its unique marker text)
+    expect(backend.prompts[0]).toContain('verification specialist');
+
+    // Review lifecycle events should be emitted
+    expect(findEvent(events, 'plan:build:review:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:review:parallel:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:review:complete')).toBeDefined();
+
+    // The parallel:start event should include the verify perspective
+    const parallelStart = findEvent(events, 'plan:build:review:parallel:start');
+    expect(parallelStart).toBeDefined();
+    expect(parallelStart!.perspectives).toContain('verify');
+  });
+
+  it('verify perspective prompt includes review_issue_schema variable with verification-failure category', async () => {
+    const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
+
+    await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\n## Verification\n\n- [ ] `pnpm type-check`',
+        baseBranch: 'main',
+        planId: 'plan-schema-wiring',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['verify'],
+      }),
+    );
+
+    expect(backend.prompts).toHaveLength(1);
+    // The schema YAML ({{review_issue_schema}}) should be substituted in the prompt
+    // and contain 'verification-failure' as the only allowed category
+    expect(backend.prompts[0]).toContain('verification-failure');
+  });
+
+  it('verify perspective is registered alongside the five diff-based perspectives', () => {
+    // Run with all 6 perspectives and verify the stub gets called 6 times
+    // This confirms all 6 entries exist in PERSPECTIVE_PROMPTS and PERSPECTIVE_SCHEMA_YAML
+    const backend = new StubHarness([
+      { text: '<review-issues></review-issues>' }, // code
+      { text: '<review-issues></review-issues>' }, // security
+      { text: '<review-issues></review-issues>' }, // api
+      { text: '<review-issues></review-issues>' }, // docs
+      { text: '<review-issues></review-issues>' }, // test
+      { text: '<review-issues></review-issues>' }, // verify
+    ]);
+
+    return collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\n## Verification\n\n- [ ] `pnpm build`',
+        baseBranch: 'main',
+        planId: 'plan-six-perspectives',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code', 'security', 'api', 'docs', 'test', 'verify'],
+      }),
+    ).then(() => {
+      // 6 perspectives = 6 agent calls
+      expect(backend.prompts).toHaveLength(6);
+    });
   });
 });

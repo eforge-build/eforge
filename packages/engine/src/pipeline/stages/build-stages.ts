@@ -300,81 +300,6 @@ export function enforceShardScope(
   return { ok: true };
 }
 
-/**
- * Extract and run verification commands from a plan body.
- * Commands are extracted from backtick-quoted strings in the "## Verification" section.
- * In build-only mode, test commands are skipped.
- * Yields a plan:build:failed event if any command fails.
- *
- * `postMergeCommands` are prepended so verification runs against a worktree
- * whose project-level setup has been performed. Mirrors the global post-merge
- * `validate` phase (see `orchestrator/phases.ts` `validate`).
- */
-async function* runVerificationCommands(
-  planBody: string,
-  cwd: string,
-  planId: string,
-  verificationScope: 'full' | 'build-only',
-  postMergeCommands?: string[],
-): AsyncGenerator<EforgeEvent> {
-  // Find the Verification section. The lookahead must terminate at the next
-  // `## ` heading or at the true end of the string. `\s*$` with the `m` flag
-  // matches the end of *any* line, so a previous version of this regex
-  // truncated the section after the first newline and dropped every command
-  // beyond the first one. Use `$(?![\s\S])` (and `\n##\s` instead of `^##\s`
-  // so the `m` flag is unnecessary) to anchor only at end-of-input.
-  const sectionMatch = planBody.match(/^##\s+Verification\s*\n([\s\S]*?)(?=\n##\s|$(?![\s\S]))/m);
-  if (!sectionMatch) return;
-
-  const section = sectionMatch[1];
-
-  // Extract commands in backticks (pnpm/npm/npx/yarn only)
-  const commands: string[] = [];
-  const cmdPattern = /`((?:pnpm|npm|npx|yarn)\s+[^`]+)`/g;
-  let m;
-  while ((m = cmdPattern.exec(section)) !== null) {
-    commands.push(m[1].trim());
-  }
-
-  // Deduplicate
-  const unique = [...new Set(commands)];
-
-  // Filter for build-only: skip test commands
-  const filtered = verificationScope === 'build-only'
-    ? unique.filter((cmd) => !/\b(test|jest|vitest)\b/.test(cmd))
-    : unique;
-
-  // No plan-body verification commands → skip postMergeCommands too (nothing
-  // to verify against, so installing dependencies is moot for this phase).
-  if (filtered.length === 0) return;
-
-  // Prepend postMergeCommands so project-level setup runs before the
-  // verification commands. Dedup against the extracted commands so a plan
-  // that already lists a setup command does not run it twice. postMergeCommands
-  // are not subject to the build-only test filter above; this matches the
-  // global validate phase in orchestrator/phases.ts.
-  const allCommands = [...new Set([...(postMergeCommands ?? []), ...filtered])];
-
-  for (const cmd of allCommands) {
-    const parts = cmd.split(/\s+/);
-    const prog = parts[0];
-    const args = parts.slice(1);
-    try {
-      await exec(prog, args, { cwd });
-    } catch (err) {
-      const stderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr ?? '';
-      const stdout = (err as NodeJS.ErrnoException & { stdout?: string }).stdout ?? '';
-      const output = (stdout + stderr).trim() || (err as Error).message;
-      yield {
-        timestamp: new Date().toISOString(),
-        type: 'plan:build:failed',
-        planId,
-        error: `Shard coordinator verification failed (${cmd}): ${output}`,
-      };
-      return;
-    }
-  }
-}
 
 /** Per-shard-attempt span + event processing. Creates a new span per attempt. */
 async function* runBuilderShardAttempt(
@@ -570,28 +495,6 @@ registerBuildStage({
       }
     } catch (err) {
       yield toBuildFailedEvent(ctx.planId, err);
-      ctx.buildFailed = true;
-      return;
-    }
-
-    // Verification (coordinator runs once across all shards). Pass
-    // postMergeCommands so project-level setup runs before verification —
-    // a freshly created merge worktree has none of the project's installed
-    // state until a setup command produces it.
-    let verificationFailed = false;
-    for await (const event of runVerificationCommands(
-      ctx.planFile.body,
-      ctx.worktreePath,
-      ctx.planId,
-      verificationScope,
-      ctx.config.build.postMergeCommands,
-    )) {
-      yield event;
-      if (event.type === 'plan:build:failed') {
-        verificationFailed = true;
-      }
-    }
-    if (verificationFailed) {
       ctx.buildFailed = true;
       return;
     }
