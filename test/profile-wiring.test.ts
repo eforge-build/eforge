@@ -813,15 +813,14 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(raw).toContain('profile:');
   });
 
-  it('plugin version bumped to 0.16.0', () => {
+  it('plugin version bumped to at least 0.16.0', () => {
+    // The redesign-eforge-init-around-multi-runtime-profiles PRD required a plugin bump.
+    // Floor at 0.16.0; subsequent bumps (mandated by AGENTS.md on every plugin change)
+    // must keep moving forward, not stay pinned to a single version.
     const manifest = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { version: string };
-    expect(manifest.version).not.toBe('0.13.0');
-    // Parse and compare as major.minor.patch
     const [major, minor] = manifest.version.split('.').map(Number);
-    const [refMajor, refMinor] = '0.13.0'.split('.').map(Number);
-    const isGreater = major > refMajor || (major === refMajor && minor > refMinor);
-    expect(isGreater).toBe(true);
-    expect(manifest.version).toBe('0.16.0');
+    const isAtLeast = major > 0 || (major === 0 && minor >= 16);
+    expect(isAtLeast).toBe(true);
   });
 
   it('MCP proxy eforge_init writes config file before calling profileCreate in the fresh-init branch', () => {
