@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.7.3] - 2026-04-28
+
+### Features
+
+- **consumers**: Rewrite init skill and tool API around multi-runtime profile input
+- **core**: PRD Gap Close
+- **fix-daemon-profile-routes-to-honor-user-scope-when-no-project-config-exists**: Daemon profile routes fall back to user scope when no project config
+- **fix-eforge-init-fresh-project-bootstrap-ordering-bug**: Fix eforge_init fresh-init ordering across both consumers
+- **fix-recovery-split-successor-prd-spurious-blocked-by-dependency**: Fix spurious depends_on on split-recovery successor PRDs
+- **foundation**: Generalize createAgentRuntimeProfile, daemon route, API version
+- **improve-eforge-init-quick-path-smarter-tier-defaults-per-harness**: Tier-aware Quick path in both init skills
+- **offer-existing-user-scope-profiles-in-eforge-init**: Offer existing user-scope profiles in /eforge:init
+- **redesign-eforge-init-around-multi-runtime-profiles**: Redesign /eforge:init around multi-runtime profiles: skill drives all elicitation, eforge_init becomes a pure persister, users pick quick (single-harness) or mix-and-match (per-tier) setup, and the engine helper accepts richer multi-runtime input.
+- **replace-backend-with-harness-across-the-eforge-mcp-http-skill-stack**: Rename backend → harness across MCP, HTTP, client types, engine helpers, and skills
+- **sharded-builds-always-go-through-review-cycle-with-a-new-verify-perspective**: Verify perspective + coordinator rewire to review-cycle
+
+### Bug Fixes
+
+- **core**: change agents.tiers schema key from AgentTier to ModelClass
+- **core**: resolve validation failures
+- **core**: update stale test expectations after backend→harness rename
+- **engine**: prepend postMergeCommands to shard verification
+
+### Maintenance
+
+- **daemon-recovery**: drop brittle DAEMON_API_VERSION assertion
+- **deps**: bump pi-* to 0.70.6 and claude-agent-sdk to 0.2.122
+- **verify-perspective-and-coordinator-rewire**: fix test issues
+
 ## [0.7.2] - 2026-04-28
 
 ### Features
@@ -345,21 +374,6 @@
 
 - Global cap + validator read affordance
 - Per-file budgeted PRD validator diff
-
-## [0.5.1] - 2026-04-13
-
-### Features
-
-- engine: add prompt customization via promptDir and per-role promptAppend
-- fix build phase crash when planner generates 0 plans
-
-### Bug Fixes
-
-- remove prd-passthrough compile stage so planner always runs for codebase-aware skip detection
-
-### Maintenance
-
-- fix test assertions for plan:skip on 0 plans
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
