@@ -15,6 +15,7 @@ import { execSync } from "node:child_process";
 import {
   ALL_PACKAGE_PATHS,
   bumpSemver,
+  EFORGE_MCP_PROXY,
   propagateVersion,
   readJson,
   readSourceVersion,
@@ -63,8 +64,9 @@ propagateVersion(next);
 // 3. Verify.
 verifyAllAtVersion(next);
 
-// 4. Commit and tag.
-run(`git add ${ALL_PACKAGE_PATHS.join(" ")}`);
+// 4. Commit and tag. The proxy pin is also rewritten by propagateVersion(); stage it
+//    so the bump commit captures every lockstep-version surface in one atomic move.
+run(`git add ${ALL_PACKAGE_PATHS.join(" ")} ${EFORGE_MCP_PROXY}`);
 run(`git commit -m "${next}"`);
 run(`git tag -a v${next} -m "v${next}"`);
 

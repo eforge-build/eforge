@@ -43,17 +43,21 @@ const forwardedArgs = process.argv.slice(2);
 const useWorkspace = isEforgeWorkspace();
 const debug = process.env.EFORGE_DEBUG === "1" || /\beforge\b/.test(process.env.DEBUG ?? "");
 
-// Published fallback pins ^0.5.0 so the plugin can't silently pull in an older
-// major where the mcp-proxy subcommand or its contract has changed.
+// Published fallback pins to the matching minor so the plugin can't silently
+// pull in a different minor where the mcp-proxy subcommand or its contract has
+// changed. Pre-1.0 we treat each minor as potentially breaking. The pin literal
+// is rewritten in lockstep with packages/eforge/package.json by
+// scripts/lib/lockstep-version.mjs (propagateVersion / verifyAllAtVersion); do
+// not edit it by hand without updating the source-of-truth version.
 const [command, args] = useWorkspace
   ? ["node", [workspaceCli, "mcp-proxy", ...forwardedArgs]]
-  : ["npx", ["-y", "@eforge-build/eforge@^0.5.0", "mcp-proxy", ...forwardedArgs]];
+  : ["npx", ["-y", "@eforge-build/eforge@^0.7.0", "mcp-proxy", ...forwardedArgs]];
 
 if (debug) {
   process.stderr.write(
     useWorkspace
       ? `eforge-mcp-proxy: workspace build at ${workspaceCli}\n`
-      : `eforge-mcp-proxy: npx -y @eforge-build/eforge@^0.5.0 (no workspace detected)\n`,
+      : `eforge-mcp-proxy: npx -y @eforge-build/eforge@^0.7.0 (no workspace detected)\n`,
   );
 }
 
