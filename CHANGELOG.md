@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.5] - 2026-04-29
+
+### Maintenance
+
+- **release**: rewrite plugin MCP proxy pin in lockstep with version
+
 ## [0.7.4] - 2026-04-29
 
 Maintenance release
@@ -365,19 +371,6 @@ Maintenance release
 
 - fix stale planner wiring tests
 - post-parallel-group auto-commit
-
-## [0.5.3] - 2026-04-13
-
-### Features
-
-- Rename eforge-pi package to pi-eforge
-
-## [0.5.2] - 2026-04-13
-
-### Features
-
-- Global cap + validator read affordance
-- Per-file budgeted PRD validator diff
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
