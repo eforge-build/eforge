@@ -140,3 +140,16 @@ export function apiPlaybookDemote(opts: { cwd: string; body: { name: string } })
 export function apiPlaybookValidate(opts: { cwd: string; body: { raw: string } }) {
   return daemonRequest<PlaybookValidateResponse>(opts.cwd, 'POST', API_ROUTES.playbookValidate, opts.body);
 }
+
+export interface PlaybookCopyResponse {
+  sourcePath: string;
+  targetPath: string;
+  targetScope: PlaybookScope;
+}
+
+export function apiPlaybookCopy(opts: {
+  cwd: string;
+  body: { name: string; targetScope: 'project-local' | 'project-team' | 'user' };
+}) {
+  return daemonRequest<PlaybookCopyResponse>(opts.cwd, 'POST', API_ROUTES.playbookCopy, opts.body);
+}

@@ -166,6 +166,10 @@ export interface SessionPlanInput {
   acceptanceCriteria: string;
   /** Raw planner notes text extracted from the playbook. */
   plannerNotes: string;
+  /** Agent runtime profile name to use when executing this playbook (forwarded from frontmatter). */
+  agentRuntime?: string;
+  /** Commands to run after the build merges (forwarded from frontmatter). */
+  postMerge?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -513,6 +517,56 @@ export function playbookToSessionPlan(playbook: Playbook): SessionPlanInput {
     outOfScope: playbook.outOfScope,
     acceptanceCriteria: playbook.acceptanceCriteria,
     plannerNotes: playbook.plannerNotes,
+    agentRuntime: playbook.agentRuntime,
+    postMerge: playbook.postMerge,
+  };
+}
+
+export interface CopyPlaybookToScopeOpts {
+  configDir: string;
+  cwd: string;
+  name: string;
+  targetScope: PlaybookScope;
+}
+
+export interface CopyPlaybookToScopeResult {
+  sourcePath: string;
+  targetPath: string;
+  targetScope: PlaybookScope;
+}
+
+/**
+ * Copy the highest-precedence version of a named playbook to a different tier.
+ *
+ * Loads the playbook from whichever tier currently owns the highest-precedence
+ * copy, then writes it to the `targetScope` tier with the `scope` frontmatter
+ * field updated to match. Overwrites the target if it already exists.
+ *
+ * Returns the source and target absolute paths so callers can stage/report them.
+ */
+export async function copyPlaybookToScope(opts: CopyPlaybookToScopeOpts): Promise<CopyPlaybookToScopeResult> {
+  const { configDir, cwd, name, targetScope } = opts;
+
+  // Resolve the highest-precedence artifact to get its path
+  const artifact = await loadSetArtifact(PLAYBOOKS_KIND, name, opts);
+  if (!artifact) {
+    throw new PlaybookNotFoundError(name);
+  }
+
+  const raw = await readFile(artifact.path, 'utf-8');
+  const result = parsePlaybookRaw(raw);
+  if (!result.ok) {
+    throw new Error(`Playbook "${name}" at ${artifact.path} is invalid: ${result.errors.join('; ')}`);
+  }
+
+  // Write to target scope with updated scope field
+  const updatedPlaybook: Playbook = { ...result.playbook, scope: targetScope };
+  const { path: targetPath } = await writePlaybook({ configDir, cwd, scope: targetScope, playbook: updatedPlaybook });
+
+  return {
+    sourcePath: artifact.path,
+    targetPath,
+    targetScope,
   };
 }
 

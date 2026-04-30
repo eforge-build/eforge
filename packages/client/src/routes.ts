@@ -136,6 +136,7 @@ export const API_ROUTES = {
   playbookPromote: '/api/playbook/promote',
   playbookDemote: '/api/playbook/demote',
   playbookValidate: '/api/playbook/validate',
+  playbookCopy: '/api/playbook/copy',
 } as const;
 
 /** Response body for GET /api/version */

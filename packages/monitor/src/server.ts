@@ -1512,6 +1512,8 @@ export async function startServer(
           // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
           intoWaiting: afterQueueId ? true : false,
           // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+          agentRuntime: plan.agentRuntime,
+          postMerge: plan.postMerge,
         });
         sendJson(res, { id: result.id });
       } catch (err) {
@@ -1629,6 +1631,57 @@ export async function startServer(
         }
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to validate playbook');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.playbookCopy) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { name?: unknown; targetScope?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.name || typeof body.name !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: name (string)');
+        return;
+      }
+      if (!PLAYBOOK_NAME_RE.test(body.name)) {
+        sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
+        return;
+      }
+      const validScopes = ['project-local', 'project-team', 'user'] as const;
+      if (!body.targetScope || !validScopes.includes(body.targetScope as typeof validScopes[number])) {
+        sendJsonError(res, 400, 'Missing or invalid field: targetScope (must be "project-local", "project-team", or "user")');
+        return;
+      }
+      try {
+        const { getConfigDir } = await import('@eforge-build/engine/config');
+        const { copyPlaybookToScope } = await import('@eforge-build/engine/playbook');
+        const configDir = await getConfigDir(cwd);
+        if (!configDir) {
+          sendJsonError(res, 404, 'No eforge config directory found');
+          return;
+        }
+        const result = await copyPlaybookToScope({
+          configDir,
+          cwd,
+          name: body.name,
+          targetScope: body.targetScope as 'project-local' | 'project-team' | 'user',
+        });
+        sendJson(res, { sourcePath: result.sourcePath, targetPath: result.targetPath, targetScope: result.targetScope });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to copy playbook';
+        if (/not found/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
       }
       return;
     }

@@ -180,7 +180,7 @@ If the selected playbook is **shadowed by** a more-specific tier (e.g., the user
 > 2. Edit the **original** (project-team — shadowed, not active)
 > 3. Copy the original to project-local and edit (creates a new shadow)"
 
-If the user picks option 3, create the copy before proceeding.
+If the user picks option 3, call `POST /api/playbook/copy` with `{ name: "<name>", targetScope: "project-local" }` via the daemon client before entering the section-by-section edit loop. This atomically copies the playbook to the project-local tier so the daemon will run the new shadow going forward. Then proceed with the edit loop using the copied version.
 
 ### 4.3: Load the playbook
 

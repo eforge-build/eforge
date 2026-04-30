@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { ChevronRight, RefreshCw } from 'lucide-react';
+import { ChevronRight, CornerDownRight, RefreshCw } from 'lucide-react';
 import type { QueueItem, RunInfo } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
 import { fetchRecoverySidecar, triggerRecover } from '@/lib/api';
@@ -231,7 +231,7 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
               <div className="flex items-center gap-2">
                 {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}
                 {isChild && (
-                  <span className="text-[10px] text-text-dim/60 flex-shrink-0">↳</span>
+                  <CornerDownRight className="h-3 w-3 text-text-dim/60 flex-shrink-0 shrink-0" />
                 )}
                 {/* --- eforge:endregion plan-05-piggyback-and-queue-scheduling --- */}
                 <span
