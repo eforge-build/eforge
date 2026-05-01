@@ -86,7 +86,7 @@ agents:
         provider: openrouter
 ```
 
-If you want all tiers on the same provider/harness with the same model, you can omit any tier you don't want to override - unset tiers use engine defaults (`claude-sdk` harness). To set all tiers at once, repeat the recipe block for each of the four tiers.
+Unset tiers fall back to the engine defaults (all `claude-sdk` harness; `claude-opus-4-7` for `planning`/`review`/`evaluation`, `claude-sonnet-4-6` for `implementation`). If your old config used `pi` everywhere, you must list all four tiers - omitting any tier means it reverts to the `claude-sdk` default.
 
 ---
 
@@ -188,7 +188,7 @@ agents:
 
 **After:**
 
-Each model class maps directly to a tier's `model:` field. Old per-role `modelClass` overrides become `agents.roles[role].tier:` reassignments (pointing the role to a tier that uses the lighter model). Note that model refs are now plain strings, not objects:
+Each model class maps directly to a tier's `model:` field. Old per-role `modelClass` overrides become either `agents.roles[role].tier:` reassignments (when the lighter model already lives on a different tier) or per-role `model:` overrides (for any model not represented by a tier). Note that model refs are now plain strings, not objects:
 
 ```yaml
 agents:
@@ -199,11 +199,11 @@ agents:
       effort: medium
   roles:
     reviewer:
-      tier: implementation       # move reviewer from review tier to implementation tier
+      tier: implementation       # was modelClass: balanced (sonnet); implementation tier already uses sonnet
     formatter:
-      tier: implementation       # move formatter from planning tier to implementation tier
+      model: claude-haiku-4-5    # was modelClass: fast (haiku); no tier uses haiku, so override per-role
     staleness-assessor:
-      model: claude-haiku-4-5   # per-role model override, still in its default tier
+      model: claude-haiku-4-5    # per-role model override, still in its default tier
 ```
 
 **Choosing between `tier:` reassignment and per-role `model:` override:**

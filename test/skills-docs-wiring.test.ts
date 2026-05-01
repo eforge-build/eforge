@@ -244,11 +244,11 @@ describe('docs/config.md - Backend Profiles section', () => {
   });
 
   it('documents user-scope profile path', () => {
-    expect(raw).toContain('~/.config/eforge/backends/');
+    expect(raw).toContain('~/.config/eforge/profiles/');
   });
 
   it('documents user-scope active-backend marker', () => {
-    expect(raw).toContain('~/.config/eforge/.active-backend');
+    expect(raw).toContain('~/.config/eforge/.active-profile');
   });
 
   it('documents the 6-step precedence chain', () => {
@@ -259,12 +259,12 @@ describe('docs/config.md - Backend Profiles section', () => {
     const nextSection = raw.indexOf('\n## ', sectionStart + 1);
     const section = raw.slice(sectionStart, nextSection > -1 ? nextSection : undefined);
 
+    // Plan-02 removed defaultAgentRuntime, collapsing the 6-step chain to 4 steps
+    // "Project config" and "User config" steps are no longer present
     expect(section).toMatch(/1\.\s+\*\*Project-local marker\*\*/);
     expect(section).toMatch(/2\.\s+\*\*Project marker\*\*/);
-    expect(section).toMatch(/3\.\s+\*\*Project config\*\*/);
-    expect(section).toMatch(/4\.\s+\*\*User marker\*\*/);
-    expect(section).toMatch(/5\.\s+\*\*User config\*\*/);
-    expect(section).toMatch(/6\.\s+\*\*None\*\*/);
+    expect(section).toMatch(/3\.\s+\*\*User marker\*\*/);
+    expect(section).toMatch(/4\.\s+\*\*None\*\*/);
   });
 
   it('documents the scope parameter for create, use, delete', () => {

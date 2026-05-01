@@ -61,7 +61,7 @@ agents:
   #     tier: implementation  #   review-fixer, merge-conflict-resolver, staleness-assessor,
   #   reviewer:               #   formatter, doc-updater, test-writer, tester,
   #     promptAppend: |       #   prd-validator, dependency-detector, gap-closer,
-  #       ## Project Rules    #   recovery-analyst
+  #       ## Project Rules    #   recovery-analyst, pipeline-composer
   #       - Flag raw SQL queries
 
 maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (default: 2)
@@ -74,8 +74,6 @@ build:
   # postMergeCommands:        # Extra validation commands
   #   - "pnpm type-check"
   #   - "pnpm test"
-
-Each command in `postMergeCommands` and the planner-generated validate commands runs under a wall-clock timeout. On expiry the full subprocess tree is killed and the validation-fixer loop is invoked as if the command had exited non-zero. Default 300000 ms (5 minutes). Values below 10000 ms are clamped and emit a `config:warning` event.
 
 plan:
   outputDir: eforge/plans     # Where plan artifacts are written
@@ -91,6 +89,8 @@ daemon:
 monitor:
   retentionCount: 20          # Number of recent builds to retain in the monitor DB (oldest pruned)
 ```
+
+Each command in `postMergeCommands` and the planner-generated validate commands runs under a wall-clock timeout. On expiry the full subprocess tree is killed and the validation-fixer loop is invoked as if the command had exited non-zero. Default 300000 ms (5 minutes). Values below 10000 ms are clamped and emit a `config:warning` event.
 
 ## Tiers
 
@@ -118,6 +118,7 @@ agents:
       harness: claude-sdk       # Required: 'claude-sdk' or 'pi'
       model: claude-opus-4-7   # Required: plain string model identifier
       effort: high             # Required: 'low', 'medium', 'high', 'xhigh', 'max'
+      # thinkingLevel: xhigh  # Pi only: 'off', 'low', 'medium', 'high', 'xhigh'
       thinking:                # Optional: thinking config
         type: adaptive         # 'adaptive', 'enabled', or 'disabled'
         budgetTokens: 10000    # Only when type: enabled
@@ -309,9 +310,9 @@ Backend profiles are named YAML files that bundle tier recipes (harness, model, 
 
 ### User-Scoped Profiles
 
-User-scoped profiles live at `~/.config/eforge/backends/<name>.yaml` (respects `$XDG_CONFIG_HOME`). They are not committed to the project repository and are reusable across all projects on the machine.
+User-scoped profiles live at `~/.config/eforge/profiles/<name>.yaml` (respects `$XDG_CONFIG_HOME`). They are not committed to the project repository and are reusable across all projects on the machine.
 
-The user-scope active-backend marker lives at `~/.config/eforge/.active-backend`.
+The user-scope active-profile marker lives at `~/.config/eforge/.active-profile`.
 
 ### Active Profile Precedence
 
