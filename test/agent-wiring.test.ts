@@ -903,7 +903,7 @@ describe('validatePipeline', () => {
   it('returns valid for a correct pipeline', () => {
     const result = validatePipeline(
       ['planner', 'plan-review-cycle'],
-      ['implement', 'doc-update', 'review-cycle'],
+      ['implement', 'doc-author', 'doc-sync', 'review-cycle'],
     );
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
@@ -1156,7 +1156,9 @@ describe('resolveAgentConfig per-role effort defaults', () => {
     { role: 'planner', expectedEffort: 'high' },
     { role: 'module-planner', expectedEffort: 'high' },
     { role: 'merge-conflict-resolver', expectedEffort: 'high' },
-    { role: 'doc-updater', expectedEffort: 'high' },
+    // Implementation tier (effort: 'medium') — doc-author and doc-syncer are both implementation tier agents
+    { role: 'doc-author', expectedEffort: 'medium' },
+    { role: 'doc-syncer', expectedEffort: 'medium' },
     { role: 'gap-closer', expectedEffort: 'high' },
     // Review tier (effort: 'high')
     { role: 'architecture-reviewer', expectedEffort: 'high' },

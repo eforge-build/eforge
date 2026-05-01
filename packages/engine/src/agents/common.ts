@@ -360,7 +360,7 @@ const buildConfigSchema = z.object({
  * Expected format:
  *   <build-config>
  *   {
- *     "build": [["implement", "doc-update"], "review-cycle"],
+ *     "build": [["implement", "doc-author"], "doc-sync", "review-cycle"],
  *     "review": { "strategy": "auto", "perspectives": ["code"], "maxRounds": 1, "evaluatorStrictness": "standard" }
  *   }
  *   </build-config>

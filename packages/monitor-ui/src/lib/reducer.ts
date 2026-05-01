@@ -199,9 +199,16 @@ function processEvent(
       case 'plan:build:implement:start':
         state.planStatuses[planId] = 'implement';
         break;
-      case 'plan:build:doc-update:start':
-      case 'plan:build:doc-update:complete':
-        // Doc-update runs in parallel with implement — don't advance stage
+      case 'plan:build:doc-author:start':
+      case 'plan:build:doc-author:complete':
+        // Doc-author runs in parallel with implement — don't advance stage
+        break;
+      case 'plan:build:doc-sync:start':
+        // Doc-sync runs sequentially after implement — set visible stage
+        state.planStatuses[planId] = 'doc-sync';
+        break;
+      case 'plan:build:doc-sync:complete':
+        // Don't advance — next stage (review/evaluate) will set it
         break;
       case 'plan:build:implement:complete':
         // Don't advance — next stage (test or review) will set the status

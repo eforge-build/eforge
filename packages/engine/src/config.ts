@@ -37,7 +37,7 @@ export const AGENT_ROLES = [
   'plan-reviewer', 'plan-evaluator', 'architecture-reviewer', 'architecture-evaluator',
   'cohesion-reviewer', 'cohesion-evaluator',
   'validation-fixer', 'merge-conflict-resolver',
-  'staleness-assessor', 'formatter', 'doc-updater',
+  'staleness-assessor', 'formatter', 'doc-author', 'doc-syncer',
   'test-writer', 'tester', 'prd-validator', 'dependency-detector', 'pipeline-composer',
   'gap-closer',
   'recovery-analyst',

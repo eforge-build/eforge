@@ -59,7 +59,7 @@ agents:
   #     maxTurns: 50          #   architecture-reviewer, architecture-evaluator,
   #   staleness-assessor:     #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
   #     tier: implementation  #   review-fixer, merge-conflict-resolver, staleness-assessor,
-  #   reviewer:               #   formatter, doc-updater, test-writer, tester,
+  #   reviewer:               #   formatter, doc-author, doc-syncer, test-writer, tester,
   #     promptAppend: |       #   prd-validator, dependency-detector, gap-closer,
   #       ## Project Rules    #   recovery-analyst, pipeline-composer
   #       - Flag raw SQL queries
@@ -230,7 +230,8 @@ Every agent role has a built-in default tier. Most projects never need to change
 | `formatter` | `planning` | PRD formatting |
 | `pipeline-composer` | `planning` | Pipeline composition |
 | `merge-conflict-resolver` | `planning` | Merge conflict resolution |
-| `doc-updater` | `planning` | Documentation updates |
+| `doc-author` | `implementation` | Plan-driven doc authoring |
+| `doc-syncer` | `implementation` | Diff-driven doc sync |
 | `gap-closer` | `planning` | Gap analysis and filling |
 | `builder` | `implementation` | Code writing |
 | `review-fixer` | `implementation` | Applies reviewer feedback |

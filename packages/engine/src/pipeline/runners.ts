@@ -209,7 +209,7 @@ export async function* runBuildPipeline(
         yield event;
       }
 
-      // After parallel group, commit any uncommitted changes (e.g., from doc-update)
+      // After parallel group, commit any uncommitted changes left by stages that didn't self-commit (defense-in-depth)
       try {
         const { stdout: statusOut } = await exec('git', ['status', '--porcelain'], { cwd: ctx.worktreePath });
         if (statusOut.trim().length > 0) {

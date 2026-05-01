@@ -34,7 +34,7 @@ describe('parseOrchestrationConfig per-plan build/review', () => {
           name: 'Auth module',
           depends_on: [],
           branch: 'test-set/auth',
-          build: [['implement', 'doc-update'], 'review-cycle'],
+          build: [['implement', 'doc-author'], 'doc-sync', 'review-cycle'],
           review: {
             strategy: 'parallel',
             perspectives: ['code', 'security'],
@@ -51,7 +51,7 @@ describe('parseOrchestrationConfig per-plan build/review', () => {
     const config = await parseOrchestrationConfig(yamlPath);
     const plan = config.plans[0];
 
-    expect(plan.build).toEqual([['implement', 'doc-update'], 'review-cycle']);
+    expect(plan.build).toEqual([['implement', 'doc-author'], 'doc-sync', 'review-cycle']);
     expect(plan.review).toEqual({
       strategy: 'parallel',
       perspectives: ['code', 'security'],
@@ -175,7 +175,7 @@ More text after`;
 
     const result = parseBuildConfigBlock(text);
     expect(result).not.toBeNull();
-    expect(result!.build).toEqual([['implement', 'doc-update'], 'review-cycle']);
+    expect(result!.build).toEqual([['implement', 'doc-author'], 'doc-sync', 'review-cycle']);
     expect(result!.review.strategy).toBe('parallel');
     expect(result!.review.perspectives).toEqual(['code', 'security']);
     expect(result!.review.maxRounds).toBe(2);

@@ -808,7 +808,7 @@ describe('enrichOrchestrationWithPlanConfigs - prefer-event branch', () => {
     const planConfigs = [
       {
         id: 'plan-01',
-        build: ['implement', ['review', 'doc-update']],
+        build: ['implement', ['review', 'doc-author']],
         review: { strategy: 'single', perspectives: ['security'], maxRounds: 2, evaluatorStrictness: 'standard' },
       },
       {
@@ -820,7 +820,7 @@ describe('enrichOrchestrationWithPlanConfigs - prefer-event branch', () => {
 
     enrichOrchestrationWithPlanConfigs(plans, planConfigs);
 
-    expect(plans[0].build).toEqual(['implement', ['review', 'doc-update']]);
+    expect(plans[0].build).toEqual(['implement', ['review', 'doc-author']]);
     expect(plans[0].review).toEqual({ strategy: 'single', perspectives: ['security'], maxRounds: 2, evaluatorStrictness: 'standard' });
     expect(plans[1].build).toEqual(['implement']);
     expect(plans[1].review).toEqual({ strategy: 'auto', perspectives: [], maxRounds: 1, evaluatorStrictness: 'lenient' });

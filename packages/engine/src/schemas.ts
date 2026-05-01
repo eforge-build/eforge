@@ -256,7 +256,8 @@ const planAgentsSchema = z.object({
   reviewer: agentTuningSchema.optional(),
   'review-fixer': agentTuningSchema.optional(),
   evaluator: agentTuningSchema.optional(),
-  'doc-updater': agentTuningSchema.optional(),
+  'doc-author': agentTuningSchema.optional(),
+  'doc-syncer': agentTuningSchema.optional(),
   'test-writer': agentTuningSchema.optional(),
   tester: agentTuningSchema.optional(),
 }).optional().describe('Per-agent tuning overrides for build-stage agents in this plan');

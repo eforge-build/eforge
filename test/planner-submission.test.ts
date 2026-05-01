@@ -348,7 +348,7 @@ describe('planning:complete event: planConfigs field', () => {
     // Add explicit build + review to the orchestration plan entry
     payload.orchestration.plans[0] = {
       ...payload.orchestration.plans[0],
-      build: ['implement', ['review', 'doc-update']],
+      build: ['implement', ['review', 'doc-author']],
       review: {
         strategy: 'single',
         perspectives: ['security'],

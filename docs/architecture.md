@@ -111,7 +111,7 @@ graph LR
 
     subgraph Build ["Build Phase (per-plan)"]
         direction LR
-        B["implement → review-cycle<br/>+ optional: doc-update, test-cycle, validate"]
+        B["implement → review-cycle<br/>+ optional: doc-author, doc-sync, test-cycle, validate"]
     end
 
     E --> B
@@ -136,12 +136,13 @@ graph LR
 |-------|-------------|
 | `implement` | Builder agent codes the plan, runs verification, commits changes. When the planner emits a `shards` block under `agents.builder`, the stage fans out to N parallel builder invocations within the same worktree (each scoped to a `roots`/`files` partition), then a coordinator phase pops any per-shard retry stashes, enforces scope, and produces the single per-plan commit. Sharded plans must include `review-cycle` (the engine injects it if missing); integration verification runs there via the `verify` perspective rather than in the coordinator. |
 | `review-cycle` | Composite: expands to `review` -> `review-fix` -> `evaluate`. Supports multiple reviewer perspectives: `code`, `security`, `api`, `docs`, `test`, and `verify`. The `verify` perspective runs the plan's verification commands as subprocesses and emits a critical issue per failing command (including full stdout/stderr), so the review-fix loop can repair failures without restarting the build. Sharded plans always include the `verify` perspective. |
-| `doc-update` | Updates documentation to reflect implementation changes |
+| `doc-author` | Authors plan-specified documentation in parallel with implement |
+| `doc-sync` | Syncs existing documentation against the post-implement diff |
 | `test-write` | Writes tests from the plan spec (TDD - runs before `implement`) |
 | `test-cycle` | Composite: expands to `test` -> `test-fix` -> `evaluate` |
 | `validate` | Runs validation commands (compile, test, lint) |
 
-Build stages support parallel groups - arrays in the stage list run concurrently. For example, `[['implement', 'doc-update'], 'review-cycle']` runs implement and doc-update in parallel, then review-cycle after both complete.
+Build stages support parallel groups - arrays in the stage list run concurrently. For example, `[['implement', 'doc-author'], 'doc-sync', 'review-cycle']` runs implement and doc-author in parallel, then doc-sync sequentially, then review-cycle after both complete.
 
 ## Workflow Profiles
 
@@ -168,7 +169,7 @@ Agent roles by function:
 | Function | Roles |
 |----------|-------|
 | **Planning** | formatter, planner, module-planner, staleness-assessor, prd-validator, dependency-detector |
-| **Building** | builder, doc-updater, test-writer, tester |
+| **Building** | builder, doc-author, doc-syncer, test-writer, tester |
 | **Review** | reviewer, parallel-reviewer, review-fixer, plan-evaluator, cohesion-reviewer, architecture-reviewer |
 | **Recovery** | validation-fixer, merge-conflict-resolver, gap-closer, recovery-analyst |
 

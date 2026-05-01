@@ -25,7 +25,7 @@ const ALL_ROLES: AgentRole[] = [
   'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator', 'module-planner',
   'plan-reviewer', 'plan-evaluator', 'architecture-reviewer', 'architecture-evaluator',
   'cohesion-reviewer', 'cohesion-evaluator', 'validation-fixer', 'merge-conflict-resolver',
-  'staleness-assessor', 'formatter', 'doc-updater', 'test-writer', 'tester',
+  'staleness-assessor', 'formatter', 'doc-author', 'doc-syncer', 'test-writer', 'tester',
   'prd-validator', 'dependency-detector', 'pipeline-composer', 'gap-closer', 'recovery-analyst',
 ];
 
@@ -196,8 +196,11 @@ describe('AGENT_ROLE_TIERS new mapping after schema simplification', () => {
   it('merge-conflict-resolver is in planning tier', () => {
     expect(AGENT_ROLE_TIERS['merge-conflict-resolver']).toBe('planning');
   });
-  it('doc-updater is in planning tier', () => {
-    expect(AGENT_ROLE_TIERS['doc-updater']).toBe('planning');
+  it('doc-author is in implementation tier', () => {
+    expect(AGENT_ROLE_TIERS['doc-author']).toBe('implementation');
+  });
+  it('doc-syncer is in implementation tier', () => {
+    expect(AGENT_ROLE_TIERS['doc-syncer']).toBe('implementation');
   });
   it('gap-closer is in planning tier', () => {
     expect(AGENT_ROLE_TIERS['gap-closer']).toBe('planning');

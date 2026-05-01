@@ -341,7 +341,8 @@ Available roles for tuning:
 - `reviewer` - reviews the implementation
 - `review-fixer` - fixes review issues
 - `evaluator` - evaluates review fixes
-- `doc-updater` - updates documentation
+- `doc-author` - authors plan-specified docs (parallel with implement)
+- `doc-syncer` - syncs existing docs against the post-implement diff (after implement)
 - `test-writer` - writes tests
 - `tester` - runs and validates tests
 
@@ -407,7 +408,8 @@ plans:
     depends_on: []
     branch: {{planSetName}}/{identifier}
     build:                              # Per-plan build stages
-      - [implement, doc-update]         # Parallel group
+      - [implement, doc-author]          # Parallel group
+      - doc-sync                        # Sequential after implement
       - review-cycle                    # Composite: expands to review → review-fix → evaluate
     review:                             # Per-plan review config
       strategy: auto
@@ -438,7 +440,7 @@ Important:
 
 Each plan entry in orchestration.yaml carries its own `build` and `review` fields. These determine how the plan is built after merge — the profile only controls compile stages.
 
-**`build`** — array of stage specs. Each element is either a stage name (string) or an array of stage names (parallel group). Available stages: `implement`, `doc-update`, `test-write`, `test`, `test-cycle`, `review`, `review-fix`, `evaluate`, `validate`, `review-cycle`.
+**`build`** — array of stage specs. Each element is either a stage name (string) or an array of stage names (parallel group). Available stages: `implement`, `doc-author`, `doc-sync`, `test-write`, `test`, `test-cycle`, `review`, `review-fix`, `evaluate`, `validate`, `review-cycle`.
 
 **`review-cycle`** is a composite stage that expands to `[review, review-fix, evaluate]`. The reviewer identifies issues, the review-fixer applies fixes as unstaged changes, which the evaluator then judges.
 
@@ -452,11 +454,13 @@ Each plan entry in orchestration.yaml carries its own `build` and `review` field
 - Config changes, simple refactors, doc-only work: omit test stages
 - Time-optimized: `build: [implement, [test-cycle, review-cycle]]` (parallel test + review)
 
-**Doc-update stage guidance:**
-- Include `doc-update` (parallel with `implement`) when the plan changes: CLI commands, config schema/defaults, agent behavior, pipeline stages, public API surface, or architecture
-- Omit for: pure bug fixes, test-only changes, internal refactors with no user-facing impact
-- Default to including it - the doc-updater emits `count="0"` if no updates are needed, so it's cheap to include
-- Examples: `build: [[implement, doc-update], review-cycle]` for user-facing changes, `build: [implement, review-cycle]` for internal changes
+**Doc stage guidance:**
+- Use `doc-author` (parallel with `implement`, no predecessors) when the plan specifies new documentation files to create or describes specific existing docs to update.
+- Use `doc-sync` (after `implement`, predecessors: ['implement']) when the implementation will change symbols, paths, APIs, or flags that existing docs reference.
+- Most user-facing changes need both: `build: [[implement, doc-author], doc-sync, review-cycle]`
+- Plans that only author new docs (no existing docs to sync): `build: [[implement, doc-author], review-cycle]`
+- Plans that only sync existing docs (no new docs promised): `build: [implement, doc-sync, review-cycle]`
+- Omit both for: pure bug fixes, test-only changes, internal refactors with no user-facing impact
 
 **`review`** — object with the following fields:
 - `strategy` — `auto`, `single`, or `parallel`. `auto` picks single or parallel per run.

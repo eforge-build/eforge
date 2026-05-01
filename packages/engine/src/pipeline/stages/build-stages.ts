@@ -19,7 +19,8 @@ import {
 import { builderImplement, builderEvaluate } from '../../agents/builder.js';
 import { runParallelReview } from '../../agents/parallel-reviewer.js';
 import { runReviewFixer } from '../../agents/review-fixer.js';
-import { runDocUpdater } from '../../agents/doc-updater.js';
+import { runDocAuthor } from '../../agents/doc-author.js';
+import { runDocSyncer } from '../../agents/doc-syncer.js';
 import { runTestWriter, runTester } from '../../agents/tester.js';
 import { testIssueToReviewIssue } from '../../agents/common.js';
 import type { ResolvedAgentConfig } from '../../config.js';
@@ -587,26 +588,25 @@ registerBuildStage({
 });
 
 registerBuildStage({
-  name: 'doc-update',
+  name: 'doc-author',
   phase: 'build',
-  description: 'Updates project documentation to reflect implementation changes.',
-  whenToUse: 'After implementation to keep docs in sync. Can run in parallel with review stages.',
+  description: 'Author plan-specified documentation in parallel with implementation.',
+  whenToUse: 'When the plan names new documentation files to create, or describes specific docs to update.',
   costHint: 'medium',
-  predecessors: ['implement'],
-}, async function* docUpdateStage(ctx) {
-  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.planFile);
-  const docSpan = ctx.tracing.createSpan('doc-updater', { planId: ctx.planId });
+}, async function* docAuthorStage(ctx) {
+  const agentConfig = resolveAgentConfig('doc-author', ctx.config, ctx.planFile);
+  const docSpan = ctx.tracing.createSpan('doc-author', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
   try {
-    for await (const event of withPeriodicFileCheck(runDocUpdater({
+    for await (const event of withPeriodicFileCheck(runDocAuthor({
       cwd: ctx.worktreePath,
       planId: ctx.planId,
       planContent: ctx.planFile.body,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-      harness: ctx.agentRuntimes.forRole('doc-updater', ctx.planFile),
+      harness: ctx.agentRuntimes.forRole('doc-author', ctx.planFile),
     }), ctx)) {
       docTracker.handleEvent(event);
       yield event;
@@ -617,7 +617,58 @@ registerBuildStage({
     docTracker.cleanup();
     docSpan.error(err as Error);
     if (err instanceof Error && err.name === 'AbortError') throw err;
-    // Doc-update failure is non-fatal — don't propagate
+    // Doc-author failure is non-fatal — don't propagate
+  }
+  if (await hasUnstagedChanges(ctx.worktreePath)) {
+    await forgeCommit(ctx.worktreePath, composeCommitMessage(`docs(${ctx.planId}): author documentation`, ctx.modelTracker));
+  }
+  yield* emitFilesChanged(ctx);
+});
+
+registerBuildStage({
+  name: 'doc-sync',
+  phase: 'build',
+  description: 'Sync existing documentation against the post-implement diff.',
+  whenToUse: 'After implementation when changed symbols/paths/APIs/flags may have stale references in existing docs.',
+  costHint: 'medium',
+  parallelizable: false,
+  predecessors: ['implement'],
+}, async function* docSyncStage(ctx) {
+  // If preImplementCommit is missing, there is no diff to sync against — skip the agent
+  if (!ctx.preImplementCommit) {
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:doc-sync:start' as const, planId: ctx.planId };
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:doc-sync:complete' as const, planId: ctx.planId, docsSynced: 0 };
+    return;
+  }
+
+  const agentConfig = resolveAgentConfig('doc-syncer', ctx.config, ctx.planFile);
+  const docSpan = ctx.tracing.createSpan('doc-syncer', { planId: ctx.planId });
+  docSpan.setInput({ planId: ctx.planId });
+  const docTracker = createToolTracker(docSpan);
+  try {
+    for await (const event of withPeriodicFileCheck(runDocSyncer({
+      cwd: ctx.worktreePath,
+      planId: ctx.planId,
+      planContent: ctx.planFile.body,
+      preImplementCommit: ctx.preImplementCommit,
+      verbose: ctx.verbose,
+      abortController: ctx.abortController,
+      ...agentConfig,
+      harness: ctx.agentRuntimes.forRole('doc-syncer', ctx.planFile),
+    }), ctx)) {
+      docTracker.handleEvent(event);
+      yield event;
+    }
+    docTracker.cleanup();
+    docSpan.end();
+  } catch (err) {
+    docTracker.cleanup();
+    docSpan.error(err as Error);
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    // Doc-syncer failure is non-fatal — don't propagate
+  }
+  if (await hasUnstagedChanges(ctx.worktreePath)) {
+    await forgeCommit(ctx.worktreePath, composeCommitMessage(`docs(${ctx.planId}): sync documentation with implementation`, ctx.modelTracker));
   }
   yield* emitFilesChanged(ctx);
 });

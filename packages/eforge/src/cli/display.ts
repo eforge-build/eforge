@@ -403,16 +403,30 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'plan:build:doc-update:start': {
+    case 'plan:build:doc-author:start': {
       const s = spinners.get(`build:${event.planId}`);
-      if (s) s.text = `${chalk.cyan(event.planId)} — updating docs...`;
+      if (s) s.text = `${chalk.cyan(event.planId)} — authoring docs...`;
       break;
     }
 
-    case 'plan:build:doc-update:complete': {
-      if (event.docsUpdated > 0) {
+    case 'plan:build:doc-author:complete': {
+      if (event.docsAuthored > 0) {
         const s = spinners.get(`build:${event.planId}`);
-        if (s) s.text = `${chalk.cyan(event.planId)} — ${event.docsUpdated} doc(s) updated`;
+        if (s) s.text = `${chalk.cyan(event.planId)} — ${event.docsAuthored} doc(s) authored`;
+      }
+      break;
+    }
+
+    case 'plan:build:doc-sync:start': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} — syncing docs...`;
+      break;
+    }
+
+    case 'plan:build:doc-sync:complete': {
+      if (event.docsSynced > 0) {
+        const s = spinners.get(`build:${event.planId}`);
+        if (s) s.text = `${chalk.cyan(event.planId)} — ${event.docsSynced} doc(s) synced`;
       }
       break;
     }

@@ -168,7 +168,7 @@ describe('stage registry', () => {
   });
 
   it('all built-in build stages are registered', () => {
-    const builtinBuildStages = ['implement', 'review', 'evaluate', 'validate', 'doc-update'];
+    const builtinBuildStages = ['implement', 'review', 'evaluate', 'validate', 'doc-author', 'doc-sync'];
     for (const name of builtinBuildStages) {
       expect(() => getBuildStage(name)).not.toThrow();
       expect(typeof getBuildStage(name)).toBe('function');

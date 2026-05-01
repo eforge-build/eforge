@@ -9,20 +9,20 @@ describe('formatBuilderParallelNotice', () => {
 
   it('returns empty string when parallel group does not contain implement', () => {
     // Parallel group exists but doesn't include 'implement'
-    expect(formatBuilderParallelNotice([['review', 'doc-update']])).toBe('');
+    expect(formatBuilderParallelNotice([['review', 'doc-author']])).toBe('');
   });
 
   it('returns notice with parallel stage names when builder is in a parallel group', () => {
-    const result = formatBuilderParallelNotice([['implement', 'doc-update']]);
+    const result = formatBuilderParallelNotice([['implement', 'doc-author']]);
     expect(result).toContain('Parallel Execution Notice');
-    expect(result).toContain('`doc-update`');
+    expect(result).toContain('`doc-author`');
     expect(result).toContain('Stay in your lane');
     expect(result).toContain('targeted');
   });
 
   it('lists multiple parallel stages when present', () => {
-    const result = formatBuilderParallelNotice([['implement', 'doc-update', 'lint']]);
-    expect(result).toContain('`doc-update`');
+    const result = formatBuilderParallelNotice([['implement', 'doc-author', 'lint']]);
+    expect(result).toContain('`doc-author`');
     expect(result).toContain('`lint`');
     // Should not list implement itself as "other"
     expect(result).not.toContain('`implement`');

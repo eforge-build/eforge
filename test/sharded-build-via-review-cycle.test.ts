@@ -181,8 +181,8 @@ describe('sharded plan runtime guard', () => {
   });
 
   it('handles parallel stage arrays in build pipeline when checking for review-cycle', () => {
-    // review-cycle in a parallel group: [['doc-update', 'review-cycle']]
-    const build: BuildStageSpec[] = ['implement', ['doc-update', 'review-cycle']];
+    // review-cycle in a parallel group: [['doc-author', 'review-cycle']]
+    const build: BuildStageSpec[] = ['implement', ['doc-author', 'review-cycle']];
     const shards = [{ id: 'shard-a', roots: ['packages/'] }];
 
     const { planBuild } = applyShardedPlanGuard(build, defaultReview, shards);
