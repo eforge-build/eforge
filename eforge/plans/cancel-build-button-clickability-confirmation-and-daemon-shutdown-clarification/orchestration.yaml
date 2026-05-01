@@ -1,0 +1,57 @@
+name: cancel-build-button-clickability-confirmation-and-daemon-shutdown-clarification
+description: "Make the sidebar cancel-build action deliberate and visibly
+  clickable: add `cursor-pointer` to the Button cva base, introduce a shadcn
+  AlertDialog component, and wrap the running-session cancel button in a
+  confirmation dialog. Manually verify the daemon survives cancel (existing
+  idle-shutdown countdown is the perception fix)."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm install
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-cancel-confirm-and-cursor
+    name: Cancel button confirmation + global pointer cursor
+    depends_on: []
+    branch: cancel-build-button-clickability-confirmation-and-daemon-shutdown-clarification/cancel-confirm-and-cursor
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - ui-ux
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This PRD is a focused UI change touching 4 files in a single package
+    (monitor-ui): a 1-line cva tweak, a new dependency, a new shadcn component
+    file, and wrapping one button in an AlertDialog. It's bigger than an errand
+    (multiple files, new dep, new component) but well within excursion scope - a
+    single planner session can easily enumerate all changes, and there are no
+    independent subsystems that would warrant expedition. Compile uses planner +
+    plan-review-cycle to catch any scope drift (especially around the explicit
+    out-of-scope items like the daemon idle-shutdown state machine). Build is
+    the standard implement + review-cycle. Review uses 'single' strategy with
+    correctness and ui-ux perspectives (the change is interaction/cursor/dialog
+    UX) at standard strictness with maxRounds=2 - this is user-facing UI but not
+    security or data critical. test-write/test stages are skipped because
+    acceptance is manual verification (cursor on hover, dialog interaction,
+    daemon-still-alive check) rather than automated tests, and doc-update is
+    skipped because the PRD does not change public APIs or user-facing docs."
