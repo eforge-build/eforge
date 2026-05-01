@@ -35,12 +35,7 @@ Walk the four built-in tiers in fixed order: **planning** → **implementation**
 
 For each tier, present the following options:
 
-**Preset shortcuts** (starting points — the user can customize after picking):
-- **max** — `claude-sdk` harness, model `claude-opus-4-7`, effort `high`
-- **balanced** — `claude-sdk` harness, model `claude-sonnet-4-6`, effort `medium`
-- **fast** — `claude-sdk` harness, model `claude-haiku-4-5`, effort `low`
-
-**Copy from previous tier** (available from `implementation` onward): reuse the harness, provider (if pi), model, and effort from the preceding tier without re-prompting. *(Default for `implementation`, `review`, and `evaluation` when the user just presses enter.)*
+**Copy from a previously configured tier**: From the second tier onward, present one `Copy from <tierName> (<modelId>)` entry per tier already configured in this session (e.g. on `review`: `Copy from planning` and `Copy from implementation`, in `TIER_ORDER` order). The default selection is copy-from-immediately-previous when the user just presses enter.
 
 **Custom**: walk the sub-flow:
 1. **Harness**: ask `claude-sdk` or `pi`.
@@ -48,7 +43,7 @@ For each tier, present the following options:
 3. **Model**: call `eforge_models` with `{ action: "list", harness: "<harness>", provider: "<provider>" }` (omit `provider` for claude-sdk). Show top 10 (id + `releasedAt` when available); add a "see all" affordance if the list is longer. Default to the newest model. Confirm.
 4. **Effort**: ask from `low | medium | high | xhigh | max`. Default: `high` for planning/review/evaluation, `medium` for implementation.
 
-For the **planning** tier there is no "copy from previous" option — present presets or custom only.
+For the **planning** tier present only **Custom**, since no prior tier exists yet.
 
 Record each tier's `harness`, (optional) `provider`, `model.id`, and `effort`.
 
