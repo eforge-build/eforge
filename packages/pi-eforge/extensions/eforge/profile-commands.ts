@@ -156,16 +156,6 @@ interface ModelInfo {
   releasedAt?: string;
 }
 
-/** Preset tier shortcut names. */
-type PresetName = 'max' | 'balanced' | 'fast';
-
-/** Built-in preset shortcuts. */
-const PRESETS: Record<PresetName, TierSelection> = {
-  max:      { harness: 'claude-sdk', modelId: 'claude-opus-4-7',   effort: 'high' },
-  balanced: { harness: 'claude-sdk', modelId: 'claude-sonnet-4-6', effort: 'medium' },
-  fast:     { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
-};
-
 const TIER_ORDER = ['planning', 'implementation', 'review', 'evaluation'] as const;
 type TierName = typeof TIER_ORDER[number];
 
@@ -354,42 +344,26 @@ export async function handleProfileNewCommand(
   for (let i = 0; i < TIER_ORDER.length; i++) {
     const tier = TIER_ORDER[i];
     const tierLabel = `New Profile: ${tier}`;
-    const prevTier = i > 0 ? TIER_ORDER[i - 1] : null;
-    const prevSelection = prevTier ? tierSelections[prevTier] : null;
 
     // Build choice items
     const choiceItems: Array<{ value: string; label: string; description: string }> = [];
 
-    // Preset shortcuts always available
-    choiceItems.push({
-      value: "__preset_max__",
-      label: "max preset",
-      description: `claude-sdk · claude-opus-4-7 · effort: high`,
-    });
-    choiceItems.push({
-      value: "__preset_balanced__",
-      label: "balanced preset",
-      description: `claude-sdk · claude-sonnet-4-6 · effort: medium`,
-    });
-    choiceItems.push({
-      value: "__preset_fast__",
-      label: "fast preset",
-      description: `claude-sdk · claude-haiku-4-5 · effort: low`,
-    });
-
-    // Copy from previous tier (if not first)
-    if (prevSelection) {
-      const prevDesc = [
-        prevSelection.harness,
-        prevSelection.provider,
-        prevSelection.modelId,
-        `effort: ${prevSelection.effort}`,
-      ].filter(Boolean).join(" · ");
-      choiceItems.push({
-        value: "__copy_prev__",
-        label: `Copy from ${prevTier} (${prevSelection.modelId})`,
-        description: prevDesc,
-      });
+    // Copy from each already-configured tier (in TIER_ORDER order)
+    for (const srcTier of TIER_ORDER.slice(0, i)) {
+      const srcSelection = tierSelections[srcTier];
+      if (srcSelection) {
+        const srcDesc = [
+          srcSelection.harness,
+          srcSelection.provider,
+          srcSelection.modelId,
+          `effort: ${srcSelection.effort}`,
+        ].filter(Boolean).join(" · ");
+        choiceItems.push({
+          value: `__copy_${srcTier}__`,
+          label: `Copy from ${srcTier} (${srcSelection.modelId})`,
+          description: srcDesc,
+        });
+      }
     }
 
     // Custom option
@@ -404,16 +378,13 @@ export async function handleProfileNewCommand(
 
     let selection: TierSelection;
 
-    if (choice === "__preset_max__") {
-      selection = { ...PRESETS.max };
-    } else if (choice === "__preset_balanced__") {
-      selection = { ...PRESETS.balanced };
-    } else if (choice === "__preset_fast__") {
-      selection = { ...PRESETS.fast };
-    } else if (choice === "__copy_prev__" && prevSelection) {
-      selection = { ...prevSelection };
+    if (choice.startsWith("__copy_")) {
+      const srcTierName = choice.slice("__copy_".length, -"__".length) as TierName;
+      selection = { ...tierSelections[srcTierName]! };
     } else {
-      // Custom flow
+      // Custom flow — seed defaults from the immediately previous tier
+      const prevTier = i > 0 ? TIER_ORDER[i - 1] : null;
+      const prevSelection = prevTier ? tierSelections[prevTier] : null;
       const defaultHarness = prevSelection?.harness ?? (name.startsWith("claude-") ? "claude-sdk" : "pi");
       const result = await pickCustomTier(ctx, tierLabel, defaultHarness as "claude-sdk" | "pi", prevSelection?.provider);
       if (!result) return;
@@ -442,7 +413,7 @@ export async function handleProfileNewCommand(
   await showInfoOverlay(
     ctx,
     `eforge - Profile Preview: ${name}`,
-    `Profile **${name}** will be written to ${scope} scope:\n\n${yamlPreview}\n\nPresets are starting points — edit the YAML file directly to fine-tune per-tier settings.`,
+    `Profile **${name}** will be written to ${scope} scope:\n\n${yamlPreview}\n\nEdit the YAML file directly to fine-tune per-tier settings.`,
   );
 
   // Confirm or cancel
