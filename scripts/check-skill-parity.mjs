@@ -51,6 +51,8 @@ const SKILL_PAIRS = [
   { plugin: "restart", pi: "eforge-restart" },
   { plugin: "status", pi: "eforge-status" },
   { plugin: "update", pi: "eforge-update" },
+  { plugin: "playbook", pi: "eforge-playbook" },
+  { plugin: "recover", pi: "eforge-recover" },
 ];
 
 function pluginSkillPath(name) {
