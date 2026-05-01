@@ -3,7 +3,7 @@ import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 
-export interface DocUpdaterOptions extends SdkPassthroughConfig {
+export interface DocAuthorOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
   cwd: string;
   planId: string;
@@ -14,29 +14,30 @@ export interface DocUpdaterOptions extends SdkPassthroughConfig {
 }
 
 /**
- * Parse `<doc-update-summary count="N">` from agent output.
- * Returns the count of docs updated, or 0 if no summary block is found.
+ * Parse `<doc-author-summary count="N" created="..." updated="...">` from agent output.
+ * Returns the count of docs authored (created + updated), or 0 if no summary block is found.
  */
-function parseDocUpdateSummary(text: string): number {
-  const match = text.match(/<doc-update-summary\s+count="(\d+)">/);
+function parseDocAuthorSummary(text: string): number {
+  const match = text.match(/<doc-author-summary\s+count="(\d+)"/);
   if (!match) return 0;
   return parseInt(match[1], 10);
 }
 
 /**
- * Doc-updater agent — updates existing documentation based on plan content.
- * One-shot coding agent that discovers and updates docs affected by the plan.
+ * Doc-author agent — authors plan-specified documentation.
+ * Reads the plan as the spec; can create new doc files the plan names.
+ * Runs in parallel with implement (no predecessors).
  * Non-fatal: errors are caught (except AbortError), complete event always yielded.
  */
-export async function* runDocUpdater(
-  options: DocUpdaterOptions,
+export async function* runDocAuthor(
+  options: DocAuthorOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:doc-update:start', planId: options.planId };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:doc-author:start', planId: options.planId };
 
-  let docsUpdated = 0;
+  let docsAuthored = 0;
 
   try {
-    const prompt = await loadPrompt('doc-updater', {
+    const prompt = await loadPrompt('doc-author', {
       plan_id: options.planId,
       plan_content: options.planContent,
     }, options.promptAppend);
@@ -52,7 +53,7 @@ export async function* runDocUpdater(
         abortSignal: options.abortController?.signal,
         ...pickSdkOptions(options),
       },
-      'doc-updater',
+      'doc-author',
       options.planId,
     )) {
       if (event.type === 'agent:message' && event.content) {
@@ -64,12 +65,12 @@ export async function* runDocUpdater(
       }
     }
 
-    docsUpdated = parseDocUpdateSummary(fullText);
+    docsAuthored = parseDocAuthorSummary(fullText);
   } catch (err) {
     // Re-throw abort errors so the pipeline can respect cancellation
     if (err instanceof Error && err.name === 'AbortError') throw err;
-    // Other doc-updater failures are non-fatal
+    // Other doc-author failures are non-fatal
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:doc-update:complete', planId: options.planId, docsUpdated };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:doc-author:complete', planId: options.planId, docsAuthored };
 }

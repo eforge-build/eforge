@@ -8,7 +8,7 @@ import type { AgentTerminalSubtype } from './harness.js';
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'review-fixer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater' | 'test-writer' | 'tester' | 'prd-validator' | 'dependency-detector' | 'pipeline-composer' | 'gap-closer' | 'recovery-analyst';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'review-fixer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-author' | 'doc-syncer' | 'test-writer' | 'tester' | 'prd-validator' | 'dependency-detector' | 'pipeline-composer' | 'gap-closer' | 'recovery-analyst';
 
 export interface PrdValidationGap {
   requirement: string;
@@ -207,8 +207,10 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'plan:build:evaluate:start'; planId: string }
   | { type: 'plan:build:evaluate:continuation'; planId: string; attempt: number; maxContinuations: number }
   | { type: 'plan:build:evaluate:complete'; planId: string; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
-  | { type: 'plan:build:doc-update:start'; planId: string }
-  | { type: 'plan:build:doc-update:complete'; planId: string; docsUpdated: number }
+  | { type: 'plan:build:doc-author:start'; planId: string }
+  | { type: 'plan:build:doc-author:complete'; planId: string; docsAuthored: number }
+  | { type: 'plan:build:doc-sync:start'; planId: string }
+  | { type: 'plan:build:doc-sync:complete'; planId: string; docsSynced: number }
   | { type: 'plan:build:test:write:start'; planId: string }
   | { type: 'plan:build:test:write:complete'; planId: string; testsWritten: number }
   | { type: 'plan:build:test:start'; planId: string }

@@ -348,7 +348,7 @@ describe('planning:complete event: planConfigs field', () => {
     // Add explicit build + review to the orchestration plan entry
     payload.orchestration.plans[0] = {
       ...payload.orchestration.plans[0],
-      build: ['implement', ['review', 'doc-update']],
+      build: ['implement', ['review', 'doc-author']],
       review: {
         strategy: 'single',
         perspectives: ['security'],
@@ -384,7 +384,7 @@ describe('planning:complete event: planConfigs field', () => {
     expect(complete.planConfigs).toHaveLength(1);
     const config = complete.planConfigs![0];
     expect(config.id).toBe('plan-01-widgets');
-    expect(config.build).toEqual(['implement', ['review', 'doc-update']]);
+    expect(config.build).toEqual(['implement', ['review', 'doc-author']]);
     expect(config.review).toEqual({
       strategy: 'single',
       perspectives: ['security'],

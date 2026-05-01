@@ -42,9 +42,9 @@ Analyze the PRD above and compose a pipeline by:
 
 2. **Compose compile stages** - Select and order compile-phase stages from the catalog. These run once to produce plan files. Respect predecessor constraints from the catalog.
 
-3. **Compose default build stages** - Select and order build-phase stages for each plan. Use arrays for stages that can run in parallel (e.g., `[["implement", "doc-update"], "review-cycle"]` - valid because `doc-update` does not declare `implement` as a predecessor). Respect predecessor constraints.
+3. **Compose default build stages** - Select and order build-phase stages for each plan. Use arrays for stages that can run in parallel (e.g., `[["implement", "doc-author"], "doc-sync", "review-cycle"]` - valid because `doc-author` has no predecessors and runs in parallel with `implement`). Respect predecessor constraints.
 
-   **Parallel group rule:** A stage may appear inside a parallel group *only if none of its declared predecessors appear in the same parallel group*. Predecessors must appear earlier in `defaultBuild` - either as a sequential entry or in an earlier parallel group. Example of an **invalid** composition: `[["implement", "test-write"]]` - `test-write` declares `implement` as a predecessor, so they cannot share a parallel group. A valid equivalent is `["implement", "test-write"]` (sequential) or `["implement", ["test-write", "doc-update"]]` (`implement` first, then `test-write` parallel with an unrelated stage).
+   **Parallel group rule:** A stage may appear inside a parallel group *only if none of its declared predecessors appear in the same parallel group*. Predecessors must appear earlier in `defaultBuild` - either as a sequential entry or in an earlier parallel group. Example of an **invalid** composition: `[["implement", "doc-sync"]]` - `doc-sync` declares `implement` as a predecessor, so they cannot share a parallel group. A valid equivalent is `[["implement", "doc-author"], "doc-sync"]` (`implement` parallel with `doc-author` because `doc-author` has no predecessors, then `doc-sync` sequentially). Another invalid example: `[["implement", "test-write"]]` - `test-write` declares `implement` as a predecessor.
 
 4. **Select default review config** - Choose review strategy, perspectives, rounds, and strictness appropriate for the work's complexity and risk.
 
@@ -53,10 +53,10 @@ Analyze the PRD above and compose a pipeline by:
 ## Guidelines
 
 - For `errand` scope: minimal pipeline - just planner + implement, skip heavy review.
-- For `excursion` scope: standard pipeline - planner, implement, review-cycle. Add doc-update or test stages when the PRD touches APIs or has complex logic.
+- For `excursion` scope: standard pipeline - planner, implement, review-cycle. Add doc-author/doc-sync or test stages when the PRD touches APIs or has complex logic.
 - For `expedition` scope: full pipeline - architecture planning, module planning, implement with thorough review. Consider parallel perspectives for security-sensitive work.
 - When the PRD mentions testing requirements, include test-write and test stages.
-- When the PRD touches documentation or public APIs, include doc-update.
+- When the PRD touches documentation or public APIs, include `doc-author` (parallel with `implement`) and/or `doc-sync` (after `implement`). Most user-facing changes need both: `[[implement, doc-author], doc-sync, review-cycle]`.
 - Match review strictness to risk: `strict` for security/data, `standard` for features, `lenient` for cosmetic changes.
 
 ## Schema

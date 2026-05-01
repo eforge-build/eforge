@@ -885,9 +885,9 @@ describe('stage descriptor metadata', () => {
     }
   });
 
-  it('all 10 build stage descriptors have non-empty description, whenToUse, and costHint', () => {
+  it('all 11 build stage descriptors have non-empty description, whenToUse, and costHint', () => {
     const descriptors = getBuildStageDescriptors();
-    expect(descriptors.length).toBe(10);
+    expect(descriptors.length).toBe(11);
     for (const d of descriptors) {
       expect(d.description.length).toBeGreaterThan(0);
       expect(d.whenToUse.length).toBeGreaterThan(0);
@@ -903,7 +903,7 @@ describe('validatePipeline', () => {
   it('returns valid for a correct pipeline', () => {
     const result = validatePipeline(
       ['planner', 'plan-review-cycle'],
-      ['implement', 'doc-update', 'review-cycle'],
+      ['implement', 'doc-author', 'doc-sync', 'review-cycle'],
     );
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
@@ -947,7 +947,7 @@ describe('formatStageRegistry', () => {
   it('contains all registered stage names', () => {
     const output = formatStageRegistry();
     const allNames = [...getCompileStageNames(), ...getBuildStageNames()];
-    expect(allNames.length).toBe(16);
+    expect(allNames.length).toBe(17);
     for (const name of allNames) {
       expect(output).toContain(name);
     }
@@ -1156,7 +1156,9 @@ describe('resolveAgentConfig per-role effort defaults', () => {
     { role: 'planner', expectedEffort: 'high' },
     { role: 'module-planner', expectedEffort: 'high' },
     { role: 'merge-conflict-resolver', expectedEffort: 'high' },
-    { role: 'doc-updater', expectedEffort: 'high' },
+    // Implementation tier (effort: 'medium') — doc-author and doc-syncer are both implementation tier agents
+    { role: 'doc-author', expectedEffort: 'medium' },
+    { role: 'doc-syncer', expectedEffort: 'medium' },
     { role: 'gap-closer', expectedEffort: 'high' },
     // Review tier (effort: 'high')
     { role: 'architecture-reviewer', expectedEffort: 'high' },

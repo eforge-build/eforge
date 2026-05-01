@@ -77,7 +77,13 @@ const STATUS_STYLES: Record<GraphNodeStatus, StatusStyle> = {
     icon: '◌',
     animated: true,
   },
-  'doc-update': {
+  'doc-author': {
+    color: 'var(--color-purple)',
+    bgColor: 'rgba(188, 140, 255, 0.15)',
+    icon: '◌',
+    animated: true,
+  },
+  'doc-sync': {
     color: 'var(--color-purple)',
     bgColor: 'rgba(188, 140, 255, 0.15)',
     icon: '◌',

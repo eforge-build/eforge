@@ -32,10 +32,11 @@ export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
   formatter: 'planning',
   'pipeline-composer': 'planning',
   'merge-conflict-resolver': 'planning',
-  'doc-updater': 'planning',
   'gap-closer': 'planning',
   // Implementation tier — code-writing and transformation agents
   builder: 'implementation',
+  'doc-author': 'implementation',
+  'doc-syncer': 'implementation',
   'review-fixer': 'implementation',
   'validation-fixer': 'implementation',
   'test-writer': 'implementation',
@@ -62,7 +63,8 @@ export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, { maxTurns?: number 
   planner: { maxTurns: 80 },
   tester: { maxTurns: 40 },
   'module-planner': { maxTurns: 20 },
-  'doc-updater': { maxTurns: 20 },
+  'doc-author': { maxTurns: 20 },
+  'doc-syncer': { maxTurns: 20 },
   'test-writer': { maxTurns: 30 },
   'gap-closer': { maxTurns: 20 },
 };
