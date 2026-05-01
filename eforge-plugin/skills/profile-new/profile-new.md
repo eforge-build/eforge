@@ -78,7 +78,7 @@ agents:
       effort: high
 ```
 
-Example with a mixed claude-sdk/pi-anthropic setup (planning/review on claude-sdk, implementation/evaluation on pi):
+Example with a mixed claude-sdk/pi-anthropic setup:
 
 ```yaml
 agents:
