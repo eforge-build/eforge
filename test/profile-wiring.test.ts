@@ -732,10 +732,10 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
   it('MCP proxy eforge_init declares the profile schema parameter', () => {
     const block = getMcpInitBlock();
     expect(block).toContain('profile:');
-    expect(block).toContain('agentRuntimes');
-    expect(block).toContain('defaultAgentRuntime');
-    expect(block).toContain('models');
     expect(block).toContain('tiers');
+    // agentRuntimes, defaultAgentRuntime, models removed in tier-recipe schema
+    expect(block).not.toContain('agentRuntimes');
+    expect(block).not.toContain('defaultAgentRuntime');
   });
 
   it('MCP proxy eforge_init does not call modelProviders or modelList from the fresh-init path', () => {
