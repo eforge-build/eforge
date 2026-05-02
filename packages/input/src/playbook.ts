@@ -1,74 +1,40 @@
 /**
- * Playbook types, Zod schema, parser, and engine API.
+ * Playbook types, Zod schema, parser, and public API.
  *
  * A playbook is a Markdown file with YAML frontmatter that encodes a reusable
  * build intent. Playbooks live in three-tier directories (project-local,
- * project-team, user) under `playbooks/` and are resolved with the generic
- * `set-resolver` infrastructure.
+ * project-team, user) under `playbooks/` and are resolved with the
+ * @eforge-build/scopes named-set resolution infrastructure.
  *
  * Public API:
- *   listPlaybooks   — merged listing with source labels and shadow chains
- *   loadPlaybook    — highest-precedence copy for a given name
- *   validatePlaybook — pure schema validation (used by daemon endpoint)
- *   writePlaybook   — atomic write to the target tier directory
- *   movePlaybook    — move between tiers (git mv when both in repo, else rename)
- *   playbookToSessionPlan — format a playbook for the planner agent
+ *   parsePlaybook        — parse raw markdown to a typed Playbook
+ *   serializePlaybook    — serialize a Playbook back to markdown
+ *   listPlaybooks        — merged listing with source labels and shadow chains
+ *   loadPlaybook         — highest-precedence copy for a given name
+ *   validatePlaybook     — pure schema validation (used by daemon endpoint)
+ *   writePlaybook        — atomic write to the target tier directory
+ *   movePlaybook         — move between tiers (git mv when both in repo, else rename)
+ *   copyPlaybookToScope  — copy to a different tier with updated scope frontmatter
+ *   playbookToBuildSource — format a playbook as ordinary build source (preferred name)
+ *   playbookToSessionPlan — alias for playbookToBuildSource (backward-compatible name)
  */
-import { readFile, writeFile, rename, mkdir, access } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { resolve, dirname } from 'node:path';
+import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod/v4';
 
 import {
-  listSetArtifacts,
-  loadSetArtifact,
-  projectLocalSetDir,
-  projectTeamSetDir,
-  userSetDir,
-  type SetArtifactSource,
-  type SetArtifactShadow,
-} from './set-resolver.js';
-
-// ---------------------------------------------------------------------------
-// Shadow entry helper
-// ---------------------------------------------------------------------------
-
-/** A shadow entry in the merged playbook listing — a lower-precedence tier that
- *  also contains a playbook with the same name. */
-export interface PlaybookShadowEntry {
-  /** Which tier this shadow copy comes from. */
-  source: SetArtifactShadow;
-  /** Absolute path to the shadow file. */
-  path: string;
-}
-
-/** Compute shadow entries (with paths) for a given artifact name. */
-function shadowEntries(
-  name: string,
-  shadows: SetArtifactShadow[],
-  opts: { configDir: string; cwd: string },
-): PlaybookShadowEntry[] {
-  return shadows.map((source) => {
-    let dir: string;
-    if (source === 'project-team') {
-      dir = projectTeamSetDir(PLAYBOOKS_KIND, opts.configDir);
-    } else {
-      dir = userSetDir(PLAYBOOKS_KIND);
-    }
-    return { source, path: `${dir}/${name}.${PLAYBOOKS_KIND.fileExtension}` };
-  });
-}
+  listNamedSet,
+  resolveNamedSet,
+  getScopeDirectory,
+  type Scope,
+  type ScopeShadow,
+} from '@eforge-build/scopes';
 
 const execFileAsync = promisify(execFile);
-
-// ---------------------------------------------------------------------------
-// Set kind descriptor
-// ---------------------------------------------------------------------------
-
-const PLAYBOOKS_KIND = { dirSegment: 'playbooks', fileExtension: 'md' } as const;
 
 // ---------------------------------------------------------------------------
 // Zod Schema
@@ -120,6 +86,19 @@ export interface PlaybookBody {
 export interface Playbook extends PlaybookFrontmatter, PlaybookBody {}
 
 // ---------------------------------------------------------------------------
+// Shadow entry helper
+// ---------------------------------------------------------------------------
+
+/** A shadow entry in the merged playbook listing — a lower-precedence tier that
+ *  also contains a playbook with the same name. */
+export interface PlaybookShadowEntry {
+  /** Which tier this shadow copy comes from. */
+  source: ScopeShadow;
+  /** Absolute path to the shadow file. */
+  path: string;
+}
+
+// ---------------------------------------------------------------------------
 // PlaybookEntry (listing)
 // ---------------------------------------------------------------------------
 
@@ -129,7 +108,7 @@ export interface PlaybookEntry {
   description: string;
   scope: PlaybookScope;
   /** Which tier the highest-precedence copy came from. */
-  source: SetArtifactSource;
+  source: Scope;
   /**
    * Full shadow chain — lower-precedence tiers that also have this playbook.
    * Highest-precedence first. Empty when no other tier has this name.
@@ -140,11 +119,11 @@ export interface PlaybookEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Session plan output
+// Session plan output (build source compiled from a playbook)
 // ---------------------------------------------------------------------------
 
 /**
- * Structured input for the planner agent produced by `playbookToSessionPlan`.
+ * Structured input for the planner agent produced by `playbookToBuildSource`.
  *
  * The `source` field is the formatted PRD-style string that can be passed
  * directly to `runPlanner` as its first argument. The individual section
@@ -247,15 +226,8 @@ function parseBody(bodyText: string): PlaybookBody | { error: string } {
   };
 }
 
-/** Source label → expected scope value mapping. */
-const SOURCE_TO_SCOPE: Record<SetArtifactSource, PlaybookScope> = {
-  'project-local': 'project-local',
-  'project-team': 'project-team',
-  'user': 'user',
-};
-
 /** Parse a raw playbook file. Returns the Playbook or an error list. */
-function parsePlaybookRaw(raw: string): { ok: true; playbook: Playbook } | { ok: false; errors: string[] } {
+function parsePlaybookInternal(raw: string): { ok: true; playbook: Playbook } | { ok: false; errors: string[] } {
   const [fm, bodyText] = splitFrontmatter(raw);
   const fmResult = playbookFrontmatterSchema.safeParse(fm);
   if (!fmResult.success) {
@@ -274,303 +246,41 @@ function parsePlaybookRaw(raw: string): { ok: true; playbook: Playbook } | { ok:
   return { ok: true, playbook: { ...fmResult.data, ...bodyResult } };
 }
 
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
+/** Return the playbooks subdirectory for a given scope tier. */
+function playbooksDir(scope: PlaybookScope, opts: { cwd: string; configDir: string }): string {
+  return resolve(getScopeDirectory(scope, opts), 'playbooks');
+}
+
+/** Compute shadow entries (with paths) for a given artifact name. */
+function shadowEntries(
+  name: string,
+  shadows: ScopeShadow[],
+  opts: { cwd: string; configDir: string },
+): PlaybookShadowEntry[] {
+  return shadows.map((source) => {
+    const dir = resolve(getScopeDirectory(source, opts), 'playbooks');
+    return { source, path: `${dir}/${name}.md` };
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// Public API — parse / serialize
 // ---------------------------------------------------------------------------
 
-export interface ListPlaybooksOpts {
-  configDir: string;
-  cwd: string;
-}
-
 /**
- * List all playbooks across all three tiers. The merged list contains one entry
- * per name (highest-precedence wins). Each entry carries `source` and `shadows`.
- *
- * Warnings are emitted when a playbook's frontmatter `scope` field does not
- * match the tier its file was loaded from.
+ * Parse a raw playbook markdown string into a typed `Playbook`.
+ * Throws an error if the frontmatter is invalid or the `## Goal` section is missing.
  */
-export async function listPlaybooks(
-  opts: ListPlaybooksOpts,
-): Promise<{ playbooks: PlaybookEntry[]; warnings: string[] }> {
-  const artifacts = await listSetArtifacts(PLAYBOOKS_KIND, opts);
-  const playbooks: PlaybookEntry[] = [];
-  const warnings: string[] = [];
-
-  await Promise.all(
-    artifacts.map(async (artifact) => {
-      let description = '';
-      let scope: PlaybookScope = SOURCE_TO_SCOPE[artifact.source];
-
-      try {
-        const raw = await readFile(artifact.path, 'utf-8');
-        const [fm] = splitFrontmatter(raw);
-        const fmResult = playbookFrontmatterSchema.safeParse(fm);
-        if (fmResult.success) {
-          description = fmResult.data.description;
-          const declaredScope = fmResult.data.scope;
-          const expectedScope = SOURCE_TO_SCOPE[artifact.source];
-          if (declaredScope !== expectedScope) {
-            warnings.push(
-              `Playbook "${artifact.name}" at ${artifact.path}: ` +
-              `frontmatter scope "${declaredScope}" does not match storage tier "${expectedScope}".`,
-            );
-          }
-          scope = declaredScope;
-        }
-      } catch {
-        // unreadable — include with empty description
-      }
-
-      playbooks.push({
-        name: artifact.name,
-        description,
-        scope,
-        source: artifact.source,
-        shadows: shadowEntries(artifact.name, artifact.shadows, opts),
-        path: artifact.path,
-      });
-    }),
-  );
-
-  // Re-sort by name for deterministic output
-  playbooks.sort((a, b) => a.name.localeCompare(b.name));
-
-  return { playbooks, warnings };
-}
-
-export interface LoadPlaybookOpts {
-  configDir: string;
-  cwd: string;
-  name: string;
-}
-
-/**
- * Load the highest-precedence copy of a named playbook.
- * Throws `PlaybookNotFoundError` when no tier has a playbook with that name.
- */
-export async function loadPlaybook(
-  opts: LoadPlaybookOpts,
-): Promise<{ playbook: Playbook; source: SetArtifactSource; shadows: PlaybookShadowEntry[] }> {
-  const artifact = await loadSetArtifact(PLAYBOOKS_KIND, opts.name, opts);
-  if (!artifact) {
-    throw new PlaybookNotFoundError(opts.name);
-  }
-
-  const raw = await readFile(artifact.path, 'utf-8');
-  const result = parsePlaybookRaw(raw);
+export function parsePlaybook(raw: string): Playbook {
+  const result = parsePlaybookInternal(raw);
   if (!result.ok) {
-    throw new Error(`Playbook "${opts.name}" at ${artifact.path} is invalid: ${result.errors.join('; ')}`);
+    throw new Error(`Invalid playbook: ${result.errors.join('; ')}`);
   }
-
-  // Determine full shadow chain
-  const allArtifacts = await listSetArtifacts(PLAYBOOKS_KIND, opts);
-  const entry = allArtifacts.find((a) => a.name === opts.name);
-  const rawShadows = entry?.shadows ?? [];
-
-  return { playbook: result.playbook, source: artifact.source, shadows: shadowEntries(opts.name, rawShadows, opts) };
+  return result.playbook;
 }
 
-/**
- * Validate a raw playbook file string without writing or loading from disk.
- * Used by the daemon's `/api/playbook/validate` endpoint.
- */
-export function validatePlaybook(
-  raw: string,
-): { ok: true; playbook: Playbook } | { ok: false; errors: string[] } {
-  return parsePlaybookRaw(raw);
-}
-
-export interface WritePlaybookOpts {
-  configDir: string;
-  cwd: string;
-  scope: PlaybookScope;
-  playbook: Playbook;
-}
-
-/**
- * Write a playbook to the tier directory matching `scope`.
- * Creates the tier directory if it does not exist.
- * Uses atomic temp-file + rename write (same pattern as `createAgentRuntimeProfile`).
- * Does not invoke `forgeCommit` — staging is the caller's responsibility.
- */
-export async function writePlaybook(opts: WritePlaybookOpts): Promise<{ path: string }> {
-  const { scope, playbook, configDir, cwd } = opts;
-
-  const targetDir =
-    scope === 'project-local'
-      ? projectLocalSetDir(PLAYBOOKS_KIND, cwd)
-      : scope === 'project-team'
-        ? projectTeamSetDir(PLAYBOOKS_KIND, configDir)
-        : userSetDir(PLAYBOOKS_KIND);
-
-  await mkdir(targetDir, { recursive: true });
-
-  const filePath = resolve(targetDir, `${playbook.name}.md`);
-  const content = serializePlaybook(playbook);
-
-  const tmp = `${filePath}.${randomBytes(6).toString('hex')}.tmp`;
-  await writeFile(tmp, content, 'utf-8');
-  await rename(tmp, filePath);
-
-  return { path: filePath };
-}
-
-export interface MovePlaybookOpts {
-  configDir: string;
-  cwd: string;
-  name: string;
-  fromScope: PlaybookScope;
-  toScope: PlaybookScope;
-}
-
-/**
- * Move a playbook between tier directories.
- * Uses `git mv` when both source and destination are inside the repo working
- * tree; falls back to `fs.rename` otherwise.
- * Returns the destination path so the caller can stage it.
- */
-export async function movePlaybook(opts: MovePlaybookOpts): Promise<{ path: string }> {
-  const { name, fromScope, toScope, configDir, cwd } = opts;
-
-  const fromDir =
-    fromScope === 'project-local'
-      ? projectLocalSetDir(PLAYBOOKS_KIND, cwd)
-      : fromScope === 'project-team'
-        ? projectTeamSetDir(PLAYBOOKS_KIND, configDir)
-        : userSetDir(PLAYBOOKS_KIND);
-
-  const toDir =
-    toScope === 'project-local'
-      ? projectLocalSetDir(PLAYBOOKS_KIND, cwd)
-      : toScope === 'project-team'
-        ? projectTeamSetDir(PLAYBOOKS_KIND, configDir)
-        : userSetDir(PLAYBOOKS_KIND);
-
-  const src = resolve(fromDir, `${name}.md`);
-  const dst = resolve(toDir, `${name}.md`);
-
-  await mkdir(toDir, { recursive: true });
-
-  // Attempt git mv when both paths are inside the repo (i.e. not user scope)
-  const bothInRepo = fromScope !== 'user' && toScope !== 'user';
-  if (bothInRepo) {
-    try {
-      await execFileAsync('git', ['-C', cwd, 'mv', src, dst]);
-      return { path: dst };
-    } catch {
-      // git mv failed — fall through to fs.rename
-    }
-  }
-
-  await rename(src, dst);
-  return { path: dst };
-}
-
-/**
- * Format a `Playbook` as the structured prompt input the planner agent accepts.
- *
- * The body sections are assembled into a PRD-style document and returned
- * alongside the individual fields for callers that need structured access.
- * Pass `result.source` directly to `runPlanner` as the `source` argument.
- */
-export function playbookToSessionPlan(playbook: Playbook): SessionPlanInput {
-  const sections: string[] = [];
-
-  sections.push(`## Goal\n\n${playbook.goal.trim()}`);
-
-  if (playbook.outOfScope.trim()) {
-    sections.push(`## Out of scope\n\n${playbook.outOfScope.trim()}`);
-  }
-
-  if (playbook.acceptanceCriteria.trim()) {
-    sections.push(`## Acceptance criteria\n\n${playbook.acceptanceCriteria.trim()}`);
-  }
-
-  if (playbook.plannerNotes.trim()) {
-    sections.push(`## Notes for the planner\n\n${playbook.plannerNotes.trim()}`);
-  }
-
-  const source = [
-    `# ${playbook.description}`,
-    '',
-    ...sections,
-  ].join('\n\n');
-
-  return {
-    name: playbook.name,
-    source,
-    goal: playbook.goal,
-    outOfScope: playbook.outOfScope,
-    acceptanceCriteria: playbook.acceptanceCriteria,
-    plannerNotes: playbook.plannerNotes,
-    postMerge: playbook.postMerge,
-  };
-}
-
-export interface CopyPlaybookToScopeOpts {
-  configDir: string;
-  cwd: string;
-  name: string;
-  targetScope: PlaybookScope;
-}
-
-export interface CopyPlaybookToScopeResult {
-  sourcePath: string;
-  targetPath: string;
-  targetScope: PlaybookScope;
-}
-
-/**
- * Copy the highest-precedence version of a named playbook to a different tier.
- *
- * Loads the playbook from whichever tier currently owns the highest-precedence
- * copy, then writes it to the `targetScope` tier with the `scope` frontmatter
- * field updated to match. Overwrites the target if it already exists.
- *
- * Returns the source and target absolute paths so callers can stage/report them.
- */
-export async function copyPlaybookToScope(opts: CopyPlaybookToScopeOpts): Promise<CopyPlaybookToScopeResult> {
-  const { configDir, cwd, name, targetScope } = opts;
-
-  // Resolve the highest-precedence artifact to get its path
-  const artifact = await loadSetArtifact(PLAYBOOKS_KIND, name, opts);
-  if (!artifact) {
-    throw new PlaybookNotFoundError(name);
-  }
-
-  const raw = await readFile(artifact.path, 'utf-8');
-  const result = parsePlaybookRaw(raw);
-  if (!result.ok) {
-    throw new Error(`Playbook "${name}" at ${artifact.path} is invalid: ${result.errors.join('; ')}`);
-  }
-
-  // Write to target scope with updated scope field
-  const updatedPlaybook: Playbook = { ...result.playbook, scope: targetScope };
-  const { path: targetPath } = await writePlaybook({ configDir, cwd, scope: targetScope, playbook: updatedPlaybook });
-
-  return {
-    sourcePath: artifact.path,
-    targetPath,
-    targetScope,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Serialization
-// ---------------------------------------------------------------------------
-
-/** Serialize a Playbook to a Markdown string with YAML frontmatter. */
-function serializePlaybook(playbook: Playbook): string {
+/** Serialize a `Playbook` to a Markdown string with YAML frontmatter. */
+export function serializePlaybook(playbook: Playbook): string {
   const fm: Record<string, unknown> = {
     name: playbook.name,
     description: playbook.description,
@@ -606,3 +316,289 @@ function serializePlaybook(playbook: Playbook): string {
 
   return [`---`, fmLines, `---`, '', sections.join('\n\n'), ''].join('\n');
 }
+
+// ---------------------------------------------------------------------------
+// Public API — validate
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate a raw playbook file string without writing or loading from disk.
+ * Used by the daemon's `/api/playbook/validate` endpoint.
+ */
+export function validatePlaybook(
+  raw: string,
+): { ok: true; playbook: Playbook } | { ok: false; errors: string[] } {
+  return parsePlaybookInternal(raw);
+}
+
+// ---------------------------------------------------------------------------
+// Public API — list / load
+// ---------------------------------------------------------------------------
+
+export interface ListPlaybooksOpts {
+  configDir: string;
+  cwd: string;
+}
+
+/**
+ * List all playbooks across all three tiers. The merged list contains one entry
+ * per name (highest-precedence wins). Each entry carries `source` and `shadows`.
+ *
+ * Warnings are emitted when a playbook's frontmatter `scope` field does not
+ * match the tier its file was loaded from.
+ */
+export async function listPlaybooks(
+  opts: ListPlaybooksOpts,
+): Promise<{ playbooks: PlaybookEntry[]; warnings: string[] }> {
+  const entries = await listNamedSet('playbooks', { ...opts, extension: 'md' });
+  const playbooks: PlaybookEntry[] = [];
+  const warnings: string[] = [];
+
+  await Promise.all(
+    entries.map(async (entry) => {
+      let description = '';
+      let scope: PlaybookScope = entry.scope as PlaybookScope;
+
+      try {
+        const raw = await readFile(entry.path, 'utf-8');
+        const [fm] = splitFrontmatter(raw);
+        const fmResult = playbookFrontmatterSchema.safeParse(fm);
+        if (fmResult.success) {
+          description = fmResult.data.description;
+          const declaredScope = fmResult.data.scope;
+          const expectedScope = entry.scope as PlaybookScope;
+          if (declaredScope !== expectedScope) {
+            warnings.push(
+              `Playbook "${entry.name}" at ${entry.path}: ` +
+              `frontmatter scope "${declaredScope}" does not match storage tier "${expectedScope}".`,
+            );
+          }
+          scope = declaredScope;
+        }
+      } catch {
+        // unreadable — include with empty description
+      }
+
+      playbooks.push({
+        name: entry.name,
+        description,
+        scope,
+        source: entry.scope,
+        shadows: shadowEntries(entry.name, entry.shadows, opts),
+        path: entry.path,
+      });
+    }),
+  );
+
+  // Re-sort by name for deterministic output
+  playbooks.sort((a, b) => a.name.localeCompare(b.name));
+
+  return { playbooks, warnings };
+}
+
+export interface LoadPlaybookOpts {
+  configDir: string;
+  cwd: string;
+  name: string;
+}
+
+/**
+ * Load the highest-precedence copy of a named playbook.
+ * Throws `PlaybookNotFoundError` when no tier has a playbook with that name.
+ */
+export async function loadPlaybook(
+  opts: LoadPlaybookOpts,
+): Promise<{ playbook: Playbook; source: Scope; shadows: PlaybookShadowEntry[] }> {
+  const map = await resolveNamedSet('playbooks', { ...opts, extension: 'md' });
+  const entry = map.get(opts.name);
+  if (!entry) {
+    throw new PlaybookNotFoundError(opts.name);
+  }
+
+  const raw = await readFile(entry.path, 'utf-8');
+  const result = parsePlaybookInternal(raw);
+  if (!result.ok) {
+    throw new Error(`Playbook "${opts.name}" at ${entry.path} is invalid: ${result.errors.join('; ')}`);
+  }
+
+  return {
+    playbook: result.playbook,
+    source: entry.scope,
+    shadows: shadowEntries(opts.name, entry.shadows, opts),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public API — write / move / copy
+// ---------------------------------------------------------------------------
+
+export interface WritePlaybookOpts {
+  configDir: string;
+  cwd: string;
+  scope: PlaybookScope;
+  playbook: Playbook;
+}
+
+/**
+ * Write a playbook to the tier directory matching `scope`.
+ * Creates the tier directory if it does not exist.
+ * Uses atomic temp-file + rename write.
+ * Does not invoke `forgeCommit` — staging is the caller's responsibility.
+ */
+export async function writePlaybook(opts: WritePlaybookOpts): Promise<{ path: string }> {
+  const { scope, playbook, cwd, configDir } = opts;
+  const targetDir = playbooksDir(scope, { cwd, configDir });
+
+  await mkdir(targetDir, { recursive: true });
+
+  const filePath = resolve(targetDir, `${playbook.name}.md`);
+  const content = serializePlaybook(playbook);
+
+  const tmp = `${filePath}.${randomBytes(6).toString('hex')}.tmp`;
+  await writeFile(tmp, content, 'utf-8');
+  await rename(tmp, filePath);
+
+  return { path: filePath };
+}
+
+export interface MovePlaybookOpts {
+  configDir: string;
+  cwd: string;
+  name: string;
+  fromScope: PlaybookScope;
+  toScope: PlaybookScope;
+}
+
+/**
+ * Move a playbook between tier directories.
+ * Uses `git mv` when both source and destination are inside the repo working
+ * tree; falls back to `fs.rename` otherwise.
+ * Returns the destination path so the caller can stage it.
+ */
+export async function movePlaybook(opts: MovePlaybookOpts): Promise<{ path: string }> {
+  const { name, fromScope, toScope, cwd, configDir } = opts;
+
+  const fromDir = playbooksDir(fromScope, { cwd, configDir });
+  const toDir = playbooksDir(toScope, { cwd, configDir });
+
+  const src = resolve(fromDir, `${name}.md`);
+  const dst = resolve(toDir, `${name}.md`);
+
+  await mkdir(toDir, { recursive: true });
+
+  // Attempt git mv when both paths are inside the repo (i.e. not user scope)
+  const bothInRepo = fromScope !== 'user' && toScope !== 'user';
+  if (bothInRepo) {
+    try {
+      await execFileAsync('git', ['-C', cwd, 'mv', src, dst]);
+      return { path: dst };
+    } catch {
+      // git mv failed — fall through to fs.rename
+    }
+  }
+
+  await rename(src, dst);
+  return { path: dst };
+}
+
+export interface CopyPlaybookToScopeOpts {
+  configDir: string;
+  cwd: string;
+  name: string;
+  targetScope: PlaybookScope;
+}
+
+export interface CopyPlaybookToScopeResult {
+  sourcePath: string;
+  targetPath: string;
+  targetScope: PlaybookScope;
+}
+
+/**
+ * Copy the highest-precedence version of a named playbook to a different tier.
+ *
+ * Loads the playbook from whichever tier currently owns the highest-precedence
+ * copy, then writes it to the `targetScope` tier with the `scope` frontmatter
+ * field updated to match. Overwrites the target if it already exists.
+ *
+ * Returns the source and target absolute paths so callers can stage/report them.
+ */
+export async function copyPlaybookToScope(opts: CopyPlaybookToScopeOpts): Promise<CopyPlaybookToScopeResult> {
+  const { configDir, cwd, name, targetScope } = opts;
+
+  const map = await resolveNamedSet('playbooks', { cwd, configDir, extension: 'md' });
+  const entry = map.get(name);
+  if (!entry) {
+    throw new PlaybookNotFoundError(name);
+  }
+
+  const raw = await readFile(entry.path, 'utf-8');
+  const result = parsePlaybookInternal(raw);
+  if (!result.ok) {
+    throw new Error(`Playbook "${name}" at ${entry.path} is invalid: ${result.errors.join('; ')}`);
+  }
+
+  // Write to target scope with updated scope field
+  const updatedPlaybook: Playbook = { ...result.playbook, scope: targetScope };
+  const { path: targetPath } = await writePlaybook({ configDir, cwd, scope: targetScope, playbook: updatedPlaybook });
+
+  return {
+    sourcePath: entry.path,
+    targetPath,
+    targetScope,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public API — build source compilation
+// ---------------------------------------------------------------------------
+
+/**
+ * Format a `Playbook` as ordinary build source suitable for the engine queue.
+ *
+ * The body sections are assembled into a PRD-style document and returned
+ * alongside the individual fields for callers that need structured access.
+ * Pass `result.source` directly to `runPlanner` as the `source` argument.
+ *
+ * This is the canonical name. `playbookToSessionPlan` is a backward-compatible
+ * alias that callers should migrate away from.
+ */
+export function playbookToBuildSource(playbook: Playbook): SessionPlanInput {
+  const sections: string[] = [];
+
+  sections.push(`## Goal\n\n${playbook.goal.trim()}`);
+
+  if (playbook.outOfScope.trim()) {
+    sections.push(`## Out of scope\n\n${playbook.outOfScope.trim()}`);
+  }
+
+  if (playbook.acceptanceCriteria.trim()) {
+    sections.push(`## Acceptance criteria\n\n${playbook.acceptanceCriteria.trim()}`);
+  }
+
+  if (playbook.plannerNotes.trim()) {
+    sections.push(`## Notes for the planner\n\n${playbook.plannerNotes.trim()}`);
+  }
+
+  const source = [
+    `# ${playbook.description}`,
+    '',
+    ...sections,
+  ].join('\n\n');
+
+  return {
+    name: playbook.name,
+    source,
+    goal: playbook.goal,
+    outOfScope: playbook.outOfScope,
+    acceptanceCriteria: playbook.acceptanceCriteria,
+    plannerNotes: playbook.plannerNotes,
+    postMerge: playbook.postMerge,
+  };
+}
+
+/**
+ * Backward-compatible alias for `playbookToBuildSource`.
+ * Prefer `playbookToBuildSource` in new code.
+ */
+export const playbookToSessionPlan = playbookToBuildSource;

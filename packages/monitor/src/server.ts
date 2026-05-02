@@ -902,7 +902,42 @@ export async function startServer(
           sendJsonError(res, 400, 'Missing required field: source');
           return;
         }
-        const args = [body.source, ...(body.flags ?? [])];
+        // --- eforge:region plan-04-daemon-cli-wiring ---
+        // When source is a session-plan file (.eforge/session-plans/*.md), read
+        // and normalize it to ordinary build source before spawning the enqueue
+        // worker. Non-session-plan file paths and inline content pass through
+        // unchanged. Session-plan parse failures are surfaced as 400 errors.
+        let enqueueSource = body.source;
+        if (cwd) {
+          let resolvedSourcePath: string | undefined;
+          let rawSourceContent: string | undefined;
+          try {
+            resolvedSourcePath = resolve(cwd, body.source);
+            const sourceFileStat = await stat(resolvedSourcePath);
+            if (sourceFileStat.isFile()) {
+              rawSourceContent = await readFile(resolvedSourcePath, 'utf-8');
+            }
+          } catch {
+            // Source is inline content or the file is not accessible — no-op.
+          }
+          if (resolvedSourcePath !== undefined && rawSourceContent !== undefined) {
+            try {
+              const { normalizeBuildSource } = await import('@eforge-build/input');
+              const normalized = normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawSourceContent });
+              // normalized.content differs from rawSourceContent only for session
+              // plan files; regular PRD file content is returned unchanged.
+              if (normalized.content !== rawSourceContent) {
+                enqueueSource = normalized.content;
+              }
+            } catch (parseErr) {
+              // Session-plan parse failure — surface as a client error.
+              sendJsonError(res, 400, parseErr instanceof Error ? parseErr.message : 'Failed to parse source');
+              return;
+            }
+          }
+        }
+        const args = [enqueueSource, ...(body.flags ?? [])];
+        // --- eforge:endregion plan-04-daemon-cli-wiring ---
         const result = options.workerTracker.spawnWorker('enqueue', args);
         sendJson(res, {
           sessionId: result.sessionId,
@@ -1311,7 +1346,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { listPlaybooks } = await import('@eforge-build/engine/playbook');
+        const { listPlaybooks } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         const result = await listPlaybooks({ configDir: configDir ?? cwd, cwd });
         for (const warning of result.warnings) {
@@ -1342,7 +1377,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { loadPlaybook } = await import('@eforge-build/engine/playbook');
+        const { loadPlaybook } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
@@ -1383,7 +1418,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { writePlaybook, playbookFrontmatterSchema } = await import('@eforge-build/engine/playbook');
+        const { writePlaybook, playbookFrontmatterSchema } = await import('@eforge-build/input');
         const fm = body.playbook.frontmatter;
         const bd = body.playbook.body;
         // Validate frontmatter
@@ -1443,7 +1478,7 @@ export async function startServer(
       const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { loadPlaybook, playbookToSessionPlan } = await import('@eforge-build/engine/playbook');
+        const { loadPlaybook, playbookToSessionPlan } = await import('@eforge-build/input');
         // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
         const { enqueuePrd, inferTitle, validateDependsOnExists, commitEnqueuedPrd } = await import('@eforge-build/engine/prd-queue');
         // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
@@ -1516,7 +1551,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { movePlaybook } = await import('@eforge-build/engine/playbook');
+        const { movePlaybook } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
@@ -1557,7 +1592,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { movePlaybook } = await import('@eforge-build/engine/playbook');
+        const { movePlaybook } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
@@ -1589,7 +1624,7 @@ export async function startServer(
         return;
       }
       try {
-        const { validatePlaybook } = await import('@eforge-build/engine/playbook');
+        const { validatePlaybook } = await import('@eforge-build/input');
         const result = validatePlaybook(body.raw);
         if (result.ok) {
           sendJson(res, { ok: true });
@@ -1629,7 +1664,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { copyPlaybookToScope } = await import('@eforge-build/engine/playbook');
+        const { copyPlaybookToScope } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
