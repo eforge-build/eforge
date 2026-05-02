@@ -16,6 +16,7 @@ export const LOCKSTEP_PACKAGE_PATHS = [
   "packages/engine/package.json",
   "packages/monitor/package.json",
   "packages/pi-eforge/package.json",
+  "packages/scopes/package.json",
 ];
 
 export const ALL_PACKAGE_PATHS = [SOURCE_OF_TRUTH, ...LOCKSTEP_PACKAGE_PATHS];

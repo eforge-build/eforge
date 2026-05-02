@@ -20,6 +20,9 @@ importers:
       '@eforge-build/monitor-ui':
         specifier: workspace:*
         version: link:packages/monitor-ui
+      '@eforge-build/scopes':
+        specifier: workspace:*
+        version: link:packages/scopes
       '@mariozechner/pi-agent-core':
         specifier: ^0.70.6
         version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
@@ -294,6 +297,18 @@ importers:
       yaml:
         specifier: ^2.8.4
         version: 2.8.4
+
+  packages/scopes:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.4)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
 packages:
 
