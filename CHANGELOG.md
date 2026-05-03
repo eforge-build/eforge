@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.7.9] - 2026-05-03
+
+### Features
+
+- **core**: Collapse eforge agent configuration to a single tier axis: each tier is a self-contained recipe of harness + model + effort; eliminates ModelClass, agentRuntimes, and engine-supplied defaults
+- **core**: Correct doc drift in README and docs/
+- **core**: Extract playbook and session-plan logic from engine into new @eforge-build/input package, and extract scope/path resolution into new @eforge-build/scopes package
+- **core**: Per-model-class agent runtime wizard
+- **core**: Session-plan tools and API: daemon HTTP routes, typed client helpers, MCP/Pi tools, and skill updates so /eforge:plan and /eforge:build use shared @eforge-build/input helpers
+- **engine**: list Pi custom providers/models via ModelRegistry
+- **engine**: Split doc-updater into doc-author and doc-syncer
+- **monitor-ui**: Adopt SWR cache layer; delete useApi and refreshTrigger chain
+- **monitor-ui**: Decompose reducer.ts into typed per-group handlers, split thread-pipeline god-file, apply React.memo, and add reducer tests with regression fixtures
+- **monitor-ui**: Monitor UI debt cleanup: client-owned wire types, dead code removal, cast and frontmatter fixes
+- **monitor-ui**: Surface tier and reviewer perspective on agent:start
+- **pi-eforge**: Replace presets with session-aware Copy from <tier> options
+
+### Bug Fixes
+
+- **core**: rename Agent Runtime Profiles section to Backend Profiles in docs/config.md
+- **core**: resolve validation failures
+- **core**: resolve validation failures in skills-docs-wiring tests
+
+### Documentation
+
+- **core**: author documentation
+- **core**: sync documentation with implementation
+- **playbook**: add docs implementation sync playbook
+
+### Maintenance
+
+- **core**: fix stale skills-docs-wiring test assertions
+- **deps**: bump yaml to 2.8.4 and zod to 4.4.2
+- **deps**: update package dependencies
+- **monitor-ui**: add perspective coverage
+
 ## [0.7.8] - 2026-04-30
 
 ### Features
@@ -349,21 +385,6 @@ Maintenance release
 ### Other
 
 - revert to Opus 4.6
-
-## [0.5.7] - 2026-04-16
-
-### Features
-
-- Arbitrary-named backend profiles in `eforge/backends/*.yaml`, gitignored `.active-backend` marker, and an LLM-guided creator skill that uses pi-ai's model registry to walk users through defining new profiles
-- Add `eforge_backend` (list/show/use/create/delete) and `eforge_models` (providers/list) MCP tools with matching daemon endpoints and parity across Claude Code plugin + Pi extension
-- Pick model per class (max/balanced/fast) in interactive backend-new flow
-- Engine backend profile loader, models adapter, daemon endpoints, and client types
-- MCP tools, skills for both integrations, init updates, plugin version bump
-- PRD Gap Close
-
-### Maintenance
-
-- Add claude-sdk backend profile
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
