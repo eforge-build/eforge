@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.10] - 2026-05-04
+
+### Features
+
+- **eforge-init**: accept local-scope existing profiles and discover via sentinel
+
+### Documentation
+
+- **core**: tighten README intro and refresh execution examples
+
 ## [0.7.9] - 2026-05-03
 
 ### Features
@@ -363,28 +373,6 @@ Maintenance release
 - migrate config
 - re-enqueue failed build
 - remove project backends in favor of user scoped
-
-## [0.5.8] - 2026-04-17
-
-### Features
-
-- Add user-scope backend profiles alongside project scope, with 5-step resolution precedence, scope selector in MCP/Pi tools, and skill/doc updates.
-- PRD Gap Close
-- Skills, Documentation, and Plugin Version Bump
-- MCP Tool, Pi Extension, and Wiring Tests
-- Core Engine, Client Types, and Daemon HTTP
-
-### Bug Fixes
-
-- Detect build:failed in launchPlan and propagate failure
-
-### Maintenance
-
-- bump pi-ai to 0.67.6 and claude-agent-sdk to 0.2.112
-
-### Other
-
-- revert to Opus 4.6
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
