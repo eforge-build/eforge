@@ -3,21 +3,15 @@
 [![npm version](https://img.shields.io/npm/v/@eforge-build/eforge)](https://www.npmjs.com/package/@eforge-build/eforge)
 [![npm pi package](https://img.shields.io/npm/v/@eforge-build/pi-eforge)](https://www.npmjs.com/package/@eforge-build/pi-eforge)
 
-An open source agentic build system for engineers who want to stay close to the code without writing or reviewing it. You're the detail planner — specs, architecture, decisions. eforge handles implementation, blind review, and validation in the background.
+An open source agentic build system. Detailed plans go in. A planner sizes the work and shapes the pipeline - small intent runs through a fast path, large intent compiles into a dependency graph of sub-plans that build in parallel across isolated worktrees and merge in topological order. Implementation, blind review, and validation are always separated across agents and stages. The build phase runs in the background while you plan the next thing.
 
-You drive eforge from the coding agent you already use (Claude Code or Pi). eforge delegates each pipeline stage to the agent library you configure — the Claude Agent SDK or pi-agent-core. Both paths let you use a subscription you already pay for: Claude Max on the SDK side, OpenAI Codex on the Pi side (plus 20+ other providers via Pi including open source and local models). The two choices are independent, so your UI doesn't lock you into a model.
+Drive eforge from Claude Code or Pi. Pipeline stages delegate to either the Claude Agent SDK or pi-agent-core - the interface you drive and the harness that executes are independent. A Claude Max subscription covers the SDK path; an OpenAI Codex subscription covers the Pi path, which also reaches 20+ other providers including local models.
 
 The name: **E** from the [Expedition-Excursion-Errand methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) + **forge** - shaping code from plans.
 
 <img src="docs/images/monitor-full-pipeline.png" alt="eforge dashboard - full pipeline" width="800">
 
 > **Status:** This is a young project moving fast. Used daily to build real features (including itself), but expect rough edges - bugs are likely, change is expected, and YMMV. Source is public so you can read, learn from, and fork it. Not accepting issues or PRs at this time.
-
-## Why eforge
-
-**Stay close, don't write.** You plan every detail — reading specs, making architecture decisions, understanding every choice before handoff. eforge implements faithfully and reviews its own output blind; you stay in control without being in the code.
-
-**Use the tools you already pay for.** Drive eforge from Claude Code or Pi. Delegate execution to the Claude Agent SDK (your Claude Max subscription works) or pi-agent-core (your OpenAI Codex subscription works; plus Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, local models, and more). Mix and match — your UI and your execution stack don't have to share a vendor.
 
 ## What is an Agentic Build System?
 
@@ -40,10 +34,9 @@ Plan a feature interactively, then hand it off to eforge with `/eforge:build`. A
 Because the coding agent you drive from and the agent library eforge delegates to are independent, a few ways this plays out:
 
 - **Plan and execute on Claude.** Drive eforge from Claude Code and delegate to the Claude Agent SDK. Your Claude Max subscription covers both sides.
-- **Plan and execute on OpenAI.** Drive eforge from Pi and delegate to pi-agent-core with GPT-5.4. Your OpenAI Codex subscription covers both sides.
-- **Plan in Pi with GPT-5.4, execute on Claude.** Plan with a different model, then hand off to the Claude Agent SDK for the build via your Max subscription.
-- **Plan with Opus in Claude Code, execute via pi-agent-core.** Plan with the model you trust, then dispatch builds across GPT-5.4, OpenRouter, or local models — match the tool to the workload.
-- **Claude Code outage?** Switch to Pi and flip eforge's delegation to pi-agent-core. Keep working. No vendor owns your workflow.
+- **Plan and execute on OpenAI.** Drive eforge from Pi and delegate to pi-agent-core with GPT. Your OpenAI Codex subscription covers both sides.
+- **Plan with GPT in Pi, build on Claude with Opus and Sonnet.** Drive eforge from Pi for planning, then hand off to the Claude Agent SDK so the build runs against your Max subscription.
+- **Run builds on local models when subscription limits hit.** Switch to a profile that delegates to a local model like Qwen 3.6 27B via pi-agent-core - work keeps moving while quotas reset, with no API spend.
 
 <img src="docs/images/claude-code-handoff.png" alt="eforge invoked from Claude Code" width="800">
 
@@ -99,7 +92,7 @@ The main `@eforge-build/eforge` npm package is the standalone CLI and daemon run
 
 The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. If you already have user-scope profiles in `~/.config/eforge/profiles/`, it offers to activate one of those instead of creating a new project profile. Otherwise it walks you through a Quick setup (one harness and model for every tier) or a Mix-and-match flow (different harness, provider, or model per tier). In Claude Code you choose between `claude-sdk` and `pi`; in Pi the harness is pinned to `pi` and you pick from available providers and models. For further customization, run `/eforge:config --edit`.
 
-The Pi package also provides native interactive commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations — exploring scope, code impact, architecture, design decisions, documentation, and risks — before handing off to `/eforge:build`. Both surfaces also expose `/eforge:playbook` for creating, editing, running, and managing reusable automation playbooks that encode recurring workflows as named, version-controlled templates.
+The Pi package also provides native interactive commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations - exploring scope, code impact, architecture, design decisions, documentation, and risks - before handing off to `/eforge:build`. Both surfaces also expose `/eforge:playbook` for creating, editing, running, and managing reusable automation playbooks that encode recurring workflows as named, version-controlled templates.
 
 Standalone CLI:
 
