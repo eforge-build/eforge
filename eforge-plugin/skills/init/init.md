@@ -247,7 +247,7 @@ If `$ARGUMENTS` contains `--migrate`, skip Steps 2-5 above. Instead call `mcp__e
 
 <!-- parity-skip-end -->
 
-The tool will create the profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` alongside other team-wide settings.
+For a newly created project profile, the tool will create the profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` alongside other team-wide settings.
 
 ### Step 7: Report
 

@@ -7,7 +7,7 @@ disable-model-invocation: true
 # /eforge:init
 
 <!-- parity-skip-start -->
-Initialize eforge in this project. This skill targets the Pi harness exclusively. Presents a two-track setup flow (Quick or Mix-and-match) to assemble a named agent runtime profile (all tiers use `harness: pi`), then creates it under `eforge/profiles/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.).
+Initialize eforge in this project. This setup configures an agent runtime profile and post-merge validation commands. You can use an existing local- or user-scope profile from any supported harness, or create a new project profile. When creating a new profile from this flow, the generated profile uses the Pi harness for all tiers, then creates it under `eforge/profiles/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.).
 <!-- parity-skip-end -->
 
 ## Welcome
@@ -76,7 +76,7 @@ Skip Steps 2–6. Proceed directly to the result message.
 
 ### Step 2: Setup mode
 
-The harness is always `pi` in this flow. Ask the user: "Quick setup (one provider and model for every tier) or mix-and-match (pick a different provider/model/effort per tier)?"
+When creating a new project profile in this flow, the harness is always `pi`. Ask the user: "Quick setup (one provider and model for every tier) or mix-and-match (pick a different provider/model/effort per tier)?"
 
 Do not suggest a default - both options should be presented equally.
 
@@ -205,7 +205,7 @@ If `$ARGUMENTS` contains `--migrate`, skip Steps 2-5 above. Instead call `eforge
 
 <!-- parity-skip-end -->
 
-The tool will create the profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` alongside other team-wide settings.
+For a newly created project profile, the tool will create the profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` alongside other team-wide settings.
 
 ### Step 7: Report
 

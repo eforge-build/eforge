@@ -1149,31 +1149,22 @@ export async function startServer(
     // --- Agent runtime profile management ---
     if (req.method === 'GET' && (url === API_ROUTES.profileList || url.startsWith(`${API_ROUTES.profileList}?`))) {
       try {
-        const { getConfigDir, listProfiles, listUserProfiles, resolveActiveProfileName, resolveUserActiveProfile, loadUserConfig } =
+        const { getConfigDir, getConventionalConfigDir, listProfiles, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
         const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
         const params = new URLSearchParams(queryString);
         const scopeParam = params.get('scope') as 'local' | 'project' | 'user' | 'all' | null;
-        const configDir = await getConfigDir(options?.cwd);
-        if (!configDir) {
-          if (scopeParam === 'project' || scopeParam === 'local') {
-            sendJson(res, { profiles: [], active: null, source: 'none' });
-            return;
-          }
-          // user, all, or unset: return user-scope data
-          const profiles = await listUserProfiles();
-          const { name, source, warnings } = await resolveUserActiveProfile();
-          for (const warning of warnings) {
-            process.stderr.write(`${warning}\n`);
-          }
-          sendJson(res, { profiles, active: name, source });
-          return;
-        }
+        const discoveredConfigDir = await getConfigDir(options?.cwd);
+        // Listing profiles is useful during init before eforge/config.yaml exists.
+        // When no config is discovered, synthesize the conventional project
+        // config dir so local (.eforge/profiles) and project (eforge/profiles)
+        // profiles can still be discovered from the daemon cwd.
+        const configDir = discoveredConfigDir ?? getConventionalConfigDir(options?.cwd);
         let profiles = await listProfiles(configDir, options?.cwd);
         if (scopeParam === 'local' || scopeParam === 'project' || scopeParam === 'user') {
           profiles = profiles.filter((p) => p.scope === scopeParam);
         }
-        const projectConfig = await loadProjectPartialConfig(configDir);
+        const projectConfig = discoveredConfigDir ? await loadProjectPartialConfig(configDir) : {};
         const userConfig = await loadUserConfig();
         const { name, source, warnings } = await resolveActiveProfileName(
           configDir,

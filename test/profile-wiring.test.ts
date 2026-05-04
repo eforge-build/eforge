@@ -337,12 +337,13 @@ describe('eforge_profile scope field parity', () => {
     expect(block).toMatch(/scope:\s*z\.enum\(\[.*'project'.*'user'.*'all'.*\]\)/s);
   });
 
-  it('Pi extension eforge_profile schema includes a scope field accepting project, user, all', () => {
+  it('Pi extension eforge_profile schema includes a scope field accepting local, project, user, all', () => {
     // Find the eforge_profile registration block
     const idx = piSource.indexOf('name: "eforge_profile"');
     expect(idx).toBeGreaterThan(-1);
     const block = piSource.slice(idx - 200, idx + 3000);
-    // Verify scope with Type.Union containing all three literals
+    // Verify scope with Type.Union containing all four literals
+    expect(block).toContain('Type.Literal("local")');
     expect(block).toContain('Type.Literal("project")');
     expect(block).toContain('Type.Literal("user")');
     expect(block).toContain('Type.Literal("all")');
@@ -781,11 +782,11 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(raw).toContain('agents.tiers');
   });
 
-  it('plugin /eforge:init skill contains Step 1.5 (existing user-scope profiles)', () => {
+  it('plugin /eforge:init skill contains Step 1.5 (existing local- and user-scope profiles)', () => {
     const raw = readRepoFile('eforge-plugin/skills/init/init.md');
     expect(raw).toContain('Step 1.5');
     expect(raw).toContain('existingProfile');
-    expect(raw).toContain('scope: "user"');
+    expect(raw).toContain('"scope": "<local|user>"');
   });
 
   it('plugin /eforge:init skill tool call passes profile parameter', () => {
@@ -848,5 +849,31 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(writeFileIdx).toBeGreaterThan(-1);
     expect(profileCreateIdx).toBeGreaterThan(-1);
     expect(writeFileIdx).toBeLessThan(profileCreateIdx);
+  });
+
+  it('MCP proxy eforge_init writes a sentinel before profileUse in the existing-profile branch', () => {
+    const block = getMcpInitBlock();
+    const existingProfileStart = block.indexOf('Existing profile mode');
+    expect(existingProfileStart).toBeGreaterThan(-1);
+    const slice = block.slice(existingProfileStart, block.indexOf('Fresh init mode'));
+    const writeFileIdx = slice.indexOf("writeFile(configPath, '', 'utf-8')");
+    const profileUseIdx = slice.indexOf('API_ROUTES.profileUse');
+    expect(writeFileIdx).toBeGreaterThan(-1);
+    expect(profileUseIdx).toBeGreaterThan(-1);
+    expect(writeFileIdx).toBeLessThan(profileUseIdx);
+    expect(block).toContain("z.enum(['local', 'user'])");
+  });
+
+  it('Pi extension eforge_init writes a sentinel before profileUse in the existing-profile branch', () => {
+    const block = getPiInitBlock();
+    const existingProfileStart = block.indexOf('Existing profile mode');
+    expect(existingProfileStart).toBeGreaterThan(-1);
+    const slice = block.slice(existingProfileStart, block.indexOf('Fresh init mode'));
+    const writeFileIdx = slice.indexOf('writeFileSync(configPath, "", "utf-8")');
+    const profileUseIdx = slice.indexOf('API_ROUTES.profileUse');
+    expect(writeFileIdx).toBeGreaterThan(-1);
+    expect(profileUseIdx).toBeGreaterThan(-1);
+    expect(writeFileIdx).toBeLessThan(profileUseIdx);
+    expect(block).toContain("StringEnum(['local', 'user'])");
   });
 });

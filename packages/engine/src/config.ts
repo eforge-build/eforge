@@ -1149,6 +1149,13 @@ export async function getConfigDir(cwd?: string): Promise<string | null> {
   return configPath ? dirname(configPath) : null;
 }
 
+// Conventional project config dir relative to a working directory. Used when no
+// config has been discovered yet (e.g. during init or profile listing) and a
+// caller needs to synthesize the path that init would create.
+export function getConventionalConfigDir(cwd?: string): string {
+  return resolve(cwd ?? process.cwd(), 'eforge');
+}
+
 /**
  * Resolve the active agent runtime profile name and how it was selected.
  */

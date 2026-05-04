@@ -645,9 +645,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }),
       ),
       scope: Type.Optional(
-        Type.Union([Type.Literal("project"), Type.Literal("user"), Type.Literal("all")], {
+        Type.Union([Type.Literal("local"), Type.Literal("project"), Type.Literal("user"), Type.Literal("all")], {
           description:
-            'Scope for the operation. "list" accepts project|user|all (default: all). "use", "create", "delete" accept project|user (default: project). "show" ignores scope (resolves via precedence).',
+            'Scope for the operation. "list" accepts local|project|user|all (default: all). "use", "create", "delete" accept local|project|user (default: project). "local" targets .eforge/ (gitignored, dev-personal, highest precedence). "show" ignores scope (resolves via precedence).',
         }),
       ),
     }),
@@ -1004,9 +1004,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
       existingProfile: Type.Optional(
         Type.Object({
-          name: Type.String({ description: 'Name of the existing user-scope profile to activate.' }),
-          scope: StringEnum(['user', 'project']),
-        }, { description: 'Existing user-scope profile to activate. When provided, skips profile creation and activates directly. Mutually exclusive with `profile` and `migrate`.' }),
+          name: Type.String({ description: 'Name of the existing local- or user-scope profile to activate.' }),
+          scope: StringEnum(['local', 'user']),
+        }, { description: 'Existing local- or user-scope profile to activate. Existing profiles may use any supported harness. When provided, skips profile creation and activates directly. Mutually exclusive with `profile` and `migrate`.' }),
       ),
       profile: Type.Optional(
         Type.Object({
@@ -1047,8 +1047,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (params.migrate) {
           throw new Error('`existingProfile` and `migrate` cannot be set at the same time.');
         }
-        if (params.existingProfile.scope !== 'user') {
-          throw new Error('The init skill only supports user-scope existing profiles. Use `existingProfile.scope: "user"`.');
+        if (params.existingProfile.scope !== 'local' && params.existingProfile.scope !== 'user') {
+          throw new Error('The init skill only supports local- or user-scope existing profiles. Use `existingProfile.scope: "local"` or `"user"`.');
         }
       }
 
@@ -1133,26 +1133,43 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       // --- Existing profile mode ---
 
       if (params.existingProfile) {
-        if (params.existingProfile.scope !== 'user') {
-          throw new Error('The init skill only supports user-scope existing profiles. Use `existingProfile.scope: "user"`.');
-        }
-
+        let configExists = false;
         try {
           accessSync(configPath);
-          if (!params.force) {
-            throw new Error(
-              "eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.",
-            );
-          }
+          configExists = true;
         } catch (err) {
           if (err instanceof Error && !('code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')) {
             throw err;
           }
           // File does not exist - proceed
         }
+        if (configExists && !params.force) {
+          throw new Error(
+            "eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.",
+          );
+        }
 
-        mkdirSync(configDir, { recursive: true });
-        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: params.existingProfile.name, scope: params.existingProfile.scope });
+        // Write a sentinel file before calling profile/use so the daemon can
+        // discover this fresh project's eforge config directory.
+        let wroteExistingProfileSentinel = false;
+        if (!configExists) {
+          mkdirSync(configDir, { recursive: true });
+          writeFileSync(configPath, "", "utf-8");
+          wroteExistingProfileSentinel = true;
+        }
+
+        try {
+          await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: params.existingProfile.name, scope: params.existingProfile.scope });
+        } catch (err) {
+          if (wroteExistingProfileSentinel) {
+            try {
+              unlinkSync(configPath);
+            } catch (cleanupErr) {
+              process.stderr.write(`eforge_init: failed to remove sentinel ${configPath} after profileUse error: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}\n`);
+            }
+          }
+          throw err;
+        }
 
         const existingProfileConfigData: Record<string, unknown> = {};
         if (params.postMergeCommands && params.postMergeCommands.length > 0) {
@@ -1181,7 +1198,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           status: "initialized",
           configPath: "eforge/config.yaml",
           profileName: params.existingProfile.name,
-          source: "user-scope",
+          source: `${params.existingProfile.scope}-scope`,
           activatedExistingProfile: true,
         };
         if (existingProfileValidation) existingProfileResponse.validation = existingProfileValidation;
@@ -1190,19 +1207,20 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
       // --- Fresh init mode ---
 
-      // Check if config already exists
+      let freshConfigExists = false;
       try {
         accessSync(configPath);
-        if (!params.force) {
-          throw new Error(
-            "eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.",
-          );
-        }
+        freshConfigExists = true;
       } catch (err) {
         if (err instanceof Error && !('code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')) {
           throw err;
         }
         // File does not exist - proceed
+      }
+      if (freshConfigExists && !params.force) {
+        throw new Error(
+          "eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.",
+        );
       }
 
       // Resolve effective profile spec
@@ -1266,10 +1284,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
       // Write a sentinel file so the daemon can discover the config directory.
       let wroteSentinel = false;
-      try {
-        accessSync(configPath);
-      } catch {
-        // File does not exist - write empty sentinel so daemon can find configDir
+      if (!freshConfigExists) {
         mkdirSync(configDir, { recursive: true });
         writeFileSync(configPath, "", "utf-8");
         wroteSentinel = true;
@@ -1282,7 +1297,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
       } catch (err) {
         if (wroteSentinel) {
-          try { unlinkSync(configPath); } catch {}
+          try {
+            unlinkSync(configPath);
+          } catch (cleanupErr) {
+            process.stderr.write(`eforge_init: failed to remove sentinel ${configPath} after profile setup error: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}\n`);
+          }
         }
         throw err;
       }

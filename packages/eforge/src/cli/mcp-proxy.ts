@@ -540,9 +540,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands. Only applied when creating a new config.'),
       existingProfile: z.object({
-        name: z.string().describe('Name of the existing user-scope profile to activate.'),
-        scope: z.enum(['user', 'project']).describe('Scope of the existing profile.'),
-      }).optional().describe('Existing user-scope profile to activate. When provided, skips profile creation and activates the profile directly.'),
+        name: z.string().describe('Name of the existing local- or user-scope profile to activate.'),
+        scope: z.enum(['local', 'user']).describe('Scope of the existing profile.'),
+      }).optional().describe('Existing local- or user-scope profile to activate. Existing profiles may use any supported harness. When provided, skips profile creation and activates the profile directly.'),
       profile: z.object({
         name: z.string().optional().describe('Profile name. Auto-derived via deriveProfileName when omitted.'),
         tiers: z.record(
@@ -570,32 +570,48 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (profile) {
           throw new McpUserError({ error: '`existingProfile` and `profile` cannot be set at the same time.' });
         }
-        if (existingProfile.scope !== 'user') {
-          throw new McpUserError({ error: 'The init skill only supports user-scope existing profiles. Use `existingProfile.scope: "user"`.' });
+        if (existingProfile.scope !== 'local' && existingProfile.scope !== 'user') {
+          throw new McpUserError({ error: 'The init skill only supports local- or user-scope existing profiles. Use `existingProfile.scope: "local"` or `"user"`.' });
         }
       }
 
       // --- Existing profile mode ---
 
       if (existingProfile) {
-        if (existingProfile.scope !== 'user') {
-          throw new McpUserError({ error: 'The init skill only supports user-scope existing profiles. Use `existingProfile.scope: "user"`.' });
+        let configExists = false;
+        try {
+          await access(configPath);
+          configExists = true;
+        } catch {
+          // File does not exist - proceed
+        }
+        if (configExists && !force) {
+          throw new McpUserError({
+            error: 'eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.',
+          });
+        }
+
+        // Write a sentinel file before calling profile/use so the daemon can
+        // discover this fresh project's eforge config directory.
+        let wroteExistingProfileSentinel = false;
+        if (!configExists) {
+          await mkdir(configDir, { recursive: true });
+          await writeFile(configPath, '', 'utf-8');
+          wroteExistingProfileSentinel = true;
         }
 
         try {
-          await access(configPath);
-          if (!force) {
-            throw new McpUserError({
-              error: 'eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.',
-            });
-          }
+          await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: existingProfile.name, scope: existingProfile.scope });
         } catch (err) {
-          if (err instanceof McpUserError) throw err;
-          // File does not exist - proceed
+          if (wroteExistingProfileSentinel) {
+            try {
+              await unlink(configPath);
+            } catch (cleanupErr) {
+              process.stderr.write(`eforge_init: failed to remove sentinel ${configPath} after profileUse error: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}\n`);
+            }
+          }
+          throw err;
         }
-
-        await mkdir(configDir, { recursive: true });
-        await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: existingProfile.name, scope: existingProfile.scope });
 
         const existingProfileConfigData: Record<string, unknown> = {};
         if (postMergeCommands && postMergeCommands.length > 0) {
@@ -618,7 +634,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           status: 'initialized',
           configPath: 'eforge/config.yaml',
           profileName: existingProfile.name,
-          source: 'user-scope',
+          source: `${existingProfile.scope}-scope`,
           activatedExistingProfile: true,
         };
         if (existingProfileValidation) existingProfileResponse.validation = existingProfileValidation;
@@ -627,16 +643,17 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
       // --- Fresh init mode ---
 
+      let freshConfigExists = false;
       try {
         await access(configPath);
-        if (!force) {
-          throw new McpUserError({
-            error: 'eforge/config.yaml already exists. Use force: true to overwrite.',
-          });
-        }
-      } catch (err) {
-        if (err instanceof McpUserError) throw err;
+        freshConfigExists = true;
+      } catch {
         // File does not exist - proceed
+      }
+      if (freshConfigExists && !force) {
+        throw new McpUserError({
+          error: 'eforge/config.yaml already exists. Use force: true to overwrite.',
+        });
       }
 
       // Resolve effective tier recipes spec
@@ -670,10 +687,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
       // Write a sentinel file so the daemon can discover the config directory.
       let wroteSentinel = false;
-      try {
-        await access(configPath);
-      } catch {
-        // File does not exist - write empty sentinel so daemon can find configDir
+      if (!freshConfigExists) {
         await mkdir(configDir, { recursive: true });
         await writeFile(configPath, '', 'utf-8');
         wroteSentinel = true;
@@ -684,7 +698,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: profileName });
       } catch (err) {
         if (wroteSentinel) {
-          try { await unlink(configPath); } catch {}
+          try {
+            await unlink(configPath);
+          } catch (cleanupErr) {
+            process.stderr.write(`eforge_init: failed to remove sentinel ${configPath} after profile setup error: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}\n`);
+          }
         }
         throw err;
       }
