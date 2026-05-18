@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { isAlwaysYieldedAgentEvent, safeParseDaemonStreamSnapshot, safeParseEforgeEvent } from '../events.schemas.js';
-import { DAEMON_EVENT_TYPES, eventRegistry, getEventSummary } from '../event-registry.js';
+import { DAEMON_EVENT_TYPES, eventRegistry, getEventSummary, isPersistedDaemonEventType } from '../event-registry.js';
 import type { EforgeEvent } from '../events.schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -1983,3 +1983,59 @@ describe('safeParseEforgeEvent — build evaluator enriched payloads', () => {
   });
 });
 // --- eforge:endregion plan-02-build-evaluator-enforcement ---
+
+// --- eforge:region plan-01-durable-daemon-event-persistence ---
+
+// ---------------------------------------------------------------------------
+// isPersistedDaemonEventType predicate
+// ---------------------------------------------------------------------------
+
+describe('isPersistedDaemonEventType', () => {
+  it('returns true for queue lifecycle event types', () => {
+    expect(isPersistedDaemonEventType('queue:prd:discovered')).toBe(true);
+    expect(isPersistedDaemonEventType('queue:prd:start')).toBe(true);
+    expect(isPersistedDaemonEventType('queue:prd:complete')).toBe(true);
+    expect(isPersistedDaemonEventType('queue:complete')).toBe(true);
+  });
+
+  it('returns true for daemon scheduler event types', () => {
+    expect(isPersistedDaemonEventType('daemon:scheduler:dequeued')).toBe(true);
+    expect(isPersistedDaemonEventType('daemon:scheduler:capacity-blocked')).toBe(true);
+    expect(isPersistedDaemonEventType('daemon:scheduler:dependency-blocked')).toBe(true);
+    expect(isPersistedDaemonEventType('daemon:scheduler:paused')).toBe(true);
+    expect(isPersistedDaemonEventType('daemon:scheduler:resumed')).toBe(true);
+  });
+
+  it('returns true for daemon lifecycle event types', () => {
+    expect(isPersistedDaemonEventType('daemon:lifecycle:starting')).toBe(true);
+    expect(isPersistedDaemonEventType('daemon:lifecycle:ready')).toBe(true);
+    expect(isPersistedDaemonEventType('daemon:run:upsert')).toBe(true);
+  });
+
+  it('returns false for daemon:heartbeat — LIVE-ONLY, must not be persisted', () => {
+    expect(isPersistedDaemonEventType('daemon:heartbeat')).toBe(false);
+  });
+
+  it('returns false for session-scoped non-persisted events', () => {
+    expect(isPersistedDaemonEventType('plan:build:start')).toBe(false);
+    expect(isPersistedDaemonEventType('agent:start')).toBe(false);
+    expect(isPersistedDaemonEventType('planning:complete')).toBe(false);
+  });
+
+  it('returns false for completely unknown strings', () => {
+    expect(isPersistedDaemonEventType('not:a:real:event')).toBe(false);
+    expect(isPersistedDaemonEventType('')).toBe(false);
+  });
+
+  it('is consistent with DAEMON_EVENT_TYPES allowlist — every type in the array returns true', () => {
+    for (const type of DAEMON_EVENT_TYPES) {
+      expect(isPersistedDaemonEventType(type), `${type} should return true`).toBe(true);
+    }
+  });
+
+  it('has no overlap with daemon:heartbeat — heartbeat is absent from DAEMON_EVENT_TYPES', () => {
+    expect(DAEMON_EVENT_TYPES).not.toContain('daemon:heartbeat');
+  });
+});
+
+// --- eforge:endregion plan-01-durable-daemon-event-persistence ---

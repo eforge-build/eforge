@@ -15,7 +15,7 @@
 
 import { openDatabase, type MonitorDB } from './db.js';
 import { startServer, type WorkerTracker, type DaemonState } from './server.js';
-import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive } from '@eforge-build/client';
+import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive, isPersistedDaemonEventType } from '@eforge-build/client';
 import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig, type HookConfig } from '@eforge-build/engine/config';
 import { EforgeEngine, type SchedulerControl, type SchedulerInputEvent, type ProfileUsageProvider } from '@eforge-build/engine/eforge';
@@ -179,10 +179,9 @@ export interface ReconciliationReport {
 }
 
 /**
- * Write a daemon-scoped event to the SQLite event log.
- * Uses `daemonSessionId` as the runId so all daemon events aggregate cleanly
- * under a single synthetic session. Foreign keys are OFF in the DB so an
- * unmatched run_id is safe (see PRAGMA foreign_keys = OFF in db.ts).
+ * Write a daemon-scoped event to the SQLite event log as a daemon-owned row
+ * (origin='daemon', run_id=NULL). The daemonSessionId is embedded in the JSON
+ * payload for consumer correlation but is no longer used as a synthetic run_id.
  *
  * Best-effort: any DB error is silently swallowed to avoid crashing the daemon
  * on a non-critical event write failure.
@@ -193,12 +192,14 @@ export function writeDaemonEvent(
   daemonSessionId: string,
 ): void {
   try {
+    if (!isPersistedDaemonEventType(event.type)) return;
+
     const now = new Date().toISOString();
-    // Default sessionId to daemonSessionId, but preserve any explicit sessionId
+    // Embed daemonSessionId in the JSON payload so consumers can correlate
+    // events back to this daemon instance. Preserve any explicit sessionId
     // on the event (e.g. `daemon:orphan:reaped` carries the orphan run's
     // sessionId so consumers can correlate back to the original run).
-    db.insertEvent({
-      runId: daemonSessionId,
+    db.insertDaemonEvent({
       type: event.type,
       data: JSON.stringify({ sessionId: daemonSessionId, ...event, timestamp: now }),
       timestamp: now,
@@ -459,8 +460,7 @@ async function main(): Promise<void> {
               timestamp: now,
             });
           }
-          db.insertEvent({
-            runId: sessionId,
+          db.insertDaemonEvent({
             type: 'session:end',
             data: JSON.stringify({ type: 'session:end', sessionId, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
             timestamp: now,
@@ -490,8 +490,7 @@ async function main(): Promise<void> {
               timestamp: now,
             });
           }
-          db.insertEvent({
-            runId: sessionId,
+          db.insertDaemonEvent({
             type: 'session:end',
             data: JSON.stringify({ type: 'session:end', sessionId, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
             timestamp: now,

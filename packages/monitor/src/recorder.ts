@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { RunInfo } from '@eforge-build/client';
+import { isPersistedDaemonEventType } from '@eforge-build/client';
 import type { MonitorDB } from './db.js';
 
 /**
@@ -176,6 +177,20 @@ export async function* withRecording(
         planId: extractPlanId(event),
         agent: extractAgent(event),
         data: serializedData,
+        timestamp: event.timestamp,
+      });
+    } else if (!activeRunId && event.type !== 'session:start' && isPersistedDaemonEventType(event.type)) {
+      // Persist allowlisted daemon-stream events that have no run correlation
+      // as daemon-owned rows (origin='daemon', run_id=NULL). session:start is
+      // excluded here because it is buffered above and flushed into the real
+      // run row once phase:start or enqueue:start establishes run correlation.
+      // This covers queue lifecycle events (queue:prd:discovered, queue:complete, etc.)
+      // and scheduler events emitted by the watcher outside any individual run.
+      db.insertDaemonEvent({
+        type: event.type,
+        planId: extractPlanId(event),
+        agent: extractAgent(event),
+        data: JSON.stringify(event),
         timestamp: event.timestamp,
       });
     }

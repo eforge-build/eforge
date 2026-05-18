@@ -24,6 +24,8 @@ import { withRecording } from '../recorder.js';
 import type { MonitorServer, DaemonState } from '../server.js';
 import { AutoBuildSupervisor } from '../auto-build-supervisor.js';
 import type { EforgeEvent } from '@eforge-build/engine/events';
+import type { QueueItem } from '@eforge-build/client';
+import { eventRegistry } from '@eforge-build/client';
 
 function makeTmpCwd(): string {
   const dir = mkdtempSync(join(tmpdir(), 'eforge-hello-parity-'));
@@ -373,3 +375,89 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     db.close();
   });
 });
+
+// --- eforge:region plan-01-durable-daemon-event-persistence ---
+
+describe('stream:hello queue parity with live queue:prd:discovered projection', () => {
+  it('live queue:prd:discovered projection equals stream:hello.queue for a newly discovered PRD', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const ts = new Date().toISOString();
+
+    // Persist a queue:prd:discovered event as a daemon-owned row (simulates watcher recorder path)
+    const prdId = 'prd-hello-parity';
+    const prdTitle = 'Hello Parity PRD';
+    const discoveredEvent: EforgeEvent = {
+      type: 'queue:prd:discovered',
+      prdId,
+      title: prdTitle,
+      timestamp: ts,
+    };
+    db.insertDaemonEvent({
+      type: 'queue:prd:discovered',
+      data: JSON.stringify(discoveredEvent),
+      timestamp: ts,
+    });
+
+    // Write a PRD file so the server's loadQueueItemsSync picks it up
+    const queueDir = join(cwd, 'eforge', 'queue');
+    mkdirSync(queueDir, { recursive: true });
+    writeFileSync(join(queueDir, `${prdId}.md`), `---\ntitle: ${prdTitle}\n---\n\n# Body\n`, 'utf-8');
+
+    // Start server
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+    const base = `http://127.0.0.1:${server.port}`;
+
+    // Read the persisted row back from the DB and assert daemon ownership
+    const persistedRows = db.getDaemonEventsAfter(0);
+    const persistedRow = persistedRows.find((r) => r.type === 'queue:prd:discovered');
+    expect(persistedRow, 'queue:prd:discovered row must be persisted').toBeDefined();
+    expect(persistedRow!.origin).toBe('daemon');
+    expect(persistedRow!.runId).toBeNull();
+
+    // Parse the payload from the persisted row (not the in-memory object)
+    const persistedPayload = JSON.parse(persistedRow!.data) as Extract<EforgeEvent, { type: 'queue:prd:discovered' }>;
+
+    // Fetch stream:hello snapshot
+    const raw = await fetchSseFirstChunk(`${base}/api/daemon-events`, 1, 2000);
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+    const helloDataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    const helloData = JSON.parse(helloDataLine!.slice('data: '.length)) as {
+      queue: QueueItem[];
+      recentActivity: { id: number; event: EforgeEvent }[];
+    };
+
+    // The stream:hello snapshot queue should contain the PRD
+    expect(helloData.queue.some((item) => item.id === prdId)).toBe(true);
+    const snapshotItem = helloData.queue.find((item) => item.id === prdId)!;
+
+    // The persisted queue:prd:discovered event must appear in stream:hello recentActivity
+    expect(Array.isArray(helloData.recentActivity)).toBe(true);
+    const activityEntry = helloData.recentActivity.find(
+      (a) => a.event.type === 'queue:prd:discovered' && (a.event as typeof persistedPayload).prdId === prdId,
+    );
+    expect(activityEntry, 'queue:prd:discovered must appear in stream:hello recentActivity').toBeDefined();
+
+    // Apply the persisted payload (from DB, not the in-memory object) through the registry projector
+    // to an empty initial state, simulating what the daemonReducer does on live SSE
+    const projectableState = { runs: [], queue: [], autoBuild: null, latestHeartbeat: null };
+    const project = eventRegistry['queue:prd:discovered'].project;
+    expect(project, 'queue:prd:discovered must have a project function').toBeDefined();
+    const delta = project!(persistedPayload, projectableState);
+    expect(delta).toBeDefined();
+    const liveQueue = delta!.queue!;
+    expect(liveQueue).toHaveLength(1);
+
+    // Live projection must deep-equal the snapshot item shape, including any
+    // optional fields the snapshot would add.
+    expect(liveQueue).toEqual([snapshotItem]);
+
+    await server.stop();
+    db.close();
+  });
+});
+
+// --- eforge:endregion plan-01-durable-daemon-event-persistence ---

@@ -140,6 +140,7 @@ export {
   eventRegistry,
   DAEMON_EVENT_TYPES,
   getEventSummary,
+  isPersistedDaemonEventType,
 } from './event-registry.js';
 export type {
   EventMeta,

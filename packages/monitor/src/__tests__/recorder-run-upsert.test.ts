@@ -87,6 +87,13 @@ describe('withRecording() enqueue-only sequence', () => {
     const runId = emitted[0].run.id;
     expect(emitted[1].run.id).toBe(runId);
 
+    // session:start is buffered until enqueue:start establishes the real run;
+    // it must not also be persisted as a daemon-owned duplicate.
+    const sessionStartRows = db.getDaemonEventsAfter(0).filter((e) => e.type === 'session:start');
+    expect(sessionStartRows).toHaveLength(1);
+    expect(sessionStartRows[0].runId).toBe(runId);
+    expect(sessionStartRows[0].origin).toBe('run');
+
     // First upsert: run is 'running' with command='enqueue'
     // Verify the full payload shape at insertion time (no completedAt yet,
     // cwd matches, planSet matches the source provided to enqueue:start).
@@ -279,3 +286,142 @@ describe('withRecording() phase-driven build sequence', () => {
     db.close();
   });
 });
+
+// --- eforge:region plan-01-durable-daemon-event-persistence ---
+
+// ---------------------------------------------------------------------------
+// Regression: no-run-id queue/scheduler events are persisted as daemon-owned rows
+// ---------------------------------------------------------------------------
+
+describe('withRecording() daemon event persistence — no active run', () => {
+  it('persists queue:prd:discovered (no run id) as a daemon-owned row via insertDaemonEvent', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const ts = new Date().toISOString();
+
+    // Simulate watcher emitting queue lifecycle events without an active run.
+    // These are daemon-scope, persist:true events that occur before any build starts.
+    const watcherEvents: EforgeEvent[] = [
+      { type: 'queue:prd:discovered', prdId: 'prd-no-run', title: 'Discovered PRD', timestamp: ts },
+    ];
+
+    const yielded = await collectEvents(withRecording(asGenerator(watcherEvents), db, cwd));
+
+    // The event should be yielded through unchanged
+    expect(yielded).toHaveLength(1);
+    expect(yielded[0].type).toBe('queue:prd:discovered');
+
+    // The event should be persisted in the DB as a daemon-owned row
+    const daemonEvents = db.getDaemonEventsAfter(0);
+    const discoveredRows = daemonEvents.filter((e) => e.type === 'queue:prd:discovered');
+    expect(discoveredRows).toHaveLength(1);
+    expect(discoveredRows[0].runId).toBeNull();
+    expect(discoveredRows[0].origin).toBe('daemon');
+
+    // No runs row was created for this queue event
+    const runs = db.getRuns();
+    expect(runs).toHaveLength(0);
+
+    db.close();
+  });
+
+  it('persists representative queue and scheduler lifecycle events without creating runs rows', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const ts = new Date().toISOString();
+
+    const watcherEvents: EforgeEvent[] = [
+      { type: 'queue:prd:discovered', prdId: 'prd-1', title: 'PRD 1', timestamp: ts },
+      { type: 'queue:prd:start', prdId: 'prd-1', title: 'PRD 1', timestamp: ts },
+      { type: 'queue:prd:complete', prdId: 'prd-1', status: 'completed', timestamp: ts },
+      { type: 'queue:complete', processed: 1, skipped: 0, timestamp: ts },
+      { type: 'daemon:scheduler:dequeued', prdId: 'prd-1', queueDepth: 0, capacityRemaining: 2, timestamp: ts },
+      { type: 'daemon:scheduler:capacity-blocked', queueDepth: 3, runningCount: 2, limit: 2, timestamp: ts },
+    ];
+
+    await collectEvents(withRecording(asGenerator(watcherEvents), db, cwd));
+
+    // No runs rows created
+    expect(db.getRuns()).toHaveLength(0);
+
+    // All daemon-allowlisted events persisted exactly once as daemon-owned rows
+    const daemonEvents = db.getDaemonEventsAfter(0);
+    expect(daemonEvents).toHaveLength(watcherEvents.length);
+    const persistedTypes = new Set(daemonEvents.map((e) => e.type));
+    expect(persistedTypes.has('queue:prd:discovered')).toBe(true);
+    expect(persistedTypes.has('queue:prd:start')).toBe(true);
+    expect(persistedTypes.has('queue:prd:complete')).toBe(true);
+    expect(persistedTypes.has('queue:complete')).toBe(true);
+    expect(persistedTypes.has('daemon:scheduler:dequeued')).toBe(true);
+    expect(persistedTypes.has('daemon:scheduler:capacity-blocked')).toBe(true);
+
+    // All are daemon-owned
+    for (const event of daemonEvents) {
+      expect(event.runId, `${event.type} should have null runId`).toBeNull();
+      expect(event.origin, `${event.type} should have origin='daemon'`).toBe('daemon');
+    }
+
+    db.close();
+  });
+
+  it('does not create daemon-owned rows for non-persisted events without active run', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const ts = new Date().toISOString();
+
+    // agent:start, plan:build:start etc. are persist:false — should not be stored
+    const nonPersistedEvents: EforgeEvent[] = [
+      { type: 'planning:start', source: 'queue/test.md', timestamp: ts },
+      { type: 'plan:build:start', planId: 'plan-01', timestamp: ts },
+    ];
+
+    await collectEvents(withRecording(asGenerator(nonPersistedEvents), db, cwd));
+
+    // No events should be in the DB at all. getDaemonEventsAfter filters by
+    // allowlist, so also assert the raw max event id to catch accidental
+    // insertion of non-allowlisted daemon-owned rows.
+    const daemonEvents = db.getDaemonEventsAfter(0);
+    expect(daemonEvents).toHaveLength(0);
+    expect(db.getMaxEventId()).toBe(0);
+
+    db.close();
+  });
+
+  it('existing run-correlated path still works for phase-driven events', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const ts = new Date().toISOString();
+    const runId = `run-check-${Date.now()}`;
+    const sessionId = `sess-check-${Date.now()}`;
+
+    const events: EforgeEvent[] = [
+      { type: 'session:start', sessionId, timestamp: ts },
+      { type: 'phase:start', runId, sessionId, planSet: 'test', command: 'build', timestamp: ts },
+      { type: 'queue:prd:discovered', prdId: 'prd-during-run', title: 'Mid-Run Discovery', timestamp: ts },
+      { type: 'phase:end', runId, result: { status: 'completed', summary: 'ok' }, timestamp: ts },
+      { type: 'session:end', sessionId, result: { status: 'completed', summary: 'ok' }, timestamp: ts },
+    ];
+
+    await collectEvents(withRecording(asGenerator(events), db, cwd));
+
+    // Run-correlated events are stored under the run
+    const runEvents = db.getEvents(runId);
+    expect(runEvents.some((e) => e.type === 'phase:start')).toBe(true);
+    expect(runEvents.every((e) => e.origin === 'run')).toBe(true);
+
+    // queue:prd:discovered has no runId and appears during a phase — no enqueueRunId,
+    // but event.runId is also undefined, so activeRunId will be from event.runId ?? enqueueRunId.
+    // Since this event is emitted between phase:start and phase:end but the event itself
+    // has no runId, and enqueueRunId is not set, it goes to the daemon path.
+    const daemonEvents = db.getDaemonEventsAfter(0);
+    // daemon:run:upsert events are also stored, filter them out
+    const queueDiscovered = daemonEvents.filter((e) => e.type === 'queue:prd:discovered');
+    expect(queueDiscovered).toHaveLength(1);
+    expect(queueDiscovered[0].runId).toBeNull();
+    expect(queueDiscovered[0].origin).toBe('daemon');
+
+    db.close();
+  });
+});
+
+// --- eforge:endregion plan-01-durable-daemon-event-persistence ---

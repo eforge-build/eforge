@@ -344,6 +344,30 @@ describe('daemonReducer', () => {
       expect(next.daemonActivity).toHaveLength(1);
       expect(next.daemonActivity[0].id).toBe('e1');
     });
+
+    // --- eforge:region plan-01-durable-daemon-event-persistence ---
+    it('live queue:prd:discovered projection deep-equals a snapshot-shaped QueueItem', () => {
+      // This regression asserts that applying a queue:prd:discovered event to an
+      // empty queue produces a QueueItem identical in shape to what stream:hello.queue
+      // would return for a PRD file with matching title and no optional frontmatter.
+      const event = makeEvent('queue:prd:discovered', {
+        prdId: 'prd-parity-99',
+        title: 'Parity PRD Title',
+      });
+
+      const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+      expect(next.queue).toHaveLength(1);
+      // Deep equality with the exact QueueItem shape loadQueueItemsSync would return
+      // for a pending PRD (no depends_on, no recoveryVerdict, no lockfile).
+      const expectedItem: QueueItem = {
+        id: 'prd-parity-99',
+        title: 'Parity PRD Title',
+        status: 'pending',
+      };
+      expect(next.queue[0]).toEqual(expectedItem);
+    });
+    // --- eforge:endregion plan-01-durable-daemon-event-persistence ---
   });
 
   describe('ADD_EVENT: queue:prd:complete', () => {
