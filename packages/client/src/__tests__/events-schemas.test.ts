@@ -2329,6 +2329,17 @@ describe('safeParseEforgeEvent — extension reviewer perspective events', () =>
     }
   });
 
+  it('accepts extension:reviewer-perspective:skipped unknown-key without extension provenance', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      perspectiveKey: 'missing-lens',
+      reason: 'unknown-key',
+      message: 'Perspective key "missing-lens" is not registered by any loaded extension',
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('accepts extension:reviewer-perspective:skipped with optional message and timeoutMs', () => {
     const result = safeParseEforgeEvent({
       type: 'extension:reviewer-perspective:skipped',

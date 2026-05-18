@@ -237,16 +237,32 @@ describe('native extension replay harness', () => {
 
     expect(result.valid).toBe(true);
     expect(result.matches).toEqual([]);
-    expect(Object.fromEntries(result.deferredRegistrations.map((entry) => [entry.family, entry.count]))).toMatchObject({
+    // --- eforge:region plan-03-observability-docs-examples ---
+    // reviewerPerspectives is runtime-supported and no longer listed as deferred
+    const deferredByFamily = Object.fromEntries(result.deferredRegistrations.map((entry) => [entry.family, entry.count]));
+    expect(deferredByFamily).toMatchObject({
       agentRunHooks: 1,
       policyGates: 1,
       profileRouters: 1,
       inputSources: 1,
       prdEnrichers: 1,
-      reviewerPerspectives: 1,
       validationProviders: 1,
       tools: 1,
     });
+    expect(deferredByFamily).not.toHaveProperty('reviewerPerspectives');
+
+    // Reviewer perspectives appear as runtime-supported details on the extension entry
+    const deferredExt = result.extensions.find((ext) => ext.name === 'deferred');
+    expect(deferredExt).toBeDefined();
+    expect(deferredExt?.reviewerPerspectiveDetails).toEqual([
+      expect.objectContaining({
+        key: 'custom-review',
+        label: 'Custom Review',
+        description: 'Custom review perspective',
+        extensionName: 'deferred',
+      }),
+    ]);
+    // --- eforge:endregion plan-03-observability-docs-examples ---
   });
 
   // --- eforge:region plan-01-extension-input-contracts ---

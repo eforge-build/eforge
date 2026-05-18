@@ -360,12 +360,12 @@ export interface ReviewerPerspectiveApplicability {
   categories?: Array<'code' | 'api' | 'docs' | 'config' | 'deps' | 'test'>;
   /**
    * Minimum number of changed files for the perspective to apply.
-   * When combined with other rules this is evaluated last.
+   * Must be a non-negative integer. When combined with other rules this is evaluated last.
    */
   minChangedFiles?: number;
   /**
    * Minimum number of changed lines for the perspective to apply.
-   * When combined with other rules this is evaluated last.
+   * Must be a non-negative integer. When combined with other rules this is evaluated last.
    */
   minChangedLines?: number;
   /**

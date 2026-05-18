@@ -1133,21 +1133,31 @@ const EforgeEventVariantsSchema = Type.Union([
     perspectiveLabel: Type.String(),
     planId: Type.Optional(Type.String()),
   }),
-  Type.Object({
-    type: Type.Literal('extension:reviewer-perspective:skipped'),
-    extensionPath: Type.String(),
-    extensionName: Type.String(),
-    perspectiveKey: ReviewPerspectiveKeySchema,
-    reason: Type.Union([
-      Type.Literal('not-applicable'),
-      Type.Literal('applicability-error'),
-      Type.Literal('applicability-timeout'),
-      Type.Literal('unknown-key'),
-    ]),
-    message: Type.Optional(Type.String()),
-    planId: Type.Optional(Type.String()),
-    timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
-  }),
+  Type.Union([
+    Type.Object({
+      type: Type.Literal('extension:reviewer-perspective:skipped'),
+      extensionPath: Type.String(),
+      extensionName: Type.String(),
+      perspectiveKey: ReviewPerspectiveKeySchema,
+      reason: Type.Union([
+        Type.Literal('not-applicable'),
+        Type.Literal('applicability-error'),
+        Type.Literal('applicability-timeout'),
+      ]),
+      message: Type.Optional(Type.String()),
+      planId: Type.Optional(Type.String()),
+      timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
+    }),
+    Type.Object({
+      type: Type.Literal('extension:reviewer-perspective:skipped'),
+      extensionPath: Type.Optional(Type.String()),
+      extensionName: Type.Optional(Type.String()),
+      perspectiveKey: ReviewPerspectiveKeySchema,
+      reason: Type.Literal('unknown-key'),
+      message: Type.Optional(Type.String()),
+      planId: Type.Optional(Type.String()),
+    }),
+  ]),
   // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
   // Planning

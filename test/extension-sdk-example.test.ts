@@ -32,6 +32,9 @@ import slackWebhookNotifier from '../examples/extensions/slack-webhook-notifier.
 // --- eforge:region plan-01-docs-example-and-skills ---
 import issueTracker from '../examples/extensions/issue-tracker.js';
 // --- eforge:endregion plan-01-docs-example-and-skills ---
+// --- eforge:region plan-03-observability-docs-examples ---
+import reviewerPerspective from '../examples/extensions/reviewer-perspective.js';
+// --- eforge:endregion plan-03-observability-docs-examples ---
 
 const EXTENSION_EXAMPLE_DIR = resolve(fileURLToPath(new URL('../examples/extensions', import.meta.url)));
 const importedExampleFiles = [
@@ -45,6 +48,9 @@ const importedExampleFiles = [
   'minimal-event-logger.ts',
   'profile-router.ts',
   'protected-paths.ts',
+  // --- eforge:region plan-03-observability-docs-examples ---
+  'reviewer-perspective.ts',
+  // --- eforge:endregion plan-03-observability-docs-examples ---
   'slack-webhook-notifier.ts',
 ].sort();
 
@@ -76,6 +82,10 @@ const _factoryCheck3: sdk.EforgeExtensionFactory = (api) => {
 const _factoryCheckIssueTracker: sdk.EforgeExtensionFactory = issueTracker;
 void _factoryCheckIssueTracker;
 // --- eforge:endregion plan-01-docs-example-and-skills ---
+// --- eforge:region plan-03-observability-docs-examples ---
+const _factoryCheckReviewerPerspective: sdk.EforgeExtensionFactory = reviewerPerspective;
+void _factoryCheckReviewerPerspective;
+// --- eforge:endregion plan-03-observability-docs-examples ---
 void _factoryCheck1;
 void _factoryCheck2;
 void _factoryCheck3;

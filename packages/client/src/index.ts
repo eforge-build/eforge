@@ -346,6 +346,10 @@ export type {
   ExtensionDiagnostic,
   ExtensionShadow,
   ExtensionRegistrationSummary,
+  // --- eforge:region plan-03-observability-docs-examples ---
+  ReviewerPerspectiveApplicabilitySummary,
+  ReviewerPerspectiveDetail,
+  // --- eforge:endregion plan-03-observability-docs-examples ---
   ExtensionEntry,
   ExtensionListResponse,
   ExtensionShowResponse,

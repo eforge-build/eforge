@@ -35,6 +35,28 @@ function compareSemver(a: string, b: string): number {
   return 0;
 }
 
+// --- eforge:region plan-03-observability-docs-examples ---
+describe('reviewer perspective example and observability', () => {
+  it('provides a reviewer-perspective.ts example using public SDK APIs', () => {
+    const examplePath = repoPath('examples/extensions/reviewer-perspective.ts');
+    expect(existsSync(examplePath)).toBe(true);
+
+    const source = readRepoFile('examples/extensions/reviewer-perspective.ts');
+    // Must import only public SDK API
+    expect(source).toContain("from '@eforge-build/extension-sdk'");
+    // Must use registerReviewerPerspective with required fields
+    expect(source).toContain('registerReviewerPerspective');
+    expect(source).toContain('key:');
+    expect(source).toContain('label:');
+    expect(source).toContain('description:');
+    expect(source).toContain('promptFragment:');
+    // Must not expose any internal/private APIs
+    expect(source).not.toContain("from '@eforge-build/engine'");
+    expect(source).not.toContain("from '@eforge-build/monitor'");
+  });
+});
+// --- eforge:endregion plan-03-observability-docs-examples ---
+
 describe('/eforge:extend skill files and manifests', () => {
   it('declares the Claude Code plugin authoring skill with required frontmatter', () => {
     const relative = 'eforge-plugin/skills/extend/extend.md';
@@ -155,7 +177,7 @@ describe('/eforge:extend workflow content', () => {
       'beforeFinalMerge',
       'beforeEnqueue',
       'beforeValidation',
-      'supported policy-gate subset',
+      'supported policy-gate or reviewer-perspective subset',
       'Approval workflow/UI/state and `modify` policy decisions',
       'require-approval` blocks',
       'unsandboxed trusted code',

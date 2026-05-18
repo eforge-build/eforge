@@ -77,6 +77,28 @@ describe('evaluateApplicability', () => {
       expect(result.applicable).toBe(true);
     });
 
+    it('treats **/ as zero or more directories', async () => {
+      await expect(evaluateApplicability(
+        { fileGlobs: ['**/*.tsx'] },
+        { changedFiles: ['Button.tsx'], changedLines: 4 },
+      )).resolves.toMatchObject({ applicable: true });
+
+      await expect(evaluateApplicability(
+        { fileGlobs: ['src/**/*.ts'] },
+        { changedFiles: ['src/index.ts'], changedLines: 4 },
+      )).resolves.toMatchObject({ applicable: true });
+    });
+
+    it('passes a defensive copy of changed files to function predicates', async () => {
+      const input: ApplicabilityInput = { changedFiles: ['src/button.tsx'], changedLines: 10 };
+      const result = await evaluateApplicability(
+        { fn: (changedFiles) => { changedFiles.push('mutated.ts'); return true; } },
+        input,
+      );
+      expect(result.applicable).toBe(true);
+      expect(input.changedFiles).toEqual(['src/button.tsx']);
+    });
+
     it('returns not-applicable when no file matches any glob', async () => {
       const result = await evaluateApplicability(
         { fileGlobs: ['**/*.graphql'] },
@@ -161,6 +183,14 @@ describe('evaluateApplicability', () => {
       const result = await evaluateApplicability(
         { categories: ['deps'] },
         INPUT_WITH_FILES,
+      );
+      expect(result.applicable).toBe(false);
+    });
+
+    it('uses the built-in categorization rules rather than treating unknown files as code', async () => {
+      const result = await evaluateApplicability(
+        { categories: ['code'] },
+        { changedFiles: ['assets/logo.png'], changedLines: 1 },
       );
       expect(result.applicable).toBe(false);
     });

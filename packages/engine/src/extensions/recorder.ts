@@ -237,12 +237,16 @@ function isValidApplicabilityShape(value: unknown): boolean {
     if (!Array.isArray(value.categories)) return false;
     if (!value.categories.every((c) => typeof c === 'string' && VALID_APPLICABILITY_CATEGORY_VALUES.has(c))) return false;
   }
-  if (value.minChangedFiles !== undefined && typeof value.minChangedFiles !== 'number') return false;
-  if (value.minChangedLines !== undefined && typeof value.minChangedLines !== 'number') return false;
+  if (value.minChangedFiles !== undefined && !isNonNegativeInteger(value.minChangedFiles)) return false;
+  if (value.minChangedLines !== undefined && !isNonNegativeInteger(value.minChangedLines)) return false;
   if (value.fn !== undefined && typeof value.fn !== 'function') return false;
   return true;
 }
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }

@@ -1664,6 +1664,9 @@ export async function startServer(
         })),
         registrations: (loaded?.registrations as ExtensionRegistrationSummary | undefined) ?? { ...EMPTY_EXTENSION_REGISTRATIONS },
         diagnostics: candidate.diagnostics.map(normalizeExtensionDiagnostic),
+        // --- eforge:region plan-03-observability-docs-examples ---
+        ...(loaded?.reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails: loaded.reviewerPerspectiveDetails }),
+        // --- eforge:endregion plan-03-observability-docs-examples ---
       };
     });
 

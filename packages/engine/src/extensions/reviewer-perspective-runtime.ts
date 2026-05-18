@@ -4,6 +4,7 @@
  */
 
 import type { EforgeEvent } from '../events.js';
+import { categorizeFiles } from '../review-heuristics.js';
 import type { ReviewerPerspectiveRegistration, ReviewerPerspectiveApplicability } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -79,7 +80,7 @@ export async function evaluateApplicability(
 
     // -- categories (via file extension heuristics) --
     if (appliesTo.categories && appliesTo.categories.length > 0) {
-      const categoryFiles = categorizeChangedFiles(changedFiles);
+      const categoryFiles = categorizeFiles(changedFiles);
       const anyMatch = appliesTo.categories.some(
         (cat) => (categoryFiles[cat]?.length ?? 0) > 0,
       );
@@ -99,7 +100,7 @@ export async function evaluateApplicability(
     // -- fn predicate (bounded by timeout) --
     if (appliesTo.fn) {
       const result = await withTimeout(
-        Promise.resolve(appliesTo.fn(changedFiles, changedLines)),
+        Promise.resolve(appliesTo.fn([...changedFiles], changedLines)),
         timeoutMs,
       );
       if (result.kind === 'timeout') {
@@ -188,8 +189,6 @@ export async function selectExtensionPerspectives(
         diagnosticEvents.push({
           type: 'extension:reviewer-perspective:skipped',
           timestamp,
-          extensionPath: '',
-          extensionName: '',
           perspectiveKey: key,
           reason: 'unknown-key',
           message: `Perspective key "${key}" is not registered by any loaded extension`,
@@ -297,51 +296,46 @@ export function buildExtensionPerspectivePromptSection(
 
 /** Simple glob pattern matching (supports *, **, and ? wildcards). */
 function matchGlob(pattern: string, path: string): boolean {
-  // Convert glob to regex:
-  // 1. Escape regex special chars (excluding * and ?)
-  // 2. Replace ** with a placeholder, * with [^/]*, ? with [^/]
-  // 3. Replace placeholder back to .*
   try {
-    const regexStr = pattern
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex specials (not * or ?)
-      .replace(/\*\*/g, '\x00') // protect ** before single * replacement
-      .replace(/\*/g, '[^/]*') // single * matches within one path segment
-      .replace(/\x00/g, '.*') // ** matches across path separators
-      .replace(/\?/g, '[^/]'); // ? matches one non-separator char
+    let regexStr = '';
+    for (let i = 0; i < pattern.length; i += 1) {
+      const char = pattern[i];
+      const next = pattern[i + 1];
+      const afterNext = pattern[i + 2];
+
+      if (char === '*' && next === '*' && afterNext === '/') {
+        // Common glob semantics: **/ matches zero or more path segments, so
+        // **/*.tsx matches both Button.tsx and src/Button.tsx.
+        regexStr += '(?:.*/)?';
+        i += 2;
+        continue;
+      }
+      if (char === '*' && next === '*') {
+        regexStr += '.*';
+        i += 1;
+        continue;
+      }
+      if (char === '*') {
+        regexStr += '[^/]*';
+        continue;
+      }
+      if (char === '?') {
+        regexStr += '[^/]';
+        continue;
+      }
+      regexStr += escapeRegexChar(char);
+    }
     return new RegExp(`^${regexStr}$`).test(path);
   } catch {
     return false;
   }
 }
 
-/** Lightweight file categorization for applicability evaluation. */
-function categorizeChangedFiles(files: string[]): Record<string, string[]> {
-  const cats: Record<string, string[]> = {
-    code: [],
-    api: [],
-    docs: [],
-    config: [],
-    deps: [],
-    test: [],
-  };
-  for (const file of files) {
-    const lower = file.toLowerCase();
-    if (lower.includes('test') || lower.includes('spec') || lower.includes('__tests__')) {
-      cats.test!.push(file);
-    } else if (lower.endsWith('.md') || lower.endsWith('.mdx') || lower.startsWith('docs/') || lower.includes('/docs/')) {
-      cats.docs!.push(file);
-    } else if (lower === 'package.json' || lower.endsWith('/package.json') || lower === 'package-lock.json' || lower.endsWith('/package-lock.json') || lower === 'pnpm-lock.yaml') {
-      cats.deps!.push(file);
-    } else if (lower.includes('openapi') || lower.includes('swagger') || lower.endsWith('.graphql') || lower.endsWith('.gql')) {
-      cats.api!.push(file);
-    } else if (lower.endsWith('.yaml') || lower.endsWith('.yml') || lower.endsWith('.json') || lower.endsWith('.toml') || lower.endsWith('.env') || lower.endsWith('.ini')) {
-      cats.config!.push(file);
-    } else {
-      cats.code!.push(file);
-    }
-  }
-  return cats;
+function escapeRegexChar(char: string | undefined): string {
+  if (char === undefined) return '';
+  return /[.+^${}()|[\]\\]/.test(char) ? `\\${char}` : char;
 }
+
 
 type TimeoutResult<T> = { kind: 'value'; value: T } | { kind: 'timeout' } | { kind: 'error'; error: unknown };
 

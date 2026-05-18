@@ -13,6 +13,8 @@ import {
   type ExtensionTestReplayCounts,
   type ExtensionTestResponse,
   type ExtensionTestSource,
+  type ReviewerPerspectiveDetail,
+  type ReviewerPerspectiveApplicabilitySummary,
 } from '@eforge-build/client';
 
 import { compilePattern } from '../hooks.js';
@@ -67,12 +69,15 @@ const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
   prdEnrichers: 0,
 };
 
+// --- eforge:region plan-03-observability-docs-examples ---
+// reviewerPerspectives is intentionally excluded: perspectives are runtime-supported
+// and execute during the review-cycle stage, not deferred event-replay hooks.
+// --- eforge:endregion plan-03-observability-docs-examples ---
 const DEFERRED_FAMILIES = [
   'agentRunHooks',
   'policyGates',
   'profileRouters',
   'inputSources',
-  'reviewerPerspectives',
   'validationProviders',
   'tools',
   'prdEnrichers',
@@ -370,10 +375,57 @@ function computeMatches(
   return matches;
 }
 
+// --- eforge:region plan-03-observability-docs-examples ---
+function buildReviewerPerspectiveApplicabilitySummary(appliesTo: {
+  fileGlobs?: string[];
+  paths?: string[];
+  extensions?: string[];
+  categories?: string[];
+  minChangedFiles?: number;
+  minChangedLines?: number;
+  fn?: unknown;
+} | undefined): ReviewerPerspectiveApplicabilitySummary | undefined {
+  if (!appliesTo) return undefined;
+  const summary: ReviewerPerspectiveApplicabilitySummary = {};
+  if (appliesTo.fileGlobs?.length) summary.fileGlobs = [...appliesTo.fileGlobs];
+  if (appliesTo.paths?.length) summary.paths = [...appliesTo.paths];
+  if (appliesTo.extensions?.length) summary.extensions = [...appliesTo.extensions];
+  if (appliesTo.categories?.length) summary.categories = [...appliesTo.categories] as ReviewerPerspectiveApplicabilitySummary['categories'];
+  if (appliesTo.minChangedFiles !== undefined) summary.minChangedFiles = appliesTo.minChangedFiles;
+  if (appliesTo.minChangedLines !== undefined) summary.minChangedLines = appliesTo.minChangedLines;
+  if (typeof appliesTo.fn === 'function') summary.hasFn = true;
+  if (Object.keys(summary).length === 0) return undefined;
+  return summary;
+}
+
+function collectReviewerPerspectiveDetails(
+  registry: NativeExtensionRegistry,
+  extensionName: string,
+  extensionPath: string,
+): ReviewerPerspectiveDetail[] | undefined {
+  const details = registry.reviewerPerspectives
+    .filter((reg) => reg.extensionName === extensionName && reg.extensionPath === extensionPath)
+    .map((reg): ReviewerPerspectiveDetail => ({
+      key: reg.value.key,
+      label: reg.value.label,
+      description: reg.value.description,
+      extensionName: reg.extensionName,
+      extensionPath: reg.extensionPath,
+      ...(reg.value.appliesTo !== undefined && {
+        applicability: buildReviewerPerspectiveApplicabilitySummary(reg.value.appliesTo),
+      }),
+    }));
+  return details.length > 0 ? details : undefined;
+}
+// --- eforge:endregion plan-03-observability-docs-examples ---
+
 function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boolean): ExtensionEntry[] {
   const loadedByKey = new Map(registry.extensions.map((extension) => [`${extension.name}\0${extension.path}`, extension]));
   return registry.candidates.map((candidate) => {
     const loaded = loadedByKey.get(`${candidate.name}\0${candidate.path}`);
+    // --- eforge:region plan-03-observability-docs-examples ---
+    const reviewerPerspectiveDetails = collectReviewerPerspectiveDetails(registry, candidate.name, candidate.path);
+    // --- eforge:endregion plan-03-observability-docs-examples ---
     return {
       name: candidate.name,
       path: candidate.path,
@@ -402,6 +454,9 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       })),
       registrations: loaded?.registrations ?? { ...EMPTY_EXTENSION_REGISTRATIONS },
       diagnostics: candidate.diagnostics.map(normalizeDiagnostic),
+      // --- eforge:region plan-03-observability-docs-examples ---
+      ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
+      // --- eforge:endregion plan-03-observability-docs-examples ---
     } satisfies ExtensionEntry;
   }).sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
 }

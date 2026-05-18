@@ -319,8 +319,10 @@ const eventRegistry = {
   'extension:reviewer-perspective:skipped': {
     scope: 'session',
     persist: false,
-    summary: (e) =>
-      `Extension ${e.extensionName} reviewer perspective "${e.perspectiveKey}" skipped (${e.reason})${e.message ? `: ${e.message}` : ''}`,
+    summary: (e) => {
+      const source = e.extensionName ? `Extension ${e.extensionName} reviewer perspective` : 'Reviewer perspective';
+      return `${source} "${e.perspectiveKey}" skipped (${e.reason})${e.message ? `: ${e.message}` : ''}`;
+    },
   },
   // --- eforge:endregion plan-02-extension-perspective-runtime ---
 

@@ -224,6 +224,26 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
     if (entry.trustedAt) console.log(`  Trusted at:    ${entry.trustedAt}`);
     if (entry.trustedBy) console.log(`  Trusted by:    ${entry.trustedBy}`);
   }
+  // --- eforge:region plan-03-observability-docs-examples ---
+  if (entry.reviewerPerspectiveDetails && entry.reviewerPerspectiveDetails.length > 0) {
+    console.log('  Reviewer perspectives:');
+    for (const perspective of entry.reviewerPerspectiveDetails) {
+      console.log(`    - ${chalk.cyan(perspective.key)}: ${perspective.label}`);
+      console.log(`      ${perspective.description}`);
+      if (perspective.applicability) {
+        const parts: string[] = [];
+        if (perspective.applicability.fileGlobs?.length) parts.push(`globs: ${perspective.applicability.fileGlobs.join(', ')}`);
+        if (perspective.applicability.paths?.length) parts.push(`paths: ${perspective.applicability.paths.join(', ')}`);
+        if (perspective.applicability.extensions?.length) parts.push(`exts: ${perspective.applicability.extensions.join(', ')}`);
+        if (perspective.applicability.categories?.length) parts.push(`categories: ${perspective.applicability.categories.join(', ')}`);
+        if (perspective.applicability.minChangedFiles !== undefined) parts.push(`minFiles: ${perspective.applicability.minChangedFiles}`);
+        if (perspective.applicability.minChangedLines !== undefined) parts.push(`minLines: ${perspective.applicability.minChangedLines}`);
+        if (perspective.applicability.hasFn) parts.push('fn: yes');
+        if (parts.length > 0) console.log(chalk.dim(`      Applies to: ${parts.join('; ')}`));
+      }
+    }
+  }
+  // --- eforge:endregion plan-03-observability-docs-examples ---
   if (entry.shadows.length > 0) {
     console.log('  Shadows:');
     for (const shadow of entry.shadows) {
@@ -272,14 +292,25 @@ function renderExtensionTestResult(data: ExtensionTestResponse): void {
     }
   }
 
-  if (data.deferredRegistrations.length > 0) {
+  // --- eforge:region plan-03-observability-docs-examples ---
+  const deferredEntries = data.deferredRegistrations.filter((entry) => entry.count > 0);
+  if (deferredEntries.length > 0) {
     console.log('  Deferred registrations:');
-    for (const entry of data.deferredRegistrations) {
+    for (const entry of deferredEntries) {
       console.log(`    - ${entry.family}: ${entry.count}`);
     }
   } else {
     console.log('  Deferred registrations: none');
   }
+  // Surface runtime-supported reviewer perspectives from the extension entries
+  const allPerspectives = data.extensions.flatMap((ext) => ext.reviewerPerspectiveDetails ?? []);
+  if (allPerspectives.length > 0) {
+    console.log('  Reviewer perspectives (runtime-supported):');
+    for (const p of allPerspectives) {
+      console.log(`    - ${p.key} [${p.extensionName}]: ${p.label}`);
+    }
+  }
+  // --- eforge:endregion plan-03-observability-docs-examples ---
 
   if (data.diagnostics.length > 0) {
     console.log('  Diagnostics:');

@@ -32,6 +32,7 @@ Then read relevant examples based on the classified capability:
 - `examples/extensions/profile-router.ts` for profile selection.
 - `examples/extensions/protected-paths.ts` for runtime-supported plan/final merge policy gates.
 - `examples/extensions/issue-tracker.ts` for runtime-supported input source adapters (GitHub, Linear, Jira).
+- `examples/extensions/reviewer-perspective.ts` for runtime-supported reviewer perspectives with declarative file-pattern applicability.
 
 ### Step 3: Capability classification
 
@@ -46,15 +47,15 @@ Runtime-supported capability families:
 - `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge` blocking policy gates. `require-approval` currently blocks because no approval workflow/UI/state exists, and policy gate contexts are read-only snapshots. These helpers do not sandbox extension code; extensions are trusted unsandboxed code.
 - `registerInputSource` input source adapters — supply PRD/build-source artifacts from external systems via `eforge://input/<adapter>/<id>` URIs. Adapter selection is by `name` match. Input-source failures (null return or throw) are fatal to enqueue; design adapters to return instructional content when credentials are absent.
 - `registerPrdEnricher` PRD enrichers — mutate or augment PRD content before queue write. Enrichers run in registration order for every preprocessed source; failures are fail-open (`extension:prd-enricher:failed`). Gate behavior inside `enrich` using `ctx.sourceKind`, `ctx.adapterId`, or `ctx.sourcePath`.
+- `registerReviewerPerspective` reviewer perspectives — inject custom prompt context into the reviewer agent during parallel review-cycle perspective dispatch (`review.strategy: parallel`, or `auto` once the diff crosses the parallel-review thresholds). Applicability is declared via `appliesTo.fileGlobs`, `paths`, `extensions`, `categories`, or `minChanged*` thresholds; a function-form `appliesTo.fn(changedFiles, changedLines)` escape hatch is also available. Applicability inputs are read-only snapshots; perspectives cannot mutate orchestration state. Failures are fail-open (`extension:reviewer-perspective:skipped` with reason `applicability-error` or `applicability-timeout`). See `examples/extensions/reviewer-perspective.ts` for an accessibility example.
 
 Runtime-deferred capability families:
 
 - `beforeEnqueue` and `beforeValidation` policy gates.
 - Approval workflow/UI/state and `modify` policy decisions.
-- `registerReviewerPerspective` reviewer perspectives.
 - `registerValidationProvider` validation providers.
 
-If user intent maps to the supported policy-gate subset, explain that the gate executes at runtime and may block queue dispatch, plan merge, or final merge. If user intent maps to deferred APIs, state that eforge can load/capture the registration for provenance and validation, but it will not execute at runtime yet. Ask whether to omit that portion or include it as a clearly labeled future-facing registration. Avoid promising that deferred capability families will enqueue, validate, approve, mutate, fetch, review, or validate builds at runtime.
+If user intent maps to the supported policy-gate or reviewer-perspective subset, explain that the capability executes at runtime and note the parallel-review condition for reviewer perspectives. If user intent maps to deferred APIs, state that eforge can load/capture the registration for provenance and validation, but it will not execute at runtime yet. Ask whether to omit that portion or include it as a clearly labeled future-facing registration. Avoid promising that deferred capability families will enqueue, validate, approve, mutate, or validate builds at runtime.
 
 ### Step 4: Scope selection
 
