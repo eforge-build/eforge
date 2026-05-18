@@ -219,7 +219,6 @@ describe('extension runtime documentation', () => {
 
     for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
       for (const capability of [
-        'registerInputSource',
         'registerReviewerPerspective',
         'registerValidationProvider',
       ]) {
@@ -234,6 +233,19 @@ describe('extension runtime documentation', () => {
       const row = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerProfileRouter'));
       expect(row, 'registerProfileRouter row').toBeDefined();
       expect(row).toContain('Yes (pre-build dispatch)');
+    }
+
+    // registerInputSource and registerPrdEnricher: plan-01-docs-example-and-skills shipped the runtime.
+    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
+      const inputSourceRow = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerInputSource'));
+      expect(inputSourceRow, 'registerInputSource row').toBeDefined();
+      expect(inputSourceRow).not.toContain('Deferred');
+      expect(inputSourceRow).toContain('Yes');
+
+      const prdEnricherRow = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerPrdEnricher'));
+      expect(prdEnricherRow, 'registerPrdEnricher row').toBeDefined();
+      expect(prdEnricherRow).not.toContain('Deferred');
+      expect(prdEnricherRow).toContain('Yes');
     }
 
     for (const source of [configDocs, webConfigDocs]) {

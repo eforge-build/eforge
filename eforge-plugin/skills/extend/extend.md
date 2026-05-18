@@ -31,6 +31,7 @@ Then read relevant examples based on the classified capability:
 - `examples/extensions/agent-tools.ts` for custom agent tools.
 - `examples/extensions/profile-router.ts` for profile selection.
 - `examples/extensions/protected-paths.ts` for runtime-supported plan/final merge policy gates.
+- `examples/extensions/issue-tracker.ts` for runtime-supported input source adapters (GitHub, Linear, Jira).
 
 ### Step 3: Capability classification
 
@@ -43,12 +44,13 @@ Runtime-supported capability families:
 - `defineExtensionTool` + `registerTool` + returning `tools` from `onAgentRun` for runtime custom tool injection. `registerTool` alone is provenance capture; runtime tool injection requires returning the tool from `onAgentRun`.
 - `registerProfileRouter` pre-build profile selection.
 - `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge` blocking policy gates. `require-approval` currently blocks because no approval workflow/UI/state exists, and policy gate contexts are read-only snapshots. These helpers do not sandbox extension code; extensions are trusted unsandboxed code.
+- `registerInputSource` input source adapters — supply PRD/build-source artifacts from external systems via `eforge://input/<adapter>/<id>` URIs. Adapter selection is by `name` match. Input-source failures (null return or throw) are fatal to enqueue; design adapters to return instructional content when credentials are absent.
+- `registerPrdEnricher` PRD enrichers — mutate or augment PRD content before queue write. Enrichers run in registration order for every preprocessed source; failures are fail-open (`extension:prd-enricher:failed`). Gate behavior inside `enrich` using `ctx.sourceKind`, `ctx.adapterId`, or `ctx.sourcePath`.
 
 Runtime-deferred capability families:
 
 - `beforeEnqueue` and `beforeValidation` policy gates.
 - Approval workflow/UI/state and `modify` policy decisions.
-- `registerInputSource` input sources.
 - `registerReviewerPerspective` reviewer perspectives.
 - `registerValidationProvider` validation providers.
 

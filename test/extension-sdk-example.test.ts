@@ -29,6 +29,9 @@ import profileRouter from '../examples/extensions/profile-router.js';
 import agentContext from '../examples/extensions/agent-context.js';
 import slackWebhookNotifier from '../examples/extensions/slack-webhook-notifier.js';
 // --- eforge:endregion plan-01-extension-docs-examples-sync ---
+// --- eforge:region plan-01-docs-example-and-skills ---
+import issueTracker from '../examples/extensions/issue-tracker.js';
+// --- eforge:endregion plan-01-docs-example-and-skills ---
 
 const EXTENSION_EXAMPLE_DIR = resolve(fileURLToPath(new URL('../examples/extensions', import.meta.url)));
 const importedExampleFiles = [
@@ -36,6 +39,9 @@ const importedExampleFiles = [
   // --- eforge:region plan-02-docs-examples ---
   'agent-tools.ts',
   // --- eforge:endregion plan-02-docs-examples ---
+  // --- eforge:region plan-01-docs-example-and-skills ---
+  'issue-tracker.ts',
+  // --- eforge:endregion plan-01-docs-example-and-skills ---
   'minimal-event-logger.ts',
   'profile-router.ts',
   'protected-paths.ts',
@@ -66,6 +72,10 @@ const _factoryCheck3: sdk.EforgeExtensionFactory = (api) => {
     handler: () => 'ok',
   });
 };
+// --- eforge:region plan-01-docs-example-and-skills ---
+const _factoryCheckIssueTracker: sdk.EforgeExtensionFactory = issueTracker;
+void _factoryCheckIssueTracker;
+// --- eforge:endregion plan-01-docs-example-and-skills ---
 void _factoryCheck1;
 void _factoryCheck2;
 void _factoryCheck3;

@@ -12,6 +12,7 @@ These examples demonstrate the `@eforge-build/extension-sdk` API. Each example i
 | `agent-tools.ts` | `defineExtensionTool(...)`, `registerTool(...)`, `onAgentRun(...)` | Runtime-supported per-run extension tool injection and availability tuning |
 | `profile-router.ts` | `registerProfileRouter(...)` | Runtime-supported pre-build dispatch; explicit `profile:` frontmatter wins; routers fail open |
 | `protected-paths.ts` | `beforePlanMerge(...)`, `beforeFinalMerge(...)` | Runtime-supported policy enforcement for plan/final merge protected paths |
+| `issue-tracker.ts` | `registerInputSource(...)` x3 | Runtime-supported input source dispatch via `eforge://input/<adapter>/<id>` |
 
 ### `minimal-event-logger.ts`
 
@@ -54,6 +55,38 @@ Default profile names are `claude-sdk-4-7` (primary), `pi-codex-5-5` (secondary)
 Uses `eforge.beforePlanMerge` and `eforge.beforeFinalMerge` to block merges that touch a protected path. Demonstrates runtime-supported policy gate registration and the `PolicyDecision` discriminated union (`allow` / `block` / `require-approval`).
 
 > **Runtime note:** `beforePlanMerge` and `beforeFinalMerge` are runtime-supported blocking policy gates. `require-approval` currently blocks because no approval workflow exists; `beforeEnqueue`, `beforeValidation`, approval UI/state, and `modify` decisions remain deferred.
+
+### `issue-tracker.ts`
+
+Registers three `registerInputSource` adapters — `github`, `linear`, and `jira` — so eforge can fetch PRD/build-source artifacts directly from issue-tracker systems via `eforge://input/<adapter>/<id>` URIs.
+
+**Required env vars:**
+
+| Adapter | Env var(s) |
+|---------|-----------|
+| `github` | `GITHUB_TOKEN` (classic or fine-grained PAT with repo read scope) |
+| `linear` | `LINEAR_API_KEY` |
+| `jira` | `JIRA_BASE_URL` (e.g. `https://yourorg.atlassian.net`) and `JIRA_TOKEN` (`<email>:<api-token>`) |
+
+**Optional env vars:**
+
+| Adapter | Env var | Purpose |
+|---------|---------|---------|
+| `github` | `GITHUB_API_BASE` | Override the GitHub REST base URL (defaults to `https://api.github.com`); use for GitHub Enterprise Server. |
+
+**Safe-by-default:** when a required env var is absent, the adapter returns an `InputSourceResult` containing instructional markdown explaining how to configure the adapter. It never throws and never calls `globalThis.fetch` while unconfigured.
+
+**URI dispatch shapes:**
+
+```
+eforge://input/github/<owner>/<repo>#<n>
+eforge://input/linear/<issue-id>
+eforge://input/jira/<KEY-123>
+```
+
+Adapter selection is by `name` match against the `<adapter>` segment. Each adapter receives the remaining `<id>` path.
+
+For the full URI syntax, failure policy (`null` return is fatal to enqueue), and provenance event names (`extension:input-source:fetched`, `extension:input-source:failed`), see [`docs/extensions.md`](../../docs/extensions.md) — "Input sources and PRD enrichers" section.
 
 ## Validation
 
