@@ -81,11 +81,22 @@ function formatWatcherState(watcher: AutoBuildState['watcher'] | undefined): str
   return watcher.pid === null ? 'running' : `running (pid ${watcher.pid})`;
 }
 
+function formatMutationReason(reason: string | undefined): string {
+  if (!reason) return 'none since startup';
+  switch (reason) {
+    case 'enqueue': return 'enqueue';
+    case 'playbook-enqueue': return 'playbook enqueue';
+    case 'apply-recovery': return 'recovery applied';
+    case 'external': return 'manual kick';
+    default: return reason;
+  }
+}
+
 function formatSchedulerCapacity(autoBuild: AutoBuildState | null): string {
   const scheduler = autoBuild?.scheduler as SchedulerWithCapacity | undefined;
   if (!scheduler) return 'not reported';
   if (typeof scheduler.runningCount === 'number' && typeof scheduler.limit === 'number') {
-    return `${scheduler.runningCount}/${scheduler.limit}`;
+    return `${scheduler.runningCount}/${scheduler.limit} running`;
   }
   if (typeof scheduler.capacityRemaining === 'number' && typeof scheduler.limit === 'number') {
     return `${scheduler.capacityRemaining} remaining of ${scheduler.limit}`;
@@ -198,7 +209,7 @@ function SchedulerStatusCard({
           <MetricsRow label="Desired" value={desired} />
           <MetricsRow label="Runtime mode" value={mode ?? 'unknown'} />
           <MetricsRow label="Scheduler" value={formatSchedulerState(scheduler)} />
-          <MetricsRow label="Scheduler injection" value={scheduler?.lastMutationReason ?? 'not reported'} />
+          <MetricsRow label="Last queue wake-up" value={formatMutationReason(scheduler?.lastMutationReason)} />
           <MetricsRow label="Watcher" value={formatWatcherState(watcher)} />
           <MetricsRow label="Watcher session" value={watcherSessionId} />
           <MetricsRow label="Queue depth" value={queueDepth} />

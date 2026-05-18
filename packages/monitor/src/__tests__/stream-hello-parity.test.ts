@@ -13,7 +13,7 @@
  * - Constructs inputs inline.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,6 +23,7 @@ import { startServer } from '../server.js';
 import { withRecording } from '../recorder.js';
 import type { MonitorServer, DaemonState } from '../server.js';
 import { AutoBuildSupervisor } from '../auto-build-supervisor.js';
+import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 
 function makeTmpCwd(): string {
@@ -94,6 +95,76 @@ function fetchSseFirstChunk(
   });
 }
 
+type SseCollector = {
+  waitForBlocks(count: number, timeoutMs?: number): Promise<string[]>;
+  close(): void;
+};
+
+function collectSseBlocks(url: string): SseCollector {
+  let pending = '';
+  const blocks: string[] = [];
+  const waiters: Array<() => void> = [];
+
+  function notify(): void {
+    for (const waiter of waiters.splice(0)) waiter();
+  }
+
+  function appendChunk(chunk: string): void {
+    pending += chunk;
+    const parts = pending.split(/\r?\n\r?\n/);
+    pending = parts.pop() ?? '';
+    blocks.push(...parts.filter(Boolean));
+    notify();
+  }
+
+  const req = http.get(url, { headers: { accept: 'text/event-stream' } }, (res) => {
+    res.setEncoding('utf8');
+    res.on('data', appendChunk);
+    res.on('end', notify);
+    res.on('error', notify);
+  });
+  req.on('error', notify);
+
+  return {
+    async waitForBlocks(count: number, timeoutMs = 2000): Promise<string[]> {
+      while (blocks.length < count) {
+        await new Promise<void>((resolve, reject) => {
+          let settled = false;
+          let timeout: ReturnType<typeof setTimeout>;
+          const waiter = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            resolve();
+          };
+          timeout = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            const idx = waiters.indexOf(waiter);
+            if (idx !== -1) waiters.splice(idx, 1);
+            reject(new Error(`Timed out waiting for ${count} SSE blocks; received ${blocks.length}`));
+          }, timeoutMs);
+          waiters.push(waiter);
+        });
+      }
+      return blocks.slice(0, count);
+    },
+    close(): void {
+      req.destroy();
+      notify();
+    },
+  };
+}
+
+function parseSseDataBlock(block: string): unknown {
+  const data = block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice('data: '.length))
+    .join('\n');
+  return JSON.parse(data);
+}
+
 const servers: MonitorServer[] = [];
 
 afterEach(async () => {
@@ -105,6 +176,7 @@ afterEach(async () => {
     }
   }
   servers.length = 0;
+  vi.useRealTimers();
 });
 
 async function* asGenerator(events: EforgeEvent[]): AsyncGenerator<EforgeEvent> {
@@ -211,7 +283,11 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     const daemonState: DaemonState = { autoBuildController: controller };
 
     // --- Start server ---
-    const server = await startServer(db, 0, { cwd, daemonState });
+    const server = await startServer(db, 0, {
+      cwd,
+      daemonState,
+      config: { ...DEFAULT_CONFIG, maxConcurrentBuilds: 4 },
+    });
     servers.push(server);
     const base = `http://127.0.0.1:${server.port}`;
 
@@ -225,6 +301,7 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     expect(helloDataLine).toBeDefined();
     const helloData = JSON.parse(helloDataLine!.slice('data: '.length)) as {
       cursor: number;
+      liveness: unknown;
       runs: unknown;
       queue: unknown;
       sessionMetadata: unknown;
@@ -250,12 +327,18 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     expect(restSessionMetadata).toEqual({
       [sessionId1]: { planCount: 2, baseProfile: 'test-profile' },
     });
-    expect(restAutoBuild).toEqual({
+    expect(restAutoBuild).toMatchObject({
       enabled: true,
       watcher: { running: true, pid: 99, sessionId: 'sess-99' },
       desired: 'enabled',
       mode: 'running',
-      scheduler: { alive: true, paused: false, lastMutationReason: 'enqueue' },
+      scheduler: {
+        alive: true,
+        paused: false,
+        lastMutationReason: 'enqueue',
+        runningCount: 1,
+        limit: 4,
+      },
       lastTransition: {
         at: now,
         previousMode: 'starting',
@@ -267,6 +350,17 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
       reason: 'seeded',
     });
 
+    expect(helloData.liveness).toMatchObject({
+      type: 'daemon:heartbeat',
+      runningBuilds: 1,
+      autoBuild: {
+        scheduler: {
+          runningCount: 1,
+          limit: 4,
+        },
+      },
+    });
+
     // --- Assert parity ---
     expect(helloData.runs).toEqual(restRuns);
     expect(helloData.queue).toEqual(restQueue);
@@ -275,6 +369,72 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
 
     await server.stop();
     db.close();
+  });
+
+  it('emits live daemon:heartbeat payloads with scheduler capacity matching running builds', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const now = new Date().toISOString();
+
+    db.insertRun({
+      id: 'run-live-heartbeat',
+      sessionId: 'sess-live-heartbeat',
+      planSet: 'live-heartbeat',
+      command: 'build',
+      status: 'running',
+      startedAt: now,
+      cwd,
+      pid: 44,
+    });
+
+    const controller = new AutoBuildSupervisor({
+      initialState: {
+        desired: 'enabled',
+        mode: 'running',
+        watcher: { running: true, pid: 99, sessionId: 'sess-99' },
+        scheduler: { alive: true, paused: false, lastMutationReason: 'external' },
+      },
+      effects: {
+        getWatcher: () => ({ running: true, pid: 99, sessionId: 'sess-99' }),
+        isSchedulerAlive: () => true,
+      },
+    });
+    const daemonState: DaemonState = { autoBuildController: controller };
+
+    const server = await startServer(db, 0, {
+      cwd,
+      daemonState,
+      config: { ...DEFAULT_CONFIG, maxConcurrentBuilds: 2 },
+    });
+    servers.push(server);
+    const collector = collectSseBlocks(`http://127.0.0.1:${server.port}/api/daemon-events`);
+
+    try {
+      await collector.waitForBlocks(1);
+      await vi.advanceTimersByTimeAsync(10_000);
+      const blocks = await collector.waitForBlocks(2);
+      const heartbeat = parseSseDataBlock(blocks[1]!) as {
+        type: string;
+        runningBuilds: number;
+        autoBuild?: { scheduler?: { runningCount?: number; limit?: number } };
+      };
+
+      expect(heartbeat).toMatchObject({
+        type: 'daemon:heartbeat',
+        runningBuilds: 1,
+        autoBuild: {
+          scheduler: {
+            runningCount: 1,
+            limit: 2,
+          },
+        },
+      });
+    } finally {
+      collector.close();
+      db.close();
+    }
   });
 
   it('live daemon:run:upsert projection equals stream:hello snapshot runs after reconnect', async () => {

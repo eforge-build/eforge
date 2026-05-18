@@ -7946,6 +7946,12 @@
                     },
                     "lastMutationReason": {
                       "type": "string"
+                    },
+                    "runningCount": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
                     }
                   }
                 },

@@ -22,6 +22,10 @@ export interface AutoBuildSchedulerState {
   alive: boolean;
   paused: boolean;
   lastMutationReason?: string;
+  /** Number of builds currently running, as reported by the scheduler. */
+  runningCount?: number;
+  /** Maximum concurrent build limit configured in the daemon, as reported by the scheduler. */
+  limit?: number;
 }
 
 export interface AutoBuildTransitionDetail {

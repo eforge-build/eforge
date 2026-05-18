@@ -1202,7 +1202,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
         // --- eforge:region plan-01-supervisor-foundation ---
         desired: 'enabled',
         mode: 'running',
-        scheduler: { alive: true, paused: false },
+        scheduler: { alive: true, paused: false, runningCount: 1, limit: 2 },
         lastTransition: {
           at: '2025-01-01T00:00:00.000Z',
           previousMode: 'starting',
