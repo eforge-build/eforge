@@ -1,0 +1,71 @@
+name: implement-durable-daemon-scoped-event-persistence-for-live-monitor-queue-updates
+description: Implement durable daemon-scoped event persistence so runless queue
+  and scheduler lifecycle events are stored, replayed through
+  /api/daemon-events, and projected by already-open monitor UI sessions without
+  reload.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- packages/monitor/src/__tests__/db.test.ts
+    packages/monitor/src/__tests__/recorder-run-upsert.test.ts
+    packages/monitor/src/__tests__/stream-hello-parity.test.ts
+    packages/monitor-ui/src/lib/__tests__/daemon-reducer.test.ts
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-durable-daemon-event-persistence
+    name: Durable Daemon Event Persistence for Live Queue Updates
+    depends_on: []
+    branch: implement-durable-daemon-scoped-event-persistence-for-live-monitor-queue-updates/plan-01-durable-daemon-event-persistence
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Cross-cutting storage migration plus recorder and SSE persistence
+          behavior requires careful compatibility with existing event queries.
+      tester:
+        effort: high
+        rationale: Migration, recorder, and live/snapshot parity regressions need
+          targeted coverage across monitor and UI tests.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: This is a focused but cross-cutting bugfix spanning monitor DB schema
+    migration, recorder persistence, daemon SSE replay, and reducer/test
+    coverage. A single planner can handle the dependency chain, so excursion is
+    appropriate rather than expedition. A plan review gate is included because
+    schema migration and event-stream contracts are risk-sensitive. Build
+    includes implementation, explicit test writing, iterative review, and test
+    cycling to cover the required DB, recorder, SSE, and reducer regressions.
+    Review is strict with code, api, test, and verify perspectives because
+    persistence correctness and backward-compatible event replay are central
+    acceptance criteria.
