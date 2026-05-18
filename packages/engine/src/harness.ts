@@ -272,13 +272,19 @@ export function isMaxTurnsError(err: unknown): err is AgentTerminalError {
 }
 
 // --- eforge:region plan-01-transport-resilience ---
+/**
+ * Matches `Backend error: WebSocket closed <code>` messages from the backend SDK,
+ * where <code> is any numeric WebSocket close code (e.g. 1000, 1012).
+ * Requires the `backend error:` prefix so unrelated messages containing
+ * a close code number are not misclassified as transient transport failures.
+ */
+const BACKEND_WS_CLOSE_RE = /backend error:\s*websocket closed\s+\d+\b/i;
+
 /** True when an error message matches a known transient backend transport close. */
 export function isTransientTransportError(message: string): boolean {
+  if (BACKEND_WS_CLOSE_RE.test(message)) return true;
   const normalized = message.toLowerCase();
-  return (
-    normalized.includes('websocket closed 1012') ||
-    normalized.includes('backend error: websocket error')
-  );
+  return normalized.includes('backend error: websocket error');
 }
 
 /** Classify a thrown value into a terminal subtype when the engine can do so safely. */

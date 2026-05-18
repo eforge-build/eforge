@@ -13,6 +13,7 @@ import { collectEvents, filterEvents, findEvent } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 
 const TRANSIENT_CLOSE = 'Backend error: WebSocket closed 1012';
+const TRANSIENT_CLOSE_1000 = 'Backend error: WebSocket closed 1000';
 
 const RESULT: AgentResultData = {
   durationMs: 10,
@@ -92,6 +93,33 @@ describe('Pi transport transient classifier', () => {
     expect(isTransientTransportError('Backend error: WebSocket closed 1012')).toBe(true);
     expect(isTransientTransportError('Backend error: WebSocket error')).toBe(true);
     expect(isTransientTransportError('Backend error: invalid API key')).toBe(false);
+  });
+
+  it('recognizes Backend error: WebSocket closed 1000 (observed planner failure)', () => {
+    expect(isTransientTransportError('Backend error: WebSocket closed 1000')).toBe(true);
+  });
+
+  it('classifies any backend WebSocket close code as transient transport', () => {
+    // Arbitrary numeric close codes from the backend are all transient transport.
+    expect(isTransientTransportError('Backend error: WebSocket closed 1001')).toBe(true);
+    expect(isTransientTransportError('Backend error: WebSocket closed 4000')).toBe(true);
+  });
+
+  it('does not classify non-transport backend errors as transient transport', () => {
+    // Auth / model / budget-style backend application failures must not be classified
+    // as transient transport, regardless of the numeric content in the message.
+    expect(isTransientTransportError('Backend error: invalid API key')).toBe(false);
+    expect(isTransientTransportError('Backend error: authentication failed')).toBe(false);
+    expect(isTransientTransportError('Backend error: model not found')).toBe(false);
+    expect(isTransientTransportError('Backend error: budget exceeded 1000 USD')).toBe(false);
+    expect(isTransientTransportError('Backend error: HTTP 500')).toBe(false);
+  });
+
+  it('does not classify bare WebSocket close codes without the backend-error prefix', () => {
+    // A message with a close code but missing the required prefix must not match.
+    expect(isTransientTransportError('WebSocket closed 1000')).toBe(false);
+    expect(isTransientTransportError('connection closed 1000')).toBe(false);
+    expect(isTransientTransportError('closed 1000')).toBe(false);
   });
 });
 
@@ -283,6 +311,86 @@ describe('planner withRetry transient transport continuation', () => {
 
     expect(attempts).toBe(1);
     expect(filterEvents(events, 'planning:submission')).toHaveLength(1);
+    expect(filterEvents(events, 'agent:retry')).toHaveLength(0);
+  });
+
+  it('retries close-code 1000 before planning:submission — exact observed regression case', async () => {
+    // Regression test: Backend error: WebSocket closed 1000 was not classified as
+    // transient transport before this fix. Verify end-to-end retry behavior.
+    const cwd = makeTempDir();
+    const initialInput: PlannerContinuationInput = {
+      sideEffects: { cwd, planSetName: 'set-1', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+    let attempts = 0;
+    const runPlannerAttempt = async function* (): AsyncGenerator<EforgeEvent> {
+      attempts++;
+      if (attempts === 1) {
+        throw new Error(TRANSIENT_CLOSE_1000);
+      }
+      yield { type: 'planning:submission', timestamp: new Date().toISOString(), planCount: 1, totalBodySize: 10, hasMigrations: false };
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
+    const events = await collectEvents(withRetry(runPlannerAttempt, policy, initialInput));
+
+    expect(attempts).toBe(2);
+    const retry = findEvent(events, 'agent:retry');
+    expect(retry?.subtype).toBe('error_transient_transport');
+    expect(findEvent(events, 'planning:continuation')).toBeDefined();
+    expect(findEvent(events, 'planning:submission')).toBeDefined();
+    expect(filterEvents(events, 'agent:retry')).toHaveLength(1);
+  });
+
+  it('does not retry close-code 1000 after planning:submission already emitted', async () => {
+    const cwd = makeTempDir();
+    const initialInput: PlannerContinuationInput = {
+      sideEffects: { cwd, planSetName: 'set-1', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+    let attempts = 0;
+    const runPlannerAttempt = async function* (): AsyncGenerator<EforgeEvent> {
+      attempts++;
+      yield { type: 'planning:submission', timestamp: new Date().toISOString(), planCount: 1, totalBodySize: 10, hasMigrations: false };
+      throw new Error(TRANSIENT_CLOSE_1000);
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
+    const events: EforgeEvent[] = [];
+    await expect(async () => {
+      for await (const event of withRetry(runPlannerAttempt, policy, initialInput)) {
+        events.push(event);
+      }
+    }).rejects.toThrow(TRANSIENT_CLOSE_1000);
+
+    expect(attempts).toBe(1);
+    expect(filterEvents(events, 'planning:submission')).toHaveLength(1);
+    expect(filterEvents(events, 'agent:retry')).toHaveLength(0);
+  });
+
+  it('does not retry close-code 1000 after planning:skip already emitted', async () => {
+    const cwd = makeTempDir();
+    const initialInput: PlannerContinuationInput = {
+      sideEffects: { cwd, planSetName: 'set-1', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+    let attempts = 0;
+    const runPlannerAttempt = async function* (): AsyncGenerator<EforgeEvent> {
+      attempts++;
+      yield { type: 'planning:skip', timestamp: new Date().toISOString(), reason: 'already implemented' };
+      throw new Error(TRANSIENT_CLOSE_1000);
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
+    const events: EforgeEvent[] = [];
+    await expect(async () => {
+      for await (const event of withRetry(runPlannerAttempt, policy, initialInput)) {
+        events.push(event);
+      }
+    }).rejects.toThrow(TRANSIENT_CLOSE_1000);
+
+    expect(attempts).toBe(1);
+    expect(filterEvents(events, 'planning:skip')).toHaveLength(1);
     expect(filterEvents(events, 'agent:retry')).toHaveLength(0);
   });
 });
