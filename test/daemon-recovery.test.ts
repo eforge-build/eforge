@@ -124,9 +124,9 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 31', () => {
-    // v31 adds the persisted daemon:auto-build:transition event and optional auto-build lifecycle wire detail.
-    expect(DAEMON_API_VERSION).toBe(31);
+  it('is 32', () => {
+    // v32 adds input-source/enricher provenance events (extension:input-source:fetched, extension:input-source:failed, extension:prd-enricher:applied, extension:prd-enricher:failed).
+    expect(DAEMON_API_VERSION).toBe(32);
   });
 });
 

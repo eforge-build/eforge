@@ -1429,6 +1429,7 @@ export async function startServer(
     policyGates: 0,
     profileRouters: 0,
     inputSources: 0,
+    prdEnrichers: 0,
     reviewerPerspectives: 0,
     validationProviders: 0,
     tools: 0,
@@ -1764,11 +1765,15 @@ export async function startServer(
         }
         // --- eforge:endregion plan-01-per-build-profile-override ---
         // --- eforge:region plan-04-daemon-cli-wiring ---
-        // When source is a session-plan file (.eforge/session-plans/*.md), read
-        // and normalize it to ordinary build source before spawning the enqueue
-        // worker. Non-session-plan file paths and inline content pass through
-        // unchanged. Session-plan parse failures are surfaced as 400 errors.
-        let enqueueSource = body.source;
+        // For session-plan file sources (.eforge/session-plans/*.md), perform
+        // synchronous normalizeBuildSource as prevalidation only — to surface
+        // malformed session plans as 400 errors before the worker is spawned.
+        // The normalized content is discarded; the worker receives the original
+        // source string and handles full preprocessing (including extension
+        // input-source resolution and PRD enrichers) via preprocessBuildSource.
+        //
+        // Extension references (eforge://input/...) and inline content pass
+        // through to the worker unchanged.
         if (cwd) {
           let resolvedSourcePath: string | undefined;
           let rawSourceContent: string | undefined;
@@ -1784,12 +1789,8 @@ export async function startServer(
           if (resolvedSourcePath !== undefined && rawSourceContent !== undefined) {
             try {
               const { normalizeBuildSource } = await import('@eforge-build/input');
-              const normalized = normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawSourceContent });
-              // normalized.content differs from rawSourceContent only for session
-              // plan files; regular PRD file content is returned unchanged.
-              if (normalized.content !== rawSourceContent) {
-                enqueueSource = normalized.content;
-              }
+              // Prevalidation only — discard result; worker keeps original source.
+              normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawSourceContent });
             } catch (parseErr) {
               // Session-plan parse failure — surface as a client error.
               sendJsonError(res, 400, parseErr instanceof Error ? parseErr.message : 'Failed to parse source');
@@ -1797,7 +1798,8 @@ export async function startServer(
             }
           }
         }
-        const args = [enqueueSource, ...(body.flags ?? [])];
+        // Worker always receives the original source string — not normalized content.
+        const args = [body.source, ...(body.flags ?? [])];
         if (body.profile && typeof body.profile === 'string') {
           args.push('--profile', body.profile);
         }

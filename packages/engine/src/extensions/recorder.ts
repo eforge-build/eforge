@@ -8,6 +8,7 @@ import type {
   NativeExtensionRecorderState,
   PolicyGateKind,
   PolicyGateMethod,
+  PrdEnricherSpec,
   ProfileRouterSpec,
   ReviewerPerspectiveSpec,
   ValidationProviderSpec,
@@ -26,6 +27,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
     reviewerPerspectives: [],
     validationProviders: [],
     tools: [],
+    prdEnrichers: [],
     diagnostics: [],
   };
 
@@ -112,6 +114,13 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       }
       state.inputSources.push({ kind: 'inputSource', extensionName, extensionPath, name: adapter.name, value: adapter as unknown as InputSourceAdapter });
     },
+    registerPrdEnricher(enricher: unknown): void {
+      if (!isObject(enricher) || !isNonEmptyString(enricher.name) || !isNonEmptyString(enricher.description) || typeof enricher.enrich !== 'function') {
+        addDiagnostic('registerPrdEnricher requires { name: string, description: string, enrich: function }', 'extension:invalid-registration', isObject(enricher) && typeof enricher.name === 'string' ? enricher.name : undefined);
+        return;
+      }
+      state.prdEnrichers.push({ kind: 'prdEnricher', extensionName, extensionPath, name: enricher.name, value: enricher as unknown as PrdEnricherSpec });
+    },
     registerReviewerPerspective(spec: unknown): void {
       if (!isObject(spec) || !isNonEmptyString(spec.key) || !isNonEmptyString(spec.label) || !isNonEmptyString(spec.promptFragment)) {
         addDiagnostic('registerReviewerPerspective requires { key: string, label: string, promptFragment: string }', 'extension:invalid-registration', isObject(spec) && typeof spec.key === 'string' ? spec.key : undefined);
@@ -154,6 +163,7 @@ export function mergeRecorderState(target: NativeExtensionRecorderState, source:
 
   mergeNamedRegistrations(target.profileRouters, source.profileRouters, 'profile router', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.inputSources, source.inputSources, 'input source', diagnostics, target.diagnostics);
+  mergeNamedRegistrations(target.prdEnrichers, source.prdEnrichers, 'PRD enricher', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.reviewerPerspectives, source.reviewerPerspectives, 'reviewer perspective', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.validationProviders, source.validationProviders, 'validation provider', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.tools, source.tools, 'tool', diagnostics, target.diagnostics);

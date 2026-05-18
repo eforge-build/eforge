@@ -15,6 +15,49 @@ function readRepoFile(relative: string): string {
   return readFileSync(resolve(REPO_ROOT, relative), 'utf-8');
 }
 
+// --- eforge:region plan-02-enqueue-preprocessing-runtime ---
+describe('CLI enqueue preprocessing wiring', () => {
+  const cliIndexSource = readRepoFile('packages/eforge/src/cli/index.ts');
+
+  it('imports preprocessBuildSource and FatalPreprocessingError from @eforge-build/input', () => {
+    expect(cliIndexSource).toContain("from '@eforge-build/input'");
+    expect(cliIndexSource).toContain('preprocessBuildSource');
+    expect(cliIndexSource).toContain('FatalPreprocessingError');
+  });
+
+  it('calls preprocessBuildSource with registry inputSources and prdEnrichers', () => {
+    expect(cliIndexSource).toContain('nativeExtensionRegistry.inputSources');
+    expect(cliIndexSource).toContain('nativeExtensionRegistry.prdEnrichers');
+  });
+
+  it('yields provenance events before yielding from engine.enqueue', () => {
+    // The preprocessing wrapper function must yield events before delegating to engine.enqueue
+    const preprocessBlock = cliIndexSource.slice(
+      cliIndexSource.indexOf('async function* preprocessAndEnqueue'),
+      cliIndexSource.lastIndexOf('// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---'),
+    );
+    expect(preprocessBlock).toContain('preprocessResult.events');
+    expect(preprocessBlock).toContain('yield { ...event, timestamp }');
+    expect(preprocessBlock).toContain('engine.enqueue(normalizedSource');
+    // Events must come before engine.enqueue in the code
+    const eventsIdx = preprocessBlock.indexOf('preprocessResult.events');
+    const enqueueIdx = preprocessBlock.indexOf('engine.enqueue(normalizedSource');
+    expect(eventsIdx).toBeLessThan(enqueueIdx);
+  });
+
+  it('on FatalPreprocessingError yields diagnostic event and enqueue:failed without calling engine', () => {
+    const preprocessBlock = cliIndexSource.slice(
+      cliIndexSource.indexOf('async function* preprocessAndEnqueue'),
+      cliIndexSource.lastIndexOf('// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---'),
+    );
+    expect(preprocessBlock).toContain('FatalPreprocessingError');
+    expect(preprocessBlock).toContain("'enqueue:failed'");
+    expect(preprocessBlock).toContain('err.diagnosticEvent');
+    expect(preprocessBlock).toContain('return;');
+  });
+});
+// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
+
 describe('extension tooling route constants and helpers', () => {
   it('declares extension route constants', () => {
     expect(API_ROUTES.extensionList).toBe('/api/extensions/list');

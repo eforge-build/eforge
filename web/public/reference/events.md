@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 85dd5c6c -->
+<!-- Commit: 48cc8bed -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -13,7 +13,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 181
+Total variants: 185
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -51,6 +51,10 @@ Total variants: 181
 | `extension:policy:timeout` | `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `prdId`, `prdTitle`, `registrationIndex`, `timeoutMs` |
 | `extension:policy:timeout` | `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `planId`, `registrationIndex`, `timeoutMs` |
 | `extension:policy:timeout` | `baseBranch`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `method`, `planIds`, `registrationIndex`, `timeoutMs` |
+| `extension:input-source:fetched` | `adapterName`, `contentLength`, `extensionName`, `extensionPath`, `sourceId` |
+| `extension:input-source:failed` | `adapterName`, `extensionName`, `extensionPath`, `message`, `reason`, `sourceId`, `stack`, `timeoutMs` |
+| `extension:prd-enricher:applied` | `changed`, `enricherName`, `extensionName`, `extensionPath`, `inputLength`, `outputLength`, `sourceId` |
+| `extension:prd-enricher:failed` | `enricherName`, `extensionName`, `extensionPath`, `message`, `reason`, `sourceId`, `stack`, `timeoutMs` |
 | `planning:start` | `label`, `source` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |

@@ -38,6 +38,7 @@ export type {
   ReviewerPerspectiveRegistration,
   ValidationProviderRegistration,
   ToolRegistration,
+  PrdEnricherRegistration,
 } from './types.js';
 export { discoverNativeExtensions } from './discovery.js';
 export { createExtensionRecorder, mergeRecorderState } from './recorder.js';

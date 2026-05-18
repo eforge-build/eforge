@@ -121,6 +121,61 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
   },
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
+  // --- eforge:region plan-01-extension-input-contracts ---
+  {
+    label: 'extension:input-source:fetched',
+    payload: {
+      type: 'extension:input-source:fetched',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/my-ext.js',
+      extensionName: 'my-ext',
+      adapterName: 'my-ext:linear',
+      sourceId: 'LIN-123',
+      contentLength: 4200,
+    },
+  },
+  {
+    label: 'extension:input-source:failed',
+    payload: {
+      type: 'extension:input-source:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/my-ext.js',
+      extensionName: 'my-ext',
+      adapterName: 'my-ext:linear',
+      sourceId: 'LIN-404',
+      reason: 'not-found',
+      message: 'Issue LIN-404 not found',
+    },
+  },
+  {
+    label: 'extension:prd-enricher:applied',
+    payload: {
+      type: 'extension:prd-enricher:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/my-ext.js',
+      extensionName: 'my-ext',
+      enricherName: 'my-ext:context-injector',
+      sourceId: 'LIN-123',
+      changed: true,
+      inputLength: 1200,
+      outputLength: 1800,
+    },
+  },
+  {
+    label: 'extension:prd-enricher:failed',
+    payload: {
+      type: 'extension:prd-enricher:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/my-ext.js',
+      extensionName: 'my-ext',
+      enricherName: 'my-ext:context-injector',
+      sourceId: 'LIN-123',
+      reason: 'error',
+      message: 'Enricher threw an unexpected error',
+    },
+  },
+  // --- eforge:endregion plan-01-extension-input-contracts ---
+
   // Planning
   {
     label: 'planning:start',

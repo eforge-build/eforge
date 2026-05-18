@@ -234,6 +234,94 @@ describe('POST /api/enqueue', () => {
 
     db.close();
   });
+
+  // --- eforge:region plan-02-enqueue-preprocessing-runtime ---
+  it('passes the original source string to spawnWorker without route-side transformation', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const { daemonState } = makeDaemonState();
+
+    const spawnedArgs: string[][] = [];
+    const workerTracker: WorkerTracker = {
+      spawnWorker: (_command, args) => {
+        spawnedArgs.push(args);
+        return { sessionId: 'test-session', pid: 99999 };
+      },
+      cancelWorker: () => false,
+    };
+    const server = await startServer(db, 0, { cwd, daemonState, workerTracker });
+    servers.push(server);
+
+    // Extension reference — daemon must NOT attempt to resolve it (no adapters in daemon)
+    const extensionRef = 'eforge://input/static/ISSUE-1';
+    const response = await fetch(`http://127.0.0.1:${server.port}${API_ROUTES.enqueue}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: extensionRef }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(spawnedArgs).toHaveLength(1);
+    // First arg to the worker must be the original source — not transformed
+    expect(spawnedArgs[0]![0]).toBe(extensionRef);
+
+    db.close();
+  });
+
+  it('passes the original session-plan path to spawnWorker (not normalized content)', async () => {
+    const cwd = makeTmpCwd();
+    // Write a valid session plan
+    const { writeFileSync, mkdirSync } = require('node:fs');
+    mkdirSync(join(cwd, '.eforge', 'session-plans'), { recursive: true });
+    const sessionPlanPath = join(cwd, '.eforge', 'session-plans', '2026-01-01-test.md');
+    writeFileSync(sessionPlanPath, [
+      '---',
+      'session: 2026-01-01-test',
+      'topic: "Test"',
+      'status: ready',
+      'planning_type: feature',
+      'planning_depth: focused',
+      'required_dimensions: []',
+      'optional_dimensions: []',
+      'skipped_dimensions: []',
+      'open_questions: []',
+      'profile: null',
+      '---',
+      '',
+      '# Test',
+      '',
+    ].join('\n'), 'utf-8');
+
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const { daemonState } = makeDaemonState();
+
+    const spawnedArgs: string[][] = [];
+    const workerTracker: WorkerTracker = {
+      spawnWorker: (_command, args) => {
+        spawnedArgs.push(args);
+        return { sessionId: 'test-session', pid: 88888 };
+      },
+      cancelWorker: () => false,
+    };
+    const server = await startServer(db, 0, { cwd, daemonState, workerTracker });
+    servers.push(server);
+
+    const relativePath = '.eforge/session-plans/2026-01-01-test.md';
+    const response = await fetch(`http://127.0.0.1:${server.port}${API_ROUTES.enqueue}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: relativePath }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(spawnedArgs).toHaveLength(1);
+    // Worker receives the original relative path, not the normalized markdown content
+    expect(spawnedArgs[0]![0]).toBe(relativePath);
+    expect(spawnedArgs[0]![0]).not.toContain('# Test'); // not inline normalized content
+
+    db.close();
+  });
+  // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
 });
 
 describe('POST /api/scheduler/kick', () => {
