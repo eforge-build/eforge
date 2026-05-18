@@ -567,6 +567,60 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts scheduler runningCount and limit in daemon stream snapshots', () => {
+    const snapshot = {
+      cursor: 1,
+      liveness: {
+        type: 'daemon:heartbeat',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        uptime: 1000,
+        queueDepth: 1,
+        runningBuilds: 2,
+        autoBuild: {
+          enabled: true,
+          paused: false,
+          desired: 'enabled',
+          mode: 'running',
+          scheduler: { alive: true, paused: false, runningCount: 2, limit: 4 },
+        },
+        subscribers: 1,
+      },
+      recentActivity: [],
+      runs: [],
+      queue: [],
+      sessionMetadata: {},
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: 1234, sessionId: 'watcher-1' },
+        desired: 'enabled',
+        mode: 'running',
+        scheduler: { alive: true, paused: false, runningCount: 2, limit: 4 },
+      },
+    };
+
+    const result = safeParseDaemonStreamSnapshot(snapshot);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects non-numeric scheduler runningCount and limit values', () => {
+    const heartbeat = {
+      type: 'daemon:heartbeat',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      uptime: 1000,
+      queueDepth: 1,
+      runningBuilds: 2,
+      autoBuild: {
+        enabled: true,
+        paused: false,
+        scheduler: { alive: true, paused: false, runningCount: '2', limit: '4' },
+      },
+      subscribers: 1,
+    };
+
+    const result = safeParseEforgeEvent(heartbeat);
+    expect(result.success).toBe(false);
+  });
+
   it('rejects invalid autoBuild lifecycle field literals in daemon stream snapshots', () => {
     const snapshot = {
       cursor: 1,

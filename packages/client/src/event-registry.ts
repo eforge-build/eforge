@@ -1209,23 +1209,48 @@ const eventRegistry = {
    * to SSE subscribers without being persisted to the DB, and must never be
    * replayed from storage. persist: false prevents it from appearing in
    * DAEMON_EVENT_TYPES.
+   *
+   * In addition to updating `latestHeartbeat`, the projection merges
+   * heartbeat auto-build detail fields (scheduler, mode, desired, etc.)
+   * into the existing `state.autoBuild` snapshot so the Scheduler FSM card
+   * stays current between REST fetches. The merge is additive — watcher
+   * and other fields seeded by the initial snapshot are preserved.
    */
   'daemon:heartbeat': {
     scope: 'daemon',
     persist: false,
-    project(event) {
-      return {
-        latestHeartbeat: {
-          at: Date.now(),
-          payload: {
-            uptime: event.uptime,
-            queueDepth: event.queueDepth,
-            runningBuilds: event.runningBuilds,
-            autoBuild: event.autoBuild,
-            subscribers: event.subscribers,
-          },
+    project(event, state) {
+      const latestHeartbeat = {
+        at: Date.now(),
+        payload: {
+          uptime: event.uptime,
+          queueDepth: event.queueDepth,
+          runningBuilds: event.runningBuilds,
+          autoBuild: event.autoBuild,
+          subscribers: event.subscribers,
         },
       };
+
+      // Merge heartbeat auto-build detail fields into state.autoBuild when present.
+      if (state.autoBuild) {
+        const merged: AutoBuildState = {
+          ...state.autoBuild,
+          enabled: event.autoBuild.enabled,
+          ...(event.autoBuild.desired !== undefined && { desired: event.autoBuild.desired }),
+          ...(event.autoBuild.mode !== undefined && { mode: event.autoBuild.mode }),
+          ...(event.autoBuild.lastTransition !== undefined && { lastTransition: event.autoBuild.lastTransition }),
+          ...(event.autoBuild.reason !== undefined && { reason: event.autoBuild.reason }),
+          ...(event.autoBuild.scheduler !== undefined && {
+            scheduler: {
+              ...(state.autoBuild.scheduler ?? {}),
+              ...event.autoBuild.scheduler,
+            },
+          }),
+        };
+        return { latestHeartbeat, autoBuild: merged };
+      }
+
+      return { latestHeartbeat };
     },
   },
 

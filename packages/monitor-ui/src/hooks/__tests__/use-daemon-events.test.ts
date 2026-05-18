@@ -43,7 +43,7 @@ function makeAutoBuild(): AutoBuildState {
       lastMutationReason: 'enqueue',
       runningCount: 1,
       limit: 3,
-    } as AutoBuildState['scheduler'] & { runningCount: number; limit: number },
+    },
     lastTransition: {
       at: '2024-01-15T08:59:00.000Z',
       previousMode: 'starting',

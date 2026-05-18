@@ -15,7 +15,7 @@ import { isIP } from 'node:net';
 
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
-import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
+import { DEFAULT_CONFIG, type EforgeConfig, type PartialEforgeConfig } from '@eforge-build/engine/config';
 import type {
   BuildStageSpec,
   ReviewProfileConfig,
@@ -376,7 +376,7 @@ export function buildRunSummary(db: MonitorDB, sessionId: string): RunSummary {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue'> },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
   const daemonSubscribers = new Set<DaemonSSESubscriber>();
@@ -569,22 +569,53 @@ export async function startServer(
     });
   }
 
+  /** Returns the number of currently running builds from the DB. */
+  function getRunningBuildCount(): number {
+    try {
+      return db.getRunningRuns().length;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Returns the configured max concurrent build limit. */
+  function getSchedulerLimit(): number {
+    return options?.config?.maxConcurrentBuilds ?? DEFAULT_CONFIG.maxConcurrentBuilds;
+  }
+
   /**
    * Build the canonical `AutoBuildState` wire object from the controller.
-   * Used by `GET /api/auto-build`, `POST /api/auto-build` response, and the
-   * `stream:hello` snapshot — the single source of this JSON shape.
+   * Used by `GET /api/auto-build`, `POST /api/auto-build` response,
+   * `stream:hello`, and heartbeat payloads — the single source of this JSON shape.
+   *
+   * The `scheduler` field is enriched with `runningCount` and `limit` so the
+   * monitor UI can display live capacity information in the Scheduler FSM card.
    */
-  function autoBuildStateToWire(state: DaemonState | undefined): AutoBuildState {
-    return state?.autoBuildController.getSnapshot() ?? {
+  function autoBuildStateToWire(
+    state: DaemonState | undefined,
+    capacity?: { runningCount?: number; limit?: number },
+  ): AutoBuildState {
+    const snapshot = state?.autoBuildController.getSnapshot() ?? {
       enabled: false,
       watcher: { running: false, pid: null, sessionId: null },
-      desired: 'disabled',
-      mode: 'disabled',
+      desired: 'disabled' as const,
+      mode: 'disabled' as const,
       scheduler: { alive: false, paused: false },
+    };
+    const runningCount = capacity?.runningCount ?? getRunningBuildCount();
+    const limit = capacity?.limit ?? getSchedulerLimit();
+    return {
+      ...snapshot,
+      scheduler: snapshot.scheduler
+        ? { ...snapshot.scheduler, runningCount, limit }
+        : { alive: false, paused: false, runningCount, limit },
     };
   }
 
-  function autoBuildHeartbeatToWire(state: DaemonState | undefined): {
+  function autoBuildHeartbeatToWire(
+    state: DaemonState | undefined,
+    capacity?: { runningCount?: number; limit?: number },
+  ): {
     enabled: boolean;
     paused: boolean;
     desired?: AutoBuildState['desired'];
@@ -593,7 +624,7 @@ export async function startServer(
     lastTransition?: AutoBuildState['lastTransition'];
     reason?: string;
   } {
-    const snapshot = autoBuildStateToWire(state);
+    const snapshot = autoBuildStateToWire(state, capacity);
     return {
       enabled: snapshot.enabled,
       paused: snapshot.mode === 'paused' || snapshot.scheduler?.paused === true,
@@ -770,12 +801,7 @@ export async function startServer(
   function buildHeartbeatObject(): object {
     const uptime = Date.now() - instanceStartedAt;
 
-    let runningBuilds = 0;
-    try {
-      runningBuilds = db.getRunningRuns().length;
-    } catch {
-      // DB might be closed during shutdown — skip this tick
-    }
+    const runningBuilds = getRunningBuildCount();
 
     // Count pending queue items from the filesystem queue directory.
     let queueDepth = 0;
@@ -795,7 +821,7 @@ export async function startServer(
       uptime,
       queueDepth,
       runningBuilds,
-      autoBuild: autoBuildHeartbeatToWire(options?.daemonState),
+      autoBuild: autoBuildHeartbeatToWire(options?.daemonState, { runningCount: runningBuilds }),
       subscribers: daemonSubscribers.size,
     };
   }
@@ -2071,10 +2097,12 @@ export async function startServer(
       }
       try {
         const { autoBuildController: controller } = options.daemonState;
-        const snapshot = body.enabled
-          ? controller.enable('http enable')
-          : controller.disable('http disable');
-        sendJson(res, snapshot);
+        if (body.enabled) {
+          controller.enable('http enable');
+        } else {
+          controller.disable('http disable');
+        }
+        sendJson(res, autoBuildStateToWire(options.daemonState));
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to update auto-build');
       }

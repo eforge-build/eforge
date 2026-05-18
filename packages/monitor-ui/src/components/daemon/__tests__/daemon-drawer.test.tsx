@@ -101,6 +101,12 @@ describe('DaemonDrawer scheduler FSM card contract', () => {
     expect(drawerSourceStripped).not.toContain('nextMode ??');
   });
 
+  it('uses "Last queue wake-up" label and "none since startup" fallback for missing reason', () => {
+    expect(drawerSourceStripped).toContain('Last queue wake-up');
+    expect(drawerSourceStripped).toContain("'none since startup'");
+    expect(drawerSourceStripped).not.toContain('Scheduler injection');
+  });
+
   it('defines distinct visual treatments for every supervisor mode family', () => {
     for (const mode of ['running', 'paused', 'starting', 'stopping', 'restarting', 'disabled', 'faulted']) {
       expect(drawerSourceStripped).toContain(`case '${mode}'`);
@@ -156,14 +162,112 @@ describe('DaemonDrawer scheduler FSM card contract', () => {
         source: 'scheduler',
       },
       reason: 'watcher ready',
-    } as unknown as AutoBuildState;
+    } as AutoBuildState;
 
     renderDrawer({ autoBuild, latestHeartbeat: makeHeartbeat() });
 
     expect(screen.getByText('watcher-session-1')).toBeTruthy();
-    expect(screen.getByText('2/4')).toBeTruthy();
+    expect(screen.getByText('2/4 running')).toBeTruthy();
     expect(screen.getByText(/starting → running · watcher ready · scheduler/)).toBeTruthy();
     expect(screen.getAllByText('watcher ready').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders known wake-up reasons as friendly labels', () => {
+    function renderWithReason(reason: string) {
+      cleanup();
+      renderDrawer({
+        autoBuild: {
+          enabled: true,
+          watcher: { running: true, pid: null, sessionId: null },
+          scheduler: { alive: true, paused: false, lastMutationReason: reason },
+        } as AutoBuildState,
+      });
+    }
+
+    renderWithReason('apply-recovery');
+    expect(screen.getByText('recovery applied')).toBeTruthy();
+
+    renderWithReason('external');
+    expect(screen.getByText('manual kick')).toBeTruthy();
+
+    renderWithReason('playbook-enqueue');
+    expect(screen.getByText('playbook enqueue')).toBeTruthy();
+  });
+
+  it('renders unknown wake-up reason as the raw string', () => {
+    renderDrawer({
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: null, sessionId: null },
+        scheduler: { alive: true, paused: false, lastMutationReason: 'some-future-reason' },
+      } as AutoBuildState,
+    });
+    expect(screen.getByText('some-future-reason')).toBeTruthy();
+  });
+
+  it('renders missing or empty lastMutationReason as "none since startup"', () => {
+    renderDrawer({
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: null, sessionId: null },
+        scheduler: { alive: true, paused: false },
+      } as AutoBuildState,
+    });
+    expect(screen.getByText('Last queue wake-up')).toBeTruthy();
+    expect(screen.getByText('none since startup')).toBeTruthy();
+    expect(screen.queryByText('Scheduler injection')).toBeNull();
+
+    cleanup();
+    renderDrawer({
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: null, sessionId: null },
+        scheduler: { alive: true, paused: false, lastMutationReason: '' },
+      } as AutoBuildState,
+    });
+    expect(screen.getByText('none since startup')).toBeTruthy();
+  });
+
+  it('renders N/M running for runningCount and limit capacity fields', () => {
+    renderDrawer({
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: null, sessionId: null },
+        scheduler: { alive: true, paused: false, runningCount: 1, limit: 2 },
+      } as AutoBuildState,
+    });
+    expect(screen.getByText('1/2 running')).toBeTruthy();
+  });
+
+  it('retains legacy scheduler capacity fallbacks for older snapshots', () => {
+    renderDrawer({
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: null, sessionId: null },
+        scheduler: { alive: true, paused: false, capacityRemaining: 3, limit: 5 },
+      } as unknown as AutoBuildState,
+    });
+    expect(screen.getByText('3 remaining of 5')).toBeTruthy();
+
+    cleanup();
+    renderDrawer({
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: null, sessionId: null },
+        scheduler: { alive: true, paused: false, capacity: 7 },
+      } as unknown as AutoBuildState,
+    });
+    expect(screen.getByText('7')).toBeTruthy();
+
+    cleanup();
+    renderDrawer({
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: null, sessionId: null },
+        scheduler: { alive: true, paused: false, maxRunningBuilds: 9 },
+      } as unknown as AutoBuildState,
+    });
+    expect(screen.getByText('9')).toBeTruthy();
   });
 
   it('scheduler activity filter includes only scheduler-relevant activity', () => {

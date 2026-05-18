@@ -452,6 +452,8 @@ const AutoBuildSchedulerStateSchema = Type.Object({
   alive: Type.Boolean(),
   paused: Type.Boolean(),
   lastMutationReason: Type.Optional(Type.String()),
+  runningCount: Type.Optional(Type.Number()),
+  limit: Type.Optional(Type.Number()),
 });
 
 const AutoBuildTransitionDetailSchema = Type.Object({

@@ -591,6 +591,133 @@ function makeHeartbeatPayload(overrides: Partial<HeartbeatPayload> = {}): Heartb
   };
 }
 
+describe('ADD_EVENT: daemon:heartbeat — autoBuild scheduler merge', () => {
+  it('merges heartbeat lifecycle and scheduler capacity fields into existing state.autoBuild', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      autoBuild: {
+        ...makeAutoBuildState(true),
+        scheduler: { alive: false, paused: true },
+      },
+    };
+    const heartbeatTransition = {
+      at: '2024-01-15T10:00:00.000Z',
+      previousMode: 'running',
+      nextMode: 'paused',
+      desired: 'enabled' as const,
+      reason: 'capacity reached',
+      source: 'scheduler',
+    };
+    const event = makeEvent('daemon:heartbeat', {
+      uptime: 5_000,
+      queueDepth: 1,
+      runningBuilds: 2,
+      autoBuild: {
+        enabled: false,
+        paused: true,
+        desired: 'enabled',
+        mode: 'paused',
+        scheduler: {
+          alive: true,
+          paused: false,
+          lastMutationReason: 'apply-recovery',
+          runningCount: 2,
+          limit: 4,
+        },
+        lastTransition: heartbeatTransition,
+        reason: 'capacity reached',
+      },
+      subscribers: 1,
+    });
+
+    const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'hb1' });
+
+    expect(next.latestHeartbeat).not.toBeNull();
+    expect(next.latestHeartbeat!.payload.runningBuilds).toBe(2);
+    expect(next.autoBuild).toMatchObject({
+      enabled: false,
+      desired: 'enabled',
+      mode: 'paused',
+      reason: 'capacity reached',
+      lastTransition: heartbeatTransition,
+      scheduler: {
+        alive: true,
+        paused: false,
+        lastMutationReason: 'apply-recovery',
+        runningCount: 2,
+        limit: 4,
+      },
+    });
+    expect(next.autoBuild?.watcher).toEqual(state.autoBuild?.watcher);
+    expect(next.daemonActivity).toHaveLength(0);
+  });
+
+  it('does not update autoBuild when state.autoBuild is null', () => {
+    const event = makeEvent('daemon:heartbeat', {
+      uptime: 5_000,
+      queueDepth: 0,
+      runningBuilds: 0,
+      autoBuild: {
+        enabled: false,
+        paused: false,
+        scheduler: { alive: false, paused: false, runningCount: 0, limit: 2 },
+      },
+      subscribers: 0,
+    });
+
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'hb1' });
+
+    expect(next.autoBuild).toBeNull();
+    expect(next.latestHeartbeat).not.toBeNull();
+  });
+
+  it('preserves existing scheduler details when an older heartbeat omits scheduler fields', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      autoBuild: {
+        ...makeAutoBuildState(true),
+        scheduler: {
+          alive: true,
+          paused: false,
+          lastMutationReason: 'playbook-enqueue',
+          runningCount: 3,
+          limit: 5,
+        },
+      },
+    };
+    const event = makeEvent('daemon:heartbeat', {
+      uptime: 1_000,
+      queueDepth: 0,
+      runningBuilds: 0,
+      autoBuild: {
+        enabled: false,
+        paused: true,
+        desired: 'enabled',
+        mode: 'paused',
+        reason: 'older heartbeat without scheduler capacity',
+      },
+      subscribers: 1,
+    });
+
+    const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'hb1' });
+
+    expect(next.autoBuild).toMatchObject({
+      enabled: false,
+      desired: 'enabled',
+      mode: 'paused',
+      reason: 'older heartbeat without scheduler capacity',
+      scheduler: {
+        alive: true,
+        paused: false,
+        lastMutationReason: 'playbook-enqueue',
+        runningCount: 3,
+        limit: 5,
+      },
+    });
+    expect(next.daemonActivity).toHaveLength(0);
+  });
+});
+
 describe('ADD_EVENT: daemon:heartbeat', () => {
   afterEach(() => {
     vi.restoreAllMocks();
