@@ -49,6 +49,23 @@ import { writeHello } from './sse-handshake.js';
 // --- eforge:region plan-01-semantic-enqueue-wake ---
 import { reactToDaemonEvent } from './daemon-event-reactions.js';
 // --- eforge:endregion plan-01-semantic-enqueue-wake ---
+// --- eforge:region plan-02-extension-package-daemon-operations ---
+import type {
+  ExtensionInstallRequest,
+  ExtensionUpdateRequest,
+  ExtensionRemoveRequest,
+  ExtensionPromoteRequest,
+  ExtensionDemoteRequest,
+} from '@eforge-build/client';
+import {
+  ExtensionPackageError,
+  installExtensionPackage,
+  updateExtensionPackage,
+  removeExtensionPackage,
+  promoteExtensionPackage,
+  demoteExtensionPackage,
+} from './extension-package-management.js';
+// --- eforge:endregion plan-02-extension-package-daemon-operations ---
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -1577,6 +1594,48 @@ export async function startServer(
   }
   // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 
+  // --- eforge:region plan-02-extension-package-daemon-operations ---
+  function validateBooleanField(body: Record<string, unknown>, field: string): string | undefined {
+    return body[field] !== undefined && typeof body[field] !== 'boolean'
+      ? `Invalid field: ${field} must be boolean`
+      : undefined;
+  }
+
+  function validateStringField(body: Record<string, unknown>, field: string): string | undefined {
+    return body[field] !== undefined && typeof body[field] !== 'string'
+      ? `Invalid field: ${field} must be a string`
+      : undefined;
+  }
+
+  function validateExtensionPackageTargetBody(
+    body: Record<string, unknown>,
+    options: { allowForce?: boolean; allowTrust?: boolean; allowVersion?: boolean } = {},
+  ): string | undefined {
+    const hasName = body.name !== undefined;
+    const hasPath = body.path !== undefined;
+    if (!hasName && !hasPath) return 'Missing required field: name or path';
+    if (hasName && hasPath) return 'Specify only one of name or path';
+    if (hasName && (typeof body.name !== 'string' || !EXTENSION_NAME_RE.test(body.name))) return 'Invalid extension name';
+    if (hasPath && (typeof body.path !== 'string' || body.path.length === 0)) return 'Invalid extension path';
+    if (options.allowForce) {
+      const forceError = validateBooleanField(body, 'force');
+      if (forceError) return forceError;
+    }
+    if (options.allowTrust) {
+      const trustError = validateBooleanField(body, 'trust');
+      if (trustError) return trustError;
+      const trustedByError = validateStringField(body, 'trustedBy');
+      if (trustedByError) return trustedByError;
+    }
+    if (options.allowVersion) {
+      if (body.version !== undefined && (typeof body.version !== 'string' || body.version.length === 0)) {
+        return 'Invalid field: version must be a non-empty string';
+      }
+    }
+    return undefined;
+  }
+  // --- eforge:endregion plan-02-extension-package-daemon-operations ---
+
   function selectExtensionByName(extensions: ExtensionEntry[], name: string): ExtensionEntry | undefined {
     const matches = extensions.filter((entry) => entry.name === name);
     return matches.find((entry) => entry.status === 'loaded')
@@ -1590,7 +1649,7 @@ export async function startServer(
   }
   // --- eforge:endregion plan-01-extension-management-api ---
 
-  async function loadExtensionResponse(opts: { path?: string } = {}): Promise<ExtensionListResponse> {
+  async function loadExtensionResponse(opts: { path?: string; discoverOnly?: boolean } = {}): Promise<ExtensionListResponse> {
     if (!cwd) throw new Error('Working directory not configured');
     const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
     const { loadNativeExtensions, discoverNativeExtensions, projectExtensionRegistry } = await import('@eforge-build/engine/extensions/index');
@@ -1610,11 +1669,11 @@ export async function startServer(
       : config.extensions;
 
     // --- eforge:region plan-01-extension-management-api ---
-    if (!opts.path && !config.extensions.enabled) {
+    if (opts.discoverOnly || (!opts.path && !config.extensions.enabled)) {
       const discovery = await discoverNativeExtensions({
         cwd,
         configDir,
-        config: {
+        config: opts.path ? extensionConfig : {
           ...config.extensions,
           enabled: true,
         },
@@ -1626,7 +1685,7 @@ export async function startServer(
         scope: candidate.scope as ExtensionEntry['scope'],
         source: candidate.source,
         status: candidate.status,
-        enabled: false,
+        enabled: opts.discoverOnly ? extensionEntryEnabled(candidate.status, extensionConfig.enabled) : false,
         trust: candidate.trust,
         // --- eforge:region plan-02-management-surfaces ---
         ...(candidate.trustState !== undefined && { trustState: candidate.trustState as ExtensionEntry['trustState'] }),
@@ -2931,6 +2990,208 @@ export async function startServer(
       return;
     }
     // --- eforge:endregion plan-02-management-surfaces ---
+
+    // --- eforge:region plan-02-extension-package-daemon-operations ---
+    if (req.method === 'POST' && url === API_ROUTES.extensionInstall) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      let installBody: ExtensionInstallRequest;
+      try {
+        const rawBody = await parseJsonBody(req);
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        installBody = rawBody as unknown as ExtensionInstallRequest;
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      if (typeof installBody.source !== 'string' || installBody.source.length === 0) {
+        sendJsonError(res, 400, 'Missing required field: source'); return;
+      }
+      if (
+        installBody.scope !== undefined &&
+        installBody.scope !== 'local' &&
+        installBody.scope !== 'project' &&
+        installBody.scope !== 'user'
+      ) {
+        sendJsonError(res, 400, 'Invalid scope. Supported: local, project, user'); return;
+      }
+      if (
+        installBody.name !== undefined &&
+        (typeof installBody.name !== 'string' || !EXTENSION_NAME_RE.test(installBody.name))
+      ) {
+        sendJsonError(res, 400, 'Invalid extension name'); return;
+      }
+      for (const fieldError of [
+        validateBooleanField(installBody as unknown as Record<string, unknown>, 'force'),
+        validateBooleanField(installBody as unknown as Record<string, unknown>, 'trust'),
+        validateStringField(installBody as unknown as Record<string, unknown>, 'trustedBy'),
+      ]) {
+        if (fieldError) { sendJsonError(res, 400, fieldError); return; }
+      }
+      try {
+        const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
+        const { config, warnings } = await loadConfig(cwd);
+        for (const warning of warnings) process.stderr.write(`${warning}\n`);
+        const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+        const result = await installExtensionPackage(installBody, cwd, configDir);
+        const listData = await loadExtensionResponse({ path: result.targetPath, discoverOnly: true });
+        const extension =
+          listData.extensions.find((e) => e.path === result.targetPath) ??
+          selectExtensionByName(listData.extensions, result.name);
+        if (!extension) { sendJsonError(res, 500, 'Extension installed but not found in discovery'); return; }
+        const needsTrust = result.scope === 'project' && (!installBody.trust);
+        sendJson(res, {
+          extension,
+          message: needsTrust
+            ? `Extension "${result.name}" installed to project scope. Run \`eforge extension trust ${result.name}\` to trust it before use.`
+            : `Extension "${result.name}" installed to ${result.scope} scope.`,
+        });
+      } catch (err) {
+        if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
+        else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to install extension'); }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.extensionUpdate) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      let updateBody: ExtensionUpdateRequest;
+      try {
+        const rawBody = await parseJsonBody(req);
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        updateBody = rawBody as unknown as ExtensionUpdateRequest;
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      const updateValidationError = validateExtensionPackageTargetBody(updateBody as unknown as Record<string, unknown>, {
+        allowTrust: true,
+        allowVersion: true,
+      });
+      if (updateValidationError) { sendJsonError(res, 400, updateValidationError); return; }
+      try {
+        const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
+        const { config, warnings } = await loadConfig(cwd);
+        for (const warning of warnings) process.stderr.write(`${warning}\n`);
+        const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+        const result = await updateExtensionPackage(updateBody, cwd, configDir);
+        const listData = await loadExtensionResponse({ path: result.targetPath, discoverOnly: true });
+        const extension =
+          listData.extensions.find((e) => e.path === result.targetPath) ??
+          selectExtensionByName(listData.extensions, result.name);
+        if (!extension) { sendJsonError(res, 500, 'Extension updated but not found in discovery'); return; }
+        const needsTrust = result.scope === 'project' && (!updateBody.trust);
+        sendJson(res, {
+          extension,
+          ...(result.previousVersion !== undefined && { previousVersion: result.previousVersion }),
+          message: needsTrust
+            ? `Extension "${result.name}" updated. Run \`eforge extension trust ${result.name}\` to re-trust it before use.`
+            : `Extension "${result.name}" updated.`,
+        });
+      } catch (err) {
+        if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
+        else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to update extension'); }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.extensionRemove) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      let removeBody: ExtensionRemoveRequest;
+      try {
+        const rawBody = await parseJsonBody(req);
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        removeBody = rawBody as unknown as ExtensionRemoveRequest;
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      const removeValidationError = validateExtensionPackageTargetBody(removeBody as unknown as Record<string, unknown>, {
+        allowForce: true,
+      });
+      if (removeValidationError) { sendJsonError(res, 400, removeValidationError); return; }
+      try {
+        const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
+        const { config, warnings } = await loadConfig(cwd);
+        for (const warning of warnings) process.stderr.write(`${warning}\n`);
+        const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+        const result = await removeExtensionPackage(removeBody, cwd, configDir);
+        sendJson(res, { message: `Extension "${result.name}" removed from ${result.removedPath}.` });
+      } catch (err) {
+        if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
+        else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to remove extension'); }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.extensionPromote) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      let promoteBody: ExtensionPromoteRequest;
+      try {
+        const rawBody = await parseJsonBody(req);
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        promoteBody = rawBody as unknown as ExtensionPromoteRequest;
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      const promoteValidationError = validateExtensionPackageTargetBody(promoteBody as unknown as Record<string, unknown>, {
+        allowForce: true,
+        allowTrust: true,
+      });
+      if (promoteValidationError) { sendJsonError(res, 400, promoteValidationError); return; }
+      try {
+        const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
+        const { config, warnings } = await loadConfig(cwd);
+        for (const warning of warnings) process.stderr.write(`${warning}\n`);
+        const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+        const result = await promoteExtensionPackage(promoteBody, cwd, configDir);
+        const listData = await loadExtensionResponse({ path: result.targetPath, discoverOnly: true });
+        const extension =
+          listData.extensions.find((e) => e.path === result.targetPath) ??
+          selectExtensionByName(listData.extensions, result.name);
+        if (!extension) { sendJsonError(res, 500, 'Extension promoted but not found in discovery'); return; }
+        const needsTrust = !promoteBody.trust;
+        sendJson(res, {
+          extension,
+          message: needsTrust
+            ? `Extension "${result.name}" promoted to project-team scope. Run \`eforge extension trust ${result.name}\` to trust it before use.`
+            : `Extension "${result.name}" promoted to project-team scope.`,
+        });
+      } catch (err) {
+        if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
+        else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to promote extension'); }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.extensionDemote) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      let demoteBody: ExtensionDemoteRequest;
+      try {
+        const rawBody = await parseJsonBody(req);
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        demoteBody = rawBody as unknown as ExtensionDemoteRequest;
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      const demoteValidationError = validateExtensionPackageTargetBody(demoteBody as unknown as Record<string, unknown>, {
+        allowForce: true,
+      });
+      if (demoteValidationError) { sendJsonError(res, 400, demoteValidationError); return; }
+      try {
+        const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
+        const { config, warnings } = await loadConfig(cwd);
+        for (const warning of warnings) process.stderr.write(`${warning}\n`);
+        const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+        const result = await demoteExtensionPackage(demoteBody, cwd, configDir);
+        const listData = await loadExtensionResponse({ path: result.targetPath, discoverOnly: true });
+        const extension =
+          listData.extensions.find((e) => e.path === result.targetPath) ??
+          selectExtensionByName(listData.extensions, result.name);
+        if (!extension) { sendJsonError(res, 500, 'Extension demoted but not found in discovery'); return; }
+        sendJson(res, {
+          extension,
+          message: `Extension "${result.name}" demoted to project-local scope.`,
+        });
+      } catch (err) {
+        if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
+        else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to demote extension'); }
+      }
+      return;
+    }
+    // --- eforge:endregion plan-02-extension-package-daemon-operations ---
+
     // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
     // --- eforge:region plan-02-daemon-http-and-mcp-tool ---
