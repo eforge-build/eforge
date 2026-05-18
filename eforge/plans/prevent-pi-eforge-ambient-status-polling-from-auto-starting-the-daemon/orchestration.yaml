@@ -1,0 +1,100 @@
+name: prevent-pi-eforge-ambient-status-polling-from-auto-starting-the-daemon
+description: Prevent Pi eforge ambient status polling and all non-lifecycle Pi
+  operations from auto-starting the daemon; add no-start client helper variants,
+  refactor Pi calls, update docs, and add regression/static tests.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-no-start-client-helpers
+    name: Add Non-Starting Client API Helpers
+    depends_on: []
+    branch: prevent-pi-eforge-ambient-status-polling-from-auto-starting-the-daemon/plan-01-no-start-client-helpers
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This touches many typed client API wrappers and must preserve
+          existing auto-start helpers while adding no-start variants with
+          consistent shapes.
+      reviewer:
+        effort: high
+        rationale: Review must verify no-start semantics do not regress existing CLI/MCP
+          auto-start behavior.
+  - id: plan-02-pi-passive-daemon-usage
+    name: Refactor Pi Extension to Passive Daemon Usage
+    depends_on:
+      - plan-01-no-start-client-helpers
+    branch: prevent-pi-eforge-ambient-status-polling-from-auto-starting-the-daemon/plan-02-pi-passive-daemon-usage
+    build:
+      - - implement
+        - doc-author
+      - test-cycle
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The Pi extension has many daemon-backed tools, commands, and ambient
+          status paths that need coordinated no-start conversion.
+      reviewer:
+        effort: high
+        rationale: Review must audit all Pi daemon call sites and docs for the new policy.
+      tester:
+        effort: high
+        rationale: Regression tests need dynamic no-spawn coverage plus static policy
+          gates.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - test-write
+      - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - docs
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is an excursion: the work spans Pi extension code, shared
+    daemon client helpers, command/tool behavior, docs, and regression/static
+    tests, but a single planner can enumerate the needed changes without
+    delegated module planning. plan-review-cycle is included because the key
+    risk is missing a side-effecting Pi call path. The build runs docs authoring
+    in parallel with implementation, then writes tests and syncs docs before
+    iterative review and test validation. Parallel review perspectives cover
+    client/API behavior, broad policy enforcement, tests, docs, and final
+    verification without the overhead of expedition planning."
