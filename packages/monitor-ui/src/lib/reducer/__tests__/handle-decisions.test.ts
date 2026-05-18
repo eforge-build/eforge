@@ -191,6 +191,44 @@ describe('handlePlanBuildDecision', () => {
     expect(decisionSummary(stored)).not.toContain('dropped:');
     expect(decisionDetail(stored)).toContain('Dropped: (none)');
   });
+
+  // --- eforge:region plan-03-observability-docs-examples ---
+  it('renders custom extension perspective key in perspectives-respawned decision summary and detail', () => {
+    const customPerspectiveDecision: BuildDecision = {
+      kind: 'perspectives-respawned',
+      rationale: 'Extension perspective "accessibility" from my-accessibility-ext was active; standard code review retained',
+      round: 0,
+      perspectives: ['accessibility', 'code'],
+      dropped: [],
+    };
+    const event = makeDecisionEvent(PLAN_A, customPerspectiveDecision);
+    const delta = handlePlanBuildDecision(event, initialRunState);
+    const stored = delta!.decisions![PLAN_A][0].decision;
+
+    // Custom extension perspective key must appear in both summary and detail
+    expect(decisionSummary(stored)).toContain('accessibility');
+    expect(decisionDetail(stored)).toContain('accessibility');
+    // Extension provenance is surfaced via the rationale field
+    expect(decisionDetail(stored)).toContain('my-accessibility-ext');
+  });
+
+  it('renders custom perspective name in perspectives-inferred decision', () => {
+    const customInferredDecision: BuildDecision = {
+      kind: 'perspectives-inferred',
+      rationale: 'Extension perspective "i18n" inferred from changed locale files',
+      perspectives: ['i18n', 'docs'],
+      categories: [],
+      rules: [],
+    };
+    const event = makeDecisionEvent(PLAN_A, customInferredDecision);
+    const delta = handlePlanBuildDecision(event, initialRunState);
+    const stored = delta!.decisions![PLAN_A][0].decision;
+
+    expect(decisionSummary(stored)).toContain('i18n');
+    expect(decisionDetail(stored)).toContain('i18n');
+    expect(decisionDetail(stored)).toContain('locale files');
+  });
+  // --- eforge:endregion plan-03-observability-docs-examples ---
 });
 
 // ---------------------------------------------------------------------------

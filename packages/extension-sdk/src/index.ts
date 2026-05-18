@@ -60,6 +60,8 @@ export type {
   PrdEnrichmentResult,
   PrdEnricher,
   ReviewerPerspectiveSpec,
+  ReviewerPerspectiveApplicability,
+  ReviewerPerspectiveApplicabilityContext,
   ValidationProviderSpec,
 } from './hooks.js';
 

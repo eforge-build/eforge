@@ -74,6 +74,41 @@ export interface ConfigValidateResponse {
 // --- eforge:region plan-02-extension-tooling-surfaces ---
 export type ExtensionScope = 'user' | 'project-team' | 'project-local' | 'external';
 export type ExtensionSource = 'auto' | 'explicit';
+
+// --- eforge:region plan-03-observability-docs-examples ---
+/**
+ * Serializable summary of the declarative portion of a reviewer perspective's applicability
+ * rules. Function-form applicability (`fn`) is not exposed; its presence is indicated by
+ * `hasFn: true`.
+ */
+export interface ReviewerPerspectiveApplicabilitySummary {
+  fileGlobs?: string[];
+  paths?: string[];
+  extensions?: string[];
+  categories?: Array<'code' | 'api' | 'docs' | 'config' | 'deps' | 'test'>;
+  minChangedFiles?: number;
+  minChangedLines?: number;
+  /** True when the extension registered a custom applicability function (body not exposed). */
+  hasFn?: boolean;
+}
+
+/**
+ * Safe metadata about a registered reviewer perspective.
+ *
+ * Includes key, label, description, extension provenance, and the serializable
+ * portion of the applicability rules. The `promptFragment` field is intentionally
+ * omitted to keep management surfaces concise; the function form of applicability
+ * is indicated by `applicability.hasFn`.
+ */
+export interface ReviewerPerspectiveDetail {
+  key: string;
+  label: string;
+  description: string;
+  extensionName: string;
+  extensionPath: string;
+  applicability?: ReviewerPerspectiveApplicabilitySummary;
+}
+// --- eforge:endregion plan-03-observability-docs-examples ---
 export type ExtensionStatus = 'pending' | 'loaded' | 'shadowed' | 'skipped' | 'error' | 'excluded';
 export type ExtensionDiagnosticSeverity = 'warning' | 'error';
 export type ExtensionFormat = 'js' | 'mjs' | 'ts' | 'mts';
@@ -149,6 +184,10 @@ export interface ExtensionEntry {
   shadows: ExtensionShadow[];
   registrations: ExtensionRegistrationSummary;
   diagnostics: ExtensionDiagnostic[];
+  // --- eforge:region plan-03-observability-docs-examples ---
+  /** Metadata for each reviewer perspective registered by this extension. Absent when the extension has no registered perspectives. */
+  reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
+  // --- eforge:endregion plan-03-observability-docs-examples ---
 }
 
 export interface ExtensionListResponse {
@@ -345,7 +384,9 @@ export type BuildStageSpec = string | string[];
 
 export interface ReviewProfileConfig {
   strategy: 'auto' | 'single' | 'parallel';
-  perspectives: ('code' | 'security' | 'api' | 'docs' | 'test' | 'verify')[];
+  /** Review perspective keys. Built-ins: code, security, api, docs, test, verify.
+   * Custom extension keys are also accepted (lowercase slugs). */
+  perspectives: string[];
   maxRounds: number;
   evaluatorStrictness: 'strict' | 'standard' | 'lenient';
 }

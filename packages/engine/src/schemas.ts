@@ -8,6 +8,7 @@
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import {
   REVIEW_PERSPECTIVES,
+  ReviewPerspectiveKeySchema,
   getSchemaYaml,
   safeParseWithSchema,
   type SafeParseResult,
@@ -487,8 +488,8 @@ export const pipelineReviewProfileConfigSchema = Type.Object({
     { description: 'Review strategy' },
   ),
   perspectives: Type.Array(
-    Type.Union(REVIEW_PERSPECTIVES.map(p => Type.Literal(p))),
-    { minItems: 1, description: `Review perspective names. Valid: ${REVIEW_PERSPECTIVES.join(', ')}` },
+    ReviewPerspectiveKeySchema,
+    { minItems: 1, description: `Review perspective keys. Built-ins: ${REVIEW_PERSPECTIVES.join(', ')}. Custom extension keys (lowercase slugs) are also accepted.` },
   ),
   maxRounds: Type.Integer({ minimum: 1, description: 'Number of review-fix-evaluate cycles' }),
   evaluatorStrictness: Type.Union(

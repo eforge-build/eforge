@@ -122,8 +122,16 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       state.prdEnrichers.push({ kind: 'prdEnricher', extensionName, extensionPath, name: enricher.name, value: enricher as unknown as PrdEnricherSpec });
     },
     registerReviewerPerspective(spec: unknown): void {
-      if (!isObject(spec) || !isNonEmptyString(spec.key) || !isNonEmptyString(spec.label) || !isNonEmptyString(spec.promptFragment)) {
-        addDiagnostic('registerReviewerPerspective requires { key: string, label: string, promptFragment: string }', 'extension:invalid-registration', isObject(spec) && typeof spec.key === 'string' ? spec.key : undefined);
+      if (!isObject(spec) || !isNonEmptyString(spec.key) || !isNonEmptyString(spec.label) || !isNonEmptyString(spec.description) || !isNonEmptyString(spec.promptFragment)) {
+        addDiagnostic('registerReviewerPerspective requires { key: string, label: string, description: string, promptFragment: string }', 'extension:invalid-registration', isObject(spec) && typeof spec.key === 'string' ? spec.key : undefined);
+        return;
+      }
+      if (!isSafeReviewerPerspectiveKey(spec.key)) {
+        addDiagnostic(`registerReviewerPerspective key "${spec.key}" is invalid: must match ^[a-z][a-z0-9-]{0,63}$ and not be a built-in perspective name (code, security, api, docs, test, verify)`, 'extension:invalid-registration', spec.key);
+        return;
+      }
+      if (spec.appliesTo !== undefined && !isValidApplicabilityShape(spec.appliesTo)) {
+        addDiagnostic(`registerReviewerPerspective appliesTo for "${spec.key}" is invalid: must be an object with optional fileGlobs, paths, extensions, categories, minChangedFiles, minChangedLines, fn fields`, 'extension:invalid-registration', spec.key);
         return;
       }
       state.reviewerPerspectives.push({ kind: 'reviewerPerspective', extensionName, extensionPath, name: spec.key, value: spec as unknown as ReviewerPerspectiveSpec });
@@ -209,4 +217,36 @@ function isObjectRootInputSchema(value: Record<string, unknown>): boolean {
 // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+const BUILT_IN_REVIEWER_PERSPECTIVE_KEYS = new Set(['code', 'security', 'api', 'docs', 'test', 'verify']);
+const SAFE_REVIEWER_PERSPECTIVE_KEY_RE = /^[a-z][a-z0-9-]{0,63}$/;
+
+function isSafeReviewerPerspectiveKey(key: string): boolean {
+  return SAFE_REVIEWER_PERSPECTIVE_KEY_RE.test(key) && !BUILT_IN_REVIEWER_PERSPECTIVE_KEYS.has(key);
+}
+
+const VALID_APPLICABILITY_CATEGORY_VALUES = new Set(['code', 'api', 'docs', 'config', 'deps', 'test']);
+
+function isValidApplicabilityShape(value: unknown): boolean {
+  if (!isObject(value)) return false;
+  if (value.fileGlobs !== undefined && !isStringArray(value.fileGlobs)) return false;
+  if (value.paths !== undefined && !isStringArray(value.paths)) return false;
+  if (value.extensions !== undefined && !isStringArray(value.extensions)) return false;
+  if (value.categories !== undefined) {
+    if (!Array.isArray(value.categories)) return false;
+    if (!value.categories.every((c) => typeof c === 'string' && VALID_APPLICABILITY_CATEGORY_VALUES.has(c))) return false;
+  }
+  if (value.minChangedFiles !== undefined && !isNonNegativeInteger(value.minChangedFiles)) return false;
+  if (value.minChangedLines !== undefined && !isNonNegativeInteger(value.minChangedLines)) return false;
+  if (value.fn !== undefined && typeof value.fn !== 'function') return false;
+  return true;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }

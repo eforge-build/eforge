@@ -516,4 +516,96 @@ describe('extension CLI commands', () => {
     expect(stdout).toContain('Trusted at:');
     expect(stdout).toContain('Trusted by:    reviewer');
   });
+
+  // --- eforge:region plan-03-observability-docs-examples ---
+  it('extension show non-JSON output includes reviewer perspective key, label, and description when registered', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      `export default function extension(eforge) {
+        eforge.registerReviewerPerspective({
+          key: 'accessibility',
+          label: 'Accessibility Review',
+          description: 'Reviews UI for WCAG compliance',
+          promptFragment: 'Check ARIA attributes',
+          appliesTo: { fileGlobs: ['**/*.tsx'], categories: ['code'] },
+        });
+      }`,
+      'utf-8',
+    );
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'show', 'loaded']);
+    expect(stdout).toContain('Reviewer perspectives:');
+    expect(stdout).toContain('accessibility');
+    expect(stdout).toContain('Accessibility Review');
+    expect(stdout).toContain('Reviews UI for WCAG compliance');
+    expect(stdout).toContain('**/*.tsx');
+    expect(stdout).toContain('categories: code');
+  });
+
+  it('extension test non-JSON output lists reviewer perspectives as runtime-supported, not deferred', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      `export default function extension(eforge) {
+        eforge.registerReviewerPerspective({
+          key: 'accessibility',
+          label: 'Accessibility Review',
+          description: 'Reviews UI for WCAG compliance',
+          promptFragment: 'Check ARIA attributes',
+        });
+        eforge.registerValidationProvider({ name: 'validator', description: 'validator', validate: () => {} });
+      }`,
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'events.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', fixture]);
+    // reviewerPerspectives should NOT appear in deferred registrations
+    expect(stdout).not.toMatch(/Deferred registrations:[\s\S]*reviewerPerspectives/);
+    // validationProviders should still be deferred
+    expect(stdout).toContain('validationProviders: 1');
+    // Reviewer perspectives section should appear
+    expect(stdout).toContain('Reviewer perspectives (runtime-supported):');
+    expect(stdout).toContain('accessibility');
+  });
+
+  it('extension show JSON includes reviewerPerspectiveDetails without promptFragment', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      `export default function extension(eforge) {
+        eforge.registerReviewerPerspective({
+          key: 'accessibility',
+          label: 'Accessibility Review',
+          description: 'Reviews UI for WCAG compliance',
+          promptFragment: 'secret prompt text that should not be exposed',
+          appliesTo: { fileGlobs: ['**/*.tsx'] },
+        });
+      }`,
+      'utf-8',
+    );
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'show', 'loaded', '--json']);
+    const data = JSON.parse(stdout) as ExtensionShowResponse;
+    expect(data.extension.reviewerPerspectiveDetails).toEqual([
+      expect.objectContaining({
+        key: 'accessibility',
+        label: 'Accessibility Review',
+        description: 'Reviews UI for WCAG compliance',
+        extensionName: 'loaded',
+        applicability: { fileGlobs: ['**/*.tsx'] },
+      }),
+    ]);
+    // promptFragment must NOT be exposed
+    expect(JSON.stringify(data)).not.toContain('secret prompt text');
+  });
+  // --- eforge:endregion plan-03-observability-docs-examples ---
 });

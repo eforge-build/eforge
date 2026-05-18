@@ -93,7 +93,7 @@ The `event` parameter is narrowed to `EventOfType<T>` when the pattern is an exa
 
 **Runtime status:** registration is captured at load time and matching events are dispatched at runtime. Dispatch is non-blocking with respect to the engine pipeline: handlers cannot alter, block, or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields; monitor recording sees those diagnostics before shell hooks run.
 
-**Replay testing:** `eforge extension test` executes matching `onEvent` handlers against fixture or monitor DB events. It reports replay counts, matched hooks, emitted `extension:event-handler:*` diagnostics, and deferred non-event registration families. Replay testing does not execute `onAgentRun`, custom tools, policy gates, profile routers, input sources, reviewer perspectives, or validation providers.
+**Replay testing:** `eforge extension test` executes matching `onEvent` handlers against fixture or monitor DB events. It reports replay counts, matched hooks, emitted `extension:event-handler:*` diagnostics, and non-event registration summaries. Replay testing does not execute `onAgentRun`, custom tools, policy gates, profile routers, input sources, reviewer perspectives, or validation providers.
 
 ---
 
@@ -511,7 +511,7 @@ interface PrdEnrichmentResult {
 
 ### `registerReviewerPerspective(spec)`
 
-Register a custom review perspective. The spec is evaluated during the review phase alongside built-in perspectives.
+Register a custom reviewer perspective that executes during parallel review-cycle perspective dispatch alongside built-in eforge perspectives (`review.strategy: parallel`, or `auto` once the diff crosses the parallel-review thresholds). When a perspective is applicable, eforge dispatches it as its own review perspective using the generic reviewer prompt with `promptFragment` appended as an extension-provenance section. Multiple extensions may register perspectives; each applicable perspective is dispatched separately and its findings are aggregated with the other review results.
 
 **Signature:**
 
@@ -523,16 +523,72 @@ registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void
 
 ```ts
 interface ReviewerPerspectiveSpec {
-  /** Unique perspective key (matched against `REVIEW_PERSPECTIVES` in the engine). */
+  /** Unique perspective key used as the review perspective identifier. */
   key: string;
-  /** Human-readable label shown in review output. */
+  /** Human-readable label shown in review output and management tooling. */
   label: string;
-  /** Prompt fragment injected into the reviewer agent's context when active. */
+  /**
+   * Human-readable description of what this perspective reviews.
+   * Exposed in management projections (eforge extension show, list, validate, test).
+   */
+  description: string;
+  /** Prompt fragment appended to the generic reviewer prompt when this perspective is active. */
   promptFragment: string;
+  /** Optional applicability rules. Omit to run on every parallel review cycle. */
+  appliesTo?: ReviewerPerspectiveApplicability;
+}
+
+interface ReviewerPerspectiveApplicability {
+  /** Glob patterns matched against changed file paths. */
+  fileGlobs?: string[];
+  /** Path prefixes matched against changed file paths. */
+  paths?: string[];
+  /** File extensions, with or without a leading dot. */
+  extensions?: string[];
+  /** Built-in file categories that must have at least one changed file. */
+  categories?: Array<'code' | 'api' | 'docs' | 'config' | 'deps' | 'test'>;
+  /** Minimum number of changed files. */
+  minChangedFiles?: number;
+  /** Minimum number of added + deleted lines. */
+  minChangedLines?: number;
+  /** Optional predicate called after all declarative rules pass. */
+  fn?: (changedFiles: string[], changedLines: number) => boolean | Promise<boolean>;
 }
 ```
 
-**Runtime status:** registration is captured at load time; reviewer-perspective execution is deferred.
+**Applicability rules:**
+
+- `appliesTo.fileGlobs`: glob patterns matched against changed file paths in the review diff. The perspective runs when at least one changed file matches.
+- `appliesTo.paths`: path prefixes matched against changed file paths.
+- `appliesTo.extensions`: file extensions, with or without a leading dot.
+- `appliesTo.categories`: built-in file categories (`code`, `api`, `docs`, `config`, `deps`, `test`).
+- `appliesTo.minChangedFiles` / `appliesTo.minChangedLines`: minimum diff-size thresholds.
+- `appliesTo.fn(changedFiles, changedLines)`: optional predicate called only after all declarative rules pass. Return `true` to include the perspective or `false` to skip it.
+- Neither: omit `appliesTo` to run on every review cycle.
+
+All specified declarative rules are ANDed together. Function-form applicability receives copies of the changed-file list and changed-line count; it does not receive a mutable orchestration context.
+
+**Events:**
+
+- `extension:reviewer-perspective:applied` — the perspective was evaluated as applicable and dispatched.
+- `extension:reviewer-perspective:skipped` — the perspective was skipped because it was not applicable, its function-form predicate threw or timed out, an explicit key was unknown, or the predicate returned an invalid value.
+
+Diagnostic events for reviewer perspectives include: perspective key, optional extension name/path when the skipped key maps to a registered extension perspective, optional plan id, skip reason, timeout milliseconds when applicable, and an error message for applicability failures. `unknown-key` skips omit extension provenance because no extension owns the key. There is no separate `extension:reviewer-perspective:failed` event; failures are reported as `extension:reviewer-perspective:skipped` with reason `applicability-error` or `applicability-timeout`.
+
+**Trust model:**
+
+Applicability inputs are read-only API snapshots (changed file paths and changed-line count). Reviewer perspectives cannot mutate orchestration state, block the review cycle, or call agent tool APIs. The extension module itself is unsandboxed trusted code running in the daemon/worker process; the read-only constraint applies to applicability inputs, not to extension code in general.
+
+**Management projections:**
+
+`eforge extension show` and JSON list/show/validate/test responses include registered reviewer perspectives with: `key`, `label`, `description`, extension name/path, and a normalized applicability summary. Function source text is never included in management projections.
+
+**Limits:**
+
+- Reviewer perspectives run during parallel review-cycle perspective dispatch only. They do not run during planning, building, merge stages, `review.strategy: single`, or `auto` reviews that stay below the parallel-review thresholds.
+- `appliesTo.fn` is evaluated once per review cycle per registered perspective after declarative rules pass. Expensive synchronous work blocks the review dispatch; prefer declarative `fileGlobs`, `paths`, `extensions`, or `categories` for file-pattern-based rules.
+
+**Runtime status:** registration is captured at load time. Perspectives execute at runtime during parallel review-cycle perspective dispatch. See [`examples/extensions/reviewer-perspective.ts`](https://github.com/eforge-build/eforge/blob/main/examples/extensions/reviewer-perspective.ts) for a worked example.
 
 ---
 
@@ -773,7 +829,7 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, and `registerPrdEnricher` content enrichment are also wired. Replay invokes only matching event hooks and summarizes non-event registrations separately. Reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred for later phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, and `registerReviewerPerspective` parallel review-cycle dispatch. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. Validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred for later phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -786,12 +842,12 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
 | `registerInputSource` | Yes | Yes | Yes (extension-aware enqueue preprocessing) |
 | `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
-| `registerReviewerPerspective` | Yes | Yes | Deferred |
+| `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, profile-router, policy-gate, and input-source/enricher examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, profile-router, policy-gate, input-source/enricher, and reviewer perspective examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
 
 ---
 

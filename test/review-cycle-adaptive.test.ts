@@ -102,6 +102,64 @@ function makeContext(repo: string, harness: StubHarness, preImplementCommit: str
   };
 }
 
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
+function makeDynamicKeyContext(repo: string, harness: StubHarness, preImplementCommit: string): BuildStageContext {
+  const planId = 'plan-01-dynamic-perspective-test';
+  const review: ReviewProfileConfig = {
+    strategy: 'parallel',
+    perspectives: ['code', 'accessibility'],
+    maxRounds: 2,
+    evaluatorStrictness: 'standard',
+  };
+  const pipeline: PipelineComposition = {
+    scope: 'excursion',
+    compile: [],
+    defaultBuild: ['review-cycle'],
+    defaultReview: DEFAULT_REVIEW,
+    rationale: 'dynamic perspective key test',
+  };
+  const planFile: PlanFile = {
+    id: planId,
+    name: 'Dynamic Perspective Key Test',
+    dependsOn: [],
+    branch: `test/${planId}`,
+    body: '# Plan\n\nTest dynamic key handling.\n',
+    filePath: join(repo, 'plan.md'),
+  };
+  const orchConfig: OrchestrationConfig = {
+    name: 'dynamic-persp-test',
+    description: 'dynamic perspective test',
+    created: new Date().toISOString(),
+    mode: 'errand',
+    baseBranch: 'main',
+    pipeline,
+    plans: [{ id: planId, name: planFile.name, dependsOn: [], branch: planFile.branch, build: ['review-cycle'], review }],
+  };
+  return {
+    agentRuntimes: singletonRegistry(harness),
+    config: DEFAULT_CONFIG,
+    pipeline,
+    tracing: createNoopTracingContext(),
+    cwd: repo,
+    planSetName: 'dynamic-persp-test',
+    sourceContent: '',
+    modelTracker: new ModelTracker(),
+    plans: [planFile],
+    expeditionModules: [],
+    moduleBuildConfigs: new Map(),
+    planId,
+    worktreePath: repo,
+    planFile,
+    orchConfig,
+    planEntry: orchConfig.plans[0],
+    reviewIssues: [],
+    build: ['review-cycle'],
+    review,
+    preImplementCommit,
+  };
+}
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+
 describe('adaptive review-cycle perspective selection', () => {
   const makeTempDir = useTempDir('eforge-review-cycle-adaptive-');
 
@@ -186,4 +244,45 @@ describe('adaptive review-cycle perspective selection', () => {
       expect(round2Respawned.perspectives).not.toContain(dropped);
     }
   });
+
+  // --- eforge:region plan-01-dynamic-perspective-contracts ---
+  it('diagnoses and skips unregistered dynamic perspective keys in review-cycle', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(repo, 'chore: initial');
+    const preImplementCommit = await head(repo);
+
+    class DynamicKeyHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        if (agent === 'reviewer' && options.perspective === 'code') {
+          for await (const event of new StubHarness([{ text: '<review-issues></review-issues>' }]).run(options, agent, planId)) {
+            yield event;
+          }
+          return;
+        }
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+        }
+      }
+    }
+
+    const harness = new DynamicKeyHarness([]);
+    const ctx = makeDynamicKeyContext(repo, harness, preImplementCommit);
+
+    const events = await collectEvents(getBuildStage('review-cycle')(ctx));
+
+    const skipped = events.find(
+      (e): e is Extract<EforgeEvent, { type: 'extension:reviewer-perspective:skipped' }> =>
+        e.type === 'extension:reviewer-perspective:skipped' && e.perspectiveKey === 'accessibility',
+    );
+    expect(skipped?.reason).toBe('unknown-key');
+    expect(events.some((e) => e.type === 'plan:build:review:parallel:perspective:error')).toBe(false);
+
+    const reviewStart = events.find(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:review:parallel:start' }> =>
+        e.type === 'plan:build:review:parallel:start',
+    );
+    expect(reviewStart?.perspectives).toEqual(['code']);
+  });
+  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 });

@@ -227,7 +227,7 @@ describe('native extension replay harness', () => {
         eforge.registerProfileRouter({ name: 'router', resolve: () => { throw new Error('profile router should not be replayed'); } });
         eforge.registerInputSource({ name: 'input', description: 'input', fetch: async () => { throw new Error('input source should not be replayed'); } });
         eforge.registerPrdEnricher({ name: 'enricher', description: 'enricher', enrich: async () => { throw new Error('PRD enricher should not be replayed'); } });
-        eforge.registerReviewerPerspective({ key: 'review', label: 'Review', promptFragment: 'Review this' });
+        eforge.registerReviewerPerspective({ key: 'custom-review', label: 'Custom Review', description: 'Custom review perspective', promptFragment: 'Review this' });
         eforge.registerValidationProvider({ name: 'validator', description: 'validator', validate: () => { throw new Error('validation provider should not be replayed'); } });
         eforge.registerTool({ name: 'tool', description: 'tool', inputSchema: { type: 'object', properties: {} }, handler: () => { throw new Error('tool should not be replayed'); } });
       }
@@ -237,16 +237,32 @@ describe('native extension replay harness', () => {
 
     expect(result.valid).toBe(true);
     expect(result.matches).toEqual([]);
-    expect(Object.fromEntries(result.deferredRegistrations.map((entry) => [entry.family, entry.count]))).toMatchObject({
+    // --- eforge:region plan-03-observability-docs-examples ---
+    // reviewerPerspectives is runtime-supported and no longer listed as deferred
+    const deferredByFamily = Object.fromEntries(result.deferredRegistrations.map((entry) => [entry.family, entry.count]));
+    expect(deferredByFamily).toMatchObject({
       agentRunHooks: 1,
       policyGates: 1,
       profileRouters: 1,
       inputSources: 1,
       prdEnrichers: 1,
-      reviewerPerspectives: 1,
       validationProviders: 1,
       tools: 1,
     });
+    expect(deferredByFamily).not.toHaveProperty('reviewerPerspectives');
+
+    // Reviewer perspectives appear as runtime-supported details on the extension entry
+    const deferredExt = result.extensions.find((ext) => ext.name === 'deferred');
+    expect(deferredExt).toBeDefined();
+    expect(deferredExt?.reviewerPerspectiveDetails).toEqual([
+      expect.objectContaining({
+        key: 'custom-review',
+        label: 'Custom Review',
+        description: 'Custom review perspective',
+        extensionName: 'deferred',
+      }),
+    ]);
+    // --- eforge:endregion plan-03-observability-docs-examples ---
   });
 
   // --- eforge:region plan-01-extension-input-contracts ---

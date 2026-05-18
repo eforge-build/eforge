@@ -207,7 +207,7 @@ The runtime foundation is shipped: discovery, trust gating, loader strategy sele
 
 Event hooks run for real CLI, queue worker, and daemon watcher event streams. Dispatch is non-blocking with respect to the engine pipeline: handlers receive matching events but cannot alter or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with the extension name, matched pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Those diagnostics are recorded by the monitor before shell hooks run, so shell-hook matching has parity with normal engine and extension diagnostic events.
 
-Event replay testing is also available through `eforge extension test`. Replay execution is a dry run for `onEvent` hooks only: it invokes matching event handlers against fixture or monitor DB events and records emitted handler diagnostics, but it does not execute custom tools, policy gates, profile routers, input sources, reviewer perspectives, validation providers, or agent-run hooks. Those non-event registrations are summarized separately in the test result; this replay limitation does not reflect whether the capability runs during normal engine execution.
+Event replay testing is also available through `eforge extension test`. Replay execution is a dry run for `onEvent` hooks only: it invokes matching event handlers against fixture or monitor DB events and records emitted handler diagnostics, but it does not execute custom tools, policy gates, profile routers, input sources, reviewer perspectives, validation providers, or agent-run hooks. Non-event registrations are summarized separately in the test result with their current runtime status; this replay limitation does not reflect whether the capability runs during normal engine execution.
 
 Agent-run hooks fire before each agent invocation. Handlers can inspect `ctx.role`, `ctx.tier`, `ctx.phase`, and `ctx.stage` to scope their contribution, then return `{ promptAppend, tools, allowedTools, disallowedTools }` to inject additional prompt context, expose extension tools for that run, and tune harness availability lists. Prompt fragments are appended after any config-level `promptAppend` already resolved by the engine, wrapped in a named provenance section identifying the contributing extension. Multiple extensions contribute in registration order. The runtime is fail-open: a handler that throws or exceeds `extensions.agentContextHookTimeoutMs` emits a typed diagnostic event but does not abort the agent run.
 
@@ -216,6 +216,8 @@ Policy gates run at three blocking points: `beforeQueueDispatch` runs before a q
 Policy decisions are strictly validated. `{ decision: 'allow' }` lets the operation continue. `{ decision: 'block', reason }` blocks it and surfaces the reason. `{ decision: 'require-approval', reason }` currently blocks as an MVP behavior because no approval workflow, approval state, or monitor UI exists yet. Thrown errors, timeouts, and invalid decisions emit `extension:policy:*` diagnostics and follow `extensions.policyGateFailurePolicy`: `fail-closed` blocks, while `fail-open` allows continuation after recording diagnostics.
 
 Other non-event extension capability execution is intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete. For tools, `registerTool(tool)` records loader-time provenance and validation metadata; returning `tools: [tool]` from `onAgentRun` is the per-run injection path. `beforeEnqueue`, `beforeValidation`, approval workflows/UI/state, and `modify` decisions remain deferred and are not part of the current extension contract.
+
+Reviewer perspectives execute during the review-cycle stage and are no longer deferred. They participate in parallel review perspective dispatch (for `review.strategy: parallel`, or `auto` when the diff crosses the parallel-review thresholds). Each registered perspective is evaluated for applicability against the plan diff; applicable custom perspectives run as separate review perspectives using the generic reviewer prompt with their `promptFragment` appended as extension-provenance context. Applicability inputs are read-only API snapshots: reviewer perspectives cannot mutate orchestration state, block the review, or access agent tool APIs.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -228,10 +230,10 @@ Other non-event extension capability execution is intentionally deferred for lat
 | `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
 | `registerInputSource` | Yes | Yes | Yes (extension-aware enqueue preprocessing) |
 | `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
-| `registerReviewerPerspective` | Yes | Yes | Deferred |
+| `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-Event-hook, agent-context-hook, agent-tool, profile-router, shipped policy-gate, and input-source examples can be loaded, validated, and run at runtime. Event-oriented examples include [`examples/extensions/minimal-event-logger.ts`](../examples/extensions/minimal-event-logger.ts) and the safe [`examples/extensions/slack-webhook-notifier.ts`](../examples/extensions/slack-webhook-notifier.ts), which only sends a Slack-compatible webhook when `EFORGE_SLACK_WEBHOOK_URL` is set. [`examples/extensions/agent-tools.ts`](../examples/extensions/agent-tools.ts) demonstrates defining a TypeBox tool, registering it for provenance, and returning it only for builder runs with `ctx.effectiveToolName(...)` in prompt text. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with `extensions.profileRouterTimeoutMs` timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. [`examples/extensions/protected-paths.ts`](../examples/extensions/protected-paths.ts) demonstrates runtime-supported plan/final merge policy enforcement for protected paths. [`examples/extensions/issue-tracker.ts`](../examples/extensions/issue-tracker.ts) demonstrates runtime-supported input source adapters for GitHub, Linear, and Jira. Reviewer perspective execution, validation provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime phases.
+Event-hook, agent-context-hook, agent-tool, profile-router, shipped policy-gate, input-source, and reviewer perspective examples can be loaded, validated, and run at runtime. Event-oriented examples include [`examples/extensions/minimal-event-logger.ts`](../examples/extensions/minimal-event-logger.ts) and the safe [`examples/extensions/slack-webhook-notifier.ts`](../examples/extensions/slack-webhook-notifier.ts), which only sends a Slack-compatible webhook when `EFORGE_SLACK_WEBHOOK_URL` is set. [`examples/extensions/agent-tools.ts`](../examples/extensions/agent-tools.ts) demonstrates defining a TypeBox tool, registering it for provenance, and returning it only for builder runs with `ctx.effectiveToolName(...)` in prompt text. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with `extensions.profileRouterTimeoutMs` timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. [`examples/extensions/protected-paths.ts`](../examples/extensions/protected-paths.ts) demonstrates runtime-supported plan/final merge policy enforcement for protected paths. [`examples/extensions/issue-tracker.ts`](../examples/extensions/issue-tracker.ts) demonstrates runtime-supported input source adapters for GitHub, Linear, and Jira. [`examples/extensions/reviewer-perspective.ts`](../examples/extensions/reviewer-perspective.ts) demonstrates a runtime-supported accessibility reviewer perspective with declarative `appliesTo.fileGlobs` applicability for UI/TSX files. Validation provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime phases.
 
 ### Input sources and PRD enrichers
 
@@ -261,6 +263,38 @@ Enricher failures are fail-open: a thrown error emits `extension:prd-enricher:fa
 Provenance events emitted per enricher call:
 - `extension:prd-enricher:applied` — enricher returned modified content.
 - `extension:prd-enricher:failed` — enricher threw (content unchanged; build continues).
+
+### Reviewer perspectives
+
+Reviewer perspectives execute during the review-cycle stage alongside built-in eforge review perspectives when the review uses parallel perspective dispatch (`review.strategy: parallel`, or `auto` once the diff crosses the parallel-review thresholds). Each registered perspective is evaluated for applicability against the plan diff; applicable custom perspectives run as separate review perspectives using the generic reviewer prompt with their `promptFragment` appended as extension-provenance context. Multiple extensions may register perspectives; each applicable perspective is dispatched separately and its findings are aggregated with the other review results. Perspective keys must be lowercase slugs (`^[a-z][a-z0-9-]{0,63}$`) and must not conflict with built-ins (`code`, `security`, `api`, `docs`, `test`, `verify`).
+
+**Applicability rules**
+
+A perspective declares when it applies via `appliesTo` or neither:
+
+- `appliesTo.fileGlobs`: glob patterns matched against changed file paths in the review diff. The perspective runs when at least one changed file matches any supplied pattern.
+- `appliesTo.paths`: path prefixes matched against changed file paths.
+- `appliesTo.extensions`: file extensions, with or without a leading dot.
+- `appliesTo.categories`: built-in file categories (`code`, `api`, `docs`, `config`, `deps`, `test`).
+- `appliesTo.minChangedFiles` / `appliesTo.minChangedLines`: minimum diff-size thresholds.
+- `appliesTo.fn(changedFiles, changedLines)`: optional function-form predicate called only after all declarative rules pass. Return `true` to include the perspective or `false` to skip it.
+- Neither: omit `appliesTo` to run on every review cycle.
+
+All specified declarative rules are ANDed together.
+
+**Function-form applicability and fail-open behavior**
+
+Function-form `appliesTo.fn` handlers run with a configurable timeout (`extensions.eventHookTimeoutMs`). A throw, timeout, or unexpected return value is fail-open: the perspective is skipped and an `extension:reviewer-perspective:skipped` diagnostic is emitted rather than blocking the review cycle. The diagnostic reason is `applicability-error` or `applicability-timeout`.
+
+**Trust model and read-only inputs**
+
+Applicability inputs are read-only snapshots of changed file paths and changed-line count. Reviewer perspectives cannot mutate orchestration state, block the review cycle, or access agent tool APIs. However, TypeScript extensions are unsandboxed trusted code: the extension module itself runs in the daemon/worker process with full filesystem, environment, and network access. The read-only constraint applies to review applicability inputs, not to extension code in general.
+
+**Management output**
+
+`eforge extension show` and JSON list/show/validate/test responses include registered reviewer perspectives with their key, label, description, extension name/path, and normalized applicability summary. Function source text is never exposed in management projections.
+
+See [`examples/extensions/reviewer-perspective.ts`](../examples/extensions/reviewer-perspective.ts) for an accessibility review example that targets UI/TSX files using declarative `appliesTo.fileGlobs`.
 
 ## Schema language
 
@@ -311,6 +345,7 @@ Pattern semantics match shell hooks. See [`docs/hooks.md`](./hooks.md) for event
 - Explicit paths outside standard scopes are treated as `external` and trusted when enabled, so use them only for code you control.
 - Do not load extensions from unreviewed repositories or package artifacts.
 - Treat `eforge extension test` as code execution, not static analysis. The replay path is a dry run with respect to eforge engine state, but matching `onEvent` handlers still execute in the daemon process and can perform filesystem, environment, and network operations.
+- Reviewer perspective applicability inputs are read-only API snapshots: changed file paths and changed-line count only. Perspectives cannot mutate orchestration state. The extension module itself, however, is unsandboxed trusted code running in the daemon/worker process.
 
 ## API reference
 

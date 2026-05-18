@@ -36,6 +36,10 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type === 'extension:agent-context:timeout') return { cls: 'failed', label: type };
   if (type === 'extension:agent-context:unsupported') return { cls: 'warning', label: type };
   // --- eforge:endregion plan-01-agent-context-runtime ---
+  // --- eforge:region plan-02-extension-perspective-runtime ---
+  if (type === 'extension:reviewer-perspective:applied') return { cls: 'info', label: type };
+  if (type === 'extension:reviewer-perspective:skipped') return { cls: 'info', label: type };
+  // --- eforge:endregion plan-02-extension-perspective-runtime ---
   // --- eforge:region plan-04-monitor-ui ---
   if (type === 'recovery:start') return { cls: 'info', label: type };
   if (type === 'recovery:summary') return { cls: 'info', label: type };
@@ -144,6 +148,13 @@ function eventSummary(event: EforgeEvent): string {
     case 'extension:agent-context:timeout': return `Extension hook timed out: ${event.extensionName} (${event.role}) after ${event.timeoutMs}ms`;
     case 'extension:agent-context:unsupported': return `Extension returned unsupported fields: ${event.extensionName} — ${event.fields.join(', ')}`;
     // --- eforge:endregion plan-01-agent-context-runtime ---
+    // --- eforge:region plan-02-extension-perspective-runtime ---
+    case 'extension:reviewer-perspective:applied': return `Extension perspective applied: ${event.extensionName} "${event.perspectiveKey}"`;
+    case 'extension:reviewer-perspective:skipped': {
+      const source = event.extensionName ? `${event.extensionName} ` : '';
+      return `Extension perspective skipped: ${source}"${event.perspectiveKey}" (${event.reason})${event.message ? ' — ' + event.message : ''}`;
+    }
+    // --- eforge:endregion plan-02-extension-perspective-runtime ---
     case 'planning:decision': return `Planning decision: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     case 'plan:build:decision': return `Build decision [${event.planId}]: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     default: return event.type;
@@ -254,6 +265,30 @@ function eventDetail(event: EforgeEvent): string | null {
         return `Requirement: ${g.requirement}${complexitySuffix}\n  Gap: ${g.explanation}`;
       }).join('\n\n');
     }
+    // --- eforge:region plan-03-observability-docs-examples ---
+    case 'extension:reviewer-perspective:applied': {
+      const parts = [
+        `Extension: ${event.extensionName}`,
+        `Path: ${event.extensionPath}`,
+        `Perspective key: ${event.perspectiveKey}`,
+        `Perspective label: ${event.perspectiveLabel}`,
+      ];
+      if (event.planId) parts.push(`Plan: ${event.planId}`);
+      return parts.join('\n');
+    }
+    case 'extension:reviewer-perspective:skipped': {
+      const parts = [
+        `Perspective key: ${event.perspectiveKey}`,
+        `Reason: ${event.reason}`,
+      ];
+      if (event.extensionName) parts.unshift(`Extension: ${event.extensionName}`);
+      if (event.extensionPath) parts.splice(event.extensionName ? 1 : 0, 0, `Path: ${event.extensionPath}`);
+      if (event.message) parts.push(`Message: ${event.message}`);
+      if (event.planId) parts.push(`Plan: ${event.planId}`);
+      if ('timeoutMs' in event && event.timeoutMs !== undefined) parts.push(`Timeout: ${event.timeoutMs}ms`);
+      return parts.join('\n');
+    }
+    // --- eforge:endregion plan-03-observability-docs-examples ---
     // --- eforge:region plan-01-agent-context-runtime ---
     case 'extension:agent-context:applied': {
       const parts = [

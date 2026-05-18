@@ -4,7 +4,16 @@ export type EventPattern = string;
 export type ExtensionHandler = (...args: never[]) => unknown;
 export interface ProfileRouterSpec { name: string; selectBuildProfile?: ExtensionHandler; resolve?: ExtensionHandler }
 export interface InputSourceAdapter { name: string; description: string; fetch: ExtensionHandler }
-export interface ReviewerPerspectiveSpec { key: string; label: string; promptFragment: string }
+export interface ReviewerPerspectiveApplicability {
+  fileGlobs?: string[];
+  paths?: string[];
+  extensions?: string[];
+  categories?: Array<'code' | 'api' | 'docs' | 'config' | 'deps' | 'test'>;
+  minChangedFiles?: number;
+  minChangedLines?: number;
+  fn?: (changedFiles: string[], changedLines: number) => boolean | Promise<boolean>;
+}
+export interface ReviewerPerspectiveSpec { key: string; label: string; description: string; promptFragment: string; appliesTo?: ReviewerPerspectiveApplicability; }
 export interface ValidationProviderSpec { name: string; description: string; validate: ExtensionHandler }
 export interface ExtensionTool { name: string; description: string; inputSchema: object; handler: ExtensionHandler }
 export interface PrdEnricherSpec { name: string; description: string; enrich: ExtensionHandler }

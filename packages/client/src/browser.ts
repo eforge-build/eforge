@@ -75,6 +75,10 @@ export type {
   ExtensionDiagnostic,
   ExtensionShadow,
   ExtensionRegistrationSummary,
+  // --- eforge:region plan-03-observability-docs-examples ---
+  ReviewerPerspectiveApplicabilitySummary,
+  ReviewerPerspectiveDetail,
+  // --- eforge:endregion plan-03-observability-docs-examples ---
   ExtensionEntry,
   ExtensionListResponse,
   ExtensionShowResponse,
@@ -174,6 +178,9 @@ export type {
   StalenessVerdict,
   RecoveryVerdict,
   ReviewPerspective,
+  // --- eforge:region plan-01-dynamic-perspective-contracts ---
+  ReviewPerspectiveKey,
+  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
   AgentTerminalSubtype,
   ShardScope,
   PipelineComposition,
@@ -182,4 +189,9 @@ export type {
   PlanningDecisionEvent,
 } from './events.js';
 
-export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES, PlanningDecisionSchema } from './events.js';
+export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES, PlanningDecisionSchema,
+  // --- eforge:region plan-01-dynamic-perspective-contracts ---
+  ReviewPerspectiveKeySchema,
+  isBuiltInReviewPerspective,
+  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+} from './events.js';

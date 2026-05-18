@@ -217,15 +217,19 @@ describe('extension runtime documentation', () => {
       }
     }
 
+    // registerReviewerPerspective: plan-03 shipped the runtime — docs now reflect review-cycle dispatch.
     for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
-      for (const capability of [
-        'registerReviewerPerspective',
-        'registerValidationProvider',
-      ]) {
-        const row = source.split('\n').find((line) => line.startsWith('|') && line.includes(capability));
-        expect(row, `${capability} row`).toBeDefined();
-        expect(row).toContain('Deferred');
-      }
+      const reviewerRow = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerReviewerPerspective'));
+      expect(reviewerRow, 'registerReviewerPerspective row').toBeDefined();
+      expect(reviewerRow).not.toContain('Deferred');
+      expect(reviewerRow).toContain('Yes');
+    }
+
+    // registerValidationProvider: still deferred.
+    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
+      const validationRow = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerValidationProvider'));
+      expect(validationRow, 'registerValidationProvider row').toBeDefined();
+      expect(validationRow).toContain('Deferred');
     }
 
     // registerProfileRouter: plan-02 shipped the runtime — all three sources now reflect pre-build dispatch.

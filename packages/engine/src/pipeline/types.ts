@@ -15,6 +15,7 @@ import type { PipelineComposition } from '../schemas.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import type { TracingContext } from '../tracing.js';
 import type { ModelTracker } from '../model-tracker.js';
+import type { ReviewerPerspectiveRegistration } from '../extensions/types.js';
 
 export interface PipelineContext {
   agentRuntimes: AgentRuntimeRegistry;
@@ -38,6 +39,11 @@ export interface PipelineContext {
 
   /** Accumulates model IDs from agent:start events during this pipeline run. Used for Models-Used: commit trailer. */
   modelTracker: ModelTracker;
+
+  // --- eforge:region plan-02-extension-perspective-runtime ---
+  /** Extension reviewer perspective registrations from loaded native extensions. */
+  extensionReviewerPerspectives?: ReviewerPerspectiveRegistration[];
+  // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
   // Mutable state passed between stages
   plans: PlanFile[];

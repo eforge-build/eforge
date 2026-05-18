@@ -407,6 +407,9 @@ export class EforgeEngine {
         plans: [],
         expeditionModules: [],
         moduleBuildConfigs: new Map(),
+        // --- eforge:region plan-02-extension-perspective-runtime ---
+        extensionReviewerPerspectives: this.extensionRegistry.reviewerPerspectives,
+        // --- eforge:endregion plan-02-extension-perspective-runtime ---
       };
 
       // Run compile pipeline
@@ -630,6 +633,9 @@ export class EforgeEngine {
       const agentRuntimes = this.agentRuntimes;
       const verbose = options.verbose;
       const abortController = options.abortController;
+      // --- eforge:region plan-02-extension-perspective-runtime ---
+      const extensionReviewerPerspectives = this.extensionRegistry.reviewerPerspectives;
+      // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
       // Use the pipeline persisted in orchestration.yaml during compile
       const buildPipeline = orchConfig.pipeline;
@@ -687,6 +693,9 @@ export class EforgeEngine {
           reviewIssues: [],
           build: planBuild,
           review: planReview,
+          // --- eforge:region plan-02-extension-perspective-runtime ---
+          extensionReviewerPerspectives: extensionReviewerPerspectives,
+          // --- eforge:endregion plan-02-extension-perspective-runtime ---
         };
 
         yield* runBuildPipeline(buildCtx);

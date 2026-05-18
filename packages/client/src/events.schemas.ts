@@ -71,6 +71,19 @@ const ReviewPerspectiveSchema = Type.Union([
   Type.Literal('verify'),
 ]);
 
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
+/**
+ * Schema for a dynamic review perspective key.
+ * A lowercase slug starting with a letter, containing lowercase letters, digits,
+ * and hyphens, bounded to 1-64 characters. Built-in perspective names also match
+ * this pattern, making this schema a superset of the built-in union.
+ */
+export const ReviewPerspectiveKeySchema = Type.String({
+  pattern: '^[a-z][a-z0-9-]{0,63}$',
+  description: 'A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. "code", "accessibility")',
+});
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+
 const StalenessVerdictSchema = Type.Union([
   Type.Literal('proceed'),
   Type.Literal('revise'),
@@ -169,7 +182,7 @@ const FinalMergePolicyGateProvenanceFields = {
 
 const ReviewProfileConfigSchema = Type.Object({
   strategy: Type.Union([Type.Literal('auto'), Type.Literal('single'), Type.Literal('parallel')]),
-  perspectives: Type.Array(ReviewPerspectiveSchema),
+  perspectives: Type.Array(ReviewPerspectiveKeySchema),
   maxRounds: Type.Number(),
   evaluatorStrictness: Type.Union([
     Type.Literal('strict'),
@@ -566,7 +579,7 @@ const agentStartFields = {
   effortOriginal: Type.Optional(Type.String()),
   thinkingCoerced: Type.Optional(Type.Boolean()),
   thinkingOriginal: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-  perspective: Type.Optional(Type.String()),
+  perspective: Type.Optional(ReviewPerspectiveKeySchema),
   /** The toolbelt name selected for this tier. Null when explicitly 'none', string when named. */
   toolbelt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   /** Provenance of the toolbelt selection. */
@@ -621,7 +634,7 @@ export const PlanningDecisionSchema = Type.Union([
       Type.Literal('single'),
       Type.Literal('parallel'),
     ]),
-    perspectives: Type.Array(ReviewPerspectiveSchema, { minItems: 1 }),
+    perspectives: Type.Array(ReviewPerspectiveKeySchema, { minItems: 1 }),
     maxRounds: Type.Integer({ minimum: 1 }),
     evaluatorStrictness: Type.Union([
       Type.Literal('strict'),
@@ -668,7 +681,7 @@ export const BuildDecisionSchema = Type.Union([
   Type.Object({
     kind: Type.Literal('perspectives-inferred'),
     rationale: Type.String(),
-    perspectives: Type.Array(ReviewPerspectiveSchema),
+    perspectives: Type.Array(ReviewPerspectiveKeySchema),
     categories: Type.Array(Type.String()),
     rules: Type.Array(Type.String()),
   }),
@@ -691,8 +704,8 @@ export const BuildDecisionSchema = Type.Union([
     kind: Type.Literal('perspectives-respawned'),
     rationale: Type.String(),
     round: Type.Integer({ minimum: 0 }),
-    perspectives: Type.Array(ReviewPerspectiveSchema),
-    dropped: Type.Array(ReviewPerspectiveSchema),
+    perspectives: Type.Array(ReviewPerspectiveKeySchema),
+    dropped: Type.Array(ReviewPerspectiveKeySchema),
   }),
   // Evaluator strictness selection
   Type.Object({
@@ -1110,6 +1123,43 @@ const EforgeEventVariantsSchema = Type.Union([
   }),
   // --- eforge:endregion plan-01-extension-input-contracts ---
 
+  // --- eforge:region plan-02-extension-perspective-runtime ---
+  // Extension reviewer perspective provenance/diagnostic events
+  Type.Object({
+    type: Type.Literal('extension:reviewer-perspective:applied'),
+    extensionPath: Type.String(),
+    extensionName: Type.String(),
+    perspectiveKey: ReviewPerspectiveKeySchema,
+    perspectiveLabel: Type.String(),
+    planId: Type.Optional(Type.String()),
+  }),
+  Type.Union([
+    Type.Object({
+      type: Type.Literal('extension:reviewer-perspective:skipped'),
+      extensionPath: Type.String(),
+      extensionName: Type.String(),
+      perspectiveKey: ReviewPerspectiveKeySchema,
+      reason: Type.Union([
+        Type.Literal('not-applicable'),
+        Type.Literal('applicability-error'),
+        Type.Literal('applicability-timeout'),
+      ]),
+      message: Type.Optional(Type.String()),
+      planId: Type.Optional(Type.String()),
+      timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
+    }),
+    Type.Object({
+      type: Type.Literal('extension:reviewer-perspective:skipped'),
+      extensionPath: Type.Optional(Type.String()),
+      extensionName: Type.Optional(Type.String()),
+      perspectiveKey: ReviewPerspectiveKeySchema,
+      reason: Type.Literal('unknown-key'),
+      message: Type.Optional(Type.String()),
+      planId: Type.Optional(Type.String()),
+    }),
+  ]),
+  // --- eforge:endregion plan-02-extension-perspective-runtime ---
+
   // Planning
   Type.Object({
     type: Type.Literal('planning:start'),
@@ -1296,23 +1346,23 @@ const EforgeEventVariantsSchema = Type.Union([
   Type.Object({
     type: Type.Literal('plan:build:review:parallel:start'),
     planId: Type.String(),
-    perspectives: Type.Array(ReviewPerspectiveSchema),
+    perspectives: Type.Array(ReviewPerspectiveKeySchema),
   }),
   Type.Object({
     type: Type.Literal('plan:build:review:parallel:perspective:start'),
     planId: Type.String(),
-    perspective: ReviewPerspectiveSchema,
+    perspective: ReviewPerspectiveKeySchema,
   }),
   Type.Object({
     type: Type.Literal('plan:build:review:parallel:perspective:complete'),
     planId: Type.String(),
-    perspective: ReviewPerspectiveSchema,
+    perspective: ReviewPerspectiveKeySchema,
     issues: Type.Array(ReviewIssueSchema),
   }),
   Type.Object({
     type: Type.Literal('plan:build:review:parallel:perspective:error'),
     planId: Type.String(),
-    perspective: Type.String(),
+    perspective: ReviewPerspectiveKeySchema,
     error: Type.String(),
   }),
   Type.Object({
@@ -1873,6 +1923,23 @@ export type DaemonRunUpsertEvent = Extract<EforgeEvent, { type: 'daemon:run:upse
 export type AgentRole = Static<typeof AgentRoleSchema>;
 export type AgentTerminalSubtype = Static<typeof AgentTerminalSubtypeSchema>;
 export type ReviewPerspective = Static<typeof ReviewPerspectiveSchema>;
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
+/**
+ * A dynamic review perspective key. Matches the bounded slug pattern:
+ * lowercase letters/digits/hyphens, starting with a letter, 1–64 chars.
+ * Built-in perspective names are valid `ReviewPerspectiveKey` values.
+ */
+export type ReviewPerspectiveKey = string;
+
+/**
+ * Returns true when the given string is one of the six built-in review
+ * perspective names. Use this to guard lookups into built-in-only maps such as
+ * `PERSPECTIVE_PROMPTS` and `PERSPECTIVE_SCHEMA_YAML` in the parallel reviewer.
+ */
+export function isBuiltInReviewPerspective(key: string): key is ReviewPerspective {
+  return (REVIEW_PERSPECTIVES as readonly string[]).includes(key);
+}
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 export type StalenessVerdict = Static<typeof StalenessVerdictSchema>;
 export type RecoveryVerdict = Static<typeof RecoveryVerdictSchema>;
 export type ShardScope = Static<typeof ShardScopeSchema>;

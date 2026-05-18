@@ -5,6 +5,22 @@
 
 export type ReviewPerspective = 'code' | 'security' | 'api' | 'docs' | 'test' | 'verify';
 
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
+/** The built-in review perspective names as a tuple for runtime use. */
+const BUILT_IN_PERSPECTIVES: readonly ReviewPerspective[] = [
+  'code', 'security', 'api', 'docs', 'test', 'verify',
+];
+
+/**
+ * Returns true when the given string is one of the six built-in review
+ * perspective names. Use this to guard lookups into built-in-only maps
+ * (e.g. PERSPECTIVE_PROMPTS, PERSPECTIVE_SCHEMA_YAML in parallel-reviewer).
+ */
+export function isBuiltInReviewPerspective(key: string): key is ReviewPerspective {
+  return (BUILT_IN_PERSPECTIVES as readonly string[]).includes(key);
+}
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+
 export interface FileCategories {
   code: string[];
   api: string[];

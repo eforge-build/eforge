@@ -1997,6 +1997,189 @@ describe('eventRegistry — extension:input-source:* and extension:prd-enricher:
 
 // --- eforge:endregion plan-01-extension-input-contracts ---
 
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
+
+// ---------------------------------------------------------------------------
+// Dynamic perspective key tests
+// ---------------------------------------------------------------------------
+
+describe('safeParseEforgeEvent — dynamic perspective keys', () => {
+  it('accepts plan:build:review:parallel:start with a custom accessibility perspective', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['code', 'accessibility'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts plan:build:review:parallel:perspective:start with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:perspective:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspective: 'accessibility',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts plan:build:review:parallel:perspective:complete with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:perspective:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspective: 'accessibility',
+      issues: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts plan:build:review:parallel:perspective:error with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:perspective:error',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspective: 'accessibility',
+      error: 'No extension reviewer registered',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts perspectives-inferred with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:decision',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      decision: {
+        kind: 'perspectives-inferred',
+        rationale: 'Inferred from file categories',
+        perspectives: ['code', 'accessibility'],
+        categories: ['code'],
+        rules: ['code-files → code+security'],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts perspectives-respawned with custom keys', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:decision',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      decision: {
+        kind: 'perspectives-respawned',
+        rationale: 'Starting round 2',
+        round: 1,
+        perspectives: ['code', 'accessibility'],
+        dropped: ['performance-review'],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects parallel:start with an uppercase perspective key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['CODE'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects parallel:start with a perspective key containing spaces', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['my perspective'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects parallel:start with a perspective key starting with a digit', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['1code'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects perspective:error with an uppercase perspective key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:perspective:error',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspective: 'CODE',
+      error: 'invalid key',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts all six built-in perspectives in parallel:start', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['code', 'security', 'api', 'docs', 'test', 'verify'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts review-profile-chosen planning decision with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'planning:decision',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      decision: {
+        kind: 'review-profile-chosen',
+        rationale: 'Custom perspective configured',
+        strategy: 'parallel',
+        perspectives: ['code', 'accessibility'],
+        maxRounds: 2,
+        evaluatorStrictness: 'standard',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts agent:start with a valid slug perspective key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'agent-a11y',
+      agent: 'reviewer',
+      model: 'claude-opus-4-7',
+      harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'review',
+      tierSource: 'tier',
+      perspective: 'accessibility',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects agent:start with an unsafe perspective key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'agent-a11y',
+      agent: 'reviewer',
+      model: 'claude-opus-4-7',
+      harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'review',
+      tierSource: 'tier',
+      perspective: 'Accessibility Review',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+
 // --- eforge:region plan-02-build-evaluator-enforcement ---
 describe('safeParseEforgeEvent — build evaluator enriched payloads', () => {
   it('accepts plan:build:evaluate:complete verdict summaries with hunk metadata', () => {
@@ -2213,5 +2396,171 @@ describe('isPersistedDaemonEventType', () => {
     expect(DAEMON_EVENT_TYPES).not.toContain('daemon:heartbeat');
   });
 });
+
+// --- eforge:region plan-02-extension-perspective-runtime ---
+describe('safeParseEforgeEvent — extension reviewer perspective events', () => {
+  it('accepts extension:reviewer-perspective:applied with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/a11y.js',
+      extensionName: 'a11y-reviewer',
+      perspectiveKey: 'accessibility',
+      perspectiveLabel: 'Accessibility Review',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:reviewer-perspective:applied with optional planId', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/a11y.js',
+      extensionName: 'a11y-reviewer',
+      perspectiveKey: 'accessibility',
+      perspectiveLabel: 'Accessibility Review',
+      planId: 'plan-01',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:reviewer-perspective:skipped with reason not-applicable', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/a11y.js',
+      extensionName: 'a11y-reviewer',
+      perspectiveKey: 'accessibility',
+      reason: 'not-applicable',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:reviewer-perspective:skipped with all reason variants', () => {
+    const reasons = ['not-applicable', 'applicability-error', 'applicability-timeout', 'unknown-key'] as const;
+    for (const reason of reasons) {
+      const result = safeParseEforgeEvent({
+        type: 'extension:reviewer-perspective:skipped',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionPath: '/ext.js',
+        extensionName: 'ext',
+        perspectiveKey: 'my-lens',
+        reason,
+      });
+      expect(result.success, `reason '${reason}' should be accepted`).toBe(true);
+    }
+  });
+
+  it('accepts extension:reviewer-perspective:skipped unknown-key without extension provenance', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      perspectiveKey: 'missing-lens',
+      reason: 'unknown-key',
+      message: 'Perspective key "missing-lens" is not registered by any loaded extension',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:reviewer-perspective:skipped with optional message and timeoutMs', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      extensionName: 'ext',
+      perspectiveKey: 'my-lens',
+      reason: 'applicability-timeout',
+      message: 'Timed out after 5000ms',
+      timeoutMs: 5000,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects extension:reviewer-perspective:applied missing extensionName', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      perspectiveKey: 'my-lens',
+      perspectiveLabel: 'My Lens',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects extension:reviewer-perspective:skipped with invalid reason literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      extensionName: 'ext',
+      perspectiveKey: 'my-lens',
+      reason: 'invalid-reason',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('round-trips extension reviewer perspective events through JSON', () => {
+    const events: EforgeEvent[] = [
+      {
+        type: 'extension:reviewer-perspective:applied',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionPath: '/ext.js',
+        extensionName: 'ext',
+        perspectiveKey: 'accessibility',
+        perspectiveLabel: 'Accessibility',
+        planId: 'plan-01',
+      },
+      {
+        type: 'extension:reviewer-perspective:skipped',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionPath: '/ext.js',
+        extensionName: 'ext',
+        perspectiveKey: 'accessibility',
+        reason: 'not-applicable',
+      },
+    ];
+    for (const event of events) {
+      expect(JSON.parse(JSON.stringify(event))).toEqual(event);
+    }
+  });
+});
+
+describe('eventRegistry — extension reviewer perspective events', () => {
+  it('registers perspective events as session-scoped, non-persistent events', () => {
+    expect(eventRegistry['extension:reviewer-perspective:applied']).toMatchObject({
+      scope: 'session',
+      persist: false,
+    });
+    expect(eventRegistry['extension:reviewer-perspective:skipped']).toMatchObject({
+      scope: 'session',
+      persist: false,
+    });
+  });
+
+  it('generates summaries for applied and skipped perspective events', () => {
+    const appliedEvent: EforgeEvent = {
+      type: 'extension:reviewer-perspective:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      extensionName: 'a11y',
+      perspectiveKey: 'accessibility',
+      perspectiveLabel: 'Accessibility',
+      planId: 'plan-01',
+    };
+    const skippedEvent: EforgeEvent = {
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      extensionName: 'a11y',
+      perspectiveKey: 'accessibility',
+      reason: 'not-applicable',
+    };
+    expect(getEventSummary(appliedEvent)).toContain('accessibility');
+    expect(getEventSummary(appliedEvent)).toContain('a11y');
+    expect(getEventSummary(skippedEvent)).toContain('accessibility');
+    expect(getEventSummary(skippedEvent)).toContain('not-applicable');
+  });
+});
+// --- eforge:endregion plan-02-extension-perspective-runtime ---
 
 // --- eforge:endregion plan-01-durable-daemon-event-persistence ---

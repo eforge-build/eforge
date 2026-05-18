@@ -3,15 +3,16 @@ import { reviewProfileConfigSchema } from '@eforge-build/engine/config';
 import { runParallel } from '@eforge-build/engine/concurrency';
 import type { ParallelTask } from '@eforge-build/engine/concurrency';
 import type { EforgeEvent } from '@eforge-build/client';
+import { isBuiltInReviewPerspective } from '@eforge-build/client';
 
-describe('reviewProfileConfigSchema perspective enum', () => {
+describe('reviewProfileConfigSchema perspective safe-key validation', () => {
   const baseConfig = {
     strategy: 'parallel' as const,
     maxRounds: 1,
     evaluatorStrictness: 'standard' as const,
   };
 
-  it('accepts a config with all valid perspective names', () => {
+  it('accepts a config with all six built-in perspective names', () => {
     const result = reviewProfileConfigSchema.safeParse({
       ...baseConfig,
       perspectives: ['code', 'security', 'api', 'docs', 'test', 'verify'],
@@ -19,29 +20,103 @@ describe('reviewProfileConfigSchema perspective enum', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects a config with an invalid perspective name', () => {
+  it('accepts a config with a valid custom perspective key (lowercase slug)', () => {
     const result = reviewProfileConfigSchema.safeParse({
       ...baseConfig,
-      perspectives: ['foo'],
+      perspectives: ['accessibility'],
     });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const issue = result.error.issues.find((i) =>
-        i.path.includes('perspectives') || (i.path.length > 0 && i.path[0] === 'perspectives'),
-      );
-      expect(issue).toBeDefined();
-      // Zod v4 uses 'invalid_value' for enum mismatches
-      const message = issue?.message ?? '';
-      expect(message.length).toBeGreaterThan(0);
-    }
+    expect(result.success).toBe(true);
   });
 
-  it('rejects the previously-misleading "performance" perspective', () => {
+  it('accepts custom keys with hyphens and digits', () => {
+    const result = reviewProfileConfigSchema.safeParse({
+      ...baseConfig,
+      perspectives: ['performance-review', 'a11y', 'custom-check-v2'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts the previously-misleading "performance" key as a valid slug', () => {
+    // "performance" is a valid lowercase slug and now accepted as a custom key.
+    // It was previously used misleadingly as a perspective name in tests; now it
+    // is a valid custom extension key, not a built-in.
     const result = reviewProfileConfigSchema.safeParse({
       ...baseConfig,
       perspectives: ['performance'],
     });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a config with an uppercase perspective name', () => {
+    const result = reviewProfileConfigSchema.safeParse({
+      ...baseConfig,
+      perspectives: ['CODE'],
+    });
     expect(result.success).toBe(false);
+    if (!result.success) {
+      const message = result.error.issues.map(i => i.message).join(' ');
+      expect(message.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('rejects a perspective key with spaces', () => {
+    const result = reviewProfileConfigSchema.safeParse({
+      ...baseConfig,
+      perspectives: ['my perspective'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a perspective key starting with a digit', () => {
+    const result = reviewProfileConfigSchema.safeParse({
+      ...baseConfig,
+      perspectives: ['1code'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a perspective key with a path separator', () => {
+    const result = reviewProfileConfigSchema.safeParse({
+      ...baseConfig,
+      perspectives: ['code/check'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a perspective key with shell metacharacters', () => {
+    const result = reviewProfileConfigSchema.safeParse({
+      ...baseConfig,
+      perspectives: ['code;rm -rf /'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a perspective key starting with a hyphen', () => {
+    const result = reviewProfileConfigSchema.safeParse({
+      ...baseConfig,
+      perspectives: ['-code'],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('isBuiltInReviewPerspective', () => {
+  it('returns true for all six built-in perspective names', () => {
+    for (const name of ['code', 'security', 'api', 'docs', 'test', 'verify']) {
+      expect(isBuiltInReviewPerspective(name)).toBe(true);
+    }
+  });
+
+  it('returns false for valid custom keys that are not built-ins', () => {
+    for (const name of ['accessibility', 'performance', 'performance-review', 'a11y']) {
+      expect(isBuiltInReviewPerspective(name)).toBe(false);
+    }
+  });
+
+  it('returns false for invalid strings', () => {
+    for (const name of ['CODE', 'my perspective', '1code', 'code/check', '']) {
+      expect(isBuiltInReviewPerspective(name)).toBe(false);
+    }
   });
 });
 

@@ -13,6 +13,7 @@ These examples demonstrate the `@eforge-build/extension-sdk` API. Each example i
 | `profile-router.ts` | `registerProfileRouter(...)` | Runtime-supported pre-build dispatch; explicit `profile:` frontmatter wins; routers fail open |
 | `protected-paths.ts` | `beforePlanMerge(...)`, `beforeFinalMerge(...)` | Runtime-supported policy enforcement for plan/final merge protected paths |
 | `issue-tracker.ts` | `registerInputSource(...)` x3 | Runtime-supported input source dispatch via `eforge://input/<adapter>/<id>` |
+| `reviewer-perspective.ts` | `registerReviewerPerspective(...)` | Runtime-supported parallel review-cycle dispatch; perspective runs when diff includes matching UI/TSX files |
 
 ### `minimal-event-logger.ts`
 
@@ -87,6 +88,19 @@ eforge://input/jira/<KEY-123>
 Adapter selection is by `name` match against the `<adapter>` segment. Each adapter receives the remaining `<id>` path.
 
 For the full URI syntax, failure policy (`null` return is fatal to enqueue), and provenance event names (`extension:input-source:fetched`, `extension:input-source:failed`), see [`docs/extensions.md`](../../docs/extensions.md) — "Input sources and PRD enrichers" section.
+
+### `reviewer-perspective.ts`
+
+Registers an accessibility reviewer perspective using `registerReviewerPerspective`. During parallel review-cycle perspective dispatch, when the review diff includes UI source files (`.tsx`, `.jsx`, or `.ts` files under `src/`), the perspective injects an accessibility-focused prompt fragment into the reviewer agent's context — covering ARIA attributes, keyboard navigation, semantic HTML, color contrast, focus management, and form labeling.
+
+Demonstrates:
+
+- `registerReviewerPerspective` registration with required fields: `key`, `label`, `description`, and `promptFragment`.
+- Declarative `appliesTo.fileGlobs` applicability — the perspective activates automatically when the diff includes at least one matching file; no runtime function call is needed.
+- An optional commented-out `appliesTo.fn` escape hatch for richer context-aware rules on top of the declarative globs.
+- Read-only applicability context — perspectives cannot mutate orchestration state.
+
+> **Runtime note:** `registerReviewerPerspective` is runtime-supported. Perspectives execute during parallel review-cycle perspective dispatch alongside built-in eforge perspectives (`review.strategy: parallel`, or `auto` once the diff crosses the parallel-review thresholds). Registration is also captured at load time for provenance and management tooling (`eforge extension show`, list, validate, test). `appliesTo.fn` timeouts and throws are fail-open: the perspective is skipped and a diagnostic is emitted rather than blocking the review. See [`docs/extensions.md`](../../docs/extensions.md) — "Reviewer perspectives" and [`docs/extensions-api.md`](../../docs/extensions-api.md) — `registerReviewerPerspective`.
 
 ## Validation
 

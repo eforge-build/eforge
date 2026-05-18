@@ -21,7 +21,7 @@ import {
 import { builderImplement, builderEvaluate, type BuilderEvaluationResult } from '../../agents/builder.js';
 import { runParallelReview } from '../../agents/parallel-reviewer.js';
 // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
-import { selectNextReviewPerspectives, type ReviewPerspective } from '../../review-cycle-perspectives.js';
+import { selectNextReviewPerspectives } from '../../review-cycle-perspectives.js';
 // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 import { runReviewFixer } from '../../agents/review-fixer.js';
 import { runDocAuthor } from '../../agents/doc-author.js';
@@ -248,20 +248,16 @@ async function restoreOriginalBuilderCommitStateUnlessDrifted(
 // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
 type ReviewStageMetadata = {
   parallel: boolean;
-  activePerspectives: ReviewPerspective[];
-  issuesByPerspective: Partial<Record<ReviewPerspective, ReviewIssue[]>>;
-  perspectiveErrors: ReviewPerspective[];
+  activePerspectives: string[];
+  issuesByPerspective: Partial<Record<string, ReviewIssue[]>>;
+  perspectiveErrors: string[];
   completeIssueCount: number;
 };
-
-function isReviewPerspective(value: string): value is ReviewPerspective {
-  return ['code', 'security', 'api', 'docs', 'test', 'verify'].includes(value);
-}
 // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 
 async function* reviewStageInner(
   ctx: BuildStageContext,
-  overrides?: { strategy?: 'auto' | 'single' | 'parallel'; perspectives?: ReviewPerspective[] },
+  overrides?: { strategy?: 'auto' | 'single' | 'parallel'; perspectives?: string[] },
 ): AsyncGenerator<EforgeEvent, ReviewStageMetadata> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
@@ -313,6 +309,10 @@ async function* reviewStageInner(
       abortController: ctx.abortController,
       strategy,
       perspectives,
+      // --- eforge:region plan-02-extension-perspective-runtime ---
+      extensionReviewerPerspectives: ctx.extensionReviewerPerspectives,
+      extensionApplicabilityTimeoutMs: ctx.config.extensions.eventHookTimeoutMs,
+      // --- eforge:endregion plan-02-extension-perspective-runtime ---
       ...reviewerAgentConfig,
       phase: 'build',
       stage: 'review',
@@ -328,7 +328,7 @@ async function* reviewStageInner(
       if (event.type === 'plan:build:review:parallel:perspective:complete') {
         metadata.issuesByPerspective[event.perspective] = event.issues;
       }
-      if (event.type === 'plan:build:review:parallel:perspective:error' && isReviewPerspective(event.perspective)) {
+      if (event.type === 'plan:build:review:parallel:perspective:error') {
         metadata.perspectiveErrors.push(event.perspective);
       }
       // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
@@ -985,10 +985,10 @@ registerBuildStage({
   const strategy = ctx.review.strategy;
   const strictness = ctx.review.evaluatorStrictness;
   // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
-  const initialConfiguredPerspectives = ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined;
-  let initialPerspectiveOrder = initialConfiguredPerspectives;
-  let activePerspectivesForRound = initialConfiguredPerspectives;
-  let droppedForRound: ReviewPerspective[] = [];
+  const initialConfiguredPerspectives: string[] | undefined = ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined;
+  let initialPerspectiveOrder: string[] | undefined = initialConfiguredPerspectives;
+  let activePerspectivesForRound: string[] | undefined = initialConfiguredPerspectives;
+  let droppedForRound: string[] = [];
   let adaptiveRationaleForRound: string | undefined;
   // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 

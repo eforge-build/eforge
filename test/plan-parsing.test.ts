@@ -119,6 +119,75 @@ describe('parseOrchestrationConfig', () => {
     expect(config.pipeline.rationale).toBe('test pipeline');
   });
 
+  // --- eforge:region plan-01-dynamic-perspective-contracts ---
+  it('accepts a dynamic perspective key in per-plan review config', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eforge-dyn-persp-'));
+    const yamlPath = join(dir, 'orchestration.yaml');
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'dynamic-persp-test',
+      description: 'Dynamic perspective key acceptance test',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      pipeline: TEST_PIPELINE,
+      plans: [
+        {
+          id: 'plan-01-a11y',
+          name: 'Accessibility Plan',
+          depends_on: [],
+          branch: 'test/a11y',
+          build: ['implement', 'review-cycle'],
+          review: {
+            strategy: 'parallel',
+            perspectives: ['code', 'accessibility'],
+            maxRounds: 1,
+            evaluatorStrictness: 'standard',
+          },
+        },
+      ],
+    }));
+    try {
+      const config = await parseOrchestrationConfig(yamlPath);
+      expect(config.plans[0].review.perspectives).toEqual(['code', 'accessibility']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an unsafe perspective key (contains uppercase) in review config', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eforge-bad-persp-'));
+    const yamlPath = join(dir, 'orchestration.yaml');
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'bad-persp-test',
+      description: 'Unsafe perspective key rejection test',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      pipeline: TEST_PIPELINE,
+      plans: [
+        {
+          id: 'plan-01-bad',
+          name: 'Bad Plan',
+          depends_on: [],
+          branch: 'test/bad',
+          build: ['implement', 'review-cycle'],
+          review: {
+            strategy: 'parallel',
+            perspectives: ['Code Review'],
+            maxRounds: 1,
+            evaluatorStrictness: 'standard',
+          },
+        },
+      ],
+    }));
+    try {
+      await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/review/i);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+
   it('throws on missing name', async () => {
     await expect(
       parseOrchestrationConfig(resolve(fixturesDir, 'orchestration/no-name.yaml')),

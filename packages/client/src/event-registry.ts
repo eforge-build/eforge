@@ -308,6 +308,24 @@ const eventRegistry = {
   },
   // --- eforge:endregion plan-01-extension-input-contracts ---
 
+  // --- eforge:region plan-02-extension-perspective-runtime ---
+  'extension:reviewer-perspective:applied': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} reviewer perspective "${e.perspectiveKey}" applied${e.planId ? ` (plan: ${e.planId})` : ''}`,
+  },
+
+  'extension:reviewer-perspective:skipped': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => {
+      const source = e.extensionName ? `Extension ${e.extensionName} reviewer perspective` : 'Reviewer perspective';
+      return `${source} "${e.perspectiveKey}" skipped (${e.reason})${e.message ? `: ${e.message}` : ''}`;
+    },
+  },
+  // --- eforge:endregion plan-02-extension-perspective-runtime ---
+
   // -------------------------------------------------------------------------
   // Planning
   // -------------------------------------------------------------------------
