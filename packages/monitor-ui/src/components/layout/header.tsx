@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { PanelLeftClose, PanelLeft } from 'lucide-react';
 import type { AutoBuildState } from '@/lib/api';
 import type { DaemonState } from '@/lib/daemon-reducer';
@@ -5,6 +6,16 @@ import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { DaemonStatusPill } from '@/components/daemon/daemon-status-pill';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 
 export interface ProjectContext {
   cwd: string | null;
@@ -14,7 +25,7 @@ export interface ProjectContext {
 interface HeaderProps {
   autoBuildState: AutoBuildState | null;
   autoBuildToggling: boolean;
-  onToggleAutoBuild: () => void;
+  onSetAutoBuildEnabled: (enabled: boolean) => void;
   projectContext?: ProjectContext | null;
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
@@ -48,9 +59,29 @@ function getAutoBuildToggleCopy(autoBuildState: AutoBuildState): { label: string
   };
 }
 
-export function Header({ autoBuildState, autoBuildToggling, onToggleAutoBuild, projectContext, sidebarCollapsed, onToggleSidebar, daemonState }: HeaderProps) {
+export function Header({ autoBuildState, autoBuildToggling, onSetAutoBuildEnabled, projectContext, sidebarCollapsed, onToggleSidebar, daemonState }: HeaderProps) {
   const projectLabel = getProjectLabel(projectContext);
   const autoBuildToggleCopy = autoBuildState ? getAutoBuildToggleCopy(autoBuildState) : null;
+  const [enableDialogOpen, setEnableDialogOpen] = useState(false);
+
+  function handleSwitchChange(checked: boolean) {
+    if (checked) {
+      // Enabling — show confirmation dialog
+      setEnableDialogOpen(true);
+    } else {
+      // Disabling — immediate, no confirmation
+      onSetAutoBuildEnabled(false);
+    }
+  }
+
+  function handleConfirmEnable() {
+    setEnableDialogOpen(false);
+    onSetAutoBuildEnabled(true);
+  }
+
+  function handleCancelEnable() {
+    setEnableDialogOpen(false);
+  }
 
   return (
     <header className="col-span-full bg-card border-b border-border px-6 py-3.5 flex items-center gap-3 shadow-sm shadow-black/30">
@@ -66,19 +97,35 @@ export function Header({ autoBuildState, autoBuildToggling, onToggleAutoBuild, p
       <div className="ml-auto text-xs flex items-center gap-2">
         <DaemonStatusPill daemonState={daemonState} />
         {autoBuildState !== null && autoBuildToggleCopy !== null && (
-          <label
-            className={cn('flex items-center gap-1.5 text-text-dim', autoBuildToggling ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}
+          <div
+            className={cn('flex items-center gap-1.5 text-text-dim', autoBuildToggling ? 'cursor-not-allowed opacity-50' : '')}
             title={autoBuildToggleCopy.title}
           >
             <span>{autoBuildToggleCopy.label}</span>
             <Switch
               checked={autoBuildState.enabled}
-              onCheckedChange={onToggleAutoBuild}
+              onCheckedChange={handleSwitchChange}
               disabled={autoBuildToggling}
+              aria-label="Toggle auto-build"
             />
-          </label>
+          </div>
         )}
       </div>
+
+      <AlertDialog open={enableDialogOpen} onOpenChange={setEnableDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enable auto-build?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Queued builds may start immediately if auto-build is enabled.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelEnable}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmEnable}>Enable</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   );
 }

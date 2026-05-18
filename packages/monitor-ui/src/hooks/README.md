@@ -35,6 +35,8 @@ Subscribe to the daemon-wide SSE stream. Owns the runs list, queue, session meta
 
 Writer-only hook for the auto-build toggle. The reader path is `daemonState.autoBuild` from `useDaemonEvents`. This hook only fires the HTTP mutation (`POST /api/auto-build`) and tracks in-flight state to prevent double-clicks.
 
+Returns `{ toggling, setEnabled }`. Call `setEnabled(true)` to enable auto-build or `setEnabled(false)` to disable it. The toggling guard prevents concurrent calls.
+
 ## Remaining SWR consumers
 
 SWR is reserved for genuinely on-demand reads that are not covered by the two SSE subscribers:

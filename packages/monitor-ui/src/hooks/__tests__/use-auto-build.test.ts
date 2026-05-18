@@ -68,7 +68,9 @@ describe('useAutoBuild', () => {
 
     await waitFor(() => expect(result.current.toggling).toBe(false));
 
+    expect(mockedSetAutoBuild).toHaveBeenCalledTimes(1);
     expect(mockedSetAutoBuild).toHaveBeenCalledWith(false);
+    expect(onUpdate).toHaveBeenCalledTimes(1);
     expect(onUpdate).toHaveBeenCalledWith(responseState);
     expect(onUpdate.mock.calls[0][0].mode).toBe('disabled');
     expect(onUpdate.mock.calls[0][0].scheduler?.lastMutationReason).toBe('manual toggle');
@@ -94,7 +96,9 @@ describe('useAutoBuild', () => {
 
     await waitFor(() => expect(result.current.toggling).toBe(false));
 
+    expect(mockedSetAutoBuild).toHaveBeenCalledTimes(1);
     expect(mockedSetAutoBuild).toHaveBeenCalledWith(true);
+    expect(onUpdate).toHaveBeenCalledTimes(1);
     expect(onUpdate).toHaveBeenCalledWith(responseState);
     expect(onUpdate.mock.calls[0][0].mode).toBe('running');
     expect(onUpdate.mock.calls[0][0].enabled).toBe(true);
@@ -113,12 +117,10 @@ describe('useAutoBuild', () => {
     const { result } = renderHook(() => useAutoBuild(currentState, onUpdate));
 
     act(() => {
-      result.current.setEnabled(false);
-    });
-
-    // Second call while in-flight — should be ignored
-    act(() => {
-      result.current.setEnabled(false);
+      const { setEnabled } = result.current;
+      setEnabled(false);
+      // Second call before React has a chance to re-render — should be ignored.
+      setEnabled(false);
     });
 
     // Resolve the first call
@@ -144,6 +146,7 @@ describe('useAutoBuild', () => {
 
     await waitFor(() => expect(result.current.toggling).toBe(false));
 
+    expect(mockedSetAutoBuild).toHaveBeenCalledTimes(1);
     expect(mockedSetAutoBuild).toHaveBeenCalledWith(false);
     expect(onUpdate).not.toHaveBeenCalled();
   });

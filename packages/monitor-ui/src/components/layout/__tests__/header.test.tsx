@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Header } from '../header';
 import type { AutoBuildState } from '@/lib/api';
 import { initialDaemonState } from '@/lib/daemon-reducer';
@@ -138,6 +138,24 @@ describe('Header auto-build switch — enabling requires confirmation', () => {
 
     expect(onSetAutoBuildEnabled).not.toHaveBeenCalled();
   });
+
+  it('closing the dialog with Escape leaves the setter call count at 0', async () => {
+    const onSetAutoBuildEnabled = vi.fn();
+    renderHeader(
+      makeAutoBuildState({ enabled: false, mode: 'disabled' }),
+      onSetAutoBuildEnabled,
+    );
+
+    fireEvent.click(screen.getByRole('switch', { name: /auto-build/i }));
+    expect(screen.getByText(/queued builds may start immediately/i)).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape', code: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/queued builds may start immediately/i)).toBeNull();
+    });
+    expect(onSetAutoBuildEnabled).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -162,27 +180,13 @@ describe('Header auto-build switch — disabling is immediate', () => {
 // ---------------------------------------------------------------------------
 
 describe('Header — no native label wrapping the auto-build control', () => {
-  it('source file contains no <label> element around the auto-build status text and switch', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { resolve, dirname } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
+  it('renders the auto-build status text and switch outside a native label', () => {
+    renderHeader(makeAutoBuildState({ enabled: true, mode: 'running' }), vi.fn());
 
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const source = readFileSync(resolve(__dirname, '../header.tsx'), 'utf-8');
+    const statusText = screen.getByText('Auto-build: running');
+    const switchControl = screen.getByRole('switch', { name: /auto-build/i });
 
-    // Strip comment lines before grepping
-    const stripped = source
-      .split('\n')
-      .filter((line) => {
-        const trimmed = line.trim();
-        return !trimmed.startsWith('//') && !trimmed.startsWith('*') && !trimmed.startsWith('/*');
-      })
-      .join('\n');
-
-    // There must be no native <label> wrapping the auto-build area
-    expect(stripped).not.toMatch(/<label[^>]*autoBuild/);
-    expect(stripped).not.toMatch(/autoBuild[^}]*<label/);
-    // More broadly: no <label> element at all in the auto-build section
-    expect(stripped).not.toContain('<label');
+    expect(statusText.closest('label')).toBeNull();
+    expect(switchControl.closest('label')).toBeNull();
   });
 });
