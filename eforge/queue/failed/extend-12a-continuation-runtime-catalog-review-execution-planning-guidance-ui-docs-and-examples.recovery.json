@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 2,
+  "summary": {
+    "prdId": "extend-12a-continuation-runtime-catalog-review-execution-planning-guidance-ui-docs-and-examples",
+    "setName": "extend-12a-continuation-runtime-catalog-review-execution-planning-guidance-ui-docs-and-examples",
+    "featureBranch": "eforge/extend-12a-continuation-runtime-catalog-review-execution-planning-guidance-ui-docs-and-examples",
+    "baseBranch": "main",
+    "plans": [],
+    "failingPlan": {
+      "planId": "unknown"
+    },
+    "landedCommits": [
+      {
+        "sha": "18df4ed0339d222bde879064d8e34b32cbd8cdc2",
+        "subject": "feat(plan-03-planning-ui-docs-examples): Planning Guidance, Monitor/UI, Docs, and Example",
+        "author": "Mark Schaake",
+        "date": "2026-05-18T09:42:41-07:00"
+      },
+      {
+        "sha": "ca7d57d098c856690f6eba2f52cab24b3bcb9a45",
+        "subject": "docs(plan-03-planning-ui-docs-examples): author documentation",
+        "author": "Mark Schaake",
+        "date": "2026-05-18T09:29:24-07:00"
+      },
+      {
+        "sha": "26bb312eb57b53eca291875045ecd71ea26b2938",
+        "subject": "feat(plan-02-runtime-catalog-and-execution): Runtime Catalog, Applicability, Parallel Reviewer Execution, and Engine Wiring",
+        "author": "Mark Schaake",
+        "date": "2026-05-18T09:26:11-07:00"
+      },
+      {
+        "sha": "c3a74fc09b9b9cc0f0d90aecc6df372cd1e6a336",
+        "subject": "feat(plan-01-perspective-contracts-and-loader): Perspective Contracts, Loader Validation, and Wire Schema Relaxation",
+        "author": "Mark Schaake",
+        "date": "2026-05-18T08:40:32-07:00"
+      },
+      {
+        "sha": "ca583fb0acd080806e2d6ed9556a05878a79cf53",
+        "subject": "plan(extend-12a-continuation-runtime-catalog-review-execution-planning-guidance-ui-docs-and-examples): initial planning artifacts",
+        "author": "Mark Schaake",
+        "date": "2026-05-18T07:55:21-07:00"
+      }
+    ],
+    "diffStat": "docs/extensions-api.md                             |  93 +++++-\n docs/extensions.md                                 |   4 +-\n .../orchestration.yaml                             | 148 ++++++++++\n .../plan-01-perspective-contracts-and-loader.md    |  97 +++++++\n .../plan-02-runtime-catalog-and-execution.md       | 118 ++++++++\n .../plan-03-planning-ui-docs-examples.md           | 127 +++++++++\n examples/extensions/README.md                      |  11 +\n examples/extensions/accessibility-reviewer.ts      |  96 +++++++\n packages/client/src/browser.ts                     |   7 +-\n packages/client/src/events.schemas.ts              |  42 ++-\n packages/client/src/events.ts                      |   3 +\n packages/client/src/index.ts                       |   7 +-\n packages/client/src/types.ts                       |  17 +-\n packages/engine/src/agents/module-planner.ts       |  10 +\n packages/engine/src/agents/parallel-reviewer.ts    |  83 +++++-\n packages/engine/src/agents/pipeline-composer.ts    |  10 +\n packages/engine/src/agents/planner.ts              |  43 +++\n packages/engine/src/config.ts                      |  16 +-\n packages/engine/src/eforge.ts                      |  11 +\n packages/engine/src/extensions/index.ts            |  11 +\n packages/engine/src/extensions/projector.ts        |  37 +++\n packages/engine/src/extensions/recorder.ts         |  55 +++-\n .../src/extensions/reviewer-perspective-runtime.ts | 154 ++++++++++\n packages/engine/src/extensions/types.ts            |   2 +-\n .../engine/src/pipeline/stages/build-stages.ts     |  34 ++-\n .../engine/src/pipeline/stages/compile-stages.ts   |  30 +-\n packages/engine/src/pipeline/types.ts              |  19 ++\n packages/engine/src/prompts/module-planner.md      |   2 +\n packages/engine/src/prompts/pipeline-composer.md   |   1 +\n packages/engine/src/prompts/planner.md             |   2 +\n packages/engine/src/prompts/reviewer-generic.md    |  41 +++\n packages/engine/src/review-cycle-perspectives.ts   |  32 +--\n packages/engine/src/review-perspective-catalog.ts  | 217 ++++++++++++++\n packages/engine/src/review-perspective-keys.ts     |  25 ++\n packages/engine/src/schemas.ts                     |   4 +-\n packages/extension-sdk/README.md                   |   6 +-\n packages/extension-sdk/src/api.ts                  |  30 +-\n packages/extension-sdk/src/hooks.ts                |  81 +++++-\n packages/extension-sdk/src/index.ts                |   2 +\n .../handle-plan-build-custom-perspective.test.ts   | 149 ++++++++++\n packages/monitor/src/server.ts                     |  13 +\n test/config.test.ts                                |  44 +++\n test/extension-loader.test.ts                      | 103 +++++++\n test/extension-sdk-example.test.ts                 |  10 +\n test/extension-tooling-routes.test.ts              |  75 ++++-\n test/extension-tooling-wiring.test.ts              |  13 +-\n test/parallel-reviewer-custom-perspective.test.ts  | 263 +++++++++++++++++\n ...arallel-reviewer-perspective-validation.test.ts |  26 +-\n test/per-plan-build-config.test.ts                 |  20 +-\n .../planner-visibility-custom-perspectives.test.ts | 108 +++++++\n test/reviewer-perspective-catalog.test.ts          | 127 +++++++++\n test/reviewer-perspective-runtime.test.ts          | 124 ++++++++\n test/schemas.test.ts                               |  81 +++++-\n web/content/reference/api.md                       |   2 +-\n web/content/reference/cli.md                       |   2 +-\n web/content/reference/config.md                    |   2 +-\n web/content/reference/events.md                    |   4 +-\n web/content/reference/tools.md                     |   2 +-\n web/public/llms-full.txt                           |  12 +-\n web/public/llms.txt                                |   2 +-\n web/public/reference/api.md                        |   2 +-\n web/public/reference/cli.md                        |   2 +-\n web/public/reference/config.md                     |   2 +-\n web/public/reference/events.md                     |   4 +-\n web/public/reference/tools.md                      |   2 +-\n web/public/schemas/config.schema.json              |   6 +\n web/public/schemas/events.schema.json              | 311 +++++----------------\n 67 files changed, 2899 insertions(+), 340 deletions(-)",
+    "modelsUsed": [
+      "claude-opus-4-7",
+      "claude-sonnet-4-6"
+    ],
+    "failedAt": "2026-05-18T09:42:41-07:00",
+    "partial": true
+  },
+  "verdict": {
+    "verdict": "manual",
+    "confidence": "medium",
+    "rationale": "The failure summary presents a contradictory picture that warrants human inspection before any automated recovery action. The key evidence:\n\n1. **All three plan commits appear to have landed** - The git history shows commits for plan-01, plan-02, and plan-03 all present on the feature branch, with the final commit (`feat(plan-03-planning-ui-docs-examples)`) timestamped at exactly `failedAt` (2026-05-18T09:42:41-07:00). This means the failure occurred at or after the last implementation commit, not during plan execution.\n\n2. **Critical metadata gaps** - `plans: []` (empty) and `failingPlan.planId: \"unknown\"` are highly unusual. The engine was unable to identify which plan failed or surface plan metadata, which suggests the failure occurred at the orchestration/merge/review level rather than inside a plan execution itself.\n\n3. **`partial: true`** - The recovery context explicitly flags itself as incomplete, meaning some failure evidence was unavailable to this analysis.\n\n4. **Failure timing** - The `failedAt` timestamp matching the plan-03 commit exactly suggests the build may have failed during the review gate, post-merge validation (`pnpm build && pnpm type-check && pnpm test`), or during the merge-to-main step after all plans completed.\n\nGiven these signals, the substantive implementation work may actually be complete, but the final validation or merge step failed for an unknown reason. Choosing `split` would be premature without confirming the test suite passes and no merge conflict exists. Choosing `retry` requires evidence of a transient cause that is not present here. A human should inspect the branch state, run `pnpm build && pnpm type-check && pnpm test` manually, and determine whether the feature branch is merge-ready or whether specific test failures remain.",
+    "completedWork": [
+      "plan-01 (Perspective Contracts, Loader Validation, Wire Schema Relaxation): committed at 2026-05-18T08:40:32 - SDK contract, loader validation, wire schema relaxation, and client type changes",
+      "plan-02 (Runtime Catalog and Execution): committed at 2026-05-18T09:26:11 - catalog builder, applicability evaluation, parallel reviewer execution, engine wiring (review-perspective-catalog.ts, reviewer-perspective-runtime.ts, parallel-reviewer.ts, build-stages.ts, etc.)",
+      "plan-03 documentation: committed at 2026-05-18T09:29:24 - docs/extensions-api.md, docs/extensions.md authored",
+      "plan-03 (Planning Guidance, Monitor/UI, Docs, Example): committed at 2026-05-18T09:42:41 - planner guidance injection, monitor/UI reducer handling, example file (accessibility-reviewer.ts), extension SDK README, monitor server tooling routes",
+      "67 files changed, 2899 insertions across all three plans per diffStat"
+    ],
+    "remainingWork": [
+      "Unknown - all three plan commits are present on the feature branch; remaining work depends on what caused the failure at the orchestration/review/merge level",
+      "Determine whether `pnpm build && pnpm type-check && pnpm test` passes on the feature branch as of the last commit",
+      "Determine whether the branch was successfully merged to main or whether the merge step failed",
+      "If tests failed: identify which tests are failing and whether they reflect genuine acceptance criteria gaps or test infrastructure issues"
+    ],
+    "risks": [
+      "The WIP plan-02 checkpoint explicitly warned \"DO NOT assume correctness, audit before building on it\" - the plan-02 implementation may have correctness gaps that only surface at runtime or in deeper test coverage, even if the build succeeds statically",
+      "The empty `plans` metadata and unknown failingPlan ID suggest a possible orchestration-level bug; retrying blindly could reproduce the same metadata failure",
+      "`partial: true` means this analysis may be missing key failure evidence (e.g., test output, review agent findings, merge conflict details)",
+      "If the branch is already in a clean, passing state, the failure may have been purely in the eforge orchestration layer - in which case a manual merge review may be all that is needed"
+    ]
+  },
+  "generatedAt": "2026-05-18T16:50:30.289Z"
+}
