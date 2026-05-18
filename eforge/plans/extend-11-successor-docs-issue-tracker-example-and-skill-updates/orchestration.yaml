@@ -1,0 +1,68 @@
+name: extend-11-successor-docs-issue-tracker-example-and-skill-updates
+description: Complete EXTEND_11 acceptance criteria with issue-tracker example,
+  documentation prose updates, and skill doc updates moving input sources / PRD
+  enrichers from runtime-deferred to runtime-supported.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- test/extension-sdk-example.test.ts
+  - pnpm test -- test/normalize-build-source.test.ts
+    test/extension-loader.test.ts test/extension-tooling-routes.test.ts
+    test/extension-cli-commands.test.ts test/extension-sdk-example.test.ts
+    packages/client/src/__tests__/events-schemas.test.ts
+    packages/client/src/__tests__/events-wire-parity.test.ts
+  - pnpm docs:check
+plans:
+  - id: plan-01-docs-example-and-skills
+    name: Issue-Tracker Example, Docs, and Skill Updates
+    depends_on: []
+    branch: extend-11-successor-docs-issue-tracker-example-and-skill-updates/plan-01-docs-example-and-skills
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - docs
+      - code
+      - api
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This PRD is primarily documentation work with one new example file
+    (examples/extensions/issue-tracker.ts) and a small static compile-check test
+    - all implementation code is already complete on the feature branch. The
+    work is well-bounded and can easily be planned in a single planner session,
+    so excursion is the right scope (not expedition, which would be overkill for
+    docs + one example). A plan-review-cycle gate is worthwhile because the PRD
+    enumerates many specific doc files that must stay aligned
+    (docs/extensions.md, docs/extensions-api.md,
+    packages/extension-sdk/README.md, two skill docs, examples README) and an
+    unreviewed plan could easily miss one. For the build pipeline, doc-author
+    runs in parallel with implement to author the new doc sections while the
+    example file is being written; doc-sync runs afterward to catch any
+    remaining stale references in existing docs given the topic explicitly
+    involves moving APIs from 'deferred' to 'runtime-supported' across multiple
+    cross-referenced docs. A review-cycle with docs (primary concern - prose
+    accuracy and consistency across many files), code (the new example.ts and
+    test), and api (the documented extension SDK surface must match the actual
+    contracts) perspectives gives good coverage. maxRounds=2 with standard
+    strictness is appropriate - this is user-facing docs and example code, not
+    security/data critical, but accuracy matters because users will read it.
