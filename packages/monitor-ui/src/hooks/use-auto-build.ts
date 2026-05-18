@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { setAutoBuild, type AutoBuildState } from '@/lib/api';
 
 /**
@@ -8,7 +8,7 @@ import { setAutoBuild, type AutoBuildState } from '@/lib/api';
  * `useDaemonEvents().daemonState.autoBuild`. This hook only fires the HTTP
  * mutation and tracks in-flight state to prevent double-clicks.
  *
- * After a successful toggle the caller's `onUpdate` is invoked with the new
+ * After a successful call the caller's `onUpdate` is invoked with the new
  * state returned by the server, so the daemon-state slice can be updated
  * immediately without waiting for the next SSE event.
  */
@@ -17,14 +17,16 @@ export function useAutoBuild(
   onUpdate: (state: AutoBuildState | null) => void,
 ): {
   toggling: boolean;
-  toggle: () => void;
+  setEnabled: (enabled: boolean) => void;
 } {
   const [toggling, setToggling] = useState(false);
+  const togglingRef = useRef(false);
 
-  const toggle = useCallback(() => {
-    if (!autoBuildState || toggling) return;
+  const setEnabled = useCallback((enabled: boolean) => {
+    if (!autoBuildState || togglingRef.current) return;
+    togglingRef.current = true;
     setToggling(true);
-    setAutoBuild(!autoBuildState.enabled)
+    setAutoBuild(enabled)
       .then((newState) => {
         if (newState) {
           onUpdate(newState);
@@ -34,8 +36,11 @@ export function useAutoBuild(
         // Server error — the daemon state will reflect reality on the next
         // snapshot or SSE event; no local rollback needed.
       })
-      .finally(() => setToggling(false));
-  }, [autoBuildState, toggling, onUpdate]);
+      .finally(() => {
+        togglingRef.current = false;
+        setToggling(false);
+      });
+  }, [autoBuildState, onUpdate]);
 
-  return { toggling, toggle };
+  return { toggling, setEnabled };
 }

@@ -42,7 +42,7 @@ function AppContent() {
 
   const { runState, shutdownCountdown } = useEforgeEvents(currentSessionId);
   const { containerRef, autoScroll, enableAutoScroll } = useAutoScroll([runState.events.length]);
-  const { toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild(
+  const { toggling: autoBuildToggling, setEnabled: onSetAutoBuildEnabled } = useAutoBuild(
     daemonState.autoBuild,
     setDaemonAutoBuild,
   );
@@ -238,7 +238,7 @@ function AppContent() {
   return (
     <AppLayout
       sidebarCollapsed={sidebarCollapsed}
-      header={<Header autoBuildState={daemonState.autoBuild} autoBuildToggling={autoBuildToggling} onToggleAutoBuild={onToggleAutoBuild} projectContext={projectContext} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(prev => !prev)} daemonState={daemonState} />}
+      header={<Header autoBuildState={daemonState.autoBuild} autoBuildToggling={autoBuildToggling} onSetAutoBuildEnabled={onSetAutoBuildEnabled} projectContext={projectContext} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(prev => !prev)} daemonState={daemonState} />}
       sidebar={
         <Sidebar
           currentSessionId={currentSessionId}
