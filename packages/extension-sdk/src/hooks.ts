@@ -320,22 +320,129 @@ export type { InputTransformContext };
 // ---------------------------------------------------------------------------
 
 /**
+ * Declarative applicability rules for a reviewer perspective.
+ *
+ * All specified rules are ANDed together — a perspective applies only when
+ * every provided rule matches. Omitting a rule means "always applies" for
+ * that dimension. An optional `fn` predicate provides escape-hatch evaluation
+ * and is called only when all declarative rules pass.
+ *
+ * The engine evaluates applicability before each parallel review round. If
+ * evaluation throws or times out the perspective is skipped for that round
+ * and a diagnostic event is emitted.
+ */
+export interface ReviewerPerspectiveApplicability {
+  /**
+   * Glob patterns matched against changed file paths. At least one file must
+   * match for the perspective to apply.
+   *
+   * @example ['src/**', '*.ts']
+   */
+  fileGlobs?: string[];
+  /**
+   * Path prefixes matched against changed file paths. At least one file must
+   * start with one of these prefixes for the perspective to apply.
+   *
+   * @example ['packages/api/', 'packages/client/']
+   */
+  paths?: string[];
+  /**
+   * File extensions (with or without leading dot) that must appear in the
+   * changed file list for the perspective to apply.
+   *
+   * @example ['.ts', 'tsx']
+   */
+  extensions?: string[];
+  /**
+   * Built-in file category names that must have at least one changed file.
+   * Valid values: `'code'`, `'api'`, `'docs'`, `'config'`, `'deps'`, `'test'`.
+   */
+  categories?: Array<'code' | 'api' | 'docs' | 'config' | 'deps' | 'test'>;
+  /**
+   * Minimum number of changed files for the perspective to apply.
+   * When combined with other rules this is evaluated last.
+   */
+  minChangedFiles?: number;
+  /**
+   * Minimum number of changed lines for the perspective to apply.
+   * When combined with other rules this is evaluated last.
+   */
+  minChangedLines?: number;
+  /**
+   * Optional escape-hatch predicate. Called with the list of changed files and
+   * the changed line count. Return `true` to apply, `false` to skip.
+   *
+   * Failures and timeouts in this function emit a diagnostic and cause the
+   * perspective to be skipped for the current round.
+   */
+  fn?: (changedFiles: string[], changedLines: number) => boolean | Promise<boolean>;
+}
+
+/**
+ * Read-only context passed to `ReviewerPerspectiveApplicability.fn`.
+ * Provided for future extension; currently the positional parameters carry
+ * the relevant data.
+ */
+export interface ReviewerPerspectiveApplicabilityContext {
+  /** Changed file paths relative to the worktree root. */
+  readonly changedFiles: string[];
+  /** Total number of added + deleted lines in the changeset. */
+  readonly changedLines: number;
+}
+
+/**
  * Specification for an additional reviewer perspective registered via
  * `registerReviewerPerspective`.
  *
  * Reviewer perspectives allow extensions to contribute domain-specific review
- * lenses (e.g. security, accessibility, i18n) to the post-build review stage.
+ * lenses (e.g. accessibility, i18n, performance) to the post-build review
+ * stage.
+ *
+ * Extension perspectives are dispatched using the generic `reviewer` prompt
+ * with the `promptFragment` appended as a provenance section. The perspective
+ * `key` must be a lowercase slug (alphanumeric + hyphens, 1–64 chars, starting
+ * with a letter) and must not conflict with a built-in perspective name
+ * (`code`, `security`, `api`, `docs`, `test`, `verify`).
+ *
+ * Runtime limits:
+ * - Applicability evaluation is bounded by `extensions.eventHookTimeoutMs`.
+ * - Applicability exceptions and timeouts emit `extension:reviewer-perspective:skipped`
+ *   diagnostics and skip the perspective for the current round.
+ * - Unknown perspective keys in `review.perspectives` config emit a diagnostic and are
+ *   skipped.
  */
 export interface ReviewerPerspectiveSpec {
-  /** Unique perspective key (matched against `REVIEW_PERSPECTIVES` in the engine). */
+  /**
+   * Unique perspective key used to identify this perspective in config and events.
+   *
+   * Must match the pattern `^[a-z][a-z0-9-]{0,63}$` and must not conflict
+   * with a built-in perspective name (`code`, `security`, `api`, `docs`, `test`, `verify`).
+   */
   key: string;
-  /** Human-readable label shown in review output. */
+  /** Human-readable label shown in review output and monitor UI. */
   label: string;
   /**
-   * Prompt fragment injected into the reviewer agent's context when this
-   * perspective is active.
+   * Human-readable description of what this reviewer perspective checks.
+   * Required — used for logging and provenance events.
+   */
+  description: string;
+  /**
+   * Prompt fragment injected into the reviewer agent's system prompt when this
+   * perspective is active. The fragment is wrapped in a provenance section
+   * identifying the contributing extension before being appended to the base
+   * reviewer prompt.
    */
   promptFragment: string;
+  /**
+   * Optional applicability rules that determine when this perspective should
+   * be active. When omitted the perspective is always considered applicable.
+   *
+   * Declarative rules (`fileGlobs`, `paths`, `extensions`, `categories`,
+   * `minChangedFiles`, `minChangedLines`) are fast and evaluated synchronously.
+   * The optional `fn` predicate provides escape-hatch async evaluation and is
+   * invoked only when all declarative rules pass.
+   */
+  appliesTo?: ReviewerPerspectiveApplicability;
 }
 
 // ---------------------------------------------------------------------------

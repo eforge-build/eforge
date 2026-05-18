@@ -326,6 +326,11 @@ export const IGNORED_EVENT_TYPES = [
   'extension:prd-enricher:applied',
   'extension:prd-enricher:failed',
   // --- eforge:endregion plan-01-extension-input-contracts ---
+  // --- eforge:region plan-02-extension-perspective-runtime ---
+  // Extension reviewer perspective provenance/diagnostic events — session-scoped, non-persistent.
+  'extension:reviewer-perspective:applied',
+  'extension:reviewer-perspective:skipped',
+  // --- eforge:endregion plan-02-extension-perspective-runtime ---
 ] as const;
 
 // ---------------------------------------------------------------------------

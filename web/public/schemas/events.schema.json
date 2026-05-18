@@ -2746,6 +2746,96 @@
           "type": "object",
           "required": [
             "type",
+            "extensionPath",
+            "extensionName",
+            "perspectiveKey",
+            "perspectiveLabel"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:reviewer-perspective:applied",
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "perspectiveKey": {
+              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+              "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+              "type": "string"
+            },
+            "perspectiveLabel": {
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "extensionPath",
+            "extensionName",
+            "perspectiveKey",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:reviewer-perspective:skipped",
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "perspectiveKey": {
+              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+              "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "const": "not-applicable",
+                  "type": "string"
+                },
+                {
+                  "const": "applicability-error",
+                  "type": "string"
+                },
+                {
+                  "const": "applicability-timeout",
+                  "type": "string"
+                },
+                {
+                  "const": "unknown-key",
+                  "type": "string"
+                }
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "source"
           ],
           "properties": {

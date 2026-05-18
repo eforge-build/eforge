@@ -254,7 +254,25 @@ export interface EforgeExtensionAPI {
    * Register an additional reviewer perspective contributed to the post-build
    * review stage.
    *
-   * @remarks Runtime not yet wired. Typed contract only in this slice.
+   * Extension perspectives are dispatched using the generic `reviewer` prompt
+   * with `spec.promptFragment` appended as a named provenance section. The
+   * perspective is included in parallel review when its `appliesTo` rules match
+   * the current changeset. When `appliesTo` is omitted the perspective is always
+   * applicable.
+   *
+   * The `key` must be a lowercase slug (`^[a-z][a-z0-9-]{0,63}$`) and must not
+   * conflict with a built-in perspective name (`code`, `security`, `api`, `docs`,
+   * `test`, `verify`).
+   *
+   * Runtime limits:
+   * - Applicability evaluation is bounded by `extensions.eventHookTimeoutMs`.
+   * - Evaluation failures and timeouts emit `extension:reviewer-perspective:skipped`
+   *   diagnostics and skip the perspective for the current round.
+   * - Unknown perspective keys in `review.perspectives` config emit a diagnostic
+   *   and are skipped rather than failing the build.
+   *
+   * @remarks Runtime-supported. Extension perspectives participate in parallel
+   * review rounds and adaptive review-cycle perspective selection.
    */
   registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void;
 

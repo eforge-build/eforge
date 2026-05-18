@@ -227,7 +227,7 @@ describe('native extension replay harness', () => {
         eforge.registerProfileRouter({ name: 'router', resolve: () => { throw new Error('profile router should not be replayed'); } });
         eforge.registerInputSource({ name: 'input', description: 'input', fetch: async () => { throw new Error('input source should not be replayed'); } });
         eforge.registerPrdEnricher({ name: 'enricher', description: 'enricher', enrich: async () => { throw new Error('PRD enricher should not be replayed'); } });
-        eforge.registerReviewerPerspective({ key: 'review', label: 'Review', promptFragment: 'Review this' });
+        eforge.registerReviewerPerspective({ key: 'custom-review', label: 'Custom Review', description: 'Custom review perspective', promptFragment: 'Review this' });
         eforge.registerValidationProvider({ name: 'validator', description: 'validator', validate: () => { throw new Error('validation provider should not be replayed'); } });
         eforge.registerTool({ name: 'tool', description: 'tool', inputSchema: { type: 'object', properties: {} }, handler: () => { throw new Error('tool should not be replayed'); } });
       }

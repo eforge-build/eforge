@@ -403,7 +403,7 @@ describe('native extension loader', () => {
       eforge.registerProfileRouter({ name: 'shared', resolve: () => null });
       eforge.registerInputSource({ name: 'shared', description: 'input', fetch: async () => null });
       eforge.registerPrdEnricher({ name: 'shared', description: 'enricher', enrich: async () => null });
-      eforge.registerReviewerPerspective({ key: 'shared', label: 'Perspective', promptFragment: 'Review this' });
+      eforge.registerReviewerPerspective({ key: 'shared', label: 'Perspective', description: 'Shared perspective', promptFragment: 'Review this' });
       eforge.registerValidationProvider({ name: 'shared', description: 'validator', validate: () => null });
       eforge.registerTool({ name: 'shared', description: 'tool', inputSchema: { type: 'object', properties: {} }, handler: () => 'ok' });
     `;
@@ -426,6 +426,123 @@ describe('native extension loader', () => {
     ]));
   });
 
+  // --- eforge:region plan-02-extension-perspective-runtime ---
+  it('rejects reviewer perspectives missing description', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    await writeModule(resolve(extensions, 'no-desc.js'), `
+      export default function extension(eforge) {
+        eforge.registerReviewerPerspective({ key: 'my-lens', label: 'My Lens', promptFragment: 'Check this' });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.reviewerPerspectives).toHaveLength(0);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'extension:invalid-registration',
+      message: expect.stringContaining('description'),
+    }));
+  });
+
+  it('rejects reviewer perspectives with built-in key names', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    const builtInKeys = ['code', 'security', 'api', 'docs', 'test', 'verify'];
+    for (const key of builtInKeys) {
+      await writeModule(resolve(extensions, `builtin-${key}.js`), `
+        export default function extension(eforge) {
+          eforge.registerReviewerPerspective({ key: '${key}', label: 'Built-in', description: 'desc', promptFragment: 'check' });
+        }
+      `);
+    }
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.reviewerPerspectives).toHaveLength(0);
+    const invalidDiagnostics = result.diagnostics.filter((d) => d.code === 'extension:invalid-registration');
+    expect(invalidDiagnostics).toHaveLength(builtInKeys.length);
+    for (const diag of invalidDiagnostics) {
+      expect(diag.message).toMatch(/built-in perspective/);
+    }
+  });
+
+  it('rejects reviewer perspectives with unsafe key patterns (spaces, uppercase, leading digit)', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    await writeModule(resolve(extensions, 'unsafe-keys.js'), `
+      export default function extension(eforge) {
+        eforge.registerReviewerPerspective({ key: 'my lens', label: 'Spaces', description: 'desc', promptFragment: 'check' });
+        eforge.registerReviewerPerspective({ key: 'MyLens', label: 'Upper', description: 'desc', promptFragment: 'check' });
+        eforge.registerReviewerPerspective({ key: '1lens', label: 'Digit start', description: 'desc', promptFragment: 'check' });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.reviewerPerspectives).toHaveLength(0);
+    expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toHaveLength(3);
+  });
+
+  it('accepts reviewer perspectives with valid safe keys and optional appliesTo', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    await writeModule(resolve(extensions, 'valid-perspective.js'), `
+      export default function extension(eforge) {
+        eforge.registerReviewerPerspective({
+          key: 'accessibility',
+          label: 'Accessibility',
+          description: 'Check accessibility concerns',
+          promptFragment: 'Review for WCAG compliance',
+          appliesTo: { fileGlobs: ['**/*.tsx', '**/*.jsx'], minChangedFiles: 1 },
+        });
+        eforge.registerReviewerPerspective({
+          key: 'i18n',
+          label: 'Internationalization',
+          description: 'Check i18n concerns',
+          promptFragment: 'Review for i18n compliance',
+        });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.reviewerPerspectives).toHaveLength(2);
+    expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toHaveLength(0);
+    const accessibilityReg = result.registry.reviewerPerspectives.find((r) => r.name === 'accessibility');
+    expect(accessibilityReg?.value.appliesTo).toMatchObject({ fileGlobs: ['**/*.tsx', '**/*.jsx'], minChangedFiles: 1 });
+  });
+
+  it('rejects reviewer perspectives with invalid appliesTo shape', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    await writeModule(resolve(extensions, 'bad-applies-to.js'), `
+      export default function extension(eforge) {
+        eforge.registerReviewerPerspective({
+          key: 'my-lens',
+          label: 'My Lens',
+          description: 'desc',
+          promptFragment: 'check',
+          appliesTo: { fileGlobs: 'not-an-array' },
+        });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.reviewerPerspectives).toHaveLength(0);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'extension:invalid-registration',
+      message: expect.stringContaining('appliesTo'),
+    }));
+  });
+  // --- eforge:endregion plan-02-extension-perspective-runtime ---
+
   it('captures all registration families', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
@@ -440,7 +557,7 @@ describe('native extension loader', () => {
         eforge.registerProfileRouter({ name: 'router', resolve: () => null });
         eforge.registerInputSource({ name: 'input', description: 'input', fetch: async () => null });
         eforge.registerPrdEnricher({ name: 'enricher', description: 'enricher', enrich: async () => null });
-        eforge.registerReviewerPerspective({ key: 'perspective', label: 'Perspective', promptFragment: 'Review this' });
+        eforge.registerReviewerPerspective({ key: 'custom-perspective', label: 'Custom Perspective', description: 'A custom review perspective', promptFragment: 'Review this' });
         eforge.registerValidationProvider({ name: 'validator', description: 'validator', validate: () => null });
         eforge.registerTool({ name: 'tool', description: 'tool', inputSchema: ${JSON.stringify(Type.Object({}))}, handler: () => 'ok' });
       }
@@ -458,7 +575,7 @@ describe('native extension loader', () => {
     expect(result.registry.profileRouters).toEqual([expect.objectContaining({ name: 'router', extensionName: 'capture' })]);
     expect(result.registry.inputSources).toEqual([expect.objectContaining({ name: 'input', extensionName: 'capture' })]);
     expect(result.registry.prdEnrichers).toEqual([expect.objectContaining({ name: 'enricher', extensionName: 'capture' })]);
-    expect(result.registry.reviewerPerspectives).toEqual([expect.objectContaining({ name: 'perspective', extensionName: 'capture' })]);
+    expect(result.registry.reviewerPerspectives).toEqual([expect.objectContaining({ name: 'custom-perspective', extensionName: 'capture' })]);
     expect(result.registry.validationProviders).toEqual([expect.objectContaining({ name: 'validator', extensionName: 'capture' })]);
     expect(result.registry.tools).toEqual([expect.objectContaining({ name: 'tool', extensionName: 'capture' })]);
 

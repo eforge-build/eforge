@@ -36,6 +36,10 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type === 'extension:agent-context:timeout') return { cls: 'failed', label: type };
   if (type === 'extension:agent-context:unsupported') return { cls: 'warning', label: type };
   // --- eforge:endregion plan-01-agent-context-runtime ---
+  // --- eforge:region plan-02-extension-perspective-runtime ---
+  if (type === 'extension:reviewer-perspective:applied') return { cls: 'info', label: type };
+  if (type === 'extension:reviewer-perspective:skipped') return { cls: 'info', label: type };
+  // --- eforge:endregion plan-02-extension-perspective-runtime ---
   // --- eforge:region plan-04-monitor-ui ---
   if (type === 'recovery:start') return { cls: 'info', label: type };
   if (type === 'recovery:summary') return { cls: 'info', label: type };
@@ -144,6 +148,10 @@ function eventSummary(event: EforgeEvent): string {
     case 'extension:agent-context:timeout': return `Extension hook timed out: ${event.extensionName} (${event.role}) after ${event.timeoutMs}ms`;
     case 'extension:agent-context:unsupported': return `Extension returned unsupported fields: ${event.extensionName} — ${event.fields.join(', ')}`;
     // --- eforge:endregion plan-01-agent-context-runtime ---
+    // --- eforge:region plan-02-extension-perspective-runtime ---
+    case 'extension:reviewer-perspective:applied': return `Extension perspective applied: ${event.extensionName} "${event.perspectiveKey}"`;
+    case 'extension:reviewer-perspective:skipped': return `Extension perspective skipped: ${event.extensionName} "${event.perspectiveKey}" (${event.reason})${event.message ? ' — ' + event.message : ''}`;
+    // --- eforge:endregion plan-02-extension-perspective-runtime ---
     case 'planning:decision': return `Planning decision: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     case 'plan:build:decision': return `Build decision [${event.planId}]: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     default: return event.type;

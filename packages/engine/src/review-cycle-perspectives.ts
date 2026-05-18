@@ -2,6 +2,7 @@ import type { ReviewIssue } from './events.js';
 import {
   categorizeFiles,
   determineApplicableReviewsWithRules,
+  isBuiltInReviewPerspective,
   type ReviewPerspective,
 } from './review-heuristics.js';
 
@@ -128,6 +129,16 @@ function concernPerspectives(evaluation: ReviewCycleEvaluationSummary): Set<stri
   const categories = categorizeFiles(relevantFiles);
   return new Set<string>(determineApplicableReviewsWithRules(categories).perspectives);
 }
+
+// --- eforge:region plan-02-extension-perspective-runtime ---
+/**
+ * Returns true when the perspective key is a built-in perspective name.
+ * Extension perspectives are not built-in.
+ */
+function isBuiltInKey(key: string): boolean {
+  return isBuiltInReviewPerspective(key);
+}
+// --- eforge:endregion plan-02-extension-perspective-runtime ---
 // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
 export function selectNextReviewPerspectives(
@@ -170,7 +181,12 @@ export function selectNextReviewPerspectives(
 
   for (const perspective of stableOrder) {
     const keepForIssues = hasPriorIssues(perspective, issuesByPerspective);
-    const keepForConcern = overlappingConcerns.has(perspective);
+    // --- eforge:region plan-02-extension-perspective-runtime ---
+    // For extension perspectives (non-built-in keys), concern inference via file categories
+    // does not apply — they are retained only when they have prior issues.
+    // Built-in perspectives may also be retained by concern overlap or verify logic.
+    const keepForConcern = !isBuiltInKey(perspective) ? false : overlappingConcerns.has(perspective);
+    // --- eforge:endregion plan-02-extension-perspective-runtime ---
     const keepForVerify = perspective === 'verify' && (keepForIssues || keepVerifyForAcceptedChanges);
 
     if (keepForIssues || keepForConcern || keepForVerify) {

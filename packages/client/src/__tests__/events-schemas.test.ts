@@ -2275,4 +2275,159 @@ describe('isPersistedDaemonEventType', () => {
   });
 });
 
+// --- eforge:region plan-02-extension-perspective-runtime ---
+describe('safeParseEforgeEvent — extension reviewer perspective events', () => {
+  it('accepts extension:reviewer-perspective:applied with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/a11y.js',
+      extensionName: 'a11y-reviewer',
+      perspectiveKey: 'accessibility',
+      perspectiveLabel: 'Accessibility Review',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:reviewer-perspective:applied with optional planId', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/a11y.js',
+      extensionName: 'a11y-reviewer',
+      perspectiveKey: 'accessibility',
+      perspectiveLabel: 'Accessibility Review',
+      planId: 'plan-01',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:reviewer-perspective:skipped with reason not-applicable', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/project/.eforge/extensions/a11y.js',
+      extensionName: 'a11y-reviewer',
+      perspectiveKey: 'accessibility',
+      reason: 'not-applicable',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:reviewer-perspective:skipped with all reason variants', () => {
+    const reasons = ['not-applicable', 'applicability-error', 'applicability-timeout', 'unknown-key'] as const;
+    for (const reason of reasons) {
+      const result = safeParseEforgeEvent({
+        type: 'extension:reviewer-perspective:skipped',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionPath: '/ext.js',
+        extensionName: 'ext',
+        perspectiveKey: 'my-lens',
+        reason,
+      });
+      expect(result.success, `reason '${reason}' should be accepted`).toBe(true);
+    }
+  });
+
+  it('accepts extension:reviewer-perspective:skipped with optional message and timeoutMs', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      extensionName: 'ext',
+      perspectiveKey: 'my-lens',
+      reason: 'applicability-timeout',
+      message: 'Timed out after 5000ms',
+      timeoutMs: 5000,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects extension:reviewer-perspective:applied missing extensionName', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      perspectiveKey: 'my-lens',
+      perspectiveLabel: 'My Lens',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects extension:reviewer-perspective:skipped with invalid reason literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      extensionName: 'ext',
+      perspectiveKey: 'my-lens',
+      reason: 'invalid-reason',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('round-trips extension reviewer perspective events through JSON', () => {
+    const events: EforgeEvent[] = [
+      {
+        type: 'extension:reviewer-perspective:applied',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionPath: '/ext.js',
+        extensionName: 'ext',
+        perspectiveKey: 'accessibility',
+        perspectiveLabel: 'Accessibility',
+        planId: 'plan-01',
+      },
+      {
+        type: 'extension:reviewer-perspective:skipped',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionPath: '/ext.js',
+        extensionName: 'ext',
+        perspectiveKey: 'accessibility',
+        reason: 'not-applicable',
+      },
+    ];
+    for (const event of events) {
+      expect(JSON.parse(JSON.stringify(event))).toEqual(event);
+    }
+  });
+});
+
+describe('eventRegistry — extension reviewer perspective events', () => {
+  it('registers perspective events as session-scoped, non-persistent events', () => {
+    expect(eventRegistry['extension:reviewer-perspective:applied']).toMatchObject({
+      scope: 'session',
+      persist: false,
+    });
+    expect(eventRegistry['extension:reviewer-perspective:skipped']).toMatchObject({
+      scope: 'session',
+      persist: false,
+    });
+  });
+
+  it('generates summaries for applied and skipped perspective events', () => {
+    const appliedEvent: EforgeEvent = {
+      type: 'extension:reviewer-perspective:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      extensionName: 'a11y',
+      perspectiveKey: 'accessibility',
+      perspectiveLabel: 'Accessibility',
+      planId: 'plan-01',
+    };
+    const skippedEvent: EforgeEvent = {
+      type: 'extension:reviewer-perspective:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/ext.js',
+      extensionName: 'a11y',
+      perspectiveKey: 'accessibility',
+      reason: 'not-applicable',
+    };
+    expect(getEventSummary(appliedEvent)).toContain('accessibility');
+    expect(getEventSummary(appliedEvent)).toContain('a11y');
+    expect(getEventSummary(skippedEvent)).toContain('accessibility');
+    expect(getEventSummary(skippedEvent)).toContain('not-applicable');
+  });
+});
+// --- eforge:endregion plan-02-extension-perspective-runtime ---
+
 // --- eforge:endregion plan-01-durable-daemon-event-persistence ---

@@ -36,6 +36,7 @@ export type {
   ProfileRouterRegistration,
   InputSourceRegistration,
   ReviewerPerspectiveRegistration,
+  ReviewerPerspectiveApplicability,
   ValidationProviderRegistration,
   ToolRegistration,
   PrdEnricherRegistration,
@@ -136,3 +137,17 @@ export type {
   ScaffoldNativeExtensionResult,
 } from './scaffold.js';
 // --- eforge:endregion plan-01-extension-management-api ---
+// --- eforge:region plan-02-extension-perspective-runtime ---
+export {
+  evaluateApplicability,
+  selectExtensionPerspectives,
+  buildExtensionPerspectivePromptSection,
+  DEFAULT_APPLICABILITY_TIMEOUT_MS,
+} from './reviewer-perspective-runtime.js';
+export type {
+  ApplicabilityInput,
+  ApplicabilityOutcome,
+  SelectExtensionPerspectivesOptions,
+  SelectExtensionPerspectivesResult,
+} from './reviewer-perspective-runtime.js';
+// --- eforge:endregion plan-02-extension-perspective-runtime ---

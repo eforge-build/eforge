@@ -309,6 +309,10 @@ async function* reviewStageInner(
       abortController: ctx.abortController,
       strategy,
       perspectives,
+      // --- eforge:region plan-02-extension-perspective-runtime ---
+      extensionReviewerPerspectives: ctx.extensionReviewerPerspectives,
+      extensionApplicabilityTimeoutMs: ctx.config.extensions.eventHookTimeoutMs,
+      // --- eforge:endregion plan-02-extension-perspective-runtime ---
       ...reviewerAgentConfig,
       phase: 'build',
       stage: 'review',

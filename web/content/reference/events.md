@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 8fb5f6b5 -->
+<!-- Commit: f6dfcc1e -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -13,7 +13,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 185
+Total variants: 187
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -55,6 +55,8 @@ Total variants: 185
 | `extension:input-source:failed` | `adapterName`, `extensionName`, `extensionPath`, `message`, `reason`, `sourceId`, `stack`, `timeoutMs` |
 | `extension:prd-enricher:applied` | `changed`, `enricherName`, `extensionName`, `extensionPath`, `inputLength`, `outputLength`, `sourceId` |
 | `extension:prd-enricher:failed` | `enricherName`, `extensionName`, `extensionPath`, `message`, `reason`, `sourceId`, `stack`, `timeoutMs` |
+| `extension:reviewer-perspective:applied` | `extensionName`, `extensionPath`, `perspectiveKey`, `perspectiveLabel`, `planId` |
+| `extension:reviewer-perspective:skipped` | `extensionName`, `extensionPath`, `message`, `perspectiveKey`, `planId`, `reason`, `timeoutMs` |
 | `planning:start` | `label`, `source` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |

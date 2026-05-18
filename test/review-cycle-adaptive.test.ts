@@ -246,23 +246,20 @@ describe('adaptive review-cycle perspective selection', () => {
   });
 
   // --- eforge:region plan-01-dynamic-perspective-contracts ---
-  it('preserves dynamic perspective key in perspectives-respawned decisions across rounds', async () => {
+  it('diagnoses and skips unregistered dynamic perspective keys in review-cycle', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
     await commitAll(repo, 'chore: initial');
     const preImplementCommit = await head(repo);
-    // No post-commit changes: fixer will skip (no issues), evaluator will skip (no staged changes).
 
     class DynamicKeyHarness extends StubHarness {
       async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
         if (agent === 'reviewer' && options.perspective === 'code') {
-          // Built-in code reviewer: no issues found in every round
           for await (const event of new StubHarness([{ text: '<review-issues></review-issues>' }]).run(options, agent, planId)) {
             yield event;
           }
           return;
         }
-        // All other agents (including any unexpected calls): delegate to base StubHarness
         for await (const event of super.run(options, agent, planId)) {
           yield event;
         }
@@ -274,23 +271,18 @@ describe('adaptive review-cycle perspective selection', () => {
 
     const events = await collectEvents(getBuildStage('review-cycle')(ctx));
 
-    // The accessibility reviewer is skipped (dynamic key, no built-in prompt) and emits an error event.
-    const perspectiveErrors = events.filter(
-      (e): e is Extract<EforgeEvent, { type: 'plan:build:review:parallel:perspective:error' }> =>
-        e.type === 'plan:build:review:parallel:perspective:error',
+    const skipped = events.find(
+      (e): e is Extract<EforgeEvent, { type: 'extension:reviewer-perspective:skipped' }> =>
+        e.type === 'extension:reviewer-perspective:skipped' && e.perspectiveKey === 'accessibility',
     );
-    expect(perspectiveErrors.some((e) => e.perspective === 'accessibility')).toBe(true);
+    expect(skipped?.reason).toBe('unknown-key');
+    expect(events.some((e) => e.type === 'plan:build:review:parallel:perspective:error')).toBe(false);
 
-    // perspectives-respawned is emitted at the start of each round.
-    // The 'accessibility' dynamic key must appear in every emitted decision.
-    const respawnedDecisions = events.filter(
-      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
-        e.type === 'plan:build:decision' && e.decision.kind === 'perspectives-respawned',
+    const reviewStart = events.find(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:review:parallel:start' }> =>
+        e.type === 'plan:build:review:parallel:start',
     );
-    expect(respawnedDecisions.length).toBeGreaterThan(0);
-    for (const d of respawnedDecisions) {
-      expect(d.decision.perspectives).toContain('accessibility');
-    }
+    expect(reviewStart?.perspectives).toEqual(['code']);
   });
   // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 });

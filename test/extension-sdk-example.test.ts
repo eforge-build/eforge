@@ -185,6 +185,45 @@ void _prdEnricherStub;
 
 // --- eforge:endregion plan-01-extension-input-contracts ---
 
+// --- eforge:region plan-02-extension-perspective-runtime ---
+// Compile-time example: reviewer perspective with applicability rules
+const _reviewerPerspectiveStub: sdk.EforgeExtensionFactory = (api) => {
+  api.registerReviewerPerspective({
+    key: 'accessibility',
+    label: 'Accessibility Review',
+    description: 'Reviews for WCAG 2.1 AA compliance issues in UI components',
+    promptFragment: 'Focus on accessibility: check ARIA labels, keyboard navigation, color contrast, and screen reader compatibility.',
+    appliesTo: {
+      fileGlobs: ['**/*.tsx', '**/*.jsx', '**/*.css'],
+      extensions: ['.tsx', '.jsx'],
+      minChangedFiles: 1,
+    },
+  });
+  // No appliesTo — always applicable
+  api.registerReviewerPerspective({
+    key: 'performance',
+    label: 'Performance Review',
+    description: 'Reviews for performance regressions and optimization opportunities',
+    promptFragment: 'Focus on performance: check for N+1 queries, unnecessary re-renders, memory leaks, and bundle size impacts.',
+  });
+};
+void _reviewerPerspectiveStub;
+
+// Compile-time type check: ReviewerPerspectiveApplicability fields
+const _applicabilityTypeCheck: sdk.ReviewerPerspectiveApplicability = {
+  fileGlobs: ['**/*.ts'],
+  paths: ['src/', 'packages/'],
+  extensions: ['.ts', '.tsx'],
+  categories: ['code', 'api'],
+  minChangedFiles: 2,
+  minChangedLines: 100,
+  fn: async (changedFiles: string[], changedLines: number) => {
+    return changedFiles.length > 0 && changedLines > 0;
+  },
+};
+void _applicabilityTypeCheck;
+// --- eforge:endregion plan-02-extension-perspective-runtime ---
+
 function captureSlackPlanErrorHandler(): sdk.EventHookHandler<'plan:error:set'> {
   let handler: sdk.EventHookHandler<'plan:error:set'> | undefined;
   const api = {
@@ -394,6 +433,8 @@ type _TypeExports = [
   sdk.PrdEnrichmentResult,
   sdk.PrdEnricher,
   sdk.ReviewerPerspectiveSpec,
+  sdk.ReviewerPerspectiveApplicability,
+  sdk.ReviewerPerspectiveApplicabilityContext,
   sdk.ValidationProviderSpec,
   sdk.EforgeEvent,
   sdk.AgentRole,
