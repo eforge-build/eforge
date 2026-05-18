@@ -47,6 +47,20 @@ describe('toBuildFailedEvent', () => {
     expect(event.terminalSubtype).toBe('error_transient_transport');
   });
 
+  it('maps Backend error: WebSocket closed 1000 (observed planner failure) to error_transient_transport', () => {
+    // Regression test: close code 1000 (normal closure) was previously not classified
+    // as a transient transport failure, causing planner retries to be skipped.
+    const planId = 'plan-03a';
+    const err = new Error('Backend error: WebSocket closed 1000');
+
+    const event = toBuildFailedEvent(planId, err);
+
+    expect(event.type).toBe('plan:build:failed');
+    expect(event.planId).toBe(planId);
+    expect(event.error).toBe('Backend error: WebSocket closed 1000');
+    expect(event.terminalSubtype).toBe('error_transient_transport');
+  });
+
   it('maps a plain Error to a build:failed event without terminalSubtype', () => {
     const planId = 'plan-03';
     const err = new Error('Something went wrong');

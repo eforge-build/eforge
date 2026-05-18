@@ -159,6 +159,53 @@ describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
     });
     expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
   });
+
+  it('retryableSubtypes does NOT include error_transient_transport — transient transport planner retry is governed by shouldRetry', () => {
+    // Planner transport retry is safety-gated by the pre-submission/pre-skip event
+    // boundary in shouldRetry. Adding error_transient_transport to retryableSubtypes
+    // would bypass that guard and allow retries after planning:submission.
+    expect(planner.retryableSubtypes.has('error_transient_transport')).toBe(false);
+    expect(planner.retryableSubtypes).toEqual(new Set(['error_max_turns']));
+  });
+
+  it('shouldRetry returns true for error_transient_transport when no submission or skip events have been emitted', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'planner', content: 'thinking...' },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_transient_transport',
+      events,
+      error: new Error('Backend error: WebSocket closed 1000'),
+    });
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(true);
+  });
+
+  it('shouldRetry returns false for error_transient_transport when planning:submission was already emitted', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:submission', planCount: 1, totalBodySize: 100, hasMigrations: false },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_transient_transport',
+      events,
+      error: new Error('Backend error: WebSocket closed 1000'),
+    });
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
+  });
+
+  it('shouldRetry returns false for error_transient_transport when planning:skip was already emitted', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:skip', reason: 'already implemented' },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_transient_transport',
+      events,
+      error: new Error('Backend error: WebSocket closed 1000'),
+    });
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
+  });
 });
 
 describe('DEFAULT_RETRY_POLICIES — builder policy', () => {
@@ -205,6 +252,13 @@ describe('DEFAULT_RETRY_POLICIES — plan-evaluator / cohesion-evaluator / archi
 });
 
 describe('getPolicy — unregistered roles default to no-retry', () => {
+  // Unregistered roles default to maxAttempts: 1 (no retries) because they lack
+  // safe continuation/checkpoint contracts. A retry policy is only safe when the
+  // agent can resume meaningful work from a well-defined intermediate state. Roles
+  // like 'reviewer', 'pipeline-composer', and 'merge-conflict-resolver' have no
+  // such checkpointing semantics, so a retry would duplicate side effects or
+  // produce inconsistent state. They must be explicitly registered in
+  // DEFAULT_RETRY_POLICIES before any retry behavior is allowed.
   const unregisteredRoles: AgentRole[] = [
     'reviewer',
     'review-fixer',
