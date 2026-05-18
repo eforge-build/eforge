@@ -1997,6 +1997,189 @@ describe('eventRegistry — extension:input-source:* and extension:prd-enricher:
 
 // --- eforge:endregion plan-01-extension-input-contracts ---
 
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
+
+// ---------------------------------------------------------------------------
+// Dynamic perspective key tests
+// ---------------------------------------------------------------------------
+
+describe('safeParseEforgeEvent — dynamic perspective keys', () => {
+  it('accepts plan:build:review:parallel:start with a custom accessibility perspective', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['code', 'accessibility'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts plan:build:review:parallel:perspective:start with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:perspective:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspective: 'accessibility',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts plan:build:review:parallel:perspective:complete with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:perspective:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspective: 'accessibility',
+      issues: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts plan:build:review:parallel:perspective:error with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:perspective:error',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspective: 'accessibility',
+      error: 'No extension reviewer registered',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts perspectives-inferred with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:decision',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      decision: {
+        kind: 'perspectives-inferred',
+        rationale: 'Inferred from file categories',
+        perspectives: ['code', 'accessibility'],
+        categories: ['code'],
+        rules: ['code-files → code+security'],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts perspectives-respawned with custom keys', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:decision',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      decision: {
+        kind: 'perspectives-respawned',
+        rationale: 'Starting round 2',
+        round: 1,
+        perspectives: ['code', 'accessibility'],
+        dropped: ['performance-review'],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects parallel:start with an uppercase perspective key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['CODE'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects parallel:start with a perspective key containing spaces', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['my perspective'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects parallel:start with a perspective key starting with a digit', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['1code'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects perspective:error with an uppercase perspective key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:perspective:error',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspective: 'CODE',
+      error: 'invalid key',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts all six built-in perspectives in parallel:start', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['code', 'security', 'api', 'docs', 'test', 'verify'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts review-profile-chosen planning decision with a custom key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'planning:decision',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      decision: {
+        kind: 'review-profile-chosen',
+        rationale: 'Custom perspective configured',
+        strategy: 'parallel',
+        perspectives: ['code', 'accessibility'],
+        maxRounds: 2,
+        evaluatorStrictness: 'standard',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts agent:start with a valid slug perspective key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'agent-a11y',
+      agent: 'reviewer',
+      model: 'claude-opus-4-7',
+      harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'review',
+      tierSource: 'tier',
+      perspective: 'accessibility',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects agent:start with an unsafe perspective key', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'agent-a11y',
+      agent: 'reviewer',
+      model: 'claude-opus-4-7',
+      harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'review',
+      tierSource: 'tier',
+      perspective: 'Accessibility Review',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+
 // --- eforge:region plan-02-build-evaluator-enforcement ---
 describe('safeParseEforgeEvent — build evaluator enriched payloads', () => {
   it('accepts plan:build:evaluate:complete verdict summaries with hunk metadata', () => {

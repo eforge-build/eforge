@@ -438,6 +438,17 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       perspectives: ['code', 'security'],
     },
   },
+  // --- eforge:region plan-01-dynamic-perspective-contracts ---
+  {
+    label: 'plan:build:review:parallel:start (with dynamic accessibility key)',
+    payload: {
+      type: 'plan:build:review:parallel:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      perspectives: ['code', 'accessibility'],
+    },
+  },
+  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
   {
     label: 'plan:build:review:parallel:perspective:start',
     payload: {

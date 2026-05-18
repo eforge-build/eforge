@@ -44,7 +44,7 @@ export async function* runModulePlanner(
     dependencyPlans: options.dependencyPlanContent || 'No dependencies - this module is planned independently.',
     cwd: options.cwd,
     outputDir: options.outputDir ?? 'eforge/plans',
-    validPerspectives: REVIEW_PERSPECTIVES.join(', '),
+    validPerspectives: `${REVIEW_PERSPECTIVES.join(', ')} (built-in defaults; custom extension keys are also accepted as lowercase slugs such as "accessibility" or "performance-review", but generated plans should use built-ins unless a project explicitly configures extension keys)`,
   }, options.promptAppend);
 
   for await (const event of options.harness.run(

@@ -219,12 +219,26 @@ More text after`;
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
-  it('returns invalid-schema with errors mentioning perspectives when perspectives contains invalid value', () => {
+  it('accepts a safe custom dynamic perspective key (accessibility)', () => {
     const text = `<build-config>${JSON.stringify({
       build: ['implement'],
       review: {
         strategy: 'single',
-        perspectives: ['correctness'],
+        perspectives: ['accessibility'],
+        maxRounds: 1,
+        evaluatorStrictness: 'standard',
+      },
+    })}</build-config>`;
+    const result = parseBuildConfigBlock(text);
+    expect(result.ok).toBe(true);
+  });
+
+  it('returns invalid-schema with errors mentioning perspectives when perspectives contains unsafe value', () => {
+    const text = `<build-config>${JSON.stringify({
+      build: ['implement'],
+      review: {
+        strategy: 'single',
+        perspectives: ['Code Review'],
         maxRounds: 1,
         evaluatorStrictness: 'standard',
       },

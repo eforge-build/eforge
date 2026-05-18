@@ -345,7 +345,9 @@ export type BuildStageSpec = string | string[];
 
 export interface ReviewProfileConfig {
   strategy: 'auto' | 'single' | 'parallel';
-  perspectives: ('code' | 'security' | 'api' | 'docs' | 'test' | 'verify')[];
+  /** Review perspective keys. Built-ins: code, security, api, docs, test, verify.
+   * Custom extension keys are also accepted (lowercase slugs). */
+  perspectives: string[];
   maxRounds: number;
   evaluatorStrictness: 'strict' | 'standard' | 'lenient';
 }

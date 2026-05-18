@@ -2997,32 +2997,9 @@
                 "perspectives": {
                   "type": "array",
                   "items": {
-                    "anyOf": [
-                      {
-                        "const": "code",
-                        "type": "string"
-                      },
-                      {
-                        "const": "security",
-                        "type": "string"
-                      },
-                      {
-                        "const": "api",
-                        "type": "string"
-                      },
-                      {
-                        "const": "docs",
-                        "type": "string"
-                      },
-                      {
-                        "const": "test",
-                        "type": "string"
-                      },
-                      {
-                        "const": "verify",
-                        "type": "string"
-                      }
-                    ]
+                    "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                    "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                    "type": "string"
                   }
                 },
                 "maxRounds": {
@@ -3236,32 +3213,9 @@
                       "perspectives": {
                         "type": "array",
                         "items": {
-                          "anyOf": [
-                            {
-                              "const": "code",
-                              "type": "string"
-                            },
-                            {
-                              "const": "security",
-                              "type": "string"
-                            },
-                            {
-                              "const": "api",
-                              "type": "string"
-                            },
-                            {
-                              "const": "docs",
-                              "type": "string"
-                            },
-                            {
-                              "const": "test",
-                              "type": "string"
-                            },
-                            {
-                              "const": "verify",
-                              "type": "string"
-                            }
-                          ]
+                          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                          "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                          "type": "string"
                         }
                       },
                       "maxRounds": {
@@ -4008,32 +3962,9 @@
             "perspectives": {
               "type": "array",
               "items": {
-                "anyOf": [
-                  {
-                    "const": "code",
-                    "type": "string"
-                  },
-                  {
-                    "const": "security",
-                    "type": "string"
-                  },
-                  {
-                    "const": "api",
-                    "type": "string"
-                  },
-                  {
-                    "const": "docs",
-                    "type": "string"
-                  },
-                  {
-                    "const": "test",
-                    "type": "string"
-                  },
-                  {
-                    "const": "verify",
-                    "type": "string"
-                  }
-                ]
+                "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                "type": "string"
               }
             }
           }
@@ -4054,32 +3985,9 @@
               "type": "string"
             },
             "perspective": {
-              "anyOf": [
-                {
-                  "const": "code",
-                  "type": "string"
-                },
-                {
-                  "const": "security",
-                  "type": "string"
-                },
-                {
-                  "const": "api",
-                  "type": "string"
-                },
-                {
-                  "const": "docs",
-                  "type": "string"
-                },
-                {
-                  "const": "test",
-                  "type": "string"
-                },
-                {
-                  "const": "verify",
-                  "type": "string"
-                }
-              ]
+              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+              "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+              "type": "string"
             }
           }
         },
@@ -4100,32 +4008,9 @@
               "type": "string"
             },
             "perspective": {
-              "anyOf": [
-                {
-                  "const": "code",
-                  "type": "string"
-                },
-                {
-                  "const": "security",
-                  "type": "string"
-                },
-                {
-                  "const": "api",
-                  "type": "string"
-                },
-                {
-                  "const": "docs",
-                  "type": "string"
-                },
-                {
-                  "const": "test",
-                  "type": "string"
-                },
-                {
-                  "const": "verify",
-                  "type": "string"
-                }
-              ]
+              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+              "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+              "type": "string"
             },
             "issues": {
               "type": "array",
@@ -4191,6 +4076,8 @@
               "type": "string"
             },
             "perspective": {
+              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+              "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
               "type": "string"
             },
             "error": {
@@ -5389,6 +5276,8 @@
               }
             },
             "perspective": {
+              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+              "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
               "type": "string"
             },
             "toolbelt": {
@@ -8780,32 +8669,9 @@
                     "perspectives": {
                       "type": "array",
                       "items": {
-                        "anyOf": [
-                          {
-                            "const": "code",
-                            "type": "string"
-                          },
-                          {
-                            "const": "security",
-                            "type": "string"
-                          },
-                          {
-                            "const": "api",
-                            "type": "string"
-                          },
-                          {
-                            "const": "docs",
-                            "type": "string"
-                          },
-                          {
-                            "const": "test",
-                            "type": "string"
-                          },
-                          {
-                            "const": "verify",
-                            "type": "string"
-                          }
-                        ]
+                        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                        "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                        "type": "string"
                       }
                     },
                     "categories": {
@@ -8900,63 +8766,17 @@
                     "perspectives": {
                       "type": "array",
                       "items": {
-                        "anyOf": [
-                          {
-                            "const": "code",
-                            "type": "string"
-                          },
-                          {
-                            "const": "security",
-                            "type": "string"
-                          },
-                          {
-                            "const": "api",
-                            "type": "string"
-                          },
-                          {
-                            "const": "docs",
-                            "type": "string"
-                          },
-                          {
-                            "const": "test",
-                            "type": "string"
-                          },
-                          {
-                            "const": "verify",
-                            "type": "string"
-                          }
-                        ]
+                        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                        "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                        "type": "string"
                       }
                     },
                     "dropped": {
                       "type": "array",
                       "items": {
-                        "anyOf": [
-                          {
-                            "const": "code",
-                            "type": "string"
-                          },
-                          {
-                            "const": "security",
-                            "type": "string"
-                          },
-                          {
-                            "const": "api",
-                            "type": "string"
-                          },
-                          {
-                            "const": "docs",
-                            "type": "string"
-                          },
-                          {
-                            "const": "test",
-                            "type": "string"
-                          },
-                          {
-                            "const": "verify",
-                            "type": "string"
-                          }
-                        ]
+                        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                        "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                        "type": "string"
                       }
                     }
                   }
@@ -9212,32 +9032,9 @@
                       "minItems": 1,
                       "type": "array",
                       "items": {
-                        "anyOf": [
-                          {
-                            "const": "code",
-                            "type": "string"
-                          },
-                          {
-                            "const": "security",
-                            "type": "string"
-                          },
-                          {
-                            "const": "api",
-                            "type": "string"
-                          },
-                          {
-                            "const": "docs",
-                            "type": "string"
-                          },
-                          {
-                            "const": "test",
-                            "type": "string"
-                          },
-                          {
-                            "const": "verify",
-                            "type": "string"
-                          }
-                        ]
+                        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                        "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                        "type": "string"
                       }
                     },
                     "maxRounds": {

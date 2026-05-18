@@ -10,7 +10,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import type { ReviewPerspective } from '../review-heuristics.js';
-import { categorizeFiles, determineApplicableReviewsWithRules, shouldParallelizeReview, FILE_COUNT_THRESHOLD, LINE_COUNT_THRESHOLD } from '../review-heuristics.js';
+import { categorizeFiles, determineApplicableReviewsWithRules, shouldParallelizeReview, isBuiltInReviewPerspective, FILE_COUNT_THRESHOLD, LINE_COUNT_THRESHOLD } from '../review-heuristics.js';
 import { emitBuildDecisionForPlan } from '../decisions.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { loadPrompt } from '../prompts.js';
@@ -160,9 +160,9 @@ export async function* runParallelReview(
 
   // Above threshold (or forced parallel) - run parallel specialist reviewers
   // Use perspectives override if provided, otherwise determine from file categories
-  let perspectives: ReviewPerspective[];
+  let perspectives: string[];
   if (perspectivesOverride) {
-    perspectives = perspectivesOverride as ReviewPerspective[];
+    perspectives = perspectivesOverride;
   } else {
     const categories = categorizeFiles(changedFiles);
     const { perspectives: inferred, rules } = determineApplicableReviewsWithRules(categories);
@@ -199,12 +199,27 @@ export async function* runParallelReview(
   yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:start', planId, perspectives };
 
   // Build parallel tasks for each perspective
-  const allIssues: Array<{ perspective: ReviewPerspective; issues: ReviewIssue[] }> = [];
+  const allIssues: Array<{ perspective: string; issues: ReviewIssue[] }> = [];
 
   const tasks: ParallelTask<EforgeEvent>[] = perspectives.map((perspective) => ({
     id: `review-${perspective}`,
     run: async function* (): AsyncGenerator<EforgeEvent> {
       yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:start', planId, perspective };
+
+      // --- eforge:region plan-01-dynamic-perspective-contracts ---
+      if (!isBuiltInReviewPerspective(perspective)) {
+        // Dynamic perspective keys have no built-in prompt or schema yet.
+        // Skip with a typed diagnostic until plan 2 wires extension dispatch.
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'plan:build:review:parallel:perspective:error',
+          planId,
+          perspective,
+          error: `Dynamic perspective '${perspective}' has no built-in prompt; extension dispatch will be added in a future release`,
+        };
+        return;
+      }
+      // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
       try {
         const prompt = await loadPrompt(PERSPECTIVE_PROMPTS[perspective], {

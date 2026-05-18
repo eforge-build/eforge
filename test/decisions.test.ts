@@ -53,6 +53,33 @@ describe('BuildDecisionSchema — valid kinds', () => {
     expect(result.perspectives).toEqual(['security', 'api']);
   });
 
+  // --- eforge:region plan-01-dynamic-perspective-contracts ---
+  it('parses perspectives-inferred with a dynamic perspective key', () => {
+    const result = parseWithSchema(BuildDecisionSchema,{
+      kind: 'perspectives-inferred',
+      rationale: 'Accessibility changes detected',
+      perspectives: ['code', 'accessibility'],
+      categories: ['ui'],
+      rules: ['ui-files → accessibility'],
+    });
+    expect(result.kind).toBe('perspectives-inferred');
+    expect(result.perspectives).toContain('accessibility');
+  });
+
+  it('parses perspectives-respawned with a dynamic perspective key', () => {
+    const result = parseWithSchema(BuildDecisionSchema,{
+      kind: 'perspectives-respawned',
+      rationale: 'Retaining accessibility for round 2',
+      round: 2,
+      perspectives: ['code', 'accessibility'],
+      dropped: ['performance-review'],
+    });
+    expect(result.kind).toBe('perspectives-respawned');
+    expect(result.perspectives).toContain('accessibility');
+    expect(result.dropped).toContain('performance-review');
+  });
+  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+
   it('parses cycle-terminated (no-issues)', () => {
     const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'cycle-terminated',

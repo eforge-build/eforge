@@ -140,12 +140,19 @@ export const sdkPassthroughConfigSchema = z.object({
 const STRATEGIES = ['auto', 'single', 'parallel'] as const;
 const STRICTNESS = ['strict', 'standard', 'lenient'] as const;
 
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
+/** Safe key rule for review perspective identifiers: lowercase slug 1–64 chars. */
+const reviewPerspectiveKeySchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{0,63}$/, 'Perspective key must be a lowercase slug starting with a letter (e.g. "code", "accessibility")');
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+
 // Bound to `z.ZodType<ReviewProfileConfig>` so a drift between this schema and
 // the shared TypeScript type in `@eforge-build/client` produces a compile error.
 export const reviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.object({
   strategy: z.enum(STRATEGIES).describe('Review strategy: "auto" picks based on perspective count, "single" uses one reviewer, "parallel" runs all perspectives concurrently'),
-  perspectives: z.array(z.enum(REVIEW_PERSPECTIVES)).nonempty()
-    .describe(`Review perspective names. Valid: ${REVIEW_PERSPECTIVES.join(', ')}. Example: ["code", "security", "api"]`),
+  perspectives: z.array(reviewPerspectiveKeySchema).nonempty()
+    .describe(`Review perspective keys. Built-ins: ${REVIEW_PERSPECTIVES.join(', ')}. Custom extension keys are also accepted (lowercase slugs). Example: ["code", "security", "api"]`),
   maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles (default 1)'),
   evaluatorStrictness: z.enum(STRICTNESS).describe('How strictly the evaluator judges fixes: "strict", "standard", or "lenient"'),
 });

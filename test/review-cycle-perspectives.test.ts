@@ -6,6 +6,9 @@ import {
 } from '@eforge-build/engine/review-cycle-perspectives';
 import type { ReviewIssue } from '@eforge-build/engine/events';
 
+// Note: ReviewPerspective is still used for built-in perspective tests.
+// Dynamic perspective keys are just strings and work alongside built-ins.
+
 const cleanEvaluation: ReviewCycleEvaluationSummary = {
   ran: true,
   accepted: 0,
@@ -342,3 +345,92 @@ describe('selectNextReviewPerspectives', () => {
     expect(result.rationale).toMatch(/Fallback/i);
   });
 });
+
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
+describe('selectNextReviewPerspectives — dynamic perspective key handling', () => {
+  it('preserves a dynamic key in previousActive when it has prior issues', () => {
+    const result = selectNextReviewPerspectives({
+      initialOrder: ['code', 'accessibility'],
+      previousActive: ['code', 'accessibility'],
+      issuesByPerspective: {
+        code: [],
+        accessibility: [{ severity: 'warning', category: 'bugs', file: 'src/app.ts', description: 'Issue' }],
+      },
+      evaluation: { ran: true, accepted: 0, rejected: 0, review: 0, files: [] },
+      previousReviewWasParallel: true,
+    });
+
+    expect(result.fallback).toBe(false);
+    expect(result.perspectives).toContain('accessibility');
+    expect(result.dropped).toContain('code');
+  });
+
+  it('drops a dynamic key when it has no prior issues and no concern evidence', () => {
+    const result = selectNextReviewPerspectives({
+      initialOrder: ['code', 'accessibility'],
+      previousActive: ['code', 'accessibility'],
+      issuesByPerspective: { code: [], accessibility: [] },
+      evaluation: { ran: true, accepted: 0, rejected: 0, review: 0, files: [] },
+      previousReviewWasParallel: true,
+    });
+
+    expect(result.fallback).toBe(false);
+    expect(result.perspectives).toEqual([]);
+    expect(result.dropped).toContain('accessibility');
+    expect(result.dropped).toContain('code');
+  });
+
+  it('preserves a dynamic key in perspectiveErrors when it errors, triggering fallback', () => {
+    const result = selectNextReviewPerspectives({
+      initialOrder: ['code', 'accessibility'],
+      previousActive: ['code', 'accessibility'],
+      issuesByPerspective: { code: [], accessibility: [] },
+      evaluation: { ran: true, accepted: 0, rejected: 0, review: 0, files: [] },
+      previousReviewWasParallel: true,
+      perspectiveErrors: ['accessibility'],
+    });
+
+    // Error in any perspective triggers fallback, preserving all including the dynamic key
+    expect(result.fallback).toBe(true);
+    expect(result.perspectives).toContain('accessibility');
+    expect(result.perspectives).toContain('code');
+    expect(result.dropped).toEqual([]);
+  });
+
+  it('preserves a dynamic key in dropped when it is dropped in the result', () => {
+    const result = selectNextReviewPerspectives({
+      initialOrder: ['code', 'accessibility'],
+      previousActive: ['code', 'accessibility'],
+      issuesByPerspective: {
+        code: [{ severity: 'warning', category: 'bugs', file: 'src/app.ts', description: 'Issue' }],
+        accessibility: [],
+      },
+      evaluation: { ran: true, accepted: 0, rejected: 0, review: 0, files: [] },
+      previousReviewWasParallel: true,
+    });
+
+    expect(result.fallback).toBe(false);
+    expect(result.perspectives).toContain('code');
+    expect(result.dropped).toContain('accessibility');
+  });
+
+  it('handles a mix of built-in and dynamic keys in issuesByPerspective', () => {
+    const result = selectNextReviewPerspectives({
+      initialOrder: ['code', 'security', 'performance-review'],
+      previousActive: ['code', 'security', 'performance-review'],
+      issuesByPerspective: {
+        code: [],
+        security: [{ severity: 'critical', category: 'security', file: 'src/auth.ts', description: 'Issue' }],
+        'performance-review': [],
+      },
+      evaluation: { ran: true, accepted: 0, rejected: 0, review: 0, files: [] },
+      previousReviewWasParallel: true,
+    });
+
+    expect(result.fallback).toBe(false);
+    expect(result.perspectives).toContain('security');
+    expect(result.dropped).toContain('code');
+    expect(result.dropped).toContain('performance-review');
+  });
+});
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---

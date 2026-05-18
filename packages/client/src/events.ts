@@ -35,6 +35,9 @@ export type {
   StalenessVerdict,
   RecoveryVerdict,
   ReviewPerspective,
+  // --- eforge:region plan-01-dynamic-perspective-contracts ---
+  ReviewPerspectiveKey,
+  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
   AgentTerminalSubtype,
   ShardScope,
   PipelineComposition,
@@ -60,6 +63,10 @@ export {
   parseEforgeEvent,
   safeParseDaemonStreamSnapshot,
   safeParseSessionStreamSnapshot,
+  // --- eforge:region plan-01-dynamic-perspective-contracts ---
+  ReviewPerspectiveKeySchema,
+  isBuiltInReviewPerspective,
+  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 } from './events.schemas.js';
 
 export { EforgeEventSchema } from './events.schemas.js';

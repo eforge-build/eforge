@@ -22,25 +22,33 @@ export interface ReviewCycleEvaluationSummary {
   files: ReviewCycleEvaluationFileSummary[];
 }
 
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
 export interface SelectNextReviewPerspectivesInput {
-  initialOrder: ReviewPerspective[];
-  previousActive: ReviewPerspective[];
-  issuesByPerspective?: Partial<Record<ReviewPerspective, ReviewIssue[]>>;
+  /** Stable ordering from the first review round; may include dynamic keys. */
+  initialOrder: string[];
+  /** Perspectives that were active in the previous review round; may include dynamic keys. */
+  previousActive: string[];
+  /** Issues collected from the previous review indexed by perspective key. */
+  issuesByPerspective?: Partial<Record<string, ReviewIssue[]>>;
   evaluation?: ReviewCycleEvaluationSummary;
   previousReviewWasParallel: boolean;
-  perspectiveErrors?: ReviewPerspective[];
+  /** Perspective keys that errored in the previous review round. */
+  perspectiveErrors?: string[];
 }
 
 export interface SelectNextReviewPerspectivesResult {
-  perspectives: ReviewPerspective[];
-  dropped: ReviewPerspective[];
+  /** Perspectives to use in the next review round; may include dynamic keys. */
+  perspectives: string[];
+  /** Perspectives dropped from the next round; may include dynamic keys. */
+  dropped: string[];
   rationale: string;
   fallback: boolean;
 }
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
-function uniqueOrdered(perspectives: ReviewPerspective[]): ReviewPerspective[] {
-  const seen = new Set<ReviewPerspective>();
-  const ordered: ReviewPerspective[] = [];
+function uniqueOrdered(perspectives: string[]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
   for (const perspective of perspectives) {
     if (seen.has(perspective)) continue;
     seen.add(perspective);
@@ -49,7 +57,7 @@ function uniqueOrdered(perspectives: ReviewPerspective[]): ReviewPerspective[] {
   return ordered;
 }
 
-function stableActiveOrder(initialOrder: ReviewPerspective[], previousActive: ReviewPerspective[]): ReviewPerspective[] {
+function stableActiveOrder(initialOrder: string[], previousActive: string[]): string[] {
   const active = new Set(previousActive);
   const baseOrder = initialOrder.length > 0 ? initialOrder : previousActive;
   const ordered = uniqueOrdered(baseOrder).filter(perspective => active.has(perspective));
@@ -59,7 +67,7 @@ function stableActiveOrder(initialOrder: ReviewPerspective[], previousActive: Re
   return ordered;
 }
 
-function fallback(previousActive: ReviewPerspective[], rationale: string): SelectNextReviewPerspectivesResult {
+function fallback(previousActive: string[], rationale: string): SelectNextReviewPerspectivesResult {
   return {
     perspectives: [...previousActive],
     dropped: [],
@@ -86,8 +94,8 @@ function hasAcceptedVerdict(summary: ReviewCycleEvaluationFileSummary): boolean 
 }
 
 function hasPriorIssues(
-  perspective: ReviewPerspective,
-  issuesByPerspective: Partial<Record<ReviewPerspective, ReviewIssue[]>>,
+  perspective: string,
+  issuesByPerspective: Partial<Record<string, ReviewIssue[]>>,
 ): boolean {
   return (issuesByPerspective[perspective]?.length ?? 0) > 0;
 }
@@ -105,13 +113,22 @@ function verifyShouldRemain(evaluation: ReviewCycleEvaluationSummary): boolean {
   return acceptedFiles.some(file => !isDocsPath(file));
 }
 
-function concernPerspectives(evaluation: ReviewCycleEvaluationSummary): Set<ReviewPerspective> {
+// --- eforge:region plan-01-dynamic-perspective-contracts ---
+/**
+ * Derive which built-in concern perspectives apply to the files touched by
+ * evaluation verdicts. Returns a Set of strings (built-in names) for
+ * intersection with the current active perspective list which may also
+ * contain dynamic keys. Dynamic keys won't appear here — they're retained
+ * only via prior-issues logic, not concern inference.
+ */
+function concernPerspectives(evaluation: ReviewCycleEvaluationSummary): Set<string> {
   const relevantFiles = evaluation.files
     .filter(hasAnyVerdict)
     .map(summary => summary.file);
   const categories = categorizeFiles(relevantFiles);
-  return new Set(determineApplicableReviewsWithRules(categories).perspectives);
+  return new Set<string>(determineApplicableReviewsWithRules(categories).perspectives);
 }
+// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
 export function selectNextReviewPerspectives(
   input: SelectNextReviewPerspectivesInput,
@@ -148,8 +165,8 @@ export function selectNextReviewPerspectives(
   const overlappingConcerns = concernPerspectives(input.evaluation);
   const keepVerifyForAcceptedChanges = verifyShouldRemain(input.evaluation);
 
-  const perspectives: ReviewPerspective[] = [];
-  const dropped: ReviewPerspective[] = [];
+  const perspectives: string[] = [];
+  const dropped: string[] = [];
 
   for (const perspective of stableOrder) {
     const keepForIssues = hasPriorIssues(perspective, issuesByPerspective);
