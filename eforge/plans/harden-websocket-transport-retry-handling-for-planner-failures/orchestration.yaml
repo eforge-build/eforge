@@ -1,0 +1,53 @@
+name: harden-websocket-transport-retry-handling-for-planner-failures
+description: "Harden the centralized WebSocket transport classifier so planner
+  pre-submission Backend error: WebSocket closed 1000 failures retry through the
+  existing safe continuation path while preserving post-submission and
+  non-transport safeguards."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- test/pi-transport-resilience.test.ts
+    test/pipeline-error-translator.test.ts test/retry.test.ts
+plans:
+  - id: plan-01-websocket-close-classifier
+    name: Harden WebSocket Close Transport Classification
+    depends_on: []
+    branch: harden-websocket-transport-retry-handling-for-planner-failures/plan-01-websocket-close-classifier
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: "This is a focused but safety-sensitive engine bugfix: a centralized
+    transport classifier update plus targeted retry regression tests. Excursion
+    fits because one planner can enumerate the needed changes without delegated
+    module planning. The plan-review-cycle helps preserve the retry safety
+    boundary. Build includes implementation, explicit test authoring, test
+    execution, and an iterative review cycle focused on code correctness,
+    regression coverage, and verification that planner post-submission non-retry
+    behavior is preserved."
