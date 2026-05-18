@@ -128,3 +128,39 @@ export type {
   NormalizeBuildSourceInput,
   NormalizeBuildSourceResult,
 } from './session-plan.js';
+
+// ---------------------------------------------------------------------------
+// Extension-aware preprocessing exports
+// ---------------------------------------------------------------------------
+
+export {
+  // Main preprocessing helper
+  preprocessBuildSource,
+
+  // Reference parser
+  parseInputSourceReference,
+
+  // Fatal error class
+  FatalPreprocessingError,
+} from './extension-normalize.js';
+
+export type {
+  // Structural registration types
+  InputSourceRegistrationLike,
+  PrdEnricherRegistrationLike,
+
+  // Provenance event types
+  InputSourceFetchedEvent,
+  InputSourceFailedEvent,
+  PrdEnricherAppliedEvent,
+  PrdEnricherFailedEvent,
+  PreprocessingProvenanceEvent,
+
+  // Result types
+  PreprocessingProvenance,
+  PreprocessingResult,
+  PreprocessBuildSourceOpts,
+
+  // Reference parser type
+  InputSourceReference,
+} from './extension-normalize.js';

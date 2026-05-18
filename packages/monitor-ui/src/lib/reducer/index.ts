@@ -318,6 +318,14 @@ export const IGNORED_EVENT_TYPES = [
   // exhaustiveness check passes.
   'daemon:run:upsert',
   // --- eforge:endregion plan-01-daemon-run-state-events ---
+  // --- eforge:region plan-01-extension-input-contracts ---
+  // Input-source and PRD-enricher provenance events — session-scoped, non-persistent.
+  // Monitor UI rendering is out of scope for this plan.
+  'extension:input-source:fetched',
+  'extension:input-source:failed',
+  'extension:prd-enricher:applied',
+  'extension:prd-enricher:failed',
+  // --- eforge:endregion plan-01-extension-input-contracts ---
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ export interface InputSourceAdapter { name: string; description: string; fetch: 
 export interface ReviewerPerspectiveSpec { key: string; label: string; promptFragment: string }
 export interface ValidationProviderSpec { name: string; description: string; validate: ExtensionHandler }
 export interface ExtensionTool { name: string; description: string; inputSchema: object; handler: ExtensionHandler }
+export interface PrdEnricherSpec { name: string; description: string; enrich: ExtensionHandler }
 export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
 export type PolicyGateMethod = 'beforeQueueDispatch' | 'beforePlanMerge' | 'beforeFinalMerge';
 export interface EforgeExtensionAPIShape {
@@ -17,6 +18,7 @@ export interface EforgeExtensionAPIShape {
   beforeFinalMerge(handler: ExtensionHandler): void;
   registerProfileRouter(spec: ProfileRouterSpec): void;
   registerInputSource(adapter: InputSourceAdapter): void;
+  registerPrdEnricher(enricher: PrdEnricherSpec): void;
   registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void;
   registerValidationProvider(spec: ValidationProviderSpec): void;
   registerTool(tool: ExtensionTool): void;
@@ -122,6 +124,7 @@ export type InputSourceRegistration = BaseExtensionRegistration<'inputSource', I
 export type ReviewerPerspectiveRegistration = BaseExtensionRegistration<'reviewerPerspective', ReviewerPerspectiveSpec> & { name: string };
 export type ValidationProviderRegistration = BaseExtensionRegistration<'validationProvider', ValidationProviderSpec> & { name: string };
 export type ToolRegistration = BaseExtensionRegistration<'tool', ExtensionTool> & { name: string };
+export type PrdEnricherRegistration = BaseExtensionRegistration<'prdEnricher', PrdEnricherSpec> & { name: string };
 
 export interface NativeExtensionRecorderState {
   eventHooks: EventHookRegistration[];
@@ -132,6 +135,7 @@ export interface NativeExtensionRecorderState {
   reviewerPerspectives: ReviewerPerspectiveRegistration[];
   validationProviders: ValidationProviderRegistration[];
   tools: ToolRegistration[];
+  prdEnrichers: PrdEnricherRegistration[];
   diagnostics: NativeExtensionDiagnostic[];
 }
 
@@ -151,6 +155,7 @@ export interface LoadedNativeExtension {
     reviewerPerspectives: number;
     validationProviders: number;
     tools: number;
+    prdEnrichers: number;
   };
 }
 

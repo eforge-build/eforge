@@ -111,6 +111,7 @@ export interface ExtensionRegistrationSummary {
   reviewerPerspectives: number;
   validationProviders: number;
   tools: number;
+  prdEnrichers: number;
 }
 
 export interface ExtensionEntry {
@@ -206,7 +207,8 @@ export type ExtensionTestDeferredRegistrationFamily =
   | 'inputSources'
   | 'reviewerPerspectives'
   | 'validationProviders'
-  | 'tools';
+  | 'tools'
+  | 'prdEnrichers';
 
 export interface ExtensionTestDeferredRegistrationSummary {
   family: ExtensionTestDeferredRegistrationFamily;

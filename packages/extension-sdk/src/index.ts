@@ -39,6 +39,7 @@ export type {
   ProfileRouterContext,
   ProfileSummary,
   ProfileUsageSummary,
+  InputTransformContext,
 } from './context.js';
 
 // Hook handler and result types
@@ -54,6 +55,10 @@ export type {
   ProfileRouterSpec,
   ProfileRouterResult,
   InputSourceAdapter,
+  InputSourceResult,
+  PrdEnrichmentInput,
+  PrdEnrichmentResult,
+  PrdEnricher,
   ReviewerPerspectiveSpec,
   ValidationProviderSpec,
 } from './hooks.js';

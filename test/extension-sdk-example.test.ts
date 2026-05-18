@@ -29,6 +29,9 @@ import profileRouter from '../examples/extensions/profile-router.js';
 import agentContext from '../examples/extensions/agent-context.js';
 import slackWebhookNotifier from '../examples/extensions/slack-webhook-notifier.js';
 // --- eforge:endregion plan-01-extension-docs-examples-sync ---
+// --- eforge:region plan-01-docs-example-and-skills ---
+import issueTracker from '../examples/extensions/issue-tracker.js';
+// --- eforge:endregion plan-01-docs-example-and-skills ---
 
 const EXTENSION_EXAMPLE_DIR = resolve(fileURLToPath(new URL('../examples/extensions', import.meta.url)));
 const importedExampleFiles = [
@@ -36,6 +39,9 @@ const importedExampleFiles = [
   // --- eforge:region plan-02-docs-examples ---
   'agent-tools.ts',
   // --- eforge:endregion plan-02-docs-examples ---
+  // --- eforge:region plan-01-docs-example-and-skills ---
+  'issue-tracker.ts',
+  // --- eforge:endregion plan-01-docs-example-and-skills ---
   'minimal-event-logger.ts',
   'profile-router.ts',
   'protected-paths.ts',
@@ -66,6 +72,10 @@ const _factoryCheck3: sdk.EforgeExtensionFactory = (api) => {
     handler: () => 'ok',
   });
 };
+// --- eforge:region plan-01-docs-example-and-skills ---
+const _factoryCheckIssueTracker: sdk.EforgeExtensionFactory = issueTracker;
+void _factoryCheckIssueTracker;
+// --- eforge:endregion plan-01-docs-example-and-skills ---
 void _factoryCheck1;
 void _factoryCheck2;
 void _factoryCheck3;
@@ -117,6 +127,63 @@ const _policyGateStub: sdk.EforgeExtensionFactory = (api) => {
 };
 void _policyGateStub;
 // --- eforge:endregion plan-01-sdk-and-wire-contracts ---
+
+// --- eforge:region plan-01-extension-input-contracts ---
+
+// Compile-time examples: old one-argument input source remains compatible
+const _oldInputSourceStub: sdk.EforgeExtensionFactory = (api) => {
+  api.registerInputSource({
+    name: 'my-ext:linear',
+    description: 'Fetch issues from Linear',
+    fetch: async (id: string) => `Issue ${id} content`,
+  });
+};
+void _oldInputSourceStub;
+
+// Compile-time example: context-aware input source
+const _contextAwareInputSourceStub: sdk.EforgeExtensionFactory = (api) => {
+  api.registerInputSource({
+    name: 'my-ext:context-aware',
+    description: 'Context-aware input source',
+    fetch: async (id: string, ctx?: sdk.InputTransformContext) => {
+      if (ctx) {
+        ctx.logger.info(`Fetching ${id} from ${ctx.cwd}`);
+      }
+      return { content: `Issue ${id}`, title: `Linear ${id}` };
+    },
+  });
+};
+void _contextAwareInputSourceStub;
+
+// Compile-time example: object-return input source
+const _objectReturnInputSourceStub: sdk.EforgeExtensionFactory = (api) => {
+  api.registerInputSource({
+    name: 'my-ext:object-return',
+    description: 'Object-returning input source',
+    fetch: async (id: string): Promise<sdk.InputSourceResult | null> => {
+      if (!id) return null;
+      return { content: `Content for ${id}`, title: `Title for ${id}` };
+    },
+  });
+};
+void _objectReturnInputSourceStub;
+
+// Compile-time example: PRD enricher
+const _prdEnricherStub: sdk.EforgeExtensionFactory = (api) => {
+  api.registerPrdEnricher({
+    name: 'my-ext:context-injector',
+    description: 'Injects project context into PRD content',
+    async enrich({ content, ctx }: sdk.PrdEnrichmentInput): Promise<sdk.PrdEnrichmentResult> {
+      const _sourceId: string = ctx.adapterId ?? 'unknown';
+      void _sourceId;
+      ctx.logger.info(`Enriching content from ${ctx.cwd}`);
+      return { content: content + '\n\n## Context\nInjected context.' };
+    },
+  });
+};
+void _prdEnricherStub;
+
+// --- eforge:endregion plan-01-extension-input-contracts ---
 
 function captureSlackPlanErrorHandler(): sdk.EventHookHandler<'plan:error:set'> {
   let handler: sdk.EventHookHandler<'plan:error:set'> | undefined;
@@ -321,6 +388,11 @@ type _TypeExports = [
   sdk.ProfileSummary,
   sdk.ProfileUsageSummary,
   sdk.InputSourceAdapter,
+  sdk.InputSourceResult,
+  sdk.InputTransformContext,
+  sdk.PrdEnrichmentInput,
+  sdk.PrdEnrichmentResult,
+  sdk.PrdEnricher,
   sdk.ReviewerPerspectiveSpec,
   sdk.ValidationProviderSpec,
   sdk.EforgeEvent,

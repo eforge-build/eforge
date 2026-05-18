@@ -171,7 +171,7 @@ describe('extension tooling daemon routes', () => {
 
     expect(data.extensions.length).toBeGreaterThan(0);
     expect(data.extensions.every((entry) => entry.enabled === false)).toBe(true);
-    expect(data.totals).toMatchObject({ eventHooks: 0, inputSources: 0, tools: 0 });
+    expect(data.totals).toMatchObject({ eventHooks: 0, inputSources: 0, tools: 0, prdEnrichers: 0 });
   });
 
   it('GET extensionList marks include-filtered auto entries disabled while selected entries stay enabled', async () => {
@@ -612,7 +612,7 @@ describe('extension tooling daemon routes', () => {
       expect.objectContaining({ name: 'team', trustState: 'untrusted', currentHash: expect.stringMatching(/^[0-9a-f]{64}$/) }),
     ]));
     expect(Array.isArray(data.diagnostics)).toBe(true);
-    expect(data.totals).toMatchObject({ inputSources: 1 });
+    expect(data.totals).toMatchObject({ inputSources: 1, prdEnrichers: 0 });
     expect(data.watcher).toEqual({
       wasRunning: false,
       restarted: false,

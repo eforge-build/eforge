@@ -36,6 +36,7 @@ export interface NativeExtensionRegistryProjection {
     reviewerPerspectives: number;
     validationProviders: number;
     tools: number;
+    prdEnrichers: number;
   };
 }
 
@@ -61,6 +62,7 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
       reviewerPerspectives: registry.reviewerPerspectives.length,
       validationProviders: registry.validationProviders.length,
       tools: registry.tools.length,
+      prdEnrichers: registry.prdEnrichers.length,
     },
   };
 }

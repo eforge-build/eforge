@@ -63,7 +63,7 @@ The eforge daemon discovers and loads native extensions from three scopes:
 
 Precedence is `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. Extensions run in the eforge daemon/worker Node process without a sandbox. Project/team extensions require an explicit per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` — before loading; any content change invalidates the stored hash and blocks the extension until re-trusted. Trust/untrust commands only discover and hash project/team candidates and update `.eforge/extension-trust.json`; they do not import the module or execute its factory. Later validate, test, reload, or build operations may load and execute trusted extension code.
 
-Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, and the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`) are wired. Input sources, reviewer perspectives, validation providers, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions remain deferred.
+Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, and `registerPrdEnricher` content enrichment are wired. Reviewer perspectives, validation providers, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions remain deferred.
 
 ## Registration methods
 
@@ -76,11 +76,12 @@ Loader-time registration capture is available today: the daemon calls each defau
 | `beforePlanMerge(handler)` | Policy gate before plan worktree is merged into the integration branch | Yes | Yes (blocking policy gate) |
 | `beforeFinalMerge(handler)` | Policy gate before final feature merge | Yes | Yes (blocking policy gate) |
 | `registerProfileRouter(spec)` | Select agent runtime profile per build (canonical: `selectBuildProfile`) | Yes | Yes (pre-build dispatch) |
-| `registerInputSource(adapter)` | Produce PRD/build-source artifacts | Yes | Deferred |
+| `registerInputSource(adapter)` | Produce PRD/build-source artifacts via `eforge://input/<adapter>/<id>` URIs | Yes | Yes (extension-aware enqueue preprocessing) |
+| `registerPrdEnricher(spec)` | Enrich PRD/build-source content before queue write | Yes | Yes (fail-open) |
 | `registerReviewerPerspective(spec)` | Add custom review perspective | Yes | Deferred |
 | `registerValidationProvider(spec)` | Add custom validation step | Yes | Deferred |
 
-All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, `onAgentRun` prompt-context augmentation, per-run extension tool injection, tool availability tuning, `registerProfileRouter` pre-build dispatch, and `beforeQueueDispatch` / `beforePlanMerge` / `beforeFinalMerge` policy gates are wired; custom input fetching, reviewer perspective execution, validation provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions land in subsequent runtime phases.
+All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, `onAgentRun` prompt-context augmentation, per-run extension tool injection, tool availability tuning, `registerProfileRouter` pre-build dispatch, `beforeQueueDispatch` / `beforePlanMerge` / `beforeFinalMerge` policy gates, `registerInputSource` enqueue preprocessing, and `registerPrdEnricher` content enrichment are wired; reviewer perspective execution, validation provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions land in subsequent runtime phases.
 
 `registerProfileRouter` routers run before each queued PRD build. Per-router timeout is controlled by `extensions.profileRouterTimeoutMs`, which defaults to `extensions.eventHookTimeoutMs`. Routers are invoked sequentially in registration order using `selectBuildProfile` (preferred) or the deprecated `resolve` method. A `null`/`undefined` result defers to the next router. Routers that throw or time out emit `queue:profile:*` diagnostics and the next router is consulted (fail-open). An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are invoked. See [`examples/extensions/profile-router.ts`](../../examples/extensions/profile-router.ts) for a three-tier fallback example.
 
@@ -104,6 +105,64 @@ return { decision: "block", reason: "Do not merge .env changes" };
 // require human approval (currently blocks because no approval workflow exists)
 return { decision: "require-approval", reason: "Sensitive path changed" };
 ```
+
+## Input sources and PRD enrichers
+
+### Input source adapters
+
+Input source adapters let extensions supply PRD/build-source artifacts from external systems using `eforge://input/<adapter>/<id>` URIs. The runtime selects an adapter by exact `name` match against the URI's `<adapter>` segment.
+
+```ts
+eforge.registerInputSource({
+  name: 'linear',
+  description: 'Fetch Linear issues as build-source artifacts',
+  fetch: async (id: string, ctx?: InputTransformContext) => {
+    const apiKey = process.env['LINEAR_API_KEY'];
+    if (!apiKey) {
+      // Safe-by-default: return instructions rather than throwing.
+      return { content: '# Configure LINEAR_API_KEY to enable this adapter', title: `${id} (unconfigured)` };
+    }
+    ctx?.logger.info(`Fetching Linear issue ${id}`);
+    // ... call Linear API and return { content, title }
+    return null; // null signals not-found and is fatal to enqueue
+  },
+});
+```
+
+The `fetch` method signature accepts an optional `InputTransformContext` for context-aware adapters:
+
+```ts
+interface InputTransformContext extends EforgeExtensionContext {
+  cwd: string;           // project working directory
+  originalSource: string; // raw input as originally provided
+  sourceKind: 'inline' | 'file' | 'extension-reference';
+  sourcePath?: string;   // set when sourceKind is 'file'
+  adapterId?: string;    // set when sourceKind is 'extension-reference'
+}
+```
+
+Returning `null` or throwing is fatal to enqueue. Design adapters to return instructional `InputSourceResult` content when credentials are absent rather than throwing. Provenance events: `extension:input-source:fetched` and `extension:input-source:failed`.
+
+### PRD enrichers
+
+PRD enrichers mutate or augment PRD content after input source preprocessing and before the artifact is written to the queue. Enrichers run in registration order and receive the output of the previous enricher as input. Gate behavior inside `enrich` using `input.ctx` fields if you need to act only for specific sources.
+
+```ts
+eforge.registerPrdEnricher({
+  name: 'context-injector',
+  description: 'Appends project context to every PRD',
+  async enrich({ content, sourceId, ctx }) {
+    // Use ctx.adapterId to act only for extension-reference sources.
+    if (ctx.sourceKind !== 'extension-reference') return null; // pass through unchanged
+    ctx.logger.info(`Enriching ${sourceId} from ${ctx.cwd}`);
+    return { content: content + '\n\n## Project context\n...' };
+  },
+});
+```
+
+Enricher failures are fail-open: a thrown error emits `extension:prd-enricher:failed` and the unchanged content carries forward. Provenance events: `extension:prd-enricher:applied` and `extension:prd-enricher:failed`.
+
+See [`examples/extensions/issue-tracker.ts`](../../examples/extensions/issue-tracker.ts) for a worked example with GitHub, Linear, and Jira adapters.
 
 ## Custom tools
 
@@ -165,4 +224,4 @@ Local docs: [`docs/extensions.md`](../../docs/extensions.md) and [`docs/extensio
 
 ## Stability
 
-Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, `onEvent` execution/replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, and the shipped policy-gate subset are available. Runtime execution of deferred capability families will build on this stable contract.
+Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, `onEvent` execution/replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset, `registerInputSource` enqueue preprocessing, and `registerPrdEnricher` content enrichment are available. Runtime execution of remaining deferred capability families (reviewer perspectives, validation providers, approval workflow) will build on this stable contract.

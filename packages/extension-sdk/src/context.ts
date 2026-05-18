@@ -257,6 +257,44 @@ export interface FinalMergePolicyGateContext extends EforgeExtensionContext {
   diff: ExtensionDiff;
 }
 
+// ---------------------------------------------------------------------------
+// Input transform context
+// ---------------------------------------------------------------------------
+
+/**
+ * Context passed to input source adapters and PRD enrichers at runtime.
+ *
+ * Provides metadata about the current input being processed, including the
+ * working directory, original source content, and source provenance.
+ *
+ * @remarks Runtime-supported for input source and PRD enricher execution
+ * (EXTEND_11).
+ */
+export interface InputTransformContext extends EforgeExtensionContext {
+  /** Absolute path to the project working directory. */
+  cwd: string;
+  /** The raw input content as originally provided (before any transformations). */
+  originalSource: string;
+  /**
+   * How the source was supplied:
+   * - `'inline'` - raw text provided directly (e.g. via CLI flag).
+   * - `'file'` - content read from a local file path.
+   * - `'extension-reference'` - a symbolic reference resolved by a registered
+   *   input source adapter.
+   */
+  sourceKind: 'inline' | 'file' | 'extension-reference';
+  /**
+   * Absolute path to the source file, when `sourceKind` is `'file'`.
+   * Absent for inline or extension-reference sources.
+   */
+  sourcePath?: string;
+  /**
+   * The adapter or source identifier that produced this input, when
+   * `sourceKind` is `'extension-reference'`. Absent for inline or file sources.
+   */
+  adapterId?: string;
+}
+
 /** Union of all policy-gate contexts. */
 export type AnyPolicyGateContext =
   | QueueDispatchPolicyGateContext

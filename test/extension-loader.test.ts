@@ -402,6 +402,7 @@ describe('native extension loader', () => {
     const registrations = `
       eforge.registerProfileRouter({ name: 'shared', resolve: () => null });
       eforge.registerInputSource({ name: 'shared', description: 'input', fetch: async () => null });
+      eforge.registerPrdEnricher({ name: 'shared', description: 'enricher', enrich: async () => null });
       eforge.registerReviewerPerspective({ key: 'shared', label: 'Perspective', promptFragment: 'Review this' });
       eforge.registerValidationProvider({ name: 'shared', description: 'validator', validate: () => null });
       eforge.registerTool({ name: 'shared', description: 'tool', inputSchema: { type: 'object', properties: {} }, handler: () => 'ok' });
@@ -414,10 +415,11 @@ describe('native extension loader', () => {
       .filter((diagnostic) => diagnostic.code === 'extension:duplicate-registration')
       .map((diagnostic) => diagnostic.message);
 
-    expect(duplicateMessages).toHaveLength(5);
+    expect(duplicateMessages).toHaveLength(6);
     expect(duplicateMessages).toEqual(expect.arrayContaining([
       expect.stringContaining('Duplicate profile router name "shared"'),
       expect.stringContaining('Duplicate input source name "shared"'),
+      expect.stringContaining('Duplicate PRD enricher name "shared"'),
       expect.stringContaining('Duplicate reviewer perspective name "shared"'),
       expect.stringContaining('Duplicate validation provider name "shared"'),
       expect.stringContaining('Duplicate tool name "shared"'),
@@ -437,6 +439,7 @@ describe('native extension loader', () => {
         eforge.beforeFinalMerge(() => ({ decision: 'allow' }));
         eforge.registerProfileRouter({ name: 'router', resolve: () => null });
         eforge.registerInputSource({ name: 'input', description: 'input', fetch: async () => null });
+        eforge.registerPrdEnricher({ name: 'enricher', description: 'enricher', enrich: async () => null });
         eforge.registerReviewerPerspective({ key: 'perspective', label: 'Perspective', promptFragment: 'Review this' });
         eforge.registerValidationProvider({ name: 'validator', description: 'validator', validate: () => null });
         eforge.registerTool({ name: 'tool', description: 'tool', inputSchema: ${JSON.stringify(Type.Object({}))}, handler: () => 'ok' });
@@ -454,6 +457,7 @@ describe('native extension loader', () => {
     ]);
     expect(result.registry.profileRouters).toEqual([expect.objectContaining({ name: 'router', extensionName: 'capture' })]);
     expect(result.registry.inputSources).toEqual([expect.objectContaining({ name: 'input', extensionName: 'capture' })]);
+    expect(result.registry.prdEnrichers).toEqual([expect.objectContaining({ name: 'enricher', extensionName: 'capture' })]);
     expect(result.registry.reviewerPerspectives).toEqual([expect.objectContaining({ name: 'perspective', extensionName: 'capture' })]);
     expect(result.registry.validationProviders).toEqual([expect.objectContaining({ name: 'validator', extensionName: 'capture' })]);
     expect(result.registry.tools).toEqual([expect.objectContaining({ name: 'tool', extensionName: 'capture' })]);
@@ -468,6 +472,7 @@ describe('native extension loader', () => {
       reviewerPerspectives: 1,
       validationProviders: 1,
       tools: 1,
+      prdEnrichers: 1,
     });
     expect(projection.extensions).toEqual([expect.objectContaining({
       name: 'capture',
@@ -613,4 +618,85 @@ describe('native extension loader', () => {
   });
 
   // --- eforge:endregion plan-01-sdk-and-wire-contracts ---
+
+  // --- eforge:region plan-01-extension-input-contracts ---
+
+  it('registers a valid PRD enricher and records counts correctly', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'enricher.js'), `
+      export default function extension(eforge) {
+        eforge.registerInputSource({ name: 'my-source', description: 'source', fetch: async () => 'content' });
+        eforge.registerPrdEnricher({ name: 'my-enricher', description: 'enricher', enrich: async () => null });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.inputSources).toHaveLength(1);
+    expect(result.registry.prdEnrichers).toHaveLength(1);
+    expect(result.registry.prdEnrichers[0]).toMatchObject({
+      kind: 'prdEnricher',
+      extensionName: 'enricher',
+      name: 'my-enricher',
+    });
+    expect(typeof result.registry.prdEnrichers[0]?.value.enrich).toBe('function');
+
+    const projection = projectExtensionRegistry(result.registry);
+    expect(projection.totals.inputSources).toBe(1);
+    expect(projection.totals.prdEnrichers).toBe(1);
+    const loadedExt = projection.extensions.find((e) => e.name === 'enricher');
+    expect(loadedExt?.registrations.inputSources).toBe(1);
+    expect(loadedExt?.registrations.prdEnrichers).toBe(1);
+  });
+
+  it('emits extension:invalid-registration for a PRD enricher missing required fields', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    await writeModule(resolve(extensions, 'bad-enricher.js'), `
+      export default function extension(eforge) {
+        eforge.registerPrdEnricher({ name: 'bad', description: 'missing enrich' });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.prdEnrichers).toHaveLength(0);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'extension:invalid-registration',
+      name: 'bad',
+      message: expect.stringContaining('registerPrdEnricher requires'),
+    }));
+  });
+
+  it('emits extension:duplicate-registration for duplicate PRD enricher names and keeps the first', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    await writeModule(resolve(extensions, 'first-enricher.js'), `
+      export default function extension(eforge) {
+        eforge.registerPrdEnricher({ name: 'shared-enricher', description: 'first', enrich: async () => null });
+      }
+    `);
+    await writeModule(resolve(extensions, 'second-enricher.js'), `
+      export default function extension(eforge) {
+        eforge.registerPrdEnricher({ name: 'shared-enricher', description: 'second', enrich: async () => null });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    // First registration should be kept
+    expect(result.registry.prdEnrichers).toHaveLength(1);
+    expect(result.registry.prdEnrichers[0]?.value.description).toBe('first');
+    // Duplicate should emit a diagnostic
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'extension:duplicate-registration',
+      name: 'shared-enricher',
+      message: expect.stringContaining('Duplicate PRD enricher name "shared-enricher"'),
+    }));
+  });
+
+  // --- eforge:endregion plan-01-extension-input-contracts ---
 });

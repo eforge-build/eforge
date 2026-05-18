@@ -2555,6 +2555,197 @@
           "type": "object",
           "required": [
             "type",
+            "extensionPath",
+            "extensionName",
+            "adapterName",
+            "sourceId",
+            "contentLength"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:input-source:fetched",
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "adapterName": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "contentLength": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "extensionPath",
+            "extensionName",
+            "adapterName",
+            "sourceId",
+            "reason",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:input-source:failed",
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "adapterName": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "const": "not-found",
+                  "type": "string"
+                },
+                {
+                  "const": "error",
+                  "type": "string"
+                },
+                {
+                  "const": "timeout",
+                  "type": "string"
+                },
+                {
+                  "const": "invalid-result",
+                  "type": "string"
+                }
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "extensionPath",
+            "extensionName",
+            "enricherName",
+            "sourceId",
+            "changed",
+            "inputLength",
+            "outputLength"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:prd-enricher:applied",
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "enricherName": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "changed": {
+              "type": "boolean"
+            },
+            "inputLength": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "outputLength": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "extensionPath",
+            "extensionName",
+            "enricherName",
+            "sourceId",
+            "reason",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:prd-enricher:failed",
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "enricherName": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "const": "error",
+                  "type": "string"
+                },
+                {
+                  "const": "timeout",
+                  "type": "string"
+                },
+                {
+                  "const": "invalid-result",
+                  "type": "string"
+                }
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "source"
           ],
           "properties": {

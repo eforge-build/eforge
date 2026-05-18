@@ -64,6 +64,7 @@ const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
   reviewerPerspectives: 0,
   validationProviders: 0,
   tools: 0,
+  prdEnrichers: 0,
 };
 
 const DEFERRED_FAMILIES = [
@@ -74,6 +75,7 @@ const DEFERRED_FAMILIES = [
   'reviewerPerspectives',
   'validationProviders',
   'tools',
+  'prdEnrichers',
 ] as const satisfies readonly ExtensionTestDeferredRegistrationFamily[];
 
 type ReplayDiagnosticEvent = Extract<
@@ -338,6 +340,7 @@ function selectRegistry(registry: NativeExtensionRegistry, options: Pick<NativeE
     reviewerPerspectives: registry.reviewerPerspectives.filter(matches),
     validationProviders: registry.validationProviders.filter(matches),
     tools: registry.tools.filter(matches),
+    prdEnrichers: registry.prdEnrichers.filter(matches),
     diagnostics: registry.diagnostics.filter((diagnostic) => {
       if (options.name && diagnostic.name !== options.name) return false;
       if (options.path && diagnostic.path !== options.path) return false;

@@ -6,6 +6,9 @@ import { resolve } from 'node:path';
 declare const EFORGE_VERSION: string;
 
 import { EforgeEngine } from '@eforge-build/engine/eforge';
+// --- eforge:region plan-02-enqueue-preprocessing-runtime ---
+import { preprocessBuildSource, FatalPreprocessingError } from '@eforge-build/input';
+// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
 import { QueueExecExitCode, queueExecExitCode } from '@eforge-build/engine/prd-queue';
 import type { EforgeConfig, HookConfig } from '@eforge-build/engine/config';
 import type { EforgeEvent } from '@eforge-build/engine/events';
@@ -339,15 +342,46 @@ export function createProgram(abortController?: AbortController, version?: strin
         await withMonitor(true /* noServer */, async (monitor) => {
           const sessionId = randomUUID();
 
-          const enqueueEvents = engine.enqueue(source, {
-            name: options.name,
-            verbose: options.verbose,
-            abortController,
-            ...(options.profile && { profile: options.profile }),
-          });
+          // --- eforge:region plan-02-enqueue-preprocessing-runtime ---
+          async function* preprocessAndEnqueue(): AsyncGenerator<EforgeEvent> {
+            let normalizedSource: string;
+            try {
+              const preprocessResult = await preprocessBuildSource({
+                source,
+                inputSources: engine.nativeExtensionRegistry.inputSources,
+                prdEnrichers: engine.nativeExtensionRegistry.prdEnrichers,
+                cwd: process.cwd(),
+                timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+              });
+
+              // Yield provenance events with timestamps before engine enqueue
+              const timestamp = new Date().toISOString();
+              for (const event of preprocessResult.events) {
+                yield { ...event, timestamp } as EforgeEvent;
+              }
+
+              normalizedSource = preprocessResult.content;
+            } catch (err) {
+              if (err instanceof FatalPreprocessingError) {
+                const timestamp = new Date().toISOString();
+                yield { ...err.diagnosticEvent, timestamp } as EforgeEvent;
+                yield { type: 'enqueue:failed', timestamp, error: err.message } as EforgeEvent;
+                return;
+              }
+              throw err;
+            }
+
+            yield* engine.enqueue(normalizedSource, {
+              name: options.name,
+              verbose: options.verbose,
+              abortController,
+              ...(options.profile && { profile: options.profile }),
+            });
+          }
+          // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
 
           await consumeEvents(
-            wrapEvents(runSession(enqueueEvents, sessionId), {
+            wrapEvents(runSession(preprocessAndEnqueue(), sessionId), {
               monitor,
               hooks: engine.resolvedConfig.hooks,
               native: {

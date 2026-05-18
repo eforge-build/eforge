@@ -1055,6 +1055,59 @@ const EforgeEventVariantsSchema = Type.Union([
   }),
   // --- eforge:endregion plan-01-policy-gate-foundation ---
 
+  // --- eforge:region plan-01-extension-input-contracts ---
+  // Input source and PRD enricher provenance/diagnostic events
+  Type.Object({
+    type: Type.Literal('extension:input-source:fetched'),
+    extensionPath: Type.String(),
+    extensionName: Type.String(),
+    adapterName: Type.String(),
+    sourceId: Type.String(),
+    contentLength: Type.Integer({ minimum: 0 }),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:input-source:failed'),
+    extensionPath: Type.String(),
+    extensionName: Type.String(),
+    adapterName: Type.String(),
+    sourceId: Type.String(),
+    reason: Type.Union([
+      Type.Literal('not-found'),
+      Type.Literal('error'),
+      Type.Literal('timeout'),
+      Type.Literal('invalid-result'),
+    ]),
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+    timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:prd-enricher:applied'),
+    extensionPath: Type.String(),
+    extensionName: Type.String(),
+    enricherName: Type.String(),
+    sourceId: Type.String(),
+    changed: Type.Boolean(),
+    inputLength: Type.Integer({ minimum: 0 }),
+    outputLength: Type.Integer({ minimum: 0 }),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:prd-enricher:failed'),
+    extensionPath: Type.String(),
+    extensionName: Type.String(),
+    enricherName: Type.String(),
+    sourceId: Type.String(),
+    reason: Type.Union([
+      Type.Literal('error'),
+      Type.Literal('timeout'),
+      Type.Literal('invalid-result'),
+    ]),
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+    timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
+  }),
+  // --- eforge:endregion plan-01-extension-input-contracts ---
+
   // Planning
   Type.Object({
     type: Type.Literal('planning:start'),

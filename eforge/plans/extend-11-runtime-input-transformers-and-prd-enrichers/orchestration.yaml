@@ -1,0 +1,137 @@
+name: extend-11-runtime-input-transformers-and-prd-enrichers
+description: Implement runtime-supported extension input adapters and PRD
+  enrichers that preprocess build sources before EforgeEngine.enqueue while
+  preserving an input-agnostic engine, typed provenance events, issue-tracker
+  examples, docs, and tests.
+base_branch: main
+mode: excursion
+validate:
+  - '! rg -n "@eforge-build/input" packages/engine/src
+    packages/engine/package.json'
+  - pnpm type-check
+  - pnpm test -- test/normalize-build-source.test.ts
+    test/input-extension-normalization.test.ts test/extension-loader.test.ts
+    test/extension-replay.test.ts test/extension-tooling-routes.test.ts
+    test/extension-cli-commands.test.ts test/extension-sdk-example.test.ts
+    test/daemon-session-plan-routes.test.ts
+    packages/monitor/src/__tests__/auto-build-route.test.ts
+    packages/client/src/__tests__/events-schemas.test.ts
+    packages/client/src/__tests__/events-wire-parity.test.ts
+  - pnpm docs:check
+plans:
+  - id: plan-01-extension-input-contracts
+    name: Extension Input and Enricher Contracts
+    depends_on: []
+    branch: extend-11-runtime-input-transformers-and-prd-enrichers/plan-01-extension-input-contracts
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Cross-package public API and wire-schema changes require consistent
+          updates across SDK, engine extension registry, client event schemas,
+          and tests.
+      reviewer:
+        effort: high
+        rationale: Public SDK and event schema changes need API and test coverage review.
+  - id: plan-02-enqueue-preprocessing-runtime
+    name: Enqueue Preprocessing Runtime
+    depends_on:
+      - plan-01-extension-input-contracts
+    branch: extend-11-runtime-input-transformers-and-prd-enrichers/plan-02-enqueue-preprocessing-runtime
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan wires async extension execution into CLI/daemon boundaries
+          while preserving engine input-agnostic constraints and session-plan
+          behavior.
+      reviewer:
+        effort: high
+        rationale: Runtime execution, daemon worker arguments, and fail-open/fail-closed
+          behavior need code, API, security, and test review.
+  - id: plan-03-docs-issue-tracker-example
+    name: Docs and Issue Tracker Example
+    depends_on:
+      - plan-02-enqueue-preprocessing-runtime
+    branch: extend-11-runtime-input-transformers-and-prd-enrichers/plan-03-docs-issue-tracker-example
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+        - docs
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: medium
+        rationale: Documentation and example updates span several consumer-facing
+          surfaces but depend on contracts from the first two plans.
+      reviewer:
+        effort: high
+        rationale: Example code handles issue tracker URLs and environment tokens, so
+          docs, API, security, and test review are useful.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - review-cycle
+    - test-write
+    - test-cycle
+    - doc-sync
+    - validate
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - docs
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive cross-package feature centered on one enqueue
+    preprocessing seam, so excursion is appropriate rather than expedition.
+    Planning review is included because the work spans SDK contracts, extension
+    registry projection, input normalization, CLI/daemon wiring, event schemas,
+    examples, docs, and tests. Build runs implementation with parallel
+    documentation authoring, then iterative review, test generation/execution,
+    documentation synchronization, and final validation. Parallel review
+    perspectives emphasize API compatibility, test coverage, docs accuracy, and
+    verification of engine input-agnostic boundaries.

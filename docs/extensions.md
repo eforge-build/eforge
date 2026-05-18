@@ -1,6 +1,6 @@
 # Extensions
 
-Native eforge extensions are TypeScript or JavaScript modules loaded by the eforge daemon/worker Node process. They are the typed, programmatic counterpart to shell hooks: extension factories can register event hooks, agent-run augmenters, policy gates, profile routers, input sources, reviewer perspectives, validation providers, and custom tools with full TypeScript inference.
+Native eforge extensions are TypeScript or JavaScript modules loaded by the eforge daemon/worker Node process. They are the typed, programmatic counterpart to shell hooks: extension factories can register event hooks, agent-run augmenters, policy gates, profile routers, input sources, PRD enrichers, reviewer perspectives, validation providers, and custom tools with full TypeScript inference.
 
 Extensions are **not sandboxed**. A loaded extension executes in the same Node process as eforge and has the same filesystem, environment, and network access as the daemon. Only enable extensions from sources you trust.
 
@@ -226,11 +226,41 @@ Other non-event extension capability execution is intentionally deferred for lat
 | `beforePlanMerge` - policy gate before plan worktree merge | Yes | Yes | Yes (blocking policy gate) |
 | `beforeFinalMerge` - policy gate before final feature merge | Yes | Yes | Yes (blocking policy gate) |
 | `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
-| `registerInputSource` | Yes | Yes | Deferred |
+| `registerInputSource` | Yes | Yes | Yes (extension-aware enqueue preprocessing) |
+| `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-Event-hook, agent-context-hook, agent-tool, profile-router, and shipped policy-gate examples can be loaded, validated, and run at runtime. Event-oriented examples include [`examples/extensions/minimal-event-logger.ts`](../examples/extensions/minimal-event-logger.ts) and the safe [`examples/extensions/slack-webhook-notifier.ts`](../examples/extensions/slack-webhook-notifier.ts), which only sends a Slack-compatible webhook when `EFORGE_SLACK_WEBHOOK_URL` is set. [`examples/extensions/agent-tools.ts`](../examples/extensions/agent-tools.ts) demonstrates defining a TypeBox tool, registering it for provenance, and returning it only for builder runs with `ctx.effectiveToolName(...)` in prompt text. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with `extensions.profileRouterTimeoutMs` timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. [`examples/extensions/protected-paths.ts`](../examples/extensions/protected-paths.ts) demonstrates runtime-supported plan/final merge policy enforcement for protected paths. Custom input fetching, reviewer perspective execution, validation provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime phases.
+Event-hook, agent-context-hook, agent-tool, profile-router, shipped policy-gate, and input-source examples can be loaded, validated, and run at runtime. Event-oriented examples include [`examples/extensions/minimal-event-logger.ts`](../examples/extensions/minimal-event-logger.ts) and the safe [`examples/extensions/slack-webhook-notifier.ts`](../examples/extensions/slack-webhook-notifier.ts), which only sends a Slack-compatible webhook when `EFORGE_SLACK_WEBHOOK_URL` is set. [`examples/extensions/agent-tools.ts`](../examples/extensions/agent-tools.ts) demonstrates defining a TypeBox tool, registering it for provenance, and returning it only for builder runs with `ctx.effectiveToolName(...)` in prompt text. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with `extensions.profileRouterTimeoutMs` timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. [`examples/extensions/protected-paths.ts`](../examples/extensions/protected-paths.ts) demonstrates runtime-supported plan/final merge policy enforcement for protected paths. [`examples/extensions/issue-tracker.ts`](../examples/extensions/issue-tracker.ts) demonstrates runtime-supported input source adapters for GitHub, Linear, and Jira. Reviewer perspective execution, validation provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime phases.
+
+### Input sources and PRD enrichers
+
+Input sources and PRD enrichers run during the enqueue preprocessing stage, before the build source artifact is written to the queue.
+
+**`registerInputSource` — URI-based artifact fetching**
+
+Input source adapters are selected by `name` against the `<adapter>` segment of an `eforge://input/<adapter>/<id>` URI. The runtime calls `adapter.fetch(id, ctx)` with the remaining `<id>` path and an `InputTransformContext`.
+
+URI examples:
+- `eforge://input/github/acme/backend#42` — adapter `github`, id `acme/backend#42`
+- `eforge://input/linear/ENG-42` — adapter `linear`, id `ENG-42`
+- `eforge://input/jira/ENG-42` — adapter `jira`, id `ENG-42`
+
+Adapters may return a raw content string, an `InputSourceResult` object `{ content, title? }`, or `null` to signal that the identifier was not found. Returning `null` is fatal to enqueue (`FatalPreprocessingError`). Throwing is also fatal. Design adapters to be safe-by-default: when required credentials are absent, return an `InputSourceResult` with instructional content rather than throwing.
+
+Provenance events emitted per adapter call:
+- `extension:input-source:fetched` — adapter returned content successfully.
+- `extension:input-source:failed` — adapter threw or returned `null`.
+
+**`registerPrdEnricher` — content augmentation before queue write**
+
+PRD enrichers run in registration order after input source preprocessing completes. Each enricher receives `{ content, sourceId, ctx }` and may return `{ content }` to replace the content, or `null`/`undefined` to pass it through unchanged. Enrichers always run for every preprocessed source; gate behavior inside `enrich` using `ctx.sourceKind`, `ctx.adapterId`, or `ctx.sourcePath` if needed.
+
+Enricher failures are fail-open: a thrown error emits `extension:prd-enricher:failed` with the enricher name, source id, and error message, and the unchanged content carries forward.
+
+Provenance events emitted per enricher call:
+- `extension:prd-enricher:applied` — enricher returned modified content.
+- `extension:prd-enricher:failed` — enricher threw (content unchanged; build continues).
 
 ## Schema language
 

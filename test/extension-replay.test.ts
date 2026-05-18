@@ -226,6 +226,7 @@ describe('native extension replay harness', () => {
         eforge.beforePlanMerge(() => { throw new Error('policy gate should not be replayed'); });
         eforge.registerProfileRouter({ name: 'router', resolve: () => { throw new Error('profile router should not be replayed'); } });
         eforge.registerInputSource({ name: 'input', description: 'input', fetch: async () => { throw new Error('input source should not be replayed'); } });
+        eforge.registerPrdEnricher({ name: 'enricher', description: 'enricher', enrich: async () => { throw new Error('PRD enricher should not be replayed'); } });
         eforge.registerReviewerPerspective({ key: 'review', label: 'Review', promptFragment: 'Review this' });
         eforge.registerValidationProvider({ name: 'validator', description: 'validator', validate: () => { throw new Error('validation provider should not be replayed'); } });
         eforge.registerTool({ name: 'tool', description: 'tool', inputSchema: { type: 'object', properties: {} }, handler: () => { throw new Error('tool should not be replayed'); } });
@@ -241,9 +242,43 @@ describe('native extension replay harness', () => {
       policyGates: 1,
       profileRouters: 1,
       inputSources: 1,
+      prdEnrichers: 1,
       reviewerPerspectives: 1,
       validationProviders: 1,
       tools: 1,
     });
   });
+
+  // --- eforge:region plan-01-extension-input-contracts ---
+  it('includes PRD enrichers in deferred registration summary and does not invoke enrich during replay', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'enricher-replay.js'), `
+      export default function extension(eforge) {
+        eforge.registerPrdEnricher({
+          name: 'replay-enricher',
+          description: 'Should not be invoked during replay',
+          enrich: async () => { throw new Error('PRD enricher enrich() must not be called during replay'); },
+        });
+        eforge.onEvent('config:warning', () => {});
+      }
+    `);
+
+    const result = await replayNativeExtensionEvents({
+      cwd: root,
+      loaderOptions: loaderOptions(opts),
+      events: [event('config:warning')],
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.emittedDiagnostics).toHaveLength(0);
+
+    const enricherSummary = result.deferredRegistrations.find((entry) => entry.family === 'prdEnrichers');
+    expect(enricherSummary).toBeDefined();
+    expect(enricherSummary?.count).toBe(1);
+    expect(enricherSummary?.extensions).toEqual([
+      expect.objectContaining({ name: 'enricher-replay', count: 1 }),
+    ]);
+  });
+  // --- eforge:endregion plan-01-extension-input-contracts ---
 });

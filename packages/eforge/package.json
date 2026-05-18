@@ -43,6 +43,7 @@
   "dependencies": {
     "@eforge-build/client": "workspace:*",
     "@eforge-build/engine": "workspace:*",
+    "@eforge-build/input": "workspace:*",
     "@eforge-build/monitor": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.6.2",

@@ -136,6 +136,26 @@ describe('extension CLI commands', () => {
     expect(stdout).toContain('inputSources: 1');
   });
 
+  // --- eforge:region plan-01-extension-input-contracts ---
+  it('extension test non-JSON output includes prdEnrichers count in deferred registrations', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      'export default function extension(eforge) { eforge.registerPrdEnricher({ name: "my-enricher", description: "enriches PRDs", enrich: async (input) => ({ content: input.content }) }); }',
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'events.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', fixture]);
+    expect(stdout).toContain('Extensions test passed');
+    expect(stdout).toContain('Deferred registrations:');
+    expect(stdout).toContain('prdEnrichers: 1');
+  });
+  // --- eforge:endregion plan-01-extension-input-contracts ---
+
   it('extension test treats path-like nameOrPath arguments as ad-hoc extension paths', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
@@ -404,6 +424,7 @@ describe('extension CLI commands', () => {
     expect(data.message).toContain('team');
     // Extension code must NOT have been imported: no registrations
     expect(data.extension.registrations.inputSources).toBe(0);
+    expect(data.extension.registrations.prdEnrichers).toBe(0);
   });
 
   it('extension untrust --json returns typed untrust response', async () => {
