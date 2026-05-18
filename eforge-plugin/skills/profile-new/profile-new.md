@@ -180,7 +180,10 @@ See [Profile Toolbelts for UI Work](https://eforge.build/docs/configuration#prof
 | Invalid profile name | Surface the daemon error (names must match `[A-Za-z0-9._-]+`) |
 | Profile already exists | Offer to retry with `overwrite: true` |
 | Provider or model not found | Suggest rerunning the affected tier step with a different choice |
+
+<!-- parity-skip-start -->
 | Tool connection failure | The daemon auto-starts; if it still fails, suggest `eforge daemon start` manually |
+<!-- parity-skip-end -->
 
 ## Related Skills
 

@@ -75,7 +75,10 @@ If the status is `completed` or `failed`:
 | Condition | Action |
 |-----------|--------|
 | Tool returns error | Show the error, suggest running `eforge daemon start` manually |
-| Daemon not running | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
+
+<!-- parity-skip-start -->
+| Daemon not running | The daemon is not running. Tell the user to start it with `eforge_daemon { action: "start" }`, `/eforge:restart`, or `eforge daemon start`. |
+<!-- parity-skip-end -->
 | No config found | Tell the user: "No eforge config found. Run `/eforge:init` to initialize eforge in this project." |
 | Response is malformed | Report parse error, suggest running `eforge status` CLI directly |
 

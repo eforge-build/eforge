@@ -24,34 +24,55 @@ export type {
 
 export {
   apiEnqueue,
+  apiEnqueueIfRunning,
   apiCancel,
+  apiCancelIfRunning,
   apiGetQueue,
+  apiGetQueueIfRunning,
   apiGetRuns,
+  apiGetRunsIfRunning,
   apiGetLatestRunFromRuns,
+  apiGetLatestRunFromRunsIfRunning,
   apiGetRunningRuns,
+  apiGetRunningRunsIfRunning,
   apiGetRunningSessionSummaries,
+  apiGetRunningSessionSummariesIfRunning,
   apiGetRunSummary,
   apiGetRunSummaryIfRunning,
   apiGetRunState,
+  apiGetRunStateIfRunning,
   apiGetPlans,
+  apiGetPlansIfRunning,
   apiGetDiff,
+  apiGetDiffIfRunning,
   apiGetSessionMetadata,
+  apiGetSessionMetadataIfRunning,
 } from './api/queue.js';
 
 export {
   apiListProfiles,
+  apiListProfilesIfRunning,
   apiShowProfile,
+  apiShowProfileIfRunning,
   apiUseProfile,
+  apiUseProfileIfRunning,
   apiCreateProfile,
+  apiCreateProfileIfRunning,
   apiDeleteProfile,
+  apiDeleteProfileIfRunning,
 } from './api/profile.js';
 
 export {
   apiHealth,
+  apiHealthIfRunning,
   apiKeepAlive,
+  apiKeepAliveIfRunning,
   apiGetProjectContext,
+  apiGetProjectContextIfRunning,
   apiGetAutoBuild,
+  apiGetAutoBuildIfRunning,
   apiSetAutoBuild,
+  apiSetAutoBuildIfRunning,
 } from './api/status.js';
 
 export {
@@ -77,30 +98,54 @@ export {
   apiTrustExtension,
   apiUntrustExtension,
   // --- eforge:endregion plan-02-management-surfaces ---
+  // --- eforge:region plan-01-no-start-client-helpers ---
+  apiListExtensionsIfRunning,
+  apiShowExtensionIfRunning,
+  apiValidateExtensionsIfRunning,
+  apiNewExtensionIfRunning,
+  apiReloadExtensionsIfRunning,
+  apiTestExtensionIfRunning,
+  apiTrustExtensionIfRunning,
+  apiUntrustExtensionIfRunning,
+  // --- eforge:endregion plan-01-no-start-client-helpers ---
 } from './api/extensions.js';
 // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
-export { apiListModelProviders, apiListModels } from './api/models.js';
+export {
+  apiListModelProviders,
+  apiListModelProvidersIfRunning,
+  apiListModels,
+  apiListModelsIfRunning,
+} from './api/models.js';
 
-export { apiStopDaemon } from './api/daemon.js';
+export { apiStopDaemon, apiStopDaemonIfRunning } from './api/daemon.js';
 
 export { apiSchedulerKick } from './api/scheduler.js';
 export type { SchedulerKickResponse } from './api/scheduler.js';
 
-export { apiRecover } from './api/recover.js';
+export { apiRecover, apiRecoverIfRunning } from './api/recover.js';
 
-export { apiReadRecoverySidecar } from './api/recovery-sidecar.js';
+export { apiReadRecoverySidecar, apiReadRecoverySidecarIfRunning } from './api/recovery-sidecar.js';
 
-export { apiApplyRecovery } from './api/apply-recovery.js';
+export { apiApplyRecovery, apiApplyRecoveryIfRunning } from './api/apply-recovery.js';
 
 export {
   apiPlaybookList,
+  apiPlaybookListIfRunning,
   apiPlaybookShow,
+  apiPlaybookShowIfRunning,
   apiPlaybookSave,
+  apiPlaybookSaveIfRunning,
   apiPlaybookEnqueue,
+  apiPlaybookEnqueueIfRunning,
   apiPlaybookPromote,
+  apiPlaybookPromoteIfRunning,
   apiPlaybookDemote,
+  apiPlaybookDemoteIfRunning,
   apiPlaybookValidate,
+  apiPlaybookValidateIfRunning,
+  apiPlaybookCopy,
+  apiPlaybookCopyIfRunning,
 } from './api/playbook.js';
 
 export type {
@@ -119,18 +164,28 @@ export type {
   PlaybookPromoteResponse,
   PlaybookDemoteResponse,
   PlaybookValidateResponse,
+  PlaybookCopyResponse,
 } from './api/playbook.js';
 
 export {
   apiSessionPlanList,
+  apiSessionPlanListIfRunning,
   apiSessionPlanShow,
+  apiSessionPlanShowIfRunning,
   apiSessionPlanCreate,
+  apiSessionPlanCreateIfRunning,
   apiSessionPlanSetSection,
+  apiSessionPlanSetSectionIfRunning,
   apiSessionPlanSkipDimension,
+  apiSessionPlanSkipDimensionIfRunning,
   apiSessionPlanSetStatus,
+  apiSessionPlanSetStatusIfRunning,
   apiSessionPlanSelectDimensions,
+  apiSessionPlanSelectDimensionsIfRunning,
   apiSessionPlanReadiness,
+  apiSessionPlanReadinessIfRunning,
   apiSessionPlanMigrateLegacy,
+  apiSessionPlanMigrateLegacyIfRunning,
 } from './api/session-plan.js';
 
 export type {

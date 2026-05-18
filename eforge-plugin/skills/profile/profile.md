@@ -81,7 +81,10 @@ When a profile name is resolved, the profile file is looked up local-first, then
 |-----------|--------|
 | Profile name does not exist | Show the daemon error and list available profiles |
 | No `eforge/profiles/` directory | Suggest `/eforge:profile-new` to create the first profile |
+
+<!-- parity-skip-start -->
 | Tool connection failure | The daemon auto-starts; if it still fails, suggest `eforge daemon start` manually |
+<!-- parity-skip-end -->
 | No config found | Tell the user: "No eforge config found. Run `/eforge:init` to initialize eforge in this project." |
 
 ## Related Skills

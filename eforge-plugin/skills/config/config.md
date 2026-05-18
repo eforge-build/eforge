@@ -214,7 +214,10 @@ hooks:
 | Validation error mentions a backend key is not valid here | Remove the key; harness-specific config lives in profile files, not `config.yaml` |
 | Validation error mentions an unrecognized top-level key | Remove the key (typo or stale feature reference) - the error includes the recognized-key list |
 | YAML syntax error in existing file | Report the error, offer to recreate |
+
+<!-- parity-skip-start -->
 | Daemon connection failure | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
+<!-- parity-skip-end -->
 
 ## Related Skills
 

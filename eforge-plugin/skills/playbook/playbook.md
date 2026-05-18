@@ -350,7 +350,10 @@ Every save path (Create and Edit) must pass `mcp__eforge__eforge_playbook { acti
 | Playbook name not found | Surface daemon error, list available playbooks |
 | Validation failure | Show errors verbatim, do not save |
 | Queue list fails | Skip wait-for-build offer, enqueue immediately and note the queue check failed |
+
+<!-- parity-skip-start -->
 | Tool connection failure | Daemon auto-starts; if it still fails, suggest `eforge daemon start` |
+<!-- parity-skip-end -->
 | No eforge config | Tell the user: "No eforge config found. Run `/eforge:init` to initialize eforge in this project." |
 
 ---

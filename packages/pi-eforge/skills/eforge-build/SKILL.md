@@ -165,7 +165,10 @@ If the user cancels or the tool is interrupted, acknowledge and point them at `/
 | Tool returns error | Show the error message from the daemon response |
 | Config validation fails | Show errors, suggest fixing config, do not enqueue |
 | No config found | Tell the user to run `/eforge:init` to initialize eforge |
-| Daemon connection failure | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
+
+<!-- parity-skip-start -->
+| Daemon connection failure | The daemon is not running. Tell the user to start it with `eforge_daemon { action: "start" }`, `/eforge:restart`, or `eforge daemon start`. |
+<!-- parity-skip-end -->
 
 ## Related Skills
 

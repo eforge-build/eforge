@@ -352,7 +352,10 @@ Every save path (Create and Edit) must pass `eforge_playbook { action: "validate
 | Playbook name not found | Surface daemon error, list available playbooks |
 | Validation failure | Show errors verbatim, do not save |
 | Queue list fails | Skip wait-for-build offer, enqueue immediately and note the queue check failed |
-| Tool connection failure | Daemon auto-starts; if it still fails, suggest `eforge daemon start` |
+
+<!-- parity-skip-start -->
+| Tool connection failure | The daemon is not running. Tell the user to start it with `eforge_daemon { action: "start" }`, `/eforge:restart`, or `eforge daemon start`. |
+<!-- parity-skip-end -->
 | No eforge config | Tell the user: "No eforge config found. Run `/eforge:init` to initialize eforge in this project." |
 
 ---

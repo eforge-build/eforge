@@ -2,7 +2,7 @@
  * Typed helpers for session-plan management daemon API endpoints.
  */
 
-import { daemonRequest } from '../daemon-client.js';
+import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
 import { API_ROUTES } from '../routes.js';
 import type {
   SessionPlanListResponse,
@@ -116,6 +116,89 @@ export function apiSessionPlanReadiness(opts: { cwd: string; session: string }) 
 
 export function apiSessionPlanMigrateLegacy(opts: { cwd: string; body: SessionPlanMigrateLegacyRequest }) {
   return daemonRequest<SessionPlanMigrateLegacyResponse>(
+    opts.cwd,
+    'POST',
+    API_ROUTES.sessionPlanMigrateLegacy,
+    opts.body,
+  );
+}
+
+export function apiSessionPlanListIfRunning(opts: { cwd: string }) {
+  return daemonRequestIfRunning<SessionPlanListResponse>(opts.cwd, 'GET', API_ROUTES.sessionPlanList);
+}
+
+export function apiSessionPlanShowIfRunning(opts: { cwd: string; session: string }) {
+  return daemonRequestIfRunning<SessionPlanShowResponse>(
+    opts.cwd,
+    'GET',
+    `${API_ROUTES.sessionPlanShow}?session=${encodeURIComponent(opts.session)}`,
+  );
+}
+
+export function apiSessionPlanCreateIfRunning(opts: { cwd: string; body: SessionPlanCreateRequest }) {
+  return daemonRequestIfRunning<SessionPlanCreateResponse>(
+    opts.cwd,
+    'POST',
+    API_ROUTES.sessionPlanCreate,
+    opts.body,
+  );
+}
+
+export function apiSessionPlanSetSectionIfRunning(opts: { cwd: string; body: SessionPlanSetSectionRequest }) {
+  return daemonRequestIfRunning<SessionPlanSetSectionResponse>(
+    opts.cwd,
+    'POST',
+    API_ROUTES.sessionPlanSetSection,
+    opts.body,
+  );
+}
+
+export function apiSessionPlanSkipDimensionIfRunning(opts: {
+  cwd: string;
+  body: SessionPlanSkipDimensionRequest;
+}) {
+  return daemonRequestIfRunning<SessionPlanSkipDimensionResponse>(
+    opts.cwd,
+    'POST',
+    API_ROUTES.sessionPlanSkipDimension,
+    opts.body,
+  );
+}
+
+export function apiSessionPlanSetStatusIfRunning(opts: { cwd: string; body: SessionPlanSetStatusRequest }) {
+  return daemonRequestIfRunning<SessionPlanSetStatusResponse>(
+    opts.cwd,
+    'POST',
+    API_ROUTES.sessionPlanSetStatus,
+    opts.body,
+  );
+}
+
+export function apiSessionPlanSelectDimensionsIfRunning(opts: {
+  cwd: string;
+  body: SessionPlanSelectDimensionsRequest;
+}) {
+  return daemonRequestIfRunning<SessionPlanSelectDimensionsResponse>(
+    opts.cwd,
+    'POST',
+    API_ROUTES.sessionPlanSelectDimensions,
+    opts.body,
+  );
+}
+
+export function apiSessionPlanReadinessIfRunning(opts: { cwd: string; session: string }) {
+  return daemonRequestIfRunning<SessionPlanReadinessResponse>(
+    opts.cwd,
+    'GET',
+    `${API_ROUTES.sessionPlanReadiness}?session=${encodeURIComponent(opts.session)}`,
+  );
+}
+
+export function apiSessionPlanMigrateLegacyIfRunning(opts: {
+  cwd: string;
+  body: SessionPlanMigrateLegacyRequest;
+}) {
+  return daemonRequestIfRunning<SessionPlanMigrateLegacyResponse>(
     opts.cwd,
     'POST',
     API_ROUTES.sessionPlanMigrateLegacy,
