@@ -1,0 +1,62 @@
+name: improve-monitor-daemon-scheduler-fsm-card-reporting
+description: Improve the monitor UI Scheduler FSM card by wiring current
+  scheduler capacity through the client/daemon contract, refreshing auto-build
+  state from heartbeats, and updating card copy for last queue wake-ups.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-scheduler-fsm-card-reporting
+    name: Scheduler FSM Card Reporting
+    depends_on: []
+    branch: improve-monitor-daemon-scheduler-fsm-card-reporting/plan-01-scheduler-fsm-card-reporting
+    build:
+      - implement
+      - test-cycle
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: strict
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - test-write
+      - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - docs
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused multi-package bugfix spanning the shared client
+    wire contract, daemon projection, monitor UI reducer/rendering, tests, and
+    possible docs, so excursion is appropriate rather than expedition. Planner
+    plus plan-review-cycle provides enough upfront quality control without
+    delegated module planning. The build runs implementation and possible
+    documentation authoring together, then writes tests and syncs docs after
+    implementation, followed by iterative review and test cycles to cover
+    API/schema changes, live UI behavior, and regression coverage. Parallel
+    review perspectives emphasize code correctness, wire API compatibility,
+    tests, docs, and final verification with standard strictness because this is
+    user-visible but not security-sensitive.
