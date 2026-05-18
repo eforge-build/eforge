@@ -321,6 +321,76 @@ describe('daemonReducer', () => {
   // ---------------------------------------------------------------------------
   // queue events
   // ---------------------------------------------------------------------------
+  // --- eforge:region plan-01-semantic-enqueue-wake ---
+  describe('ADD_EVENT: enqueue:complete', () => {
+    it('inserts a minimal pending queue item using event.id', () => {
+      const event = makeEvent('enqueue:complete', {
+        id: 'prd-enq-001',
+        filePath: 'eforge/queue/prd-enq-001.md',
+        title: 'My Feature',
+        planSet: 'my-feature-set',
+      });
+
+      const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+      expect(next.queue).toHaveLength(1);
+      expect(next.queue[0]).toEqual({ id: 'prd-enq-001', title: 'My Feature', status: 'pending' });
+    });
+
+    it('appends to the activity feed', () => {
+      const event = makeEvent('enqueue:complete', {
+        id: 'prd-enq-002',
+        filePath: 'eforge/queue/prd-enq-002.md',
+        title: 'Another Feature',
+        planSet: 'another-set',
+      });
+
+      const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+      expect(next.daemonActivity).toHaveLength(1);
+      expect(next.daemonActivity[0].id).toBe('e1');
+    });
+
+    it('dedupes: a second enqueue:complete for the same id leaves one queue item', () => {
+      const eventA = makeEvent('enqueue:complete', {
+        id: 'prd-enq-003',
+        filePath: 'eforge/queue/prd-enq-003.md',
+        title: 'Dup Feature',
+        planSet: 'dup-set',
+      });
+      const eventB = makeEvent('enqueue:complete', {
+        id: 'prd-enq-003',
+        filePath: 'eforge/queue/prd-enq-003.md',
+        title: 'Dup Feature',
+        planSet: 'dup-set',
+      });
+
+      const s1 = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event: eventA, eventId: 'e1' });
+      const s2 = daemonReducer(s1, { type: 'ADD_EVENT', event: eventB, eventId: 'e2' });
+
+      expect(s2.queue).toHaveLength(1);
+      expect(s2.queue[0]!.id).toBe('prd-enq-003');
+      // Activity feed still gets both entries
+      expect(s2.daemonActivity).toHaveLength(2);
+    });
+
+    it('does not alter existing runs', () => {
+      const existingRun = makeRun({ id: 'run-existing', sessionId: 'existing-session' });
+      const state: DaemonState = { ...initialDaemonState, runs: [existingRun] };
+      const event = makeEvent('enqueue:complete', {
+        id: 'prd-enq-004',
+        filePath: 'eforge/queue/prd-enq-004.md',
+        title: 'Run-safe Feature',
+        planSet: 'run-safe-set',
+      });
+
+      const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+      expect(next.runs).toEqual(state.runs);
+    });
+  });
+  // --- eforge:endregion plan-01-semantic-enqueue-wake ---
+
   describe('ADD_EVENT: queue:prd:discovered', () => {
     it('adds a new pending queue item', () => {
       const event = makeEvent('queue:prd:discovered', {

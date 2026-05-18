@@ -1066,8 +1066,20 @@ const eventRegistry = {
     scope: 'daemon',
     persist: true,
     summary: (e) => `Enqueued: ${e.title}`,
-    // daemon:run:upsert is now the single source of truth for DaemonState.runs;
-    // the project function is intentionally absent.
+    // daemon:run:upsert remains the single source of truth for DaemonState.runs.
+    // This projector only affects DaemonState.queue: it inserts a pending QueueItem
+    // so the monitor UI shows the item immediately, before queue:prd:discovered is
+    // emitted. Uses event.id as the QueueItem id (not event.planSet or event.filePath).
+    // Idempotent: duplicate enqueue:complete events leave only one queue item.
+    project(event, state) {
+      if (state.queue.some((item) => item.id === event.id)) return undefined;
+      const newItem: QueueItem = {
+        id: event.id,
+        title: event.title,
+        status: 'pending',
+      };
+      return { queue: [...state.queue, newItem] };
+    },
   },
 
   'enqueue:failed': {

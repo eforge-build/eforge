@@ -2038,6 +2038,128 @@ describe('safeParseEforgeEvent — build evaluator enriched payloads', () => {
 });
 // --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
+// --- eforge:region plan-01-semantic-enqueue-wake ---
+
+// ---------------------------------------------------------------------------
+// enqueue:complete queue projector
+// ---------------------------------------------------------------------------
+
+describe('eventRegistry — enqueue:complete queue projector', () => {
+  const baseState = {
+    runs: [],
+    queue: [],
+    autoBuild: null,
+    latestHeartbeat: null,
+  };
+
+  const enqueueCompleteEvent = {
+    type: 'enqueue:complete' as const,
+    timestamp: '2025-01-01T00:00:00.000Z',
+    id: 'prd-test-001',
+    filePath: 'eforge/queue/prd-test-001.md',
+    title: 'Test Feature',
+    planSet: 'test-feature-set',
+  };
+
+  it('registers enqueue:complete as daemon-scoped, persisted, and summarized', () => {
+    expect(eventRegistry['enqueue:complete']).toMatchObject({
+      scope: 'daemon',
+      persist: true,
+    });
+    expect(DAEMON_EVENT_TYPES).toContain('enqueue:complete');
+  });
+
+  it('project function is defined for queue projection', () => {
+    expect(eventRegistry['enqueue:complete'].project).toBeDefined();
+  });
+
+  it('inserts a minimal pending QueueItem when not already in queue', () => {
+    const project = eventRegistry['enqueue:complete'].project!;
+    const delta = project(enqueueCompleteEvent, baseState);
+    expect(delta).toBeDefined();
+    expect(delta!.queue).toHaveLength(1);
+    expect(delta!.queue![0]).toEqual({
+      id: 'prd-test-001',
+      title: 'Test Feature',
+      status: 'pending',
+    });
+  });
+
+  it('uses event.id (not event.planSet or event.filePath) as QueueItem.id', () => {
+    const project = eventRegistry['enqueue:complete'].project!;
+    const delta = project(enqueueCompleteEvent, baseState);
+    expect(delta!.queue![0]!.id).toBe('prd-test-001');
+    expect(delta!.queue![0]!.id).not.toBe('test-feature-set');
+    expect(delta!.queue![0]!.id).not.toBe('eforge/queue/prd-test-001.md');
+  });
+
+  it('returns undefined (no-op) when a queue item with the same id already exists', () => {
+    const project = eventRegistry['enqueue:complete'].project!;
+    const stateWithItem = {
+      ...baseState,
+      // Existing non-pending statuses must also dedupe by id.
+      queue: [{ id: 'prd-test-001', title: 'Test Feature', status: 'running' as const }],
+    };
+    const delta = project(enqueueCompleteEvent, stateWithItem);
+    expect(delta).toBeUndefined();
+  });
+
+  it('does not mutate or project runs, autoBuild, or latestHeartbeat', () => {
+    const project = eventRegistry['enqueue:complete'].project!;
+    const stateWithNonQueueSlices = {
+      runs: [
+        {
+          id: 'run-1',
+          planSet: 'existing-plan-set',
+          command: 'build' as const,
+          status: 'running' as const,
+          startedAt: '2025-01-01T00:00:00.000Z',
+          cwd: '/tmp/project',
+        },
+      ],
+      queue: [],
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: 1234, sessionId: 'watcher-1' },
+      },
+      latestHeartbeat: {
+        at: 123,
+        payload: {
+          uptime: 1000,
+          queueDepth: 0,
+          runningBuilds: 0,
+          autoBuild: { enabled: true, paused: false },
+          subscribers: 0,
+        },
+      },
+    };
+    const before = structuredClone({
+      runs: stateWithNonQueueSlices.runs,
+      autoBuild: stateWithNonQueueSlices.autoBuild,
+      latestHeartbeat: stateWithNonQueueSlices.latestHeartbeat,
+    });
+
+    const delta = project(enqueueCompleteEvent, stateWithNonQueueSlices);
+
+    expect(delta).not.toHaveProperty('runs');
+    expect(delta).not.toHaveProperty('autoBuild');
+    expect(delta).not.toHaveProperty('latestHeartbeat');
+    expect(stateWithNonQueueSlices.runs).toEqual(before.runs);
+    expect(stateWithNonQueueSlices.autoBuild).toEqual(before.autoBuild);
+    expect(stateWithNonQueueSlices.latestHeartbeat).toEqual(before.latestHeartbeat);
+  });
+
+  it('daemon:run:upsert remains the only run-state projector', () => {
+    expect(eventRegistry['daemon:run:upsert'].project).toBeDefined();
+    // enqueue:start and enqueue:failed must not define projectors (run state is authoritative via daemon:run:upsert)
+    const reg = eventRegistry as Record<string, { project?: unknown }>;
+    expect(reg['enqueue:start']!.project).toBeUndefined();
+    expect(reg['enqueue:failed']!.project).toBeUndefined();
+  });
+});
+
+// --- eforge:endregion plan-01-semantic-enqueue-wake ---
+
 // --- eforge:region plan-01-durable-daemon-event-persistence ---
 
 // ---------------------------------------------------------------------------

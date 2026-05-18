@@ -1305,18 +1305,52 @@ describe('effort/thinking fields on AgentThread', () => {
 // ---------------------------------------------------------------------------
 
 describe('event-registry run projection via daemon:run:upsert', () => {
-  it('daemon:run:upsert has a project function and enqueue:complete does not', async () => {
+  // --- eforge:region plan-01-semantic-enqueue-wake ---
+  it('daemon:run:upsert is the only run-state projector; enqueue:complete projects queue only', async () => {
     const { eventRegistry } = await import('@eforge-build/client');
 
-    // enqueue:start / enqueue:complete / enqueue:failed no longer have project
-    // functions — daemon:run:upsert is the single source of truth for
-    // DaemonState.runs.
+    // enqueue:start and enqueue:failed still have no project functions.
+    // daemon:run:upsert is the single source of truth for DaemonState.runs.
     expect(eventRegistry['enqueue:start'].project).toBeUndefined();
-    expect(eventRegistry['enqueue:complete'].project).toBeUndefined();
     expect(eventRegistry['enqueue:failed'].project).toBeUndefined();
+
+    // enqueue:complete now has a project function for queue projection only.
+    // It must insert a pending QueueItem but must NOT touch runs.
+    expect(eventRegistry['enqueue:complete'].project).toBeDefined();
+    const enqueueCompleteProject = eventRegistry['enqueue:complete'].project!;
+    const stateWithRuns = {
+      runs: [
+        {
+          id: 'run-001',
+          planSet: 'test',
+          command: 'build' as const,
+          status: 'running' as const,
+          startedAt: '2025-01-01T00:00:00.000Z',
+          cwd: '/tmp/project',
+        },
+      ],
+      queue: [],
+      autoBuild: null,
+      latestHeartbeat: null,
+    };
+    const enqEvent = {
+      type: 'enqueue:complete' as const,
+      timestamp: '2025-01-01T00:01:00.000Z',
+      id: 'prd-x',
+      filePath: 'eforge/queue/prd-x.md',
+      title: 'X Feature',
+      planSet: 'x-feature',
+    };
+    const enqDelta = enqueueCompleteProject(enqEvent, stateWithRuns);
+    // Queue gets a new pending item
+    expect(enqDelta?.queue).toBeDefined();
+    expect(enqDelta?.queue![0]!.id).toBe('prd-x');
+    // Runs must not be touched
+    expect(enqDelta).not.toHaveProperty('runs');
 
     // daemon:run:upsert has the project function and updates state.runs
     expect(eventRegistry['daemon:run:upsert'].project).toBeDefined();
+  // --- eforge:endregion plan-01-semantic-enqueue-wake ---
 
     const runId = 'run-enqueue-001';
     const state = {

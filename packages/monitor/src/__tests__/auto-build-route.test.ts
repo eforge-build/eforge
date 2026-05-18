@@ -11,7 +11,7 @@ import { mkdtempSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { API_ROUTES } from '@eforge-build/client';
-import { openDatabase } from '../db.js';
+import { openDatabase, type MonitorDB } from '../db.js';
 import { startServer } from '../server.js';
 import type { DaemonState, MonitorServer, WorkerTracker } from '../server.js';
 import { AutoBuildSupervisor, type AutoBuildWatcherState } from '../auto-build-supervisor.js';
@@ -69,6 +69,44 @@ function makeDaemonState(options: {
   });
 
   return { daemonState: { autoBuildController: controller }, calls };
+}
+
+function insertEnqueueCompleteEvent(db: MonitorDB, id: string, title = 'Reaction Test PRD'): number {
+  const ts = new Date().toISOString();
+  return db.insertDaemonEvent({
+    type: 'enqueue:complete',
+    data: JSON.stringify({
+      type: 'enqueue:complete',
+      timestamp: ts,
+      id,
+      filePath: `eforge/queue/${id}.md`,
+      title,
+      planSet: id.replace(/^prd-/, ''),
+    }),
+    timestamp: ts,
+  });
+}
+
+function countCalls(calls: string[], expected: string): number {
+  return calls.filter((call) => call === expected).length;
+}
+
+async function waitForCall(calls: string[], expected: string, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (calls.includes(expected)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${expected}; observed calls: ${calls.join(', ')}`);
+}
+
+async function waitForCount(getCount: () => number, expected: number, label: string, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (getCount() === expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${label} count ${expected}; observed count: ${getCount()}`);
 }
 
 const servers: MonitorServer[] = [];
@@ -198,10 +236,11 @@ describe('POST /api/auto-build', () => {
 });
 
 describe('POST /api/enqueue', () => {
-  it('notifies the auto-build controller after the enqueue worker completes', async () => {
+  // --- eforge:region plan-01-semantic-enqueue-wake ---
+  it('enqueue route does not pass an onExit callback to spawnWorker', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const { daemonState, calls } = makeDaemonState({
+    const { daemonState } = makeDaemonState({
       desired: 'enabled',
       mode: 'running',
       watcher: { running: true, pid: null, sessionId: 'watcher-live' },
@@ -226,14 +265,118 @@ describe('POST /api/enqueue', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ sessionId: 'enqueue-session', autoBuild: true });
-    expect(calls).not.toContain('mutation:enqueue');
-
-    expect(workerExitCallbacks).toHaveLength(1);
-    workerExitCallbacks[0]!();
-    expect(calls).toContain('mutation:enqueue');
+    // Wake is now driven by the persisted enqueue:complete event — no onExit
+    // callback should be registered by the enqueue route.
+    expect(workerExitCallbacks).toHaveLength(0);
 
     db.close();
   });
+
+  it('persisted enqueue:complete event triggers mutation:enqueue with zero SSE subscribers', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const { daemonState, calls } = makeDaemonState({
+      desired: 'enabled',
+      mode: 'running',
+      watcher: { running: true, pid: null, sessionId: 'watcher-live' },
+      schedulerAlive: true,
+    });
+    const server = await startServer(db, 0, { cwd, daemonState });
+    servers.push(server);
+
+    // Confirm no SSE subscribers are connected (reaction must not depend on them).
+    expect(server.subscriberCount).toBe(0);
+    expect(calls).not.toContain('mutation:enqueue');
+
+    // A non-enqueue daemon event should not wake auto-build; only the following
+    // enqueue:complete row should produce mutation:enqueue.
+    const warningTs = new Date().toISOString();
+    db.insertDaemonEvent({
+      type: 'daemon:warning',
+      data: JSON.stringify({
+        type: 'daemon:warning',
+        timestamp: warningTs,
+        source: 'test',
+        message: 'not a queue mutation',
+      }),
+      timestamp: warningTs,
+    });
+
+    // Insert a persisted enqueue:complete daemon event after server start.
+    // The reaction cursor was initialized to db.getMaxDaemonEventId() at start,
+    // so this newly inserted row will be picked up by the next poll tick.
+    insertEnqueueCompleteEvent(db, 'prd-reaction-test-001');
+
+    await waitForCall(calls, 'mutation:enqueue');
+    // Allow another poll tick to prove the row-id cursor dedupes the reaction.
+    await new Promise<void>((resolve) => setTimeout(resolve, 250));
+
+    expect(countCalls(calls, 'mutation:enqueue')).toBe(1);
+
+    db.close();
+  });
+
+  it('does not replay enqueue:complete events that existed before server start', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    // This row predates server startup and must be skipped by the reaction cursor.
+    insertEnqueueCompleteEvent(db, 'prd-old-before-start', 'Old PRD');
+    const { daemonState, calls } = makeDaemonState({
+      desired: 'enabled',
+      mode: 'running',
+      watcher: { running: true, pid: null, sessionId: 'watcher-live' },
+      schedulerAlive: true,
+    });
+    const server = await startServer(db, 0, { cwd, daemonState });
+    servers.push(server);
+
+    expect(server.subscriberCount).toBe(0);
+    insertEnqueueCompleteEvent(db, 'prd-new-after-start', 'New PRD');
+
+    await waitForCall(calls, 'mutation:enqueue');
+    await new Promise<void>((resolve) => setTimeout(resolve, 250));
+
+    // Only the post-start row should wake auto-build; the pre-start row must not replay.
+    expect(countCalls(calls, 'mutation:enqueue')).toBe(1);
+
+    db.close();
+  });
+
+  it('continues reacting to later enqueue:complete rows after a malformed daemon event row', async () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const { daemonState, calls } = makeDaemonState({
+      desired: 'enabled',
+      mode: 'running',
+      watcher: { running: true, pid: null, sessionId: 'watcher-live' },
+      schedulerAlive: true,
+    });
+    const server = await startServer(db, 0, { cwd, daemonState });
+    servers.push(server);
+
+    const ts = new Date().toISOString();
+    db.insertDaemonEvent({
+      type: 'enqueue:complete',
+      data: '{not-json',
+      timestamp: ts,
+    });
+    // Wait until the malformed row has actually been examined before inserting
+    // the valid row; otherwise the test could pass by processing both rows in
+    // the same poll batch without proving that the cursor advanced past the bad row.
+    await waitForCount(() => stderrSpy.mock.calls.length, 1, 'malformed daemon event parse failure');
+    expect(countCalls(calls, 'mutation:enqueue')).toBe(0);
+
+    insertEnqueueCompleteEvent(db, 'prd-after-malformed-row');
+
+    await waitForCall(calls, 'mutation:enqueue');
+
+    expect(countCalls(calls, 'mutation:enqueue')).toBe(1);
+    expect(stderrSpy).toHaveBeenCalledTimes(1);
+
+    db.close();
+  });
+  // --- eforge:endregion plan-01-semantic-enqueue-wake ---
 
   // --- eforge:region plan-02-enqueue-preprocessing-runtime ---
   it('passes the original source string to spawnWorker without route-side transformation', async () => {

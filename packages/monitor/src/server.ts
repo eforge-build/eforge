@@ -46,6 +46,9 @@ import {
 // --- eforge:region plan-01-handshake-primitive-additive ---
 import { writeHello } from './sse-handshake.js';
 // --- eforge:endregion plan-01-handshake-primitive-additive ---
+// --- eforge:region plan-01-semantic-enqueue-wake ---
+import { reactToDaemonEvent } from './daemon-event-reactions.js';
+// --- eforge:endregion plan-01-semantic-enqueue-wake ---
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -749,7 +752,36 @@ export async function startServer(
 
   // Poll loop: check DB for new events and push to SSE subscribers
   const POLL_INTERVAL_MS = 200;
+  // --- eforge:region plan-01-semantic-enqueue-wake ---
+  // Initialize the reaction cursor at the current DB high-water mark so the
+  // daemon does not replay enqueue:complete events from before server start.
+  // Pending files from older events are the watcher startup scan's responsibility.
+  let reactionCursor = db.getMaxDaemonEventId();
+  // --- eforge:endregion plan-01-semantic-enqueue-wake ---
   const pollTimer = setInterval(() => {
+    // --- eforge:region plan-01-semantic-enqueue-wake ---
+    // Semantic-event reaction scan: process newly persisted daemon events for
+    // side effects (e.g. auto-build wake on enqueue:complete). Runs before
+    // subscriber delivery so subscriber errors cannot block the reaction cursor.
+    // Cursor advances for every row examined, including rows that fail parsing,
+    // so one malformed row cannot block future enqueue completions.
+    if (options?.daemonState) {
+      try {
+        const reactionEvents = db.getDaemonEventsAfter(reactionCursor);
+        for (const row of reactionEvents) {
+          if (row.id > reactionCursor) {
+            reactionCursor = row.id;
+          }
+          const parsed = parseEventRow(row.data, row.timestamp, row.type, row.id);
+          if (parsed) {
+            reactToDaemonEvent(parsed, options.daemonState.autoBuildController);
+          }
+        }
+      } catch {
+        // Best-effort: don't let reaction errors affect subscriber delivery.
+      }
+    }
+    // --- eforge:endregion plan-01-semantic-enqueue-wake ---
     for (const subscriber of subscribers) {
       try {
         const newEvents = db.getEventsBySession(subscriber.sessionId, subscriber.lastSeenId);
@@ -1830,9 +1862,12 @@ export async function startServer(
           args.push('--profile', body.profile);
         }
         // --- eforge:endregion plan-04-daemon-cli-wiring ---
-        const result = options.workerTracker.spawnWorker('enqueue', args, () => {
-          notifyQueueMutation(options.daemonState, 'enqueue');
-        });
+        // --- eforge:region plan-01-semantic-enqueue-wake ---
+        // Wake is now driven by the persisted enqueue:complete DB event via the
+        // daemon semantic-event reaction path (daemon-event-reactions.ts).
+        // No onExit callback needed here.
+        const result = options.workerTracker.spawnWorker('enqueue', args);
+        // --- eforge:endregion plan-01-semantic-enqueue-wake ---
         // --- eforge:region plan-02-daemon-routes ---
         // After successful spawn, if source is a session-plan file under THIS
         // project's .eforge/session-plans/ directory, mark it submitted.
