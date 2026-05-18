@@ -29,6 +29,7 @@ import type {
   AgentRunHandler,
   ProfileRouterSpec,
   InputSourceAdapter,
+  PrdEnricher,
   ReviewerPerspectiveSpec,
   ValidationProviderSpec,
 } from './hooks.js';
@@ -214,9 +215,40 @@ export interface EforgeExtensionAPI {
    * Register a custom input source adapter that fetches build input artifacts
    * from an external system (e.g. an issue tracker or internal wiki).
    *
-   * @remarks Runtime not yet wired. Typed contract only in this slice.
+   * The adapter's `fetch` method is called at enqueue time when a source
+   * reference matching this adapter's name is provided. It may accept an
+   * optional `InputTransformContext` as a second argument for context-aware
+   * fetching; existing one-argument adapters remain type-compatible.
+   *
+   * @remarks Runtime-supported for input source fetching (EXTEND_11).
    */
   registerInputSource(adapter: InputSourceAdapter): void;
+
+  /**
+   * Register a PRD content enricher that mutates or augments PRD/build-source
+   * content before it is written to the queue.
+   *
+   * Enrichers are invoked in registration order. Each enricher receives the
+   * output of the previous one as its input. Return a `PrdEnrichmentResult` to
+   * replace the content, or `null`/`undefined` to pass the content through unchanged.
+   *
+   * @remarks Runtime-supported for PRD enrichment (EXTEND_11). Registrations
+   * are recorded for provenance and diagnostics; the engine invokes `enrich`
+   * at enqueue time.
+   *
+   * @example
+   * ```ts
+   * eforge.registerPrdEnricher({
+   *   name: 'my-ext:context-injector',
+   *   description: 'Injects project context into PRD content',
+   *   async enrich({ content, ctx }) {
+   *     const extra = await ctx.exec.run('cat', ['CONTEXT.md']);
+   *     return { content: content + '\n\n' + extra.stdout };
+   *   },
+   * });
+   * ```
+   */
+  registerPrdEnricher(enricher: PrdEnricher): void;
 
   /**
    * Register an additional reviewer perspective contributed to the post-build

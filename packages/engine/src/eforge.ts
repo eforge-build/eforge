@@ -208,7 +208,7 @@ export class EforgeEngine {
     this.configProfile = configProfile ?? { name: null, source: 'none', scope: null, config: null };
     // --- eforge:region plan-01-extension-runtime-foundation ---
     this.extensionRegistry = extensionRegistry ?? {
-      extensions: [], candidates: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], tools: [], diagnostics: [],
+      extensions: [], candidates: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], prdEnrichers: [], reviewerPerspectives: [], validationProviders: [], tools: [], diagnostics: [],
     };
     this.extensionDiagnostics = extensionDiagnostics;
     // --- eforge:endregion plan-01-extension-runtime-foundation ---

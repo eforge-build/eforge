@@ -1429,6 +1429,7 @@ export async function startServer(
     policyGates: 0,
     profileRouters: 0,
     inputSources: 0,
+    prdEnrichers: 0,
     reviewerPerspectives: 0,
     validationProviders: 0,
     tools: 0,

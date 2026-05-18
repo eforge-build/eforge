@@ -278,6 +278,36 @@ const eventRegistry = {
   },
   // --- eforge:endregion plan-01-policy-gate-foundation ---
 
+  // --- eforge:region plan-01-extension-input-contracts ---
+  'extension:input-source:fetched': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} input source "${e.adapterName}" fetched "${e.sourceId}" (${e.contentLength} chars)`,
+  },
+
+  'extension:input-source:failed': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} input source "${e.adapterName}" failed for "${e.sourceId}" (${e.reason}): ${e.message}`,
+  },
+
+  'extension:prd-enricher:applied': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} PRD enricher "${e.enricherName}" applied to "${e.sourceId}" (changed: ${e.changed})`,
+  },
+
+  'extension:prd-enricher:failed': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} PRD enricher "${e.enricherName}" failed for "${e.sourceId}" (${e.reason}): ${e.message}`,
+  },
+  // --- eforge:endregion plan-01-extension-input-contracts ---
+
   // -------------------------------------------------------------------------
   // Planning
   // -------------------------------------------------------------------------

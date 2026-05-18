@@ -16,6 +16,7 @@ import type {
   FinalMergePolicyGateContext,
   AnyPolicyGateContext,
   ProfileRouterContext,
+  InputTransformContext,
 } from './context.js';
 import type { ExtensionTool } from './tools.js';
 import type { TObject } from '@sinclair/typebox';
@@ -216,11 +217,28 @@ export type { ProfileRouterContext };
 // ---------------------------------------------------------------------------
 
 /**
+ * Structured result returned by an input source adapter `fetch` call.
+ *
+ * Returning an object allows the adapter to provide additional metadata
+ * beyond the raw content (e.g. a human-readable title for the fetched item).
+ * Return `null` to signal that the identifier was not found.
+ */
+export interface InputSourceResult {
+  /** The raw build-input artifact content. */
+  content: string;
+  /** Optional human-readable title for the fetched item. */
+  title?: string;
+}
+
+/**
  * Adapter for a custom input source registered via `registerInputSource`.
  *
  * Input sources allow extensions to supply PRD/build-source artifacts from
  * external systems (e.g. issue trackers, internal wikis) without manual file
  * placement.
+ *
+ * The `fetch` method accepts an optional second argument (`InputTransformContext`)
+ * for context-aware adapters. Existing one-argument adapters remain type-compatible.
  */
 export interface InputSourceAdapter {
   /** Unique adapter name (e.g. `my-ext:linear`). */
@@ -229,10 +247,73 @@ export interface InputSourceAdapter {
   description: string;
   /**
    * Fetch the build input for a given identifier.
-   * Returns the raw input artifact content or `null` if not found.
+   *
+   * Returns the raw input artifact content (string), a structured
+   * `InputSourceResult` object, or `null` if the identifier was not found.
+   *
+   * The optional second argument provides runtime context (cwd, source kind,
+   * logger) for adapters that need it. Existing adapters that only accept `id`
+   * remain type-compatible.
    */
-  fetch: (id: string) => Promise<string | null>;
+  fetch: (id: string, ctx?: InputTransformContext) => Promise<string | InputSourceResult | null>;
 }
+
+// ---------------------------------------------------------------------------
+// PRD enricher
+// ---------------------------------------------------------------------------
+
+/**
+ * Input passed to a PRD enricher `enrich` call.
+ */
+export interface PrdEnrichmentInput {
+  /** The PRD/build-source content to be enriched. */
+  content: string;
+  /** The source identifier (e.g. file path, issue id) for this PRD content. */
+  sourceId: string;
+  /** Runtime context providing cwd, logger, and source provenance. */
+  ctx: InputTransformContext;
+}
+
+/**
+ * Result returned by a PRD enricher `enrich` call.
+ *
+ * Return the mutated content to replace the input, or `null`/`undefined` to
+ * signal that the enricher did not modify the content.
+ */
+export interface PrdEnrichmentResult {
+  /** The enriched PRD/build-source content. */
+  content: string;
+}
+
+/**
+ * Specification for a PRD enricher registered via `registerPrdEnricher`.
+ *
+ * PRD enrichers mutate or augment PRD/build-source content before it is
+ * written to the queue, allowing extensions to inject context, normalize
+ * formatting, or resolve references.
+ *
+ * The runtime invokes enrichers in registration order. Each enricher receives
+ * the output of the previous one as its input content.
+ *
+ * @remarks Runtime execution is wired in EXTEND_11. Typed contract only in
+ * this slice; the engine records registrations for provenance and diagnostics.
+ */
+export interface PrdEnricher {
+  /** Unique enricher name used for logging, duplicate detection, and provenance. */
+  name: string;
+  /** Human-readable description of what this enricher does. */
+  description: string;
+  /**
+   * Enrich the given PRD content.
+   *
+   * Return a `PrdEnrichmentResult` to replace the content, or `null`/`undefined`
+   * to pass the content through unchanged.
+   */
+  enrich: (input: PrdEnrichmentInput) => Promise<PrdEnrichmentResult | null | undefined> | PrdEnrichmentResult | null | undefined;
+}
+
+// Re-export InputTransformContext for use in API signatures
+export type { InputTransformContext };
 
 // ---------------------------------------------------------------------------
 // Reviewer perspective
