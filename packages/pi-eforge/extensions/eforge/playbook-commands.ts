@@ -10,14 +10,15 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-  apiPlaybookList,
-  apiPlaybookEnqueue,
-  apiPlaybookPromote,
-  apiPlaybookDemote,
-  apiGetQueue,
+  apiPlaybookListIfRunning,
+  apiPlaybookEnqueueIfRunning,
+  apiPlaybookPromoteIfRunning,
+  apiPlaybookDemoteIfRunning,
+  apiGetQueueIfRunning,
   type PlaybookListEntry,
   type QueueItem,
 } from "@eforge-build/client";
+import { DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import {
   showSelectOverlay,
   showInfoOverlay,
@@ -55,7 +56,9 @@ async function fetchRunningBuilds(
   cwd: string,
 ): Promise<{ items: QueueItem[]; runningItems: QueueItem[] }> {
   try {
-    const { data: items } = await apiGetQueue({ cwd });
+    const result = await apiGetQueueIfRunning({ cwd });
+    if (result === null) return { items: [], runningItems: [] };
+    const items = result.data;
     const runningItems = items.filter(
       (item) => item.status === "running" || item.status === "queued",
     );
@@ -122,8 +125,12 @@ export async function handlePlaybookCommand(
   let playbooks: PlaybookListEntry[];
   try {
     const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookList({ cwd: ctx.cwd }),
+      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
     );
+    if (result === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
     playbooks = result.data.playbooks;
   } catch (err) {
     await showInfoOverlay(
@@ -223,8 +230,12 @@ async function handleRunBranch(
   let playbooks: PlaybookListEntry[];
   try {
     const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookList({ cwd: ctx.cwd }),
+      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
     );
+    if (result === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
     playbooks = result.data.playbooks;
   } catch (err) {
     await showInfoOverlay(
@@ -332,14 +343,18 @@ async function handleRunBranch(
   // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
   let enqueueSuccess = false;
   try {
-    await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
-      apiPlaybookEnqueue({
+    const enqueueR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
+      apiPlaybookEnqueueIfRunning({
         cwd: ctx.cwd,
         body: afterQueueId
           ? { name: selectedName!, afterQueueId }
           : { name: selectedName! },
       }),
     );
+    if (enqueueR === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
     enqueueSuccess = true;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -351,12 +366,16 @@ async function handleRunBranch(
         `The build you selected has already finished. Running **${selectedName}** now instead.`,
       );
       try {
-        await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
-          apiPlaybookEnqueue({
+        const fallbackR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
+          apiPlaybookEnqueueIfRunning({
             cwd: ctx.cwd,
             body: { name: selectedName! },
           }),
         );
+        if (fallbackR === null) {
+          await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+          return;
+        }
         afterQueueId = undefined;
         afterBuildTitle = undefined;
         enqueueSuccess = true;
@@ -402,8 +421,12 @@ async function handleListBranch(
   let playbooks: PlaybookListEntry[];
   try {
     const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookList({ cwd: ctx.cwd }),
+      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
     );
+    if (result === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
     playbooks = result.data.playbooks;
   } catch (err) {
     await showInfoOverlay(
@@ -476,8 +499,12 @@ async function handlePromoteBranch(
   let playbooks: PlaybookListEntry[];
   try {
     const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookList({ cwd: ctx.cwd }),
+      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
     );
+    if (result === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
     playbooks = result.data.playbooks;
   } catch (err) {
     await showInfoOverlay(
@@ -550,8 +577,12 @@ async function handlePromoteBranch(
   let destPath: string;
   try {
     const result = await withLoader(ctx, `Promoting ${selectedName}...`, () =>
-      apiPlaybookPromote({ cwd: ctx.cwd, body: { name: selectedName! } }),
+      apiPlaybookPromoteIfRunning({ cwd: ctx.cwd, body: { name: selectedName! } }),
     );
+    if (result === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
     destPath = result.data.path;
   } catch (err) {
     await showInfoOverlay(
@@ -581,8 +612,12 @@ async function handleDemoteBranch(
   let playbooks: PlaybookListEntry[];
   try {
     const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookList({ cwd: ctx.cwd }),
+      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
     );
+    if (result === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
     playbooks = result.data.playbooks;
   } catch (err) {
     await showInfoOverlay(
@@ -654,8 +689,12 @@ async function handleDemoteBranch(
   let destPath: string;
   try {
     const result = await withLoader(ctx, `Demoting ${selectedName}...`, () =>
-      apiPlaybookDemote({ cwd: ctx.cwd, body: { name: selectedName! } }),
+      apiPlaybookDemoteIfRunning({ cwd: ctx.cwd, body: { name: selectedName! } }),
     );
+    if (result === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
     destPath = result.data.path;
   } catch (err) {
     await showInfoOverlay(

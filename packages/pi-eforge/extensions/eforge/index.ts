@@ -36,28 +36,29 @@ import {
   readLockfile,
   isServerAlive,
   ensureDaemon,
-  daemonRequest,
+  daemonRequestIfRunning,
   sleep,
   sanitizeProfileName,
   parseRawConfigLegacy,
   subscribeWithSnapshot,
   aggregateSessionSummary,
   eventToProgress,
-  apiGetRunningRuns,
-  apiGetRunningSessionSummaries,
-  apiListExtensions,
-  apiShowExtension,
-  apiValidateExtensions,
-  apiTestExtension,
-  apiNewExtension,
-  apiReloadExtensions,
-  apiTrustExtension,
-  apiUntrustExtension,
+  apiGetRunningRunsIfRunning,
+  apiGetRunningSessionSummariesIfRunning,
+  apiListExtensionsIfRunning,
+  apiShowExtensionIfRunning,
+  apiValidateExtensionsIfRunning,
+  apiTestExtensionIfRunning,
+  apiNewExtensionIfRunning,
+  apiReloadExtensionsIfRunning,
+  apiTrustExtensionIfRunning,
+  apiUntrustExtensionIfRunning,
   LOCKFILE_POLL_INTERVAL_MS,
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
   buildPath,
 } from '@eforge-build/client';
+import { requireDaemon, piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   EnqueueResponse,
@@ -119,8 +120,9 @@ async function checkActiveBuilds(
   cwd: string,
 ): Promise<string | null> {
   try {
-    const { data: runs } = await apiGetRunningRuns({ cwd });
-    return checkActiveBuildsMessage(runs);
+    const result = await apiGetRunningRunsIfRunning({ cwd });
+    if (result === null) return null;
+    return checkActiveBuildsMessage(result.data);
   } catch {
     return null;
   }
@@ -131,7 +133,7 @@ async function stopDaemon(
   force: boolean,
 ): Promise<{ stopped: boolean; message: string }> {
   const lock = readLockfile(cwd);
-  if (!lock) {
+  if (!lock || !(await isServerAlive(lock))) {
     return { stopped: true, message: "Daemon is not running." };
   }
 
@@ -143,7 +145,7 @@ async function stopDaemon(
   }
 
   try {
-    await daemonRequest(cwd, "POST", API_ROUTES.daemonStop, { force });
+    await daemonRequestIfRunning(cwd, "POST", API_ROUTES.daemonStop, { force });
   } catch {
     // Daemon may have already shut down before responding
   }
@@ -212,33 +214,45 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     if (_statusRefreshInFlight) return;
     _statusRefreshInFlight = true;
     try {
+      // Profile check: null means no daemon running — clear all footer keys and bail.
+      let profileResult: { data: { active: string | null; source: string; resolved: { harness?: string; name?: string } | null }; port: number } | null;
       try {
-        const { data } = await daemonRequest<{
+        profileResult = await piDaemonRequest<{
           active: string | null;
           source: string;
           resolved: { harness?: string; name?: string } | null;
         }>(ctx.cwd, 'GET', API_ROUTES.profileShow);
-        if (data.active && data.resolved?.harness) {
-          ctx.ui.setStatus('eforge', `eforge: ${data.active} (${data.resolved.harness})`);
-        } else {
-          ctx.ui.setStatus('eforge', undefined);
-        }
       } catch {
+        profileResult = null;
+      }
+
+      if (profileResult === null) {
+        // Daemon not running — clear all three footer keys and return.
+        ctx.ui.setStatus('eforge', undefined);
+        ctx.ui.setStatus('eforge-build', undefined);
+        ctx.ui.setStatus('eforge-queue', undefined);
+        return;
+      }
+
+      const profileData = profileResult.data;
+      if (profileData.active && profileData.resolved?.harness) {
+        ctx.ui.setStatus('eforge', `eforge: ${profileData.active} (${profileData.resolved.harness})`);
+      } else {
         ctx.ui.setStatus('eforge', undefined);
       }
 
       let queueItems: QueueItem[] = [];
       try {
-        const { data } = await daemonRequest<QueueItem[]>(ctx.cwd, 'GET', API_ROUTES.queue);
-        queueItems = data;
+        const queueResult = await piDaemonRequest<QueueItem[]>(ctx.cwd, 'GET', API_ROUTES.queue);
+        if (queueResult !== null) queueItems = queueResult.data;
       } catch {
         queueItems = [];
       }
 
       let hasRunningBuild = false;
       try {
-        const summaries = await apiGetRunningSessionSummaries({ cwd: ctx.cwd });
-        if (summaries.length === 0) {
+        const summaries = await apiGetRunningSessionSummariesIfRunning({ cwd: ctx.cwd });
+        if (summaries === null || summaries.length === 0) {
           ctx.ui.setStatus('eforge-build', undefined);
         } else if (summaries.length === 1) {
           hasRunningBuild = true;
@@ -303,7 +317,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const body: { source: string; profile?: string } = { source: params.source };
       if (params.profile) body.profile = params.profile;
-      const { data, port } = await daemonRequest<EnqueueResponse>(
+      const { data, port } = await requireDaemon<EnqueueResponse>(
         ctx.cwd,
         "POST",
         API_ROUTES.enqueue,
@@ -544,7 +558,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       // Always include version info — diagnostic for "is the running daemon
       // stale relative to the Pi extension I have installed?". Best-effort:
       // a daemon with no eforgeVersion is pre-version-aware.
-      const { data: versionData } = await daemonRequest<VersionResponse>(
+      const { data: versionData } = await requireDaemon<VersionResponse>(
         ctx.cwd,
         "GET",
         API_ROUTES.version,
@@ -560,7 +574,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }),
       };
 
-      const summaries = await apiGetRunningSessionSummaries({ cwd: ctx.cwd });
+      const summariesResult = await apiGetRunningSessionSummariesIfRunning({ cwd: ctx.cwd });
+      if (summariesResult === null) {
+        throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+      }
+      const summaries = summariesResult;
       if (summaries.length === 0) {
         return jsonResult({
           status: "idle",
@@ -719,7 +737,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       "List all PRDs currently in the eforge queue with their metadata.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
-      const { data } = await daemonRequest<QueueItem[]>(ctx.cwd, "GET", API_ROUTES.queue);
+      const { data } = await requireDaemon<QueueItem[]>(ctx.cwd, "GET", API_ROUTES.queue);
       return jsonResult(data);
     },
   });
@@ -743,7 +761,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         params.action === "validate"
           ? API_ROUTES.configValidate
           : API_ROUTES.configShow;
-      const { data } = await daemonRequest(ctx.cwd, "GET", path);
+      const { data } = await requireDaemon(ctx.cwd, "GET", path);
       return jsonResult(data);
     },
   });
@@ -818,12 +836,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const params = new URLSearchParams();
         if (scope) params.set("scope", scope);
         const qs = params.toString();
-        const { data } = await daemonRequest(ctx.cwd, "GET", `${API_ROUTES.profileList}${qs ? `?${qs}` : ""}`);
+        const { data } = await requireDaemon(ctx.cwd, "GET", `${API_ROUTES.profileList}${qs ? `?${qs}` : ""}`);
         return jsonResult(data);
       }
 
       if (action === "show") {
-        const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.profileShow);
+        const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.profileShow);
         return jsonResult(data);
       }
 
@@ -833,7 +851,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }
         const useBody: Record<string, unknown> = { name };
         if (scope) useBody.scope = scope;
-        const { data } = await daemonRequest(
+        const { data } = await requireDaemon(
           ctx.cwd,
           "POST",
           API_ROUTES.profileUse,
@@ -858,7 +876,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (metadata !== undefined) body.metadata = metadata;
         if (overwrite !== undefined) body.overwrite = overwrite;
         if (scope) body.scope = scope;
-        const { data } = await daemonRequest(
+        const { data } = await requireDaemon(
           ctx.cwd,
           "POST",
           API_ROUTES.profileCreate,
@@ -875,7 +893,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const body: Record<string, unknown> = {};
       if (force !== undefined) body.force = force;
       if (scope) body.scope = scope;
-      const { data } = await daemonRequest(
+      const { data } = await requireDaemon(
         ctx.cwd,
         "DELETE",
         buildPath(API_ROUTES.profileDelete, { name }),
@@ -1026,8 +1044,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (params.trustedBy !== undefined) {
           throw new Error('"list" does not accept trustedBy');
         }
-        const { data } = await apiListExtensions({ cwd: ctx.cwd });
-        return jsonResult(data);
+        const result = await apiListExtensionsIfRunning({ cwd: ctx.cwd });
+        if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(result.data);
       }
       if (params.action === "show") {
         if (!params.name) {
@@ -1042,8 +1061,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (params.trustedBy !== undefined) {
           throw new Error('"show" does not accept trustedBy');
         }
-        const { data } = await apiShowExtension({ cwd: ctx.cwd, name: params.name });
-        return jsonResult(data);
+        const showResult = await apiShowExtensionIfRunning({ cwd: ctx.cwd, name: params.name });
+        if (showResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(showResult.data);
       }
       if (params.action === "validate") {
         if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
@@ -1061,8 +1081,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const request: { cwd: string; name?: string; path?: string } = { cwd: ctx.cwd };
         if (params.name !== undefined) request.name = params.name;
         if (params.path !== undefined) request.path = params.path;
-        const { data } = await apiValidateExtensions(request);
-        return jsonResult(data);
+        const validateResult = await apiValidateExtensionsIfRunning(request);
+        if (validateResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(validateResult.data);
       }
       if (params.action === "test") {
         if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
@@ -1080,8 +1101,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (params.fixture !== undefined) body.fixture = params.fixture;
         if (params.run !== undefined) body.run = params.run;
         if (params.event !== undefined) body.event = params.event;
-        const { data } = await apiTestExtension({ cwd: ctx.cwd, body });
-        return jsonResult(data);
+        const testResult = await apiTestExtensionIfRunning({ cwd: ctx.cwd, body });
+        if (testResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(testResult.data);
       }
       if (params.action === "new") {
         if (!params.name) {
@@ -1100,8 +1122,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (params.scope !== undefined) body.scope = params.scope;
         if (params.template !== undefined) body.template = params.template as ExtensionNewRequest['template'];
         if (params.force !== undefined) body.force = params.force;
-        const { data } = await apiNewExtension({ cwd: ctx.cwd, body });
-        return jsonResult(data);
+        const newResult = await apiNewExtensionIfRunning({ cwd: ctx.cwd, body });
+        if (newResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(newResult.data);
       }
       // --- eforge:region plan-02-management-surfaces ---
       if (params.action === "trust") {
@@ -1121,8 +1144,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (params.name !== undefined) body.name = params.name;
         if (params.path !== undefined) body.path = params.path;
         if (params.trustedBy !== undefined) body.trustedBy = params.trustedBy;
-        const { data } = await apiTrustExtension({ cwd: ctx.cwd, body });
-        return jsonResult(data);
+        const trustResult = await apiTrustExtensionIfRunning({ cwd: ctx.cwd, body });
+        if (trustResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(trustResult.data);
       }
       if (params.action === "untrust") {
         if (!params.name && !params.path) {
@@ -1143,8 +1167,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const body: { name?: string; path?: string } = {};
         if (params.name !== undefined) body.name = params.name;
         if (params.path !== undefined) body.path = params.path;
-        const { data } = await apiUntrustExtension({ cwd: ctx.cwd, body });
-        return jsonResult(data);
+        const untrustResult = await apiUntrustExtensionIfRunning({ cwd: ctx.cwd, body });
+        if (untrustResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(untrustResult.data);
       }
       // --- eforge:endregion plan-02-management-surfaces ---
       if (params.name !== undefined || params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
@@ -1156,8 +1181,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       if (params.trustedBy !== undefined) {
         throw new Error('"reload" does not accept trustedBy');
       }
-      const { data } = await apiReloadExtensions({ cwd: ctx.cwd });
-      return jsonResult(data);
+      const reloadResult = await apiReloadExtensionsIfRunning({ cwd: ctx.cwd });
+      if (reloadResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+      return jsonResult(reloadResult.data);
     },
   });
   // --- eforge:endregion plan-02-extension-tooling-surfaces ---
@@ -1187,7 +1213,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (params.action === "providers") {
-        const { data } = await daemonRequest(
+        const { data } = await requireDaemon(
           ctx.cwd,
           "GET",
           `${API_ROUTES.modelProviders}?harness=${encodeURIComponent(params.harness)}`,
@@ -1196,7 +1222,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }
       const searchParams = new URLSearchParams({ harness: params.harness });
       if (params.provider) searchParams.set("provider", params.provider);
-      const { data } = await daemonRequest(
+      const { data } = await requireDaemon(
         ctx.cwd,
         "GET",
         `${API_ROUTES.modelList}?${searchParams.toString()}`,
@@ -1334,7 +1360,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (params.action === "get") {
-        const { data } = await daemonRequest<AutoBuildState>(
+        const { data } = await requireDaemon<AutoBuildState>(
           ctx.cwd,
           "GET",
           API_ROUTES.autoBuildGet,
@@ -1344,7 +1370,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       if (params.enabled === undefined) {
         throw new Error('"enabled" is required when action is "set"');
       }
-      const { data } = await daemonRequest<AutoBuildState>(
+      const { data } = await requireDaemon<AutoBuildState>(
         ctx.cwd,
         "POST",
         API_ROUTES.autoBuildSet,
@@ -1484,7 +1510,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (legacyProfile.agents) createBody.agents = legacyProfile.agents;
         if (legacyProfile.pi) createBody.pi = legacyProfile.pi;
 
-        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
+        await requireDaemon(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
 
         // Rewrite config.yaml with remaining fields only (no backend:) before
         // activating the profile, so a failed write leaves the profile inactive
@@ -1494,7 +1520,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           : "";
         writeFileSync(configPath, yamlOut, "utf-8");
 
-        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
+        await requireDaemon(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
 
         if (_latestCtx) await refreshStatus(_latestCtx);
 
@@ -1538,7 +1564,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }
 
         try {
-          await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: params.existingProfile.name, scope: params.existingProfile.scope });
+          await requireDaemon(ctx.cwd, "POST", API_ROUTES.profileUse, { name: params.existingProfile.name, scope: params.existingProfile.scope });
         } catch (err) {
           if (wroteExistingProfileSentinel) {
             try {
@@ -1561,7 +1587,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
         let existingProfileValidation: ConfigValidateResponse | null = null;
         try {
-          const { data } = await daemonRequest<ConfigValidateResponse>(
+          const { data } = await requireDaemon<ConfigValidateResponse>(
             ctx.cwd,
             "GET",
             API_ROUTES.configValidate,
@@ -1670,10 +1696,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }
 
       try {
-        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
+        await requireDaemon(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
 
         // Activate the profile
-        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
+        await requireDaemon(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
       } catch (err) {
         if (wroteSentinel) {
           try {
@@ -1698,7 +1724,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       // Validate config via daemon (best-effort)
       let validation: ConfigValidateResponse | null = null;
       try {
-        const { data } = await daemonRequest<ConfigValidateResponse>(
+        const { data } = await requireDaemon<ConfigValidateResponse>(
           ctx.cwd,
           "GET",
           API_ROUTES.configValidate,
@@ -1838,7 +1864,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { data } = await daemonRequest(
+      const { data } = await requireDaemon(
         ctx.cwd,
         "POST",
         API_ROUTES.recover,
@@ -1863,7 +1889,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const queryParams = new URLSearchParams({ prdId: params.prdId });
-      const { data } = await daemonRequest(
+      const { data } = await requireDaemon(
         ctx.cwd,
         "GET",
         `${API_ROUTES.readRecoverySidecar}?${queryParams.toString()}`,
@@ -1892,7 +1918,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { data } = await daemonRequest(
+      const { data } = await requireDaemon(
         ctx.cwd,
         "POST",
         API_ROUTES.applyRecovery,
@@ -1964,13 +1990,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const { action, name, scope, playbook, afterQueueId, raw } = params;
 
       if (action === "list") {
-        const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.playbookList);
+        const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.playbookList);
         return jsonResult(data);
       }
 
       if (action === "show") {
         if (!name) throw new Error('"name" is required when action is "show"');
-        const { data } = await daemonRequest(
+        const { data } = await requireDaemon(
           ctx.cwd,
           "GET",
           `${API_ROUTES.playbookShow}?name=${encodeURIComponent(name)}`,
@@ -1981,7 +2007,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       if (action === "save") {
         if (!scope) throw new Error('"scope" is required when action is "save"');
         if (!playbook) throw new Error('"playbook" is required when action is "save"');
-        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookSave, { scope, playbook });
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookSave, { scope, playbook });
         return jsonResult(data);
       }
 
@@ -1989,25 +2015,25 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!name) throw new Error('"name" is required when action is "enqueue"');
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
-        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookEnqueue, body);
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookEnqueue, body);
         return jsonResult(data);
       }
 
       if (action === "promote") {
         if (!name) throw new Error('"name" is required when action is "promote"');
-        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookPromote, { name });
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookPromote, { name });
         return jsonResult(data);
       }
 
       if (action === "demote") {
         if (!name) throw new Error('"name" is required when action is "demote"');
-        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookDemote, { name });
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookDemote, { name });
         return jsonResult(data);
       }
 
       // action === "validate"
       if (!raw) throw new Error('"raw" is required when action is "validate"');
-      const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookValidate, { raw });
+      const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookValidate, { raw });
       return jsonResult(data);
     },
 
@@ -2130,13 +2156,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open } = params;
 
       if (action === "list-active") {
-        const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.sessionPlanList);
+        const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.sessionPlanList);
         return jsonResult(data);
       }
 
       if (action === "show") {
         if (!session) throw new Error('"session" is required when action is "show"');
-        const { data } = await daemonRequest(
+        const { data } = await requireDaemon(
           ctx.cwd,
           "GET",
           `${API_ROUTES.sessionPlanShow}?session=${encodeURIComponent(session)}`,
@@ -2155,7 +2181,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const body: Record<string, unknown> = { session, topic };
         if (planning_type !== undefined) body.planning_type = planning_type;
         if (planning_depth !== undefined) body.planning_depth = planning_depth;
-        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanCreate, body);
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanCreate, body);
         if (open === true && typeof (data as Record<string, unknown>).path === 'string') {
           const { openSessionPlanFile } = await import('./open-session-plan.js');
           const openStatus = openSessionPlanFile({ path: (data as Record<string, unknown>).path as string, cwd: ctx.cwd });
@@ -2168,7 +2194,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!session) throw new Error('"session" is required when action is "set-section"');
         if (!dimension) throw new Error('"dimension" is required when action is "set-section"');
         if (content === undefined) throw new Error('"content" is required when action is "set-section"');
-        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanSetSection, { session, dimension, content });
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanSetSection, { session, dimension, content });
         return jsonResult(data);
       }
 
@@ -2176,14 +2202,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!session) throw new Error('"session" is required when action is "skip-dimension"');
         if (!dimension) throw new Error('"dimension" is required when action is "skip-dimension"');
         if (!reason) throw new Error('"reason" is required when action is "skip-dimension"');
-        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanSkipDimension, { session, dimension, reason });
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanSkipDimension, { session, dimension, reason });
         return jsonResult(data);
       }
 
       if (action === "set-status") {
         if (!session) throw new Error('"session" is required when action is "set-status"');
         if (!status) throw new Error('"status" is required when action is "set-status"');
-        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanSetStatus, { session, status });
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanSetStatus, { session, status });
         return jsonResult(data);
       }
 
@@ -2192,13 +2218,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const body: Record<string, unknown> = { session };
         if (planning_type !== undefined) body.planning_type = planning_type;
         if (planning_depth !== undefined) body.planning_depth = planning_depth;
-        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanSelectDimensions, body);
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanSelectDimensions, body);
         return jsonResult(data);
       }
 
       if (action === "readiness") {
         if (!session) throw new Error('"session" is required when action is "readiness"');
-        const { data } = await daemonRequest(
+        const { data } = await requireDaemon(
           ctx.cwd,
           "GET",
           `${API_ROUTES.sessionPlanReadiness}?session=${encodeURIComponent(session)}`,
@@ -2208,7 +2234,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
       // action === "migrate-legacy"
       if (!session) throw new Error('"session" is required when action is "migrate-legacy"');
-      const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanMigrateLegacy, { session });
+      const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanMigrateLegacy, { session });
       return jsonResult(data);
     },
 
@@ -2278,16 +2304,15 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       if (ctx.hasUI) {
         // Fetch profiles and show a searchable picker
         let profiles: Array<{ name: string; scope: string; harness?: string; shadowedBy?: string }> = [];
-        try {
-          const result = await daemonRequest<{ profiles: Array<{ name: string; scope: string; harness?: string; shadowedBy?: string }>; active: string | null }>(
-            ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`
-          );
-          profiles = result.data.profiles;
-        } catch {
+        const profileListResult = await daemonRequestIfRunning<{ profiles: Array<{ name: string; scope: string; harness?: string; shadowedBy?: string }>; active: string | null }>(
+          ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`
+        );
+        if (profileListResult === null) {
           // Daemon not running or profile list unavailable — fall through to alias
           pi.sendUserMessage((`/skill:eforge-build${args ? " " + args : ""}`).trim());
           return;
         }
+        profiles = profileListResult.data.profiles;
 
         const items = [
           {

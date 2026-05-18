@@ -8,7 +8,8 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { daemonRequest, API_ROUTES, buildPath } from "@eforge-build/client";
+import { API_ROUTES, buildPath } from "@eforge-build/client";
+import { piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import { showSelectOverlay, showSearchableSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
 import { buildProfileCreatePayload, type TierSelection, type ProfileCreatePayload, type TierRecipeEntry } from "./profile-payload";
 
@@ -54,9 +55,13 @@ export async function handleProfileCommand(
   const profileName = args.trim();
   if (profileName) {
     try {
-      await withLoader(ctx, "Switching profile...", () =>
-        daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName }),
+      const switchResult = await withLoader(ctx, "Switching profile...", () =>
+        piDaemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName }),
       );
+      if (switchResult === null) {
+        await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+        return;
+      }
       await onStatusRefresh();
       await showInfoOverlay(
         ctx,
@@ -77,8 +82,12 @@ export async function handleProfileCommand(
   let listData: ProfileListData;
   try {
     const result = await withLoader(ctx, "Loading profiles...", () =>
-      daemonRequest<ProfileListData>(ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`),
+      piDaemonRequest<ProfileListData>(ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`),
     );
+    if (result === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
     listData = result.data;
   } catch (err) {
     await showInfoOverlay(
@@ -156,9 +165,13 @@ export async function handleProfileCommand(
 
   if (action === "switch") {
     try {
-      await withLoader(ctx, "Switching profile...", () =>
-        daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: selected }),
+      const switchResult = await withLoader(ctx, "Switching profile...", () =>
+        piDaemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: selected }),
       );
+      if (switchResult === null) {
+        await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+        return;
+      }
       await onStatusRefresh();
       await showInfoOverlay(
         ctx,
@@ -198,18 +211,22 @@ async function loadModelsList(
   const params = new URLSearchParams({ harness });
   if (provider) params.set("provider", provider);
   try {
-    const { data } = await withLoader(ctx, "Loading models...", () =>
-      daemonRequest<{ models: ModelInfo[] }>(
+    const result = await withLoader(ctx, "Loading models...", () =>
+      piDaemonRequest<{ models: ModelInfo[] }>(
         ctx.cwd,
         "GET",
         `${API_ROUTES.modelList}?${params.toString()}`,
       ),
     );
-    if (data.models.length === 0) {
+    if (result === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return null;
+    }
+    if (result.data.models.length === 0) {
       await showInfoOverlay(ctx, "eforge - Error", "No models available for the selected harness/provider.");
       return null;
     }
-    return data.models;
+    return result.data.models;
   } catch (err) {
     await showInfoOverlay(
       ctx,
@@ -256,10 +273,14 @@ async function pickCustomTier(
   if (harness === "pi") {
     let providers: string[];
     try {
-      const { data } = await withLoader(ctx, "Loading providers...", () =>
-        daemonRequest<{ providers: string[] }>(ctx.cwd, "GET", `${API_ROUTES.modelProviders}?harness=pi`),
+      const result = await withLoader(ctx, "Loading providers...", () =>
+        piDaemonRequest<{ providers: string[] }>(ctx.cwd, "GET", `${API_ROUTES.modelProviders}?harness=pi`),
       );
-      providers = data.providers;
+      if (result === null) {
+        await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+        return null;
+      }
+      providers = result.data.providers;
     } catch (err) {
       await showInfoOverlay(
         ctx,
@@ -521,9 +542,13 @@ export async function handleProfileNewCommand(
 
   // Create the profile
   try {
-    await withLoader(ctx, "Creating profile...", () =>
-      daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, payload as unknown as Record<string, unknown>),
+    const createResult = await withLoader(ctx, "Creating profile...", () =>
+      piDaemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, payload as unknown as Record<string, unknown>),
     );
+    if (createResult === null) {
+      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      return;
+    }
   } catch (err) {
     await showInfoOverlay(
       ctx,
@@ -541,9 +566,13 @@ export async function handleProfileNewCommand(
 
   if (activate === "yes") {
     try {
-      await withLoader(ctx, "Activating profile...", () =>
-        daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name, scope }),
+      const activateResult = await withLoader(ctx, "Activating profile...", () =>
+        piDaemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name, scope }),
       );
+      if (activateResult === null) {
+        await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+        return;
+      }
       await onStatusRefresh();
       await showInfoOverlay(
         ctx,

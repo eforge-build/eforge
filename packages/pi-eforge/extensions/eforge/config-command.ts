@@ -7,7 +7,8 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { daemonRequest, API_ROUTES } from "@eforge-build/client";
+import { API_ROUTES } from "@eforge-build/client";
+import { piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import { showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
 
 // ---------------------------------------------------------------------------
@@ -26,10 +27,18 @@ export async function handleConfigCommand(
 
   let config: Record<string, unknown>;
   try {
-    const { data } = await withLoader(ctx, "Loading config...", () =>
-      daemonRequest<Record<string, unknown>>(ctx.cwd, "GET", API_ROUTES.configShow),
+    const result = await withLoader(ctx, "Loading config...", () =>
+      piDaemonRequest<Record<string, unknown>>(ctx.cwd, "GET", API_ROUTES.configShow),
     );
-    config = (data ?? {}) as Record<string, unknown>;
+    if (result === null) {
+      await showInfoOverlay(
+        ctx,
+        "eforge - Daemon Not Running",
+        `Cannot load config: ${DAEMON_NOT_RUNNING_GUIDANCE}`,
+      );
+      return;
+    }
+    config = (result.data ?? {}) as Record<string, unknown>;
   } catch (err) {
     await showInfoOverlay(
       ctx,

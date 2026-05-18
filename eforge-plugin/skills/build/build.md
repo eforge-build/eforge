@@ -156,7 +156,10 @@ If the monitor is running, also include the monitor URL.
 | Tool returns error | Show the error message from the daemon response |
 | Config validation fails | Show errors, suggest fixing config, do not enqueue |
 | No config found | Tell the user to run `/eforge:init` to initialize eforge |
+
+<!-- parity-skip-start -->
 | Daemon connection failure | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
+<!-- parity-skip-end -->
 
 ## Related Skills
 
