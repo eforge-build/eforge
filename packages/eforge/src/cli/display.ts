@@ -860,6 +860,28 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
+    // --- eforge:region plan-02-enqueue-preprocessing-runtime ---
+    case 'extension:input-source:fetched':
+      console.log(chalk.dim(`  ↓ Input source [${event.adapterName}] fetched "${event.sourceId}" (${event.contentLength} chars)`));
+      break;
+
+    case 'extension:input-source:failed':
+      console.log(chalk.red(`  ✗ Input source [${event.adapterName}] failed for "${event.sourceId}" (${event.reason}): ${event.message}`));
+      break;
+
+    case 'extension:prd-enricher:applied':
+      if (event.changed) {
+        console.log(chalk.dim(`  ✎ Enricher [${event.enricherName}] applied (${event.inputLength} → ${event.outputLength} chars)`));
+      } else {
+        console.log(chalk.dim(`  · Enricher [${event.enricherName}] no-op`));
+      }
+      break;
+
+    case 'extension:prd-enricher:failed':
+      console.log(chalk.yellow(`  ⚠ Enricher [${event.enricherName}] failed for "${event.sourceId}" (${event.reason}): ${event.message}`));
+      break;
+    // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
+
     // --- eforge:region plan-01-types-and-daemon-emission ---
     case 'daemon:warning':
       console.log(chalk.yellow(`  ⚠ Daemon warning [${event.source}]: ${event.message}`));

@@ -133,6 +133,9 @@ importers:
       '@eforge-build/engine':
         specifier: workspace:*
         version: link:../engine
+      '@eforge-build/input':
+        specifier: workspace:*
+        version: link:../input
       '@eforge-build/monitor':
         specifier: workspace:*
         version: link:../monitor

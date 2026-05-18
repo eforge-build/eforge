@@ -783,6 +783,11 @@ describe('POST /api/enqueue — session-plan auto-submit', () => {
     const updated = await readFile(filePath, 'utf-8');
     expect(updated).toContain('status: submitted');
     expect(updated).toContain(`eforge_session: ${data.sessionId}`);
+
+    // Worker must receive the original session-plan path, not normalized content.
+    // Full preprocessing (including session-plan normalization and enrichers) is
+    // done by the enqueue worker via preprocessBuildSource, not the daemon route.
+    expect(calls[0]?.args[0]).toBe(sourcePath);
   });
 
   it('enqueue still succeeds when session-plan file is removed before the write', async () => {
@@ -801,9 +806,10 @@ describe('POST /api/enqueue — session-plan auto-submit', () => {
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, workerTracker: tracker });
 
     const sourcePath = `.eforge/session-plans/${planSession}.md`;
-    // The enqueue will try to normalize first (stat/readFile), which should be
-    // a no-op since the file is gone. Worker gets enqueued with the path as-is.
-    // Then auto-submit tries to load the plan — file is gone — logs and continues.
+    // The daemon tries to stat/readFile the path for prevalidation only — since
+    // the file is gone, the stat fails and no prevalidation is attempted. Worker
+    // receives the original path as-is. Then auto-submit tries to load the plan
+    // — file is gone — logs and continues.
     const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
       source: sourcePath,
     });
