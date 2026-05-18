@@ -36,14 +36,50 @@ function rowToRunInfo(row: RunRow): RunInfo {
   };
 }
 
+/** Distinguishes daemon-owned events (no run correlation) from run-correlated events. */
+export type EventOrigin = 'run' | 'daemon';
+
 export interface EventRecord {
   id: number;
-  runId: string;
+  /** Null for daemon-owned rows (origin='daemon'); a real run id for run-correlated rows. */
+  runId: string | null;
+  /** Ownership: 'run' for session/run-correlated events, 'daemon' for daemon-wide events. */
+  origin: EventOrigin;
   type: string;
   planId?: string;
   agent?: string;
   data: string;
   timestamp: string;
+}
+
+/** Raw SQLite row shape returned by event SELECT statements (camelCase aliases). */
+interface RawEventRow {
+  id: number;
+  runId: string | null;
+  origin: string;
+  type: string;
+  planId: string | null;
+  agent: string | null;
+  data: string;
+  timestamp: string;
+}
+
+/**
+ * Map a raw event DB row to the canonical `EventRecord` shape.
+ * Explicit mapping ensures a new required field causes a type error here
+ * rather than silently producing bad data.
+ */
+function rowToEventRecord(row: RawEventRow): EventRecord {
+  return {
+    id: row.id,
+    runId: row.runId,
+    origin: row.origin === 'daemon' ? 'daemon' : 'run',
+    type: row.type,
+    planId: row.planId ?? undefined,
+    agent: row.agent ?? undefined,
+    data: row.data,
+    timestamp: row.timestamp,
+  };
 }
 
 export interface MonitorDB {
@@ -57,8 +93,25 @@ export interface MonitorDB {
     cwd: string;
     pid?: number;
   }): void;
+  /**
+   * Insert a run-correlated event row (origin='run').
+   * The `runId` must reference a real run id (FK is OFF so no DB error, but
+   * semantically the row is owned by the run).
+   */
   insertEvent(event: {
     runId: string;
+    type: string;
+    planId?: string;
+    agent?: string;
+    data: string;
+    timestamp: string;
+  }): number;
+  /**
+   * Insert a daemon-owned event row (origin='daemon', run_id=NULL).
+   * Use for events emitted by the daemon outside any specific run session,
+   * e.g. daemon lifecycle, recovery, queue/scheduler lifecycle events.
+   */
+  insertDaemonEvent(event: {
     type: string;
     planId?: string;
     agent?: string;
@@ -149,7 +202,8 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id TEXT NOT NULL REFERENCES runs(id),
+    run_id TEXT REFERENCES runs(id),
+    origin TEXT NOT NULL DEFAULT 'run' CHECK (origin IN ('run','daemon')),
     type TEXT NOT NULL,
     plan_id TEXT,
     agent TEXT,
@@ -215,12 +269,96 @@ export function openDatabase(dbPath: string): MonitorDB {
   // Rename 'plan' command to 'compile' for existing records
   db.exec("UPDATE runs SET command = 'compile' WHERE command = 'plan'");
 
+  // Migration: rebuild events table to support nullable run_id and explicit origin ownership.
+  // SQLite cannot drop NOT NULL constraints in place, so we rebuild when either:
+  //   (a) the origin column is absent, or
+  //   (b) run_id still has a NOT NULL constraint.
+  // For new DBs (created above via SCHEMA), both conditions are already satisfied.
+  {
+    const eventCols = db.prepare('PRAGMA table_info(events)').all() as unknown as { name: string; notnull: number }[];
+    const hasOrigin = eventCols.some((c) => c.name === 'origin');
+    const runIdCol = eventCols.find((c) => c.name === 'run_id');
+    const runIdIsNotNull = runIdCol?.notnull === 1;
+
+    if (!hasOrigin || runIdIsNotNull) {
+      // Build CASE expressions for the migration INSERT.
+      // Use DAEMON_EVENT_TYPES placeholders so the daemon allowlist stays DRY.
+      const placeholders = DAEMON_EVENT_TYPES.map(() => '?').join(', ');
+      // If existing table has an origin column, preserve its values for non-daemon rows;
+      // otherwise default all non-daemon rows to 'run'.
+      const originSourceExpr = hasOrigin ? "COALESCE(e.origin, 'run')" : "'run'";
+
+      // Safety: drop any partial migration table from a previous failed attempt.
+      db.exec('DROP TABLE IF EXISTS events_new');
+      db.exec('BEGIN');
+      try {
+        db.exec(`
+          CREATE TABLE events_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT REFERENCES runs(id),
+            origin TEXT NOT NULL DEFAULT 'run' CHECK (origin IN ('run','daemon')),
+            type TEXT NOT NULL,
+            plan_id TEXT,
+            agent TEXT,
+            data TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+          )
+        `);
+        // Copy rows: classify unmatched rows whose type is in the daemon allowlist
+        // as daemon-owned (run_id=NULL, origin='daemon'). All other rows retain
+        // their existing run_id and origin (or default to 'run').
+        db.prepare(`
+          INSERT INTO events_new (id, run_id, origin, type, plan_id, agent, data, timestamp)
+          SELECT
+            e.id,
+            CASE
+              WHEN e.run_id IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id = e.run_id)
+                AND e.type IN (${placeholders})
+              THEN NULL
+              ELSE e.run_id
+            END,
+            CASE
+              WHEN e.run_id IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id = e.run_id)
+                AND e.type IN (${placeholders})
+              THEN 'daemon'
+              ELSE ${originSourceExpr}
+            END,
+            e.type,
+            e.plan_id,
+            e.agent,
+            e.data,
+            e.timestamp
+          FROM events e
+        `).run(...DAEMON_EVENT_TYPES, ...DAEMON_EVENT_TYPES);
+        db.exec('DROP TABLE events');
+        db.exec('ALTER TABLE events_new RENAME TO events');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id)');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_events_origin ON events(origin)');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)');
+        db.exec('COMMIT');
+      } catch (migErr) {
+        db.exec('ROLLBACK');
+        throw migErr;
+      }
+    } else {
+      // Fresh DB already has origin column (created by SCHEMA above).
+      // Create the origin index here since it was excluded from SCHEMA to avoid
+      // the case where a legacy DB without origin triggers index creation before migration.
+      db.exec('CREATE INDEX IF NOT EXISTS idx_events_origin ON events(origin)');
+    }
+  }
+
   const stmts = {
     insertRun: db.prepare(
       `INSERT INTO runs (id, session_id, plan_set, command, status, started_at, cwd, pid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     insertEvent: db.prepare(
       `INSERT INTO events (run_id, type, plan_id, agent, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)`,
+    ),
+    insertDaemonEvent: db.prepare(
+      `INSERT INTO events (origin, type, plan_id, agent, data, timestamp) VALUES ('daemon', ?, ?, ?, ?, ?)`,
     ),
     updateRunStatus: db.prepare(
       `UPDATE runs SET status = ?, completed_at = ? WHERE id = ?`,
@@ -238,13 +376,13 @@ export function openDatabase(dbPath: string): MonitorDB {
       `SELECT id, session_id, plan_set, command, status, started_at, completed_at, cwd, pid FROM runs WHERE status = 'running' ORDER BY started_at DESC`,
     ),
     getEventsAll: db.prepare(
-      `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? ORDER BY id`,
+      `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? ORDER BY id`,
     ),
     getEventsAfter: db.prepare(
-      `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND id > ? ORDER BY id`,
+      `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND id > ? ORDER BY id`,
     ),
     getEventsByType: db.prepare(
-      `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = ? ORDER BY id`,
+      `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = ? ORDER BY id`,
     ),
     getRun: db.prepare(
       `SELECT id, session_id, plan_set, command, status, started_at, completed_at, cwd, pid FROM runs WHERE id = ?`,
@@ -259,7 +397,7 @@ export function openDatabase(dbPath: string): MonitorDB {
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events`,
     ),
     getDaemonEventsAfter: db.prepare(
-      `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')}) AND id > ? ORDER BY id`,
+      `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')}) AND id > ? ORDER BY id`,
     ),
     getMaxDaemonEventId: db.prepare(
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')})`,
@@ -268,13 +406,13 @@ export function openDatabase(dbPath: string): MonitorDB {
       `SELECT id, session_id, plan_set, command, status, started_at, completed_at, cwd, pid FROM runs WHERE session_id = ? ORDER BY started_at`,
     ),
     getEventsBySessionAll: db.prepare(
-      `SELECT e.id, e.run_id as runId, e.type, e.plan_id as planId, e.agent, e.data, e.timestamp FROM events e JOIN runs r ON e.run_id = r.id WHERE r.session_id = ? ORDER BY e.id`,
+      `SELECT e.id, e.run_id as runId, e.origin, e.type, e.plan_id as planId, e.agent, e.data, e.timestamp FROM events e JOIN runs r ON e.run_id = r.id WHERE r.session_id = ? ORDER BY e.id`,
     ),
     getEventsBySessionAfter: db.prepare(
-      `SELECT e.id, e.run_id as runId, e.type, e.plan_id as planId, e.agent, e.data, e.timestamp FROM events e JOIN runs r ON e.run_id = r.id WHERE r.session_id = ? AND e.id > ? ORDER BY e.id`,
+      `SELECT e.id, e.run_id as runId, e.origin, e.type, e.plan_id as planId, e.agent, e.data, e.timestamp FROM events e JOIN runs r ON e.run_id = r.id WHERE r.session_id = ? AND e.id > ? ORDER BY e.id`,
     ),
     getEventsByTypeForSession: db.prepare(
-      `SELECT e.id, e.run_id as runId, e.type, e.plan_id as planId, e.agent, e.data, e.timestamp FROM events e JOIN runs r ON e.run_id = r.id WHERE r.session_id = ? AND e.type = ? ORDER BY e.id`,
+      `SELECT e.id, e.run_id as runId, e.origin, e.type, e.plan_id as planId, e.agent, e.data, e.timestamp FROM events e JOIN runs r ON e.run_id = r.id WHERE r.session_id = ? AND e.type = ? ORDER BY e.id`,
     ),
     getLatestSessionId: db.prepare(
       `SELECT session_id as sessionId FROM runs ORDER BY started_at DESC LIMIT 1`,
@@ -322,6 +460,17 @@ export function openDatabase(dbPath: string): MonitorDB {
       return Number(result.lastInsertRowid);
     },
 
+    insertDaemonEvent(event) {
+      const result = stmts.insertDaemonEvent.run(
+        event.type,
+        event.planId ?? null,
+        event.agent ?? null,
+        event.data,
+        event.timestamp,
+      );
+      return Number(result.lastInsertRowid);
+    },
+
     updateRunStatus(runId, status, completedAt?) {
       if (completedAt) {
         stmts.updateRunStatus.run(status, completedAt, runId);
@@ -354,13 +503,13 @@ export function openDatabase(dbPath: string): MonitorDB {
 
     getEvents(runId, afterId) {
       if (afterId !== undefined) {
-        return stmts.getEventsAfter.all(runId, afterId) as unknown as EventRecord[];
+        return (stmts.getEventsAfter.all(runId, afterId) as unknown as RawEventRow[]).map(rowToEventRecord);
       }
-      return stmts.getEventsAll.all(runId) as unknown as EventRecord[];
+      return (stmts.getEventsAll.all(runId) as unknown as RawEventRow[]).map(rowToEventRecord);
     },
 
     getEventsByType(runId, type) {
-      return stmts.getEventsByType.all(runId, type) as unknown as EventRecord[];
+      return (stmts.getEventsByType.all(runId, type) as unknown as RawEventRow[]).map(rowToEventRecord);
     },
 
     getRunsBySession(sessionId) {
@@ -369,13 +518,13 @@ export function openDatabase(dbPath: string): MonitorDB {
 
     getEventsBySession(sessionId, afterId) {
       if (afterId !== undefined) {
-        return stmts.getEventsBySessionAfter.all(sessionId, afterId) as unknown as EventRecord[];
+        return (stmts.getEventsBySessionAfter.all(sessionId, afterId) as unknown as RawEventRow[]).map(rowToEventRecord);
       }
-      return stmts.getEventsBySessionAll.all(sessionId) as unknown as EventRecord[];
+      return (stmts.getEventsBySessionAll.all(sessionId) as unknown as RawEventRow[]).map(rowToEventRecord);
     },
 
     getEventsByTypeForSession(sessionId, type) {
-      return stmts.getEventsByTypeForSession.all(sessionId, type) as unknown as EventRecord[];
+      return (stmts.getEventsByTypeForSession.all(sessionId, type) as unknown as RawEventRow[]).map(rowToEventRecord);
     },
 
     getLatestSessionId() {
@@ -436,7 +585,7 @@ export function openDatabase(dbPath: string): MonitorDB {
     },
 
     getDaemonEventsAfter(afterId) {
-      return stmts.getDaemonEventsAfter.all(...DAEMON_EVENT_TYPES, afterId) as unknown as EventRecord[];
+      return (stmts.getDaemonEventsAfter.all(...DAEMON_EVENT_TYPES, afterId) as unknown as RawEventRow[]).map(rowToEventRecord);
     },
 
     getMaxDaemonEventId() {

@@ -1530,6 +1530,20 @@ export const DAEMON_EVENT_TYPES: readonly string[] = (
   Object.keys(eventRegistry) as Array<EforgeEvent['type']>
 ).filter((type) => (eventRegistry[type] as EventMeta<typeof type>).persist);
 
+/**
+ * Returns true when `type` is an event type that is persisted to the DB and
+ * replayed via GET /api/daemon-events. Backed by `DAEMON_EVENT_TYPES`.
+ *
+ * Use this predicate in the recorder and daemon write paths to decide whether
+ * an event should be stored as a daemon-owned row (no run correlation).
+ *
+ * Intentionally excludes `daemon:heartbeat` (persist:false, LIVE-ONLY) so it
+ * is never stored and never replayed from storage.
+ */
+export function isPersistedDaemonEventType(type: string): type is EforgeEvent['type'] {
+  return DAEMON_EVENT_TYPES.includes(type);
+}
+
 // ---------------------------------------------------------------------------
 // Public exports
 // ---------------------------------------------------------------------------

@@ -232,9 +232,15 @@ describe('caller emission sequence', () => {
     expect(completePayload.locksRemoved).toBe(2);
     expect(typeof completePayload.durationMs).toBe('number');
 
-    // All events carry the daemonSessionId
+    // All events are daemon-owned (runId=null, origin='daemon').
+    // The daemonSessionId is embedded in the JSON payload for correlation,
+    // but is no longer stored as run_id in the DB row.
     for (const event of daemonEvents) {
-      expect(event.runId).toBe(daemonSessionId);
+      expect(event.runId).toBeNull();
+      expect(event.origin).toBe('daemon');
+      // Verify the daemonSessionId is preserved in the JSON payload
+      const payload = JSON.parse(event.data) as { sessionId?: string };
+      expect(payload.sessionId).toBe(daemonSessionId);
     }
 
     db.close();
@@ -257,7 +263,9 @@ describe('caller emission sequence', () => {
     const events = db.getDaemonEventsAfter(0);
     const lifecycleEvent = events.find((e) => e.type === 'daemon:lifecycle:starting');
     expect(lifecycleEvent).toBeDefined();
-    expect(lifecycleEvent!.runId).toBe(daemonSessionId);
+    // writeDaemonEvent now stores rows as daemon-owned (runId=null, origin='daemon')
+    expect(lifecycleEvent!.runId).toBeNull();
+    expect(lifecycleEvent!.origin).toBe('daemon');
 
     const payload = JSON.parse(lifecycleEvent!.data) as {
       type: string;
@@ -270,6 +278,7 @@ describe('caller emission sequence', () => {
     expect(payload.type).toBe('daemon:lifecycle:starting');
     expect(payload.pid).toBe(12345);
     expect(payload.port).toBe(4567);
+    // daemonSessionId is embedded in the JSON payload for correlation
     expect(payload.sessionId).toBe(daemonSessionId);
 
     db.close();
