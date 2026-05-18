@@ -168,6 +168,8 @@ function buildLoadedExtension(candidate: NativeExtensionCandidate, strategy: Nat
     source: candidate.source,
     strategy,
     registrations,
+    ...(candidate.packageProvenance !== undefined && { packageProvenance: candidate.packageProvenance }),
+    ...(candidate.installProvenance !== undefined && { installProvenance: candidate.installProvenance }),
   };
 }
 

@@ -108,6 +108,18 @@ export {
   apiTrustExtensionIfRunning,
   apiUntrustExtensionIfRunning,
   // --- eforge:endregion plan-01-no-start-client-helpers ---
+  // --- eforge:region plan-01-extension-package-foundation ---
+  apiInstallExtension,
+  apiInstallExtensionIfRunning,
+  apiUpdateExtension,
+  apiUpdateExtensionIfRunning,
+  apiRemoveExtension,
+  apiRemoveExtensionIfRunning,
+  apiPromoteExtension,
+  apiPromoteExtensionIfRunning,
+  apiDemoteExtension,
+  apiDemoteExtensionIfRunning,
+  // --- eforge:endregion plan-01-extension-package-foundation ---
 } from './api/extensions.js';
 // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
@@ -365,6 +377,20 @@ export type {
   ExtensionUntrustRequest,
   ExtensionUntrustResponse,
   // --- eforge:endregion plan-02-management-surfaces ---
+  // --- eforge:region plan-01-extension-package-foundation ---
+  ExtensionPackageProvenance,
+  ExtensionInstallProvenance,
+  ExtensionInstallRequest,
+  ExtensionInstallResponse,
+  ExtensionUpdateRequest,
+  ExtensionUpdateResponse,
+  ExtensionRemoveRequest,
+  ExtensionRemoveResponse,
+  ExtensionPromoteRequest,
+  ExtensionPromoteResponse,
+  ExtensionDemoteRequest,
+  ExtensionDemoteResponse,
+  // --- eforge:endregion plan-01-extension-package-foundation ---
   QueueItem,
   SessionMetadata,
   RunInfo,

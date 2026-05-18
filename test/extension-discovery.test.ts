@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect } from 'vitest';
 import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { getScopeDirectory, type ScopeResolverOpts } from '@eforge-build/scopes';
-import { discoverNativeExtensions, upsertTrustRecord } from '@eforge-build/engine/extensions';
+import { discoverNativeExtensions, upsertTrustRecord, writeInstallSidecar } from '@eforge-build/engine/extensions';
 import { useTempDir } from './test-tmpdir.js';
 
 async function makeTree(root: string): Promise<ScopeResolverOpts> {
@@ -318,4 +318,205 @@ describe('native extension discovery', () => {
       status: 'error',
     }));
   });
+
+  // --- eforge:region plan-01-extension-package-foundation ---
+  it('uses eforge.extension.name from package.json as the logical extension name', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+
+    await mkdir(resolve(extensions, 'my-pkg'), { recursive: true });
+    await writeFile(resolve(extensions, 'my-pkg', 'package.json'), JSON.stringify({
+      name: 'my-npm-package',
+      version: '1.2.3',
+      eforge: { extension: { name: 'custom-ext-name', entrypoint: './index.js' } },
+    }), 'utf-8');
+    await writeFile(resolve(extensions, 'my-pkg', 'index.js'), 'export default function extension() {}', 'utf-8');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    const candidate = result.candidates.find((c) => c.name === 'custom-ext-name');
+    expect(candidate).toBeDefined();
+    expect(candidate?.layout).toBe('directory');
+    expect(candidate?.packageProvenance).toMatchObject({
+      packageName: 'my-npm-package',
+      version: '1.2.3',
+      eforgeExtensionName: 'custom-ext-name',
+      eforgeEntrypoint: './index.js',
+    });
+    // The basename-derived name should not appear.
+    expect(result.candidates.find((c) => c.name === 'my-pkg')).toBeUndefined();
+  });
+
+  it('uses eforge.extension.entrypoint before exports, main, and index.* for directory packages', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+
+    await mkdir(resolve(extensions, 'pkg-with-ep', 'src'), { recursive: true });
+    await writeFile(resolve(extensions, 'pkg-with-ep', 'package.json'), JSON.stringify({
+      name: 'pkg-with-ep',
+      exports: { '.': './other.js' },
+      main: './other.js',
+      eforge: { extension: { entrypoint: './src/eforge-entry.ts' } },
+    }), 'utf-8');
+    // The eforge entrypoint should win over exports/main.
+    await writeFile(resolve(extensions, 'pkg-with-ep', 'src', 'eforge-entry.ts'), 'export default function extension() {}', 'utf-8');
+    // other.js should NOT be selected.
+    await writeFile(resolve(extensions, 'pkg-with-ep', 'other.js'), 'export default function nope() {}', 'utf-8');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    const candidate = result.candidates.find((c) => c.name === 'pkg-with-ep');
+    expect(candidate).toBeDefined();
+    expect(candidate?.entrypoint).toBe(resolve(extensions, 'pkg-with-ep', 'src', 'eforge-entry.ts'));
+    expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-package-manifest')).toHaveLength(0);
+  });
+
+  it('emits extension:invalid-package-manifest and skips the extension when eforge.extension.entrypoint is invalid', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+
+    await mkdir(resolve(extensions, 'bad-ep'), { recursive: true });
+    await writeFile(resolve(extensions, 'bad-ep', 'package.json'), JSON.stringify({
+      name: 'bad-ep',
+      eforge: { extension: { entrypoint: './nonexistent.js' } },
+    }), 'utf-8');
+    // Provide an index fallback — it must NOT be used.
+    await writeFile(resolve(extensions, 'bad-ep', 'index.js'), 'export default function extension() {}', 'utf-8');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    const invalidDiagnostic = result.diagnostics.find((d) => d.code === 'extension:invalid-package-manifest');
+    expect(invalidDiagnostic).toBeDefined();
+    expect(invalidDiagnostic?.path).toBe(resolve(extensions, 'bad-ep'));
+    // Extension must not be discovered under any name.
+    expect(result.candidates.find((c) => c.name === 'bad-ep')).toBeUndefined();
+  });
+
+  it('emits extension:invalid-package-manifest and leaves the candidate errored when eforge.extension.name is invalid', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    const packageDir = resolve(extensions, 'invalid-name-pkg');
+
+    await mkdir(packageDir, { recursive: true });
+    await writeFile(resolve(packageDir, 'package.json'), JSON.stringify({
+      name: 'invalid-name-pkg',
+      eforge: { extension: { name: 'bad/name' } },
+    }), 'utf-8');
+    await writeFile(resolve(packageDir, 'index.js'), 'export default function extension() {}', 'utf-8');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'error',
+      code: 'extension:invalid-package-manifest',
+      path: packageDir,
+      message: expect.stringContaining('eforge.extension.name'),
+    }));
+    expect(result.candidates).toContainEqual(expect.objectContaining({
+      path: packageDir,
+      status: 'error',
+    }));
+    expect(result.candidates).not.toContainEqual(expect.objectContaining({
+      path: packageDir,
+      status: 'pending',
+    }));
+  });
+
+  it('populates packageProvenance with package metadata for directory extensions', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+
+    await mkdir(resolve(extensions, 'full-pkg'), { recursive: true });
+    await writeFile(resolve(extensions, 'full-pkg', 'package.json'), JSON.stringify({
+      name: '@my-scope/my-ext',
+      version: '2.0.1',
+      description: 'A great extension',
+      repository: { url: 'https://github.com/example/my-ext' },
+      homepage: 'https://example.com/my-ext',
+      main: './index.js',
+    }), 'utf-8');
+    await writeFile(resolve(extensions, 'full-pkg', 'index.js'), 'export default function extension() {}', 'utf-8');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    const candidate = result.candidates.find((c) => c.name === 'full-pkg');
+    expect(candidate?.packageProvenance).toMatchObject({
+      packageName: '@my-scope/my-ext',
+      version: '2.0.1',
+      description: 'A great extension',
+      repository: 'https://github.com/example/my-ext',
+      homepage: 'https://example.com/my-ext',
+    });
+    // No eforge block — no eforgeExtensionName.
+    expect(candidate?.packageProvenance?.eforgeExtensionName).toBeUndefined();
+  });
+
+  it('populates installProvenance from .eforge-install.json sidecar when present', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    const pkgDir = resolve(extensions, 'installed-pkg');
+
+    await mkdir(pkgDir, { recursive: true });
+    await writeFile(resolve(pkgDir, 'package.json'), JSON.stringify({ name: 'installed-pkg', version: '1.0.0', main: './index.js' }), 'utf-8');
+    await writeFile(resolve(pkgDir, 'index.js'), 'export default function extension() {}', 'utf-8');
+    await writeInstallSidecar(pkgDir, {
+      sourceKind: 'npm',
+      sourceSpec: 'installed-pkg@1.0.0',
+      resolvedVersion: '1.0.0',
+      integrity: { algorithm: 'sha512', value: 'abc123' },
+      installedAt: '2026-01-15T10:00:00.000Z',
+      targetScope: 'project-local',
+    });
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    const candidate = result.candidates.find((c) => c.name === 'installed-pkg');
+    expect(candidate?.installProvenance).toMatchObject({
+      sourceKind: 'npm',
+      sourceSpec: 'installed-pkg@1.0.0',
+      resolvedVersion: '1.0.0',
+      integrity: { algorithm: 'sha512', value: 'abc123' },
+      installedAt: '2026-01-15T10:00:00.000Z',
+      targetScope: 'project-local',
+    });
+  });
+
+  it('does not populate installProvenance when no sidecar is present', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+
+    await mkdir(resolve(extensions, 'no-sidecar'), { recursive: true });
+    await writeFile(resolve(extensions, 'no-sidecar', 'index.js'), 'export default function extension() {}', 'utf-8');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    const candidate = result.candidates.find((c) => c.name === 'no-sidecar');
+    expect(candidate).toBeDefined();
+    expect(candidate?.installProvenance).toBeUndefined();
+  });
+
+  it('still discovers index.* when package.json has no eforge block and no exports/main', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+
+    await mkdir(resolve(extensions, 'plain-pkg'), { recursive: true });
+    await writeFile(resolve(extensions, 'plain-pkg', 'package.json'), JSON.stringify({ name: 'plain-pkg', version: '1.0.0' }), 'utf-8');
+    await writeFile(resolve(extensions, 'plain-pkg', 'index.ts'), 'export default function extension() {}', 'utf-8');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    const candidate = result.candidates.find((c) => c.name === 'plain-pkg');
+    expect(candidate).toBeDefined();
+    expect(candidate?.entrypoint).toBe(resolve(extensions, 'plain-pkg', 'index.ts'));
+    expect(candidate?.packageProvenance?.packageName).toBe('plain-pkg');
+  });
+  // --- eforge:endregion plan-01-extension-package-foundation ---
 });

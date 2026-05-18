@@ -1,4 +1,4 @@
-import type { NativeExtensionCandidate, NativeExtensionDiagnostic, NativeExtensionRegistry } from './types.js';
+import type { NativeExtensionCandidate, NativeExtensionDiagnostic, NativeExtensionInstallProvenance, NativeExtensionPackageProvenance, NativeExtensionRegistry } from './types.js';
 
 export interface NativeExtensionRegistryProjection {
   extensions: Array<{
@@ -9,6 +9,8 @@ export interface NativeExtensionRegistryProjection {
     source: string;
     strategy: string;
     registrations: Record<string, number>;
+    packageProvenance?: NativeExtensionPackageProvenance;
+    installProvenance?: NativeExtensionInstallProvenance;
   }>;
   candidates: Array<{
     name: string;
@@ -25,6 +27,8 @@ export interface NativeExtensionRegistryProjection {
     trustStorePath?: string;
     status: string;
     shadows: Array<{ name: string; path: string; scope: string; entrypoint?: string }>;
+    packageProvenance?: NativeExtensionPackageProvenance;
+    installProvenance?: NativeExtensionInstallProvenance;
   }>;
   diagnostics: NativeExtensionDiagnostic[];
   totals: {
@@ -50,6 +54,8 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
       source: extension.source,
       strategy: extension.strategy,
       registrations: { ...extension.registrations },
+      ...(extension.packageProvenance !== undefined && { packageProvenance: { ...extension.packageProvenance } }),
+      ...(extension.installProvenance !== undefined && { installProvenance: { ...extension.installProvenance } }),
     })),
     candidates: registry.candidates.map(projectExtensionCandidate),
     diagnostics: registry.diagnostics.map((diagnostic) => ({ ...diagnostic })),
@@ -88,5 +94,7 @@ function projectExtensionCandidate(candidate: NativeExtensionCandidate): NativeE
       scope: shadow.scope,
       entrypoint: shadow.entrypoint,
     })),
+    ...(candidate.packageProvenance !== undefined && { packageProvenance: { ...candidate.packageProvenance } }),
+    ...(candidate.installProvenance !== undefined && { installProvenance: { ...candidate.installProvenance } }),
   };
 }

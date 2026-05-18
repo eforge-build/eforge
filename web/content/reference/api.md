@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 48cc8bed -->
+<!-- Commit: cc2ccb32 -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -11,7 +11,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 56
+Total routes: 61
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -26,13 +26,18 @@ Total routes: 56
 | `diff` | `/api/diff/:sessionId/:planId` |
 | `enqueue` | `/api/enqueue` |
 | `events` | `/api/events/:runId` |
+| `extensionDemote` | `/api/extensions/demote` |
+| `extensionInstall` | `/api/extensions/install` |
 | `extensionList` | `/api/extensions/list` |
 | `extensionNew` | `/api/extensions/new` |
+| `extensionPromote` | `/api/extensions/promote` |
 | `extensionReload` | `/api/extensions/reload` |
+| `extensionRemove` | `/api/extensions/remove` |
 | `extensionShow` | `/api/extensions/show` |
 | `extensionTest` | `/api/extensions/test` |
 | `extensionTrust` | `/api/extensions/trust` |
 | `extensionUntrust` | `/api/extensions/untrust` |
+| `extensionUpdate` | `/api/extensions/update` |
 | `extensionValidate` | `/api/extensions/validate` |
 | `health` | `/api/health` |
 | `keepAlive` | `/api/keep-alive` |

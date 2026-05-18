@@ -2,7 +2,7 @@
 <!-- section: cli -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 48cc8bed -->
+<!-- Commit: cc2ccb32 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -380,7 +380,7 @@ Run the MCP stdio proxy server (used by Claude Code plugin)
 <!-- section: api -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 48cc8bed -->
+<!-- Commit: cc2ccb32 -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -391,7 +391,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 56
+Total routes: 61
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -406,13 +406,18 @@ Total routes: 56
 | `diff` | `/api/diff/:sessionId/:planId` |
 | `enqueue` | `/api/enqueue` |
 | `events` | `/api/events/:runId` |
+| `extensionDemote` | `/api/extensions/demote` |
+| `extensionInstall` | `/api/extensions/install` |
 | `extensionList` | `/api/extensions/list` |
 | `extensionNew` | `/api/extensions/new` |
+| `extensionPromote` | `/api/extensions/promote` |
 | `extensionReload` | `/api/extensions/reload` |
+| `extensionRemove` | `/api/extensions/remove` |
 | `extensionShow` | `/api/extensions/show` |
 | `extensionTest` | `/api/extensions/test` |
 | `extensionTrust` | `/api/extensions/trust` |
 | `extensionUntrust` | `/api/extensions/untrust` |
+| `extensionUpdate` | `/api/extensions/update` |
 | `extensionValidate` | `/api/extensions/validate` |
 | `health` | `/api/health` |
 | `keepAlive` | `/api/keep-alive` |
@@ -464,7 +469,7 @@ Use `buildPath(pattern, params)` from `@eforge-build/client` to resolve `:param`
 <!-- section: events -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 48cc8bed -->
+<!-- Commit: cc2ccb32 -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -677,7 +682,7 @@ Use `safeParseEforgeEvent(value)` from `@eforge-build/client` to validate at run
 <!-- section: config -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 48cc8bed -->
+<!-- Commit: cc2ccb32 -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -772,7 +777,7 @@ The complete machine-readable schema is at [`/schemas/config.schema.json`](/sche
 <!-- section: tools -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 48cc8bed -->
+<!-- Commit: cc2ccb32 -->
 <!-- Source: packages/eforge/src/cli/mcp-proxy.ts, packages/pi-eforge/extensions/eforge/index.ts, eforge-plugin/skills/, packages/pi-eforge/skills/ -->
 
 # eforge MCP Tools and Skills Reference

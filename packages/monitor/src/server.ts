@@ -1648,6 +1648,8 @@ export async function startServer(
         })),
         registrations: { ...EMPTY_EXTENSION_REGISTRATIONS },
         diagnostics: candidate.diagnostics.map(normalizeExtensionDiagnostic),
+        ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
+        ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
       }));
       extensions.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
       return {
@@ -1696,6 +1698,8 @@ export async function startServer(
         })),
         registrations: (loaded?.registrations as ExtensionRegistrationSummary | undefined) ?? { ...EMPTY_EXTENSION_REGISTRATIONS },
         diagnostics: candidate.diagnostics.map(normalizeExtensionDiagnostic),
+        ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
+        ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
       };
     });
 
@@ -1743,6 +1747,8 @@ export async function startServer(
           })),
           registrations: { ...EMPTY_EXTENSION_REGISTRATIONS },
           diagnostics: [],
+          ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
+          ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
         });
       }
     }

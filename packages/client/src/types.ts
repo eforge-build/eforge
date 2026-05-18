@@ -149,6 +149,12 @@ export interface ExtensionEntry {
   shadows: ExtensionShadow[];
   registrations: ExtensionRegistrationSummary;
   diagnostics: ExtensionDiagnostic[];
+  // --- eforge:region plan-01-extension-package-foundation ---
+  /** Package provenance, populated for directory-layout extensions with a `package.json`. */
+  package?: ExtensionPackageProvenance;
+  /** Install provenance, populated when a `.eforge-install.json` sidecar exists. */
+  install?: ExtensionInstallProvenance;
+  // --- eforge:endregion plan-01-extension-package-foundation ---
 }
 
 export interface ExtensionListResponse {
@@ -231,6 +237,152 @@ export interface ExtensionTestResponse {
   deferredRegistrations: ExtensionTestDeferredRegistrationSummary[];
 }
 // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
+
+// --- eforge:region plan-01-extension-package-foundation ---
+/**
+ * Package provenance wire type — included in `ExtensionEntry` for directory-layout
+ * extensions that have a `package.json`.
+ */
+export interface ExtensionPackageProvenance {
+  /** npm package name. */
+  packageName?: string;
+  /** npm package version. */
+  version?: string;
+  /** npm package description. */
+  description?: string;
+  /** Logical extension name from `eforge.extension.name`, when present. */
+  eforgeExtensionName?: string;
+  /** Relative entrypoint from `eforge.extension.entrypoint`, when present. */
+  eforgeEntrypoint?: string;
+  /** Repository URL. */
+  repository?: string;
+  /** Homepage URL. */
+  homepage?: string;
+}
+
+/**
+ * Install provenance wire type — included in `ExtensionEntry` when a
+ * `.eforge-install.json` sidecar exists alongside the extension directory.
+ */
+export interface ExtensionInstallProvenance {
+  /** Source kind: npm, git, path, or url. */
+  sourceKind: string;
+  /** Source specifier as provided at install time. */
+  sourceSpec: string;
+  /** Resolved version from the package at install time, if available. */
+  resolvedVersion?: string;
+  /** Integrity hash, if recorded. */
+  integrity?: { algorithm: string; value: string };
+  /** ISO-8601 timestamp of when the package was installed. */
+  installedAt: string;
+  /** Scope into which the package was installed. */
+  targetScope: string;
+}
+
+/** POST /api/extensions/install — install an extension package from a registry or path. */
+export interface ExtensionInstallRequest {
+  /** Package specifier: npm package name, git URL, local path, or tarball URL. */
+  source: string;
+  /** Target scope for the install. Defaults to 'local'. */
+  scope?: 'local' | 'project' | 'user';
+  /** Logical extension name override. Uses the package name or directory basename when absent. */
+  name?: string;
+  /** Overwrite an existing extension at the target scope. */
+  force?: boolean;
+  /** Trust the extension after install (project-team scope only). */
+  trust?: boolean;
+  /** Annotation identifying who is trusting the extension (only used when trust is true). */
+  trustedBy?: string;
+}
+
+/** Response for POST /api/extensions/install. */
+export interface ExtensionInstallResponse {
+  /** The installed extension entry. */
+  extension: ExtensionEntry;
+  /** Human-readable message with next steps. */
+  message: string;
+}
+
+/** POST /api/extensions/update — update an installed extension package. */
+export interface ExtensionUpdateRequest {
+  /** Extension name to update. Mutually exclusive with path. */
+  name?: string;
+  /** Extension path to update. Mutually exclusive with name. */
+  path?: string;
+  /** Version specifier or channel to update to (e.g., `latest`, `^2.0.0`). Defaults to latest. */
+  version?: string;
+  /** Trust the updated extension after install (project-team scope only). */
+  trust?: boolean;
+  /** Annotation identifying who is trusting the extension (only used when trust is true). */
+  trustedBy?: string;
+}
+
+/** Response for POST /api/extensions/update. */
+export interface ExtensionUpdateResponse {
+  /** The updated extension entry. */
+  extension: ExtensionEntry;
+  /** Previous version before the update, if known. */
+  previousVersion?: string;
+  /** Human-readable message with next steps. */
+  message: string;
+}
+
+/** POST /api/extensions/remove — remove an installed extension package. */
+export interface ExtensionRemoveRequest {
+  /** Extension name to remove. Mutually exclusive with path. */
+  name?: string;
+  /** Extension path to remove. Mutually exclusive with name. */
+  path?: string;
+  /** Remove without prompting (for programmatic callers). */
+  force?: boolean;
+}
+
+/** Response for POST /api/extensions/remove. */
+export interface ExtensionRemoveResponse {
+  /** Human-readable message describing what was removed. */
+  message: string;
+}
+
+/** POST /api/extensions/promote — promote a project-local extension to project-team scope. */
+export interface ExtensionPromoteRequest {
+  /** Extension name to promote. Mutually exclusive with path. */
+  name?: string;
+  /** Extension path to promote. Mutually exclusive with name. */
+  path?: string;
+  /** Overwrite an existing extension at the project-team scope. */
+  force?: boolean;
+  /** Trust the promoted extension after promotion. */
+  trust?: boolean;
+  /** Annotation identifying who is trusting the extension (only used when trust is true). */
+  trustedBy?: string;
+}
+
+/** Response for POST /api/extensions/promote. */
+export interface ExtensionPromoteResponse {
+  /** The promoted extension entry at its new scope. */
+  extension: ExtensionEntry;
+  /** Human-readable message with next steps. */
+  message: string;
+}
+
+/** POST /api/extensions/demote — demote a project-team extension to project-local scope. */
+export interface ExtensionDemoteRequest {
+  /** Extension name to demote. Mutually exclusive with path. */
+  name?: string;
+  /** Extension path to demote. Mutually exclusive with name. */
+  path?: string;
+  /** Overwrite an existing extension at the project-local scope. */
+  force?: boolean;
+}
+
+/** Response for POST /api/extensions/demote. */
+export interface ExtensionDemoteResponse {
+  /** The demoted extension entry at its new scope. */
+  extension: ExtensionEntry;
+  /** Human-readable message with next steps. */
+  message: string;
+}
+// --- eforge:endregion plan-01-extension-package-foundation ---
 
 // --- eforge:region plan-02-management-surfaces ---
 /** POST /api/extensions/trust — trust a project-team extension by name or path. */

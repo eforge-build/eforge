@@ -88,6 +88,111 @@ describe('extension tooling route constants and helpers', () => {
     expect(source).toContain('apiTrustExtension');
     expect(source).toContain('apiUntrustExtension');
   });
+
+  // --- eforge:region plan-01-extension-package-foundation ---
+  it('declares package-operation route constants without inline path literals', () => {
+    expect(API_ROUTES.extensionInstall).toBe('/api/extensions/install');
+    expect(API_ROUTES.extensionUpdate).toBe('/api/extensions/update');
+    expect(API_ROUTES.extensionRemove).toBe('/api/extensions/remove');
+    expect(API_ROUTES.extensionPromote).toBe('/api/extensions/promote');
+    expect(API_ROUTES.extensionDemote).toBe('/api/extensions/demote');
+  });
+
+  it('client helpers call package-operation route constants and not inline literals', () => {
+    const source = readRepoFile('packages/client/src/api/extensions.ts');
+    expect(source).toContain('API_ROUTES.extensionInstall');
+    expect(source).toContain('API_ROUTES.extensionUpdate');
+    expect(source).toContain('API_ROUTES.extensionRemove');
+    expect(source).toContain('API_ROUTES.extensionPromote');
+    expect(source).toContain('API_ROUTES.extensionDemote');
+    // No inline path literals allowed.
+    expect(source).not.toContain("'/api/extensions/");
+    expect(source).not.toContain('"/api/extensions/');
+    expect(source).toContain('apiInstallExtension');
+    expect(source).toContain('apiUpdateExtension');
+    expect(source).toContain('apiRemoveExtension');
+    expect(source).toContain('apiPromoteExtension');
+    expect(source).toContain('apiDemoteExtension');
+    expect(source).toContain('apiInstallExtensionIfRunning');
+    expect(source).toContain('apiUpdateExtensionIfRunning');
+    expect(source).toContain('apiRemoveExtensionIfRunning');
+    expect(source).toContain('apiPromoteExtensionIfRunning');
+    expect(source).toContain('apiDemoteExtensionIfRunning');
+  });
+
+  it('client index exports package-operation helpers and request/response types', async () => {
+    const client = await import('@eforge-build/client');
+    const source = readRepoFile('packages/client/src/index.ts');
+    for (const name of [
+      'apiInstallExtension', 'apiUpdateExtension', 'apiRemoveExtension',
+      'apiPromoteExtension', 'apiDemoteExtension',
+      'apiInstallExtensionIfRunning', 'apiUpdateExtensionIfRunning',
+      'apiRemoveExtensionIfRunning', 'apiPromoteExtensionIfRunning',
+      'apiDemoteExtensionIfRunning',
+    ] as const) {
+      expect(client[name], name).toBeTypeOf('function');
+      expect(source, name).toContain(name);
+    }
+    for (const name of [
+      'ExtensionPackageProvenance', 'ExtensionInstallProvenance',
+      'ExtensionInstallRequest', 'ExtensionInstallResponse',
+      'ExtensionUpdateRequest', 'ExtensionUpdateResponse',
+      'ExtensionRemoveRequest', 'ExtensionRemoveResponse',
+      'ExtensionPromoteRequest', 'ExtensionPromoteResponse',
+      'ExtensionDemoteRequest', 'ExtensionDemoteResponse',
+    ]) {
+      expect(source, name).toContain(name);
+    }
+  });
+
+  it('client browser entrypoint exports provenance and operation wire types but no helpers', () => {
+    const source = readRepoFile('packages/client/src/browser.ts');
+    for (const name of [
+      'ExtensionPackageProvenance', 'ExtensionInstallProvenance',
+      'ExtensionInstallRequest', 'ExtensionInstallResponse',
+      'ExtensionUpdateRequest', 'ExtensionUpdateResponse',
+      'ExtensionRemoveRequest', 'ExtensionRemoveResponse',
+      'ExtensionPromoteRequest', 'ExtensionPromoteResponse',
+      'ExtensionDemoteRequest', 'ExtensionDemoteResponse',
+    ]) {
+      expect(source, name).toContain(name);
+    }
+    // Browser entrypoint must not export Node.js client helpers.
+    expect(source).not.toContain('apiInstallExtension');
+    expect(source).not.toContain('daemonRequest');
+  });
+
+  it('install request types carry typed trust and trustedBy fields', () => {
+    const source = readRepoFile('packages/client/src/types.ts');
+    // Verify trust/trustedBy are actual typed fields on install and update request types.
+    const installIdx = source.indexOf('ExtensionInstallRequest');
+    const updateIdx = source.indexOf('ExtensionUpdateRequest');
+    const installBlock = source.slice(installIdx, source.indexOf('ExtensionInstallResponse', installIdx));
+    const updateBlock = source.slice(updateIdx, source.indexOf('ExtensionUpdateResponse', updateIdx));
+    expect(installBlock).toMatch(/\btrust\?: boolean;/);
+    expect(installBlock).toMatch(/\btrustedBy\?: string;/);
+    expect(updateBlock).toMatch(/\btrust\?: boolean;/);
+    expect(updateBlock).toMatch(/\btrustedBy\?: string;/);
+  });
+
+  it('extension response projectors map provenance into ExtensionEntry package and install fields', () => {
+    const monitorSource = readRepoFile('packages/monitor/src/server.ts');
+    const loadResponseBlock = monitorSource.slice(
+      monitorSource.indexOf('async function loadExtensionResponse'),
+      monitorSource.indexOf('// --- eforge:endregion plan-02-extension-tooling-surfaces ---'),
+    );
+    expect(loadResponseBlock).toMatch(/package:\s*\{\s*\.\.\.candidate\.packageProvenance\s*\}/);
+    expect(loadResponseBlock).toMatch(/install:\s*\{\s*\.\.\.candidate\.installProvenance\s*\}/);
+
+    const replaySource = readRepoFile('packages/engine/src/extensions/replay.ts');
+    const projectExtensionsBlock = replaySource.slice(
+      replaySource.indexOf('function projectExtensions'),
+      replaySource.indexOf('function summarizeDeferredRegistrations'),
+    );
+    expect(projectExtensionsBlock).toMatch(/package:\s*\{\s*\.\.\.candidate\.packageProvenance\s*\}/);
+    expect(projectExtensionsBlock).toMatch(/install:\s*\{\s*\.\.\.candidate\.installProvenance\s*\}/);
+  });
+  // --- eforge:endregion plan-01-extension-package-foundation ---
 });
 
 describe('CLI extension command registration', () => {

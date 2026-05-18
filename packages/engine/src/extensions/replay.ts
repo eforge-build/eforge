@@ -402,6 +402,8 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       })),
       registrations: loaded?.registrations ?? { ...EMPTY_EXTENSION_REGISTRATIONS },
       diagnostics: candidate.diagnostics.map(normalizeDiagnostic),
+      ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
+      ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
     } satisfies ExtensionEntry;
   }).sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
 }
