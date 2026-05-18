@@ -81,6 +81,10 @@ export async function ensureDaemon(cwd: string): Promise<number> {
 /**
  * Like daemonRequest but only talks to an already-running daemon.
  * Returns null if daemon is not running instead of trying to start it.
+ *
+ * When a live daemon is found, performs API version verification before
+ * non-version requests so Pi callers get the same stale-daemon diagnostics
+ * as the auto-starting daemonRequest path.
  */
 export async function daemonRequestIfRunning<T = unknown>(
   cwd: string,
@@ -90,6 +94,9 @@ export async function daemonRequestIfRunning<T = unknown>(
 ): Promise<{ data: T; port: number } | null> {
   const lock = readLockfile(cwd);
   if (!lock || !(await isServerAlive(lock))) return null;
+  if (path !== API_ROUTES.version) {
+    await verifyApiVersion(cwd);
+  }
   return daemonRequestWithPort<T>(lock.port, method, path, body);
 }
 

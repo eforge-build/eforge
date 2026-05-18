@@ -2,7 +2,7 @@
  * Typed helpers for native eforge extension daemon API endpoints.
  */
 
-import { daemonRequest } from '../daemon-client.js';
+import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
 import { API_ROUTES } from '../routes.js';
 import type {
   ExtensionListResponse,
@@ -71,3 +71,49 @@ export function apiUntrustExtension(opts: { cwd: string; body: ExtensionUntrustR
   return daemonRequest<ExtensionUntrustResponse>(opts.cwd, 'POST', API_ROUTES.extensionUntrust, opts.body);
 }
 // --- eforge:endregion plan-02-management-surfaces ---
+
+// --- eforge:region plan-01-no-start-client-helpers ---
+export function apiListExtensionsIfRunning(opts: { cwd: string }) {
+  return daemonRequestIfRunning<ExtensionListResponse>(opts.cwd, 'GET', API_ROUTES.extensionList);
+}
+
+export function apiShowExtensionIfRunning(opts: { cwd: string; name: string }) {
+  const params = new URLSearchParams({ name: opts.name });
+  return daemonRequestIfRunning<ExtensionShowResponse>(
+    opts.cwd,
+    'GET',
+    appendQuery(API_ROUTES.extensionShow, params),
+  );
+}
+
+export function apiValidateExtensionsIfRunning(opts: { cwd: string; name?: string; path?: string }) {
+  const params = new URLSearchParams();
+  if (opts.name !== undefined) params.set('name', opts.name);
+  if (opts.path !== undefined) params.set('path', opts.path);
+  return daemonRequestIfRunning<ExtensionValidateResponse>(
+    opts.cwd,
+    'GET',
+    appendQuery(API_ROUTES.extensionValidate, params),
+  );
+}
+
+export function apiNewExtensionIfRunning(opts: { cwd: string; body: ExtensionNewRequest }) {
+  return daemonRequestIfRunning<ExtensionNewResponse>(opts.cwd, 'POST', API_ROUTES.extensionNew, opts.body);
+}
+
+export function apiReloadExtensionsIfRunning(opts: { cwd: string }) {
+  return daemonRequestIfRunning<ExtensionReloadResponse>(opts.cwd, 'POST', API_ROUTES.extensionReload, {});
+}
+
+export function apiTestExtensionIfRunning(opts: { cwd: string; body: ExtensionTestRequest }) {
+  return daemonRequestIfRunning<ExtensionTestResponse>(opts.cwd, 'POST', API_ROUTES.extensionTest, opts.body);
+}
+
+export function apiTrustExtensionIfRunning(opts: { cwd: string; body: ExtensionTrustRequest }) {
+  return daemonRequestIfRunning<ExtensionTrustResponse>(opts.cwd, 'POST', API_ROUTES.extensionTrust, opts.body);
+}
+
+export function apiUntrustExtensionIfRunning(opts: { cwd: string; body: ExtensionUntrustRequest }) {
+  return daemonRequestIfRunning<ExtensionUntrustResponse>(opts.cwd, 'POST', API_ROUTES.extensionUntrust, opts.body);
+}
+// --- eforge:endregion plan-01-no-start-client-helpers ---

@@ -2,7 +2,7 @@
  * Typed helpers for playbook management daemon API endpoints.
  */
 
-import { daemonRequest } from '../daemon-client.js';
+import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
 import { API_ROUTES } from '../routes.js';
 
 // ---------------------------------------------------------------------------
@@ -150,4 +150,43 @@ export function apiPlaybookCopy(opts: {
   body: { name: string; targetScope: 'project-local' | 'project-team' | 'user' };
 }) {
   return daemonRequest<PlaybookCopyResponse>(opts.cwd, 'POST', API_ROUTES.playbookCopy, opts.body);
+}
+
+export function apiPlaybookListIfRunning(opts: { cwd: string }) {
+  return daemonRequestIfRunning<PlaybookListResponse>(opts.cwd, 'GET', API_ROUTES.playbookList);
+}
+
+export function apiPlaybookShowIfRunning(opts: { cwd: string; name: string }) {
+  return daemonRequestIfRunning<PlaybookShowResponse>(
+    opts.cwd,
+    'GET',
+    `${API_ROUTES.playbookShow}?name=${encodeURIComponent(opts.name)}`,
+  );
+}
+
+export function apiPlaybookSaveIfRunning(opts: { cwd: string; body: PlaybookSaveBody }) {
+  return daemonRequestIfRunning<PlaybookSaveResponse>(opts.cwd, 'POST', API_ROUTES.playbookSave, opts.body);
+}
+
+export function apiPlaybookEnqueueIfRunning(opts: { cwd: string; body: { name: string; afterQueueId?: string } }) {
+  return daemonRequestIfRunning<PlaybookEnqueueResponse>(opts.cwd, 'POST', API_ROUTES.playbookEnqueue, opts.body);
+}
+
+export function apiPlaybookPromoteIfRunning(opts: { cwd: string; body: { name: string } }) {
+  return daemonRequestIfRunning<PlaybookPromoteResponse>(opts.cwd, 'POST', API_ROUTES.playbookPromote, opts.body);
+}
+
+export function apiPlaybookDemoteIfRunning(opts: { cwd: string; body: { name: string } }) {
+  return daemonRequestIfRunning<PlaybookDemoteResponse>(opts.cwd, 'POST', API_ROUTES.playbookDemote, opts.body);
+}
+
+export function apiPlaybookValidateIfRunning(opts: { cwd: string; body: { raw: string } }) {
+  return daemonRequestIfRunning<PlaybookValidateResponse>(opts.cwd, 'POST', API_ROUTES.playbookValidate, opts.body);
+}
+
+export function apiPlaybookCopyIfRunning(opts: {
+  cwd: string;
+  body: { name: string; targetScope: 'project-local' | 'project-team' | 'user' };
+}) {
+  return daemonRequestIfRunning<PlaybookCopyResponse>(opts.cwd, 'POST', API_ROUTES.playbookCopy, opts.body);
 }
