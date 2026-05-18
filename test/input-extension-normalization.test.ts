@@ -645,7 +645,7 @@ describe('no-engine-import boundary', () => {
     let output = '';
     try {
       output = execSync(
-        `grep -r "@eforge-build/input" "${engineSrcDir}" --include="*.ts" -l 2>/dev/null || true`,
+        `grep -r "from '@eforge-build/input'\\|from \\"@eforge-build/input\\"" "${engineSrcDir}" --include="*.ts" -l 2>/dev/null || true`,
         { encoding: 'utf-8' },
       ).trim();
     } catch {

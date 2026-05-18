@@ -766,7 +766,7 @@ describe('POST /api/enqueue — session-plan auto-submit', () => {
     const planContent = makeSessionPlanRaw({ session: planSession });
     const filePath = await writeSessionPlanFile(tmpDir, planSession, planContent);
 
-    const { tracker } = makeStubTracker();
+    const { tracker, calls } = makeStubTracker();
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, workerTracker: tracker });
 

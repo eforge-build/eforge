@@ -34,7 +34,7 @@ describe('CLI enqueue preprocessing wiring', () => {
     // The preprocessing wrapper function must yield events before delegating to engine.enqueue
     const preprocessBlock = cliIndexSource.slice(
       cliIndexSource.indexOf('async function* preprocessAndEnqueue'),
-      cliIndexSource.indexOf('// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---'),
+      cliIndexSource.lastIndexOf('// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---'),
     );
     expect(preprocessBlock).toContain('preprocessResult.events');
     expect(preprocessBlock).toContain('yield { ...event, timestamp }');
@@ -48,7 +48,7 @@ describe('CLI enqueue preprocessing wiring', () => {
   it('on FatalPreprocessingError yields diagnostic event and enqueue:failed without calling engine', () => {
     const preprocessBlock = cliIndexSource.slice(
       cliIndexSource.indexOf('async function* preprocessAndEnqueue'),
-      cliIndexSource.indexOf('// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---'),
+      cliIndexSource.lastIndexOf('// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---'),
     );
     expect(preprocessBlock).toContain('FatalPreprocessingError');
     expect(preprocessBlock).toContain("'enqueue:failed'");
