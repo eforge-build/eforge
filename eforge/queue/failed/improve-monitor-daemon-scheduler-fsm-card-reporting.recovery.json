@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 2,
+  "summary": {
+    "prdId": "improve-monitor-daemon-scheduler-fsm-card-reporting",
+    "setName": "improve-monitor-daemon-scheduler-fsm-card-reporting",
+    "featureBranch": "eforge/improve-monitor-daemon-scheduler-fsm-card-reporting",
+    "baseBranch": "main",
+    "plans": [
+      {
+        "planId": "compile",
+        "status": "failed",
+        "error": "Backend error: WebSocket closed 1000"
+      }
+    ],
+    "failingPlan": {
+      "planId": "compile",
+      "agentId": "596a1a51-249c-4ee1-ad6f-d7cca98f87a3",
+      "agentRole": "planner",
+      "errorMessage": "Backend error: WebSocket closed 1000"
+    },
+    "landedCommits": [],
+    "diffStat": "",
+    "modelsUsed": [
+      "gpt-5.5"
+    ],
+    "failedAt": "2026-05-18T15:22:18.755Z"
+  },
+  "verdict": {
+    "verdict": "retry",
+    "confidence": "high",
+    "rationale": "The only plan that ran was `compile` (the planner), and it failed with \"Backend error: WebSocket closed 1000\" — a WebSocket normal-closure code indicating a dropped connection to the AI backend, not a logic or code error. No commits landed on the feature branch (`landedCommits: []`, `diffStat: \"\"`), so there is no partial state to preserve or reason to split. The PRD is fully intact and unstarted. WebSocket close 1000 during an agent turn is a well-known transient infrastructure condition (network interruption, backend timeout, or server-side session expiry). The same PRD can be retried as-is without modification.",
+    "completedWork": [
+      "No plans completed — the planner (compile) was the only plan and it failed before producing any output or commits"
+    ],
+    "remainingWork": [
+      "All acceptance criteria from the original PRD remain unimplemented: rename Scheduler FSM card row label to \"Last queue wake-up\"",
+      "Friendly wake-up reason label mapping (enqueue, playbook-enqueue, apply-recovery, external)",
+      "Missing wake-up reason fallback display: \"none since startup\"",
+      "Extend shared client wire type/schema for optional scheduler capacity fields (runningCount, limit)",
+      "Populate capacity fields in daemon auto-build snapshot and heartbeat projection paths",
+      "Capacity display in UI as \"N/M running\"",
+      "Heartbeat handling to refresh canonical daemonState.autoBuild with scheduler details",
+      "Tests: drawer rendering, reducer/hook heartbeat behavior, client schema, daemon/server projection",
+      "API version bump if wire contract changes",
+      "Documentation updates if applicable"
+    ],
+    "risks": [
+      "If the WebSocket drop was caused by a sustained backend issue (quota, model unavailability for gpt-5.5), the retry may fail again — but no evidence of this beyond a single transient close event"
+    ]
+  },
+  "generatedAt": "2026-05-18T15:22:45.835Z"
+}
