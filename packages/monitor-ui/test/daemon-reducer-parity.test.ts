@@ -195,6 +195,83 @@ describe('daemon:run:upsert live projection parity', () => {
   });
 });
 
+// --- eforge:region plan-01-semantic-enqueue-wake ---
+
+// ---------------------------------------------------------------------------
+// enqueue:complete parity
+// ---------------------------------------------------------------------------
+
+describe('enqueue:complete live projection parity', () => {
+  it('enqueue:complete alone inserts a minimal pending queue item', () => {
+    const events: EforgeEvent[] = [
+      makeEvent('enqueue:complete', {
+        id: 'prd-enq-001',
+        filePath: 'eforge/queue/prd-enq-001.md',
+        title: 'Enqueue Test PRD',
+        planSet: 'enqueue-test',
+      }),
+    ];
+
+    const liveState = applyEvents(events);
+    const snapshotState = applyBatchSeed([], [{ id: 'prd-enq-001', title: 'Enqueue Test PRD', status: 'pending' }]);
+
+    expect(liveState.queue).toEqual(snapshotState.queue);
+  });
+
+  it('enqueue:complete followed by queue:prd:discovered leaves one pending item (deduplication)', () => {
+    const events: EforgeEvent[] = [
+      makeEvent('enqueue:complete', {
+        id: 'prd-enq-002',
+        filePath: 'eforge/queue/prd-enq-002.md',
+        title: 'Enqueue Discovered PRD',
+        planSet: 'enqueue-discovered',
+      }),
+      makeEvent('queue:prd:discovered', {
+        prdId: 'prd-enq-002',
+        title: 'Enqueue Discovered PRD',
+      }),
+    ];
+
+    const liveState = applyEvents(events);
+
+    // queue:prd:discovered must not add a second item when enqueue:complete already inserted one
+    expect(liveState.queue).toHaveLength(1);
+    expect(liveState.queue[0]).toMatchObject({ id: 'prd-enq-002', status: 'pending' });
+
+    const snapshotState = applyBatchSeed([], [{ id: 'prd-enq-002', title: 'Enqueue Discovered PRD', status: 'pending' }]);
+    expect(liveState.queue).toEqual(snapshotState.queue);
+  });
+
+  it('enqueue:complete then queue:prd:discovered then queue:prd:start transitions to running', () => {
+    const events: EforgeEvent[] = [
+      makeEvent('enqueue:complete', {
+        id: 'prd-enq-003',
+        filePath: 'eforge/queue/prd-enq-003.md',
+        title: 'Running PRD',
+        planSet: 'running-test',
+      }),
+      makeEvent('queue:prd:discovered', {
+        prdId: 'prd-enq-003',
+        title: 'Running PRD',
+      }),
+      makeEvent('queue:prd:start', {
+        prdId: 'prd-enq-003',
+        title: 'Running PRD',
+      }),
+    ];
+
+    const liveState = applyEvents(events);
+
+    expect(liveState.queue).toHaveLength(1);
+    expect(liveState.queue[0]).toMatchObject({ id: 'prd-enq-003', status: 'running' });
+
+    const snapshotState = applyBatchSeed([], [{ id: 'prd-enq-003', title: 'Running PRD', status: 'running' }]);
+    expect(liveState.queue).toEqual(snapshotState.queue);
+  });
+});
+
+// --- eforge:endregion plan-01-semantic-enqueue-wake ---
+
 // ---------------------------------------------------------------------------
 // Queue lifecycle parity
 // ---------------------------------------------------------------------------
