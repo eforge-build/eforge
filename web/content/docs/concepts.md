@@ -67,7 +67,9 @@ A **profile** is a named YAML file that bundles tier recipes into a reusable uni
 - `eforge/profiles/` - Project scope, committed, team-canonical
 - `.eforge/profiles/` - Project-local scope, gitignored, personal override
 
-The active profile is resolved highest-priority-first: project-local beats project beats user. You can swap profiles without touching `eforge/config.yaml` - useful for switching between harnesses or experimenting with different models.
+The active profile is resolved highest-priority-first: project-local beats project beats user. You can swap profiles without touching `eforge/config.yaml` - useful for switching between harnesses or experimenting with different models. See [Profiles](/docs/profiles) for a full walkthrough.
+
+**Playbooks** are a separate but related surface: a playbook is a reusable Markdown template for recurring work that optionally pins a profile via its `profile` frontmatter field. Playbooks run in either `autonomous` mode (enqueues a build directly) or `planning` mode (triggers an investigation-first workflow before building). See [Playbooks](/docs/playbooks).
 
 ## The Queue and Daemon
 
@@ -87,7 +89,7 @@ eforge publishes machine-readable reference artifacts for use by AI coding assis
 
 - `/llms.txt` - Structured index of available documentation, getting-started guides, reference docs, packages, schemas, and optional context
 - `/llms-full.txt` - Full reference documentation bundle in a single file
-- `/docs/getting-started.md`, `/docs/concepts.md`, `/docs/configuration.md`, `/docs/glossary.md` - Raw Markdown guide pages useful for onboarding and terminology
+- `/docs/getting-started.md`, `/docs/concepts.md`, `/docs/configuration.md`, `/docs/extensions.md`, `/docs/extensions-api.md`, `/docs/glossary.md` - Raw Markdown guide pages useful for onboarding and terminology
 - `/reference/cli.md`, `/reference/api.md`, `/reference/events.md`, `/reference/config.md`, `/reference/tools.md` - Raw Markdown reference docs
 - `/schemas/events.schema.json`, `/schemas/config.schema.json` - JSON Schemas for wire types and config
 

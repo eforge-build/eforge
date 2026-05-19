@@ -108,19 +108,23 @@ Claude Agent SDK usage follows Anthropic's Agent SDK credit/API-pricing policy d
 
 A profile bundles tier recipes into a reusable named file. This lets you switch between configurations - such as "use Claude for review, local model for implementation" - without editing `eforge/config.yaml`.
 
-Profiles live at three scopes:
+Profiles live at three scopes (highest-priority-first):
 
-- `~/.config/eforge/profiles/` - User scope
-- `eforge/profiles/` - Project scope (committed)
-- `.eforge/profiles/` - Project-local scope (gitignored)
+| Scope | Directory | Committed? |
+|-------|-----------|-----------|
+| Project-local | `.eforge/profiles/` | No (gitignored) |
+| Project | `eforge/profiles/` | Yes |
+| User | `~/.config/eforge/profiles/` | No |
 
-The active profile is resolved highest-priority-first. Set one with:
+Set the active profile with:
 
 ```
 /eforge:profile use <name>
 ```
 
 Or from the CLI: `eforge profile use <name>`.
+
+For a complete walkthrough covering profile creation, scope resolution, toolbelts inside profiles, and profile-router precedence, see [Profiles](/docs/profiles).
 
 ## Native Extensions
 
@@ -309,7 +313,7 @@ build:
   maxValidationRetries: 2
 ```
 
-Each command runs under a 5-minute wall-clock timeout. On failure, a validation-fixer agent attempts repairs up to `maxValidationRetries` times.
+Each command runs under a 5-minute wall-clock timeout. On failure, a validation-fixer agent attempts repairs up to `maxValidationRetries` times. When retries are exhausted, the build is marked failed. See [Troubleshooting - Validation-fixer retries exhausted](/docs/troubleshooting#validation-fixer-retries-exhausted) for recovery steps.
 
 ## Queue Concurrency
 
@@ -366,7 +370,7 @@ hooks:
     command: "curl -X POST $SLACK_WEBHOOK -d '{\"text\": \"Build failed\"}'"
 ```
 
-Hooks do not block the pipeline. See the [Hooks](/reference/config#hooks) section in the Configuration Reference for field details.
+Hooks do not block the pipeline. See the [Hooks](/reference/config#hooks) section in the Configuration Reference for field details and the [Integrations](/docs/integrations#shell-hooks) page for examples.
 
 ## Full Reference
 

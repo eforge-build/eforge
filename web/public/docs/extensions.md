@@ -322,7 +322,7 @@ Event-hook, agent-context-hook, agent-tool, profile-router, shipped policy-gate,
 
 ### Input sources and PRD enrichers
 
-Input sources and PRD enrichers run during the enqueue preprocessing stage, before the build source artifact is written to the queue.
+Input sources and PRD enrichers run during the enqueue preprocessing stage, before the build source artifact is written to the queue. For usage examples from each host surface (Claude Code, Pi, CLI), see [Integrations - Input source adapters](/docs/integrations#input-source-adapters-github-linear-jira).
 
 **`registerInputSource` — URI-based artifact fetching**
 

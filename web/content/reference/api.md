@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.13 -->
-<!-- Commit: 5a06fea8 -->
+<!-- Commit: 140c5cdc -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference

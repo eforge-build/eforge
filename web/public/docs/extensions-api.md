@@ -5,7 +5,7 @@ description: Type-level reference for the @eforge-build/extension-sdk package.
 
 # Extensions API Reference
 
-This document is the type-level reference for `@eforge-build/extension-sdk`. For conceptual background, scope model, management commands (`eforge extension list/show/validate/test/new/reload`), and example walkthroughs, see [Extensions](/docs/extensions).
+This document is the type-level reference for `@eforge-build/extension-sdk`. For conceptual background, scope model, management commands (`eforge extension list/show/validate/test/new/reload`), and example walkthroughs, see [Extensions](/docs/extensions). For the user-facing profile creation, switching, and scope model that `registerProfileRouter` interacts with, see [Profiles](/docs/profiles).
 
 ## Entrypoint
 
