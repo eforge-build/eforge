@@ -3,6 +3,7 @@ import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
+import type { ValidationProviderRegistration } from '../packages/engine/src/extensions/types.js';
 
 const VALID_SEQUENTIAL = JSON.stringify({
   scope: 'errand',
@@ -97,5 +98,54 @@ describe('composePipeline', () => {
     }))).rejects.toThrow(/failed after 3 attempts/);
 
     expect(backend.prompts).toHaveLength(3);
+  });
+
+  it('no validationProviders — prompt contains no "Validation providers loaded" section', async () => {
+    const backend = new StubHarness([{ resultText: VALID_SEQUENTIAL }]);
+    const cwd = makeTempDir();
+
+    await collectEvents(composePipeline({ harness: backend, source: '# PRD', cwd }));
+
+    expect(backend.prompts[0]).not.toContain('Validation providers loaded');
+  });
+
+  it('validationProviders present — prompt contains "Validation providers loaded" summary', async () => {
+    const backend = new StubHarness([{ resultText: VALID_SEQUENTIAL }]);
+    const cwd = makeTempDir();
+
+    const providers: ValidationProviderRegistration[] = [
+      { kind: 'validationProvider', extensionName: 'my-ext', extensionPath: '/ext', name: 'type-check', value: { name: 'type-check', description: 'TS check', commands: ['pnpm type-check'] } },
+    ];
+    await collectEvents(composePipeline({
+      harness: backend,
+      source: '# PRD',
+      cwd,
+      validationProviders: providers,
+    }));
+
+    expect(backend.prompts[0]).toContain('Validation providers loaded');
+    expect(backend.prompts[0]).toContain('type-check (my-ext)');
+  });
+
+  it('validationProviders + promptAppend — both appear in prompt, joined with blank line', async () => {
+    const backend = new StubHarness([{ resultText: VALID_SEQUENTIAL }]);
+    const cwd = makeTempDir();
+
+    const providers: ValidationProviderRegistration[] = [
+      { kind: 'validationProvider', extensionName: 'my-ext', extensionPath: '/ext', name: 'lint', value: { name: 'lint', description: 'Lint check', commands: ['pnpm lint'] } },
+    ];
+    await collectEvents(composePipeline({
+      harness: backend,
+      source: '# PRD',
+      cwd,
+      promptAppend: 'EXTRA INSTRUCTIONS',
+      validationProviders: providers,
+    }));
+
+    const prompt = backend.prompts[0];
+    expect(prompt).toContain('EXTRA INSTRUCTIONS');
+    expect(prompt).toContain('Validation providers loaded');
+    // Both sections appear — promptAppend precedes the validation summary
+    expect(prompt.indexOf('EXTRA INSTRUCTIONS')).toBeLessThan(prompt.indexOf('Validation providers loaded'));
   });
 });

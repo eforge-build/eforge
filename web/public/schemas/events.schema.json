@@ -2871,6 +2871,177 @@
           "type": "object",
           "required": [
             "type",
+            "planId",
+            "providerName",
+            "extensionName",
+            "extensionPath",
+            "kind"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:validation-provider:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "providerName": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "kind": {
+              "anyOf": [
+                {
+                  "const": "validate",
+                  "type": "string"
+                },
+                {
+                  "const": "commands",
+                  "type": "string"
+                }
+              ]
+            },
+            "commandCount": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "providerName",
+            "extensionName",
+            "extensionPath",
+            "status"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:validation-provider:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "providerName": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "const": "passed",
+                  "type": "string"
+                },
+                {
+                  "const": "skipped",
+                  "type": "string"
+                }
+              ]
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "providerName",
+            "extensionName",
+            "extensionPath",
+            "status",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:validation-provider:error",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "providerName": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "status": {
+              "const": "failed",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "details": {
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            },
+            "exitCode": {
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "providerName",
+            "extensionName",
+            "extensionPath",
+            "timeoutMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:validation-provider:timeout",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "providerName": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "command": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "source"
           ],
           "properties": {

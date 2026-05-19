@@ -63,6 +63,8 @@ export type {
   ReviewerPerspectiveApplicability,
   ReviewerPerspectiveApplicabilityContext,
   ValidationProviderSpec,
+  ValidationProviderResult,
+  ValidationProviderContext,
 } from './hooks.js';
 
 // Event types (re-exported from @eforge-build/client)

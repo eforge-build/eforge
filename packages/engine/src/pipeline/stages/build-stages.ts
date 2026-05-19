@@ -48,6 +48,9 @@ import type { EvaluationVerdict } from '../../schemas.js';
 
 import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
+// --- eforge:region plan-01-validation-provider-runtime ---
+import { runValidationProvider } from '../../extensions/validation-provider-runtime.js';
+// --- eforge:endregion plan-01-validation-provider-runtime ---
 import { resolveAgentConfig } from '../agent-config.js';
 import { createToolTracker } from '../span-wiring.js';
 import { withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../git-helpers.js';
@@ -1105,13 +1108,51 @@ registerBuildStage({
 registerBuildStage({
   name: 'validate',
   phase: 'build',
-  description: 'Placeholder for inline validation. Custom pipelines can include this for pre-merge checks.',
-  whenToUse: 'When inline validation is needed before merge. Post-merge validation is handled by the Orchestrator.',
+  description: 'Runs registered extension validation providers as quality gates before review. No-op when no providers are loaded.',
+  whenToUse: 'When one or more extension validation providers are loaded (include when providers are registered). Post-merge validation is handled by the Orchestrator and is separate.',
   costHint: 'low',
   predecessors: ['implement'],
-}, async function* validateStage(_ctx) {
-  // Placeholder for inline validation (not used in default pipelines).
-  // Post-merge validation continues to be handled by the Orchestrator.
+  parallelizable: false,
+}, async function* validateStage(ctx) {
+  // --- eforge:region plan-01-validation-provider-runtime ---
+  const providers = ctx.extensionValidationProviders;
+
+  // No-op when no providers are registered (preserves placeholder behavior).
+  if (!providers || providers.length === 0) {
+    return;
+  }
+
+  const timeoutMs = ctx.config.extensions.validationProviderTimeoutMs;
+
+  for (const registration of providers) {
+    const result = await runValidationProvider(
+      registration,
+      {
+        planId: ctx.planId,
+        planOutputDir: ctx.worktreePath,
+        worktreePath: ctx.worktreePath,
+        signal: ctx.abortController?.signal,
+      },
+      { timeoutMs },
+    );
+
+    for (const event of result.events) {
+      yield event;
+    }
+
+    if (result.outcome.status === 'failed') {
+      const errorMessage = result.outcome.message ?? `Validation provider "${registration.name}" failed`;
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'plan:build:failed',
+        planId: ctx.planId,
+        error: errorMessage,
+      };
+      ctx.buildFailed = true;
+      return;
+    }
+  }
+  // --- eforge:endregion plan-01-validation-provider-runtime ---
 });
 
 registerBuildStage({

@@ -331,6 +331,13 @@ export const IGNORED_EVENT_TYPES = [
   'extension:reviewer-perspective:applied',
   'extension:reviewer-perspective:skipped',
   // --- eforge:endregion plan-02-extension-perspective-runtime ---
+  // --- eforge:region plan-01-validation-provider-runtime ---
+  // Validation provider lifecycle events — session-scoped, non-persistent.
+  'extension:validation-provider:start',
+  'extension:validation-provider:complete',
+  'extension:validation-provider:error',
+  'extension:validation-provider:timeout',
+  // --- eforge:endregion plan-01-validation-provider-runtime ---
 ] as const;
 
 // ---------------------------------------------------------------------------

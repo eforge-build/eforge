@@ -217,7 +217,7 @@ describe('native extension replay harness', () => {
     ]));
   });
 
-  it('treats zero matching hooks as valid and summarizes deferred registration families without invoking them', async () => {
+  it('treats zero matching hooks as valid and summarizes non-runtime-supported registration families without invoking them', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
     await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'deferred.js'), `

@@ -15,7 +15,7 @@ import type { PipelineComposition } from '../schemas.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import type { TracingContext } from '../tracing.js';
 import type { ModelTracker } from '../model-tracker.js';
-import type { ReviewerPerspectiveRegistration } from '../extensions/types.js';
+import type { ReviewerPerspectiveRegistration, ValidationProviderRegistration } from '../extensions/types.js';
 
 export interface PipelineContext {
   agentRuntimes: AgentRuntimeRegistry;
@@ -44,6 +44,11 @@ export interface PipelineContext {
   /** Extension reviewer perspective registrations from loaded native extensions. */
   extensionReviewerPerspectives?: ReviewerPerspectiveRegistration[];
   // --- eforge:endregion plan-02-extension-perspective-runtime ---
+
+  // --- eforge:region plan-01-validation-provider-runtime ---
+  /** Extension validation provider registrations from loaded native extensions. */
+  extensionValidationProviders?: ValidationProviderRegistration[];
+  // --- eforge:endregion plan-01-validation-provider-runtime ---
 
   // Mutable state passed between stages
   plans: PlanFile[];

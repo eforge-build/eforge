@@ -668,7 +668,7 @@ describe('extension CLI commands', () => {
     const { stdout } = await runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', fixture]);
     // reviewerPerspectives should NOT appear in deferred registrations
     expect(stdout).not.toMatch(/Deferred registrations:[\s\S]*reviewerPerspectives/);
-    // validationProviders should still be deferred
+    // validationProviders appear in deferred registrations (replay does not execute them)
     expect(stdout).toContain('validationProviders: 1');
     // Reviewer perspectives section should appear
     expect(stdout).toContain('Reviewer perspectives (runtime-supported):');
