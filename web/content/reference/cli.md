@@ -397,7 +397,7 @@ Open a playbook in $EDITOR, validate, and save to the same tier
 
 #### `run`
 
-Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return a requires-agent response (use /eforge:plan or /skill:eforge-playbook run <name> for interactive planning)
+Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return a requires-agent response (use /eforge:playbook run <name> for interactive planning)
 
 
 **Options:**

@@ -343,7 +343,7 @@ describe('eforge playbook run', () => {
       kind: 'requires-agent',
       mode: 'planning',
       name: 'my-planning',
-      message: 'Playbook "my-planning" is planning-mode. Use /eforge:plan or /skill:eforge-playbook run my-planning to start an interactive planning session.',
+      message: 'Playbook "my-planning" is planning-mode. Use /eforge:playbook run my-planning to start an interactive planning session.',
     }));
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -355,8 +355,8 @@ describe('eforge playbook run', () => {
     expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('interactive'))).toBe(true);
     expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('Planning session ready'))).toBe(false);
     expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('session plan'))).toBe(false);
-    // Should provide guidance to use /eforge:plan or /skill:eforge-playbook
-    expect(allCalls.some((msg) => typeof msg === 'string' && (msg.includes('/eforge:plan') || msg.includes('/skill:eforge-playbook')))).toBe(true);
+    // Should provide guidance to use /eforge:playbook run
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('/eforge:playbook run'))).toBe(true);
     logSpy.mockRestore();
   });
 });

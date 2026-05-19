@@ -118,7 +118,7 @@ async function runAction(name: string, options: { after?: string }): Promise<voi
     } else {
       // kind === 'requires-agent': planning playbook needs an interactive session
       console.log(chalk.yellow('⚡') + ` Planning playbook "${name}" requires an interactive agent session.`);
-      console.log(chalk.dim(`  Use /eforge:plan or /skill:eforge-playbook run ${name} to start planning.`));
+      console.log(chalk.dim(`  Use /eforge:playbook run ${name} to start planning.`));
     }
   } catch (err) {
     const { message, exitCode } = formatCliError(err);
@@ -347,7 +347,7 @@ export function registerPlaybookCommand(program: Command): void {
 
   playbook
     .command('run <name>')
-    .description('Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return a requires-agent response (use /eforge:plan or /skill:eforge-playbook run <name> for interactive planning)')
+    .description('Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return a requires-agent response (use /eforge:playbook run <name> for interactive planning)')
     .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only')
     .action(async (name: string, options: { after?: string }) => {
       await runAction(name, options);

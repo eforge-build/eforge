@@ -8,8 +8,8 @@
  *
  * Every playbook must declare a `mode` field (`autonomous` or `planning`):
  * - `autonomous` playbooks are enqueued directly as build source.
- * - `planning` playbooks seed an interactive `/eforge:plan` session plan via
- *   `playbookToPlanSeed`.
+ * - `planning` playbooks require an agent-led investigation-first workflow;
+ *   `playbookToPlanSeed` remains a static template/scratch helper.
  *
  * Public API:
  *   parsePlaybook        — parse raw markdown to a typed Playbook
@@ -25,7 +25,7 @@
  *
  * Planning-mode playbooks are valid artifacts but `POST /api/playbook/run` does not
  * execute them directly — it returns a `requires-agent` response so first-party clients
- * can hand control to an interactive agent (e.g. /eforge:plan or /skill:eforge-playbook run).
+ * can hand control to an interactive agent (e.g. /eforge:plan or /eforge:playbook run).
  */
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
@@ -69,7 +69,7 @@ export const playbookFrontmatterSchema = z.object({
   /**
    * Execution mode. Required with no default.
    * - `autonomous` — playbook is enqueued directly as build source.
-   * - `planning`   — playbook seeds an interactive session plan via `playbookToPlanSeed`.
+   * - `planning`   — playbook requires an agent-led investigation-first workflow; `playbookToPlanSeed` is a static template/scratch helper only.
    */
   mode: z.enum(['autonomous', 'planning']),
   /** Commands to run after the build merges (e.g. `["pnpm build"]`). */

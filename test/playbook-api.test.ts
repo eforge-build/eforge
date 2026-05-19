@@ -400,8 +400,7 @@ describe('POST /api/playbook/run', () => {
     expect(data.mode).toBe('planning');
     expect(data.name).toBe('my-planning');
     expect(typeof data.message).toBe('string');
-    expect(data.message).toContain('/eforge:plan');
-    expect(data.message).toContain('/skill:eforge-playbook run my-planning');
+    expect(data.message).toContain('/eforge:playbook run my-planning');
 
     // Verify no session plan file was created and existing session plans were left untouched
     await expect(readdir(sessionPlanDir)).resolves.toEqual(['existing-plan.md']);

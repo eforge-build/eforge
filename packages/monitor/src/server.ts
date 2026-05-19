@@ -3357,12 +3357,12 @@ export async function startServer(
         if (playbook.mode === 'planning') {
           // Planning-mode: return a typed requires-agent result.
           // The daemon does not create session-plan files here; first-party clients
-          // must delegate to an interactive agent (e.g. /eforge:plan).
+          // must delegate to an interactive agent (e.g. /eforge:playbook run).
           sendJson(res, {
             kind: 'requires-agent',
             mode: 'planning',
             name: body.name,
-            message: `Playbook "${body.name}" is planning-mode. Use /eforge:plan or /skill:eforge-playbook run ${body.name} to start an interactive planning session.`,
+            message: `Playbook "${body.name}" is planning-mode. Use /eforge:playbook run ${body.name} to start an interactive planning session.`,
           });
         } else {
           // Autonomous-mode: enqueue as PRD

@@ -30,7 +30,7 @@ If no `--resume` flag is given and no topic was provided, present three options:
 > "How would you like to start?
 > 1. **Resume** an existing planning session
 > 2. **New** session — start from scratch
-> 3. **Seed from a planning-mode playbook** — use a playbook to pre-populate goal, scope, and criteria"
+> 3. **Start from a planning-mode playbook** — load a planning playbook, investigate the codebase, and create a session plan with concrete findings"
 
 Then follow the corresponding path below.
 
@@ -49,16 +49,22 @@ Then follow the corresponding path below.
 3. Call `eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}', open: true }` to create the session file. The wrapper best-effort opens the new session plan file in your default Markdown app; planning continues whether or not the open succeeds.
 4. Proceed to Step 2.
 
-**Path (c): Seed from a planning-mode playbook** — If the user picks option 3:
+**Path (c): Start from a planning-mode playbook** — If the user picks option 3:
 1. Call `eforge_playbook { action: 'list' }`.
-2. Filter the results to entries whose frontmatter `mode === 'planning'`. If none exist, tell the user and offer to start a new session (path b) or create a planning-mode playbook with `/eforge:playbook create`.
+2. Filter the results to entries whose `mode === 'planning'`. If none exist, tell the user and offer to start a new session (path b) or create a planning-mode playbook with `/eforge:playbook create`.
 3. Present the filtered list as a numbered menu and ask the user to pick one.
-4. Ask the user for a topic to focus the session (the playbook provides the shape; the topic anchors it to the current work).
-5. Generate a session ID: `{YYYY-MM-DD}-{playbook-name}` (e.g., `2026-05-19-complexity-hotspot-reduction`).
-6. Call `eforge_session_plan { action: 'create-from-playbook', playbook_name: '{name}', session: '{session-id}', topic: '{topic}', open: true }`.
-7. Proceed to Step 2 with the seeded plan as starting context.
+4. Call `eforge_playbook { action: 'show', name: '{name}' }` to load the full playbook content.
+5. Read the playbook's Goal, Acceptance criteria, and Notes for the planner sections. Identify what needs to be investigated: relevant files, codebase areas, questions to answer, commands to run.
+6. Perform the investigation using read, search, and command capabilities. Gather evidence from the codebase. Validate cheap assumptions immediately.
+7. Ask the user for a topic to anchor the session (the playbook provides the shape; the topic anchors it to the current work). If the Goal makes the topic obvious, suggest it and allow override.
+8. Generate a session ID: `{YYYY-MM-DD}-{playbook-name}` (e.g., `2026-05-19-complexity-hotspot-reduction`).
+9. Call `eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}', open: true }`. If that session ID already exists, ask whether to resume and update the existing session or create a new suffixed session ID (for example `{YYYY-MM-DD}-{playbook-name}-2`), then continue with the chosen session.
+10. Write investigation findings as concrete section content using `eforge_session_plan { action: 'set-section', session, dimension, content }` for each covered dimension. Include specific evidence — not generic playbook template language.
+11. Proceed to Step 2 (Gather Context) — investigation findings already written into the session provide the starting context.
 
-> **Sub-note — seeded sessions**: when a session has `seeded_from_playbook` in its frontmatter (set by `create-from-playbook`), the session file's body already contains `## Goal`, `## Out of scope`, `## Acceptance criteria`, and `## Notes from playbook` headings pre-populated from the playbook. In Step 2 (Gather Context), treat these headings as established starting context — do NOT re-prompt the user to provide them from scratch. Instead, read them, summarize them to the user, and allow the conversation to refine or extend them as planning progresses. The user can edit any pre-populated heading during the planning session.
+> **Sub-note — investigation-seeded sessions**: when starting from a planning-mode playbook (path c), the investigation and findings are written into the session plan before Step 2 begins. In Step 2 (Gather Context), treat existing section content as established starting context — do NOT re-investigate areas already covered. Instead, read the session file, summarize what was found, and continue planning from there. The session content can be refined and extended throughout the planning conversation.
+>
+> **Note on `create-from-playbook`**: `eforge_session_plan { action: 'create-from-playbook' }` is a static template helper that pre-populates Goal, Out of scope, Acceptance criteria, and Notes from a playbook without performing investigation. It is retained for scratch/template seeding scenarios but is not the planning-playbook Run path — use path (c) above for investigation-first planning.
 
 ### Step 2: Gather Context
 

@@ -46,7 +46,7 @@ The agent execution backend used by a stage. eforge recommends `pi` for provider
 A reusable workflow template for recurring work. Every playbook has a `mode` field in its frontmatter:
 
 - **`autonomous`** — running the playbook enqueues a build directly, like any other eforge input.
-- **`planning`** — running the playbook seeds a session plan file that a human finalizes interactively via `/eforge:plan` before handing off to `/eforge:build`.
+- **`planning`** — running the playbook triggers an investigation-first workflow: the agent loads the playbook, performs the investigation guided by the playbook's Goal, Acceptance criteria, and Notes, creates a session plan with concrete findings and action items, and continues interactively via `/eforge:plan` before handing off to `/eforge:build`. The daemon does not create the session plan directly.
 
 ## Planner
 
