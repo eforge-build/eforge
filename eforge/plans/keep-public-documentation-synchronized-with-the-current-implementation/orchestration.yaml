@@ -1,0 +1,61 @@
+name: keep-public-documentation-synchronized-with-the-current-implementation
+description: Audit all public documentation against current implementation and
+  correct drift in README.md, AGENTS.md, and files under docs/. Targeted edits
+  only — no marketing copy, tutorials, or speculative content.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-docs-sync
+    name: Sync public documentation with current implementation
+    depends_on: []
+    branch: keep-public-documentation-synchronized-with-the-current-implementation/plan-01-docs-sync
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - docs
+      - code
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is a documentation synchronization task across README.md,
+    docs/config.md, and every file under docs/. Scope is excursion: while it
+    touches many files, a single planner session can enumerate the docs surface
+    area, map each doc to the relevant source-of-truth code regions (CLI,
+    daemon, config, profiles, playbooks, Pi, plugin), and decompose the work
+    into coordinated, ordered plans without needing delegated module planning.
+    It is not an expedition (no 4+ independent subsystems each demanding their
+    own codebase exploration to plan) and not an errand (clearly multi-file,
+    requires verification against implementation). Compile uses planner plus
+    plan-review-cycle because plan quality is critical here: the reviewer should
+    catch missed docs, over-broad rewrites, or speculative additions that
+    violate the explicit out-of-scope rules (no marketing, no speculative future
+    behavior, no wholesale rewrites). Build stages omit doc-author and doc-sync
+    because the work itself IS doc editing; the implement stage performs the doc
+    updates directly, so those auxiliary stages would be redundant. review-cycle
+    (2 rounds) provides iterative quality gating. Review perspectives: 'docs' is
+    primary (accuracy, leanness, no fluff), 'code' verifies that doc claims
+    actually match implementation (critical for this PRD since codebase is the
+    source of truth), and 'verify' confirms acceptance criteria coverage.
+    Parallel strategy lets these three perspectives run concurrently per round.
+    Standard strictness fits docs work - accuracy matters but this isn't
+    security or data-integrity sensitive."
