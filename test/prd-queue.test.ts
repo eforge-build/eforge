@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, isPrdRunning, type QueuedPrd } from '@eforge-build/engine/prd-queue';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, isPrdRunning, readPrdLockStatus, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -19,6 +19,23 @@ function makeQueuedPrd(overrides: Partial<QueuedPrd> & { id: string }): QueuedPr
     lastCommitDate: '',
     ...overrides,
   };
+}
+
+function makeDeadPid(): number {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const result = spawnSync(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
+    if (result.error) throw result.error;
+    if (typeof result.pid !== 'number' || result.pid <= 0) {
+      throw new Error('spawnSync did not return a positive child pid');
+    }
+
+    try {
+      process.kill(result.pid, 0);
+    } catch {
+      return result.pid;
+    }
+  }
+  throw new Error('could not create a definitely dead pid for lock tests');
 }
 
 // ---------------------------------------------------------------------------
@@ -222,9 +239,9 @@ describe('claimPrd', () => {
     const prdId = 'test';
     const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
-    // Write a lock file with a PID that does not exist
+    const deadPid = makeDeadPid();
     mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
-    writeFileSync(lockPath, '999999');
+    writeFileSync(lockPath, String(deadPid));
 
     // claimPrd treats any existing lock as held. The daemon's startup
     // reconciler is responsible for sweeping dead-PID locks.
@@ -233,7 +250,7 @@ describe('claimPrd', () => {
 
     // Lock file is untouched by claimPrd
     const lockContent = readFileSync(lockPath, 'utf-8');
-    expect(lockContent).toBe('999999');
+    expect(lockContent).toBe(String(deadPid));
   });
 
   it('returns false when lock file contains a live PID', async () => {
@@ -308,5 +325,132 @@ describe('releasePrd', () => {
 
     // Should not throw even though there's no lock file
     await expect(releasePrd(prdId, dir)).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readPrdLockStatus
+// ---------------------------------------------------------------------------
+
+describe('readPrdLockStatus', () => {
+  const makeTempDir = useTempDir('eforge-prd-lock-status-');
+
+  it('returns absent when no lock file exists', async () => {
+    const dir = makeTempDir();
+    const result = await readPrdLockStatus('nonexistent', dir);
+    expect(result).toEqual({ state: 'absent' });
+  });
+
+  it('returns live with current process pid when lock contains the current pid', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'test.lock'), String(process.pid));
+
+    const result = await readPrdLockStatus('test', dir);
+    expect(result).toEqual({ state: 'live', pid: process.pid });
+  });
+
+  it('returns stale with pid for a dead positive pid', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    const deadPid = makeDeadPid();
+    writeFileSync(join(lockDir, 'test.lock'), String(deadPid));
+
+    const result = await readPrdLockStatus('test', dir);
+    expect(result).toEqual({ state: 'stale', pid: deadPid });
+  });
+
+  it('returns corrupt for empty content', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'test.lock'), '');
+
+    const result = await readPrdLockStatus('test', dir);
+    expect(result).toEqual({ state: 'corrupt' });
+  });
+
+  it('returns corrupt for non-numeric content', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'test.lock'), 'not-a-pid');
+
+    const result = await readPrdLockStatus('test', dir);
+    expect(result).toEqual({ state: 'corrupt' });
+  });
+
+  it('returns corrupt for non-decimal numeric content', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'test.lock'), '0x10');
+
+    const result = await readPrdLockStatus('test', dir);
+    expect(result).toEqual({ state: 'corrupt' });
+  });
+
+  it('returns corrupt for a non-positive (zero) pid', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'test.lock'), '0');
+
+    const result = await readPrdLockStatus('test', dir);
+    expect(result).toEqual({ state: 'corrupt' });
+  });
+
+  it('returns corrupt for a negative pid', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'test.lock'), '-1');
+
+    const result = await readPrdLockStatus('test', dir);
+    expect(result).toEqual({ state: 'corrupt' });
+  });
+
+  it('returns corrupt for a non-integer (float) pid', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'test.lock'), '3.14');
+
+    const result = await readPrdLockStatus('test', dir);
+    expect(result).toEqual({ state: 'corrupt' });
+  });
+
+  it('returns corrupt for a non-finite pid', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'test.lock'), 'Infinity');
+
+    const result = await readPrdLockStatus('test', dir);
+    expect(result).toEqual({ state: 'corrupt' });
+  });
+
+  it('claimPrd still returns false for dead-pid, invalid, and empty locks', async () => {
+    const dir = makeTempDir();
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+
+    // Dead pid: claimPrd must return false and leave file untouched
+    const deadPid = makeDeadPid();
+    writeFileSync(join(lockDir, 'dead.lock'), String(deadPid));
+    expect(await claimPrd('dead', dir)).toBe(false);
+    expect(readFileSync(join(lockDir, 'dead.lock'), 'utf-8')).toBe(String(deadPid));
+
+    // Invalid content: claimPrd must return false and leave file untouched
+    writeFileSync(join(lockDir, 'invalid.lock'), 'bad-content');
+    expect(await claimPrd('invalid', dir)).toBe(false);
+    expect(readFileSync(join(lockDir, 'invalid.lock'), 'utf-8')).toBe('bad-content');
+
+    // Empty: claimPrd must return false and leave file untouched
+    writeFileSync(join(lockDir, 'empty.lock'), '');
+    expect(await claimPrd('empty', dir)).toBe(false);
+    expect(readFileSync(join(lockDir, 'empty.lock'), 'utf-8')).toBe('');
   });
 });
