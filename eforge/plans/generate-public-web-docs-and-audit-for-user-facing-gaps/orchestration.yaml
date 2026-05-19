@@ -1,7 +1,7 @@
 name: generate-public-web-docs-and-audit-for-user-facing-gaps
-description: Audit public documentation under web/content/, regenerate reference
-  artifacts via the docs-gen pipeline, fill user-facing gaps (profiles,
-  playbooks, integrations, troubleshooting), and ensure pnpm docs:check passes.
+description: Audit public docs under web/content/, fill user-facing
+  documentation gaps, regenerate web docs artifacts, and verify docs drift/link
+  checks.
 base_branch: main
 mode: excursion
 validate:
@@ -15,66 +15,54 @@ plans:
     branch: generate-public-web-docs-and-audit-for-user-facing-gaps/plan-01-public-docs-audit-and-fill-gaps
     build:
       - implement
+      - test-cycle
       - review-cycle
     review:
       strategy: parallel
       perspectives:
-        - code
         - docs
+        - verify
+        - code
       maxRounds: 2
       evaluatorStrictness: standard
     agents:
       builder:
-        effort: xhigh
-        rationale: Documentation audit and authoring require careful cross-referencing
-          of implementation behavior across CLI, MCP tools, skills, extensions,
-          profiles, playbooks, recovery, and toolbelts. Builder must read
-          source-of-truth files for each section it edits or authors, decide
-          what is stale vs. acceptable, and keep cross-links and terminology
-          consistent across ~10 doc files plus nav.ts and tests.
+        effort: high
+        rationale: The work is documentation-first, but it requires cross-checking
+          current behavior across CLI commands, skills, profiles, playbooks,
+          extensions, daemon events, recovery, and docs generation before
+          editing the public guide pages.
       reviewer:
         effort: high
-        rationale: Reviewer must validate that documented behavior matches current
-          implementation, that the public docs site still navigates correctly,
-          that no banned vague words slipped in, and that the user journeys are
-          coherently covered. Docs perspective in particular must catch
-          terminology drift between guide pages and reference pages.
+        rationale: Public docs require careful review for implementation accuracy,
+          generated artifact drift, navigation consistency, and concise
+          task-oriented coverage.
 pipeline:
   scope: excursion
   compile:
     - planner
     - plan-review-cycle
   defaultBuild:
-    - implement
+    - - implement
+      - doc-author
+    - doc-sync
     - review-cycle
+    - test-cycle
   defaultReview:
     strategy: parallel
     perspectives:
       - docs
+      - api
       - verify
-      - code
     maxRounds: 2
     evaluatorStrictness: standard
-  rationale: "This is a documentation-focused task that audits and updates
-    `web/content/` against the current implementation and regenerates docs
-    artifacts via `pnpm docs:generate`/`pnpm docs:check`. It touches multiple
-    doc files across several user journeys (getting started, core concepts,
-    configuration, profiles, playbooks, extensions, CLI/API reference,
-    integrations, troubleshooting) but a single planner session can enumerate
-    the audit areas, file changes, and dependencies - so excursion is
-    appropriate (not expedition: there are no 4+ independent subsystems
-    requiring delegated module planning, and the audit is fundamentally one
-    coordinated docs sweep). A plan-review-cycle is included because docs
-    auditing is judgment-heavy and the planner must accurately scope which files
-    to touch, what stale claims to correct, and what gaps to fill - catching
-    scope/quality issues here pays off before build. The task itself IS
-    documentation work, so dedicated `doc-author`/`doc-sync` build stages would
-    be redundant with `implement` (the implementer is doing doc editing as its
-    primary action). Review uses parallel perspectives: `docs` (style,
-    navigability, terminology consistency, conciseness, task-orientation),
-    `verify` (accuracy of claims against current implementation - critical since
-    the PRD demands docs reflect current behavior, not stale or speculative
-    content), and `code` (correctness of any small implementation tweaks needed
-    for docs generation). Standard strictness fits user-facing docs (must be
-    accurate and clear, but not security-critical). Two review rounds give space
-    to correct stale-claim issues and tighten prose without over-iterating."
+  rationale: This is a documentation-heavy public docs audit across web/content
+    plus generated artifacts, but it is centered on one user-facing docs surface
+    and does not require delegated module planning, so excursion is appropriate.
+    A plan review helps catch coverage gaps before build. doc-author runs
+    alongside implementation because the task is primarily authoring and
+    updating docs; doc-sync then reconciles existing docs with the
+    post-implementation diff. review-cycle provides iterative quality control
+    for accuracy, navigation, terminology, and user-facing completeness.
+    test-cycle is included to run docs generation/check workflows such as pnpm
+    docs:check and catch artifact drift.
