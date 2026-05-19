@@ -618,6 +618,56 @@ describe('listPlaybooks', () => {
     expect(byName['user-pb'].shadows).toEqual([]);
   });
 
+  it('includes mode in list entries for autonomous and planning playbooks', async () => {
+    const root = makeTempDir();
+    const opts = makeOpts(root);
+
+    const pbAuto: Playbook = { ...validPlaybook(), name: 'auto-pb', scope: 'project-team', mode: 'autonomous' };
+    const pbPlan: Playbook = { ...validPlanningPlaybook(), name: 'plan-pb', scope: 'project-team', mode: 'planning' };
+
+    await writePlaybook({ ...opts, scope: 'project-team', playbook: pbAuto });
+    await writePlaybook({ ...opts, scope: 'project-team', playbook: pbPlan });
+
+    const { playbooks, warnings } = await listPlaybooks(opts);
+    expect(warnings).toHaveLength(0);
+
+    const byName = Object.fromEntries(playbooks.map((p) => [p.name, p]));
+    expect(byName['auto-pb'].mode).toBe('autonomous');
+    expect(byName['plan-pb'].mode).toBe('planning');
+  });
+
+  it('keeps legacy entries without mode listable with a safe autonomous default', async () => {
+    const root = makeTempDir();
+    const opts = makeOpts(root);
+    const { configDir, cwd } = opts;
+    const projectDir = resolve(getScopeDirectory('project-team', { cwd, configDir }), 'playbooks');
+    await mkdir(projectDir, { recursive: true });
+
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(
+      resolve(projectDir, 'legacy-pb.md'),
+      `---
+name: legacy-pb
+description: Legacy playbook
+scope: project-team
+---
+
+## Goal
+
+Still appears in the listing.
+`,
+      'utf-8',
+    );
+
+    const { playbooks } = await listPlaybooks(opts);
+    expect(playbooks).toHaveLength(1);
+    expect(playbooks[0]).toEqual(expect.objectContaining({
+      name: 'legacy-pb',
+      mode: 'autonomous',
+      source: 'project-team',
+    }));
+  });
+
   it('returns one entry with full shadow chain when same name exists in all three tiers', async () => {
     const root = makeTempDir();
     const opts = makeOpts(root);

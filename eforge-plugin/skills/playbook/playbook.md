@@ -5,22 +5,22 @@ argument-hint: "[create|edit|run|list|promote|demote] [name]"
 
 # /eforge:playbook
 
-Manage eforge playbooks — reusable templates for recurring workflows that the daemon can execute on demand. Playbooks live in one of three storage tiers:
+Manage eforge playbooks — reusable templates for recurring workflows that eforge can invoke on demand. Playbooks live in one of three storage tiers:
 
 - `~/.config/eforge/playbooks/` — **user** scope (cross-project, personal)
 - `eforge/playbooks/` — **project-team** scope (committed, shared with the team)
 - `.eforge/playbooks/` — **project-local** scope (gitignored, personal draft)
 
-A lower-tier playbook with the same name **shadows** a higher-tier one. The daemon always runs the most-specific tier.
+A lower-tier playbook with the same name **shadows** a higher-tier one. eforge always resolves the most-specific tier.
 
 ## Playbook Modes
 
 Every playbook has a `mode` field in its frontmatter:
 
 - **`mode: autonomous`** — eforge builds the playbook end-to-end without further prompting. Hand-off-and-forget: the daemon enqueues it and runs it. Suitable for mechanical, repeatable workflows where the build agent does not need to consult the user mid-run.
-- **`mode: planning`** — running the playbook seeds a `/eforge:plan` session that the user finalizes interactively. The daemon creates a session-plan file with the playbook's Goal, Out of scope, Acceptance criteria, and Notes pre-populated as starting context; the user then drives the planning conversation to completion before handing off to `/eforge:build`.
+- **`mode: planning`** — running the playbook triggers an investigation-first workflow. The agent loads the playbook, performs the investigation guided by the playbook's Goal, Acceptance criteria, and Notes for the planner, creates a session plan with concrete findings and action items, and continues the planning conversation interactively. The daemon does not create the session plan directly.
 
-The `mode` field governs what happens when you run a playbook: `autonomous` enqueues a build; `planning` creates a session plan for interactive refinement.
+The `mode` field governs what happens when you run a playbook: `autonomous` enqueues a build; `planning` starts an investigation-first planning workflow.
 
 ## Step 1: Branch on Arguments
 
@@ -44,7 +44,7 @@ Call `mcp__eforge__eforge_playbook { action: "list" }` to fetch the current play
 
 **Shown only when playbooks exist:**
 - **2. Edit** — walk through a playbook section-by-section
-- **3. Run** — run a playbook (enqueue an autonomous playbook, or seed a session plan from a planning-mode playbook)
+- **3. Run** — run a playbook (enqueue an autonomous playbook, or start an investigation-first planning workflow for a planning-mode playbook)
 
 **Shown only when project-local playbooks exist (`.eforge/playbooks/`):**
 - **5. Promote** — move a `.eforge/playbooks/<name>.md` to `eforge/playbooks/<name>.md`
@@ -128,7 +128,7 @@ When classification is confident, state the inferred scope briefly:
 
 Ask the user which mode this playbook should use:
 
-> "Should this be an **autonomous** playbook (eforge builds it end-to-end without further prompting — hand-off-and-forget) or a **planning** playbook (it seeds an `/eforge:plan` session that you finalize interactively before building)?"
+> "Should this be an **autonomous** playbook (eforge builds it end-to-end without further prompting — hand-off-and-forget) or a **planning** playbook (the agent investigates first, creates a session plan with findings, and continues `/eforge:plan` interactively before building)?"
 
 **Default heuristic** — pre-select a suggestion before asking, based on the workflow description:
 
@@ -202,12 +202,12 @@ Ask the user to pick by number. Never ask for a name.
 
 If the selected playbook is **shadowed by** a more-specific tier (e.g., the user picked a `project-team` entry that has a `project-local` shadow), show:
 
-> "⚠ This playbook is shadowed by a `project-local` version at `.eforge/playbooks/{name}.md`. The daemon always runs the shadow. Would you like to:
-> 1. Edit the **shadow** (project-local — what the daemon actually runs)
+> "⚠ This playbook is shadowed by a `project-local` version at `.eforge/playbooks/{name}.md`. eforge resolves the shadow when the playbook is invoked. Would you like to:
+> 1. Edit the **shadow** (project-local — what eforge will invoke)
 > 2. Edit the **original** (project-team — shadowed, not active)
 > 3. Copy the original to project-local and edit (creates a new shadow)"
 
-If the user picks option 3, call `POST /api/playbook/copy` with `{ name: "<name>", targetScope: "project-local" }` via the daemon client before entering the section-by-section edit loop. This atomically copies the playbook to the project-local tier so the daemon will run the new shadow going forward. Then proceed with the edit loop using the copied version.
+If the user picks option 3, call `POST /api/playbook/copy` with `{ name: "<name>", targetScope: "project-local" }` via the daemon client before entering the section-by-section edit loop. This atomically copies the playbook to the project-local tier so future invocations resolve to the new shadow. Then proceed with the edit loop using the copied version.
 
 ### 4.3: Load the playbook
 
@@ -226,7 +226,7 @@ For each section:
 
 **Mode editing**: when the user switches `mode` from `autonomous` to `planning` or vice versa, emit a one-line warning before saving:
 
-> "⚠ Changing the mode does NOT alter any session plans that were previously seeded from this playbook — those files are immutable on disk. Only future runs of this playbook will use the new mode."
+> "⚠ Changing the mode does NOT alter any session plans or queued builds created from previous runs of this playbook. Only future runs will use the new mode."
 
 ### 4.5: Validate and save
 
@@ -236,19 +236,28 @@ Same as Step 3.5. Validate before saving, surface errors verbatim, do NOT write 
 
 ## Branch: Run (Step 5)
 
-Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first); for planning playbooks the daemon seeds a session plan for interactive refinement via `/eforge:plan`.
+Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first). For planning playbooks the agent performs an investigation-first workflow: loads the playbook, investigates the codebase guided by the playbook's Goal, Acceptance criteria, and Notes, creates a session plan with concrete findings and action items, and continues interactively via `/eforge:plan`.
 
 ### 5.1: Pick a playbook
 
 Same numbered-list approach as Step 4.1. If a name was provided via `$ARGUMENTS`, pre-select it but still confirm.
 
-### 5.2: Check for in-flight builds
+### 5.2: Load the playbook
+
+Call `mcp__eforge__eforge_playbook { action: "show", name: "<name>" }` to get the full playbook content including mode, Goal, Acceptance criteria, and Notes for the planner.
+
+**Branch on `mode`:**
+
+- **`mode: autonomous`** — proceed to Step 5.3 (queue check and enqueue).
+- **`mode: planning`** — proceed to Step 5.4 (investigation-first flow).
+
+### 5.3: Check for in-flight builds and enqueue (autonomous only)
 
 Call `mcp__eforge__eforge_queue_list {}` to get current queue items.
 
 Filter for items where `status` is `"running"` or `"pending"` (queued). Build a numbered list indexed starting at 1.
 
-- **If no active items**: skip to Step 5.3 and enqueue immediately.
+- **If no active items**: enqueue immediately.
 - **If active items exist**: list them by **title** with index numbers (never show queue ids):
 
 ```
@@ -276,25 +285,40 @@ Would you like to:
 
 Await user confirmation (y/n or just Enter). Only proceed if confirmed.
 
-### 5.3: Enqueue
+**Enqueue:**
 
 - **Run now**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>" }`.
 - **Wait for build**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>", afterQueueId: "<resolved-id>" }`.
 
-The `afterQueueId` is the internal queue id resolved in Step 5.2 — never the title and never typed by the user.
+The `afterQueueId` is the internal queue id resolved above — never the title and never typed by the user.
 
-**Dispatch on the response `kind` field:**
-
-- **`kind: 'enqueued'`**: Report the enqueue confirmation and point at the monitor UI.
-  > "Playbook `{name}` enqueued as `{id}`. {If afterQueueId: 'It will start after `{build-title}` completes.'} Watch progress in the monitor UI."
-
-- **`kind: 'planning'`**: The playbook is in `planning` mode — the daemon created a session plan instead of queuing a build. Report the session plan path and offer to launch the planning conversation.
-  > "Planning session ready at `{path}`. Open `/eforge:plan` to continue."
-  Offer: "Would you like me to open `/eforge:plan --resume` now so we can work through the plan together?"
+On **`kind: 'enqueued'`** response: Report the enqueue confirmation and point at the monitor UI.
+> "Playbook `{name}` enqueued as `{id}`. {If afterQueueId: 'It will start after `{build-title}` completes.'} Watch progress in the monitor UI."
 
 If the enqueue fails because the upstream is no longer active (404 from daemon), tell the user:
 > "The build you selected has already finished. Running `{name}` now instead."
 Then call `mcp__eforge__eforge_playbook { action: "run", name: "<name>" }` without `afterQueueId`.
+
+### 5.4: Investigation-first planning flow
+
+Do not call `mcp__eforge__eforge_playbook { action: "run" }` for planning playbooks — the daemon does not execute the investigation. Instead, perform the investigation in the current conversation:
+
+1. **Identify investigation targets**: Using the playbook content loaded in Step 5.2, read the Goal, Acceptance criteria, and Notes for the planner sections. Identify what needs to be investigated: relevant files to read, codebase areas to search, questions to answer, commands to run.
+
+2. **Investigate**: Using read, search, and command capabilities, gather evidence from the codebase. Validate cheap assumptions immediately before recording them. Separate confirmed evidence from inferences.
+
+3. **Summarize findings**: Build a clear summary of what was found — concrete evidence, confirmed facts, and any remaining assumptions with confidence levels.
+
+4. **Ask for a topic**: Ask the user for a short topic to anchor this session (the playbook provides the shape; the topic anchors it to the current work). If the playbook's Goal makes the topic obvious, suggest it and allow override.
+
+5. **Create the session plan**: Generate a session ID `{YYYY-MM-DD}-{playbook-name}` (e.g. `2026-05-19-complexity-hotspot-reduction`). Call `mcp__eforge__eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true }`. If that session ID already exists, do not abandon the flow: ask whether to resume and update the existing session or create a new suffixed session ID (for example `{YYYY-MM-DD}-{playbook-name}-2`), then continue with the chosen session.
+
+6. **Write concrete sections**: Write investigation findings as concrete section content using `mcp__eforge__eforge_session_plan { action: "set-section", session, dimension, content }`. At minimum write a scope or goal section reflecting the playbook intent plus investigation results. Include specific evidence — not generic playbook template language.
+
+7. **Continue planning**: Announce the session plan path and offer to continue into `/eforge:plan --resume` to work through the remaining dimensions before building.
+   > "Investigation complete. Session plan created at `{path}`. Would you like to continue with `/eforge:plan --resume` to work through the remaining planning dimensions?"
+
+**Defensive fallback**: If `mcp__eforge__eforge_playbook { action: "run" }` is called for a planning playbook and returns `{ kind: "requires-agent", mode: "planning", name, message }`, apply the investigation-first flow above starting from step 1.
 
 ---
 
@@ -346,7 +370,7 @@ Call `mcp__eforge__eforge_playbook { action: "list" }` and filter for `source: "
 
 ### 8.2: Shadow trade-off notice
 
-> "Demoting `{name}` creates a project-local copy at `.eforge/playbooks/{name}.md` that will shadow the team version. The team version remains in `eforge/playbooks/` but the daemon will run your local copy instead."
+> "Demoting `{name}` creates a project-local copy at `.eforge/playbooks/{name}.md` that will shadow the team version. The team version remains in `eforge/playbooks/` but future invocations resolve to your local copy instead."
 
 Ask: "Proceed with demotion?"
 

@@ -3328,7 +3328,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Working directory not configured');
         return;
       }
-      let body: { name?: unknown; afterQueueId?: unknown; session?: unknown; topic?: unknown };
+      let body: { name?: unknown; afterQueueId?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
@@ -3344,11 +3344,9 @@ export async function startServer(
         return;
       }
       const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
-      const sessionOverride = typeof body.session === 'string' ? body.session : undefined;
-      const topicOverride = typeof body.topic === 'string' ? body.topic : undefined;
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { loadPlaybook, playbookToBuildSource, createSessionPlanFromPlaybookSeed, writeSessionPlan, resolveSessionPlanPath } = await import('@eforge-build/input');
+        const { loadPlaybook, playbookToBuildSource } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
@@ -3357,31 +3355,15 @@ export async function startServer(
         const { playbook } = await loadPlaybook({ configDir, cwd, name: body.name });
 
         if (playbook.mode === 'planning') {
-          // Planning-mode: seed a session plan file, do not enqueue
-          const plan = createSessionPlanFromPlaybookSeed({
-            playbook,
-            session: sessionOverride,
-            topic: topicOverride,
+          // Planning-mode: return a typed requires-agent result.
+          // The daemon does not create session-plan files here; first-party clients
+          // must delegate to an interactive agent (e.g. /eforge:playbook run).
+          sendJson(res, {
+            kind: 'requires-agent',
+            mode: 'planning',
+            name: body.name,
+            message: `Playbook "${body.name}" is planning-mode. Use /eforge:playbook run ${body.name} to start an interactive planning session.`,
           });
-          // Check for 409 collision before writing
-          const planPath = resolveSessionPlanPath({ cwd, session: plan.session });
-          const { access: fsAccess } = await import('node:fs/promises');
-          let exists = false;
-          try {
-            await fsAccess(planPath);
-            exists = true;
-          } catch (accessErr) {
-            // Only swallow ENOENT — other I/O errors should surface.
-            if ((accessErr as NodeJS.ErrnoException).code !== 'ENOENT') {
-              throw accessErr;
-            }
-          }
-          if (exists) {
-            sendJsonError(res, 409, `Session plan already exists: ${plan.session}`);
-            return;
-          }
-          await writeSessionPlan({ cwd, plan });
-          sendJson(res, { kind: 'planning', session: plan.session, path: planPath });
         } else {
           // Autonomous-mode: enqueue as PRD
           // --- eforge:region plan-05-piggyback-and-queue-scheduling ---

@@ -231,6 +231,7 @@ describe('eforge playbook edit', () => {
       name: 'my-pb',
       description: 'A playbook',
       scope: 'project-local',
+      mode: 'planning',
       goal: 'Do thing.',
       outOfScope: '',
       acceptanceCriteria: '',
@@ -245,7 +246,7 @@ describe('eforge playbook edit', () => {
     mockWriteFile.mockResolvedValue(undefined);
     mockSpawnSync.mockReturnValue({ status: 0 });
     mockReadFile.mockResolvedValue(
-      '---\nname: my-pb\ndescription: A playbook\nscope: project-local\n---\n\n## Goal\n\nDo thing.\n',
+      '---\nname: my-pb\ndescription: A playbook\nscope: project-local\nmode: planning\n---\n\n## Goal\n\nDo thing.\n',
     );
     mockUnlink.mockResolvedValue(undefined);
     mockApiPlaybookValidate.mockImplementation(() => wrap({ ok: true }));
@@ -259,7 +260,12 @@ describe('eforge playbook edit', () => {
     expect(mockApiPlaybookValidate).toHaveBeenCalledOnce();
     expect(mockApiPlaybookSave).toHaveBeenCalledOnce();
     expect(mockApiPlaybookSave).toHaveBeenCalledWith(expect.objectContaining({
-      body: expect.objectContaining({ scope: 'project-local' }),
+      body: expect.objectContaining({
+        scope: 'project-local',
+        playbook: expect.objectContaining({
+          frontmatter: expect.objectContaining({ mode: 'planning' }),
+        }),
+      }),
     }));
 
     if (origEditor !== undefined) process.env['EDITOR'] = origEditor;
@@ -332,17 +338,25 @@ describe('eforge playbook run', () => {
     logSpy.mockRestore();
   });
 
-  it('prints "Planning session ready: <path>" and hint for a planning-mode response', async () => {
-    const planPath = '/tmp/.eforge/session-plans/2026-05-19-my-planning.md';
-    mockApiPlaybookRun.mockImplementation(() => wrap({ kind: 'planning', session: '2026-05-19-my-planning', path: planPath }));
+  it('prints guidance to use interactive agent command for a requires-agent response', async () => {
+    mockApiPlaybookRun.mockImplementation(() => wrap({
+      kind: 'requires-agent',
+      mode: 'planning',
+      name: 'my-planning',
+      message: 'Playbook "my-planning" is planning-mode. Use /eforge:playbook run my-planning to start an interactive planning session.',
+    }));
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const program = makeProgram();
     await program.parseAsync(['node', 'eforge', 'playbook', 'run', 'my-planning']);
 
     const allCalls = logSpy.mock.calls.map((c) => c[0]);
-    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('Planning session ready:') && msg.includes(planPath))).toBe(true);
-    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('/eforge:plan'))).toBe(true);
+    // Should mention the need for an interactive session (not a created file)
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('interactive'))).toBe(true);
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('Planning session ready'))).toBe(false);
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('session plan'))).toBe(false);
+    // Should provide guidance to use /eforge:playbook run
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('/eforge:playbook run'))).toBe(true);
     logSpy.mockRestore();
   });
 });
