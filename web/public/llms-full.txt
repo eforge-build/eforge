@@ -2,7 +2,7 @@
 <!-- section: cli -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: e158774a -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -399,14 +399,14 @@ Open a playbook in $EDITOR, validate, and save to the same tier
 
 #### `run`
 
-Enqueue a playbook as a PRD
+Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks seed a session plan
 
 
 **Options:**
 
 | Flag | Description |
 |------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback) |
+| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
 
 #### `promote`
 
@@ -427,7 +427,7 @@ Shortcut for `eforge playbook run <name>`
 
 | Flag | Description |
 |------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback) |
+| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
 
 ### `mcp-proxy`
 
@@ -447,7 +447,7 @@ Run the MCP stdio proxy server (used by Claude Code plugin)
 <!-- section: api -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: e158774a -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -537,7 +537,7 @@ Use `buildPath(pattern, params)` from `@eforge-build/client` to resolve `:param`
 <!-- section: events -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: e158774a -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -751,7 +751,7 @@ Use `safeParseEforgeEvent(value)` from `@eforge-build/client` to validate at run
 <!-- section: config -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: e158774a -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -848,7 +848,7 @@ The complete machine-readable schema is at [`/schemas/config.schema.json`](/sche
 <!-- section: tools -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: e158774a -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/eforge/src/cli/mcp-proxy.ts, packages/pi-eforge/extensions/eforge/index.ts, eforge-plugin/skills/, packages/pi-eforge/skills/ -->
 
 # eforge MCP Tools and Skills Reference

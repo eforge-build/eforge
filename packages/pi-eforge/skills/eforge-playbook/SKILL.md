@@ -219,6 +219,8 @@ Call `eforge_playbook { action: "show", name: "<name>" }` (resolved to the tier 
 
 Present each section with its current content and ask if the user wants to update it. Work through in order: **mode** → **Goal** → **Out of scope** → **Acceptance criteria** → **Notes for the planner**.
 
+Note: `mode` is a frontmatter field (not a body heading); present it as `mode (current): <value>` rather than using the `## {Section}` heading format below.
+
 For each section:
 1. Show: `**## {Section}** (current): {current content}`
 2. Ask: "Does this look right, or would you like to update it?"

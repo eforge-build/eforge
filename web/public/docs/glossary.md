@@ -43,7 +43,10 @@ The agent execution backend used by a stage. eforge recommends `pi` for provider
 
 ## Playbook
 
-A reusable workflow template for recurring work. Playbooks produce build source that can be enqueued like any other eforge input.
+A reusable workflow template for recurring work. Every playbook has a `mode` field in its frontmatter:
+
+- **`autonomous`** — running the playbook enqueues a build directly, like any other eforge input.
+- **`planning`** — running the playbook seeds a session plan file that a human finalizes interactively via `/eforge:plan` before handing off to `/eforge:build`.
 
 ## Planner
 
