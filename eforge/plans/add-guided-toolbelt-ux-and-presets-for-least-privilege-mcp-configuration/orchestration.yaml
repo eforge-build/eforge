@@ -1,0 +1,89 @@
+name: add-guided-toolbelt-ux-and-presets-for-least-privilege-mcp-configuration
+description: Add guided least-privilege MCP toolbelt presets to Pi profile
+  creation, surface toolbelts in config viewing, and update public docs plus
+  fallback skills.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-pi-toolbelt-preset-ux
+    name: Pi Guided Toolbelt Preset UX
+    depends_on: []
+    branch: add-guided-toolbelt-ux-and-presets-for-least-privilege-mcp-configuration/plan-01-pi-toolbelt-preset-ux
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan adds interactive file mutation around .mcp.json and
+          eforge/config.yaml; careful validation and rollback behavior are
+          needed to avoid invalid toolbelt references.
+      reviewer:
+        effort: high
+        rationale: Review must examine least-privilege defaults, file mutation safety,
+          and validation flow before profile creation.
+  - id: plan-02-toolbelt-docs-skills-parity
+    name: Toolbelt Preset Documentation and Skill Parity
+    depends_on:
+      - plan-01-pi-toolbelt-preset-ux
+    branch: add-guided-toolbelt-ux-and-presets-for-least-privilege-mcp-configuration/plan-02-toolbelt-docs-skills-parity
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - docs
+        - test
+        - verify
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - review-cycle
+    - doc-sync
+    - test-cycle
+    - validate
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+      - api
+      - docs
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: Excursion fits because this is a cohesive multi-file feature across
+    Pi UX, helper logic, tests, skills, and docs, but it does not require
+    independently planned expedition modules. A plan review gate is useful
+    because the UX must preserve existing engine semantics while coordinating
+    config mutation and plugin/Pi parity. Build runs documentation authoring
+    alongside implementation, then writes tests, performs an iterative review
+    cycle, syncs docs against the implemented diff, runs iterative test
+    validation, and finishes with inline validation. Review is parallel and
+    strict because the work touches least-privilege tool access, config/profile
+    mutation, public docs, and user-facing integration behavior.
