@@ -10,6 +10,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { API_ROUTES } from "@eforge-build/client";
 import { piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import { showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
+import { getPresetRegistryData } from "./toolbelt-presets";
 
 // ---------------------------------------------------------------------------
 // /eforge:config - structured config viewer
@@ -124,6 +125,29 @@ export async function handleConfigCommand(
     sections.push("");
   }
   // --- eforge:endregion plan-02-extension-tooling-surfaces ---
+
+  // Toolbelts — show configured toolbelts from daemon config, then available presets
+  const tools = config.tools as Record<string, unknown> | undefined;
+  const configuredToolbelts = tools?.toolbelts as Record<string, unknown> | undefined;
+  const presetRegistry = getPresetRegistryData();
+  if ((configuredToolbelts && Object.keys(configuredToolbelts).length > 0) || presetRegistry.length > 0) {
+    sections.push("## Toolbelts\n");
+    if (configuredToolbelts && Object.keys(configuredToolbelts).length > 0) {
+      sections.push("**Configured:**\n");
+      for (const [tbName, tbEntry] of Object.entries(configuredToolbelts)) {
+        const tb = tbEntry as Record<string, unknown>;
+        const servers = Array.isArray(tb.mcpServers) ? (tb.mcpServers as string[]).join(', ') : '';
+        const desc = typeof tb.description === 'string' ? tb.description : '';
+        sections.push(`- **${tbName}**${desc ? `: ${desc}` : ''}${servers ? ` (${servers})` : ''}`);
+      }
+      sections.push("");
+    }
+    sections.push("**Available presets** (use `/eforge:profile:new` to apply):\n");
+    for (const preset of presetRegistry) {
+      sections.push(`- **${preset.label}** (\`${preset.id}\`): ${preset.description}`);
+    }
+    sections.push("");
+  }
 
   // Queue
   const prdQueue = config.prdQueue as Record<string, unknown> | undefined;

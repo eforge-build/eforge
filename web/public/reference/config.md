@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: a00090c5 -->
+<!-- Commit: 31ac2f09 -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -31,6 +31,8 @@ eforge merges configuration from three tiers (highest precedence first):
 ## Toolbelts
 
 `tools.toolbelts` declares named bundles of project MCP servers that tiers can opt into with `agents.tiers.<tier>.toolbelt`. Toolbelts are intended for profiles that need a focused capability set, such as browser automation for UI implementation and review.
+
+Use Pi's native `/eforge:profile:new` wizard or Claude Code's `/eforge:profile-new` fallback to configure toolbelt presets interactively. The wizard prompts for a preset after tier configuration, with a gallery including `browser-ui`, `docs-research`, `issue-triage`, `repo-review`, `observability`, `database-readonly`, `api-testing`, and `design-ui`. Each preset assigns `toolbelt: none` to tiers that do not need project MCP access (least-privilege default).
 
 ```yaml
 tools:

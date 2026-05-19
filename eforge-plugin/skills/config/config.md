@@ -110,7 +110,7 @@ At any point, you can show the user the fully resolved configuration (all layers
 
 `mcp__eforge__eforge_config` with `{ action: "show" }`
 
-This returns the merged result of defaults + global config + project config + active profile.
+This returns the merged result of defaults + global config + project config + active profile. The `/eforge:config` viewer also lists registered `tools.toolbelts` entries and available presets in a dedicated Toolbelts section. Use `/eforge:profile-new` to configure toolbelt presets interactively.
 
 ## Configuration Reference
 
@@ -197,6 +197,15 @@ prdQueue:
 # Daemon
 daemon:
   idleShutdownMs: 7200000              # Idle timeout (2h). 0 = run forever.
+
+# Project MCP toolbelts (optional; define named bundles for profile toolbelt: fields)
+tools:
+  toolbelts:
+    browser-ui:                        # Named toolbelt bundle
+      description: Browser automation for UI implementation and review.
+      mcpServers:
+        - playwright                   # Must be present in .mcp.json
+    # docs-research, observability, database-readonly, etc. follow the same pattern
 
 # Event hooks
 hooks:

@@ -172,6 +172,82 @@ describe('buildProfileCreatePayload', () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildProfileCreatePayload — toolbelt field pass-through
+// ---------------------------------------------------------------------------
+
+describe('toolbelt field pass-through', () => {
+  it('emits toolbelt on tier entry when set in TierSelection', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'toolbelt-profile',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'claude-opus-4-7',   effort: 'high',   toolbelt: 'none' },
+        implementation: { harness: 'claude-sdk', modelId: 'claude-sonnet-4-6', effort: 'medium', toolbelt: 'browser-ui' },
+        review:         { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low',    toolbelt: 'browser-ui' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low',    toolbelt: 'none' },
+      },
+    });
+
+    expect(payload.agents.tiers.planning.toolbelt).toBe('none');
+    expect(payload.agents.tiers.implementation.toolbelt).toBe('browser-ui');
+    expect(payload.agents.tiers.review.toolbelt).toBe('browser-ui');
+    expect(payload.agents.tiers.evaluation.toolbelt).toBe('none');
+  });
+
+  it('omits toolbelt from tier entry when not set in TierSelection', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'no-toolbelt',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
+    });
+
+    expect((payload.agents.tiers.planning as Record<string, unknown>)['toolbelt']).toBeUndefined();
+    expect((payload.agents.tiers.implementation as Record<string, unknown>)['toolbelt']).toBeUndefined();
+    expect((payload.agents.tiers.review as Record<string, unknown>)['toolbelt']).toBeUndefined();
+    expect((payload.agents.tiers.evaluation as Record<string, unknown>)['toolbelt']).toBeUndefined();
+  });
+
+  it('supports mixed tiers where only some have toolbelt set', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'partial-toolbelt',
+      scope: 'user',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high',   toolbelt: 'docs-research' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
+    });
+
+    expect(payload.agents.tiers.planning.toolbelt).toBe('docs-research');
+    expect((payload.agents.tiers.implementation as Record<string, unknown>)['toolbelt']).toBeUndefined();
+  });
+
+  it('TierSelection toolbelt does not affect top-level payload keys', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'toolbelt-keys',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high',   toolbelt: 'none' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium', toolbelt: 'browser-ui' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low',    toolbelt: 'browser-ui' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low',    toolbelt: 'none' },
+      },
+    });
+
+    // toolbelt should only appear inside tier entries, not at top level
+    const payloadAny = payload as Record<string, unknown>;
+    expect(payloadAny['toolbelt']).toBeUndefined();
+    expect((payload.agents as Record<string, unknown>)['toolbelt']).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildProfileCreatePayload — metadata pass-through
 // ---------------------------------------------------------------------------
 
