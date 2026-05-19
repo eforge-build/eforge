@@ -1,0 +1,30 @@
+agents:
+  tiers:
+    planning:
+      harness: pi
+      pi:
+        provider: openai-codex
+      model: gpt-5.5
+      effort: high
+      toolbelt: none
+    implementation:
+      harness: pi
+      pi:
+        provider: openai-codex
+      model: gpt-5.5
+      effort: high
+      toolbelt: none
+    review:
+      harness: pi
+      pi:
+        provider: openai-codex
+      model: gpt-5.5
+      effort: high
+      toolbelt: none
+    evaluation:
+      harness: pi
+      pi:
+        provider: openai-codex
+      model: gpt-5.5
+      effort: high
+      toolbelt: none
