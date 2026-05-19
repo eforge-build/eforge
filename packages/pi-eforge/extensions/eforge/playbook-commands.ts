@@ -11,7 +11,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   apiPlaybookListIfRunning,
-  apiPlaybookEnqueueIfRunning,
+  apiPlaybookRunIfRunning,
   apiPlaybookPromoteIfRunning,
   apiPlaybookDemoteIfRunning,
   apiGetQueueIfRunning,
@@ -344,7 +344,7 @@ async function handleRunBranch(
   let enqueueSuccess = false;
   try {
     const enqueueR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
-      apiPlaybookEnqueueIfRunning({
+      apiPlaybookRunIfRunning({
         cwd: ctx.cwd,
         body: afterQueueId
           ? { name: selectedName!, afterQueueId }
@@ -367,7 +367,7 @@ async function handleRunBranch(
       );
       try {
         const fallbackR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
-          apiPlaybookEnqueueIfRunning({
+          apiPlaybookRunIfRunning({
             cwd: ctx.cwd,
             body: { name: selectedName! },
           }),

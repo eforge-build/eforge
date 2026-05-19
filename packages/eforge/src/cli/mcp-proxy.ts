@@ -1066,12 +1066,12 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_playbook
   createDaemonTool(server, cwd, {
     name: 'eforge_playbook',
-    description: 'Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook\'s frontmatter and body; "save" validates and writes a playbook to the target tier; "enqueue" loads a playbook and enqueues it as a PRD, optionally chained after another queue entry; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing.',
+    description: 'Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook\'s frontmatter and body; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks seed a session plan file (returns { kind: "planning", session, path }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing.',
     schema: {
-      action: z.enum(['list', 'show', 'save', 'enqueue', 'promote', 'demote', 'validate']).describe(
+      action: z.enum(['list', 'show', 'save', 'run', 'promote', 'demote', 'validate']).describe(
         'Operation to perform on playbooks',
       ),
-      name: z.string().optional().describe('Playbook name (required for "show", "enqueue", "promote", "demote")'),
+      name: z.string().optional().describe('Playbook name (required for "show", "run", "promote", "demote")'),
       scope: z.enum(['user', 'project-team', 'project-local']).optional().describe(
         'Target scope for "save" (determines which tier directory to write to)',
       ),
@@ -1080,6 +1080,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           name: z.string(),
           description: z.string(),
           scope: z.enum(['user', 'project-team', 'project-local']),
+          mode: z.enum(['autonomous', 'planning']),
           agentRuntime: z.string().optional(),
           postMerge: z.array(z.string()).optional(),
         }),
@@ -1090,7 +1091,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           plannerNotes: z.string().optional().default(''),
         }),
       }).optional().describe('Playbook content (required for "save")'),
-      afterQueueId: z.string().optional().describe('Queue entry ID to depend on (optional, "enqueue" only). When set, the new PRD will have dependsOn: [afterQueueId].'),
+      afterQueueId: z.string().optional().describe('Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].'),
       raw: z.string().optional().describe('Raw Markdown playbook string (required for "validate")'),
     },
     handler: async ({ action, name, scope, playbook, afterQueueId, raw }, { cwd: toolCwd }) => {
@@ -1112,11 +1113,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         return data;
       }
 
-      if (action === 'enqueue') {
-        if (!name) throw new Error('"name" is required when action is "enqueue"');
+      if (action === 'run') {
+        if (!name) throw new Error('"name" is required when action is "run"');
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
-        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookEnqueue, body);
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookRun, body);
         return data;
       }
 
@@ -1146,7 +1147,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_session_plan
   createDaemonTool(server, cwd, {
     name: 'eforge_session_plan',
-    description: 'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
+    description: 'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" seeds a new session plan from a planning-mode playbook (requires playbook_name). Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
     schema: {
       action: z.enum([
         'list-active',
@@ -1158,9 +1159,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         'select-dimensions',
         'readiness',
         'migrate-legacy',
+        'create-from-playbook',
       ]).describe('Operation to perform on session plans'),
-      session: z.string().optional().describe('Session ID (required for all actions except "list-active")'),
-      topic: z.string().optional().describe('Session topic (required for "create")'),
+      session: z.string().optional().describe('Session ID (required for all actions except "list-active" and "create-from-playbook")'),
+      topic: z.string().optional().describe('Session topic (required for "create"; optional override for "create-from-playbook")'),
       dimension: z.string().optional().describe('Dimension name in kebab-case (required for "set-section" and "skip-dimension")'),
       content: z.string().optional().describe('Dimension content (required for "set-section")'),
       reason: z.string().optional().describe('Reason for skipping (required for "skip-dimension")'),
@@ -1168,8 +1170,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       planning_type: z.enum(['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown']).optional().describe('Planning work type (optional for "create" and "select-dimensions")'),
       planning_depth: z.enum(['quick', 'focused', 'deep']).optional().describe('Planning depth (optional for "create" and "select-dimensions")'),
       open: z.boolean().optional().describe('When true, best-effort opens the resulting session plan file in the user\'s default application. Used by the /eforge:plan skill on create and on show after a session is selected.'),
+      playbook_name: z.string().optional().describe('Playbook name to seed from (required for "create-from-playbook")'),
     },
-    handler: async ({ action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open }, { cwd: toolCwd }) => {
+    handler: async ({ action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open, playbook_name }, { cwd: toolCwd }) => {
       if (action === 'list-active') {
         const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.sessionPlanList);
         return data;
@@ -1239,9 +1242,18 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         return data;
       }
 
-      // action === 'migrate-legacy'
-      if (!session) throw new Error('"session" is required when action is "migrate-legacy"');
-      const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanMigrateLegacy, { session });
+      if (action === 'migrate-legacy') {
+        if (!session) throw new Error('"session" is required when action is "migrate-legacy"');
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanMigrateLegacy, { session });
+        return data;
+      }
+
+      // action === 'create-from-playbook'
+      if (!playbook_name) throw new Error('"playbook_name" is required when action is "create-from-playbook"');
+      const cfpBody: Record<string, unknown> = { playbook_name };
+      if (session !== undefined) cfpBody.session = session;
+      if (topic !== undefined) cfpBody.topic = topic;
+      const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanCreateFromPlaybook, cfpBody);
       return data;
     },
   });

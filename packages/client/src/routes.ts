@@ -165,7 +165,7 @@ export const API_ROUTES = {
   playbookList: '/api/playbook/list',
   playbookShow: '/api/playbook/show',
   playbookSave: '/api/playbook/save',
-  playbookEnqueue: '/api/playbook/enqueue',
+  playbookRun: '/api/playbook/run',
   playbookPromote: '/api/playbook/promote',
   playbookDemote: '/api/playbook/demote',
   playbookValidate: '/api/playbook/validate',
@@ -179,6 +179,7 @@ export const API_ROUTES = {
   sessionPlanSelectDimensions: '/api/session-plan/select-dimensions',
   sessionPlanReadiness: '/api/session-plan/readiness',
   sessionPlanMigrateLegacy: '/api/session-plan/migrate-legacy',
+  sessionPlanCreateFromPlaybook: '/api/session-plan/create-from-playbook',
   daemonEvents: '/api/daemon-events',
 } as const;
 
@@ -348,6 +349,51 @@ export interface SessionPlanReadinessResponse {
 /** Request body for POST /api/session-plan/migrate-legacy */
 export interface SessionPlanMigrateLegacyRequest {
   session: string;
+}
+
+// ---------------------------------------------------------------------------
+// Playbook run route request/response interfaces
+// ---------------------------------------------------------------------------
+
+/** Request body for POST /api/playbook/run */
+export interface PlaybookRunRequest {
+  name: string;
+  afterQueueId?: string;
+  session?: string;
+  topic?: string;
+}
+
+/** Response for POST /api/playbook/run when the playbook is autonomous */
+export interface PlaybookRunEnqueuedResponse {
+  kind: 'enqueued';
+  id: string;
+}
+
+/** Response for POST /api/playbook/run when the playbook is planning-mode */
+export interface PlaybookRunPlanningResponse {
+  kind: 'planning';
+  session: string;
+  path: string;
+}
+
+/** Discriminated union response for POST /api/playbook/run */
+export type PlaybookRunResponse = PlaybookRunEnqueuedResponse | PlaybookRunPlanningResponse;
+
+// ---------------------------------------------------------------------------
+// Session-plan create-from-playbook route request/response interfaces
+// ---------------------------------------------------------------------------
+
+/** Request body for POST /api/session-plan/create-from-playbook */
+export interface SessionPlanCreateFromPlaybookRequest {
+  playbook_name: string;
+  session?: string;
+  topic?: string;
+}
+
+/** Response for POST /api/session-plan/create-from-playbook */
+export interface SessionPlanCreateFromPlaybookResponse {
+  session: string;
+  path: string;
 }
 
 /** Response for POST /api/session-plan/migrate-legacy */
