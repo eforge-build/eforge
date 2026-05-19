@@ -16,6 +16,7 @@ import {
   apiPlaybookDemoteIfRunning,
   apiGetQueueIfRunning,
   type PlaybookListEntry,
+  type PlaybookRunResponse,
   type QueueItem,
 } from "@eforge-build/client";
 import { DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
@@ -341,7 +342,7 @@ async function handleRunBranch(
 
   // Step 4: Enqueue
   // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-  let enqueueSuccess = false;
+  let runResult: PlaybookRunResponse | null = null;
   try {
     const enqueueR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
       apiPlaybookRunIfRunning({
@@ -355,7 +356,7 @@ async function handleRunBranch(
       await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
       return;
     }
-    enqueueSuccess = true;
+    runResult = enqueueR.data;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // If upstream no longer active (404), fall back to immediate enqueue
@@ -378,7 +379,7 @@ async function handleRunBranch(
         }
         afterQueueId = undefined;
         afterBuildTitle = undefined;
-        enqueueSuccess = true;
+        runResult = fallbackR.data;
       } catch (fallbackErr) {
         await showInfoOverlay(
           ctx,
@@ -398,16 +399,27 @@ async function handleRunBranch(
   }
   // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
-  if (!enqueueSuccess) return;
+  if (runResult === null) return;
 
-  const afterNote = afterBuildTitle
-    ? `\n\nIt will start after **${afterBuildTitle}** completes.`
-    : "";
-  await showInfoOverlay(
-    ctx,
-    "eforge - Playbook Enqueued",
-    `Playbook **${selectedName}** enqueued.${afterNote}`,
-  );
+  if (runResult.kind === "planning") {
+    const afterQueueNote = afterQueueId
+      ? `\n\n_(The "wait for" selection doesn't apply to planning-mode playbooks.)_`
+      : "";
+    await showInfoOverlay(
+      ctx,
+      "eforge - Planning Session Ready",
+      `Playbook **${selectedName}** seeded a planning session.\n\n- Session: \`${runResult.session}\`\n- File: \`${runResult.path}\`\n\nOpen \`/eforge:plan\` to continue the planning conversation. When the session is marked ready, use \`/eforge:build\` to enqueue.${afterQueueNote}`,
+    );
+  } else {
+    const afterNote = afterBuildTitle
+      ? `\n\nIt will start after **${afterBuildTitle}** completes.`
+      : "";
+    await showInfoOverlay(
+      ctx,
+      "eforge - Playbook Enqueued",
+      `Playbook **${selectedName}** enqueued. Queued as \`${runResult.id}\`.${afterNote}`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
