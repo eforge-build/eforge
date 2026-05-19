@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, access, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { useTempDir } from './test-tmpdir.js';
@@ -120,19 +120,22 @@ describe('GET /api/playbook/list', () => {
     expect(Array.isArray(data.warnings)).toBe(true);
   });
 
-  it('returns playbooks with source and shadows fields when files exist at multiple tiers', async () => {
+  it('returns playbooks with source, shadows, and mode fields when files exist at multiple tiers', async () => {
     const tmpDir = makeTempDir();
     const { configDir } = await setupProject(tmpDir);
 
-    // Write project-team playbook
+    // Write project-team autonomous playbook
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ scope: 'project-team' }), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ scope: 'project-team', mode: 'autonomous' }), 'utf-8');
 
     // Write project-local shadow
     const localDir = resolve(tmpDir, '.eforge', 'playbooks');
     await mkdir(localDir, { recursive: true });
-    await writeFile(resolve(localDir, 'my-feature.md'), validPlaybookRaw({ scope: 'project-local' }), 'utf-8');
+    await writeFile(resolve(localDir, 'my-feature.md'), validPlaybookRaw({ scope: 'project-local', mode: 'autonomous' }), 'utf-8');
+
+    // Write a planning-mode playbook
+    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', scope: 'project-team', mode: 'planning' }), 'utf-8');
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
@@ -141,18 +144,24 @@ describe('GET /api/playbook/list', () => {
     expect(res.status).toBe(200);
 
     const data = await res.json() as {
-      playbooks: Array<{ name: string; source: string; shadows: Array<{ source: string; path: string }> }>;
+      playbooks: Array<{ name: string; source: string; mode: string; shadows: Array<{ source: string; path: string }> }>;
       warnings: string[];
     };
 
-    expect(data.playbooks.length).toBeGreaterThanOrEqual(1);
+    expect(data.playbooks.length).toBeGreaterThanOrEqual(2);
     const entry = data.playbooks.find((p) => p.name === 'my-feature');
     expect(entry).toBeDefined();
     // project-local has highest precedence; source should be 'project-local'
     expect(entry!.source).toBe('project-local');
+    expect(entry!.mode).toBe('autonomous');
     // project-team is a shadow
     expect(entry!.shadows.length).toBeGreaterThanOrEqual(1);
     expect(entry!.shadows.some((s) => s.source === 'project-team')).toBe(true);
+
+    // Planning playbook has mode: 'planning'
+    const planningEntry = data.playbooks.find((p) => p.name === 'my-planning');
+    expect(planningEntry).toBeDefined();
+    expect(planningEntry!.mode).toBe('planning');
   });
 });
 
@@ -183,7 +192,7 @@ describe('GET /api/playbook/show', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns playbook frontmatter and body for an existing playbook', async () => {
+  it('returns playbook frontmatter, body, and mode for an existing playbook', async () => {
     const tmpDir = makeTempDir();
     const { configDir } = await setupProject(tmpDir);
 
@@ -198,13 +207,14 @@ describe('GET /api/playbook/show', () => {
     expect(res.status).toBe(200);
 
     const data = await res.json() as {
-      playbook: { name: string; description: string; scope: string; goal: string };
+      playbook: { name: string; description: string; scope: string; mode: string; goal: string };
       source: string;
       shadows: unknown[];
     };
     expect(data.playbook.name).toBe('my-feature');
     expect(data.playbook.description).toBe('Add the my-feature capability');
     expect(data.playbook.scope).toBe('project-team');
+    expect(data.playbook.mode).toBe('autonomous');
     expect(data.playbook.goal).toContain('Implement the feature');
     expect(data.source).toBe('project-team');
     expect(Array.isArray(data.shadows)).toBe(true);
@@ -363,7 +373,7 @@ describe('POST /api/playbook/run', () => {
     expect(autoBuildWakeReasons).toContain('playbook-enqueue');
   });
 
-  it('returns { kind: "planning", session, path } for a planning-mode playbook and writes the session plan', async () => {
+  it('returns { kind: "requires-agent", mode: "planning", name, message } for a planning-mode playbook and does not write a session plan or enqueue', async () => {
     const tmpDir = makeTempDir();
     const { configDir } = await setupProject(tmpDir);
 
@@ -371,6 +381,11 @@ describe('POST /api/playbook/run', () => {
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
+
+    const sessionPlanDir = resolve(tmpDir, '.eforge', 'session-plans');
+    await mkdir(sessionPlanDir, { recursive: true });
+    const sentinelSessionPlan = resolve(sessionPlanDir, 'existing-plan.md');
+    await writeFile(sentinelSessionPlan, '# Existing plan\n\nDo not modify.\n', 'utf-8');
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
@@ -380,22 +395,25 @@ describe('POST /api/playbook/run', () => {
     });
     expect(res.status).toBe(200);
 
-    const data = await res.json() as { kind: string; session: string; path: string };
-    expect(data.kind).toBe('planning');
-    expect(typeof data.session).toBe('string');
-    expect(data.session.length).toBeGreaterThan(0);
-    expect(typeof data.path).toBe('string');
+    const data = await res.json() as { kind: string; mode: string; name: string; message: string };
+    expect(data.kind).toBe('requires-agent');
+    expect(data.mode).toBe('planning');
+    expect(data.name).toBe('my-planning');
+    expect(typeof data.message).toBe('string');
+    expect(data.message).toContain('/eforge:plan');
+    expect(data.message).toContain('/skill:eforge-playbook run my-planning');
 
-    // Verify the session plan file exists and contains seeded_from_playbook
-    await expect(access(data.path)).resolves.toBeUndefined();
-    const planContent = await readFile(data.path, 'utf-8');
-    expect(planContent).toContain('seeded_from_playbook:');
+    // Verify no session plan file was created and existing session plans were left untouched
+    await expect(readdir(sessionPlanDir)).resolves.toEqual(['existing-plan.md']);
+    await expect(readFile(sentinelSessionPlan, 'utf-8')).resolves.toBe('# Existing plan\n\nDo not modify.\n');
 
-    // Verify no queue mutation (no PRD created)
-    expect(autoBuildWakeReasons).not.toContain('playbook-enqueue');
+    // Verify no queue mutation (no PRD created) and no auto-build wake
+    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    await expect(readdir(queueDir)).rejects.toThrow();
+    expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  it('returns 409 when the planning session already exists', async () => {
+  it('returns requires-agent for a planning-mode playbook even when afterQueueId is provided', async () => {
     const tmpDir = makeTempDir();
     const { configDir } = await setupProject(tmpDir);
 
@@ -406,13 +424,71 @@ describe('POST /api/playbook/run', () => {
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
 
-    // First run creates the session plan
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-planning',
+      afterQueueId: 'missing-upstream',
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as { kind: string; mode: string; name: string };
+    expect(data).toEqual(expect.objectContaining({
+      kind: 'requires-agent',
+      mode: 'planning',
+      name: 'my-planning',
+    }));
+    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    await expect(readdir(queueDir)).rejects.toThrow();
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('returns { kind: "requires-agent" } on repeated calls for a planning-mode playbook (no 409)', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    // First run
     const first = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, { name: 'my-planning' });
     expect(first.status).toBe(200);
+    const firstData = await first.json() as { kind: string };
+    expect(firstData.kind).toBe('requires-agent');
 
-    // Second run with the same generated session id should return 409
+    // Second run — no collision since no file is written
     const second = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, { name: 'my-planning' });
-    expect(second.status).toBe(409);
+    expect(second.status).toBe(200);
+    const secondData = await second.json() as { kind: string };
+    expect(secondData.kind).toBe('requires-agent');
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('returns 404 and does not enqueue when afterQueueId is missing for an autonomous playbook', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-feature',
+      afterQueueId: 'missing-upstream',
+    });
+
+    expect(res.status).toBe(404);
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('depends_on references unknown queue item: "missing-upstream"');
+
+    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    await expect(readdir(queueDir)).rejects.toThrow();
+    expect(autoBuildWakeReasons).toEqual([]);
   });
 
   it('persists dependsOn in PRD frontmatter when afterQueueId is provided for autonomous playbook', async () => {

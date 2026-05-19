@@ -32,6 +32,7 @@ function playbookDataToRaw(playbook: PlaybookData): string {
   lines.push(`name: ${playbook.name}`);
   lines.push(`description: ${playbook.description}`);
   lines.push(`scope: ${playbook.scope}`);
+  lines.push(`mode: ${playbook.mode}`);
   if (playbook.postMerge && playbook.postMerge.length > 0) {
     lines.push('postMerge:');
     for (const cmd of playbook.postMerge) {
@@ -115,8 +116,9 @@ async function runAction(name: string, options: { after?: string }): Promise<voi
     if (data.kind === 'enqueued') {
       console.log(chalk.green('✔') + ` Enqueued: ${data.id}`);
     } else {
-      console.log(chalk.green('✔') + ` Planning session ready: ${data.path}`);
-      console.log(chalk.dim(`  Open with /eforge:plan to continue.`));
+      // kind === 'requires-agent': planning playbook needs an interactive session
+      console.log(chalk.yellow('⚡') + ` Planning playbook "${name}" requires an interactive agent session.`);
+      console.log(chalk.dim(`  Use /eforge:plan or /skill:eforge-playbook run ${name} to start planning.`));
     }
   } catch (err) {
     const { message, exitCode } = formatCliError(err);
@@ -200,6 +202,7 @@ export function registerPlaybookCommand(program: Command): void {
                 name: options.name,
                 description: options.description,
                 scope,
+                mode: 'autonomous',
               },
               body: {
                 goal,
@@ -301,6 +304,13 @@ export function registerPlaybookCommand(program: Command): void {
             ? (fmPostMerge as string[])
             : showData.playbook.postMerge;
 
+        // Preserve mode from parsed frontmatter, falling back to the loaded playbook's mode.
+        const fmMode = frontmatter['mode'];
+        const preservedMode: 'autonomous' | 'planning' =
+          fmMode === 'autonomous' || fmMode === 'planning'
+            ? fmMode
+            : (showData.playbook.mode ?? 'autonomous');
+
         await apiPlaybookSave({
           cwd,
           body: {
@@ -310,6 +320,7 @@ export function registerPlaybookCommand(program: Command): void {
                 name: String(frontmatter['name'] ?? showData.playbook.name),
                 description: String(frontmatter['description'] ?? showData.playbook.description),
                 scope: targetScope,
+                mode: preservedMode,
                 ...(preservedPostMerge && preservedPostMerge.length > 0
                   ? { postMerge: preservedPostMerge }
                   : {}),
@@ -336,7 +347,7 @@ export function registerPlaybookCommand(program: Command): void {
 
   playbook
     .command('run <name>')
-    .description('Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks seed a session plan')
+    .description('Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return a requires-agent response (use /eforge:plan or /skill:eforge-playbook run <name> for interactive planning)')
     .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only')
     .action(async (name: string, options: { after?: string }) => {
       await runAction(name, options);
@@ -391,7 +402,7 @@ export function registerPlaybookCommand(program: Command): void {
 
   program
     .command('play <name>')
-    .description('Shortcut for `eforge playbook run <name>`')
+    .description('Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns requires-agent for planning playbooks')
     .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only')
     .action(async (name: string, options: { after?: string }) => {
       await runAction(name, options);

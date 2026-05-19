@@ -14,7 +14,7 @@
  * Public API:
  *   parsePlaybook        — parse raw markdown to a typed Playbook
  *   serializePlaybook    — serialize a Playbook back to markdown
- *   listPlaybooks        — merged listing with source labels and shadow chains
+ *   listPlaybooks        — merged listing with source labels, shadow chains, and mode
  *   loadPlaybook         — highest-precedence copy for a given name
  *   validatePlaybook     — pure schema validation (used by daemon endpoint)
  *   writePlaybook        — atomic write to the target tier directory
@@ -22,6 +22,10 @@
  *   copyPlaybookToScope  — copy to a different tier with updated scope frontmatter
  *   playbookToBuildSource — format an autonomous playbook as ordinary build source
  *   playbookToPlanSeed   — extract plan-seed data from a planning playbook
+ *
+ * Planning-mode playbooks are valid artifacts but `POST /api/playbook/run` does not
+ * execute them directly — it returns a `requires-agent` response so first-party clients
+ * can hand control to an interactive agent (e.g. /eforge:plan or /skill:eforge-playbook run).
  */
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
@@ -121,6 +125,8 @@ export interface PlaybookEntry {
   name: string;
   description: string;
   scope: PlaybookScope;
+  /** Execution mode declared in the playbook frontmatter. Defaults to `'autonomous'` for unreadable entries. */
+  mode: PlaybookMode;
   /** Which tier the highest-precedence copy came from. */
   source: Scope;
   /**
@@ -390,6 +396,7 @@ export async function listPlaybooks(
     entries.map(async (entry) => {
       let description = '';
       let scope: PlaybookScope = entry.scope as PlaybookScope;
+      let mode: PlaybookMode = 'autonomous'; // safe default for unreadable/invalid entries
 
       try {
         const raw = await readFile(entry.path, 'utf-8');
@@ -397,6 +404,7 @@ export async function listPlaybooks(
         const fmResult = playbookFrontmatterSchema.safeParse(fm);
         if (fmResult.success) {
           description = fmResult.data.description;
+          mode = fmResult.data.mode;
           const declaredScope = fmResult.data.scope;
           const expectedScope = entry.scope as PlaybookScope;
           if (declaredScope !== expectedScope) {
@@ -408,13 +416,14 @@ export async function listPlaybooks(
           scope = declaredScope;
         }
       } catch {
-        // unreadable — include with empty description
+        // unreadable — include with empty description and default mode
       }
 
       playbooks.push({
         name: entry.name,
         description,
         scope,
+        mode,
         source: entry.scope,
         shadows: shadowEntries(entry.name, entry.shadows, opts),
         path: entry.path,

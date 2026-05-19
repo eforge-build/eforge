@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.13 -->
-<!-- Commit: 5de82fa7 -->
+<!-- Commit: ed0e5613 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -397,7 +397,7 @@ Open a playbook in $EDITOR, validate, and save to the same tier
 
 #### `run`
 
-Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks seed a session plan
+Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return a requires-agent response (use /eforge:plan or /skill:eforge-playbook run <name> for interactive planning)
 
 
 **Options:**
@@ -418,7 +418,7 @@ Demote a playbook from project-team to project-local (.eforge/playbooks/)
 
 ### `play`
 
-Shortcut for `eforge playbook run <name>`
+Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns requires-agent for planning playbooks
 
 
 **Options:**

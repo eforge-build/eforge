@@ -163,6 +163,7 @@ export {
 export type {
   PlaybookScope,
   PlaybookArtifactSource,
+  PlaybookMode,
   PlaybookShadow,
   PlaybookListEntry,
   PlaybookData,
@@ -182,7 +183,7 @@ export type {
   PlaybookRunRequest,
   PlaybookRunResponse,
   PlaybookRunEnqueuedResponse,
-  PlaybookRunPlanningResponse,
+  PlaybookRunRequiresAgentResponse,
 } from './routes.js';
 
 export {

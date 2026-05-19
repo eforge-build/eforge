@@ -164,7 +164,7 @@ export async function handlePlaybookCommand(
       {
         value: "run",
         label: "Run",
-        description: "Enqueue an autonomous playbook, or seed a planning session from a planning-mode playbook",
+        description: "Enqueue an autonomous playbook, or start interactive planning for a planning-mode playbook",
       },
     );
   }
@@ -281,7 +281,17 @@ async function handleRunBranch(
     if (!selectedName) return;
   }
 
-  // Step 3: Check for in-flight builds
+  // Step 3: If the selected playbook is planning-mode, delegate to the skill
+  // before offering any active-build dependency choices.
+  const selectedEntry = playbooks.find(
+    (p) => p.name === selectedName,
+  );
+  if (selectedEntry?.mode === "planning") {
+    pi.sendUserMessage(`/skill:eforge-playbook run ${selectedName!}`);
+    return;
+  }
+
+  // Step 3b: Check for in-flight builds (autonomous playbooks only)
   const { runningItems } = await withLoader(
     ctx,
     "Checking queue...",
@@ -401,15 +411,11 @@ async function handleRunBranch(
 
   if (runResult === null) return;
 
-  if (runResult.kind === "planning") {
-    const afterQueueNote = afterQueueId
-      ? `\n\n_(The "wait for" selection doesn't apply to planning-mode playbooks.)_`
-      : "";
-    await showInfoOverlay(
-      ctx,
-      "eforge - Planning Session Ready",
-      `Playbook **${selectedName}** seeded a planning session.\n\n- Session: \`${runResult.session}\`\n- File: \`${runResult.path}\`\n\nOpen \`/eforge:plan\` to continue the planning conversation. When the session is marked ready, use \`/eforge:build\` to enqueue.${afterQueueNote}`,
-    );
+  if (runResult.kind === "requires-agent") {
+    // Defensive: planning playbooks are caught before reaching this point via the
+    // mode check above. If the daemon still returns requires-agent (e.g. mode check
+    // was skipped for a pre-selected name not in the local list), delegate to skill.
+    pi.sendUserMessage(`/skill:eforge-playbook run ${selectedName!}`);
   } else {
     const afterNote = afterBuildTitle
       ? `\n\nIt will start after **${afterBuildTitle}** completes.`

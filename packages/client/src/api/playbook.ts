@@ -12,6 +12,8 @@ import type { PlaybookRunResponse } from '../routes.js';
 
 export type PlaybookScope = 'user' | 'project-team' | 'project-local';
 export type PlaybookArtifactSource = 'user' | 'project-team' | 'project-local';
+/** Execution mode a playbook can declare. */
+export type PlaybookMode = 'autonomous' | 'planning';
 
 export interface PlaybookShadow {
   source: PlaybookArtifactSource;
@@ -23,6 +25,8 @@ export interface PlaybookListEntry {
   name: string;
   description: string;
   scope: PlaybookScope;
+  /** Execution mode declared in the playbook frontmatter. */
+  mode: PlaybookMode;
   source: PlaybookArtifactSource;
   shadows: PlaybookShadow[];
   path: string;
@@ -33,6 +37,8 @@ export interface PlaybookData {
   name: string;
   description: string;
   scope: PlaybookScope;
+  /** Execution mode declared in the playbook frontmatter. */
+  mode: PlaybookMode;
   postMerge?: string[];
   goal: string;
   outOfScope: string;
@@ -45,6 +51,8 @@ export interface PlaybookFrontmatterFields {
   name: string;
   description: string;
   scope: PlaybookScope;
+  /** Execution mode for this playbook. */
+  mode: PlaybookMode;
   postMerge?: string[];
 }
 
@@ -120,7 +128,7 @@ export function apiPlaybookSave(opts: { cwd: string; body: PlaybookSaveBody }) {
   return daemonRequest<PlaybookSaveResponse>(opts.cwd, 'POST', API_ROUTES.playbookSave, opts.body);
 }
 
-export function apiPlaybookRun(opts: { cwd: string; body: { name: string; afterQueueId?: string; session?: string; topic?: string } }) {
+export function apiPlaybookRun(opts: { cwd: string; body: { name: string; afterQueueId?: string } }) {
   return daemonRequest<PlaybookRunResponse>(opts.cwd, 'POST', API_ROUTES.playbookRun, opts.body);
 }
 
@@ -165,7 +173,7 @@ export function apiPlaybookSaveIfRunning(opts: { cwd: string; body: PlaybookSave
   return daemonRequestIfRunning<PlaybookSaveResponse>(opts.cwd, 'POST', API_ROUTES.playbookSave, opts.body);
 }
 
-export function apiPlaybookRunIfRunning(opts: { cwd: string; body: { name: string; afterQueueId?: string; session?: string; topic?: string } }) {
+export function apiPlaybookRunIfRunning(opts: { cwd: string; body: { name: string; afterQueueId?: string } }) {
   return daemonRequestIfRunning<PlaybookRunResponse>(opts.cwd, 'POST', API_ROUTES.playbookRun, opts.body);
 }
 

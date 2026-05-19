@@ -359,8 +359,6 @@ export interface SessionPlanMigrateLegacyRequest {
 export interface PlaybookRunRequest {
   name: string;
   afterQueueId?: string;
-  session?: string;
-  topic?: string;
 }
 
 /** Response for POST /api/playbook/run when the playbook is autonomous */
@@ -369,15 +367,21 @@ export interface PlaybookRunEnqueuedResponse {
   id: string;
 }
 
-/** Response for POST /api/playbook/run when the playbook is planning-mode */
-export interface PlaybookRunPlanningResponse {
-  kind: 'planning';
-  session: string;
-  path: string;
+/**
+ * Response for POST /api/playbook/run when the playbook is planning-mode.
+ * The request is valid; the daemon returns this typed result so first-party clients
+ * can delegate to an interactive agent (e.g. /eforge:plan or /skill:eforge-playbook run).
+ * No session-plan file is written and nothing is enqueued.
+ */
+export interface PlaybookRunRequiresAgentResponse {
+  kind: 'requires-agent';
+  mode: 'planning';
+  name: string;
+  message: string;
 }
 
 /** Discriminated union response for POST /api/playbook/run */
-export type PlaybookRunResponse = PlaybookRunEnqueuedResponse | PlaybookRunPlanningResponse;
+export type PlaybookRunResponse = PlaybookRunEnqueuedResponse | PlaybookRunRequiresAgentResponse;
 
 // ---------------------------------------------------------------------------
 // Session-plan create-from-playbook route request/response interfaces

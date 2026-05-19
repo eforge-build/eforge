@@ -124,14 +124,13 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 33', () => {
-    // v33: renames route POST /api/playbook/enqueue → POST /api/playbook/run (old route returns 404);
-    // adds POST /api/session-plan/create-from-playbook; POST /api/playbook/run now returns a
-    // discriminated union { kind: 'enqueued'; id } or { kind: 'planning'; session; path } based on
-    // playbook.mode; MCP/Pi action 'enqueue' renamed to 'run' on eforge_playbook tool; new MCP/Pi
-    // action 'create-from-playbook' added to eforge_session_plan tool; playbook frontmatter now
-    // requires mode field.
-    expect(DAEMON_API_VERSION).toBe(33);
+  it('is 34', () => {
+    // v34: POST /api/playbook/run for planning-mode playbooks now returns
+    // { kind: 'requires-agent'; mode: 'planning'; name; message } (HTTP 200) instead of
+    // creating a session-plan file; PlaybookRunResponse union is enqueued | requires-agent
+    // (removing planning); mode field added to GET /api/playbook/list entries and
+    // GET /api/playbook/show playbook object.
+    expect(DAEMON_API_VERSION).toBe(34);
   });
 });
 
