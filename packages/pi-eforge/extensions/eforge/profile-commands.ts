@@ -614,6 +614,26 @@ export async function handleProfileNewCommand(
         );
       }
     }
+
+    // Validate config after preset mutations before proceeding
+    try {
+      const validateResult = await withLoader(ctx, 'Validating config...', () =>
+        piDaemonRequest<{ valid: boolean; errors?: string[] }>(ctx.cwd, 'GET', API_ROUTES.configValidate),
+      );
+      if (validateResult === null) {
+        await showInfoOverlay(ctx, 'eforge - Daemon Not Running', DAEMON_NOT_RUNNING_GUIDANCE);
+        return;
+      }
+      if (!validateResult.data.valid && validateResult.data.errors?.length) {
+        await showInfoOverlay(
+          ctx,
+          'eforge - Config Validation Warning',
+          `Config has issues after applying preset:\n\n${validateResult.data.errors.join('\n')}\n\nYou may need to fix eforge/config.yaml before building.`,
+        );
+      }
+    } catch {
+      // Non-fatal: validation errors should not block profile creation
+    }
   }
 
   // Build the daemon payload

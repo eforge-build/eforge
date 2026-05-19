@@ -155,9 +155,36 @@ Supported extension entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or di
 
 Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, and management commands (`eforge extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote`). Package-managed extensions installed via `eforge extension install` carry nested `package.*` and `install.*` provenance fields such as `install.sourceKind`, `install.sourceSpec`, and `install.installedAt`; install sidecar files are excluded from the trust hash. `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
 
-## Profile Toolbelts for UI Work
+## Guided Toolbelt Presets
 
-Toolbelts let a tier opt into a named bundle of project MCP servers from `.mcp.json`. When a profile targets UI-heavy or browser-validation work, pair it with a `browser-ui` toolbelt backed by the Playwright MCP server. For the full field reference, see the [Toolbelts](/reference/config#toolbelts) section in the Configuration Reference.
+Toolbelts let a tier opt into a named bundle of project MCP servers from `.mcp.json`. When creating a profile, Pi's native `/eforge:profile:new` wizard (and Claude Code's `/eforge:profile-new` fallback) includes an optional toolbelt step after tier configuration.
+
+**What the wizard asks:**
+
+- **Skip / default** — omit `toolbelt` from all tiers; all project MCP servers from `.mcp.json` pass through (original behavior).
+- **No project MCP access** — set all four tiers to `toolbelt: none`; no project MCP servers reach agents in any tier.
+- **Choose a preset** — configure a named toolbelt bundle with least-privilege tier assignments.
+
+**Least-privilege rule:** Presets explicitly assign `toolbelt: none` to tiers that do not need project MCP servers. An omitted `toolbelt` keeps the all-project-MCP default.
+
+### Preset gallery
+
+| Preset | Typical MCP servers | Tiers receiving access | Missing-server behavior |
+|--------|--------------------|-----------------------|------------------------|
+| `browser-ui` | `playwright` | implementation, review | Show `.mcp.json` snippet; ask before adding |
+| `docs-research` | `fetch`, `context7` | planning, implementation | Show setup guidance; do not create tier references |
+| `issue-triage` | `github` | planning | Show setup guidance; do not create tier references |
+| `repo-review` | `github` | planning, review | Show setup guidance; do not create tier references |
+| `observability` | `datadog`, `sentry` | planning, evaluation | Show setup guidance; do not create tier references |
+| `database-readonly` | `postgres`, `sqlite` | planning | Show setup guidance; do not create tier references |
+| `api-testing` | `fetch` | implementation, review | Show setup guidance; do not create tier references |
+| `design-ui` | `figma` | planning, implementation, review | Show setup guidance; do not create tier references |
+
+Toolbelts filter only project MCP servers from `.mcp.json`. They do not affect Pi extensions, Claude Code plugins, engine-internal tools, or harness built-ins.
+
+### browser-ui — Playwright setup
+
+The `browser-ui` preset is the only one that the profile wizard can auto-configure after explicit confirmation. For UI-heavy or browser-validation work, pair your profile with `browser-ui` backed by the Playwright MCP server.
 
 **Step 1 - Register the toolbelt in `eforge/config.yaml`:**
 
@@ -231,6 +258,8 @@ agents:
   }
 }
 ```
+
+**For other presets:** Add the required MCP servers to `.mcp.json` manually, declare `tools.toolbelts.<preset>` in `eforge/config.yaml`, then use `/eforge:profile-new` to create a profile referencing the toolbelt.
 
 **MVP constraints:**
 

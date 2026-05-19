@@ -46,6 +46,69 @@ For the **planning** tier present only **Custom**, since no prior tier exists ye
 
 Record each tier's `harness`, optional `pi.provider`, `model`, and `effort`.
 
+### Step 2b: Configure project MCP toolbelts (optional)
+
+After tier configuration, ask: "Would you like to configure project MCP toolbelts for this profile?"
+
+Present three options:
+
+- **Skip / default** — leave `toolbelt` fields omitted; all project MCP servers from `.mcp.json` pass through to each tier.
+- **No project MCP access** — set all four tiers to `toolbelt: none`; no project MCP servers reach agents in any tier.
+- **Choose a preset** — configure a named toolbelt bundle with least-privilege tier assignments.
+
+**If skipped:** Leave all tier `toolbelt` fields omitted. Proceed to Step 3.
+
+**If no project MCP access:** Add `toolbelt: none` to all four tiers. Proceed to Step 3.
+
+**If a preset is selected:** Present the preset gallery:
+
+| Preset | Typical MCP servers | Tiers receiving access |
+|--------|--------------------|-----------------------|
+| `browser-ui` | `playwright` | implementation, review |
+| `docs-research` | `fetch`, `context7` | planning, implementation |
+| `issue-triage` | `github` | planning |
+| `repo-review` | `github` | planning, review |
+| `observability` | `datadog`, `sentry` | planning, evaluation |
+| `database-readonly` | `postgres`, `sqlite` | planning |
+| `api-testing` | `fetch` | implementation, review |
+| `design-ui` | `figma` | planning, implementation, review |
+
+For each required MCP server in the chosen preset:
+1. Check whether the server name is present in `.mcp.json` under `mcpServers`.
+2. Check whether `tools.toolbelts.<preset>` is declared in `eforge/config.yaml`.
+
+Before assigning tier fields, ensure both checks pass. If the required server names are present but `tools.toolbelts.<preset>` is missing, add the `tools.toolbelts.<preset>` entry with the preset description and `mcpServers` list before assigning any tier `toolbelt` fields.
+
+**For `browser-ui` with missing Playwright:** Show the following snippet and ask before adding:
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    }
+  }
+}
+```
+
+If the user confirms, add the entry to `.mcp.json` (merge if the file exists) and declare the toolbelt in `eforge/config.yaml`:
+
+```yaml
+tools:
+  toolbelts:
+    browser-ui:
+      description: Browser automation for UI implementation and review.
+      mcpServers:
+        - playwright
+```
+
+Then assign `toolbelt: browser-ui` to `implementation` and `review`, and `toolbelt: none` to `planning` and `evaluation`.
+
+**For other presets with missing servers:** Show the preset's setup hint and do not create tier `toolbelt` references. Ask the user to add the required MCP server to `.mcp.json` first, then re-run `/eforge:profile-new`.
+
+When toolbelt fields are set, include them in `agents.tiers` in the Step 3 preview and in the Step 4 create payload.
+
 ### Step 3: Preview the profile
 
 Show the user a rendered preview of the YAML that will land in the chosen scope directory. Example Pi-first profile:
@@ -123,6 +186,7 @@ agents:
 
 Ask for confirmation or corrections before writing.
 
+
 ### Step 4: Create the profile
 
 Call `mcp__eforge__eforge_profile` with:
@@ -134,10 +198,10 @@ Call `mcp__eforge__eforge_profile` with:
   scope: "<local|project|user>",
   agents: {
     tiers: {
-      planning:       { harness, model, effort, pi?: { provider } },
-      implementation: { harness, model, effort, pi?: { provider } },
-      review:         { harness, model, effort, pi?: { provider } },
-      evaluation:     { harness, model, effort, pi?: { provider } },
+      planning:       { harness, model, effort, pi?: { provider }, toolbelt?: "none" | "<preset>" },
+      implementation: { harness, model, effort, pi?: { provider }, toolbelt?: "none" | "<preset>" },
+      review:         { harness, model, effort, pi?: { provider }, toolbelt?: "none" | "<preset>" },
+      evaluation:     { harness, model, effort, pi?: { provider }, toolbelt?: "none" | "<preset>" },
     }
   },
   metadata: {          // optional — descriptive only, does not affect runtime behavior
@@ -163,15 +227,32 @@ If yes, call `mcp__eforge__eforge_profile` with `{ action: "use", name: "<name>"
 
 If no, remind the user they can switch later with `/eforge:profile <name>`.
 
-## When to use an MCP-backed toolbelt profile
+## When to use toolbelt presets
 
-When a profile is aimed at UI-heavy / frontend / layout / screenshot / browser-validation work, point users at the MCP-backed toolbelt pattern instead of plain tier reassignment.
+When a profile is aimed at UI-heavy, browser-validation, docs-research, observability, or data-querying work, configure it with a project MCP toolbelt preset instead of plain tier reassignment. The `/eforge:profile-new` wizard guides you through preset selection in Step 2b, after tier configuration.
 
-The canonical pattern: define a `browser-ui` toolbelt under `tools.toolbelts` in `eforge/config.yaml` referencing the `playwright` MCP server (configured in `.mcp.json` with `npx -y @playwright/mcp@latest`), and assign `toolbelt: browser-ui` to the tiers that need browser automation (typically `implementation` and `review`). Use `toolbelt: none` for tiers that should not receive project MCP servers (typically `planning` and `evaluation`).
+### Preset gallery
 
-See [Profile Toolbelts for UI Work](https://eforge.build/docs/configuration#profile-toolbelts-for-ui-work) in the public docs and the [Toolbelts](https://eforge.build/reference/config#toolbelts) section in the Configuration Reference for full configuration details. MCP server commands live in `.mcp.json`; profiles reference only server names via toolbelts - never use backend MCP tool names (such as `mcp__playwright__browser_navigate`) in profile YAML.
+| Preset | Typical MCP servers | Tiers receiving access |
+|--------|--------------------|-----------------------|
+| `browser-ui` | `playwright` | implementation, review |
+| `docs-research` | `fetch`, `context7` | planning, implementation |
+| `issue-triage` | `github` | planning |
+| `repo-review` | `github` | planning, review |
+| `observability` | `datadog`, `sentry` | planning, evaluation |
+| `database-readonly` | `postgres`, `sqlite` | planning |
+| `api-testing` | `fetch` | implementation, review |
+| `design-ui` | `figma` | planning, implementation, review |
 
-**Constraints (MVP):** One toolbelt per tier. Pi extensions, Claude Code plugins, and native extension-contributed tools are out of scope - toolbelts are MCP-only and declarative.
+Presets assign `toolbelt: none` to tiers that do not need project MCP access — the least-privilege default. Tiers with omitted `toolbelt` receive all project MCP servers from `.mcp.json`.
+
+The `browser-ui` preset auto-adds the Playwright MCP server to `.mcp.json` after explicit confirmation. For all other presets, add the required servers to `.mcp.json` manually before running the wizard.
+
+MCP server commands live in `.mcp.json`; profiles reference only server names via toolbelts — never use backend MCP tool names (such as `mcp__playwright__browser_navigate`) in profile YAML.
+
+See [Guided Toolbelt Presets](https://eforge.build/docs/configuration#guided-toolbelt-presets) in the public docs and the [Toolbelts](https://eforge.build/reference/config#toolbelts) section in the Configuration Reference for full configuration details.
+
+**Constraints (MVP):** One toolbelt per tier. Pi extensions, Claude Code plugins, and native extension-contributed tools are out of scope — toolbelts are MCP-only and declarative.
 
 ## Error Handling
 

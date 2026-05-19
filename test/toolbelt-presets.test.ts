@@ -112,3 +112,108 @@ describe('toolbelt: none string behavior', () => {
     expect(preset.tierAssignments.evaluation).toBe('none');
   });
 });
+
+describe('TOOLBELT_PRESETS exact gallery', () => {
+  it('browser-ui has correct servers, tier assignments, and auto-add', () => {
+    const preset = getPresetById('browser-ui')!;
+    expect(preset.mcpServers).toEqual(['playwright']);
+    expect(preset.tierAssignments).toEqual({
+      planning: 'none',
+      implementation: 'browser-ui',
+      review: 'browser-ui',
+      evaluation: 'none',
+    });
+    expect(preset.autoAdd).toBeDefined();
+    expect(Object.keys(preset.autoAdd!.servers)).toContain('playwright');
+  });
+
+  it('docs-research has correct servers and tier assignments', () => {
+    const preset = getPresetById('docs-research')!;
+    expect(preset.mcpServers).toEqual(['fetch', 'context7']);
+    expect(preset.tierAssignments).toEqual({
+      planning: 'docs-research',
+      implementation: 'docs-research',
+      review: 'none',
+      evaluation: 'none',
+    });
+    expect(preset.autoAdd).toBeUndefined();
+  });
+
+  it('issue-triage has correct servers and tier assignments', () => {
+    const preset = getPresetById('issue-triage')!;
+    expect(preset.mcpServers).toEqual(['github']);
+    expect(preset.tierAssignments).toEqual({
+      planning: 'issue-triage',
+      implementation: 'none',
+      review: 'none',
+      evaluation: 'none',
+    });
+    expect(preset.autoAdd).toBeUndefined();
+  });
+
+  it('repo-review has correct servers and tier assignments', () => {
+    const preset = getPresetById('repo-review')!;
+    expect(preset.mcpServers).toEqual(['github']);
+    expect(preset.tierAssignments).toEqual({
+      planning: 'repo-review',
+      implementation: 'none',
+      review: 'repo-review',
+      evaluation: 'none',
+    });
+    expect(preset.autoAdd).toBeUndefined();
+  });
+
+  it('observability has correct servers and tier assignments', () => {
+    const preset = getPresetById('observability')!;
+    expect(preset.mcpServers).toEqual(['datadog', 'sentry']);
+    expect(preset.tierAssignments).toEqual({
+      planning: 'observability',
+      implementation: 'none',
+      review: 'none',
+      evaluation: 'observability',
+    });
+    expect(preset.autoAdd).toBeUndefined();
+  });
+
+  it('database-readonly has correct servers and tier assignments', () => {
+    const preset = getPresetById('database-readonly')!;
+    expect(preset.mcpServers).toEqual(['postgres', 'sqlite']);
+    expect(preset.tierAssignments).toEqual({
+      planning: 'database-readonly',
+      implementation: 'none',
+      review: 'none',
+      evaluation: 'none',
+    });
+    expect(preset.autoAdd).toBeUndefined();
+  });
+
+  it('api-testing has correct servers and tier assignments', () => {
+    const preset = getPresetById('api-testing')!;
+    expect(preset.mcpServers).toEqual(['fetch']);
+    expect(preset.tierAssignments).toEqual({
+      planning: 'none',
+      implementation: 'api-testing',
+      review: 'api-testing',
+      evaluation: 'none',
+    });
+    expect(preset.autoAdd).toBeUndefined();
+  });
+
+  it('design-ui has correct servers and tier assignments', () => {
+    const preset = getPresetById('design-ui')!;
+    expect(preset.mcpServers).toEqual(['figma']);
+    expect(preset.tierAssignments).toEqual({
+      planning: 'design-ui',
+      implementation: 'design-ui',
+      review: 'design-ui',
+      evaluation: 'none',
+    });
+    expect(preset.autoAdd).toBeUndefined();
+  });
+
+  it('only browser-ui has auto-add servers', () => {
+    const presetsWithAutoAdd = TOOLBELT_PRESETS.filter((p) => p.autoAdd !== undefined);
+    expect(presetsWithAutoAdd).toHaveLength(1);
+    expect(presetsWithAutoAdd[0].id).toBe('browser-ui');
+  });
+});

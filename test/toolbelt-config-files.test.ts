@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -13,9 +13,19 @@ import {
 } from '../packages/pi-eforge/extensions/eforge/toolbelt-config-files.js';
 import { getPresetById } from '../packages/pi-eforge/extensions/eforge/toolbelt-presets.js';
 
+const tempDirs: string[] = [];
+
 function makeTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'eforge-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eforge-test-'));
+  tempDirs.push(dir);
+  return dir;
 }
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 describe('readMcpServers', () => {
   it('returns empty object when .mcp.json does not exist', () => {
@@ -110,6 +120,35 @@ describe('upsertToolbeltInConfig', () => {
     const preset = getPresetById('browser-ui')!;
     upsertToolbeltInConfig(tmpDir, preset);
     expect(fs.existsSync(path.join(tmpDir, 'eforge', 'config.yaml'))).toBe(true);
+  });
+
+  it('preserves unrelated config keys and existing toolbelts when upserting a preset', () => {
+    const tmpDir = makeTempDir();
+    const eforgeDir = path.join(tmpDir, 'eforge');
+    fs.mkdirSync(eforgeDir);
+    const initial = {
+      maxConcurrentBuilds: 3,
+      tools: {
+        custom: 'value',
+        toolbelts: {
+          'docs-research': { description: 'Docs preset', mcpServers: ['fetch', 'context7'] },
+        },
+      },
+    };
+    fs.writeFileSync(path.join(eforgeDir, 'config.yaml'), yaml.stringify(initial));
+    const preset = getPresetById('browser-ui')!;
+    upsertToolbeltInConfig(tmpDir, preset);
+    const config = readEforgeConfig(tmpDir);
+    // Unrelated top-level key preserved
+    expect(config['maxConcurrentBuilds']).toBe(3);
+    const tools = config['tools'] as Record<string, unknown>;
+    // Unrelated tools key preserved
+    expect(tools['custom']).toBe('value');
+    const toolbelts = tools['toolbelts'] as Record<string, unknown>;
+    // Existing docs-research toolbelt preserved
+    expect(toolbelts['docs-research']).toBeDefined();
+    // New browser-ui toolbelt added
+    expect(toolbelts['browser-ui']).toBeDefined();
   });
 });
 

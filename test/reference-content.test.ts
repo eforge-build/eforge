@@ -44,7 +44,7 @@ describe('plan-01 reference and raw mirror content', () => {
       'packages/pi-eforge/skills/eforge-profile-new/SKILL.md',
     ]) {
       const raw = readRepoFile(path);
-      expect(raw).toContain('https://eforge.build/docs/configuration#profile-toolbelts-for-ui-work');
+      expect(raw).toContain('https://eforge.build/docs/configuration#guided-toolbelt-presets');
       expect(raw).toContain('https://eforge.build/reference/config#toolbelts');
     }
   });
@@ -66,6 +66,106 @@ describe('plan-01 reference and raw mirror content', () => {
       for (const staleReference of forbidden) {
         expect(raw).not.toContain(staleReference);
       }
+    }
+  });
+});
+
+describe('plan-02 toolbelt preset docs and skill parity', () => {
+  it('public configuration docs contain guided toolbelt preset terms', () => {
+    for (const path of ['web/content/docs/configuration.md', 'web/public/docs/configuration.md']) {
+      const raw = readRepoFile(path);
+      expect(raw).toContain('Guided Toolbelt Presets');
+      expect(raw).toContain('browser-ui');
+      expect(raw).toContain('docs-research');
+      expect(raw).toContain('observability');
+      expect(raw).toContain('database-readonly');
+    }
+  });
+
+  it('profile-new skills contain preset gallery with all required preset names', () => {
+    for (const path of [
+      'eforge-plugin/skills/profile-new/profile-new.md',
+      'packages/pi-eforge/skills/eforge-profile-new/SKILL.md',
+    ]) {
+      const raw = readRepoFile(path);
+      expect(raw).toContain('browser-ui');
+      expect(raw).toContain('docs-research');
+      expect(raw).toContain('observability');
+      expect(raw).toContain('database-readonly');
+      expect(raw).toContain('issue-triage');
+      expect(raw).toContain('repo-review');
+      expect(raw).toContain('api-testing');
+      expect(raw).toContain('design-ui');
+    }
+  });
+
+  it('profile-new skills describe the toolbelt step and least-privilege behavior', () => {
+    for (const path of [
+      'eforge-plugin/skills/profile-new/profile-new.md',
+      'packages/pi-eforge/skills/eforge-profile-new/SKILL.md',
+    ]) {
+      const raw = readRepoFile(path);
+      // Core step presence
+      expect(raw).toContain('Step 2b');
+      expect(raw).toContain('toolbelt: none');
+      expect(raw).toContain('No project MCP access');
+      // Omitted-toolbelt guidance (skip / default behavior)
+      expect(raw).toContain('Skip / default');
+      // Playwright auto-add confirmation snippet
+      expect(raw).toContain('@playwright/mcp@latest');
+      // Non-browser missing-server behavior: do not create tier references
+      expect(raw).toContain('do not create tier');
+      // Payload toolbelt fields in the create action
+      expect(raw).toContain('toolbelt?:');
+      // Hierarchical tools.toolbelts browser-ui YAML example
+      expect(raw).toContain('tools:');
+      expect(raw).toContain('toolbelts:');
+      expect(raw).toContain('browser-ui:');
+    }
+  });
+
+  it('config skills contain tools.toolbelts YAML example', () => {
+    for (const path of [
+      'eforge-plugin/skills/config/config.md',
+      'packages/pi-eforge/skills/eforge-config/SKILL.md',
+    ]) {
+      const raw = readRepoFile(path);
+      expect(raw).toContain('tools:');
+      expect(raw).toContain('toolbelts:');
+      expect(raw).toContain('browser-ui:');
+      expect(raw).toContain('mcpServers:');
+    }
+  });
+
+  it('config skills note that /eforge:config lists toolbelts', () => {
+    for (const path of [
+      'eforge-plugin/skills/config/config.md',
+      'packages/pi-eforge/skills/eforge-config/SKILL.md',
+    ]) {
+      const raw = readRepoFile(path);
+      expect(raw).toContain('tools.toolbelts');
+      expect(raw).toMatch(/\/eforge:config.*lists|lists.*toolbelts/i);
+    }
+  });
+
+  it('plugin version is greater than 0.25.12', () => {
+    const manifest = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as {
+      version: string;
+    };
+    const [major, minor, patch] = manifest.version.split('.').map(Number);
+    const isCurrent = major > 0 || minor > 25 || (minor === 25 && patch > 12);
+    expect(isCurrent).toBe(true);
+  });
+
+  it('generated config reference mentions guided presets in toolbelts section', () => {
+    for (const path of ['web/content/reference/config.md', 'web/public/reference/config.md']) {
+      const raw = readRepoFile(path);
+      const toolbeltsSection = raw.split('## Toolbelts')[1]?.split('## Hooks')[0] ?? '';
+      expect(toolbeltsSection).toContain('browser-ui');
+      expect(toolbeltsSection).toContain('toolbelt: none');
+      expect(toolbeltsSection).toContain('tools.toolbelts');
+      // "omitted toolbelt" passes all project MCP servers
+      expect(toolbeltsSection).toMatch(/omitted.*toolbelt|toolbelt.*omitted/i);
     }
   });
 });
