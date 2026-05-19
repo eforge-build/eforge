@@ -1,0 +1,101 @@
+name: investigation-first-planning-playbook-invocation-semantics
+description: "Investigation-first invocation semantics for planning-mode
+  playbooks: daemon run returns requires-agent, clients branch on mode, and
+  skills document agent-led investigation before planning."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- test/playbook.test.ts test/playbook-api.test.ts
+    test/session-plan-from-playbook.test.ts
+    test/daemon-session-plan-routes.test.ts test/cli-playbook.test.ts
+    test/daemon-recovery.test.ts
+  - pnpm docs:check
+plans:
+  - id: plan-01-playbook-run-contract
+    name: Playbook Run Requires-Agent Contract
+    depends_on: []
+    branch: investigation-first-planning-playbook-invocation-semantics/plan-01-playbook-run-contract
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan changes a shared daemon response union and all first-party
+          code consumers in one worktree, so the builder needs extra care around
+          TypeScript exhaustiveness and route tests.
+      reviewer:
+        effort: high
+        rationale: The review must verify API contract, client handling, and absence of
+          static session-plan creation from the playbook run route.
+  - id: plan-02-investigation-first-skills-docs
+    name: Investigation-First Skills and Documentation
+    depends_on:
+      - plan-01-playbook-run-contract
+    branch: investigation-first-planning-playbook-invocation-semantics/plan-02-investigation-first-skills-docs
+    build:
+      - implement
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - docs
+        - code
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: "The work is documentation-heavy but semantically important: Pi and
+          Claude skill instructions must stay in parity and must prevent agents
+          from falling back to static playbook seeding."
+      reviewer:
+        effort: high
+        rationale: Review must compare Pi and Claude instructions for parity and ensure
+          the new investigation-first flow is explicit enough for agent
+          execution.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - test-cycle
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - docs
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is a cohesive multi-package feature/API contract change, so
+    excursion is appropriate: one planner can enumerate the
+    daemon/client/Pi/Claude/CLI/docs/test changes without delegated module
+    planning. A plan-review-cycle is included because the change affects public
+    daemon wire semantics and multiple first-party consumers. The build runs
+    implementation alongside documentation authoring, then adds tests and
+    executes test cycles for the route/client behavior before syncing existing
+    docs and running an iterative review cycle. Parallel review perspectives
+    emphasize API compatibility, docs/skill accuracy, test coverage, code
+    quality, and final verification."
