@@ -164,6 +164,57 @@ Enricher failures are fail-open: a thrown error emits `extension:prd-enricher:fa
 
 See [`examples/extensions/issue-tracker.ts`](../../examples/extensions/issue-tracker.ts) for a worked example with GitHub, Linear, and Jira adapters.
 
+## Publishing as a package
+
+Extensions can be published as npm packages and installed by other projects with `eforge extension install`. Declare the extension entry point in `package.json` using the `eforge.extension` field:
+
+```json
+{
+  "name": "my-eforge-extension",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "eforge": {
+    "extension": {
+      "name": "my-extension",
+      "entrypoint": "./dist/index.js"
+    }
+  }
+}
+```
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `eforge.extension.name` | Yes | Extension name used for discovery, trust records, and management commands. |
+| `eforge.extension.entrypoint` | Yes | Relative path from the package root to the extension module entry point. |
+
+### Installing packaged extensions
+
+```sh
+# Install from npm (defaults to local scope)
+eforge extension install my-eforge-extension
+
+# Install from a local package directory or tarball
+eforge extension install ./packages/my-eforge-extension
+eforge extension install ./dist/my-eforge-extension-1.0.0.tgz
+
+# Install to project/team scope and record a trust annotation
+eforge extension install my-eforge-extension --scope project --trust --trusted-by "Alice <alice@example.com>"
+
+# Update to the latest version
+eforge extension update my-extension
+
+# Remove
+eforge extension remove my-extension
+```
+
+Package acquisition uses the local `npm` CLI for npm specs/tarball URLs and the system `tar` command for tarball extraction, so ensure those commands are on `PATH` when using those source types.
+
+Install sidecar files - package metadata, lockfile records, and other install-generated artifacts - are excluded from the trust hash. Reinstalling without changing the source files does not invalidate an existing trust record.
+
+Git URL installs are not yet supported; accepted sources are npm package specifiers (including tarball URLs), local package directories, and local `.tgz`/`.tar.gz` tarball paths.
+
+> **Supply-chain warning:** installed extensions are unsandboxed code. npm packages, tarballs, and local package directories can contain arbitrary code. Always inspect the installed source before trusting a project/team extension. For `--scope project`, run `eforge extension trust <name>` after inspecting the code.
+
 ## Custom tools
 
 Contribute tools to agent runs using TypeBox schemas:

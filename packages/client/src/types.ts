@@ -281,7 +281,7 @@ export interface ExtensionInstallProvenance {
 
 /** POST /api/extensions/install — install an extension package from a registry or path. */
 export interface ExtensionInstallRequest {
-  /** Package specifier: npm package name, git URL, local path, or tarball URL. */
+  /** Package specifier: npm package name, local directory path, local tarball path, or npm-supported tarball/file specifier. Git URLs are rejected until git install support ships. */
   source: string;
   /** Target scope for the install. Defaults to 'local'. */
   scope?: 'local' | 'project' | 'user';

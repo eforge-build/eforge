@@ -3,12 +3,12 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
-import { writeLockfile, type EforgeEvent, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse, type ExtensionTrustResponse } from '@eforge-build/client';
+import { writeLockfile, type EforgeEvent, type ExtensionDemoteResponse, type ExtensionInstallResponse, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionPromoteResponse, type ExtensionReloadResponse, type ExtensionRemoveResponse, type ExtensionShowResponse, type ExtensionTestResponse, type ExtensionTrustResponse, type ExtensionUpdateResponse } from '@eforge-build/client';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -42,6 +42,14 @@ async function start(tmpDir: string): Promise<MonitorServer> {
   server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
   writeLockfile(tmpDir, { pid: process.pid, port: server.port, startedAt: new Date().toISOString() });
   return server;
+}
+
+async function writePackage(tmpDir: string, name: string, content = 'export default function extension() {}'): Promise<string> {
+  const pkgDir = resolve(tmpDir, name);
+  await mkdir(pkgDir, { recursive: true });
+  await writeFile(resolve(pkgDir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }), 'utf-8');
+  await writeFile(resolve(pkgDir, 'index.js'), content, 'utf-8');
+  return pkgDir;
 }
 
 function replayEvent(type: 'config:warning' | 'plan:build:start', runId?: string): EforgeEvent {
@@ -89,10 +97,102 @@ async function runCli(tmpDir: string, args: string[]): Promise<{ stdout: string;
 }
 
 describe('extension CLI commands', () => {
-  it('registers extension list/show/validate/test/new/reload/trust/untrust subcommands', () => {
+  it('registers extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote subcommands', () => {
     const program = createProgram(undefined, 'test');
     const extension = program.commands.find((command) => command.name() === 'extension');
-    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['list', 'new', 'reload', 'show', 'test', 'trust', 'untrust', 'validate']);
+    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['demote', 'install', 'list', 'new', 'promote', 'reload', 'remove', 'show', 'test', 'trust', 'untrust', 'update', 'validate']);
+  });
+
+  it('extension install --scope project --trust --trusted-by --json prints the raw package response with provenance', async () => {
+    const tmpDir = makeTempDir();
+    const pkgDir = await writePackage(tmpDir, 'cli-install-pkg');
+    await setupProject(tmpDir);
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'install', './cli-install-pkg', '--scope', 'project', '--trust', '--trusted-by', 'cli-test', '--json']);
+    const data = JSON.parse(stdout) as ExtensionInstallResponse;
+
+    expect(data.extension).toMatchObject({
+      name: 'cli-install-pkg',
+      scope: 'project-team',
+      trustState: 'trusted',
+      trustedBy: 'cli-test',
+      package: { packageName: 'cli-install-pkg', version: '1.0.0' },
+      install: { sourceKind: 'path', sourceSpec: pkgDir, targetScope: 'project-team' },
+    });
+    expect(data.extension.trustedHash).toBe(data.extension.currentHash);
+    await expect(readFile(resolve(tmpDir, 'eforge', 'extensions', 'cli-install-pkg', 'index.js'), 'utf-8')).resolves.toContain('extension');
+  });
+
+  it('extension install non-JSON output prints trust, validate, and reload next steps for untrusted project installs', async () => {
+    const tmpDir = makeTempDir();
+    await writePackage(tmpDir, 'cli-untrusted-pkg');
+    await setupProject(tmpDir);
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'install', './cli-untrusted-pkg', '--scope', 'project']);
+
+    expect(stdout).toContain('Extension cli-untrusted-pkg installed');
+    expect(stdout).toContain('Scope:  project-team');
+    expect(stdout).toContain('Next: eforge extension trust cli-untrusted-pkg');
+    expect(stdout).toContain('Next: eforge extension validate cli-untrusted-pkg');
+    expect(stdout).toContain('Next: eforge extension reload');
+  });
+
+  it('extension update --trust --trusted-by --json updates from the recorded package source', async () => {
+    const tmpDir = makeTempDir();
+    const pkgDir = await writePackage(tmpDir, 'cli-update-pkg');
+    await setupProject(tmpDir);
+    await start(tmpDir);
+
+    await runCli(tmpDir, ['extension', 'install', './cli-update-pkg', '--scope', 'project', '--trust', '--json']);
+    await writeFile(resolve(pkgDir, 'index.js'), 'export default function extension() { return "updated"; }', 'utf-8');
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'update', 'cli-update-pkg', '--trust', '--trusted-by', 'cli-update', '--json']);
+    const data = JSON.parse(stdout) as ExtensionUpdateResponse;
+
+    expect(data.extension).toMatchObject({
+      name: 'cli-update-pkg',
+      scope: 'project-team',
+      trustState: 'trusted',
+      trustedBy: 'cli-update',
+      install: { sourceKind: 'path', sourceSpec: pkgDir },
+    });
+    await expect(readFile(resolve(tmpDir, 'eforge', 'extensions', 'cli-update-pkg', 'index.js'), 'utf-8')).resolves.toContain('updated');
+  });
+
+  it('extension promote, demote, and remove parse --force and support JSON responses', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const localExtDir = resolve(tmpDir, '.eforge', 'extensions', 'cli-move');
+    await mkdir(localExtDir, { recursive: true });
+    await writeFile(resolve(localExtDir, 'index.js'), 'export default function extension() { return "promoted-local"; }', 'utf-8');
+    const collidingTeamDir = resolve(tmpDir, 'eforge', 'extensions', 'cli-move');
+    await mkdir(collidingTeamDir, { recursive: true });
+    await writeFile(resolve(collidingTeamDir, 'index.js'), 'export default function extension() { return "team-collision"; }', 'utf-8');
+    await start(tmpDir);
+
+    const promoted = JSON.parse((await runCli(tmpDir, ['extension', 'promote', 'cli-move', '--force', '--trust', '--trusted-by', 'cli-promote', '--json'])).stdout) as ExtensionPromoteResponse;
+    expect(promoted.extension).toMatchObject({
+      name: 'cli-move',
+      scope: 'project-team',
+      trustState: 'trusted',
+      trustedBy: 'cli-promote',
+    });
+    await expect(readFile(resolve(tmpDir, 'eforge', 'extensions', 'cli-move', 'index.js'), 'utf-8')).resolves.toContain('promoted-local');
+    await expect(lstat(localExtDir)).rejects.toMatchObject({ code: 'ENOENT' });
+
+    await mkdir(localExtDir, { recursive: true });
+    await writeFile(resolve(localExtDir, 'index.js'), 'export default function extension() { return "local-collision"; }', 'utf-8');
+
+    const demoted = JSON.parse((await runCli(tmpDir, ['extension', 'demote', 'cli-move', '--force', '--json'])).stdout) as ExtensionDemoteResponse;
+    expect(demoted.extension).toMatchObject({ name: 'cli-move', scope: 'project-local' });
+    await expect(readFile(resolve(localExtDir, 'index.js'), 'utf-8')).resolves.toContain('promoted-local');
+    await expect(lstat(resolve(tmpDir, 'eforge', 'extensions', 'cli-move'))).rejects.toMatchObject({ code: 'ENOENT' });
+
+    const removed = JSON.parse((await runCli(tmpDir, ['extension', 'remove', 'cli-move', '--force', '--json'])).stdout) as ExtensionRemoveResponse;
+    expect(removed.message).toContain('cli-move');
+    await expect(lstat(localExtDir)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('extension test --fixture --json prints the raw ExtensionTestResponse', async () => {

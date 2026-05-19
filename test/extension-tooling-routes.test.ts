@@ -1336,9 +1336,12 @@ describe('extension tooling daemon routes', () => {
     await expect(lstat(localExtDir)).resolves.toBeDefined();
 
     // Try to demote again — no team extension, 404
-    const teamExt2 = resolve(tmpDir, 'eforge', 'extensions', 'demote-me-2');
-    await mkdir(teamExt2, { recursive: true });
-    await writeFile(resolve(teamExt2, 'index.js'), 'export default function extension() {}', 'utf-8');
+    const missingTeam = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionDemote}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'demote-me' }),
+    });
+    expect(missingTeam.status).toBe(404);
 
     // Collision: demote-me already exists in local scope
     const anotherTeamExt = resolve(tmpDir, 'eforge', 'extensions', 'demote-me');

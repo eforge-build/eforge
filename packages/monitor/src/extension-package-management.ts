@@ -59,12 +59,9 @@ export type InstallSourceKind = 'path-dir' | 'path-tgz' | 'npm' | 'git';
  * package specifiers (including `file:` protocol paths).
  */
 export function classifyInstallSource(source: string): InstallSourceKind {
-  // Git URL patterns — reject these before passing user input to npm.
-  if (isGitLikeInstallSource(source)) {
-    return 'git';
-  }
-
-  // Local filesystem paths (must start with /, ./, ../, or ~)
+  // Local filesystem paths (must start with /, ./, ../, or ~) — check before
+  // git detection so that relative paths like ./my-ext-pkg are not matched by
+  // the GitHub shorthand regex.
   if (
     source.startsWith('/') ||
     source.startsWith('./') ||
@@ -83,6 +80,11 @@ export function classifyInstallSource(source: string): InstallSourceKind {
       return 'path-tgz';
     }
     return 'path-dir';
+  }
+
+  // Git URL patterns — reject these before passing user input to npm.
+  if (isGitLikeInstallSource(source)) {
+    return 'git';
   }
 
   // Everything else (npm package names, @scope/pkg, file:./path, etc.)

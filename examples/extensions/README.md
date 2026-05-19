@@ -88,6 +88,45 @@ Adapter selection is by `name` match against the `<adapter>` segment. Each adapt
 
 For the full URI syntax, failure policy (`null` return is fatal to enqueue), and provenance event names (`extension:input-source:fetched`, `extension:input-source:failed`), see [`docs/extensions.md`](../../docs/extensions.md) — "Input sources and PRD enrichers" section.
 
+## Package authoring and install
+
+These examples are designed for direct use in a project's extension directories. They can also serve as the basis for a published npm package, local package directory, or tarball that other projects install with `eforge extension install`.
+
+To publish an example as a reusable package, add the `eforge.extension` manifest to `package.json`:
+
+```json
+{
+  "name": "acme-build-notifier",
+  "version": "1.0.0",
+  "eforge": {
+    "extension": {
+      "name": "build-notifier",
+      "entrypoint": "./dist/index.js"
+    }
+  }
+}
+```
+
+Then install it in another project:
+
+```sh
+# Install to project-local scope (trusted, gitignored)
+eforge extension install acme-build-notifier
+
+# Install from a local package directory or tarball while developing
+eforge extension install ./packages/acme-build-notifier
+eforge extension install ./dist/acme-build-notifier-1.0.0.tgz
+
+# Install to project/team scope; inspect the code, then trust
+eforge extension install acme-build-notifier --scope project
+eforge extension trust build-notifier
+eforge extension reload
+```
+
+> **Supply-chain note:** npm packages, tarballs, and local package directories are unsandboxed arbitrary code. Inspect the installed extension source before trusting it, especially for project/team scope extensions that other team members will load.
+
+See [`docs/extensions.md`](../../docs/extensions.md) — "Package-managed extensions" — for the full install/update/remove/promote/demote workflow, trust behavior, and sidecar hash-exclusion details.
+
 ## Validation
 
 From the repo root, targeted validation for these examples is:

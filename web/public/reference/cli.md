@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: cc2ccb32 -->
+<!-- Commit: da1a117e -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -207,6 +207,73 @@ Remove trust for a project-team native extension by name or path
 
 | Flag | Description |
 |------|-------------|
+| `--json` | Output JSON |
+
+#### `install`
+
+Install a native extension package from an npm package, local path, or tarball
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Extension scope: local, project, or user |
+| `--name <name>` | Logical extension name override |
+| `--force` | Overwrite an existing extension at the target scope |
+| `--trust` | Trust the extension after install (project-team scope only) |
+| `--trusted-by <identity>` | Optional annotation identifying who is trusting the extension |
+| `--json` | Output JSON |
+
+#### `update`
+
+Update an installed extension package to the latest version
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--trust` | Trust the extension after update (project-team scope only) |
+| `--trusted-by <identity>` | Optional annotation identifying who is trusting the extension |
+| `--json` | Output JSON |
+
+#### `remove`
+
+Remove an installed extension package
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Remove without confirmation |
+| `--json` | Output JSON |
+
+#### `promote`
+
+Promote a project-local extension to project-team scope
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite an existing extension at project-team scope |
+| `--trust` | Trust the extension after promotion |
+| `--trusted-by <identity>` | Optional annotation identifying who is trusting the extension |
+| `--json` | Output JSON |
+
+#### `demote`
+
+Demote a project-team extension to project-local scope
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite an existing extension at project-local scope |
 | `--json` | Output JSON |
 
 ### `config`
