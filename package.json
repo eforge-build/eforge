@@ -25,7 +25,8 @@
     "docs:generate": "pnpm --filter @eforge-build/docs-gen... --workspace-concurrency=1 build && node packages/docs-gen/dist/cli.js generate --all",
     "docs:check": "pnpm --filter @eforge-build/docs-gen... --workspace-concurrency=1 build && node packages/docs-gen/dist/cli.js check",
     "docs:dev": "pnpm docs:generate && pnpm --filter @eforge-build/web dev",
-    "docs:build": "pnpm docs:generate && pnpm --filter @eforge-build/web build"
+    "docs:build": "pnpm docs:generate && pnpm --filter @eforge-build/web build",
+    "complexity:scan": "node scripts/scan-complexity.mjs"
   },
   "packageManager": "pnpm@10.26.0",
   "pnpm": {
@@ -53,6 +54,9 @@
     "react-dom": "^19.2.6",
     "typescript": "^5.9.3",
     "vitest": "^4.1.6",
+    "eslint": "^9",
+    "eslint-plugin-sonarjs": "^4",
+    "typescript-eslint": "^8",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   }

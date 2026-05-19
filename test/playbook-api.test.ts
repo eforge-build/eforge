@@ -68,17 +68,20 @@ function validPlaybookRaw(opts: {
   name?: string;
   description?: string;
   scope?: string;
+  mode?: string;
   goal?: string;
 } = {}): string {
   const name = opts.name ?? 'my-feature';
   const description = opts.description ?? 'Add the my-feature capability';
   const scope = opts.scope ?? 'project-team';
+  const mode = opts.mode ?? 'autonomous';
   const goal = opts.goal ?? 'Implement the feature.';
   return [
     '---',
     `name: ${name}`,
     `description: ${description}`,
     `scope: ${scope}`,
+    `mode: ${mode}`,
     '---',
     '',
     '## Goal',
@@ -245,7 +248,7 @@ describe('POST /api/playbook/save', () => {
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
       scope: 'project-team',
       playbook: {
-        frontmatter: { name: 'my-feature', description: 'A feature', scope: 'project-team' },
+        frontmatter: { name: 'my-feature', description: 'A feature', scope: 'project-team', mode: 'autonomous' },
         body: { goal: '' }, // empty goal → invalid
       },
     });
@@ -266,7 +269,7 @@ describe('POST /api/playbook/save', () => {
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
       scope: 'project-team',
       playbook: {
-        frontmatter: { name: 'my-feature', description: 'Add the my-feature capability', scope: 'project-team' },
+        frontmatter: { name: 'my-feature', description: 'Add the my-feature capability', scope: 'project-team', mode: 'autonomous' },
         body: { goal: 'Implement the feature.', outOfScope: '', acceptanceCriteria: '', plannerNotes: '' },
       },
     });
@@ -285,10 +288,29 @@ describe('POST /api/playbook/save', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Route: POST /api/playbook/enqueue
+// Route: POST /api/playbook/enqueue (removed — must return 404)
 // ---------------------------------------------------------------------------
 
-describe('POST /api/playbook/enqueue', () => {
+describe('POST /api/playbook/enqueue (old route removed)', () => {
+  it('returns 404 for the old enqueue route', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}/api/playbook/enqueue`, {
+      name: 'my-feature',
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Route: POST /api/playbook/run
+// ---------------------------------------------------------------------------
+
+describe('POST /api/playbook/run', () => {
   it('returns 404 when the named playbook does not exist', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
@@ -296,30 +318,31 @@ describe('POST /api/playbook/enqueue', () => {
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookEnqueue}`, {
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'nonexistent',
     });
     expect(res.status).toBe(404);
   });
 
-  it('creates a PRD in the queue dir and returns its id', async () => {
+  it('returns { kind: "enqueued", id } for an autonomous playbook and creates a PRD', async () => {
     const tmpDir = makeTempDir();
     const { configDir } = await setupProject(tmpDir);
 
-    // Write a playbook to the team dir
+    // Write an autonomous playbook to the team dir
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw(), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookEnqueue}`, {
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
     });
     expect(res.status).toBe(200);
 
-    const data = await res.json() as { id: string };
+    const data = await res.json() as { kind: string; id: string };
+    expect(data.kind).toBe('enqueued');
     expect(typeof data.id).toBe('string');
     expect(data.id.length).toBeGreaterThan(0);
 
@@ -340,33 +363,86 @@ describe('POST /api/playbook/enqueue', () => {
     expect(autoBuildWakeReasons).toContain('playbook-enqueue');
   });
 
-  it('persists dependsOn in PRD frontmatter when afterQueueId is provided', async () => {
+  it('returns { kind: "planning", session, path } for a planning-mode playbook and writes the session plan', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    // Write a planning-mode playbook
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-planning',
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { kind: string; session: string; path: string };
+    expect(data.kind).toBe('planning');
+    expect(typeof data.session).toBe('string');
+    expect(data.session.length).toBeGreaterThan(0);
+    expect(typeof data.path).toBe('string');
+
+    // Verify the session plan file exists and contains seeded_from_playbook
+    await expect(access(data.path)).resolves.toBeUndefined();
+    const planContent = await readFile(data.path, 'utf-8');
+    expect(planContent).toContain('seeded_from_playbook:');
+
+    // Verify no queue mutation (no PRD created)
+    expect(autoBuildWakeReasons).not.toContain('playbook-enqueue');
+  });
+
+  it('returns 409 when the planning session already exists', async () => {
     const tmpDir = makeTempDir();
     const { configDir } = await setupProject(tmpDir);
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw(), 'utf-8');
-    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw(), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    // First run creates the session plan
+    const first = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, { name: 'my-planning' });
+    expect(first.status).toBe(200);
+
+    // Second run with the same generated session id should return 409
+    const second = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, { name: 'my-planning' });
+    expect(second.status).toBe(409);
+  });
+
+  it('persists dependsOn in PRD frontmatter when afterQueueId is provided for autonomous playbook', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }), 'utf-8');
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
 
-    // First enqueue the predecessor so it exists in the queue
-    const predecessorRes = await post(`http://localhost:${server.port}${API_ROUTES.playbookEnqueue}`, {
+    // First run the predecessor so it exists in the queue
+    const predecessorRes = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
     });
     expect(predecessorRes.status).toBe(200);
-    const { id: predecessorId } = await predecessorRes.json() as { id: string };
+    const { id: predecessorId } = await predecessorRes.json() as { kind: string; id: string };
 
-    // Now enqueue the dependent with afterQueueId pointing to the predecessor
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookEnqueue}`, {
+    // Now run the dependent with afterQueueId pointing to the predecessor
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-dependent',
       afterQueueId: predecessorId,
     });
     expect(res.status).toBe(200);
 
-    const data = await res.json() as { id: string };
+    const data = await res.json() as { kind: string; id: string };
+    expect(data.kind).toBe('enqueued');
     // When afterQueueId is provided, the PRD goes into waiting/ not queue root
     const queueFile = resolve(tmpDir, 'eforge', 'queue', 'waiting', `${data.id}.md`);
     const content = await readFile(queueFile, 'utf-8');
@@ -382,17 +458,17 @@ describe('POST /api/playbook/enqueue', () => {
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw(), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
 
-    const enqueueRes = await post(`http://localhost:${server.port}${API_ROUTES.playbookEnqueue}`, {
+    const runRes = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
     });
-    expect(enqueueRes.status).toBe(200);
+    expect(runRes.status).toBe(200);
 
-    const { id } = await enqueueRes.json() as { id: string };
+    const { id } = await runRes.json() as { kind: string; id: string };
 
     // The new PRD should appear in the queue listing
     const queueRes = await fetch(`http://localhost:${server.port}${API_ROUTES.queue}`);
@@ -528,7 +604,7 @@ describe('POST /api/playbook/validate', () => {
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
 
-    const rawNoGoal = '---\nname: my-feature\ndescription: A feature\nscope: project-team\n---\n\n## Out of scope\n\nNothing.';
+    const rawNoGoal = '---\nname: my-feature\ndescription: A feature\nscope: project-team\nmode: autonomous\n---\n\n## Out of scope\n\nNothing.';
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookValidate}`, {
       raw: rawNoGoal,

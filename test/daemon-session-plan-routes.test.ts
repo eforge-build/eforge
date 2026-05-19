@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, rm, access } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { useTempDir } from './test-tmpdir.js';
@@ -818,5 +818,159 @@ describe('POST /api/enqueue — session-plan auto-submit', () => {
 
     const data = await res.json() as { sessionId: string };
     expect(typeof data.sessionId).toBe('string');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/session-plan/create-from-playbook
+// ---------------------------------------------------------------------------
+
+/** Build a valid planning-mode playbook raw string. */
+function validPlanningPlaybookRaw(opts: { name?: string; description?: string } = {}): string {
+  const name = opts.name ?? 'my-planning';
+  const description = opts.description ?? 'Plan the my-planning feature';
+  return [
+    '---',
+    `name: ${name}`,
+    `description: ${description}`,
+    'scope: project-team',
+    'mode: planning',
+    '---',
+    '',
+    '## Goal',
+    '',
+    'Plan and implement the feature.',
+    '',
+    '## Acceptance criteria',
+    '',
+    'Feature works as expected.',
+  ].join('\n');
+}
+
+/** Build a valid autonomous-mode playbook raw string. */
+function validAutonomousPlaybookRaw(opts: { name?: string } = {}): string {
+  const name = opts.name ?? 'my-auto';
+  return [
+    '---',
+    `name: ${name}`,
+    'description: Autonomous feature implementation',
+    'scope: project-team',
+    'mode: autonomous',
+    '---',
+    '',
+    '## Goal',
+    '',
+    'Implement the feature autonomously.',
+  ].join('\n');
+}
+
+describe('POST /api/session-plan/create-from-playbook', () => {
+  it('seeds a session plan from a planning-mode playbook and returns session and path', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const configDir = resolve(tmpDir, 'eforge');
+    const playbooksDir = resolve(configDir, 'playbooks');
+    await mkdir(playbooksDir, { recursive: true });
+    await writeFile(resolve(playbooksDir, 'my-planning.md'), validPlanningPlaybookRaw(), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanCreateFromPlaybook}`, {
+      playbook_name: 'my-planning',
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { session: string; path: string };
+    expect(typeof data.session).toBe('string');
+    expect(data.session.length).toBeGreaterThan(0);
+    expect(typeof data.path).toBe('string');
+
+    // Verify the session plan file exists and contains seeded_from_playbook
+    await expect(access(data.path)).resolves.toBeUndefined();
+    const planContent = await readFile(data.path, 'utf-8');
+    expect(planContent).toContain('seeded_from_playbook:');
+    expect(planContent).toContain('my-planning');
+  });
+
+  it('returns 400 when the named playbook is autonomous (must use playbook/run instead)', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const configDir = resolve(tmpDir, 'eforge');
+    const playbooksDir = resolve(configDir, 'playbooks');
+    await mkdir(playbooksDir, { recursive: true });
+    await writeFile(resolve(playbooksDir, 'my-auto.md'), validAutonomousPlaybookRaw(), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanCreateFromPlaybook}`, {
+      playbook_name: 'my-auto',
+    });
+    expect(res.status).toBe(400);
+
+    const body = await res.json() as { error: string };
+    expect(body.error).toMatch(/playbook\/run/i);
+  });
+
+  it('returns 409 when the target session id already exists', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const configDir = resolve(tmpDir, 'eforge');
+    const playbooksDir = resolve(configDir, 'playbooks');
+    await mkdir(playbooksDir, { recursive: true });
+    await writeFile(resolve(playbooksDir, 'my-planning.md'), validPlanningPlaybookRaw(), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    // First call creates the session plan
+    const first = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanCreateFromPlaybook}`, {
+      playbook_name: 'my-planning',
+    });
+    expect(first.status).toBe(200);
+    const { session } = await first.json() as { session: string; path: string };
+
+    // Second call with the same session id should return 409
+    const second = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanCreateFromPlaybook}`, {
+      playbook_name: 'my-planning',
+      session,
+    });
+    expect(second.status).toBe(409);
+  });
+
+  it('returns 400 for path traversal in session parameter', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const configDir = resolve(tmpDir, 'eforge');
+    const playbooksDir = resolve(configDir, 'playbooks');
+    await mkdir(playbooksDir, { recursive: true });
+    await writeFile(resolve(playbooksDir, 'my-planning.md'), validPlanningPlaybookRaw(), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanCreateFromPlaybook}`, {
+      playbook_name: 'my-planning',
+      session: '../escape',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when the named playbook does not exist', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanCreateFromPlaybook}`, {
+      playbook_name: 'nonexistent',
+    });
+    expect(res.status).toBe(404);
   });
 });

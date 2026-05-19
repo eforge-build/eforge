@@ -19,6 +19,12 @@
  * `normalizeBuildSource` is the single chokepoint for session-plan handling:
  * if a source path matches `.eforge/session-plans/<name>.md`, it parses the plan
  * and converts it to ordinary build source. Other paths pass through unchanged.
+ *
+ * ## Playbook modes
+ *
+ * Every playbook declares `mode: autonomous | planning`. Use `playbookToBuildSource`
+ * for autonomous playbooks (engine queue) and `playbookToPlanSeed` + `createSessionPlanFromPlaybookSeed`
+ * for planning playbooks (interactive session plan).
  */
 
 // ---------------------------------------------------------------------------
@@ -46,20 +52,25 @@ export {
 
   // Build source compilation
   playbookToBuildSource,
-  playbookToSessionPlan,
+
+  // Plan seed extraction
+  playbookToPlanSeed,
 
   // Errors
   PlaybookNotFoundError,
+  PlaybookModeMismatchError,
 } from './playbook.js';
 
 export type {
   PlaybookScope,
   PlaybookFrontmatter,
+  PlaybookMode,
   PlaybookBody,
   Playbook,
   PlaybookShadowEntry,
   PlaybookEntry,
   SessionPlanInput,
+  PlaybookPlanSeed,
   ListPlaybooksOpts,
   LoadPlaybookOpts,
   WritePlaybookOpts,
@@ -91,6 +102,7 @@ export {
 
   // Mutation helpers
   createSessionPlan,
+  createSessionPlanFromPlaybookSeed,
   setSessionPlanSection,
   skipDimension,
   unskipDimension,
@@ -120,6 +132,7 @@ export type {
   SessionPlanListEntry,
   ListActiveSessionPlansOpts,
   CreateSessionPlanOpts,
+  CreateSessionPlanFromPlaybookSeedOpts,
   SetSessionPlanStatusMetadata,
   SetSessionPlanDimensionsOpts,
   ResolveSessionPlanPathOpts,

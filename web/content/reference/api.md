@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 0fdd9d5f -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -11,7 +11,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 61
+Total routes: 62
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -46,9 +46,9 @@ Total routes: 61
 | `plans` | `/api/plans/:runId` |
 | `playbookCopy` | `/api/playbook/copy` |
 | `playbookDemote` | `/api/playbook/demote` |
-| `playbookEnqueue` | `/api/playbook/enqueue` |
 | `playbookList` | `/api/playbook/list` |
 | `playbookPromote` | `/api/playbook/promote` |
+| `playbookRun` | `/api/playbook/run` |
 | `playbookSave` | `/api/playbook/save` |
 | `playbookShow` | `/api/playbook/show` |
 | `playbookValidate` | `/api/playbook/validate` |
@@ -67,6 +67,7 @@ Total routes: 61
 | `schedulerKick` | `/api/scheduler/kick` |
 | `sessionMetadata` | `/api/session-metadata` |
 | `sessionPlanCreate` | `/api/session-plan/create` |
+| `sessionPlanCreateFromPlaybook` | `/api/session-plan/create-from-playbook` |
 | `sessionPlanList` | `/api/session-plan/list` |
 | `sessionPlanMigrateLegacy` | `/api/session-plan/migrate-legacy` |
 | `sessionPlanReadiness` | `/api/session-plan/readiness` |

@@ -20,6 +20,8 @@ import type {
   SessionPlanReadinessResponse,
   SessionPlanMigrateLegacyRequest,
   SessionPlanMigrateLegacyResponse,
+  SessionPlanCreateFromPlaybookRequest,
+  SessionPlanCreateFromPlaybookResponse,
 } from '../routes.js';
 
 // Re-export wire types for convenience
@@ -45,6 +47,8 @@ export type {
   SessionPlanReadinessResponse,
   SessionPlanMigrateLegacyRequest,
   SessionPlanMigrateLegacyResponse,
+  SessionPlanCreateFromPlaybookRequest,
+  SessionPlanCreateFromPlaybookResponse,
 } from '../routes.js';
 
 // ---------------------------------------------------------------------------
@@ -202,6 +206,30 @@ export function apiSessionPlanMigrateLegacyIfRunning(opts: {
     opts.cwd,
     'POST',
     API_ROUTES.sessionPlanMigrateLegacy,
+    opts.body,
+  );
+}
+
+export function apiSessionPlanCreateFromPlaybook(opts: {
+  cwd: string;
+  body: SessionPlanCreateFromPlaybookRequest;
+}) {
+  return daemonRequest<SessionPlanCreateFromPlaybookResponse>(
+    opts.cwd,
+    'POST',
+    API_ROUTES.sessionPlanCreateFromPlaybook,
+    opts.body,
+  );
+}
+
+export function apiSessionPlanCreateFromPlaybookIfRunning(opts: {
+  cwd: string;
+  body: SessionPlanCreateFromPlaybookRequest;
+}) {
+  return daemonRequestIfRunning<SessionPlanCreateFromPlaybookResponse>(
+    opts.cwd,
+    'POST',
+    API_ROUTES.sessionPlanCreateFromPlaybook,
     opts.body,
   );
 }

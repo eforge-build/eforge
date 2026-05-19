@@ -148,8 +148,8 @@ export {
   apiPlaybookShowIfRunning,
   apiPlaybookSave,
   apiPlaybookSaveIfRunning,
-  apiPlaybookEnqueue,
-  apiPlaybookEnqueueIfRunning,
+  apiPlaybookRun,
+  apiPlaybookRunIfRunning,
   apiPlaybookPromote,
   apiPlaybookPromoteIfRunning,
   apiPlaybookDemote,
@@ -172,12 +172,18 @@ export type {
   PlaybookListResponse,
   PlaybookShowResponse,
   PlaybookSaveResponse,
-  PlaybookEnqueueResponse,
   PlaybookPromoteResponse,
   PlaybookDemoteResponse,
   PlaybookValidateResponse,
   PlaybookCopyResponse,
 } from './api/playbook.js';
+
+export type {
+  PlaybookRunRequest,
+  PlaybookRunResponse,
+  PlaybookRunEnqueuedResponse,
+  PlaybookRunPlanningResponse,
+} from './routes.js';
 
 export {
   apiSessionPlanList,
@@ -198,6 +204,8 @@ export {
   apiSessionPlanReadinessIfRunning,
   apiSessionPlanMigrateLegacy,
   apiSessionPlanMigrateLegacyIfRunning,
+  apiSessionPlanCreateFromPlaybook,
+  apiSessionPlanCreateFromPlaybookIfRunning,
 } from './api/session-plan.js';
 
 export type {
@@ -222,6 +230,8 @@ export type {
   SessionPlanReadinessResponse,
   SessionPlanMigrateLegacyRequest,
   SessionPlanMigrateLegacyResponse,
+  SessionPlanCreateFromPlaybookRequest,
+  SessionPlanCreateFromPlaybookResponse,
 } from './api/session-plan.js';
 
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';

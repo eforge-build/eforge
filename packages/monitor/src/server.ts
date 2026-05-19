@@ -3323,12 +3323,12 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url === API_ROUTES.playbookEnqueue) {
+    if (req.method === 'POST' && url === API_ROUTES.playbookRun) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
         return;
       }
-      let body: { name?: unknown; afterQueueId?: unknown };
+      let body: { name?: unknown; afterQueueId?: unknown; session?: unknown; topic?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
@@ -3344,53 +3344,157 @@ export async function startServer(
         return;
       }
       const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
+      const sessionOverride = typeof body.session === 'string' ? body.session : undefined;
+      const topicOverride = typeof body.topic === 'string' ? body.topic : undefined;
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { loadPlaybook, playbookToSessionPlan } = await import('@eforge-build/input');
-        // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-        const { enqueuePrd, inferTitle, validateDependsOnExists, commitEnqueuedPrd } = await import('@eforge-build/engine/prd-queue');
-        // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+        const { loadPlaybook, playbookToBuildSource, createSessionPlanFromPlaybookSeed, writeSessionPlan, resolveSessionPlanPath } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
           return;
         }
         const { playbook } = await loadPlaybook({ configDir, cwd, name: body.name });
-        const plan = playbookToSessionPlan(playbook);
-        const queueDir = options?.queueDir ?? 'eforge/queue';
-        const title = inferTitle(plan.source, plan.name);
 
-        // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-        // Validate upstream exists before enqueueing; reject with 404 if not found.
-        if (afterQueueId) {
+        if (playbook.mode === 'planning') {
+          // Planning-mode: seed a session plan file, do not enqueue
+          const plan = createSessionPlanFromPlaybookSeed({
+            playbook,
+            session: sessionOverride,
+            topic: topicOverride,
+          });
+          // Check for 409 collision before writing
+          const planPath = resolveSessionPlanPath({ cwd, session: plan.session });
+          const { access: fsAccess } = await import('node:fs/promises');
+          let exists = false;
           try {
-            await validateDependsOnExists([afterQueueId], queueDir, cwd);
-          } catch (validationErr) {
-            const msg = validationErr instanceof Error ? validationErr.message : 'Invalid afterQueueId';
-            sendJsonError(res, 404, msg);
+            await fsAccess(planPath);
+            exists = true;
+          } catch (accessErr) {
+            // Only swallow ENOENT — other I/O errors should surface.
+            if ((accessErr as NodeJS.ErrnoException).code !== 'ENOENT') {
+              throw accessErr;
+            }
+          }
+          if (exists) {
+            sendJsonError(res, 409, `Session plan already exists: ${plan.session}`);
             return;
           }
-        }
-        // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
-
-        const result = await enqueuePrd({
-          body: plan.source,
-          title,
-          queueDir,
-          cwd,
-          depends_on: afterQueueId ? [afterQueueId] : undefined,
+          await writeSessionPlan({ cwd, plan });
+          sendJson(res, { kind: 'planning', session: plan.session, path: planPath });
+        } else {
+          // Autonomous-mode: enqueue as PRD
           // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-          intoWaiting: afterQueueId ? true : false,
+          const { enqueuePrd, inferTitle, validateDependsOnExists, commitEnqueuedPrd } = await import('@eforge-build/engine/prd-queue');
           // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
-          postMerge: plan.postMerge,
-        });
-        await commitEnqueuedPrd(result.filePath, result.id, title, cwd);
-        notifyQueueMutation(options.daemonState, 'playbook-enqueue');
-        sendJson(res, { id: result.id });
+          const plan = playbookToBuildSource(playbook);
+          const queueDir = options?.queueDir ?? 'eforge/queue';
+          const title = inferTitle(plan.source, plan.name);
+
+          // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+          // Validate upstream exists before enqueueing; reject with 404 if not found.
+          if (afterQueueId) {
+            try {
+              await validateDependsOnExists([afterQueueId], queueDir, cwd);
+            } catch (validationErr) {
+              const msg = validationErr instanceof Error ? validationErr.message : 'Invalid afterQueueId';
+              sendJsonError(res, 404, msg);
+              return;
+            }
+          }
+          // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+
+          const result = await enqueuePrd({
+            body: plan.source,
+            title,
+            queueDir,
+            cwd,
+            depends_on: afterQueueId ? [afterQueueId] : undefined,
+            // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+            intoWaiting: afterQueueId ? true : false,
+            // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+            postMerge: plan.postMerge,
+          });
+          await commitEnqueuedPrd(result.filePath, result.id, title, cwd);
+          notifyQueueMutation(options.daemonState, 'playbook-enqueue');
+          sendJson(res, { kind: 'enqueued', id: result.id });
+        }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to enqueue playbook';
+        const msg = err instanceof Error ? err.message : 'Failed to run playbook';
         if (/not found/i.test(msg)) {
           sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.sessionPlanCreateFromPlaybook) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { playbook_name?: unknown; session?: unknown; topic?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.playbook_name || typeof body.playbook_name !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: playbook_name (string)');
+        return;
+      }
+      if (!PLAYBOOK_NAME_RE.test(body.playbook_name)) {
+        sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
+        return;
+      }
+      const sessionOverride = typeof body.session === 'string' ? body.session : undefined;
+      const topicOverride = typeof body.topic === 'string' ? body.topic : undefined;
+      try {
+        const { getConfigDir } = await import('@eforge-build/engine/config');
+        const { loadPlaybook, createSessionPlanFromPlaybookSeed, writeSessionPlan, resolveSessionPlanPath } = await import('@eforge-build/input');
+        const configDir = await getConfigDir(cwd);
+        if (!configDir) {
+          sendJsonError(res, 404, 'No eforge config directory found');
+          return;
+        }
+        const { playbook } = await loadPlaybook({ configDir, cwd, name: body.playbook_name });
+        if (playbook.mode !== 'planning') {
+          sendJsonError(res, 400, `Playbook "${body.playbook_name}" is autonomous — use POST /api/playbook/run to enqueue it`);
+          return;
+        }
+        const plan = createSessionPlanFromPlaybookSeed({
+          playbook,
+          session: sessionOverride,
+          topic: topicOverride,
+        });
+        // Check for 409 collision before writing
+        const planPath = resolveSessionPlanPath({ cwd, session: plan.session });
+        const { access: fsAccess } = await import('node:fs/promises');
+        let exists = false;
+        try {
+          await fsAccess(planPath);
+          exists = true;
+        } catch (accessErr) {
+          // Only swallow ENOENT — other I/O errors should surface.
+          if ((accessErr as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw accessErr;
+          }
+        }
+        if (exists) {
+          sendJsonError(res, 409, `Session plan already exists: ${plan.session}`);
+          return;
+        }
+        await writeSessionPlan({ cwd, plan });
+        sendJson(res, { session: plan.session, path: planPath });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to create session plan from playbook';
+        if (/not found/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else if (/escape|traversal|invalid session/i.test(msg)) {
+          sendJsonError(res, 400, msg);
         } else {
           sendJsonError(res, 500, msg);
         }
@@ -4199,6 +4303,9 @@ export async function startServer(
         : undefined;
 
       serveDiff(req, res, resolvedSessionId, planIdParam, fileParam);
+    } else if (url.startsWith('/api/')) {
+      // Unknown API route — return 404 rather than falling through to SPA static serving
+      sendJsonError(res, 404, `Unknown route: ${req.method} ${url}`);
     } else {
       // Serve static files (SPA)
       await serveStaticFile(req, res, url);

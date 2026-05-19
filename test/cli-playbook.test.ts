@@ -16,7 +16,7 @@ import { Command } from 'commander';
 const mockApiPlaybookList = vi.fn();
 const mockApiPlaybookShow = vi.fn();
 const mockApiPlaybookSave = vi.fn();
-const mockApiPlaybookEnqueue = vi.fn();
+const mockApiPlaybookRun = vi.fn();
 const mockApiPlaybookPromote = vi.fn();
 const mockApiPlaybookDemote = vi.fn();
 const mockApiPlaybookValidate = vi.fn();
@@ -35,7 +35,7 @@ vi.mock('@eforge-build/client', () => ({
   apiPlaybookList: (...args: unknown[]) => mockApiPlaybookList(...args),
   apiPlaybookShow: (...args: unknown[]) => mockApiPlaybookShow(...args),
   apiPlaybookSave: (...args: unknown[]) => mockApiPlaybookSave(...args),
-  apiPlaybookEnqueue: (...args: unknown[]) => mockApiPlaybookEnqueue(...args),
+  apiPlaybookRun: (...args: unknown[]) => mockApiPlaybookRun(...args),
   apiPlaybookPromote: (...args: unknown[]) => mockApiPlaybookPromote(...args),
   apiPlaybookDemote: (...args: unknown[]) => mockApiPlaybookDemote(...args),
   apiPlaybookValidate: (...args: unknown[]) => mockApiPlaybookValidate(...args),
@@ -299,36 +299,50 @@ describe('eforge playbook edit', () => {
 // ---------------------------------------------------------------------------
 
 describe('eforge playbook run', () => {
-  it('calls apiPlaybookEnqueue with name only', async () => {
-    mockApiPlaybookEnqueue.mockImplementation(() => wrap({ id: 'q-123' }));
+  it('calls apiPlaybookRun with name only', async () => {
+    mockApiPlaybookRun.mockImplementation(() => wrap({ kind: 'enqueued', id: 'q-123' }));
 
     const program = makeProgram();
     await program.parseAsync(['node', 'eforge', 'playbook', 'run', 'docs-sync']);
 
-    expect(mockApiPlaybookEnqueue).toHaveBeenCalledOnce();
-    expect(mockApiPlaybookEnqueue).toHaveBeenCalledWith({ cwd: CWD, body: { name: 'docs-sync' } });
+    expect(mockApiPlaybookRun).toHaveBeenCalledOnce();
+    expect(mockApiPlaybookRun).toHaveBeenCalledWith({ cwd: CWD, body: { name: 'docs-sync' } });
   });
 
   it('passes afterQueueId when --after is provided', async () => {
-    mockApiPlaybookEnqueue.mockImplementation(() => wrap({ id: 'q-456' }));
+    mockApiPlaybookRun.mockImplementation(() => wrap({ kind: 'enqueued', id: 'q-456' }));
 
     const program = makeProgram();
     await program.parseAsync(['node', 'eforge', 'playbook', 'run', 'docs-sync', '--after', 'q-abc']);
 
-    expect(mockApiPlaybookEnqueue).toHaveBeenCalledWith({
+    expect(mockApiPlaybookRun).toHaveBeenCalledWith({
       cwd: CWD,
       body: { name: 'docs-sync', afterQueueId: 'q-abc' },
     });
   });
 
-  it('prints the returned queue id', async () => {
-    mockApiPlaybookEnqueue.mockImplementation(() => wrap({ id: 'q-xyz' }));
+  it('prints "Enqueued: <id>" for an autonomous playbook response', async () => {
+    mockApiPlaybookRun.mockImplementation(() => wrap({ kind: 'enqueued', id: 'q-xyz' }));
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const program = makeProgram();
     await program.parseAsync(['node', 'eforge', 'playbook', 'run', 'my-pb']);
 
-    expect(logSpy).toHaveBeenCalledWith('q-xyz');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Enqueued: q-xyz'));
+    logSpy.mockRestore();
+  });
+
+  it('prints "Planning session ready: <path>" and hint for a planning-mode response', async () => {
+    const planPath = '/tmp/.eforge/session-plans/2026-05-19-my-planning.md';
+    mockApiPlaybookRun.mockImplementation(() => wrap({ kind: 'planning', session: '2026-05-19-my-planning', path: planPath }));
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const program = makeProgram();
+    await program.parseAsync(['node', 'eforge', 'playbook', 'run', 'my-planning']);
+
+    const allCalls = logSpy.mock.calls.map((c) => c[0]);
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('Planning session ready:') && msg.includes(planPath))).toBe(true);
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('/eforge:plan'))).toBe(true);
     logSpy.mockRestore();
   });
 });
@@ -338,23 +352,23 @@ describe('eforge playbook run', () => {
 // ---------------------------------------------------------------------------
 
 describe('eforge play', () => {
-  it('calls apiPlaybookEnqueue — same observable result as playbook run', async () => {
-    mockApiPlaybookEnqueue.mockImplementation(() => wrap({ id: 'q-alias' }));
+  it('calls apiPlaybookRun — same observable result as playbook run', async () => {
+    mockApiPlaybookRun.mockImplementation(() => wrap({ kind: 'enqueued', id: 'q-alias' }));
 
     const program = makeProgram();
     await program.parseAsync(['node', 'eforge', 'play', 'docs-sync']);
 
-    expect(mockApiPlaybookEnqueue).toHaveBeenCalledOnce();
-    expect(mockApiPlaybookEnqueue).toHaveBeenCalledWith({ cwd: CWD, body: { name: 'docs-sync' } });
+    expect(mockApiPlaybookRun).toHaveBeenCalledOnce();
+    expect(mockApiPlaybookRun).toHaveBeenCalledWith({ cwd: CWD, body: { name: 'docs-sync' } });
   });
 
   it('passes afterQueueId via --after flag', async () => {
-    mockApiPlaybookEnqueue.mockImplementation(() => wrap({ id: 'q-alias-after' }));
+    mockApiPlaybookRun.mockImplementation(() => wrap({ kind: 'enqueued', id: 'q-alias-after' }));
 
     const program = makeProgram();
     await program.parseAsync(['node', 'eforge', 'play', 'docs-sync', '--after', 'q-abc']);
 
-    expect(mockApiPlaybookEnqueue).toHaveBeenCalledWith({
+    expect(mockApiPlaybookRun).toHaveBeenCalledWith({
       cwd: CWD,
       body: { name: 'docs-sync', afterQueueId: 'q-abc' },
     });
@@ -363,10 +377,10 @@ describe('eforge play', () => {
   it('produces the same call as playbook run for identical args', async () => {
     const playExpected = { cwd: CWD, body: { name: 'tech-debt-sweep', afterQueueId: 'q-prev' } };
 
-    mockApiPlaybookEnqueue.mockImplementation(() => wrap({ id: 'q-1' }));
+    mockApiPlaybookRun.mockImplementation(() => wrap({ kind: 'enqueued', id: 'q-1' }));
     const prog1 = makeProgram();
     await prog1.parseAsync(['node', 'eforge', 'playbook', 'run', 'tech-debt-sweep', '--after', 'q-prev']);
-    const call1 = mockApiPlaybookEnqueue.mock.calls[0];
+    const call1 = mockApiPlaybookRun.mock.calls[0];
 
     vi.clearAllMocks();
     exitSpy.mockRestore();
@@ -374,10 +388,10 @@ describe('eforge play', () => {
       throw new Error(`process.exit(${code ?? 0})`);
     });
 
-    mockApiPlaybookEnqueue.mockImplementation(() => wrap({ id: 'q-2' }));
+    mockApiPlaybookRun.mockImplementation(() => wrap({ kind: 'enqueued', id: 'q-2' }));
     const prog2 = makeProgram();
     await prog2.parseAsync(['node', 'eforge', 'play', 'tech-debt-sweep', '--after', 'q-prev']);
-    const call2 = mockApiPlaybookEnqueue.mock.calls[0];
+    const call2 = mockApiPlaybookRun.mock.calls[0];
 
     expect(call1).toEqual([playExpected]);
     expect(call2).toEqual([playExpected]);

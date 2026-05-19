@@ -2098,14 +2098,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_playbook",
     label: "eforge playbook",
     description:
-      'Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook\'s frontmatter and body; "save" validates and writes a playbook to the target tier; "enqueue" loads a playbook and enqueues it as a PRD, optionally chained after another queue entry; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing.',
+      'Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook\'s frontmatter and body; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks seed a session plan file (returns { kind: "planning", session, path }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing.',
     parameters: Type.Object({
-      action: StringEnum(["list", "show", "save", "enqueue", "promote", "demote", "validate"] as const, {
+      action: StringEnum(["list", "show", "save", "run", "promote", "demote", "validate"] as const, {
         description: "Operation to perform on playbooks",
       }),
       name: Type.Optional(
         Type.String({
-          description: 'Playbook name (required for "show", "enqueue", "promote", "demote")',
+          description: 'Playbook name (required for "show", "run", "promote", "demote")',
         }),
       ),
       scope: Type.Optional(
@@ -2119,6 +2119,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             name: Type.String(),
             description: Type.String(),
             scope: StringEnum(["user", "project-team", "project-local"] as const),
+            mode: StringEnum(["autonomous", "planning"] as const),
             agentRuntime: Type.Optional(Type.String()),
             postMerge: Type.Optional(Type.Array(Type.String())),
           }),
@@ -2134,7 +2135,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
       afterQueueId: Type.Optional(
         Type.String({
-          description: 'Queue entry ID to depend on (optional, "enqueue" only). When set, the new PRD will have dependsOn: [afterQueueId].',
+          description: 'Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].',
         }),
       ),
       raw: Type.Optional(
@@ -2168,11 +2169,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         return jsonResult(data);
       }
 
-      if (action === "enqueue") {
-        if (!name) throw new Error('"name" is required when action is "enqueue"');
+      if (action === "run") {
+        if (!name) throw new Error('"name" is required when action is "run"');
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
-        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookEnqueue, body);
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookRun, body);
         return jsonResult(data);
       }
 
@@ -2221,10 +2222,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             const source = theme.fg("dim", ` [${p.source}]`);
             lines.push(`  ${theme.fg("text", p.name)}${source}  ${theme.fg("muted", p.description)}`);
           }
+        } else if ((data as { kind?: unknown }).kind === "enqueued") {
+          lines.push(theme.fg("success", "✓ Enqueued: ") + theme.fg("accent", String((data as { id: string }).id)));
+        } else if ((data as { kind?: unknown }).kind === "planning") {
+          const d = data as { session: string; path: string };
+          lines.push(theme.fg("success", "✓ Planning session ready: ") + theme.fg("accent", d.session));
+          lines.push(theme.fg("dim", `  ${d.path}`));
         } else if ((data as { path?: unknown }).path) {
           lines.push(theme.fg("success", "✓ ") + theme.fg("text", String((data as { path: string }).path)));
-        } else if ((data as { id?: unknown }).id) {
-          lines.push(theme.fg("success", "✓ Enqueued: ") + theme.fg("accent", String((data as { id: string }).id)));
         } else if ((data as { ok?: unknown }).ok !== undefined) {
           const ok = (data as { ok: boolean }).ok;
           const errors = (data as { errors?: string[] }).errors ?? [];
@@ -2257,20 +2262,20 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_session_plan",
     label: "eforge session-plan",
     description:
-      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
+      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" seeds a new session plan from a planning-mode playbook (requires playbook_name). Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
     parameters: Type.Object({
       action: StringEnum(
-        ["list-active", "show", "create", "set-section", "skip-dimension", "set-status", "select-dimensions", "readiness", "migrate-legacy"] as const,
+        ["list-active", "show", "create", "set-section", "skip-dimension", "set-status", "select-dimensions", "readiness", "migrate-legacy", "create-from-playbook"] as const,
         { description: "Operation to perform on session plans" },
       ),
       session: Type.Optional(
         Type.String({
-          description: 'Session ID (required for all actions except "list-active")',
+          description: 'Session ID (required for all actions except "list-active" and "create-from-playbook")',
         }),
       ),
       topic: Type.Optional(
         Type.String({
-          description: 'Session topic (required for "create")',
+          description: 'Session topic (required for "create"; optional override for "create-from-playbook")',
         }),
       ),
       dimension: Type.Optional(
@@ -2308,9 +2313,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           description: 'When true, best-effort opens the resulting session plan file in the user\'s default application. Used by the /eforge:plan skill on create and on show after a session is selected.',
         }),
       ),
+      playbook_name: Type.Optional(
+        Type.String({
+          description: 'Playbook name to seed from (required for "create-from-playbook")',
+        }),
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open } = params;
+      const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open, playbook_name } = params;
 
       if (action === "list-active") {
         const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.sessionPlanList);
@@ -2389,9 +2399,18 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         return jsonResult(data);
       }
 
-      // action === "migrate-legacy"
-      if (!session) throw new Error('"session" is required when action is "migrate-legacy"');
-      const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanMigrateLegacy, { session });
+      if (action === "migrate-legacy") {
+        if (!session) throw new Error('"session" is required when action is "migrate-legacy"');
+        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanMigrateLegacy, { session });
+        return jsonResult(data);
+      }
+
+      // action === "create-from-playbook"
+      if (!playbook_name) throw new Error('"playbook_name" is required when action is "create-from-playbook"');
+      const cfpBody: Record<string, unknown> = { playbook_name };
+      if (session !== undefined) cfpBody.session = session;
+      if (topic !== undefined) cfpBody.topic = topic;
+      const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanCreateFromPlaybook, cfpBody);
       return jsonResult(data);
     },
 

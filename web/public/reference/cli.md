@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 0fdd9d5f -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -397,14 +397,14 @@ Open a playbook in $EDITOR, validate, and save to the same tier
 
 #### `run`
 
-Enqueue a playbook as a PRD
+Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks seed a session plan
 
 
 **Options:**
 
 | Flag | Description |
 |------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback) |
+| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
 
 #### `promote`
 
@@ -425,7 +425,7 @@ Shortcut for `eforge playbook run <name>`
 
 | Flag | Description |
 |------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback) |
+| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
 
 ### `mcp-proxy`
 

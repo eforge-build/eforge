@@ -124,9 +124,14 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 32', () => {
-    // v32 adds input-source/enricher provenance events (extension:input-source:fetched, extension:input-source:failed, extension:prd-enricher:applied, extension:prd-enricher:failed).
-    expect(DAEMON_API_VERSION).toBe(32);
+  it('is 33', () => {
+    // v33: renames route POST /api/playbook/enqueue → POST /api/playbook/run (old route returns 404);
+    // adds POST /api/session-plan/create-from-playbook; POST /api/playbook/run now returns a
+    // discriminated union { kind: 'enqueued'; id } or { kind: 'planning'; session; path } based on
+    // playbook.mode; MCP/Pi action 'enqueue' renamed to 'run' on eforge_playbook tool; new MCP/Pi
+    // action 'create-from-playbook' added to eforge_session_plan tool; playbook frontmatter now
+    // requires mode field.
+    expect(DAEMON_API_VERSION).toBe(33);
   });
 });
 

@@ -12,7 +12,7 @@ import {
   apiPlaybookList,
   apiPlaybookShow,
   apiPlaybookSave,
-  apiPlaybookEnqueue,
+  apiPlaybookRun,
   apiPlaybookPromote,
   apiPlaybookDemote,
   apiPlaybookValidate,
@@ -105,14 +105,19 @@ async function parsePlaybookRaw(raw: string): Promise<{
 async function runAction(name: string, options: { after?: string }): Promise<void> {
   const cwd = process.cwd();
   try {
-    const { data } = await apiPlaybookEnqueue({
+    const { data } = await apiPlaybookRun({
       cwd,
       body: {
         name,
         ...(options.after ? { afterQueueId: options.after } : {}),
       },
     });
-    console.log(data.id);
+    if (data.kind === 'enqueued') {
+      console.log(chalk.green('✔') + ` Enqueued: ${data.id}`);
+    } else {
+      console.log(chalk.green('✔') + ` Planning session ready: ${data.path}`);
+      console.log(chalk.dim(`  Open with /eforge:plan to continue.`));
+    }
   } catch (err) {
     const { message, exitCode } = formatCliError(err);
     console.error(chalk.red(`Error: ${message}`));
@@ -331,8 +336,8 @@ export function registerPlaybookCommand(program: Command): void {
 
   playbook
     .command('run <name>')
-    .description('Enqueue a playbook as a PRD')
-    .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback)')
+    .description('Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks seed a session plan')
+    .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only')
     .action(async (name: string, options: { after?: string }) => {
       await runAction(name, options);
     });
@@ -387,7 +392,7 @@ export function registerPlaybookCommand(program: Command): void {
   program
     .command('play <name>')
     .description('Shortcut for `eforge playbook run <name>`')
-    .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback)')
+    .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only')
     .action(async (name: string, options: { after?: string }) => {
       await runAction(name, options);
     });

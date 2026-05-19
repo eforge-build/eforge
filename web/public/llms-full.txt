@@ -2,7 +2,7 @@
 <!-- section: cli -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 0fdd9d5f -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -399,14 +399,14 @@ Open a playbook in $EDITOR, validate, and save to the same tier
 
 #### `run`
 
-Enqueue a playbook as a PRD
+Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks seed a session plan
 
 
 **Options:**
 
 | Flag | Description |
 |------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback) |
+| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
 
 #### `promote`
 
@@ -427,7 +427,7 @@ Shortcut for `eforge playbook run <name>`
 
 | Flag | Description |
 |------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback) |
+| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
 
 ### `mcp-proxy`
 
@@ -447,7 +447,7 @@ Run the MCP stdio proxy server (used by Claude Code plugin)
 <!-- section: api -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 0fdd9d5f -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -458,7 +458,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 61
+Total routes: 62
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -493,9 +493,9 @@ Total routes: 61
 | `plans` | `/api/plans/:runId` |
 | `playbookCopy` | `/api/playbook/copy` |
 | `playbookDemote` | `/api/playbook/demote` |
-| `playbookEnqueue` | `/api/playbook/enqueue` |
 | `playbookList` | `/api/playbook/list` |
 | `playbookPromote` | `/api/playbook/promote` |
+| `playbookRun` | `/api/playbook/run` |
 | `playbookSave` | `/api/playbook/save` |
 | `playbookShow` | `/api/playbook/show` |
 | `playbookValidate` | `/api/playbook/validate` |
@@ -514,6 +514,7 @@ Total routes: 61
 | `schedulerKick` | `/api/scheduler/kick` |
 | `sessionMetadata` | `/api/session-metadata` |
 | `sessionPlanCreate` | `/api/session-plan/create` |
+| `sessionPlanCreateFromPlaybook` | `/api/session-plan/create-from-playbook` |
 | `sessionPlanList` | `/api/session-plan/list` |
 | `sessionPlanMigrateLegacy` | `/api/session-plan/migrate-legacy` |
 | `sessionPlanReadiness` | `/api/session-plan/readiness` |
@@ -536,7 +537,7 @@ Use `buildPath(pattern, params)` from `@eforge-build/client` to resolve `:param`
 <!-- section: events -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 0fdd9d5f -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -754,7 +755,7 @@ Use `safeParseEforgeEvent(value)` from `@eforge-build/client` to validate at run
 <!-- section: config -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 0fdd9d5f -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -851,7 +852,7 @@ The complete machine-readable schema is at [`/schemas/config.schema.json`](/sche
 <!-- section: tools -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 0fdd9d5f -->
+<!-- Commit: 7df583ec -->
 <!-- Source: packages/eforge/src/cli/mcp-proxy.ts, packages/pi-eforge/extensions/eforge/index.ts, eforge-plugin/skills/, packages/pi-eforge/skills/ -->
 
 # eforge MCP Tools and Skills Reference
@@ -882,8 +883,8 @@ Total tools: 16
 | `eforge_recover` | Trigger failure recovery analysis for a failed build plan. Spawns the recovery agent as a background subprocess and returns its sessionId and pid. |
 | `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
 | `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon). |
-| `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook's frontmatter and body; "save" validates and writes a playbook to the target tier; "enqueue" loads a playbook and enqueues it as a PRD, optionally chained after another queue entry; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. |
-| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
+| `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook's frontmatter and body; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks seed a session plan file (returns { kind: "planning", session, path }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. |
+| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" seeds a new session plan from a planning-mode playbook (requires playbook_name). Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
 
 ## Native tools (Pi extension)
 
@@ -906,8 +907,8 @@ Total tools: 17
 | `eforge_recover` | Trigger failure recovery analysis for a failed build plan. Spawns the recovery agent as a background subprocess and returns its sessionId and pid. |
 | `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
 | `eforge_apply_recovery` |  |
-| `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook's frontmatter and body; "save" validates and writes a playbook to the target tier; "enqueue" loads a playbook and enqueues it as a PRD, optionally chained after another queue entry; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. |
-| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
+| `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook's frontmatter and body; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks seed a session plan file (returns { kind: "planning", session, path }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. |
+| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" seeds a new session plan from a planning-mode playbook (requires playbook_name). Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
 
 ## Skill surfaces
 

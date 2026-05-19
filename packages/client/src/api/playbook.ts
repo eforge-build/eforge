@@ -4,6 +4,7 @@
 
 import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
 import { API_ROUTES } from '../routes.js';
+import type { PlaybookRunResponse } from '../routes.js';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -74,10 +75,6 @@ export interface PlaybookSaveResponse {
   path: string;
 }
 
-export interface PlaybookEnqueueResponse {
-  id: string;
-}
-
 export interface PlaybookPromoteResponse {
   path: string;
 }
@@ -123,8 +120,8 @@ export function apiPlaybookSave(opts: { cwd: string; body: PlaybookSaveBody }) {
   return daemonRequest<PlaybookSaveResponse>(opts.cwd, 'POST', API_ROUTES.playbookSave, opts.body);
 }
 
-export function apiPlaybookEnqueue(opts: { cwd: string; body: { name: string; afterQueueId?: string } }) {
-  return daemonRequest<PlaybookEnqueueResponse>(opts.cwd, 'POST', API_ROUTES.playbookEnqueue, opts.body);
+export function apiPlaybookRun(opts: { cwd: string; body: { name: string; afterQueueId?: string; session?: string; topic?: string } }) {
+  return daemonRequest<PlaybookRunResponse>(opts.cwd, 'POST', API_ROUTES.playbookRun, opts.body);
 }
 
 export function apiPlaybookPromote(opts: { cwd: string; body: { name: string } }) {
@@ -168,8 +165,8 @@ export function apiPlaybookSaveIfRunning(opts: { cwd: string; body: PlaybookSave
   return daemonRequestIfRunning<PlaybookSaveResponse>(opts.cwd, 'POST', API_ROUTES.playbookSave, opts.body);
 }
 
-export function apiPlaybookEnqueueIfRunning(opts: { cwd: string; body: { name: string; afterQueueId?: string } }) {
-  return daemonRequestIfRunning<PlaybookEnqueueResponse>(opts.cwd, 'POST', API_ROUTES.playbookEnqueue, opts.body);
+export function apiPlaybookRunIfRunning(opts: { cwd: string; body: { name: string; afterQueueId?: string; session?: string; topic?: string } }) {
+  return daemonRequestIfRunning<PlaybookRunResponse>(opts.cwd, 'POST', API_ROUTES.playbookRun, opts.body);
 }
 
 export function apiPlaybookPromoteIfRunning(opts: { cwd: string; body: { name: string } }) {

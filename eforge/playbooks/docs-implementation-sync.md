@@ -2,6 +2,7 @@
 name: docs-implementation-sync
 description: Keep public documentation synchronized with the current implementation
 scope: project-team
+mode: autonomous
 ---
 
 ## Goal

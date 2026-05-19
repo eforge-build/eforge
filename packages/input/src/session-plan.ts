@@ -30,6 +30,7 @@ import { readFile, readdir, writeFile, mkdir, rename } from 'node:fs/promises';
 import { resolve, basename, dirname, sep } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
+import { playbookToPlanSeed, type Playbook } from './playbook.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,6 +76,8 @@ export const sessionPlanFrontmatterSchema = z.object({
   skipped_dimensions: z.array(skippedDimensionSchema).default([]),
   open_questions: z.array(z.string()).default([]),
   profile: z.enum(['errand', 'excursion', 'expedition']).nullable().default(null),
+  /** Playbook name this plan was seeded from, when created via `createSessionPlanFromPlaybookSeed`. */
+  seeded_from_playbook: z.string().optional(),
 }).passthrough();
 
 export type SessionPlanFrontmatter = z.output<typeof sessionPlanFrontmatterSchema>;
@@ -624,6 +627,78 @@ export function setSessionPlanSection(plan: SessionPlan, dimensionName: string, 
     ...plan,
     body: newBody,
     sections: parseSections(newBody),
+  };
+}
+
+/**
+ * Options for `createSessionPlanFromPlaybookSeed`.
+ */
+export interface CreateSessionPlanFromPlaybookSeedOpts {
+  /** The planning-mode playbook to seed from. Throws `PlaybookModeMismatchError` if `mode !== 'planning'`. */
+  playbook: Playbook;
+  /** Override the suggested session ID (default: derived from current date + playbook name). */
+  session?: string;
+  /** Override the suggested topic (default: derived from playbook description). */
+  topic?: string;
+}
+
+/**
+ * Create a `SessionPlan` seeded from a planning-mode `Playbook`.
+ *
+ * Throws `PlaybookModeMismatchError` when `playbook.mode !== 'planning'`.
+ *
+ * The playbook's body sections are written into the session plan body under
+ * the following headings:
+ * - `Goal`              → `## Goal`
+ * - `Out of scope`      → `## Out of scope`
+ * - `Acceptance criteria` → `## Acceptance criteria`
+ * - `Notes for the planner` → `## Notes from playbook`
+ *
+ * The resulting plan starts with `status: 'planning'`, `planning_type: 'unknown'`,
+ * `planning_depth: 'focused'`, empty dimension lists, and `profile: null` so the
+ * planning skill's Step 3 reclassifies per-instance.
+ *
+ * The frontmatter field `seeded_from_playbook` is set to the playbook name.
+ */
+export function createSessionPlanFromPlaybookSeed(opts: CreateSessionPlanFromPlaybookSeedOpts): SessionPlan {
+  const seed = playbookToPlanSeed(opts.playbook); // throws PlaybookModeMismatchError if mode !== 'planning'
+
+  const session = opts.session ?? seed.sessionId;
+  const topic = opts.topic ?? seed.topic;
+
+  const goalContent = seed.sections.get('goal') ?? '';
+  const outOfScopeContent = seed.sections.get('out of scope') ?? '';
+  const acContent = seed.sections.get('acceptance criteria') ?? '';
+  const notesContent = seed.sections.get('notes from playbook') ?? '';
+
+  const sectionParts: string[] = [];
+  sectionParts.push(`## Goal\n\n${goalContent}`);
+  if (outOfScopeContent.trim()) {
+    sectionParts.push(`## Out of scope\n\n${outOfScopeContent}`);
+  }
+  if (acContent.trim()) {
+    sectionParts.push(`## Acceptance criteria\n\n${acContent}`);
+  }
+  if (notesContent.trim()) {
+    sectionParts.push(`## Notes from playbook\n\n${notesContent}`);
+  }
+
+  const body = `\n# ${topic}\n\n${sectionParts.join('\n\n')}\n`;
+
+  return {
+    session,
+    topic,
+    status: 'planning',
+    planning_type: 'unknown',
+    planning_depth: 'focused',
+    required_dimensions: [],
+    optional_dimensions: [],
+    skipped_dimensions: [],
+    open_questions: [],
+    profile: null,
+    seeded_from_playbook: opts.playbook.name,
+    body,
+    sections: parseSections(body),
   };
 }
 
