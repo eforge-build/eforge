@@ -23,18 +23,17 @@ function execFileWithChild(
 ): { child: ChildProcess; result: Promise<ExecFileResult> } {
   let child!: ChildProcess;
   const result = new Promise<ExecFileResult>((resolve, reject) => {
-    child = nodeExecFile(executable, args, { cwd }, (err, stdout, stderr) => {
+    child = nodeExecFile(executable, args, { cwd }, (err, rawStdout, rawStderr) => {
+      const stdout = String(rawStdout ?? '');
+      const stderr = String(rawStderr ?? '');
       if (err) {
         const e = err as ExecFileError;
-        e.stdout = typeof stdout === 'string' ? stdout : stdout?.toString();
-        e.stderr = typeof stderr === 'string' ? stderr : stderr?.toString();
+        e.stdout = stdout;
+        e.stderr = stderr;
         reject(e);
         return;
       }
-      resolve({
-        stdout: typeof stdout === 'string' ? stdout : stdout.toString(),
-        stderr: typeof stderr === 'string' ? stderr : stderr.toString(),
-      });
+      resolve({ stdout, stderr });
     });
   });
   return { child, result };

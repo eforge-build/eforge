@@ -30,6 +30,7 @@ extensions:
   # agentContextHookTimeoutMs: 5000  # default: inherits eventHookTimeoutMs; positive integer milliseconds
   # profileRouterTimeoutMs: 5000 # default: inherits eventHookTimeoutMs; positive integer milliseconds
   # policyGateTimeoutMs: 5000 # default: inherits eventHookTimeoutMs; positive integer milliseconds
+  # validationProviderTimeoutMs: 5000 # default: inherits eventHookTimeoutMs; positive integer milliseconds
   # policyGateFailurePolicy: fail-closed # fail-closed (default) or fail-open
   # include: [build-notifier]    # optional allowlist by extension name
   # exclude: [experimental]      # optional denylist by extension name
@@ -48,6 +49,7 @@ Fields:
 | `extensions.agentContextHookTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `onAgentRun` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.profileRouterTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each profile-router handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.policyGateTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each policy-gate handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
+| `extensions.validationProviderTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `registerValidationProvider` handler invocation (function form) or command (commands form). Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for policy-gate throws, timeouts, or invalid decisions. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |
@@ -313,9 +315,9 @@ Reviewer perspectives execute during the review-cycle stage and are no longer de
 | `registerInputSource` | Yes | Yes | Yes (extension-aware enqueue preprocessing) |
 | `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
 | `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |
-| `registerValidationProvider` | Yes | Yes | Deferred |
+| `registerValidationProvider` | Yes | Yes | Yes (per-plan `validate` build stage) |
 
-Event-hook, agent-context-hook, agent-tool, profile-router, shipped policy-gate, input-source, and reviewer perspective examples can be loaded, validated, and run at runtime. Event-oriented examples include [`examples/extensions/minimal-event-logger.ts`](../examples/extensions/minimal-event-logger.ts) and the safe [`examples/extensions/slack-webhook-notifier.ts`](../examples/extensions/slack-webhook-notifier.ts), which only sends a Slack-compatible webhook when `EFORGE_SLACK_WEBHOOK_URL` is set. [`examples/extensions/agent-tools.ts`](../examples/extensions/agent-tools.ts) demonstrates defining a TypeBox tool, registering it for provenance, and returning it only for builder runs with `ctx.effectiveToolName(...)` in prompt text. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with `extensions.profileRouterTimeoutMs` timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. [`examples/extensions/protected-paths.ts`](../examples/extensions/protected-paths.ts) demonstrates runtime-supported plan/final merge policy enforcement for protected paths. [`examples/extensions/issue-tracker.ts`](../examples/extensions/issue-tracker.ts) demonstrates runtime-supported input source adapters for GitHub, Linear, and Jira. [`examples/extensions/reviewer-perspective.ts`](../examples/extensions/reviewer-perspective.ts) demonstrates a runtime-supported accessibility reviewer perspective with declarative `appliesTo.fileGlobs` applicability for UI/TSX files. Validation provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime phases.
+Event-hook, agent-context-hook, agent-tool, profile-router, shipped policy-gate, input-source, reviewer perspective, and validation provider examples can be loaded, validated, and run at runtime. Event-oriented examples include [`examples/extensions/minimal-event-logger.ts`](../examples/extensions/minimal-event-logger.ts) and the safe [`examples/extensions/slack-webhook-notifier.ts`](../examples/extensions/slack-webhook-notifier.ts), which only sends a Slack-compatible webhook when `EFORGE_SLACK_WEBHOOK_URL` is set. [`examples/extensions/agent-tools.ts`](../examples/extensions/agent-tools.ts) demonstrates defining a TypeBox tool, registering it for provenance, and returning it only for builder runs with `ctx.effectiveToolName(...)` in prompt text. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with `extensions.profileRouterTimeoutMs` timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. [`examples/extensions/protected-paths.ts`](../examples/extensions/protected-paths.ts) demonstrates runtime-supported plan/final merge policy enforcement for protected paths. [`examples/extensions/issue-tracker.ts`](../examples/extensions/issue-tracker.ts) demonstrates runtime-supported input source adapters for GitHub, Linear, and Jira. [`examples/extensions/reviewer-perspective.ts`](../examples/extensions/reviewer-perspective.ts) demonstrates a runtime-supported accessibility reviewer perspective with declarative `appliesTo.fileGlobs` applicability for UI/TSX files. [`examples/extensions/validation-provider.ts`](../examples/extensions/validation-provider.ts) demonstrates runtime-supported validation providers in both function form (programmatic) and command form (subprocess). `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime phases.
 
 ### Input sources and PRD enrichers
 
@@ -377,6 +379,46 @@ Applicability inputs are read-only snapshots of changed file paths and changed-l
 `eforge extension show` and JSON list/show/validate/test responses include registered reviewer perspectives with their key, label, description, extension name/path, and normalized applicability summary. Function source text is never exposed in management projections.
 
 See [`examples/extensions/reviewer-perspective.ts`](../examples/extensions/reviewer-perspective.ts) for an accessibility review example that targets UI/TSX files using declarative `appliesTo.fileGlobs`.
+
+### Validation providers
+
+Validation providers execute during the per-plan `validate` build stage, after the implement stage completes and before the review stage, when `validate` is included in the build pipeline. Each registered provider is invoked in registration order for every plan that reaches the validate stage. Providers are plan-failing but daemon-safe: any failure outcome (string return, `status: 'failed'` structured result, thrown error, non-zero command exit, or timeout) fails the current plan and emits `plan:build:failed`. The daemon process itself is never crashed by a provider failure.
+
+**Result contract**
+
+A provider may return values in one of two ways:
+
+- **Legacy string form**: return `null` or `undefined` to pass, or a non-empty `string` message to fail.
+- **Structured form**: return a `ValidationProviderResult` object with `status` (`'passed'`, `'failed'`, or `'skipped'`), an optional `message`, optional extended `details`, and optional per-file `annotations`.
+
+Mutually exclusive with the command form (see below). Provide exactly one of `validate` or `commands`.
+
+**Command form**
+
+For gates that reduce to a subprocess exit code, use the `commands` array instead of a `validate` function. Each entry is a whitespace-split command string run via `execFile` in the plan worktree. A non-zero exit code fails the plan with the command's stderr (or stdout if stderr is empty) as the message. Shell interpretation, quoted arguments, env-var expansion, redirects, and pipes are not supported; use the function form when you need those features.
+
+**Failure semantics and timeout**
+
+Providers run under a wall-clock timeout controlled by `extensions.validationProviderTimeoutMs` (falls back to `extensions.eventHookTimeoutMs`). On expiry the subprocess tree is killed and an `extension:validation-provider:timeout` event is emitted with the provider name and elapsed duration.
+
+**No-mutation contract**
+
+Providers receive a `ValidationProviderContext` carrying read-only build facts: `planId`, `planOutputDir`, `worktreePath`, `logger`, `exec`, `signal`, and `changedFiles`. Providers must not mutate engine state, the extension registry, or orchestration metadata. Writing to the plan worktree is allowed but uncommon; do not write outside the plan worktree.
+
+**Events**
+
+The runtime emits the following events during validation provider execution:
+
+- `extension:validation-provider:start` — provider invocation has begun.
+- `extension:validation-provider:complete` — provider returned a non-failing result; carries `status` (`'passed'` or `'skipped'`). Failures are emitted as `extension:validation-provider:error` instead.
+- `extension:validation-provider:error` — provider threw an error; carries the provider name and error message.
+- `extension:validation-provider:timeout` — provider exceeded `validationProviderTimeoutMs`; carries the provider name and elapsed milliseconds.
+
+**Management output**
+
+`eforge extension show` and JSON list/show/validate/test responses include registered validation providers with: `name`, `description`, `kind` (`function` or `commands`), `commandCount` (command-form only), and extension provenance. Function source text and raw command strings are never exposed in management projections.
+
+See [`examples/extensions/validation-provider.ts`](../examples/extensions/validation-provider.ts) for a worked example with both function-form (`type-check-gate`) and command-form (`lint-gate`) providers.
 
 ## Schema language
 

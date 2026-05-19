@@ -362,6 +362,9 @@ export type {
   ReviewerPerspectiveApplicabilitySummary,
   ReviewerPerspectiveDetail,
   // --- eforge:endregion plan-03-observability-docs-examples ---
+  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+  ValidationProviderDetail,
+  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
   ExtensionEntry,
   ExtensionListResponse,
   ExtensionShowResponse,

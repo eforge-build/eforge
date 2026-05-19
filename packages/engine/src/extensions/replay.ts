@@ -15,6 +15,7 @@ import {
   type ExtensionTestSource,
   type ReviewerPerspectiveDetail,
   type ReviewerPerspectiveApplicabilitySummary,
+  type ValidationProviderDetail,
 } from '@eforge-build/client';
 
 import { compilePattern } from '../hooks.js';
@@ -73,6 +74,11 @@ const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
 // reviewerPerspectives is intentionally excluded: perspectives are runtime-supported
 // and execute during the review-cycle stage, not deferred event-replay hooks.
 // --- eforge:endregion plan-03-observability-docs-examples ---
+// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+// validationProviders is retained in DEFERRED_FAMILIES for the API response so that
+// consumers can see the count; the CLI surfaces them as a "runtime-supported" section
+// and filters them from the "Deferred registrations:" display.
+// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 const DEFERRED_FAMILIES = [
   'agentRunHooks',
   'policyGates',
@@ -375,6 +381,31 @@ function computeMatches(
   return matches;
 }
 
+// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+function collectValidationProviderDetails(
+  registry: NativeExtensionRegistry,
+  extensionName: string,
+  extensionPath: string,
+): ValidationProviderDetail[] | undefined {
+  const details = registry.validationProviders
+    .filter((reg) => reg.extensionName === extensionName && reg.extensionPath === extensionPath)
+    .map((reg): ValidationProviderDetail => {
+      const kind: 'function' | 'commands' = reg.value.commands ? 'commands' : 'function';
+      return {
+        name: reg.value.name,
+        description: reg.value.description,
+        kind,
+        ...(kind === 'commands' && reg.value.commands !== undefined
+          ? { commandCount: reg.value.commands.length }
+          : {}),
+        extensionName: reg.extensionName,
+        extensionPath: reg.extensionPath,
+      };
+    });
+  return details.length > 0 ? details : undefined;
+}
+// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
+
 // --- eforge:region plan-03-observability-docs-examples ---
 function buildReviewerPerspectiveApplicabilitySummary(appliesTo: {
   fileGlobs?: string[];
@@ -426,6 +457,9 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
     // --- eforge:region plan-03-observability-docs-examples ---
     const reviewerPerspectiveDetails = collectReviewerPerspectiveDetails(registry, candidate.name, candidate.path);
     // --- eforge:endregion plan-03-observability-docs-examples ---
+    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+    const validationProviderDetails = collectValidationProviderDetails(registry, candidate.name, candidate.path);
+    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
     return {
       name: candidate.name,
       path: candidate.path,
@@ -457,6 +491,9 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       // --- eforge:region plan-03-observability-docs-examples ---
       ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
       // --- eforge:endregion plan-03-observability-docs-examples ---
+      // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+      ...(validationProviderDetails !== undefined && { validationProviderDetails }),
+      // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
       ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
       ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
     } satisfies ExtensionEntry;

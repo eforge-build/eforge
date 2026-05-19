@@ -40,6 +40,12 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type === 'extension:reviewer-perspective:applied') return { cls: 'info', label: type };
   if (type === 'extension:reviewer-perspective:skipped') return { cls: 'info', label: type };
   // --- eforge:endregion plan-02-extension-perspective-runtime ---
+  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+  if (type === 'extension:validation-provider:start') return { cls: 'start', label: type };
+  if (type === 'extension:validation-provider:complete') return { cls: 'complete', label: type };
+  if (type === 'extension:validation-provider:error') return { cls: 'failed', label: type };
+  if (type === 'extension:validation-provider:timeout') return { cls: 'failed', label: type };
+  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
   // --- eforge:region plan-04-monitor-ui ---
   if (type === 'recovery:start') return { cls: 'info', label: type };
   if (type === 'recovery:summary') return { cls: 'info', label: type };
@@ -155,6 +161,12 @@ function eventSummary(event: EforgeEvent): string {
       return `Extension perspective skipped: ${source}"${event.perspectiveKey}" (${event.reason})${event.message ? ' — ' + event.message : ''}`;
     }
     // --- eforge:endregion plan-02-extension-perspective-runtime ---
+    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+    case 'extension:validation-provider:start': return `Validation provider started: ${event.providerName} (${event.extensionName})`;
+    case 'extension:validation-provider:complete': return `Validation provider ${event.status}: ${event.providerName} (${event.extensionName})`;
+    case 'extension:validation-provider:error': return `Validation provider failed: ${event.providerName} (${event.extensionName}) — ${event.message}`;
+    case 'extension:validation-provider:timeout': return `Validation provider timed out: ${event.providerName} (${event.extensionName}) after ${event.timeoutMs}ms`;
+    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
     case 'planning:decision': return `Planning decision: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     case 'plan:build:decision': return `Build decision [${event.planId}]: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     default: return event.type;
@@ -330,6 +342,28 @@ function eventDetail(event: EforgeEvent): string | null {
     case 'extension:event-handler:timeout':
       return `Extension: ${event.extensionName}\nPath: ${event.extensionPath}\nPattern: ${event.pattern}\nTriggering event: ${event.triggeringEventType}\nTimeout: ${event.timeoutMs}ms`;
     // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+    case 'extension:validation-provider:error': {
+      const parts = [
+        `Extension: ${event.extensionName}`,
+        `Path: ${event.extensionPath}`,
+        `Provider: ${event.providerName}`,
+        `Message: ${event.message}`,
+      ];
+      if (event.command) parts.push(`Command: ${event.command}`);
+      if (event.exitCode !== undefined) parts.push(`Exit code: ${event.exitCode}`);
+      if (event.details) parts.push(`Details:\n${event.details}`);
+      return parts.join('\n');
+    }
+    case 'extension:validation-provider:timeout':
+      return [
+        `Extension: ${event.extensionName}`,
+        `Path: ${event.extensionPath}`,
+        `Provider: ${event.providerName}`,
+        `Timeout: ${event.timeoutMs}ms`,
+        ...(event.command ? [`Command: ${event.command}`] : []),
+      ].join('\n');
+    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
     case 'planning:decision':
       return decisionDetail(event.decision);
     case 'plan:build:decision':

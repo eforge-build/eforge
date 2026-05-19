@@ -589,7 +589,7 @@ Applicability inputs are read-only API snapshots (changed file paths and changed
 
 ### `registerValidationProvider(spec)`
 
-Register a custom validation step that runs after build completion.
+Register a custom validation step that runs during the per-plan `validate` build stage, after the implement stage and before the review stage.
 
 **Signature:**
 
@@ -599,25 +599,134 @@ registerValidationProvider(spec: ValidationProviderSpec): void
 
 **`ValidationProviderSpec`:**
 
+Provide exactly one of `validate` (function form) or `commands` (command form). Registering both or neither is rejected at load time.
+
 ```ts
 interface ValidationProviderSpec {
   /** Unique provider name. */
   name: string;
   /** Human-readable description of what this provider validates. */
   description: string;
+
   /**
-   * Validate the build output for the plan at `planOutputDir`.
+   * Function form: run custom validation logic for the plan.
    *
-   * Return `null` or `undefined` to signal success. Return a `string` message
-   * to signal failure — the message is surfaced in build output.
+   * Receives the absolute path to the plan worktree and an optional
+   * `ValidationProviderContext` with richer build facts (planId, logger,
+   * exec, signal, changedFiles).
+   *
+   * Return values:
+   * - `null` or `undefined` — passed
+   * - non-empty `string` — failed (the string is the failure message)
+   * - `ValidationProviderResult` — explicit structured outcome
+   *
+   * Mutually exclusive with `commands`. Provide exactly one.
    */
-  validate: (
+  validate?: (
     planOutputDir: string,
-  ) => Promise<string | null | undefined> | string | null | undefined;
+    context?: ValidationProviderContext,
+  ) => Promise<string | null | undefined | ValidationProviderResult>
+     | string | null | undefined | ValidationProviderResult;
+
+  /**
+   * Command form: shell commands to run in the plan worktree, one per entry.
+   *
+   * Each command string is split on whitespace into `[executable, ...args]`
+   * and run via `execFile` (no shell interpretation — quoted args, env-var
+   * expansion, redirects, and pipes are not supported). A non-zero exit code
+   * fails the plan with the command's stderr (or stdout if stderr is empty).
+   *
+   * Mutually exclusive with `validate`. Provide exactly one.
+   */
+  commands?: string[];
 }
 ```
 
-**Runtime status:** registration is captured at load time; validation-provider execution is deferred.
+**`ValidationProviderContext`:**
+
+```ts
+interface ValidationProviderContext {
+  /** The plan ID being validated. */
+  planId: string;
+  /** Absolute path to the worktree root for the plan. */
+  planOutputDir: string;
+  /** Same as `planOutputDir` — the worktree root path. */
+  worktreePath: string;
+  /** Structured logger routed through the eforge daemon's log pipeline. */
+  logger: ExtensionLogger;
+  /** Shell-exec API for running subprocesses from a validation provider. */
+  exec: ExtensionExecApi;
+  /** AbortSignal for the current build, if available. */
+  signal?: AbortSignal;
+  /** Files changed in the plan worktree, if available. */
+  changedFiles?: string[];
+}
+```
+
+**`ValidationProviderResult`:**
+
+```ts
+interface ValidationProviderResult {
+  /** Validation outcome. */
+  status: 'passed' | 'failed' | 'skipped';
+  /** Optional human-readable message describing the outcome. */
+  message?: string;
+  /** Optional extended details (e.g. full command output). */
+  details?: string;
+  /** Optional structured annotations for individual files. */
+  annotations?: Array<{
+    severity: 'info' | 'warning' | 'error';
+    message: string;
+    file?: string;
+    line?: number;
+  }>;
+}
+```
+
+**Worked example:**
+
+```ts
+import type { EforgeExtensionAPI, ValidationProviderResult } from '@eforge-build/extension-sdk';
+
+export default function validationProviders(eforge: EforgeExtensionAPI): void {
+  // Function form: programmatic validation with full context access.
+  eforge.registerValidationProvider({
+    name: 'type-check-gate',
+    description: 'Runs TypeScript type checking and fails the plan on type errors.',
+    validate: async (planOutputDir, ctx): Promise<ValidationProviderResult | string | null> => {
+      const result = await ctx!.exec.run('pnpm', ['type-check'], { cwd: planOutputDir });
+      if (result.exitCode !== 0) {
+        return {
+          status: 'failed',
+          message: 'TypeScript type checking failed',
+          details: result.stderr.trim() || result.stdout.trim(),
+        };
+      }
+      return null; // passed
+    },
+  });
+
+  // Command form: exit-code-is-failure subprocess dispatch.
+  eforge.registerValidationProvider({
+    name: 'lint-gate',
+    description: 'Runs the project linter and fails the plan on lint errors.',
+    commands: ['pnpm lint'],
+  });
+}
+```
+
+**Failure semantics and timeout:**
+
+Providers are plan-failing but daemon-safe. Any failure outcome (string return, `status: 'failed'` result, thrown error, non-zero command exit, or timeout) fails the current plan. The timeout is controlled by `extensions.validationProviderTimeoutMs` (falls back to `extensions.eventHookTimeoutMs`).
+
+**Runtime events:**
+
+- `extension:validation-provider:start` — provider invocation has begun.
+- `extension:validation-provider:complete` — provider returned; carries `status`.
+- `extension:validation-provider:error` — provider threw; carries provider name and error message.
+- `extension:validation-provider:timeout` — timeout exceeded; carries provider name and elapsed milliseconds.
+
+**Runtime status:** registration is captured at load time. Providers execute at runtime during the per-plan `validate` build stage. See [`examples/extensions/validation-provider.ts`](../examples/extensions/validation-provider.ts) for a worked example with both function-form and command-form providers.
 
 ---
 
@@ -824,7 +933,7 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, and `registerReviewerPerspective` parallel review-cycle dispatch. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. Validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred for later phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, and `registerValidationProvider` per-plan `validate`-stage execution. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred for later phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -838,7 +947,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerInputSource` | Yes | Yes | Yes (extension-aware enqueue preprocessing) |
 | `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
 | `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |
-| `registerValidationProvider` | Yes | Yes | Deferred |
+| `registerValidationProvider` | Yes | Yes | Yes (per-plan `validate` build stage) |
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 

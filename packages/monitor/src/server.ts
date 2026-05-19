@@ -1760,6 +1760,9 @@ export async function startServer(
         // --- eforge:region plan-03-observability-docs-examples ---
         ...(loaded?.reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails: loaded.reviewerPerspectiveDetails }),
         // --- eforge:endregion plan-03-observability-docs-examples ---
+        // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+        ...(loaded?.validationProviderDetails !== undefined && { validationProviderDetails: loaded.validationProviderDetails }),
+        // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
         ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
         ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
       };
