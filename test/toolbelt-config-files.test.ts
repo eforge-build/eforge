@@ -58,11 +58,11 @@ describe('readMcpServers', () => {
 describe('addPlaywrightServer', () => {
   it('creates .mcp.json with playwright when file is missing', () => {
     const tmpDir = makeTempDir();
-    addPlaywrightServer(tmpDir, { command: 'npx', args: ['@playwright/mcp@latest'] });
+    addPlaywrightServer(tmpDir, { command: 'npx', args: ['-y', '@playwright/mcp@latest'] });
     const content = JSON.parse(fs.readFileSync(path.join(tmpDir, '.mcp.json'), 'utf-8'));
     expect(content.mcpServers.playwright).toEqual({
       command: 'npx',
-      args: ['@playwright/mcp@latest'],
+      args: ['-y', '@playwright/mcp@latest'],
     });
   });
 
@@ -120,6 +120,16 @@ describe('upsertToolbeltInConfig', () => {
     const preset = getPresetById('browser-ui')!;
     upsertToolbeltInConfig(tmpDir, preset);
     expect(fs.existsSync(path.join(tmpDir, 'eforge', 'config.yaml'))).toBe(true);
+  });
+
+  it('throws instead of overwriting a non-object config file', () => {
+    const tmpDir = makeTempDir();
+    const eforgeDir = path.join(tmpDir, 'eforge');
+    fs.mkdirSync(eforgeDir);
+    fs.writeFileSync(path.join(eforgeDir, 'config.yaml'), '- not\n- an object\n');
+    const preset = getPresetById('browser-ui')!;
+    expect(() => upsertToolbeltInConfig(tmpDir, preset)).toThrow('YAML object');
+    expect(fs.readFileSync(path.join(eforgeDir, 'config.yaml'), 'utf-8')).toBe('- not\n- an object\n');
   });
 
   it('preserves unrelated config keys and existing toolbelts when upserting a preset', () => {

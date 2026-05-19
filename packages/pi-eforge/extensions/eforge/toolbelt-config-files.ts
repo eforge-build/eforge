@@ -94,7 +94,7 @@ export function readEforgeConfig(projectRoot: string): Record<string, unknown> {
   if (!raw) return {};
   const parsed: unknown = yaml.parse(raw);
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return {};
+    throw new Error(`eforge/config.yaml must be a YAML object at the top level`);
   }
   return parsed as Record<string, unknown>;
 }

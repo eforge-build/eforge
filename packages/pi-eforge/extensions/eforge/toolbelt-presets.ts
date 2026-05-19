@@ -29,7 +29,7 @@ export const TOOLBELT_PRESETS: ToolbeltPreset[] = [
       servers: {
         playwright: {
           command: 'npx',
-          args: ['@playwright/mcp@latest'],
+          args: ['-y', '@playwright/mcp@latest'],
         },
       },
     },
