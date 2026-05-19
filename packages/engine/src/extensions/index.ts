@@ -11,15 +11,39 @@ export {
 } from './trust-store.js';
 export type { ExtensionTrustRecord, ExtensionTrustStore } from './trust-store.js';
 // --- eforge:endregion plan-01-engine-trust-foundation ---
+// --- eforge:region plan-01-extension-package-foundation ---
+export { parsePackageManifest } from './package-manifest.js';
+export type {
+  EforgeExtensionManifest,
+  ExtensionPackageMetadata,
+  PackageManifestError,
+  PackageManifestErrorCode,
+  PackageManifestParseResult,
+} from './package-manifest.js';
+export {
+  INSTALL_SIDECAR_FILENAME,
+  readInstallSidecar,
+  writeInstallSidecar,
+} from './install-metadata.js';
+export type {
+  InstallIntegrity,
+  InstallSidecarData,
+  InstallSourceKind,
+  InstallTargetScope,
+  ReadInstallSidecarResult,
+} from './install-metadata.js';
+// --- eforge:endregion plan-01-extension-package-foundation ---
 export type {
   NativeExtensionCandidate,
   NativeExtensionDiagnostic,
   NativeExtensionDiscoveryResult,
   NativeExtensionFormat,
+  NativeExtensionInstallProvenance,
   NativeExtensionLayout,
   NativeExtensionLoaderOptions,
   NativeExtensionLoaderStrategy,
   NativeExtensionLoadResult,
+  NativeExtensionPackageProvenance,
   NativeExtensionRegistry,
   NativeExtensionScope,
   NativeExtensionShadow,

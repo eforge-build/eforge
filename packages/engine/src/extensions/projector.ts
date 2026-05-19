@@ -1,5 +1,5 @@
 import type { ReviewerPerspectiveDetail, ReviewerPerspectiveApplicabilitySummary } from '@eforge-build/client';
-import type { NativeExtensionCandidate, NativeExtensionDiagnostic, NativeExtensionRegistry } from './types.js';
+import type { NativeExtensionCandidate, NativeExtensionDiagnostic, NativeExtensionInstallProvenance, NativeExtensionPackageProvenance, NativeExtensionRegistry } from './types.js';
 
 export interface NativeExtensionRegistryProjection {
   extensions: Array<{
@@ -13,6 +13,8 @@ export interface NativeExtensionRegistryProjection {
     // --- eforge:region plan-03-observability-docs-examples ---
     reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
     // --- eforge:endregion plan-03-observability-docs-examples ---
+    packageProvenance?: NativeExtensionPackageProvenance;
+    installProvenance?: NativeExtensionInstallProvenance;
   }>;
   candidates: Array<{
     name: string;
@@ -29,6 +31,8 @@ export interface NativeExtensionRegistryProjection {
     trustStorePath?: string;
     status: string;
     shadows: Array<{ name: string; path: string; scope: string; entrypoint?: string }>;
+    packageProvenance?: NativeExtensionPackageProvenance;
+    installProvenance?: NativeExtensionInstallProvenance;
   }>;
   diagnostics: NativeExtensionDiagnostic[];
   totals: {
@@ -105,6 +109,8 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
         // --- eforge:region plan-03-observability-docs-examples ---
         ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
         // --- eforge:endregion plan-03-observability-docs-examples ---
+        ...(extension.packageProvenance !== undefined && { packageProvenance: { ...extension.packageProvenance } }),
+        ...(extension.installProvenance !== undefined && { installProvenance: { ...extension.installProvenance } }),
       };
     }),
     candidates: registry.candidates.map(projectExtensionCandidate),
@@ -144,5 +150,7 @@ function projectExtensionCandidate(candidate: NativeExtensionCandidate): NativeE
       scope: shadow.scope,
       entrypoint: shadow.entrypoint,
     })),
+    ...(candidate.packageProvenance !== undefined && { packageProvenance: { ...candidate.packageProvenance } }),
+    ...(candidate.installProvenance !== undefined && { installProvenance: { ...candidate.installProvenance } }),
   };
 }

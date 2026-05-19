@@ -89,6 +89,20 @@ export type {
   ExtensionReloadWatcherMetadata,
   ExtensionReloadResponse,
   // --- eforge:endregion plan-01-extension-management-api ---
+  // --- eforge:region plan-01-extension-package-foundation ---
+  ExtensionPackageProvenance,
+  ExtensionInstallProvenance,
+  ExtensionInstallRequest,
+  ExtensionInstallResponse,
+  ExtensionUpdateRequest,
+  ExtensionUpdateResponse,
+  ExtensionRemoveRequest,
+  ExtensionRemoveResponse,
+  ExtensionPromoteRequest,
+  ExtensionPromoteResponse,
+  ExtensionDemoteRequest,
+  ExtensionDemoteResponse,
+  // --- eforge:endregion plan-01-extension-package-foundation ---
   QueueItem,
   SessionMetadata,
   RunInfo,

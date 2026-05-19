@@ -143,6 +143,13 @@ export const API_ROUTES = {
   extensionNew: '/api/extensions/new',
   extensionReload: '/api/extensions/reload',
   // --- eforge:endregion plan-01-extension-management-api ---
+  // --- eforge:region plan-01-extension-package-foundation ---
+  extensionInstall: '/api/extensions/install',
+  extensionUpdate: '/api/extensions/update',
+  extensionRemove: '/api/extensions/remove',
+  extensionPromote: '/api/extensions/promote',
+  extensionDemote: '/api/extensions/demote',
+  // --- eforge:endregion plan-01-extension-package-foundation ---
   queue: '/api/queue',
   sessionMetadata: '/api/session-metadata',
   runs: '/api/runs',

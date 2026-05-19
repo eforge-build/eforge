@@ -80,6 +80,80 @@ The highest-precedence candidate wins; lower-precedence candidates with the same
 
 CLI scaffold scopes map to discovery directories as follows: local -> `.eforge/extensions/`, project -> `eforge/extensions/`, and user -> `~/.config/eforge/extensions/` by default (`$XDG_CONFIG_HOME/eforge/extensions/` when configured).
 
+## Package-managed extensions
+
+Extensions can be distributed as npm packages, local package directories, or tarballs and installed with `eforge extension install`. A package declares itself as an eforge extension using the `eforge.extension` field in `package.json`:
+
+```json
+{
+  "name": "acme-build-notifier",
+  "version": "1.0.0",
+  "eforge": {
+    "extension": {
+      "name": "build-notifier",
+      "entrypoint": "./dist/index.js"
+    }
+  }
+}
+```
+
+Fields:
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `eforge.extension.name` | Yes | Extension name used for discovery, trust records, and management commands. |
+| `eforge.extension.entrypoint` | Yes | Relative path from the package root to the extension module entry point. |
+
+### Install, update, and remove
+
+```bash
+# Install from an npm package name (defaults to --scope local)
+eforge extension install acme-build-notifier
+
+# Install from a local package directory or tarball
+eforge extension install ./packages/acme-build-notifier
+eforge extension install ./dist/acme-build-notifier-1.0.0.tgz
+
+# Install to a specific scope
+eforge extension install acme-build-notifier --scope project
+
+# Install and immediately trust (project/team scope only)
+eforge extension install acme-build-notifier --scope project --trust
+eforge extension install acme-build-notifier --scope project --trust --trusted-by "Alice <alice@example.com>"
+
+# Update an installed extension to the latest version
+eforge extension update build-notifier
+
+# Remove an installed extension
+eforge extension remove build-notifier
+eforge extension remove build-notifier --force
+```
+
+Install scope follows the CLI scaffold labels: `local` targets `.eforge/extensions/`, `project` targets `eforge/extensions/`, and `user` targets `~/.config/eforge/extensions/`. The default scope is `local`. Package acquisition uses the local `npm` CLI for npm specs/tarball URLs and the system `tar` command for tarball extraction, so ensure those commands are on `PATH` when using those source types.
+
+Non-JSON output prints concrete next steps after install. When the returned entry has `trustState: "untrusted"` or `"changed"`, the CLI prints a trust command (`eforge extension trust <name>`), a validate command, and a reload command. JSON output (`--json`) prints the daemon response directly.
+
+### Promote and demote
+
+Installed and source-authored extensions can be promoted from project-local scope to project-team scope or demoted back:
+
+```bash
+eforge extension promote build-notifier
+eforge extension promote build-notifier --force
+
+eforge extension demote build-notifier
+```
+
+`promote` moves the extension from `.eforge/extensions/` to `eforge/extensions/`. `demote` moves it back. After promotion, project/team scope trust requirements apply: users must run `eforge extension trust <name>` before the extension loads. After demotion, the extension returns to project-local scope and loads without an explicit trust record.
+
+### Trust and supply-chain safety
+
+Package-managed extensions are **unsandboxed arbitrary code**. Installing from npm, a tarball, or a local package directory introduces supply-chain risk: a package may contain malicious code, its published source may not match the distributed artifact, and transitive dependencies are executed without a sandbox. Always inspect installed extension code before trusting it, especially before promoting to project/team scope where other team members will be asked to trust the same artifact.
+
+The content hash covers extension source files only. Install sidecar files - package metadata, lockfile records, and other install-generated artifacts written alongside the extension module - are excluded from the trust hash. This means that reinstalling without changing the source files does not invalidate an existing trust record.
+
+Git URL installs are not yet supported. Accepted install sources are npm package specifiers (including tarball URLs), local package directories, and local `.tgz`/`.tar.gz` tarball paths.
+
 ## Supported layouts
 
 Auto-discovered and explicit extension paths support file and directory layouts.
@@ -162,6 +236,8 @@ Provenance fields identify where an extension came from:
 - `trustedBy`: optional annotation set at trust time
 - `shadows`: lower-precedence candidates hidden by this candidate
 - `registrations`: counts captured by registration family
+- `package`: package provenance from `package.json`, including `packageName`, `version`, `description`, `eforgeExtensionName`, `eforgeEntrypoint`, `repository`, and `homepage` when present
+- `install`: install provenance from `.eforge-install.json`, including `sourceKind`, `sourceSpec`, `resolvedVersion`, `integrity`, `installedAt`, and `targetScope` for eforge-managed installs
 
 Use:
 
@@ -177,6 +253,12 @@ eforge extension new <name>
 eforge extension reload
 eforge extension trust <nameOrPath>
 eforge extension untrust <nameOrPath>
+eforge extension install <source>
+eforge extension install <source> --scope project --trust
+eforge extension update <name>
+eforge extension remove <name>
+eforge extension promote <name>
+eforge extension demote <name>
 ```
 
 `eforge extension test [nameOrPath]` validates the selected extension set and dry-runs matching `onEvent` hooks against replayed events. Omit `nameOrPath` to test configured extensions, pass a configured extension name to test one loaded extension, or pass an extension file/directory path for an ad-hoc test. Path detection matches `extension validate`: `./tools/eforge-audit.ts` is a path, while `build-notifier` is a configured extension name.
@@ -200,11 +282,11 @@ Non-JSON output is summary-first. It reports whether the test passed, the source
 
 List/show output includes `enabled`, a derived boolean for whether the entry is selected by the current extension config and is not shadowed or excluded. It is `false` when extensions are globally disabled, when include/exclude filters leave the entry out, or when a higher-precedence extension shadows it. A selected entry can still have `enabled: true` with status `skipped` or `error`; use status, trust, and diagnostics to see why it did not load.
 
-Add `--json` to CLI commands for machine-readable provenance. The same data is exposed via `/api/extensions/list`, `/api/extensions/show`, `/api/extensions/validate`, `/api/extensions/new`, `/api/extensions/reload`, `/api/extensions/test`, `/api/extensions/trust`, and `/api/extensions/untrust`.
+Add `--json` to CLI commands for machine-readable provenance. The same data is exposed via `/api/extensions/list`, `/api/extensions/show`, `/api/extensions/validate`, `/api/extensions/new`, `/api/extensions/reload`, `/api/extensions/test`, `/api/extensions/trust`, `/api/extensions/untrust`, `/api/extensions/install`, `/api/extensions/update`, `/api/extensions/remove`, `/api/extensions/promote`, and `/api/extensions/demote`.
 
 `eforge extension trust` and `eforge extension untrust` discover and hash project/team candidates, then update `.eforge/extension-trust.json`; they do not import the extension module or execute its factory. The trust decision takes effect when a later validate, test, reload, or build operation loads the extension.
 
-`extension enable`, `extension disable`, `extension promote`, and `extension demote` workflows are deferred.
+`extension enable` and `extension disable` workflows are deferred.
 
 ## Runtime support today
 

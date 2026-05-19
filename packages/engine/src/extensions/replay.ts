@@ -457,6 +457,8 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       // --- eforge:region plan-03-observability-docs-examples ---
       ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
       // --- eforge:endregion plan-03-observability-docs-examples ---
+      ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
+      ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
     } satisfies ExtensionEntry;
   }).sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
 }

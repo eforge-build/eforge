@@ -36,10 +36,26 @@ import {
   apiReloadExtensions,
   apiTrustExtension,
   apiUntrustExtension,
+  // --- eforge:region plan-03-extension-package-surfaces-docs ---
+  apiInstallExtension,
+  apiUpdateExtension,
+  apiRemoveExtension,
+  apiPromoteExtension,
+  apiDemoteExtension,
+  // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
   type ExtensionEntry,
   type ExtensionNewRequest,
   type ExtensionTestRequest,
   type ExtensionTestResponse,
+  // --- eforge:region plan-03-extension-package-surfaces-docs ---
+  type ExtensionInstallRequest,
+  type ExtensionInstallResponse,
+  type ExtensionUpdateRequest,
+  type ExtensionUpdateResponse,
+  type ExtensionRemoveResponse,
+  type ExtensionPromoteResponse,
+  type ExtensionDemoteResponse,
+  // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
 } from '@eforge-build/client';
 import { runOrDelegate } from './run-or-delegate.js';
 import { formatCliError } from './errors.js';
@@ -224,6 +240,19 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
     if (entry.trustedAt) console.log(`  Trusted at:    ${entry.trustedAt}`);
     if (entry.trustedBy) console.log(`  Trusted by:    ${entry.trustedBy}`);
   }
+  // --- eforge:region plan-03-extension-package-surfaces-docs ---
+  if (entry.package) {
+    const pkg = entry.package;
+    if (pkg.packageName) console.log(`  Package:       ${pkg.packageName}${pkg.version ? `@${pkg.version}` : ''}`);
+    if (pkg.description) console.log(`  Description:   ${pkg.description}`);
+    if (pkg.repository) console.log(`  Repository:    ${pkg.repository}`);
+  }
+  if (entry.install) {
+    const inst = entry.install;
+    console.log(`  Installed from: ${inst.sourceKind}:${inst.sourceSpec}`);
+    if (inst.installedAt) console.log(`  Installed at:  ${inst.installedAt}`);
+  }
+  // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
   // --- eforge:region plan-03-observability-docs-examples ---
   if (entry.reviewerPerspectiveDetails && entry.reviewerPerspectiveDetails.length > 0) {
     console.log('  Reviewer perspectives:');
@@ -258,6 +287,16 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
     }
   }
 }
+
+// --- eforge:region plan-03-extension-package-surfaces-docs ---
+function renderInstallNextSteps(entry: ExtensionEntry): void {
+  if (entry.trustState === 'untrusted' || entry.trustState === 'changed') {
+    console.log(chalk.dim(`Next: eforge extension trust ${entry.name}`));
+  }
+  console.log(chalk.dim(`Next: eforge extension validate ${entry.name}`));
+  console.log(chalk.dim('Next: eforge extension reload'));
+}
+// --- eforge:endregion plan-03-extension-package-surfaces-docs ---
 
 function formatExtensionTestSource(source: ExtensionTestResponse['source']): string {
   const parts: string[] = [source.kind];
@@ -951,6 +990,155 @@ export function createProgram(abortController?: AbortController, version?: strin
       }
     });
   // --- eforge:endregion plan-02-management-surfaces ---
+
+  // --- eforge:region plan-03-extension-package-surfaces-docs ---
+  extension
+    .command('install <source>')
+    .description('Install a native extension package from an npm package, local path, or tarball')
+    .option('--scope <scope>', 'Extension scope: local, project, or user')
+    .option('--name <name>', 'Logical extension name override')
+    .option('--force', 'Overwrite an existing extension at the target scope')
+    .option('--trust', 'Trust the extension after install (project-team scope only)')
+    .option('--trusted-by <identity>', 'Optional annotation identifying who is trusting the extension')
+    .option('--json', 'Output JSON')
+    .action(async (source: string, options: { scope?: string; name?: string; force?: boolean; trust?: boolean; trustedBy?: string; json?: boolean }) => {
+      try {
+        if (options.scope !== undefined && !['local', 'project', 'user'].includes(options.scope)) {
+          throw new Error('--scope must be one of: local, project, user');
+        }
+        const body: ExtensionInstallRequest = { source };
+        if (options.scope !== undefined) body.scope = options.scope as ExtensionInstallRequest['scope'];
+        if (options.name !== undefined) body.name = options.name;
+        if (options.force !== undefined) body.force = options.force;
+        if (options.trust !== undefined) body.trust = options.trust;
+        if (options.trustedBy !== undefined) body.trustedBy = options.trustedBy;
+        const { data }: { data: ExtensionInstallResponse } = await apiInstallExtension({ cwd: process.cwd(), body });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.log(chalk.green('✔') + ` Extension ${data.extension.name} installed`);
+          console.log(`  Scope:  ${data.extension.scope}`);
+          console.log(`  Path:   ${data.extension.path}`);
+          if (data.extension.install?.sourceKind) console.log(`  From:   ${data.extension.install.sourceKind}:${data.extension.install.sourceSpec ?? ''}`);
+          console.log(chalk.dim(data.message));
+          renderInstallNextSteps(data.extension);
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('update <name>')
+    .description('Update an installed extension package to the latest version')
+    .option('--trust', 'Trust the extension after update (project-team scope only)')
+    .option('--trusted-by <identity>', 'Optional annotation identifying who is trusting the extension')
+    .option('--json', 'Output JSON')
+    .action(async (name: string, options: { trust?: boolean; trustedBy?: string; json?: boolean }) => {
+      try {
+        const body: ExtensionUpdateRequest = { name };
+        if (options.trust !== undefined) body.trust = options.trust;
+        if (options.trustedBy !== undefined) body.trustedBy = options.trustedBy;
+        const { data }: { data: ExtensionUpdateResponse } = await apiUpdateExtension({ cwd: process.cwd(), body });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.log(chalk.green('✔') + ` Extension ${data.extension.name} updated`);
+          if (data.previousVersion) console.log(`  Previous version: ${data.previousVersion}`);
+          if (data.extension.install?.sourceKind) console.log(`  From:   ${data.extension.install.sourceKind}:${data.extension.install.sourceSpec ?? ''}`);
+          console.log(chalk.dim(data.message));
+          renderInstallNextSteps(data.extension);
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('remove <name>')
+    .description('Remove an installed extension package')
+    .option('--force', 'Remove without confirmation')
+    .option('--json', 'Output JSON')
+    .action(async (name: string, options: { force?: boolean; json?: boolean }) => {
+      try {
+        const body: { name: string; force?: boolean } = { name };
+        if (options.force !== undefined) body.force = options.force;
+        const { data }: { data: ExtensionRemoveResponse } = await apiRemoveExtension({ cwd: process.cwd(), body });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.log(chalk.green('✔') + ' Extension removed');
+          console.log(chalk.dim(data.message));
+          console.log(chalk.dim('Next: eforge extension reload'));
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('promote <name>')
+    .description('Promote a project-local extension to project-team scope')
+    .option('--force', 'Overwrite an existing extension at project-team scope')
+    .option('--trust', 'Trust the extension after promotion')
+    .option('--trusted-by <identity>', 'Optional annotation identifying who is trusting the extension')
+    .option('--json', 'Output JSON')
+    .action(async (name: string, options: { force?: boolean; trust?: boolean; trustedBy?: string; json?: boolean }) => {
+      try {
+        const body: { name: string; force?: boolean; trust?: boolean; trustedBy?: string } = { name };
+        if (options.force !== undefined) body.force = options.force;
+        if (options.trust !== undefined) body.trust = options.trust;
+        if (options.trustedBy !== undefined) body.trustedBy = options.trustedBy;
+        const { data }: { data: ExtensionPromoteResponse } = await apiPromoteExtension({ cwd: process.cwd(), body });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.log(chalk.green('✔') + ` Extension ${data.extension.name} promoted to project-team`);
+          console.log(`  Scope:  ${data.extension.scope}`);
+          console.log(`  Path:   ${data.extension.path}`);
+          console.log(chalk.dim(data.message));
+          renderInstallNextSteps(data.extension);
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('demote <name>')
+    .description('Demote a project-team extension to project-local scope')
+    .option('--force', 'Overwrite an existing extension at project-local scope')
+    .option('--json', 'Output JSON')
+    .action(async (name: string, options: { force?: boolean; json?: boolean }) => {
+      try {
+        const body: { name: string; force?: boolean } = { name };
+        if (options.force !== undefined) body.force = options.force;
+        const { data }: { data: ExtensionDemoteResponse } = await apiDemoteExtension({ cwd: process.cwd(), body });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.log(chalk.green('✔') + ` Extension ${data.extension.name} demoted to project-local`);
+          console.log(`  Scope:  ${data.extension.scope}`);
+          console.log(`  Path:   ${data.extension.path}`);
+          console.log(chalk.dim(data.message));
+          console.log(chalk.dim(`Next: eforge extension validate ${data.extension.name}`));
+          console.log(chalk.dim('Next: eforge extension reload'));
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+  // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
   // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
   // Config commands

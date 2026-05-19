@@ -63,6 +63,33 @@ If user intent maps to the supported policy-gate or reviewer-perspective subset,
 - Use `scope: "user"` only for explicit cross-project personal extensions.
 - Use `scope: "project"` only for explicit team-shared extensions. Project/team extensions (`eforge/extensions/`) are unsandboxed arbitrary code committed to the repository; they require an explicit per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` — before loading. Any subsequent code change invalidates the stored hash and blocks the extension until re-trusted. Warn the user of these implications before proceeding.
 
+### Step 4b: Package install workflow (when user requests installing a packaged extension)
+
+If the user asks to install an extension from an npm package, local package directory, or tarball rather than authoring one from scratch, use the following workflow instead of Steps 5-6:
+
+1. Clarify the install source (npm package name, local package directory, or tarball path/URL) and desired scope.
+2. Warn the user that installed extensions are unsandboxed arbitrary code and installing from npm, tarballs, or local package directories introduces supply-chain risk.
+3. Call `eforge_extension` with `action: "install"`, `source` set to the package name, local package directory, or tarball path/URL, and the selected `scope`. Pass `trust: true`, and optionally `trustedBy`, only when the user explicitly opts in after the warning.
+4. On install success, call `eforge_extension` with `action: "list"` and confirm the installed entry appears.
+5. **If the entry has `trustState: "untrusted"` or `"changed"` and the returned entry's `scope` is `project-team`:**
+   - Read the installed extension files in full.
+   - Summarize all side effects (filesystem, network, environment, subprocess). Show the summary.
+   - Ask for explicit user confirmation before trusting. Do not proceed if they decline.
+   - After confirmation, call `eforge_extension` with `action: "trust"` and the extension `name`.
+6. After trust, call validate and then reload (with the same confirmation warnings as Steps 7-9 below).
+
+**Promote and demote:**
+
+If the user asks to promote a project-local extension to project/team scope or demote it back:
+
+1. Call `eforge_extension` with `action: "promote"` or `"demote"` and the extension `name`.
+2. After promotion to project-team scope: warn that team members will be required to trust this extension, read the extension files, summarize side effects, and ask for explicit confirmation before trusting. Call `action: "trust"` after confirmation.
+3. After demotion to project-local scope: no trust step is required.
+
+**Update and remove:**
+
+For updating or removing an installed extension, call `eforge_extension` with `action: "update"` or `action: "remove"` and the extension `name`. After update, verify trust state (a changed source file invalidates the stored hash) and re-trust if needed. Pass `force: true` only when the user explicitly requests forced removal.
+
 ### Step 5: Scaffold
 
 - Optionally call `eforge_extension` with `action: "list"` first to inspect existing extensions and shadowing.

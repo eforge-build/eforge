@@ -1,5 +1,45 @@
 import type { Scope } from '@eforge-build/scopes';
 
+/**
+ * Package provenance attached to directory-layout extensions that have a `package.json`.
+ * Fields mirror npm package metadata and the optional `eforge.extension` block.
+ */
+export interface NativeExtensionPackageProvenance {
+  /** npm package name from `package.json#name`. */
+  packageName?: string;
+  /** npm package version from `package.json#version`. */
+  version?: string;
+  /** npm package description from `package.json#description`. */
+  description?: string;
+  /** Logical extension name from `package.json#eforge.extension.name`, when present. */
+  eforgeExtensionName?: string;
+  /** Relative entrypoint from `package.json#eforge.extension.entrypoint`, when present. */
+  eforgeEntrypoint?: string;
+  /** Repository URL from `package.json#repository`. */
+  repository?: string;
+  /** Homepage URL from `package.json#homepage`. */
+  homepage?: string;
+}
+
+/**
+ * Install provenance attached when a `.eforge-install.json` sidecar exists
+ * alongside the extension package directory.
+ */
+export interface NativeExtensionInstallProvenance {
+  /** Source kind: npm, git, path, or url. */
+  sourceKind: string;
+  /** Source specifier as provided at install time. */
+  sourceSpec: string;
+  /** Resolved version from the package at install time, if available. */
+  resolvedVersion?: string;
+  /** Integrity hash, if recorded. */
+  integrity?: { algorithm: string; value: string };
+  /** ISO-8601 timestamp of when the package was installed. */
+  installedAt: string;
+  /** Scope into which the package was installed. */
+  targetScope: string;
+}
+
 export type EventPattern = string;
 export type ExtensionHandler = (...args: never[]) => unknown;
 export interface ProfileRouterSpec { name: string; selectBuildProfile?: ExtensionHandler; resolve?: ExtensionHandler }
@@ -104,6 +144,10 @@ export interface NativeExtensionCandidate {
   status: NativeExtensionStatus;
   shadows: NativeExtensionShadow[];
   diagnostics: NativeExtensionDiagnostic[];
+  /** Package provenance, populated for directory-layout extensions with a `package.json`. */
+  packageProvenance?: NativeExtensionPackageProvenance;
+  /** Install provenance, populated when a `.eforge-install.json` sidecar exists. */
+  installProvenance?: NativeExtensionInstallProvenance;
 }
 
 export interface NativeExtensionDiscoveryResult {
@@ -155,6 +199,10 @@ export interface LoadedNativeExtension {
   scope: NativeExtensionScope;
   source: NativeExtensionSource;
   strategy: NativeExtensionLoaderStrategy;
+  /** Package provenance, populated for directory-layout extensions with a `package.json`. */
+  packageProvenance?: NativeExtensionPackageProvenance;
+  /** Install provenance, populated when a `.eforge-install.json` sidecar exists. */
+  installProvenance?: NativeExtensionInstallProvenance;
   registrations: {
     eventHooks: number;
     agentRunHooks: number;

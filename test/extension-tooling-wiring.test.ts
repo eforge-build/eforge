@@ -88,19 +88,124 @@ describe('extension tooling route constants and helpers', () => {
     expect(source).toContain('apiTrustExtension');
     expect(source).toContain('apiUntrustExtension');
   });
+
+  // --- eforge:region plan-01-extension-package-foundation ---
+  it('declares package-operation route constants without inline path literals', () => {
+    expect(API_ROUTES.extensionInstall).toBe('/api/extensions/install');
+    expect(API_ROUTES.extensionUpdate).toBe('/api/extensions/update');
+    expect(API_ROUTES.extensionRemove).toBe('/api/extensions/remove');
+    expect(API_ROUTES.extensionPromote).toBe('/api/extensions/promote');
+    expect(API_ROUTES.extensionDemote).toBe('/api/extensions/demote');
+  });
+
+  it('client helpers call package-operation route constants and not inline literals', () => {
+    const source = readRepoFile('packages/client/src/api/extensions.ts');
+    expect(source).toContain('API_ROUTES.extensionInstall');
+    expect(source).toContain('API_ROUTES.extensionUpdate');
+    expect(source).toContain('API_ROUTES.extensionRemove');
+    expect(source).toContain('API_ROUTES.extensionPromote');
+    expect(source).toContain('API_ROUTES.extensionDemote');
+    // No inline path literals allowed.
+    expect(source).not.toContain("'/api/extensions/");
+    expect(source).not.toContain('"/api/extensions/');
+    expect(source).toContain('apiInstallExtension');
+    expect(source).toContain('apiUpdateExtension');
+    expect(source).toContain('apiRemoveExtension');
+    expect(source).toContain('apiPromoteExtension');
+    expect(source).toContain('apiDemoteExtension');
+    expect(source).toContain('apiInstallExtensionIfRunning');
+    expect(source).toContain('apiUpdateExtensionIfRunning');
+    expect(source).toContain('apiRemoveExtensionIfRunning');
+    expect(source).toContain('apiPromoteExtensionIfRunning');
+    expect(source).toContain('apiDemoteExtensionIfRunning');
+  });
+
+  it('client index exports package-operation helpers and request/response types', async () => {
+    const client = await import('@eforge-build/client');
+    const source = readRepoFile('packages/client/src/index.ts');
+    for (const name of [
+      'apiInstallExtension', 'apiUpdateExtension', 'apiRemoveExtension',
+      'apiPromoteExtension', 'apiDemoteExtension',
+      'apiInstallExtensionIfRunning', 'apiUpdateExtensionIfRunning',
+      'apiRemoveExtensionIfRunning', 'apiPromoteExtensionIfRunning',
+      'apiDemoteExtensionIfRunning',
+    ] as const) {
+      expect(client[name], name).toBeTypeOf('function');
+      expect(source, name).toContain(name);
+    }
+    for (const name of [
+      'ExtensionPackageProvenance', 'ExtensionInstallProvenance',
+      'ExtensionInstallRequest', 'ExtensionInstallResponse',
+      'ExtensionUpdateRequest', 'ExtensionUpdateResponse',
+      'ExtensionRemoveRequest', 'ExtensionRemoveResponse',
+      'ExtensionPromoteRequest', 'ExtensionPromoteResponse',
+      'ExtensionDemoteRequest', 'ExtensionDemoteResponse',
+    ]) {
+      expect(source, name).toContain(name);
+    }
+  });
+
+  it('client browser entrypoint exports provenance and operation wire types but no helpers', () => {
+    const source = readRepoFile('packages/client/src/browser.ts');
+    for (const name of [
+      'ExtensionPackageProvenance', 'ExtensionInstallProvenance',
+      'ExtensionInstallRequest', 'ExtensionInstallResponse',
+      'ExtensionUpdateRequest', 'ExtensionUpdateResponse',
+      'ExtensionRemoveRequest', 'ExtensionRemoveResponse',
+      'ExtensionPromoteRequest', 'ExtensionPromoteResponse',
+      'ExtensionDemoteRequest', 'ExtensionDemoteResponse',
+    ]) {
+      expect(source, name).toContain(name);
+    }
+    // Browser entrypoint must not export Node.js client helpers.
+    expect(source).not.toContain('apiInstallExtension');
+    expect(source).not.toContain('daemonRequest');
+  });
+
+  it('install request types carry typed trust and trustedBy fields', () => {
+    const source = readRepoFile('packages/client/src/types.ts');
+    // Verify trust/trustedBy are actual typed fields on install and update request types.
+    const installIdx = source.indexOf('ExtensionInstallRequest');
+    const updateIdx = source.indexOf('ExtensionUpdateRequest');
+    const installBlock = source.slice(installIdx, source.indexOf('ExtensionInstallResponse', installIdx));
+    const updateBlock = source.slice(updateIdx, source.indexOf('ExtensionUpdateResponse', updateIdx));
+    expect(installBlock).toMatch(/\btrust\?: boolean;/);
+    expect(installBlock).toMatch(/\btrustedBy\?: string;/);
+    expect(updateBlock).toMatch(/\btrust\?: boolean;/);
+    expect(updateBlock).toMatch(/\btrustedBy\?: string;/);
+  });
+
+  it('extension response projectors map provenance into ExtensionEntry package and install fields', () => {
+    const monitorSource = readRepoFile('packages/monitor/src/server.ts');
+    const loadResponseBlock = monitorSource.slice(
+      monitorSource.indexOf('async function loadExtensionResponse'),
+      monitorSource.indexOf('// --- eforge:endregion plan-02-extension-tooling-surfaces ---'),
+    );
+    expect(loadResponseBlock).toMatch(/package:\s*\{\s*\.\.\.candidate\.packageProvenance\s*\}/);
+    expect(loadResponseBlock).toMatch(/install:\s*\{\s*\.\.\.candidate\.installProvenance\s*\}/);
+
+    const replaySource = readRepoFile('packages/engine/src/extensions/replay.ts');
+    const projectExtensionsBlock = replaySource.slice(
+      replaySource.indexOf('function projectExtensions'),
+      replaySource.indexOf('function summarizeDeferredRegistrations'),
+    );
+    expect(projectExtensionsBlock).toMatch(/package:\s*\{\s*\.\.\.candidate\.packageProvenance\s*\}/);
+    expect(projectExtensionsBlock).toMatch(/install:\s*\{\s*\.\.\.candidate\.installProvenance\s*\}/);
+  });
+  // --- eforge:endregion plan-01-extension-package-foundation ---
 });
 
 describe('CLI extension command registration', () => {
   const source = readRepoFile('packages/eforge/src/cli/index.ts');
 
-  it('registers eforge extension list/show/validate/test/new/reload/trust/untrust commands on the actual Commander program', () => {
+  it('registers eforge extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote commands on the actual Commander program', () => {
     const program = createProgram(undefined, 'test');
     const extension = program.commands.find((command) => command.name() === 'extension');
     expect(extension).toBeDefined();
-    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['list', 'new', 'reload', 'show', 'test', 'trust', 'untrust', 'validate']);
+    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['demote', 'install', 'list', 'new', 'promote', 'reload', 'remove', 'show', 'test', 'trust', 'untrust', 'update', 'validate']);
   });
 
-  it('declares the required show, validate, trust, and untrust arguments', () => {
+  it('declares the required show, validate, trust, untrust, install, update, remove, promote, and demote arguments', () => {
     expect(source).toContain(".command('show <name>')");
     expect(source).toContain(".command('validate [nameOrPath]')");
     expect(source).toContain(".command('test [nameOrPath]')");
@@ -108,6 +213,11 @@ describe('CLI extension command registration', () => {
     expect(source).toContain(".command('reload')");
     expect(source).toContain(".command('trust <nameOrPath>')");
     expect(source).toContain(".command('untrust <nameOrPath>')");
+    expect(source).toContain(".command('install <source>')");
+    expect(source).toContain(".command('update <name>')");
+    expect(source).toContain(".command('remove <name>')");
+    expect(source).toContain(".command('promote <name>')");
+    expect(source).toContain(".command('demote <name>')");
   });
 
   it('validate and test exit non-zero when the response is invalid', () => {
@@ -426,7 +536,16 @@ describe('extension runtime documentation', () => {
     for (const source of [docsExtensions, webExtensions]) {
       expect(source).toContain('slack-webhook-notifier.ts');
       expect(source).toContain('EFORGE_SLACK_WEBHOOK_URL');
-      expect(source).toContain('extension enable`, `extension disable`, `extension promote`, and `extension demote` workflows are deferred');
+      expect(source).toMatch(/extension enable[^.\n]*(?:and|,)[^.\n]*extension disable[^.\n]*workflows? (?:are|is) deferred/i);
+    }
+
+    // promote and demote are now real commands — docs must document them
+    for (const source of [docsExtensions, webExtensions]) {
+      expect(source).toContain('eforge extension promote');
+      expect(source).toContain('eforge extension demote');
+      expect(source).toContain('eforge extension install');
+      expect(source).toContain('eforge extension update');
+      expect(source).toContain('eforge extension remove');
     }
 
     for (const source of [
@@ -440,7 +559,7 @@ describe('extension runtime documentation', () => {
       examplesReadme,
     ]) {
       expect(source).not.toContain('/eforge:extend');
-      expect(source).not.toMatch(/\beforge extension (enable|disable|promote|demote)(?:\s|`|$)/);
+      expect(source).not.toMatch(/\beforge extension (enable|disable)(?:\s|`|$)/);
       expect(source).not.toMatch(/profile routing[^.\n]*(?:deferred|future)|(?:deferred|future)[^.\n]*profile routing/i);
     }
   });
@@ -479,7 +598,7 @@ describe('MCP/Pi eforge_extension parity', () => {
 
   it('MCP proxy registers eforge_extension and uses exported client helpers', () => {
     expect(mcpSource).toContain("name: 'eforge_extension'");
-    expect(mcpSource).toContain("z.enum(['list', 'show', 'validate', 'test', 'new', 'reload', 'trust', 'untrust'])");
+    expect(mcpSource).toContain("z.enum(['list', 'show', 'validate', 'test', 'new', 'reload', 'trust', 'untrust', 'install', 'update', 'remove', 'promote', 'demote'])");
     expect(mcpSource).toContain('apiListExtensions');
     expect(mcpSource).toContain('apiShowExtension');
     expect(mcpSource).toContain('apiValidateExtensions');
@@ -488,6 +607,11 @@ describe('MCP/Pi eforge_extension parity', () => {
     expect(mcpSource).toContain('apiReloadExtensions');
     expect(mcpSource).toContain('apiTrustExtension');
     expect(mcpSource).toContain('apiUntrustExtension');
+    expect(mcpSource).toContain('apiInstallExtension');
+    expect(mcpSource).toContain('apiUpdateExtension');
+    expect(mcpSource).toContain('apiRemoveExtension');
+    expect(mcpSource).toContain('apiPromoteExtension');
+    expect(mcpSource).toContain('apiDemoteExtension');
     const block = mcpExtensionBlock();
     expect(block).not.toContain("'/api/");
     expect(block).not.toContain('"/api/');
@@ -495,7 +619,7 @@ describe('MCP/Pi eforge_extension parity', () => {
 
   it('Pi extension registers eforge_extension and uses exported client helpers', () => {
     expect(piSource).toContain('name: "eforge_extension"');
-    expect(piSource).toContain('StringEnum(["list", "show", "validate", "test", "new", "reload", "trust", "untrust"] as const');
+    expect(piSource).toContain('StringEnum(["list", "show", "validate", "test", "new", "reload", "trust", "untrust", "install", "update", "remove", "promote", "demote"] as const');
     expect(piSource).toContain('apiListExtensions');
     expect(piSource).toContain('apiShowExtension');
     expect(piSource).toContain('apiValidateExtensions');
@@ -504,6 +628,11 @@ describe('MCP/Pi eforge_extension parity', () => {
     expect(piSource).toContain('apiReloadExtensions');
     expect(piSource).toContain('apiTrustExtension');
     expect(piSource).toContain('apiUntrustExtension');
+    expect(piSource).toContain('apiInstallExtensionIfRunning');
+    expect(piSource).toContain('apiUpdateExtensionIfRunning');
+    expect(piSource).toContain('apiRemoveExtensionIfRunning');
+    expect(piSource).toContain('apiPromoteExtensionIfRunning');
+    expect(piSource).toContain('apiDemoteExtensionIfRunning');
     const block = piExtensionBlock();
     expect(block).not.toContain("'/api/");
     expect(block).not.toContain('"/api/');
@@ -514,33 +643,63 @@ describe('MCP/Pi eforge_extension parity', () => {
       '"list" does not accept name, path, scope, template, or force',
       '"list" does not accept fixture, run, or event',
       '"list" does not accept trustedBy',
+      '"list" does not accept source or trust',
       '"name" is required when action is "show"',
       '"show" does not accept path, scope, template, or force',
       '"show" does not accept fixture, run, or event',
       '"show" does not accept trustedBy',
+      '"show" does not accept source or trust',
       '"validate" does not accept scope, template, or force',
       '"validate" does not accept fixture, run, or event',
       '"validate" does not accept trustedBy',
+      '"validate" does not accept source or trust',
       'Specify only one of "name" or "path" for validate',
       '"test" does not accept scope, template, or force',
       '"test" does not accept trustedBy',
+      '"test" does not accept source or trust',
       'Specify only one of "name" or "path" for test',
       '"name" is required when action is "new"',
       '"path" is not supported when action is "new"',
       '"new" does not accept fixture, run, or event',
       '"new" does not accept trustedBy',
+      '"new" does not accept source or trust',
       '"reload" does not accept name, path, scope, template, or force',
+      '"reload" does not accept source',
+      '"reload" does not accept trust',
       '"reload" does not accept fixture, run, or event',
       '"reload" does not accept trustedBy',
       '"name" or "path" is required when action is "trust"',
       'Specify only one of "name" or "path" for trust',
       '"trust" does not accept scope, template, or force',
       '"trust" does not accept fixture, run, or event',
+      '"trust" does not accept source or trust',
       '"name" or "path" is required when action is "untrust"',
       'Specify only one of "name" or "path" for untrust',
       '"untrust" does not accept scope, template, or force',
       '"untrust" does not accept fixture, run, or event',
       '"untrust" does not accept trustedBy',
+      '"untrust" does not accept source or trust',
+      '"source" is required when action is "install"',
+      '"install" does not accept path',
+      '"install" does not accept fixture, run, or event',
+      '"install" does not accept template',
+      '"name" or "path" is required when action is "update"',
+      'Specify only one of "name" or "path" for update',
+      '"update" does not accept scope, template, or source',
+      '"update" does not accept force',
+      '"update" does not accept fixture, run, or event',
+      '"name" or "path" is required when action is "remove"',
+      'Specify only one of "name" or "path" for remove',
+      '"remove" does not accept scope, template, source, trust, or trustedBy',
+      '"remove" does not accept fixture, run, or event',
+      '"name" or "path" is required when action is "promote"',
+      'Specify only one of "name" or "path" for promote',
+      '"promote" does not accept scope, template, or source',
+      '"promote" does not accept fixture, run, or event',
+      '"name" or "path" is required when action is "demote"',
+      'Specify only one of "name" or "path" for demote',
+      '"demote" does not accept scope, template, source, trust, or trustedBy',
+      '"demote" does not accept fixture, run, or event',
     ];
 
     const mcpMessages = thrownValidationMessages(mcpExtensionBlock());
@@ -558,7 +717,7 @@ describe('MCP/Pi eforge_extension parity', () => {
     }
   });
 
-  it('routes test, new, reload, trust, and untrust actions through the action-specific client helpers', () => {
+  it('routes test, new, reload, trust, untrust, install, update, remove, promote, and demote actions through the action-specific client helpers', () => {
     function expectInOrder(block: string, before: string, after: string): void {
       const beforeIndex = block.indexOf(before);
       const afterIndex = block.indexOf(after);
@@ -575,6 +734,11 @@ describe('MCP/Pi eforge_extension parity', () => {
     expectInOrder(mcpBlock, '"reload" does not accept', 'apiReloadExtensions');
     expectInOrder(mcpBlock, "if (action === 'trust')", 'apiTrustExtension');
     expectInOrder(mcpBlock, "if (action === 'untrust')", 'apiUntrustExtension');
+    expectInOrder(mcpBlock, "if (action === 'install')", 'apiInstallExtension');
+    expectInOrder(mcpBlock, "if (action === 'update')", 'apiUpdateExtension');
+    expectInOrder(mcpBlock, "if (action === 'remove')", 'apiRemoveExtension');
+    expectInOrder(mcpBlock, "if (action === 'promote')", 'apiPromoteExtension');
+    expectInOrder(mcpBlock, "if (action === 'demote')", 'apiDemoteExtension');
 
     const piBlock = piExtensionBlock();
     expectInOrder(piBlock, 'if (params.action === "test")', 'apiTestExtension');
@@ -584,6 +748,11 @@ describe('MCP/Pi eforge_extension parity', () => {
     expectInOrder(piBlock, '"reload" does not accept', 'apiReloadExtensions');
     expectInOrder(piBlock, 'if (params.action === "trust")', 'apiTrustExtension');
     expectInOrder(piBlock, 'if (params.action === "untrust")', 'apiUntrustExtension');
+    expectInOrder(piBlock, 'if (params.action === "install")', 'apiInstallExtensionIfRunning');
+    expectInOrder(piBlock, 'if (params.action === "update")', 'apiUpdateExtensionIfRunning');
+    expectInOrder(piBlock, 'if (params.action === "remove")', 'apiRemoveExtensionIfRunning');
+    expectInOrder(piBlock, 'if (params.action === "promote")', 'apiPromoteExtensionIfRunning');
+    expectInOrder(piBlock, 'if (params.action === "demote")', 'apiDemoteExtensionIfRunning');
   });
 
   it('/eforge:config Pi overlay includes the resolved extensions config block', () => {

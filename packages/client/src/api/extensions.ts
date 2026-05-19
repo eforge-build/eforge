@@ -5,10 +5,18 @@
 import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
 import { API_ROUTES } from '../routes.js';
 import type {
+  ExtensionDemoteRequest,
+  ExtensionDemoteResponse,
+  ExtensionInstallRequest,
+  ExtensionInstallResponse,
   ExtensionListResponse,
   ExtensionNewRequest,
   ExtensionNewResponse,
+  ExtensionPromoteRequest,
+  ExtensionPromoteResponse,
   ExtensionReloadResponse,
+  ExtensionRemoveRequest,
+  ExtensionRemoveResponse,
   ExtensionShowResponse,
   ExtensionTestRequest,
   ExtensionTestResponse,
@@ -16,6 +24,8 @@ import type {
   ExtensionTrustResponse,
   ExtensionUntrustRequest,
   ExtensionUntrustResponse,
+  ExtensionUpdateRequest,
+  ExtensionUpdateResponse,
   ExtensionValidateResponse,
 } from '../types.js';
 
@@ -117,3 +127,45 @@ export function apiUntrustExtensionIfRunning(opts: { cwd: string; body: Extensio
   return daemonRequestIfRunning<ExtensionUntrustResponse>(opts.cwd, 'POST', API_ROUTES.extensionUntrust, opts.body);
 }
 // --- eforge:endregion plan-01-no-start-client-helpers ---
+
+// --- eforge:region plan-01-extension-package-foundation ---
+export function apiInstallExtension(opts: { cwd: string; body: ExtensionInstallRequest }) {
+  return daemonRequest<ExtensionInstallResponse>(opts.cwd, 'POST', API_ROUTES.extensionInstall, opts.body);
+}
+
+export function apiUpdateExtension(opts: { cwd: string; body: ExtensionUpdateRequest }) {
+  return daemonRequest<ExtensionUpdateResponse>(opts.cwd, 'POST', API_ROUTES.extensionUpdate, opts.body);
+}
+
+export function apiRemoveExtension(opts: { cwd: string; body: ExtensionRemoveRequest }) {
+  return daemonRequest<ExtensionRemoveResponse>(opts.cwd, 'POST', API_ROUTES.extensionRemove, opts.body);
+}
+
+export function apiPromoteExtension(opts: { cwd: string; body: ExtensionPromoteRequest }) {
+  return daemonRequest<ExtensionPromoteResponse>(opts.cwd, 'POST', API_ROUTES.extensionPromote, opts.body);
+}
+
+export function apiDemoteExtension(opts: { cwd: string; body: ExtensionDemoteRequest }) {
+  return daemonRequest<ExtensionDemoteResponse>(opts.cwd, 'POST', API_ROUTES.extensionDemote, opts.body);
+}
+
+export function apiInstallExtensionIfRunning(opts: { cwd: string; body: ExtensionInstallRequest }) {
+  return daemonRequestIfRunning<ExtensionInstallResponse>(opts.cwd, 'POST', API_ROUTES.extensionInstall, opts.body);
+}
+
+export function apiUpdateExtensionIfRunning(opts: { cwd: string; body: ExtensionUpdateRequest }) {
+  return daemonRequestIfRunning<ExtensionUpdateResponse>(opts.cwd, 'POST', API_ROUTES.extensionUpdate, opts.body);
+}
+
+export function apiRemoveExtensionIfRunning(opts: { cwd: string; body: ExtensionRemoveRequest }) {
+  return daemonRequestIfRunning<ExtensionRemoveResponse>(opts.cwd, 'POST', API_ROUTES.extensionRemove, opts.body);
+}
+
+export function apiPromoteExtensionIfRunning(opts: { cwd: string; body: ExtensionPromoteRequest }) {
+  return daemonRequestIfRunning<ExtensionPromoteResponse>(opts.cwd, 'POST', API_ROUTES.extensionPromote, opts.body);
+}
+
+export function apiDemoteExtensionIfRunning(opts: { cwd: string; body: ExtensionDemoteRequest }) {
+  return daemonRequestIfRunning<ExtensionDemoteResponse>(opts.cwd, 'POST', API_ROUTES.extensionDemote, opts.body);
+}
+// --- eforge:endregion plan-01-extension-package-foundation ---
