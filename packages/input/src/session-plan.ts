@@ -607,6 +607,8 @@ export function createSessionPlan(opts: CreateSessionPlanOpts): SessionPlan {
   const planningDepth = opts.planningDepth ?? 'focused';
   const body = `\n# ${opts.topic}\n`;
 
+  const agentProfile = opts.agentProfile?.trim();
+
   return {
     session: opts.session,
     topic: opts.topic,
@@ -619,7 +621,7 @@ export function createSessionPlan(opts: CreateSessionPlanOpts): SessionPlan {
     skipped_dimensions: [],
     open_questions: [],
     profile: opts.profile ?? null,
-    ...(opts.agentProfile !== undefined && { agent_profile: opts.agentProfile }),
+    ...(agentProfile !== undefined && agentProfile.length > 0 && { agent_profile: agentProfile }),
     body,
     sections: parseSections(body),
   };
@@ -710,7 +712,7 @@ export function createSessionPlanFromPlaybookSeed(opts: CreateSessionPlanFromPla
     open_questions: [],
     profile: null,
     seeded_from_playbook: opts.playbook.name,
-    ...(opts.playbook.profile !== undefined && { agent_profile: opts.playbook.profile }),
+    ...(seed.profile !== undefined && { agent_profile: seed.profile }),
     body,
     sections: parseSections(body),
   };
@@ -1082,7 +1084,10 @@ export function normalizeBuildSource(input: NormalizeBuildSourceInput): Normaliz
   const content = sessionPlanToBuildSource(plan);
   const result: NormalizeBuildSourceResult = { sourcePath: input.sourcePath, content };
   if (typeof plan.agent_profile === 'string') {
-    result.agentProfile = plan.agent_profile;
+    const agentProfile = plan.agent_profile.trim();
+    if (agentProfile.length > 0) {
+      result.agentProfile = agentProfile;
+    }
   }
   return result;
 }

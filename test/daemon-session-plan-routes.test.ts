@@ -340,6 +340,23 @@ describe('POST /api/session-plan/create', () => {
     expect(res.status).toBe(400);
   });
 
+  it('returns 400 when agent_profile is not a string', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanCreate}`, {
+      session: '2026-01-01-profiled-plan',
+      topic: 'Profiled Plan',
+      agent_profile: 42,
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toContain('agent_profile');
+  });
+
   it('creates a session plan file and returns session + path', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);

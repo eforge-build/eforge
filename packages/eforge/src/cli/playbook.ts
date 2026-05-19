@@ -33,6 +33,9 @@ function playbookDataToRaw(playbook: PlaybookData): string {
   lines.push(`description: ${playbook.description}`);
   lines.push(`scope: ${playbook.scope}`);
   lines.push(`mode: ${playbook.mode}`);
+  if (playbook.profile) {
+    lines.push(`profile: ${playbook.profile}`);
+  }
   if (playbook.postMerge && playbook.postMerge.length > 0) {
     lines.push('postMerge:');
     for (const cmd of playbook.postMerge) {
@@ -171,7 +174,8 @@ export function registerPlaybookCommand(program: Command): void {
     .requiredOption('--name <name>', 'Playbook name (kebab-case)')
     .option('--description <description>', 'Short description of the playbook', '')
     .option('--from <file>', 'Read body content from this file (used as the Goal section)')
-    .action(async (options: { scope: string; name: string; description: string; from?: string }) => {
+    .option('--profile <name>', 'Agent runtime profile to use when this playbook is run')
+    .action(async (options: { scope: string; name: string; description: string; from?: string; profile?: string }) => {
       const cwd = process.cwd();
 
       const validScopes: PlaybookScope[] = ['user', 'project-team', 'project-local'];
@@ -203,6 +207,7 @@ export function registerPlaybookCommand(program: Command): void {
                 description: options.description,
                 scope,
                 mode: 'autonomous',
+                ...(options.profile ? { profile: options.profile } : {}),
               },
               body: {
                 goal,
@@ -311,6 +316,15 @@ export function registerPlaybookCommand(program: Command): void {
             ? fmMode
             : (showData.playbook.mode ?? 'autonomous');
 
+        // Preserve profile from parsed frontmatter. Omitting the key in the editor
+        // intentionally clears an existing profile so the playbook falls back to
+        // profile-router/active-profile/default resolution.
+        const fmProfile = frontmatter['profile'];
+        const preservedProfile: string | undefined =
+          typeof fmProfile === 'string' && fmProfile.trim().length > 0
+            ? fmProfile.trim()
+            : undefined;
+
         await apiPlaybookSave({
           cwd,
           body: {
@@ -321,6 +335,7 @@ export function registerPlaybookCommand(program: Command): void {
                 description: String(frontmatter['description'] ?? showData.playbook.description),
                 scope: targetScope,
                 mode: preservedMode,
+                ...(preservedProfile ? { profile: preservedProfile } : {}),
                 ...(preservedPostMerge && preservedPostMerge.length > 0
                   ? { postMerge: preservedPostMerge }
                   : {}),

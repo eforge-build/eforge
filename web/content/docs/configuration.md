@@ -272,6 +272,31 @@ agents:
 
 For the complete field schema and validation behavior, see the [Toolbelts](/reference/config#toolbelts) section in the Configuration Reference. For the extension/toolbelt boundary, see the [Extensions API Reference](/docs/extensions-api#toolbelt-vs-extension-boundary).
 
+## Playbook Profiles
+
+Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs:
+
+```yaml
+---
+name: docs-sync
+description: Sync project documentation
+scope: project-team
+mode: autonomous
+profile: docs-heavy    # Optional — omit to allow router/active-profile/default resolution
+---
+
+## Goal
+Keep all documentation in sync with the latest code changes.
+```
+
+**Precedence**: the playbook `profile` field overrides the project's active-profile marker and any registered profile router. `eforge playbook run` does not accept a runtime profile override; edit the playbook frontmatter to change its profile. For session-plan builds, an explicit `--profile` flag or enqueue request field overrides the session plan's inherited `agent_profile`.
+
+**Validation timing**: the named profile is validated at execution time, not when the playbook is saved. Inherited `agent_profile` values on session plans are validated when the session plan is enqueued.
+
+**Planning playbooks**: when a planning-mode playbook has a `profile` field and the agent creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
+
+**Blank profile fallback**: omitting `profile` allows a registered profile router to select a profile first; if no router selects one, eforge uses the project's active-profile marker or engine defaults.
+
 ## Post-Merge Commands
 
 Commands to run after all plans merge - compile, test, lint, or any validation step:

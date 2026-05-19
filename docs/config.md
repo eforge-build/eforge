@@ -552,7 +552,34 @@ Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `extensions`,
 
 Agent runtime profiles follow the same three-level pattern. Profile files can exist at project-local scope (`.eforge/profiles/` - gitignored), project scope (`eforge/profiles/`), or user scope (`~/.config/eforge/profiles/`). The active-profile marker can be set at any level: `.eforge/.active-profile` (project-local, highest precedence), `eforge/.active-profile` (project), or `~/.config/eforge/.active-profile` (user). When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 
-Playbooks are reusable input artifacts owned by `@eforge-build/input`, resolved across scopes by `@eforge-build/scopes`. The daemon compiles autonomous playbooks to ordinary build source via `playbookToBuildSource` before enqueue. Playbooks follow the same three-tier pattern: `.eforge/playbooks/` (project-local, highest precedence), `eforge/playbooks/` (project scope), and `~/.config/eforge/playbooks/` (user scope). When the same playbook name exists at multiple tiers, the highest-precedence tier wins and lower-tier copies are reported as shadows. Each playbook carries a `scope` frontmatter field that must match the tier it was loaded from; a mismatch is surfaced as a warning in the listing. The `eforge playbook` command manages playbooks from the CLI: `list` shows all available playbooks with source labels and shadow chains; `new` scaffolds a new playbook file non-interactively (accepts `--scope`, `--name`, `--description`, `--from <file>`); `edit <name>` opens the resolved playbook in `$EDITOR` and validates the result before saving; `run <name> [--after <queue-id>]` runs the playbook (also available as `eforge play <name>`) — autonomous playbooks are enqueued as a build; planning playbooks return a `requires-agent` response directing the agent to perform an investigation-first workflow (load the playbook, investigate the codebase, create a session plan with findings, and continue via `/eforge:plan`); `promote <name>` moves a playbook from `.eforge/playbooks/` to `eforge/playbooks/` and stages the new file; `demote <name>` moves it back to project-local scope.
+Playbooks are reusable input artifacts owned by `@eforge-build/input`, resolved across scopes by `@eforge-build/scopes`. The daemon compiles autonomous playbooks to ordinary build source via `playbookToBuildSource` before enqueue. Playbooks follow the same three-tier pattern: `.eforge/playbooks/` (project-local, highest precedence), `eforge/playbooks/` (project scope), and `~/.config/eforge/playbooks/` (user scope). When the same playbook name exists at multiple tiers, the highest-precedence tier wins and lower-tier copies are reported as shadows. Each playbook carries a `scope` frontmatter field that must match the tier it was loaded from; a mismatch is surfaced as a warning in the listing. The `eforge playbook` command manages playbooks from the CLI: `list` shows all available playbooks with source labels and shadow chains; `new` scaffolds a new playbook file non-interactively (accepts `--scope`, `--name`, `--description`, `--from <file>`, `--profile <name>`); `edit <name>` opens the resolved playbook in `$EDITOR` and validates the result before saving; `run <name> [--after <queue-id>]` runs the playbook (also available as `eforge play <name>`) — autonomous playbooks are enqueued as a build; planning playbooks return a `requires-agent` response directing the agent to perform an investigation-first workflow (load the playbook, investigate the codebase, create a session plan with findings, and continue via `/eforge:plan`); `promote <name>` moves a playbook from `.eforge/playbooks/` to `eforge/playbooks/` and stages the new file; `demote <name>` moves it back to project-local scope.
+
+### Playbook `profile` field
+
+Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook is executed:
+
+```yaml
+---
+name: docs-sync
+description: Sync project documentation
+scope: project-team
+mode: autonomous
+profile: docs-heavy    # Optional — omit to allow router/active-profile/default resolution
+---
+```
+
+**Precedence**: an explicit `profile` field in the playbook frontmatter takes precedence over the project's active-profile marker and over any registered profile router. `eforge playbook run` does not accept a runtime profile override; change the playbook frontmatter to change the profile used by that playbook. For session-plan builds, an explicit `eforge build --profile <name>` flag or enqueue request `profile` field takes precedence over the session plan's inherited `agent_profile`.
+
+**Validation timing**: the named profile is validated at execution time, not when the playbook is saved or validated. A typo in `profile` is surfaced as an error when the playbook runs, not when it is created or edited. Inherited `agent_profile` values on session plans are validated when the session plan is enqueued.
+
+**Planning playbooks and `agent_profile`**: when a planning-mode playbook has a `profile` field and the agent creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is later enqueued via `/eforge:build`, `agent_profile` is used as the effective profile unless an explicit enqueue/build `profile` override is supplied.
+
+**Blank profile fallback**: if `profile` is omitted or left empty, eforge resolves the profile at run time using:
+1. Any registered `registerProfileRouter` extension that selects a profile for the queued PRD
+2. Project-local active-profile marker (`.eforge/.active-profile`) if no router selects a profile
+3. Project active-profile marker (`eforge/.active-profile`)
+4. User active-profile marker (`~/.config/eforge/.active-profile`)
+5. Engine built-in defaults
 
 ## Parallelism
 

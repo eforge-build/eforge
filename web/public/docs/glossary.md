@@ -48,6 +48,8 @@ A reusable workflow template for recurring work. Every playbook has a `mode` fie
 - **`autonomous`** — running the playbook enqueues a build directly, like any other eforge input.
 - **`planning`** — running the playbook triggers an investigation-first workflow: the agent loads the playbook, performs the investigation guided by the playbook's Goal, Acceptance criteria, and Notes, creates a session plan with concrete findings and action items, and continues interactively via `/eforge:plan` before handing off to `/eforge:build`. The daemon does not create the session plan directly.
 
+Playbooks also support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs. Leaving it empty allows profile-router selection, then active-profile/default fallback. For planning playbooks, the `profile` is inherited into the session plan's `agent_profile` field at creation time.
+
 ## Planner
 
 The agent stage that sizes work, chooses the workflow profile, and writes implementation plans. This is separate from the driver-side planning conversation exposed by `/eforge:plan`.

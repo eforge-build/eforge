@@ -558,6 +558,7 @@ export function createProgram(abortController?: AbortController, version?: strin
             onClarification: createClarificationHandler(options.auto ?? false),
             onApproval: createApprovalHandler(options.auto ?? false),
             ...(configOverrides && { config: configOverrides }),
+            ...(options.profile && { profileOverride: options.profile }),
           });
 
           await withMonitor(options.monitor === false, async (monitor) => {

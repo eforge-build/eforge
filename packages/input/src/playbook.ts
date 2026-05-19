@@ -335,8 +335,8 @@ export function serializePlaybook(playbook: Playbook): string {
     scope: playbook.scope,
     mode: playbook.mode,
   };
-  if (playbook.profile !== undefined) {
-    fm.profile = playbook.profile;
+  if (playbook.profile !== undefined && playbook.profile.trim().length > 0) {
+    fm.profile = playbook.profile.trim();
   }
   if (playbook.postMerge !== undefined && playbook.postMerge.length > 0) {
     fm.postMerge = playbook.postMerge;
@@ -434,8 +434,8 @@ export async function listPlaybooks(
         if (fm.mode === 'autonomous' || fm.mode === 'planning') {
           mode = fm.mode;
         }
-        if (typeof fm.profile === 'string') {
-          profile = fm.profile;
+        if (typeof fm.profile === 'string' && fm.profile.trim().length > 0) {
+          profile = fm.profile.trim();
         }
       } catch {
         // unreadable — include with empty description and default mode
@@ -663,7 +663,9 @@ export function playbookToBuildSource(playbook: Playbook): SessionPlanInput {
     acceptanceCriteria: playbook.acceptanceCriteria,
     plannerNotes: playbook.plannerNotes,
     postMerge: playbook.postMerge,
-    profile: playbook.profile,
+    ...(playbook.profile !== undefined && playbook.profile.trim().length > 0
+      ? { profile: playbook.profile.trim() }
+      : {}),
   };
 }
 
@@ -722,6 +724,8 @@ export function playbookToPlanSeed(playbook: Playbook): PlaybookPlanSeed {
     topic: playbook.description,
     sections,
     seededFrom: playbook.name,
-    profile: playbook.profile,
+    ...(playbook.profile !== undefined && playbook.profile.trim().length > 0
+      ? { profile: playbook.profile.trim() }
+      : {}),
   };
 }

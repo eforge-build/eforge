@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.13 -->
-<!-- Commit: ee5f45d5 -->
+<!-- Commit: 5a06fea8 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -390,6 +390,7 @@ Scaffold a new playbook (non-interactive, for scripts)
 | `--name <name>` | Playbook name (kebab-case) |
 | `--description <description>` | Short description of the playbook |
 | `--from <file>` | Read body content from this file (used as the Goal section) |
+| `--profile <name>` | Agent runtime profile to use when this playbook is run |
 
 #### `edit`
 

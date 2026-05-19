@@ -131,6 +131,25 @@ describe('eforge playbook list', () => {
 
     expect(mockApiPlaybookList).toHaveBeenCalledOnce();
   });
+
+  it('renders profile indicator in list output when profile is set', async () => {
+    mockApiPlaybookList.mockImplementation(() => wrap({
+      playbooks: [
+        { name: 'docs-sync', description: 'Sync docs', source: 'project-team', shadows: [], path: '/eforge/playbooks/docs-sync.md', profile: 'docs-heavy' },
+      ],
+      warnings: [],
+    }));
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const program = makeProgram();
+    await program.parseAsync(['node', 'eforge', 'playbook', 'list']);
+
+    expect(mockApiPlaybookList).toHaveBeenCalledOnce();
+    const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(output).toContain('docs-heavy');
+    logSpy.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -201,6 +220,47 @@ describe('eforge playbook new', () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(mockApiPlaybookSave).not.toHaveBeenCalled();
   });
+
+  it('passes profile to apiPlaybookSave when --profile is provided', async () => {
+    mockApiPlaybookSave.mockImplementation(() => wrap({ path: '/eforge/playbooks/docs-sync.md' }));
+
+    const program = makeProgram();
+    await program.parseAsync([
+      'node', 'eforge', 'playbook', 'new',
+      '--scope', 'project-team',
+      '--name', 'docs-sync',
+      '--description', 'Docs sync',
+      '--profile', 'docs-heavy',
+    ]);
+
+    expect(mockApiPlaybookSave).toHaveBeenCalledOnce();
+    expect(mockApiPlaybookSave).toHaveBeenCalledWith(expect.objectContaining({
+      body: expect.objectContaining({
+        playbook: expect.objectContaining({
+          frontmatter: expect.objectContaining({
+            name: 'docs-sync',
+            profile: 'docs-heavy',
+            mode: 'autonomous',
+          }),
+        }),
+      }),
+    }));
+  });
+
+  it('omits profile from frontmatter when --profile is not provided', async () => {
+    mockApiPlaybookSave.mockImplementation(() => wrap({ path: '/eforge/playbooks/my-feature.md' }));
+
+    const program = makeProgram();
+    await program.parseAsync([
+      'node', 'eforge', 'playbook', 'new',
+      '--scope', 'project-team',
+      '--name', 'my-feature',
+    ]);
+
+    expect(mockApiPlaybookSave).toHaveBeenCalledOnce();
+    const call = mockApiPlaybookSave.mock.calls[0][0];
+    expect(call.body.playbook.frontmatter.profile).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -264,6 +324,59 @@ describe('eforge playbook edit', () => {
         scope: 'project-local',
         playbook: expect.objectContaining({
           frontmatter: expect.objectContaining({ mode: 'planning' }),
+        }),
+      }),
+    }));
+
+    if (origEditor !== undefined) process.env['EDITOR'] = origEditor;
+    else delete process.env['EDITOR'];
+  });
+
+  it('preserves mode and profile across edit round-trip when frontmatter contains both', async () => {
+    const origEditor = process.env['EDITOR'];
+    process.env['EDITOR'] = 'vim';
+
+    const playbookData = {
+      name: 'profiled-pb',
+      description: 'Has a profile',
+      scope: 'project-team',
+      mode: 'planning',
+      profile: 'docs-heavy',
+      goal: 'Do docs.',
+      outOfScope: '',
+      acceptanceCriteria: '',
+      plannerNotes: '',
+    };
+
+    mockApiPlaybookShow.mockImplementation(() => wrap({
+      playbook: playbookData,
+      source: 'project-team',
+      shadows: [],
+    }));
+    let tempRaw = '';
+    mockWriteFile.mockImplementation(async (_path, content) => {
+      tempRaw = String(content);
+    });
+    mockSpawnSync.mockReturnValue({ status: 0 });
+    mockReadFile.mockImplementation(async () => tempRaw);
+    mockUnlink.mockResolvedValue(undefined);
+    mockApiPlaybookValidate.mockImplementation(() => wrap({ ok: true }));
+    mockApiPlaybookSave.mockImplementation(() => wrap({ path: '/eforge/playbooks/profiled-pb.md' }));
+
+    const program = makeProgram();
+    await program.parseAsync(['node', 'eforge', 'playbook', 'edit', 'profiled-pb']);
+
+    expect(mockWriteFile).toHaveBeenCalledOnce();
+    expect(tempRaw).toContain('mode: planning');
+    expect(tempRaw).toContain('profile: docs-heavy');
+    expect(mockApiPlaybookSave).toHaveBeenCalledOnce();
+    expect(mockApiPlaybookSave).toHaveBeenCalledWith(expect.objectContaining({
+      body: expect.objectContaining({
+        playbook: expect.objectContaining({
+          frontmatter: expect.objectContaining({
+            mode: 'planning',
+            profile: 'docs-heavy',
+          }),
         }),
       }),
     }));
