@@ -15,7 +15,7 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile, movePrdToSubdir, isPrdRunning } from '../prd-queue.js';
+import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile, movePrdToSubdir, readPrdLockStatus, releasePrd } from '../prd-queue.js';
 import { Semaphore, type AsyncEventQueue } from '../concurrency.js';
 import type { EforgeEvent } from '../events.js';
 import type { EforgeConfig } from '../config.js';
@@ -265,12 +265,11 @@ export class QueueScheduler {
       void this.onComplete(event as Extract<SchedulerInputEvent, { type: 'queue:prd:complete' }>);
     });
 
-    // Discover PRDs added to the queue directory since the initial loadQueue call.
+    // Discover PRDs added to the queue directory since the initial loadQueue call,
+    // then run bidirectional queue-state reconciliation (promote pending PRDs with
+    // live locks to running, demote running PRDs with absent/stale/corrupt locks,
+    // and remove phantom running entries whose files have left the root queue).
     await this.discoverNewPrds();
-    // Reconcile any initial PRDs (set pending in the constructor) that already
-    // have a live queue lock. discoverNewPrds() reconciles newly-discovered
-    // PRDs; this pass covers the pre-loaded initial list.
-    await this.reconcileClaimedPrds(this.orderedPrds);
     // Launch any PRDs that are already ready.
     this.startReadyPrds();
   }
@@ -279,21 +278,129 @@ export class QueueScheduler {
   // Private scheduling helpers
   // ---------------------------------------------------------------------------
 
+  private async readLockStatusForReconciliation(prdId: string): Promise<Awaited<ReturnType<typeof readPrdLockStatus>> | undefined> {
+    try {
+      return await readPrdLockStatus(prdId, this.cwd);
+    } catch {
+      // If a lock file exists but cannot be read, stay conservative: the
+      // scheduler should not crash or launch a duplicate while ownership is
+      // ambiguous. Retry classification on the next tick.
+      return undefined;
+    }
+  }
+
   /**
-   * For each PRD in the list that is currently `pending` in `prdState`,
-   * check whether a queue lock file exists. If so, mark the PRD as `running`
-   * so it counts toward capacity and prevents duplicate launches.
+   * Bidirectional runtime reconciliation of in-memory scheduler state against
+   * the freshly loaded root-queue PRD list and their lock files.
    *
-   * The daemon startup reconciler removes dead-PID locks before the scheduler
-   * starts, so the presence of a lock file reliably indicates a live owner.
+   * Runs before every `startReadyPrds()` call so capacity is calculated from
+   * reconciled state.
+   *
+   * 1. **Promote**: root-queue PRDs in `pending` state with a live lock are
+   *    moved to `running` (another process owns this PRD).
+   * 2. **Demote**: `running` PRDs (not in `launching`) are checked:
+   *    - Live lock: remain `running`.
+   *    - Absent lock: demote to `pending` so the scheduler can retry.
+   *    - Stale/corrupt lock: attempt best-effort removal; if successful, demote
+   *      to `pending`; if removal fails, leave `running` (conservative).
+   * 3. **Remove phantoms**: `running` PRDs whose markdown file is absent from
+   *    the freshly loaded root queue are deleted from `prdState` and
+   *    `orderedPrds` so they no longer contribute to capacity accounting.
+   *    No `queue:prd:complete` is emitted.
+   * 4. **Refresh**: `orderedPrds` entries for root-queue PRDs that are still
+   *    present are replaced with their fresh objects so dispatch uses current
+   *    frontmatter and paths.
+   *
+   * PRD ids in `launching` are never demoted — the routing/semaphore handoff
+   * has already started and the lock may not yet have been written.
    */
-  private async reconcileClaimedPrds(prds: QueuedPrd[]): Promise<void> {
-    for (const prd of prds) {
+  private async reconcileQueueState(freshOrdered: QueuedPrd[]): Promise<void> {
+    const rootQueueIds = new Set(freshOrdered.map((p) => p.id));
+    const freshPrdMap = new Map(freshOrdered.map((p) => [p.id, p]));
+
+    // Promote: pending root-queue PRDs with live locks → running.
+    for (const prd of freshOrdered) {
       const state = this.prdState.get(prd.id);
       if (!state || state.status !== 'pending') continue;
-      if (await isPrdRunning(prd.id, this.cwd)) {
+      const lockStatus = await this.readLockStatusForReconciliation(prd.id);
+      if (!lockStatus || lockStatus.state === 'live') {
         state.status = 'running';
+        continue;
       }
+      if (lockStatus.state !== 'absent') {
+        // Stale or corrupt: remove before dispatch so claimPrd() will not
+        // conservatively reject the subsequent child process. If removal fails,
+        // treat the PRD as running for this tick to avoid duplicate ownership.
+        try {
+          await releasePrd(prd.id, this.cwd);
+        } catch {
+          state.status = 'running';
+        }
+      }
+    }
+
+    // Refresh orderedPrds entries and dependency state for root-queue PRDs.
+    // This keeps frontmatter, filePath, and readiness checks current for dispatch.
+    for (const [id, freshPrd] of freshPrdMap) {
+      const state = this.prdState.get(id);
+      if (state) {
+        state.dependsOn = (freshPrd.frontmatter.depends_on ?? []).filter((dep) =>
+          this.prdState.has(dep) || rootQueueIds.has(dep),
+        );
+        const idx = this.orderedPrds.findIndex((p) => p.id === id);
+        if (idx !== -1) {
+          this.orderedPrds[idx] = freshPrd;
+        }
+      }
+    }
+
+    // Collect running ids now (snapshot before mutations below).
+    const runningIds = [...this.prdState.entries()]
+      .filter(([, s]) => s.status === 'running')
+      .map(([id]) => id);
+
+    for (const id of runningIds) {
+      // Never demote ids currently in the async routing/launch path.
+      if (this.launching.has(id)) continue;
+
+      // Remove phantom: running PRD no longer in root queue.
+      if (!rootQueueIds.has(id)) {
+        this.prdState.delete(id);
+        const idx = this.orderedPrds.findIndex((p) => p.id === id);
+        if (idx !== -1) {
+          this.orderedPrds.splice(idx, 1);
+        }
+        continue;
+      }
+
+      // Demote check: read lock status.
+      const lockStatus = await this.readLockStatusForReconciliation(id);
+      if (!lockStatus) {
+        // Ambiguous lock state: remain running and retry on the next tick.
+        continue;
+      }
+
+      if (lockStatus.state === 'live') {
+        // Live lock: PRD is actively owned. Stay running.
+        continue;
+      }
+
+      if (lockStatus.state !== 'absent') {
+        // Stale or corrupt: attempt best-effort removal before demoting.
+        try {
+          await releasePrd(id, this.cwd);
+          // Removal succeeded; fall through to demote.
+        } catch {
+          // Removal failed: leave as running to avoid racing an undeleted
+          // live-owner file. Try again on the next tick.
+          continue;
+        }
+      }
+
+      // Lock is absent (or was stale/corrupt and successfully removed):
+      // demote to pending so the scheduler can retry normally.
+      const state = this.prdState.get(id)!;
+      state.status = 'pending';
     }
   }
 
@@ -372,9 +479,10 @@ export class QueueScheduler {
         }
       }
     }
-    // Reconcile newly-pending PRDs against queue locks so that any PRD with a
-    // live lock is counted as running before startReadyPrds() is called.
-    await this.reconcileClaimedPrds(freshOrdered);
+    // Bidirectional reconciliation: promote pending PRDs with live locks to
+    // running, demote running PRDs with absent/stale/corrupt locks to pending,
+    // and remove phantom running entries missing from the root queue.
+    await this.reconcileQueueState(freshOrdered);
   }
 
   /**

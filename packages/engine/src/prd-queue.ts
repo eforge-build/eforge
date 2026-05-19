@@ -396,6 +396,64 @@ export async function isPrdRunning(prdId: string, cwd: string): Promise<boolean>
 }
 
 // ---------------------------------------------------------------------------
+// Lock status classification
+// ---------------------------------------------------------------------------
+
+export type PrdLockStatus =
+  | { state: 'absent' }
+  | { state: 'live'; pid: number }
+  | { state: 'stale'; pid: number }
+  | { state: 'corrupt' };
+
+/**
+ * Read and classify the lock file state for a root-queue PRD.
+ *
+ * - `absent`: no lock file exists
+ * - `live`: lock file contains a valid PID that is currently alive
+ * - `stale`: lock file contains a valid PID whose process is no longer alive
+ * - `corrupt`: lock file content is empty, non-numeric, non-finite, or non-positive
+ *
+ * PID liveness uses `process.kill(pid, 0)`: no-throw means alive, ESRCH means
+ * dead, EPERM means alive-but-unpermissioned.
+ */
+export async function readPrdLockStatus(prdId: string, cwd: string): Promise<PrdLockStatus> {
+  const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${prdId}.lock`);
+  let content: string;
+  try {
+    content = await readFile(lockPath, 'utf-8');
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { state: 'absent' };
+    }
+    throw err;
+  }
+
+  // Validate: must be non-empty, decimal integer content, finite, safe, and positive.
+  const trimmed = content.trim();
+  if (!/^[0-9]+$/.test(trimmed)) {
+    return { state: 'corrupt' };
+  }
+  const pid = Number(trimmed);
+  if (!Number.isSafeInteger(pid) || pid <= 0) {
+    return { state: 'corrupt' };
+  }
+
+  // Check PID liveness via signal 0
+  try {
+    process.kill(pid, 0);
+    return { state: 'live', pid };
+  } catch (err: unknown) {
+    const errCode = (err as NodeJS.ErrnoException).code;
+    if (errCode === 'EPERM') {
+      // Process exists but we lack permission to signal it — it is alive
+      return { state: 'live', pid };
+    }
+    // ESRCH or any other error means the process is gone
+    return { state: 'stale', pid };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Subprocess-per-build exit code contract
 // ---------------------------------------------------------------------------
 
