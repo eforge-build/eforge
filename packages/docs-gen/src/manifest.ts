@@ -119,6 +119,11 @@ export const LLMS_MANIFEST: LlmsManifest = {
   ],
   optional: [
     {
+      title: 'Full LLM reference bundle',
+      url: '/llms-full.txt',
+      description: 'Complete concatenated reference documentation for agents that need full context',
+    },
+    {
       title: 'Why eforge',
       url: '/why',
       description: 'Positioning and product thesis: asynchronous engineering for planned work',

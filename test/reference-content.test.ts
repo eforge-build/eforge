@@ -32,10 +32,11 @@ describe('plan-01 reference and raw mirror content', () => {
     }
   });
 
-  it('surfaces extension docs in the LLM manifest', () => {
+  it('surfaces extension docs and the full bundle in the LLM manifest', () => {
     const raw = readRepoFile('web/public/llms.txt');
     expect(raw).toContain('/docs/extensions.md');
     expect(raw).toContain('/docs/extensions-api.md');
+    expect(raw).toContain('/llms-full.txt');
   });
 
   it('uses public toolbelt documentation links in profile-new skills', () => {
