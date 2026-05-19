@@ -15,6 +15,15 @@ Manage eforge playbooks — reusable templates for recurring workflows that the 
 
 A lower-tier playbook with the same name **shadows** a higher-tier one. The daemon always runs the most-specific tier.
 
+## Playbook Modes
+
+Every playbook has a `mode` field in its frontmatter:
+
+- **`mode: autonomous`** — eforge builds the playbook end-to-end without further prompting. Hand-off-and-forget: the daemon enqueues it and runs it. Suitable for mechanical, repeatable workflows where the build agent does not need to consult the user mid-run.
+- **`mode: planning`** — running the playbook seeds a `/eforge:plan` session that the user finalizes interactively. The daemon creates a session-plan file with the playbook's Goal, Out of scope, Acceptance criteria, and Notes pre-populated as starting context; the user then drives the planning conversation to completion before handing off to `/eforge:build`.
+
+The `mode` field governs what happens when you run a playbook: `autonomous` enqueues a build; `planning` creates a session plan for interactive refinement.
+
 ## Step 1: Branch on Arguments
 
 Inspect `$ARGUMENTS`:
@@ -37,7 +46,7 @@ Call `eforge_playbook { action: "list" }` to fetch the current playbook inventor
 
 **Shown only when playbooks exist:**
 - **2. Edit** — walk through a playbook section-by-section
-- **3. Run** — enqueue a playbook for building
+- **3. Run** — run a playbook (enqueue an autonomous playbook, or seed a session plan from a planning-mode playbook)
 
 **Shown only when project-local playbooks exist (`.eforge/playbooks/`):**
 - **5. Promote** — move a `.eforge/playbooks/<name>.md` to `eforge/playbooks/<name>.md`
@@ -117,7 +126,24 @@ When classification is confident, state the inferred scope briefly:
 
 > "I'll save this as a **{scope}** playbook (`{path}`). You can override the scope if you'd like."
 
-### 3.3: Draft the playbook
+### 3.3: Determine playbook mode
+
+Ask the user which mode this playbook should use:
+
+> "Should this be an **autonomous** playbook (eforge builds it end-to-end without further prompting — hand-off-and-forget) or a **planning** playbook (it seeds an `/eforge:plan` session that you finalize interactively before building)?"
+
+**Default heuristic** — pre-select a suggestion before asking, based on the workflow description:
+
+- Suggest **`planning`** when the description contains judgment-heavy language: "audit", "choose", "decide", "pick the best", "refactor decision", "per-target", "review and select", or similar phrases that imply human evaluation of options.
+- Suggest **`autonomous`** when the description reads mechanical and deterministic: "update", "sync", "generate", "keep … in sync", "run … and commit", or similar phrases where the outcome is predictable without mid-run human judgment.
+
+Present the suggestion explicitly so the user can confirm or override:
+
+> "Based on the description, I'd suggest **`{mode}`** — [{reason}]. Does that fit, or would you prefer the other?"
+
+Write the confirmed mode into the playbook frontmatter.
+
+### 3.4: Draft the playbook
 
 Compose the playbook content based on the workflow description. Structure:
 
@@ -127,6 +153,7 @@ Compose the playbook content based on the workflow description. Structure:
 name: {slug-kebab-case}
 description: {one-line description}
 scope: {user|project-team|project-local}
+mode: {autonomous|planning}
 ---
 ```
 
@@ -138,10 +165,10 @@ scope: {user|project-team|project-local}
 
 Present the draft to the user for review. If entries were pre-filled from an `/eforge:plan` session, note which sections came from the session.
 
-### 3.4: Validate and save
+### 3.5: Validate and save
 
 1. Call `eforge_playbook { action: "validate", raw: "<draft-markdown>" }` before saving.
-   - If `ok: false`, surface the errors **verbatim** and ask the user to fix them. Loop back to Step 3.3 with the errors highlighted. Do NOT write the file.
+   - If `ok: false`, surface the errors **verbatim** and ask the user to fix them. Loop back to Step 3.4 with the errors highlighted. Do NOT write the file.
    - If `ok: true`, proceed.
 
 2. Call `eforge_playbook { action: "save", scope: "<scope>", playbook: { frontmatter: {...}, body: {...} } }`.
@@ -190,22 +217,26 @@ Call `eforge_playbook { action: "show", name: "<name>" }` (resolved to the tier 
 
 ### 4.4: Section-by-section walkthrough
 
-Present each section with its current content and ask if the user wants to update it. Work through in order: **Goal** → **Out of scope** → **Acceptance criteria** → **Notes for the planner**.
+Present each section with its current content and ask if the user wants to update it. Work through in order: **mode** → **Goal** → **Out of scope** → **Acceptance criteria** → **Notes for the planner**.
 
 For each section:
 1. Show: `**## {Section}** (current): {current content}`
 2. Ask: "Does this look right, or would you like to update it?"
 3. If the user provides new content, update the draft. If they say "fine" / "keep it" / "no change", preserve the current content.
 
+**Mode editing**: when the user switches `mode` from `autonomous` to `planning` or vice versa, emit a one-line warning before saving:
+
+> "⚠ Changing the mode does NOT alter any session plans that were previously seeded from this playbook — those files are immutable on disk. Only future runs of this playbook will use the new mode."
+
 ### 4.5: Validate and save
 
-Same as Step 3.4. Validate before saving, surface errors verbatim, do NOT write on failure. On success, report the path.
+Same as Step 3.5. Validate before saving, surface errors verbatim, do NOT write on failure. On success, report the path.
 
 ---
 
 ## Branch: Run (Step 5)
 
-Enqueue a playbook, with an optional wait for an in-flight build to finish first.
+Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first); for planning playbooks the daemon seeds a session plan for interactive refinement via `/eforge:plan`.
 
 ### 5.1: Pick a playbook
 
@@ -247,17 +278,23 @@ Await user confirmation (y/n or just Enter). Only proceed if confirmed.
 
 ### 5.3: Enqueue
 
-- **Run now**: Call `eforge_playbook { action: "enqueue", name: "<name>" }`.
-- **Wait for build**: Call `eforge_playbook { action: "enqueue", name: "<name>", afterQueueId: "<resolved-id>" }`.
+- **Run now**: Call `eforge_playbook { action: "run", name: "<name>" }`.
+- **Wait for build**: Call `eforge_playbook { action: "run", name: "<name>", afterQueueId: "<resolved-id>" }`.
 
 The `afterQueueId` is the internal queue id resolved in Step 5.2 — never the title and never typed by the user.
 
-Report:
-> "Playbook `{name}` enqueued. {If afterQueueId: 'It will start after `{build-title}` completes.'}"
+**Dispatch on the response `kind` field:**
+
+- **`kind: 'enqueued'`**: Report the enqueue confirmation and point at the monitor UI.
+  > "Playbook `{name}` enqueued as `{id}`. {If afterQueueId: 'It will start after `{build-title}` completes.'} Watch progress in the monitor UI."
+
+- **`kind: 'planning'`**: The playbook is in `planning` mode — the daemon created a session plan instead of queuing a build. Report the session plan path and offer to launch the planning conversation.
+  > "Planning session ready at `{path}`. Open `/eforge:plan` to continue."
+  Offer: "Would you like me to open `/eforge:plan --resume` now so we can work through the plan together?"
 
 If the enqueue fails because the upstream is no longer active (404 from daemon), tell the user:
 > "The build you selected has already finished. Running `{name}` now instead."
-Then call `eforge_playbook { action: "enqueue", name: "<name>" }` without `afterQueueId`.
+Then call `eforge_playbook { action: "run", name: "<name>" }` without `afterQueueId`.
 
 ---
 

@@ -25,20 +25,40 @@ Planning must distinguish **facts**, **evidence-backed conclusions**, and **assu
 
 ### Step 1: Session Setup
 
-**Resume path** — If `--resume` is passed or the user says "resume" / "continue planning":
+If no `--resume` flag is given and no topic was provided, present three options:
+
+> "How would you like to start?
+> 1. **Resume** an existing planning session
+> 2. **New** session — start from scratch
+> 3. **Seed from a planning-mode playbook** — use a playbook to pre-populate goal, scope, and criteria"
+
+Then follow the corresponding path below.
+
+**Path (a): Resume** — If `--resume` is passed, the user says "resume" / "continue planning", or picks option 1:
 1. Call `eforge_session_plan { action: 'list-active' }` to discover active sessions.
 2. If one found, call `{ action: 'show', session, open: true }` and present a summary of where things stand: topic, planning type, depth, what dimensions have content, key decisions so far, any open questions.
 3. If multiple found, list them and ask which to resume; then call `{ action: 'show', session, open: true }` for the chosen one.
 4. If none found, tell the user and offer to start a new session.
 5. If the session has the legacy boolean `dimensions` shape (detected when `plan.required_dimensions` is empty in the `show` response and the plan body references old-format frontmatter), call `{ action: 'migrate-legacy', session }` to convert it, then call `{ action: 'show', session }` again to reload.
-6. Continue from whatever dimension needs work
+6. Continue from whatever dimension needs work.
    - If `required_dimensions` is empty (e.g., the session was abandoned before classification), restart from Step 3 to classify type/depth and populate the playbook.
 
-**New session path**:
+**Path (b): New session** — If a topic was provided (without `--resume`), or the user picks option 2:
 1. If no topic provided, ask: "What change are you planning?"
 2. Generate a session ID: `{YYYY-MM-DD}-{slug}` where slug is a short kebab-case derived from the topic (e.g., `2026-04-03-add-dark-mode`)
 3. Call `eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}', open: true }` to create the session file. The wrapper best-effort opens the new session plan file in your default Markdown app; planning continues whether or not the open succeeds.
-4. Proceed to Step 2
+4. Proceed to Step 2.
+
+**Path (c): Seed from a planning-mode playbook** — If the user picks option 3:
+1. Call `eforge_playbook { action: 'list' }`.
+2. Filter the results to entries whose frontmatter `mode === 'planning'`. If none exist, tell the user and offer to start a new session (path b) or create a planning-mode playbook with `/eforge:playbook create`.
+3. Present the filtered list as a numbered menu and ask the user to pick one.
+4. Ask the user for a topic to focus the session (the playbook provides the shape; the topic anchors it to the current work).
+5. Generate a session ID: `{YYYY-MM-DD}-{playbook-name}` (e.g., `2026-05-19-complexity-hotspot-reduction`).
+6. Call `eforge_session_plan { action: 'create-from-playbook', playbook_name: '{name}', session: '{session-id}', topic: '{topic}', open: true }`.
+7. Proceed to Step 2 with the seeded plan as starting context.
+
+> **Sub-note — seeded sessions**: when a session has `seeded_from_playbook` in its frontmatter (set by `create-from-playbook`), the session file's body already contains `## Goal`, `## Out of scope`, `## Acceptance criteria`, and `## Notes from playbook` headings pre-populated from the playbook. In Step 2 (Gather Context), treat these headings as established starting context — do NOT re-prompt the user to provide them from scratch. Instead, read them, summarize them to the user, and allow the conversation to refine or extend them as planning progresses. The user can edit any pre-populated heading during the planning session.
 
 ### Step 2: Gather Context
 

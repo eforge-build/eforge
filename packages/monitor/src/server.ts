@@ -4300,6 +4300,9 @@ export async function startServer(
         : undefined;
 
       serveDiff(req, res, resolvedSessionId, planIdParam, fileParam);
+    } else if (url.startsWith('/api/')) {
+      // Unknown API route — return 404 rather than falling through to SPA static serving
+      sendJsonError(res, 404, `Unknown route: ${req.method} ${url}`);
     } else {
       // Serve static files (SPA)
       await serveStaticFile(req, res, url);

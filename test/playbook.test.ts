@@ -12,8 +12,9 @@
  *  - Scope mismatch warning in listPlaybooks
  */
 import { describe, it, expect } from 'vitest';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   validatePlaybook,
   parsePlaybook,
@@ -726,5 +727,29 @@ describe('movePlaybook', () => {
 
     const loaded = await loadPlaybook({ ...opts, name: 'my-feature' });
     expect(loaded.source).toBe('project-team');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bundled playbooks
+// ---------------------------------------------------------------------------
+
+describe('bundled playbooks', () => {
+  it('all bundled playbooks parse successfully', async () => {
+    const playbooksDir = fileURLToPath(new URL('../eforge/playbooks', import.meta.url));
+    const files = (await readdir(playbooksDir)).filter(f => f.endsWith('.md'));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const raw = await readFile(resolve(playbooksDir, file), 'utf-8');
+      const parsed = parsePlaybook(raw);
+      expect(parsed.mode, `${file} should have a valid mode`).toMatch(/^(autonomous|planning)$/);
+    }
+  });
+
+  it('complexity-hotspot-reduction.md parses with mode: planning', async () => {
+    const playbooksDir = fileURLToPath(new URL('../eforge/playbooks', import.meta.url));
+    const raw = await readFile(resolve(playbooksDir, 'complexity-hotspot-reduction.md'), 'utf-8');
+    const parsed = parsePlaybook(raw);
+    expect(parsed.mode).toBe('planning');
   });
 });

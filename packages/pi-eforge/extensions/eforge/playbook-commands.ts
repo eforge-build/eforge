@@ -163,7 +163,7 @@ export async function handlePlaybookCommand(
       {
         value: "run",
         label: "Run",
-        description: "Enqueue a playbook for building",
+        description: "Enqueue an autonomous playbook, or seed a planning session from a planning-mode playbook",
       },
     );
   }
