@@ -2,12 +2,13 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
+import { stat as fsStat, readFile as fsReadFile } from 'node:fs/promises';
 
 declare const EFORGE_VERSION: string;
 
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 // --- eforge:region plan-02-enqueue-preprocessing-runtime ---
-import { preprocessBuildSource, FatalPreprocessingError } from '@eforge-build/input';
+import { preprocessBuildSource, normalizeBuildSource, FatalPreprocessingError } from '@eforge-build/input';
 // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
 import { QueueExecExitCode, queueExecExitCode } from '@eforge-build/engine/prd-queue';
 import type { EforgeConfig, HookConfig } from '@eforge-build/engine/config';
@@ -436,9 +437,23 @@ export function createProgram(abortController?: AbortController, version?: strin
 
         const configOverrides = buildConfigOverrides(options);
 
+        let inheritedAgentProfile: string | undefined;
+        try {
+          const resolvedSourcePath = resolve(process.cwd(), source);
+          const sourceStat = await fsStat(resolvedSourcePath).catch(() => null);
+          if (sourceStat?.isFile()) {
+            const rawContent = await fsReadFile(resolvedSourcePath, 'utf-8');
+            const normalized = normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawContent });
+            inheritedAgentProfile = normalized.agentProfile;
+          }
+        } catch {
+          // Not a session plan or file not accessible — no inherited profile.
+        }
+        const effectiveProfile = options.profile ?? inheritedAgentProfile;
+
         const engine = await EforgeEngine.create({
           ...(configOverrides && { config: configOverrides }),
-          ...(options.profile && { profileOverride: options.profile }),
+          ...(effectiveProfile && { profileOverride: effectiveProfile }),
         });
 
         await withMonitor(true /* noServer */, async (monitor) => {
@@ -477,7 +492,7 @@ export function createProgram(abortController?: AbortController, version?: strin
               name: options.name,
               verbose: options.verbose,
               abortController,
-              ...(options.profile && { profile: options.profile }),
+              ...(effectiveProfile && { profile: effectiveProfile }),
             });
           }
           // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
@@ -512,6 +527,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--no-plugins', 'Disable plugin loading')
     .option('--watch', 'Watch mode: continuously poll the queue for new PRDs')
     .option('--poll-interval <ms>', 'Poll interval in milliseconds for watch mode', parseInt)
+    .option('--profile <name>', 'Override active profile for this build')
     .action(
       async (
         source: string | undefined,
@@ -528,6 +544,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           plugins?: boolean;
           watch?: boolean;
           pollInterval?: number;
+          profile?: string;
         },
       ) => {
         // --queue mode: delegate to engine.runQueue() or engine.watchQueue()
@@ -541,6 +558,7 @@ export function createProgram(abortController?: AbortController, version?: strin
             onClarification: createClarificationHandler(options.auto ?? false),
             onApproval: createApprovalHandler(options.auto ?? false),
             ...(configOverrides && { config: configOverrides }),
+            ...(options.profile && { profileOverride: options.profile }),
           });
 
           await withMonitor(options.monitor === false, async (monitor) => {
@@ -582,7 +600,7 @@ export function createProgram(abortController?: AbortController, version?: strin
         }
 
         try {
-          const result = await runOrDelegate({ mode: 'build', source, options, abortController, onMonitor: (m) => { activeMonitor = m; } });
+          const result = await runOrDelegate({ mode: 'build', source, options: { ...options, profile: options.profile }, abortController, onMonitor: (m) => { activeMonitor = m; } });
           process.exit(result.code);
         } catch (err) {
           const { message, exitCode } = formatCliError(err);

@@ -45,10 +45,11 @@ function formatPlaybookItem(entry: PlaybookListEntry, index: number) {
     entry.shadows && entry.shadows.length > 0
       ? ` <- shadows ${entry.shadows[0].source}`
       : "";
+  const profileNote = entry.profile ? ` [profile: ${entry.profile}]` : "";
   return {
     value: entry.name,
     label: `${index + 1}. ${entry.name}  [${badge}]${shadowNote}`,
-    description: entry.description,
+    description: `${entry.description}${profileNote}`,
   };
 }
 
@@ -478,7 +479,8 @@ async function handleListBranch(
         p.shadows && p.shadows.length > 0
           ? ` ← shadows ${p.shadows.map((s) => s.source).join(", ")}`
           : "";
-      lines.push(`- **${p.name}**${shadowNote}  \n  ${p.description}`);
+      const profileNote = p.profile ? `  [profile: ${p.profile}]` : "";
+      lines.push(`- **${p.name}**${shadowNote}${profileNote}  \n  ${p.description}`);
     }
     lines.push("");
   }
@@ -490,7 +492,8 @@ async function handleListBranch(
         localPlaybooks.find((l) => l.name === p.name) != null
           ? " ⚠ shadowed by project-local"
           : "";
-      lines.push(`- **${p.name}**${shadowedBy}  \n  ${p.description}`);
+      const profileNote = p.profile ? `  [profile: ${p.profile}]` : "";
+      lines.push(`- **${p.name}**${shadowedBy}${profileNote}  \n  ${p.description}`);
     }
     lines.push("");
   }
@@ -498,7 +501,8 @@ async function handleListBranch(
   if (userPlaybooks.length > 0) {
     lines.push("**User** (`~/.config/eforge/playbooks/`):");
     for (const p of userPlaybooks) {
-      lines.push(`- **${p.name}**  \n  ${p.description}`);
+      const profileNote = p.profile ? `  [profile: ${p.profile}]` : "";
+      lines.push(`- **${p.name}**${profileNote}  \n  ${p.description}`);
     }
   }
 

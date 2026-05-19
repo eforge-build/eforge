@@ -146,6 +146,12 @@ export interface PreprocessingResult {
   provenance: PreprocessingProvenance;
   /** Timestamp-free provenance/diagnostic event payloads. */
   events: PreprocessingProvenanceEvent[];
+  /**
+   * Agent runtime profile inherited from a session plan's `agent_profile` frontmatter field.
+   * Only present when the source is a `.eforge/session-plans/*.md` file that declares `agent_profile`.
+   * Callers use this to apply the inherited profile when no explicit override is provided.
+   */
+  agentProfile?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +339,7 @@ export async function preprocessBuildSource(
 
   let content: string;
   let sourcePath: string | undefined;
+  let agentProfile: string | undefined;
 
   // -------------------------------------------------------------------------
   // Step 1: Resolve source content
@@ -479,6 +486,7 @@ export async function preprocessBuildSource(
       const normalized = normalizeBuildSource({ sourcePath: resolvedPath, content: rawContent });
       content = normalized.content;
       sourcePath = resolvedPath;
+      agentProfile = normalized.agentProfile;
     } else {
       // Inline content
       content = source;
@@ -578,5 +586,6 @@ export async function preprocessBuildSource(
     sourcePath,
     provenance,
     events,
+    ...(agentProfile !== undefined && { agentProfile }),
   };
 }

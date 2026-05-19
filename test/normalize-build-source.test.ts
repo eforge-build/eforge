@@ -175,3 +175,65 @@ status: planning
     expect(result.sourcePath).toBe(sourcePath);
   });
 });
+
+// ---------------------------------------------------------------------------
+// agentProfile — session-plan paths return agentProfile when present
+// ---------------------------------------------------------------------------
+
+describe('normalizeBuildSource — agentProfile', () => {
+  function makeSessionPlanWithAgentProfile(agentProfile: string, topic = 'My Feature'): string {
+    return `---
+session: 2026-04-01-my-feature
+topic: "${topic}"
+status: planning
+planning_type: feature
+planning_depth: focused
+required_dimensions:
+  - scope
+  - acceptance-criteria
+optional_dimensions: []
+skipped_dimensions: []
+open_questions: []
+profile: null
+agent_profile: ${agentProfile}
+---
+
+# ${topic}
+
+## Scope
+
+Implement the feature.
+
+## Acceptance Criteria
+
+Feature works as expected.
+`;
+  }
+
+  it('returns agentProfile for a session-plan path that declares agent_profile', () => {
+    const sourcePath = '/project/.eforge/session-plans/2026-04-01-my-feature.md';
+    const content = makeSessionPlanWithAgentProfile('docs-heavy');
+
+    const result = normalizeBuildSource({ sourcePath, content });
+
+    expect(result.agentProfile).toBe('docs-heavy');
+  });
+
+  it('returns undefined agentProfile for a session-plan path without agent_profile', () => {
+    const sourcePath = '/project/.eforge/session-plans/2026-04-01-my-feature.md';
+    const content = makeValidSessionPlan();
+
+    const result = normalizeBuildSource({ sourcePath, content });
+
+    expect(result.agentProfile).toBeUndefined();
+  });
+
+  it('omits agentProfile for non-session-plan paths', () => {
+    const sourcePath = '/project/my-prd.md';
+    const content = '# My PRD\n\nDo the thing.';
+
+    const result = normalizeBuildSource({ sourcePath, content });
+
+    expect(result.agentProfile).toBeUndefined();
+  });
+});

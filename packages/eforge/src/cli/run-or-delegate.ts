@@ -17,7 +17,9 @@
 import chalk from 'chalk';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
+import { stat as fsStat, readFile as fsReadFile } from 'node:fs/promises';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { preprocessBuildSource, normalizeBuildSource, FatalPreprocessingError } from '@eforge-build/input';
 import {
   validatePlanSet,
   parseOrchestrationConfig,
@@ -67,6 +69,8 @@ export interface BuildRunOpts {
     plugins?: boolean;
     cleanup?: boolean;
     maxConcurrentBuilds?: number;
+    /** Explicit profile override for this build. Takes precedence over any inherited session-plan agent_profile. */
+    profile?: string;
   };
   abortController?: AbortController;
   /** Called with the active monitor on start and undefined on teardown. */
@@ -288,7 +292,14 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
     const lock = readLockfile(cwd);
     if (lock) {
       try {
-        const { data } = await apiEnqueue({ cwd, body: { source } });
+        const { data } = await apiEnqueue({
+          cwd,
+          body: {
+            source,
+            // Pass explicit profile to daemon; daemon handles inherited agent_profile detection
+            ...(options.profile && { profile: options.profile }),
+          },
+        });
         const result = data as EnqueueResponse;
         const sessionId = result?.sessionId ?? 'unknown';
         console.log(chalk.green(`PRD enqueued (session: ${sessionId}). Daemon will auto-build.`));
@@ -315,27 +326,72 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
   // Path 2 & 3: In-process (enqueue + optional compile/dry-run + runQueue)
   initDisplay({ verbose: options.verbose });
 
+  // Pre-detect inherited agent_profile from session-plan source before engine creation.
+  // This allows passing the effective profile as profileOverride to EforgeEngine.create().
+  let inheritedAgentProfile: string | undefined;
+  try {
+    const resolvedSourcePath = resolve(cwd, source);
+    const sourceStat = await fsStat(resolvedSourcePath).catch(() => null);
+    if (sourceStat?.isFile()) {
+      const rawContent = await fsReadFile(resolvedSourcePath, 'utf-8');
+      const normalized = normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawContent });
+      inheritedAgentProfile = normalized.agentProfile;
+    }
+  } catch {
+    // Not a session plan or file not accessible — no inherited profile
+  }
+
+  const effectiveProfile = options.profile ?? inheritedAgentProfile;
+
   const configOverrides = buildConfigOverrides(options);
   const engine = await EforgeEngine.create({
     onClarification: createClarificationHandler(options.auto ?? false),
     onApproval: createApprovalHandler(options.auto ?? false),
     ...(configOverrides && { config: configOverrides }),
+    ...(effectiveProfile && { profileOverride: effectiveProfile }),
   });
 
-  // Phase 1: Enqueue
+  // Phase 1: Enqueue (with build-source preprocessing for session-plan and enricher support)
   let enqueuedName: string | undefined;
   let enqueueResult: 'completed' | 'failed' | 'skipped' = 'completed';
   const enqueueSessionId = randomUUID();
 
   await withRunMonitor(options.monitor === false, async (monitor) => {
-    const enqueueEvents = engine.enqueue(source, {
-      name: options.name,
-      verbose: options.verbose,
-      abortController,
-    });
+    async function* preprocessAndEnqueue(): AsyncGenerator<EforgeEvent> {
+      let normalizedSource: string = source;
+      try {
+        const preprocessResult = await preprocessBuildSource({
+          source,
+          inputSources: engine.nativeExtensionRegistry.inputSources,
+          prdEnrichers: engine.nativeExtensionRegistry.prdEnrichers,
+          cwd,
+          timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+        });
+        const timestamp = new Date().toISOString();
+        for (const event of preprocessResult.events) {
+          yield { ...event, timestamp } as EforgeEvent;
+        }
+        normalizedSource = preprocessResult.content;
+      } catch (err) {
+        if (err instanceof FatalPreprocessingError) {
+          const timestamp = new Date().toISOString();
+          yield { ...err.diagnosticEvent, timestamp } as EforgeEvent;
+          yield { type: 'enqueue:failed', timestamp, error: err.message } as EforgeEvent;
+          return;
+        }
+        throw err;
+      }
+
+      yield* engine.enqueue(normalizedSource, {
+        name: options.name,
+        verbose: options.verbose,
+        abortController,
+        ...(effectiveProfile && { profile: effectiveProfile }),
+      });
+    }
 
     const wrapped = wrapEvents(
-      runSession(enqueueEvents, enqueueSessionId),
+      runSession(preprocessAndEnqueue(), enqueueSessionId),
       {
         monitor,
         hooks: engine.resolvedConfig.hooks,

@@ -1101,11 +1101,12 @@ export function renderPlaybookList(playbooks: PlaybookListEntry[]): void {
     const colorFn = PLAYBOOK_SOURCE_COLORS[pb.source] ?? chalk.dim;
     const srcColored = colorFn(srcLabel);
 
+    const profileNote = pb.profile ? chalk.dim(` [profile: ${pb.profile}]`) : '';
     const desc = pb.description.length > DESC_COL
       ? pb.description.slice(0, DESC_COL - 1) + '…'
       : pb.description;
 
-    console.log(`  ${name}  ${srcColored}  ${desc}`);
+    console.log(`  ${name}  ${srcColored}  ${desc}${profileNote}`);
 
     if (pb.shadows.length > 0) {
       const shadowSources = pb.shadows.map((s) => s.source).join(', ');

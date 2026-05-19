@@ -72,6 +72,13 @@ export const playbookFrontmatterSchema = z.object({
    * - `planning`   — playbook requires an agent-led investigation-first workflow; `playbookToPlanSeed` is a static template/scratch helper only.
    */
   mode: z.enum(['autonomous', 'planning']),
+  /**
+   * Optional agent runtime profile name to use when this playbook is executed.
+   * For autonomous playbooks: passed to `enqueuePrd()` as the build profile override.
+   * For planning playbooks: seeded into the resulting session plan as `agent_profile`.
+   * Profile existence is validated at execution time, not when the playbook is saved.
+   */
+  profile: z.string().optional(),
   /** Commands to run after the build merges (e.g. `["pnpm build"]`). */
   postMerge: z.array(z.string()).optional(),
 });
@@ -136,6 +143,8 @@ export interface PlaybookEntry {
   shadows: PlaybookShadowEntry[];
   /** Absolute path to the file. */
   path: string;
+  /** Optional agent runtime profile name declared in the playbook frontmatter. */
+  profile?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +174,8 @@ export interface SessionPlanInput {
   plannerNotes: string;
   /** Commands to run after the build merges (forwarded from frontmatter). */
   postMerge?: string[];
+  /** Optional agent runtime profile name forwarded from playbook frontmatter. */
+  profile?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -324,6 +335,9 @@ export function serializePlaybook(playbook: Playbook): string {
     scope: playbook.scope,
     mode: playbook.mode,
   };
+  if (playbook.profile !== undefined && playbook.profile.trim().length > 0) {
+    fm.profile = playbook.profile.trim();
+  }
   if (playbook.postMerge !== undefined && playbook.postMerge.length > 0) {
     fm.postMerge = playbook.postMerge;
   }
@@ -398,6 +412,7 @@ export async function listPlaybooks(
       let scope: PlaybookScope = entry.scope as PlaybookScope;
       let mode: PlaybookMode = 'autonomous'; // safe default for unreadable/invalid entries
 
+      let profile: string | undefined;
       try {
         const raw = await readFile(entry.path, 'utf-8');
         const [fm] = splitFrontmatter(raw);
@@ -419,6 +434,9 @@ export async function listPlaybooks(
         if (fm.mode === 'autonomous' || fm.mode === 'planning') {
           mode = fm.mode;
         }
+        if (typeof fm.profile === 'string' && fm.profile.trim().length > 0) {
+          profile = fm.profile.trim();
+        }
       } catch {
         // unreadable — include with empty description and default mode
       }
@@ -431,6 +449,7 @@ export async function listPlaybooks(
         source: entry.scope,
         shadows: shadowEntries(entry.name, entry.shadows, opts),
         path: entry.path,
+        ...(profile !== undefined && { profile }),
       });
     }),
   );
@@ -644,6 +663,9 @@ export function playbookToBuildSource(playbook: Playbook): SessionPlanInput {
     acceptanceCriteria: playbook.acceptanceCriteria,
     plannerNotes: playbook.plannerNotes,
     postMerge: playbook.postMerge,
+    ...(playbook.profile !== undefined && playbook.profile.trim().length > 0
+      ? { profile: playbook.profile.trim() }
+      : {}),
   };
 }
 
@@ -666,6 +688,8 @@ export interface PlaybookPlanSeed {
   sections: Map<string, string>;
   /** The playbook name; used as the `seeded_from_playbook` frontmatter field. */
   seededFrom: string;
+  /** Optional agent runtime profile name forwarded from playbook frontmatter. */
+  profile?: string;
 }
 
 /**
@@ -700,5 +724,8 @@ export function playbookToPlanSeed(playbook: Playbook): PlaybookPlanSeed {
     topic: playbook.description,
     sections,
     seededFrom: playbook.name,
+    ...(playbook.profile !== undefined && playbook.profile.trim().length > 0
+      ? { profile: playbook.profile.trim() }
+      : {}),
   };
 }

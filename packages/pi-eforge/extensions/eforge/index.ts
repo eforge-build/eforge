@@ -2098,7 +2098,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_playbook",
     label: "eforge playbook",
     description:
-      'Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, and mode; "show" returns a single playbook\'s frontmatter, body, and mode; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require an interactive agent session (returns { kind: "requires-agent", mode: "planning", name, message }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing.',
+      'Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook\'s frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require an interactive agent session (returns { kind: "requires-agent", mode: "planning", name, message }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback.',
     parameters: Type.Object({
       action: StringEnum(["list", "show", "save", "run", "promote", "demote", "validate"] as const, {
         description: "Operation to perform on playbooks",
@@ -2120,7 +2120,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             description: Type.String(),
             scope: StringEnum(["user", "project-team", "project-local"] as const),
             mode: StringEnum(["autonomous", "planning"] as const),
-            agentRuntime: Type.Optional(Type.String()),
+            profile: Type.Optional(Type.String({ description: 'Optional agent runtime profile name. Leaving it empty allows profile-router selection, then active-profile/default fallback.' })),
             postMerge: Type.Optional(Type.Array(Type.String())),
           }),
           body: Type.Object({
@@ -2216,11 +2216,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const lines: string[] = [];
 
         if (Array.isArray((data as { playbooks?: unknown }).playbooks)) {
-          const playbooks = (data as { playbooks: Array<{ name: string; description: string; source: string }> }).playbooks;
+          const playbooks = (data as { playbooks: Array<{ name: string; description: string; source: string; profile?: string }> }).playbooks;
           lines.push(theme.fg("accent", `${playbooks.length} playbook(s)`));
           for (const p of playbooks) {
             const source = theme.fg("dim", ` [${p.source}]`);
-            lines.push(`  ${theme.fg("text", p.name)}${source}  ${theme.fg("muted", p.description)}`);
+            const profileNote = p.profile ? theme.fg("dim", ` [profile: ${p.profile}]`) : "";
+            lines.push(`  ${theme.fg("text", p.name)}${source}${profileNote}  ${theme.fg("muted", p.description)}`);
           }
         } else if ((data as { kind?: unknown }).kind === "enqueued") {
           lines.push(theme.fg("success", "✓ Enqueued: ") + theme.fg("accent", String((data as { id: string }).id)));
@@ -2262,7 +2263,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_session_plan",
     label: "eforge session-plan",
     description:
-      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook\'s content (requires playbook_name) — for a full interactive planning session use /eforge:playbook run <name> or /eforge:plan instead. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
+      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook\'s content (requires playbook_name) — for a full interactive planning session use /eforge:playbook run <name> or /eforge:plan instead. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued.',
     parameters: Type.Object({
       action: StringEnum(
         ["list-active", "show", "create", "set-section", "skip-dimension", "set-status", "select-dimensions", "readiness", "migrate-legacy", "create-from-playbook"] as const,
@@ -2318,9 +2319,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           description: 'Playbook name to seed from (required for "create-from-playbook")',
         }),
       ),
+      agent_profile: Type.Optional(
+        Type.String({
+          description: 'Optional agent runtime profile name inherited from a planning-mode playbook\'s profile field. Not validated at create time; used when the session plan is enqueued. Pass when creating a session plan from a playbook that has a profile set.',
+        }),
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open, playbook_name } = params;
+      const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open, playbook_name, agent_profile } = params;
 
       if (action === "list-active") {
         const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.sessionPlanList);
@@ -2348,6 +2354,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const body: Record<string, unknown> = { session, topic };
         if (planning_type !== undefined) body.planning_type = planning_type;
         if (planning_depth !== undefined) body.planning_depth = planning_depth;
+        if (agent_profile !== undefined) body.agent_profile = agent_profile;
         const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanCreate, body);
         if (open === true && typeof (data as Record<string, unknown>).path === 'string') {
           const { openSessionPlanFile } = await import('./open-session-plan.js');

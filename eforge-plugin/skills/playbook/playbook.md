@@ -141,6 +141,17 @@ Present the suggestion explicitly so the user can confirm or override:
 
 Write the confirmed mode into the playbook frontmatter.
 
+### 3.3b: Optional runtime profile
+
+Ask whether this playbook should be tied to a specific agent runtime profile:
+
+> "Should this playbook use a specific agent runtime profile when it runs? If yes, enter the profile name (e.g. `docs-heavy`, `fast-review`). Leave blank to allow the profile router to select one, or fall back to the project's active profile/defaults."
+
+- If the user provides a name, set `profile: {name}` in the frontmatter.
+- If the user leaves it blank or says "default" / "none", omit the `profile` field entirely.
+- Explain the fallback: leaving `profile` empty means eforge may use a registered profile router; if no router selects a profile, it uses the project's active-profile marker or built-in defaults. An explicit profile overrides both router and active-profile selection.
+- Profile existence is validated at execution time, not when the playbook is saved.
+
 ### 3.4: Draft the playbook
 
 Compose the playbook content based on the workflow description. Structure:
@@ -152,6 +163,7 @@ name: {slug-kebab-case}
 description: {one-line description}
 scope: {user|project-team|project-local}
 mode: {autonomous|planning}
+# profile: {name}   # Optional — omit to allow router/active-profile/default resolution
 ---
 ```
 
@@ -215,9 +227,13 @@ Call `mcp__eforge__eforge_playbook { action: "show", name: "<name>" }` (resolved
 
 ### 4.4: Section-by-section walkthrough
 
-Present each section with its current content and ask if the user wants to update it. Work through in order: **mode** → **Goal** → **Out of scope** → **Acceptance criteria** → **Notes for the planner**.
+Present each section with its current content and ask if the user wants to update it. Work through in order: **mode** → **profile** → **Goal** → **Out of scope** → **Acceptance criteria** → **Notes for the planner**.
 
-Note: `mode` is a frontmatter field (not a body heading); present it as `mode (current): <value>` rather than using the `## {Section}` heading format below.
+Note: `mode` and `profile` are frontmatter fields (not body headings); present them as `mode (current): <value>` and `profile (current): <value or "none">` rather than using the `## {Section}` heading format below.
+
+**Profile editing**: when the user changes the `profile` field, remind them:
+
+> "Profile existence is validated at execution time, not when the playbook is saved. Leaving it blank allows profile-router, active-profile, or default resolution."
 
 For each section:
 1. Show: `**## {Section}** (current): {current content}`
@@ -311,7 +327,7 @@ Do not call `mcp__eforge__eforge_playbook { action: "run" }` for planning playbo
 
 4. **Ask for a topic**: Ask the user for a short topic to anchor this session (the playbook provides the shape; the topic anchors it to the current work). If the playbook's Goal makes the topic obvious, suggest it and allow override.
 
-5. **Create the session plan**: Generate a session ID `{YYYY-MM-DD}-{playbook-name}` (e.g. `2026-05-19-complexity-hotspot-reduction`). Call `mcp__eforge__eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true }`. If that session ID already exists, do not abandon the flow: ask whether to resume and update the existing session or create a new suffixed session ID (for example `{YYYY-MM-DD}-{playbook-name}-2`), then continue with the chosen session.
+5. **Create the session plan**: Generate a session ID `{YYYY-MM-DD}-{playbook-name}` (e.g. `2026-05-19-complexity-hotspot-reduction`). If the playbook has a `profile` field, call `mcp__eforge__eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true, agent_profile: "{playbook.profile}" }` so the session plan inherits the profile at enqueue time. If the playbook has no `profile`, call `mcp__eforge__eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true }`. If that session ID already exists, do not abandon the flow: ask whether to resume and update the existing session or create a new suffixed session ID (for example `{YYYY-MM-DD}-{playbook-name}-2`), then continue with the chosen session.
 
 6. **Write concrete sections**: Write investigation findings as concrete section content using `mcp__eforge__eforge_session_plan { action: "set-section", session, dimension, content }`. At minimum write a scope or goal section reflecting the playbook intent plus investigation results. Include specific evidence — not generic playbook template language.
 

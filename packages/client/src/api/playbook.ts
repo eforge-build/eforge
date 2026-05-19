@@ -30,6 +30,8 @@ export interface PlaybookListEntry {
   source: PlaybookArtifactSource;
   shadows: PlaybookShadow[];
   path: string;
+  /** Optional agent runtime profile name declared in the playbook frontmatter. */
+  profile?: string;
 }
 
 /** Fully resolved playbook (frontmatter + body sections). */
@@ -44,6 +46,8 @@ export interface PlaybookData {
   outOfScope: string;
   acceptanceCriteria: string;
   plannerNotes: string;
+  /** Optional agent runtime profile name declared in the playbook frontmatter. */
+  profile?: string;
 }
 
 /** Frontmatter-only fields for structured save requests. */
@@ -54,6 +58,8 @@ export interface PlaybookFrontmatterFields {
   /** Execution mode for this playbook. */
   mode: PlaybookMode;
   postMerge?: string[];
+  /** Optional agent runtime profile name for this playbook. */
+  profile?: string;
 }
 
 /** Body sections for structured save requests. */

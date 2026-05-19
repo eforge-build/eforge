@@ -27,6 +27,7 @@ import {
   loadPlaybook,
   listPlaybooks,
   movePlaybook,
+  copyPlaybookToScope,
   PlaybookNotFoundError,
   type Playbook,
 } from '@eforge-build/input';
@@ -569,6 +570,30 @@ describe('writePlaybook + loadPlaybook round-trip', () => {
     const loaded = await loadPlaybook({ ...opts, name: 'my-feature' });
     expect(loaded.playbook.mode).toBe('autonomous');
   });
+
+  it('preserves profile through writePlaybook and loadPlaybook', async () => {
+    const root = makeTempDir();
+    const opts = makeOpts(root);
+    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
+
+    await writePlaybook({ ...opts, scope: 'project-team', playbook: pb });
+    const loaded = await loadPlaybook({ ...opts, name: 'my-feature' });
+    expect(loaded.playbook.profile).toBe('docs-heavy');
+  });
+
+  it('preserves profile when copying a playbook to another scope', async () => {
+    const root = makeTempDir();
+    const opts = makeOpts(root);
+    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
+
+    await writePlaybook({ ...opts, scope: 'project-team', playbook: pb });
+    const result = await copyPlaybookToScope({ ...opts, name: 'my-feature', targetScope: 'project-local' });
+    const copiedRaw = await readFile(result.targetPath, 'utf-8');
+    const copied = parsePlaybook(copiedRaw);
+
+    expect(copied.scope).toBe('project-local');
+    expect(copied.profile).toBe('docs-heavy');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -801,5 +826,137 @@ describe('bundled playbooks', () => {
     const raw = await readFile(resolve(playbooksDir, 'complexity-hotspot-reduction.md'), 'utf-8');
     const parsed = parsePlaybook(raw);
     expect(parsed.mode).toBe('planning');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// profile field — parse / serialize / round-trip / build-source / plan-seed
+// ---------------------------------------------------------------------------
+
+describe('playbookFrontmatterSchema — optional profile field', () => {
+  it('accepts a playbook containing profile: docs-heavy', () => {
+    const raw = `---
+name: my-feature
+description: A feature
+scope: project-team
+mode: autonomous
+profile: docs-heavy
+---
+
+## Goal
+
+Do something.
+`;
+    const result = validatePlaybook(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unexpected');
+    expect(result.playbook.profile).toBe('docs-heavy');
+  });
+
+  it('accepts a playbook without profile field (profile is optional)', () => {
+    const raw = validPlaybookRaw();
+    const result = validatePlaybook(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unexpected');
+    expect(result.playbook.profile).toBeUndefined();
+  });
+
+  it('rejects no existing playbook fixture because of profile field presence', () => {
+    // All existing playbooks (without profile) must still parse successfully
+    const raw = validPlaybookRaw();
+    const result = validatePlaybook(raw);
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('serializePlaybook — profile field', () => {
+  it('includes profile: field when profile is set', () => {
+    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
+    const serialized = serializePlaybook(pb);
+    expect(serialized).toContain('profile: docs-heavy');
+  });
+
+  it('omits profile: field when profile is undefined', () => {
+    const pb: Playbook = { ...validPlaybook() };
+    const serialized = serializePlaybook(pb);
+    expect(serialized).not.toContain('profile:');
+  });
+
+  it('round-trips profile field through parse/serialize', () => {
+    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
+    const raw = serializePlaybook(pb);
+    const reparsed = parsePlaybook(raw);
+    expect(reparsed.profile).toBe('docs-heavy');
+  });
+
+  it('serialized output contains mode: and postMerge: when profile is also present', () => {
+    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy', postMerge: ['pnpm build'] };
+    const serialized = serializePlaybook(pb);
+    expect(serialized).toContain('mode: autonomous');
+    expect(serialized).toContain('profile: docs-heavy');
+    expect(serialized).toContain('postMerge:');
+  });
+});
+
+describe('playbookToBuildSource — profile field', () => {
+  it('returns profile in the result for an autonomous playbook with profile', () => {
+    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
+    const result = playbookToBuildSource(pb);
+    expect(result.profile).toBe('docs-heavy');
+  });
+
+  it('returns undefined profile for an autonomous playbook without profile', () => {
+    const pb: Playbook = { ...validPlaybook() };
+    const result = playbookToBuildSource(pb);
+    expect(result.profile).toBeUndefined();
+  });
+});
+
+describe('playbookToPlanSeed — profile field', () => {
+  it('returns profile in the seed for a planning playbook with profile', () => {
+    const pb: Playbook = { ...validPlanningPlaybook(), profile: 'docs-heavy' };
+    const seed = playbookToPlanSeed(pb);
+    expect(seed.profile).toBe('docs-heavy');
+  });
+
+  it('returns undefined profile for a planning playbook without profile', () => {
+    const pb: Playbook = { ...validPlanningPlaybook() };
+    const seed = playbookToPlanSeed(pb);
+    expect(seed.profile).toBeUndefined();
+  });
+});
+
+describe('listPlaybooks — profile field', () => {
+  const makeTempDirForProfile = useTempDir('playbook-profile-');
+
+  function makeOpts(root: string) {
+    const configDir = resolve(root, 'eforge');
+    const cwd = root;
+    process.env.XDG_CONFIG_HOME = resolve(root, 'xdg-config');
+    return { configDir, cwd };
+  }
+
+  it('includes profile in listing entries when playbook declares profile', async () => {
+    const root = makeTempDirForProfile();
+    const opts = makeOpts(root);
+    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
+    await writePlaybook({ ...opts, scope: 'project-team', playbook: pb });
+
+    const { playbooks } = await listPlaybooks(opts);
+    const entry = playbooks.find((p) => p.name === 'my-feature');
+    expect(entry).toBeDefined();
+    expect(entry!.profile).toBe('docs-heavy');
+  });
+
+  it('omits profile from listing entries when playbook has no profile', async () => {
+    const root = makeTempDirForProfile();
+    const opts = makeOpts(root);
+    const pb: Playbook = { ...validPlaybook() };
+    await writePlaybook({ ...opts, scope: 'project-team', playbook: pb });
+
+    const { playbooks } = await listPlaybooks(opts);
+    const entry = playbooks.find((p) => p.name === 'my-feature');
+    expect(entry).toBeDefined();
+    expect(entry!.profile).toBeUndefined();
   });
 });
