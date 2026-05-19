@@ -106,9 +106,8 @@ export async function* withRecording(
    */
   const bufferedSessionProfiles = new Map<string, EforgeEvent>();
   /**
-   * Tracks the most recently seen session:start sessionId so that
-   * session:profile events (which carry no sessionId in their schema) can be
-   * keyed into bufferedSessionProfiles without relying on a missing field.
+   * Tracks the most recently seen session:start sessionId as a fallback for
+   * legacy session:profile events that were emitted without an envelope sessionId.
    */
   let currentSessionId: string | undefined;
 
@@ -160,17 +159,18 @@ export async function* withRecording(
     }
 
     // Handle session:profile correlation.
-    // session:profile carries no runId or sessionId in its schema.
-    // If a run is already established (phase or enqueue), insert directly.
-    // Otherwise buffer by currentSessionId for later flush when run correlation arrives.
+    // If a run is already established (explicit runId, phase, or enqueue), insert directly.
+    // Otherwise buffer by the runtime sessionId for later flush when run correlation arrives.
     if (event.type === 'session:profile') {
-      const activeProfileRunId = currentPhaseRunId ?? enqueueRunId;
+      const eventRunId = typeof event.runId === 'string' ? event.runId : undefined;
+      const eventSessionId = typeof event.sessionId === 'string' ? event.sessionId : currentSessionId;
+      const activeProfileRunId = eventRunId ?? currentPhaseRunId ?? enqueueRunId;
       if (activeProfileRunId) {
         // Run is already correlated — insert directly (bypasses the generic path below)
         insertBufferedEvent(db, activeProfileRunId, event);
-      } else if (currentSessionId) {
+      } else if (eventSessionId) {
         // Pre-correlation: buffer for flush when phase:start or enqueue:start fires
-        bufferedSessionProfiles.set(currentSessionId, event);
+        bufferedSessionProfiles.set(eventSessionId, event);
       }
       // Always yield and skip the generic insertEvent path for session:profile
       yield event;
