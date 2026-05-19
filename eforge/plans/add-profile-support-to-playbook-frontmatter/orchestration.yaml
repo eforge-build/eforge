@@ -1,0 +1,79 @@
+name: add-profile-support-to-playbook-frontmatter
+description: Add optional playbook frontmatter profile support, propagate
+  planning playbook profile metadata via session-plan agent_profile, and update
+  consumer surfaces/docs.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-core-profile-propagation
+    name: Core Playbook Profile Propagation
+    depends_on: []
+    branch: add-profile-support-to-playbook-frontmatter/plan-01-core-profile-propagation
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - security
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-02-consumer-surfaces-and-docs
+    name: Consumer Surfaces and Documentation
+    depends_on:
+      - plan-01-core-profile-propagation
+    branch: add-profile-support-to-playbook-frontmatter/plan-02-consumer-surfaces-and-docs
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - docs
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - docs
+      - test
+      - verify
+    maxRounds: 3
+    evaluatorStrictness: standard
+  rationale: "This is an excursion: the feature spans input schemas, daemon/CLI
+    enqueue paths, client contracts, integrations, docs, and tests, but a single
+    planner can enumerate the dependency chain and affected files without
+    delegated module planning. A plan review gate is warranted because the work
+    touches public behavior and multiple packages. The build runs documentation
+    authoring alongside implementation, then synchronizes existing docs, writes
+    and executes tests, and finishes with an iterative review cycle. Parallel
+    review perspectives cover code quality, API/wire compatibility,
+    documentation accuracy, test coverage, and end-to-end verification without
+    security-specific overhead."
