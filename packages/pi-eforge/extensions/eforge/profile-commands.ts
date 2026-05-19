@@ -12,6 +12,8 @@ import { API_ROUTES, buildPath } from "@eforge-build/client";
 import { piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import { showSelectOverlay, showSearchableSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
 import { buildProfileCreatePayload, type TierSelection, type ProfileCreatePayload, type TierRecipeEntry } from "./profile-payload";
+import { TOOLBELT_PRESETS, findMissingServers, applyToolbeltPresetToTiers, applyNoMcpAccessToTiers } from "./toolbelt-presets";
+import { readMcpServers, addPlaywrightServer, upsertToolbeltInConfig } from "./toolbelt-config-files";
 
 // ---------------------------------------------------------------------------
 // Inline response types for daemon API calls
@@ -499,6 +501,120 @@ export async function handleProfileNewCommand(
   }
 
   const tiers = tierSelections as Record<TierName, TierSelection>;
+
+  // Step 6: Toolbelt preset selection
+  const presetChoiceItems: Array<{ value: string; label: string; description: string }> = [
+    {
+      value: '__none__',
+      label: 'No project MCP access',
+      description: 'Agents use only built-in tools — safest, least-privilege default',
+    },
+    ...TOOLBELT_PRESETS.map((p) => ({
+      value: p.id,
+      label: p.label,
+      description: p.description,
+    })),
+    {
+      value: '__skip__',
+      label: 'Skip (configure manually)',
+      description: 'Set toolbelt assignments directly in the profile YAML',
+    },
+  ];
+
+  const presetChoice = await showSelectOverlay(ctx, 'eforge - New Profile: Toolbelt Preset', presetChoiceItems);
+  if (!presetChoice) return;
+
+  if (presetChoice !== '__skip__') {
+    if (presetChoice === '__none__') {
+      // Apply "none" to all tiers
+      const updated = applyNoMcpAccessToTiers(tiers);
+      for (const tier of TIER_ORDER) {
+        tiers[tier] = { ...tiers[tier], toolbelt: updated[tier].toolbelt };
+      }
+    } else {
+      const selectedPreset = TOOLBELT_PRESETS.find((p) => p.id === presetChoice)!;
+
+      // Check for missing MCP servers
+      let existingServers: Record<string, unknown> = {};
+      try {
+        existingServers = readMcpServers(ctx.cwd);
+      } catch {
+        // Non-fatal: if .mcp.json is malformed, continue without auto-add
+      }
+      const missing = findMissingServers(selectedPreset, existingServers);
+
+      // If the preset has autoAdd and there are missing servers, offer to add them
+      if (missing.length > 0 && selectedPreset.autoAdd) {
+        const autoAddItems = [
+          {
+            value: 'yes',
+            label: 'Yes, add automatically',
+            description: `Add ${missing.join(', ')} to .mcp.json`,
+          },
+          {
+            value: 'no',
+            label: 'No, I will add manually',
+            description: selectedPreset.setupHint,
+          },
+        ];
+        const autoAddChoice = await showSelectOverlay(
+          ctx,
+          `eforge - Add MCP Servers for ${selectedPreset.label}?`,
+          autoAddItems,
+        );
+        if (!autoAddChoice) return;
+
+        if (autoAddChoice === 'yes') {
+          for (const serverName of missing) {
+            const serverConfig = selectedPreset.autoAdd.servers[serverName];
+            if (serverConfig) {
+              try {
+                if (serverName === 'playwright') {
+                  addPlaywrightServer(ctx.cwd, serverConfig);
+                }
+              } catch (err) {
+                await showInfoOverlay(
+                  ctx,
+                  'eforge - Warning',
+                  `Could not auto-add ${serverName} to .mcp.json:\n\n${err instanceof Error ? err.message : String(err)}\n\n${selectedPreset.setupHint}`,
+                );
+              }
+            }
+          }
+        } else {
+          await showInfoOverlay(
+            ctx,
+            `eforge - Setup Hint: ${selectedPreset.label}`,
+            selectedPreset.setupHint,
+          );
+        }
+      } else if (missing.length > 0) {
+        // No autoAdd available — show setup hint
+        await showInfoOverlay(
+          ctx,
+          `eforge - Setup Hint: ${selectedPreset.label}`,
+          `Missing MCP servers: ${missing.join(', ')}\n\n${selectedPreset.setupHint}`,
+        );
+      }
+
+      // Apply tier assignments
+      const updated = applyToolbeltPresetToTiers(selectedPreset, tiers);
+      for (const tier of TIER_ORDER) {
+        tiers[tier] = { ...tiers[tier], toolbelt: updated[tier].toolbelt };
+      }
+
+      // Upsert toolbelt definition in eforge/config.yaml
+      try {
+        upsertToolbeltInConfig(ctx.cwd, selectedPreset);
+      } catch (err) {
+        await showInfoOverlay(
+          ctx,
+          'eforge - Warning',
+          `Could not update eforge/config.yaml:\n\n${err instanceof Error ? err.message : String(err)}\n\nYou may need to add the toolbelt definition manually.`,
+        );
+      }
+    }
+  }
 
   // Build the daemon payload
   const payload = buildProfileCreatePayload({

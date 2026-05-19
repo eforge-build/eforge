@@ -11,6 +11,9 @@
 
 export type HarnessType = 'claude-sdk' | 'pi';
 
+/** The four built-in tier names. */
+export type TierName = 'planning' | 'implementation' | 'review' | 'evaluation';
+
 /** A harness + model + effort selection for a single tier. */
 export interface TierSelection {
   /** Which harness to use for this tier. */
@@ -21,6 +24,8 @@ export interface TierSelection {
   modelId: string;
   /** Effort level (e.g. "high", "medium", "low"). */
   effort: string;
+  /** Toolbelt name to assign to this tier (e.g. "browser-ui", "none"). */
+  toolbelt?: string;
 }
 
 /** Input to buildProfileCreatePayload. */
@@ -54,6 +59,8 @@ export interface TierRecipeEntry {
   pi?: { provider: string };
   model: string;
   effort: string;
+  /** Toolbelt name assigned to this tier. Omitted when not set. */
+  toolbelt?: string;
 }
 
 /** The payload sent to POST /api/profile/create. */
@@ -88,6 +95,9 @@ function toTierEntry(sel: TierSelection): TierRecipeEntry {
   };
   if (sel.harness === 'pi' && sel.provider) {
     entry.pi = { provider: sel.provider };
+  }
+  if (sel.toolbelt !== undefined) {
+    entry.toolbelt = sel.toolbelt;
   }
   return entry;
 }
