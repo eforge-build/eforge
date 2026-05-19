@@ -45,6 +45,22 @@ function buildAndPersistRunUpsert(
 }
 
 /**
+ * Insert a buffered lifecycle event (session:start, session:profile, etc.) into
+ * the run-correlated events table. Avoids duplicating the insertEvent call block
+ * at each flush site.
+ */
+function insertBufferedEvent(db: MonitorDB, runId: string, event: EforgeEvent): void {
+  db.insertEvent({
+    runId,
+    type: event.type,
+    planId: extractPlanId(event),
+    agent: extractAgent(event),
+    data: JSON.stringify(event),
+    timestamp: event.timestamp,
+  });
+}
+
+/**
  * Middleware generator that records every EforgeEvent to SQLite,
  * then re-yields it unchanged. DB-only writes — no SSE push.
  * The detached server polls the DB for new events.
@@ -76,7 +92,25 @@ export async function* withRecording(
    * are mutually exclusive within a single withRecording invocation.
    */
   let enqueueRunId: string | undefined;
+  /**
+   * Tracks the active phase run ID set by phase:start.
+   * Used to correlate session:profile events that arrive after phase:start
+   * but have no runId in their schema.
+   */
+  let currentPhaseRunId: string | undefined;
   const bufferedSessionStarts = new Map<string, EforgeEvent>();
+  /**
+   * Buffer for no-runId `session:profile` events keyed by runtime sessionId.
+   * These arrive before phase:start or enqueue:start creates a run row.
+   * Flushed into the first correlated run when run correlation is established.
+   */
+  const bufferedSessionProfiles = new Map<string, EforgeEvent>();
+  /**
+   * Tracks the most recently seen session:start sessionId so that
+   * session:profile events (which carry no sessionId in their schema) can be
+   * keyed into bufferedSessionProfiles without relying on a missing field.
+   */
+  let currentSessionId: string | undefined;
 
   for await (const event of events) {
     // Guard: don't apply mutation hooks to synthetic daemon:run:upsert events.
@@ -92,6 +126,7 @@ export async function* withRecording(
 
     if (event.type === 'phase:start') {
       enqueueRunId = undefined; // phase:start takes over from enqueue tracking
+      currentPhaseRunId = event.runId;
       db.insertRun({
         id: event.runId,
         sessionId: event.sessionId,
@@ -106,22 +141,40 @@ export async function* withRecording(
       const eventSessionId = 'sessionId' in event ? (event as { sessionId: string }).sessionId : undefined;
       const bufferedStart = eventSessionId ? bufferedSessionStarts.get(eventSessionId) : undefined;
       if (bufferedStart && eventSessionId) {
-        db.insertEvent({
-          runId: event.runId,
-          type: bufferedStart.type,
-          planId: extractPlanId(bufferedStart),
-          agent: extractAgent(bufferedStart),
-          data: JSON.stringify(bufferedStart),
-          timestamp: bufferedStart.timestamp,
-        });
+        insertBufferedEvent(db, event.runId, bufferedStart);
         bufferedSessionStarts.delete(eventSessionId);
+      }
+      // Flush buffered session:profile if present
+      const bufferedProfile = eventSessionId ? bufferedSessionProfiles.get(eventSessionId) : undefined;
+      if (bufferedProfile && eventSessionId) {
+        insertBufferedEvent(db, event.runId, bufferedProfile);
+        bufferedSessionProfiles.delete(eventSessionId);
       }
       const upsert = buildAndPersistRunUpsert(db, event.runId, event.runId);
       if (upsert) pendingUpserts.push(upsert);
     }
 
     if (event.type === 'session:start' && !event.runId && !enqueueRunId) {
+      currentSessionId = event.sessionId;
       bufferedSessionStarts.set(event.sessionId, event);
+    }
+
+    // Handle session:profile correlation.
+    // session:profile carries no runId or sessionId in its schema.
+    // If a run is already established (phase or enqueue), insert directly.
+    // Otherwise buffer by currentSessionId for later flush when run correlation arrives.
+    if (event.type === 'session:profile') {
+      const activeProfileRunId = currentPhaseRunId ?? enqueueRunId;
+      if (activeProfileRunId) {
+        // Run is already correlated — insert directly (bypasses the generic path below)
+        insertBufferedEvent(db, activeProfileRunId, event);
+      } else if (currentSessionId) {
+        // Pre-correlation: buffer for flush when phase:start or enqueue:start fires
+        bufferedSessionProfiles.set(currentSessionId, event);
+      }
+      // Always yield and skip the generic insertEvent path for session:profile
+      yield event;
+      continue;
     }
 
     if (event.type === 'enqueue:start') {
@@ -143,15 +196,14 @@ export async function* withRecording(
       // Flush buffered session:start
       const bufferedEnqueueStart = sessionId ? bufferedSessionStarts.get(sessionId) : undefined;
       if (bufferedEnqueueStart && sessionId) {
-        db.insertEvent({
-          runId: enqueueRunId,
-          type: bufferedEnqueueStart.type,
-          planId: extractPlanId(bufferedEnqueueStart),
-          agent: extractAgent(bufferedEnqueueStart),
-          data: JSON.stringify(bufferedEnqueueStart),
-          timestamp: bufferedEnqueueStart.timestamp,
-        });
+        insertBufferedEvent(db, enqueueRunId, bufferedEnqueueStart);
         bufferedSessionStarts.delete(sessionId);
+      }
+      // Flush buffered session:profile if present for this session
+      const bufferedEnqueueProfile = sessionId ? bufferedSessionProfiles.get(sessionId) : undefined;
+      if (bufferedEnqueueProfile && sessionId) {
+        insertBufferedEvent(db, enqueueRunId, bufferedEnqueueProfile);
+        bufferedSessionProfiles.delete(sessionId);
       }
       const upsert = buildAndPersistRunUpsert(db, enqueueRunId, enqueueRunId);
       if (upsert) pendingUpserts.push(upsert);
@@ -213,6 +265,7 @@ export async function* withRecording(
     }
 
     if (event.type === 'phase:end' && event.runId) {
+      currentPhaseRunId = undefined;
       db.updateRunStatus(event.runId, event.result.status, event.timestamp);
       const upsert = buildAndPersistRunUpsert(db, event.runId, event.runId);
       if (upsert) pendingUpserts.push(upsert);
@@ -236,6 +289,8 @@ export async function* withRecording(
 
     if (event.type === 'session:end') {
       enqueueRunId = undefined;
+      currentPhaseRunId = undefined;
+      currentSessionId = undefined;
     }
 
     yield event;

@@ -1,12 +1,14 @@
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { profileBadgeClasses } from '@/components/layout/sidebar';
-import type { OrchestrationConfig, EforgeEvent } from '@/lib/types';
+import { ProfileBadge } from '@/components/profile/profile-badge';
+import type { OrchestrationConfig, EforgeEvent, SessionProfile } from '@/lib/types';
 import type { BuildStageSpec, ReviewProfileConfig } from '@/lib/types';
 
 interface PlanTabProps {
   orchestration: OrchestrationConfig | null;
   pipelineEvent: (EforgeEvent & { type: 'planning:pipeline' }) | null;
+  profile: SessionProfile | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,7 +103,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // Main component
 // ---------------------------------------------------------------------------
 
-export function PlanTab({ orchestration, pipelineEvent }: PlanTabProps) {
+export function PlanTab({ orchestration, pipelineEvent, profile }: PlanTabProps) {
   if (!orchestration && !pipelineEvent) {
     return (
       <div className="text-text-dim text-xs py-8 text-center">
@@ -112,6 +114,13 @@ export function PlanTab({ orchestration, pipelineEvent }: PlanTabProps) {
 
   return (
     <div className="text-sm">
+      {/* Build profile */}
+      {profile && profile.profileName && (
+        <Section title="Build profile">
+          <ProfileBadge profile={profile} />
+        </Section>
+      )}
+
       {/* Classification */}
       {(orchestration?.mode || pipelineEvent?.scope) && (
         <Section title="Classification">

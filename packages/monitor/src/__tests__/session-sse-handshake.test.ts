@@ -23,6 +23,8 @@ import http from 'node:http';
 import { openDatabase } from '../db.js';
 import { startServer } from '../server.js';
 import type { MonitorServer } from '../server.js';
+import { withRecording } from '../recorder.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 
 function makeTmpCwd(): string {
   const dir = mkdtempSync(join(tmpdir(), 'eforge-session-sse-'));
@@ -331,3 +333,118 @@ describe('serveSSE — reconnect with Last-Event-ID', () => {
     db.close();
   });
 });
+
+// --- eforge:region plan-01-profile-replay-and-plan-tab ---
+
+// ---------------------------------------------------------------------------
+// session:profile replay and metadata — queued child ordering
+// ---------------------------------------------------------------------------
+
+async function* asEventGenerator(events: EforgeEvent[]): AsyncGenerator<EforgeEvent> {
+  for (const event of events) yield event;
+}
+
+async function drainGen(gen: AsyncGenerator<EforgeEvent>): Promise<void> {
+  for await (const _e of gen) { /* drain */ }
+}
+
+describe('session:profile replay — queued child ordering', () => {
+  it('session:profile flushed by recorder appears in db.getEventsBySession and db.getSessionMetadataBatch', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const now = new Date().toISOString();
+    const sessionId = `sess-profile-replay-${Date.now()}`;
+    const runId = `run-profile-replay-${Date.now()}`;
+    const profileName = 'test-replay-profile';
+
+    // Queued child ordering: session:start → session:profile (no runId) → phase:start
+    const events: EforgeEvent[] = [
+      { type: 'session:start', sessionId, timestamp: now },
+      {
+        type: 'session:profile',
+        profileName,
+        source: 'project',
+        scope: 'project',
+        config: null,
+        timestamp: now,
+      } as unknown as EforgeEvent,
+      { type: 'phase:start', runId, sessionId, planSet: 'test-set', command: 'build', timestamp: now },
+      { type: 'phase:end', runId, result: { status: 'completed', summary: 'done' }, timestamp: now },
+      { type: 'session:end', sessionId, result: { status: 'completed', summary: 'done' }, timestamp: now },
+    ];
+
+    await drainGen(withRecording(asEventGenerator(events), db, cwd));
+
+    // session:profile must appear in getEventsBySession for the session
+    const sessionEvents = db.getEventsBySession(sessionId);
+    const profileEvent = sessionEvents.find((e) => e.type === 'session:profile');
+    expect(profileEvent).toBeDefined();
+    expect(profileEvent!.runId).toBe(runId);
+
+    // getSessionMetadataBatch must expose baseProfile
+    const metadata = db.getSessionMetadataBatch();
+    expect(metadata[sessionId]).toBeDefined();
+    expect(metadata[sessionId].baseProfile).toBe(profileName);
+
+    db.close();
+  });
+
+  it('session:profile in stream:hello events snapshot for the session after recorder buffering', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const now = new Date().toISOString();
+    const sessionId = `sess-profile-sse-${Date.now()}`;
+    const runId = `run-profile-sse-${Date.now()}`;
+    const profileName = 'sse-profile';
+
+    // Drive recorder with queued child ordering
+    const events: EforgeEvent[] = [
+      { type: 'session:start', sessionId, timestamp: now },
+      {
+        type: 'session:profile',
+        profileName,
+        source: 'project',
+        scope: 'project',
+        config: null,
+        timestamp: now,
+      } as unknown as EforgeEvent,
+      { type: 'phase:start', runId, sessionId, planSet: 'test-set', command: 'build', timestamp: now },
+      { type: 'phase:end', runId, result: { status: 'completed', summary: 'done' }, timestamp: now },
+      { type: 'session:end', sessionId, result: { status: 'completed', summary: 'done' }, timestamp: now },
+    ];
+    await drainGen(withRecording(asEventGenerator(events), db, cwd));
+
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+
+    const url = `http://127.0.0.1:${server.port}/api/events/${sessionId}`;
+    const { raw } = await fetchSseRaw(url, {}, 1500);
+
+    // stream:hello must be present
+    expect(raw).toContain('event: stream:hello');
+
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+    const helloDataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    const helloData = JSON.parse(helloDataLine!.slice('data: '.length)) as {
+      events: Array<{ id: number; data: string }>;
+    };
+
+    // The session:profile event must appear in the stream:hello snapshot events
+    const profileInSnapshot = helloData.events.some((item) => {
+      try {
+        const parsed = JSON.parse(item.data) as { type?: string; profileName?: string };
+        return parsed.type === 'session:profile' && parsed.profileName === profileName;
+      } catch {
+        return false;
+      }
+    });
+    expect(profileInSnapshot).toBe(true);
+
+    await server.stop();
+    db.close();
+  });
+});
+
+// --- eforge:endregion plan-01-profile-replay-and-plan-tab ---
