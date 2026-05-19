@@ -15,7 +15,7 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile, movePrdToSubdir } from '../prd-queue.js';
+import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile, movePrdToSubdir, isPrdRunning } from '../prd-queue.js';
 import { Semaphore, type AsyncEventQueue } from '../concurrency.js';
 import type { EforgeEvent } from '../events.js';
 import type { EforgeConfig } from '../config.js';
@@ -27,6 +27,18 @@ import type { ProfileUsageProvider } from '../profile-usage.js';
 import { executeProfileRouters } from '../extensions/profile-router-runtime.js';
 import { buildQueueDispatchPolicyGateContext, executePolicyGate } from '../extensions/policy-gate-runtime.js';
 // --- eforge:endregion plan-02-runtime-and-integration ---
+
+// ---------------------------------------------------------------------------
+// Scheduler child result type
+// ---------------------------------------------------------------------------
+
+/**
+ * Internal scheduler child result.
+ * `'already-claimed'` is non-terminal: the scheduler does not emit
+ * `queue:prd:complete` and leaves the PRD in `running` state until
+ * the original worker emits a real terminal completion.
+ */
+export type QueueSchedulerChildStatus = 'completed' | 'failed' | 'skipped' | 'already-claimed';
 
 // ---------------------------------------------------------------------------
 // Scheduler input event types
@@ -87,7 +99,7 @@ export interface QueueSchedulerOptions {
   /** Multiplexed event queue shared with the watcher pump. */
   eventQueue: AsyncEventQueue<EforgeEvent>;
   /** Callback that spawns a PRD child subprocess and returns its exit status. */
-  spawnPrdChild: (prd: QueuedPrd, options: QueueOptions, prdSessionId: string, routedProfileOverride?: string) => Promise<'completed' | 'failed' | 'skipped'>;
+  spawnPrdChild: (prd: QueuedPrd, options: QueueOptions, prdSessionId: string, routedProfileOverride?: string) => Promise<QueueSchedulerChildStatus>;
   /** Full watchQueue options (auto, verbose, etc.) forwarded to spawnPrdChild. */
   options: QueueOptions;
   /** Pre-loaded initial PRD list (already ordered and name-filtered). */
@@ -255,6 +267,10 @@ export class QueueScheduler {
 
     // Discover PRDs added to the queue directory since the initial loadQueue call.
     await this.discoverNewPrds();
+    // Reconcile any initial PRDs (set pending in the constructor) that already
+    // have a live queue lock. discoverNewPrds() reconciles newly-discovered
+    // PRDs; this pass covers the pre-loaded initial list.
+    await this.reconcileClaimedPrds(this.orderedPrds);
     // Launch any PRDs that are already ready.
     this.startReadyPrds();
   }
@@ -262,6 +278,24 @@ export class QueueScheduler {
   // ---------------------------------------------------------------------------
   // Private scheduling helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * For each PRD in the list that is currently `pending` in `prdState`,
+   * check whether a queue lock file exists. If so, mark the PRD as `running`
+   * so it counts toward capacity and prevents duplicate launches.
+   *
+   * The daemon startup reconciler removes dead-PID locks before the scheduler
+   * starts, so the presence of a lock file reliably indicates a live owner.
+   */
+  private async reconcileClaimedPrds(prds: QueuedPrd[]): Promise<void> {
+    for (const prd of prds) {
+      const state = this.prdState.get(prd.id);
+      if (!state || state.status !== 'pending') continue;
+      if (await isPrdRunning(prd.id, this.cwd)) {
+        state.status = 'running';
+      }
+    }
+  }
 
   private isReady(prdId: string): boolean {
     const state = this.prdState.get(prdId);
@@ -289,6 +323,8 @@ export class QueueScheduler {
    * Re-scan the queue directory, discover new PRDs not yet in prdState,
    * and reset re-queued PRDs (failed/blocked → pending). Emits
    * `queue:prd:discovered` for each newly discovered or re-queued PRD.
+   * After updating prdState, reconciles queue locks so any newly-pending
+   * PRD with a live lock is immediately marked as running.
    */
   private async discoverNewPrds(): Promise<void> {
     let freshPrds: Awaited<ReturnType<typeof loadQueue>>;
@@ -336,6 +372,9 @@ export class QueueScheduler {
         }
       }
     }
+    // Reconcile newly-pending PRDs against queue locks so that any PRD with a
+    // live lock is counted as running before startReadyPrds() is called.
+    await this.reconcileClaimedPrds(freshOrdered);
   }
 
   /**
@@ -447,7 +486,7 @@ export class QueueScheduler {
 
       void (async () => {
         let acquired = false;
-        let status: 'completed' | 'failed' | 'skipped' = 'failed';
+        let status: QueueSchedulerChildStatus = 'failed';
         let routedProfileOverride: string | undefined;
 
         try {
@@ -605,12 +644,16 @@ export class QueueScheduler {
 
           status = await this._spawnPrdChild(currentPrd, this.options, prdSessionId, routedProfileOverride);
 
-          this.eventQueue.push({
-            timestamp: new Date().toISOString(),
-            type: 'queue:prd:complete',
-            prdId: currentPrd.id,
-            status,
-          } as EforgeEvent);
+          // 'already-claimed' is non-terminal: leave the PRD in running state
+          // so dependents stay blocked until the original worker completes.
+          if (status !== 'already-claimed') {
+            this.eventQueue.push({
+              timestamp: new Date().toISOString(),
+              type: 'queue:prd:complete',
+              prdId: currentPrd.id,
+              status,
+            } as EforgeEvent);
+          }
         } catch {
           status = 'failed';
           this.eventQueue.push({

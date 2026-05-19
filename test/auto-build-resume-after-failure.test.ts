@@ -55,7 +55,7 @@ async function createTestEnv(parallelism = 2): Promise<{
   // Keep the queue alive for the duration of the test (watcher producer).
   eventQueue.addProducer();
 
-  const spawnPrdChild = vi.fn<[QueuedPrd, unknown, string], Promise<'completed' | 'failed' | 'skipped'>>()
+  const spawnPrdChild = vi.fn<[QueuedPrd, unknown, string], Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>>()
     .mockResolvedValue('completed');
 
   const abortController = new AbortController();

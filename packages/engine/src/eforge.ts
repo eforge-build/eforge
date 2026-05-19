@@ -1165,7 +1165,7 @@ export class EforgeEngine {
     // --- eforge:region plan-02-runtime-and-integration ---
     routedProfileOverride?: string,
     // --- eforge:endregion plan-02-runtime-and-integration ---
-  ): Promise<'completed' | 'failed' | 'skipped'> {
+  ): Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'> {
     const cwd = this.cwd;
     const agentRuntimes = this.agentRuntimes; // captured for inline recovery
     const config = this.config;               // captured for inline recovery
@@ -1264,7 +1264,7 @@ export class EforgeEngine {
         const isAlreadyClaimed = exitCode === QueueExecExitCode.SkippedAlreadyClaimed;
         const needsRevision = exitCode === QueueExecExitCode.SkippedNeedsRevision;
 
-        let status: 'completed' | 'failed' | 'skipped';
+        let status: 'completed' | 'failed' | 'skipped' | 'already-claimed';
         let moveTo: 'failed' | 'skipped' | null;
         const shouldRelease = !isAlreadyClaimed;
 
@@ -1285,7 +1285,13 @@ export class EforgeEngine {
         } else if (exitCode === QueueExecExitCode.Skipped) {
           status = 'skipped';
           moveTo = 'skipped';
-        } else if (isAlreadyClaimed || needsRevision) {
+        } else if (isAlreadyClaimed) {
+          // Non-terminal: another process holds the claim. Return 'already-claimed'
+          // so the scheduler keeps the PRD in running state without emitting a
+          // terminal queue:prd:complete. Lock is NOT released (shouldRelease=false above).
+          status = 'already-claimed';
+          moveTo = null;
+        } else if (needsRevision) {
           status = 'skipped';
           moveTo = null;
         } else {
@@ -1560,19 +1566,24 @@ export class EforgeEngine {
         // owns lock release and PRD file transitions in its exit handler.
         void (async () => {
           let acquired = false;
-          let status: 'completed' | 'failed' | 'skipped' = 'failed';
+          let status: 'completed' | 'failed' | 'skipped' | 'already-claimed' = 'failed';
           try {
             await semaphore.acquire();
             acquired = true;
 
             status = await this.spawnPrdChild(prd, options, prdSessionId, (event) => eventQueue.push(event));
 
-            eventQueue.push({
-              timestamp: new Date().toISOString(),
-              type: 'queue:prd:complete',
-              prdId: prd.id,
-              status,
-            } as EforgeEvent);
+            // 'already-claimed' is non-terminal: do not emit a terminal completion
+            // or mark dependencies satisfied. The PRD remains in queue for the
+            // original lock owner (or a later run after lock cleanup) to finish.
+            if (status !== 'already-claimed') {
+              eventQueue.push({
+                timestamp: new Date().toISOString(),
+                type: 'queue:prd:complete',
+                prdId: prd.id,
+                status,
+              } as EforgeEvent);
+            }
           } catch {
             status = 'failed';
             eventQueue.push({
@@ -1585,7 +1596,7 @@ export class EforgeEngine {
             if (acquired) semaphore.release();
 
             const finalState = prdState.get(prd.id)!;
-            if (finalState.status === 'running') {
+            if (status !== 'already-claimed' && finalState.status === 'running') {
               finalState.status = status;
             }
 
