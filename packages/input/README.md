@@ -29,8 +29,8 @@ Playbooks are Markdown files with YAML frontmatter encoding a reusable build int
 - `writePlaybook(playbook, opts)` - write a playbook to a scope directory
 - `movePlaybook(name, opts)` - move a playbook between scope tiers
 - `copyPlaybookToScope(name, opts)` - copy a playbook to a target scope
-- `playbookToBuildSource(playbook)` - compile a playbook to ordinary build source for the engine queue
-- `playbookToSessionPlan(playbook)` - deprecated alias for `playbookToBuildSource`
+- `playbookToBuildSource(playbook)` - compile an autonomous playbook to ordinary build source for the engine queue
+- `playbookToPlanSeed(playbook)` - extract plan-seed data from a planning playbook
 
 ### Session plans
 

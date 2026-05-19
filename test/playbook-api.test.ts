@@ -68,17 +68,20 @@ function validPlaybookRaw(opts: {
   name?: string;
   description?: string;
   scope?: string;
+  mode?: string;
   goal?: string;
 } = {}): string {
   const name = opts.name ?? 'my-feature';
   const description = opts.description ?? 'Add the my-feature capability';
   const scope = opts.scope ?? 'project-team';
+  const mode = opts.mode ?? 'autonomous';
   const goal = opts.goal ?? 'Implement the feature.';
   return [
     '---',
     `name: ${name}`,
     `description: ${description}`,
     `scope: ${scope}`,
+    `mode: ${mode}`,
     '---',
     '',
     '## Goal',
@@ -245,7 +248,7 @@ describe('POST /api/playbook/save', () => {
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
       scope: 'project-team',
       playbook: {
-        frontmatter: { name: 'my-feature', description: 'A feature', scope: 'project-team' },
+        frontmatter: { name: 'my-feature', description: 'A feature', scope: 'project-team', mode: 'autonomous' },
         body: { goal: '' }, // empty goal → invalid
       },
     });
@@ -266,7 +269,7 @@ describe('POST /api/playbook/save', () => {
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
       scope: 'project-team',
       playbook: {
-        frontmatter: { name: 'my-feature', description: 'Add the my-feature capability', scope: 'project-team' },
+        frontmatter: { name: 'my-feature', description: 'Add the my-feature capability', scope: 'project-team', mode: 'autonomous' },
         body: { goal: 'Implement the feature.', outOfScope: '', acceptanceCriteria: '', plannerNotes: '' },
       },
     });
@@ -528,7 +531,7 @@ describe('POST /api/playbook/validate', () => {
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
 
-    const rawNoGoal = '---\nname: my-feature\ndescription: A feature\nscope: project-team\n---\n\n## Out of scope\n\nNothing.';
+    const rawNoGoal = '---\nname: my-feature\ndescription: A feature\nscope: project-team\nmode: autonomous\n---\n\n## Out of scope\n\nNothing.';
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookValidate}`, {
       raw: rawNoGoal,

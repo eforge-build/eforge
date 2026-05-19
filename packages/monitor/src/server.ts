@@ -3343,7 +3343,7 @@ export async function startServer(
       const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { loadPlaybook, playbookToSessionPlan } = await import('@eforge-build/input');
+        const { loadPlaybook, playbookToBuildSource } = await import('@eforge-build/input');
         // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
         const { enqueuePrd, inferTitle, validateDependsOnExists, commitEnqueuedPrd } = await import('@eforge-build/engine/prd-queue');
         // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
@@ -3353,7 +3353,7 @@ export async function startServer(
           return;
         }
         const { playbook } = await loadPlaybook({ configDir, cwd, name: body.name });
-        const plan = playbookToSessionPlan(playbook);
+        const plan = playbookToBuildSource(playbook);
         const queueDir = options?.queueDir ?? 'eforge/queue';
         const title = inferTitle(plan.source, plan.name);
 

@@ -2,6 +2,7 @@
 name: plugin-pi-parity-audit
 description: Audit eforge-plugin/ and packages/pi-eforge/ for capability drift and close gaps
 scope: project-team
+mode: autonomous
 ---
 
 ## Goal

@@ -6,6 +6,11 @@
  * project-team, user) under `playbooks/` and are resolved with the
  * @eforge-build/scopes named-set resolution infrastructure.
  *
+ * Every playbook must declare a `mode` field (`autonomous` or `planning`):
+ * - `autonomous` playbooks are enqueued directly as build source.
+ * - `planning` playbooks seed an interactive `/eforge:plan` session plan via
+ *   `playbookToPlanSeed`.
+ *
  * Public API:
  *   parsePlaybook        — parse raw markdown to a typed Playbook
  *   serializePlaybook    — serialize a Playbook back to markdown
@@ -15,8 +20,8 @@
  *   writePlaybook        — atomic write to the target tier directory
  *   movePlaybook         — move between tiers (git mv when both in repo, else rename)
  *   copyPlaybookToScope  — copy to a different tier with updated scope frontmatter
- *   playbookToBuildSource — format a playbook as ordinary build source (preferred name)
- *   playbookToSessionPlan — alias for playbookToBuildSource (backward-compatible name)
+ *   playbookToBuildSource — format an autonomous playbook as ordinary build source
+ *   playbookToPlanSeed   — extract plan-seed data from a planning playbook
  */
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
@@ -57,11 +62,20 @@ export const playbookFrontmatterSchema = z.object({
   description: z.string().min(1),
   /** Which configuration tier this playbook belongs to. */
   scope: playbookScopeSchema,
+  /**
+   * Execution mode. Required with no default.
+   * - `autonomous` — playbook is enqueued directly as build source.
+   * - `planning`   — playbook seeds an interactive session plan via `playbookToPlanSeed`.
+   */
+  mode: z.enum(['autonomous', 'planning']),
   /** Commands to run after the build merges (e.g. `["pnpm build"]`). */
   postMerge: z.array(z.string()).optional(),
 });
 
 export type PlaybookFrontmatter = z.output<typeof playbookFrontmatterSchema>;
+
+/** The two execution modes a playbook can declare. */
+export type PlaybookMode = z.output<typeof playbookFrontmatterSchema>['mode'];
 
 // ---------------------------------------------------------------------------
 // Playbook body sections
@@ -125,10 +139,10 @@ export interface PlaybookEntry {
 /**
  * Structured input for the planner agent produced by `playbookToBuildSource`.
  *
- * The `source` field is the formatted PRD-style string that can be passed
- * directly to `runPlanner` as its first argument. The individual section
- * fields are provided for callers that need to inspect or transform the
- * content before feeding it to the planner.
+ * Only valid for playbooks with `mode: 'autonomous'`. The `source` field is the
+ * formatted PRD-style string that can be passed directly to `runPlanner` as its
+ * first argument. The individual section fields are provided for callers that
+ * need to inspect or transform the content before feeding it to the planner.
  */
 export interface SessionPlanInput {
   /** Suggested plan set name derived from the playbook name. */
@@ -155,6 +169,23 @@ export class PlaybookNotFoundError extends Error {
   constructor(name: string) {
     super(`Playbook "${name}" not found in any tier (project-local, project-team, user).`);
     this.name = 'PlaybookNotFoundError';
+  }
+}
+
+/**
+ * Thrown when a playbook helper is called with a playbook whose `mode` does not
+ * match the helper's expected mode.
+ *
+ * - `playbookToBuildSource` throws this when `mode !== 'autonomous'`.
+ * - `playbookToPlanSeed` throws this when `mode !== 'planning'`.
+ */
+export class PlaybookModeMismatchError extends Error {
+  constructor(name: string, expected: PlaybookMode, actual: PlaybookMode) {
+    super(
+      `Playbook "${name}" has mode "${actual}" but "${expected}" was expected. ` +
+      `Use ${actual === 'autonomous' ? 'playbookToBuildSource' : 'playbookToPlanSeed'} for this playbook.`,
+    );
+    this.name = 'PlaybookModeMismatchError';
   }
 }
 
@@ -285,6 +316,7 @@ export function serializePlaybook(playbook: Playbook): string {
     name: playbook.name,
     description: playbook.description,
     scope: playbook.scope,
+    mode: playbook.mode,
   };
   if (playbook.postMerge !== undefined && playbook.postMerge.length > 0) {
     fm.postMerge = playbook.postMerge;
@@ -554,16 +586,21 @@ export async function copyPlaybookToScope(opts: CopyPlaybookToScopeOpts): Promis
 // ---------------------------------------------------------------------------
 
 /**
- * Format a `Playbook` as ordinary build source suitable for the engine queue.
+ * Format an autonomous `Playbook` as ordinary build source suitable for the
+ * engine queue.
+ *
+ * Throws `PlaybookModeMismatchError` when called on a `planning` playbook —
+ * use `playbookToPlanSeed` for that mode instead.
  *
  * The body sections are assembled into a PRD-style document and returned
  * alongside the individual fields for callers that need structured access.
  * Pass `result.source` directly to `runPlanner` as the `source` argument.
- *
- * This is the canonical name. `playbookToSessionPlan` is a backward-compatible
- * alias that callers should migrate away from.
  */
 export function playbookToBuildSource(playbook: Playbook): SessionPlanInput {
+  if (playbook.mode !== 'autonomous') {
+    throw new PlaybookModeMismatchError(playbook.name, 'autonomous', playbook.mode);
+  }
+
   const sections: string[] = [];
 
   sections.push(`## Goal\n\n${playbook.goal.trim()}`);
@@ -598,7 +635,57 @@ export function playbookToBuildSource(playbook: Playbook): SessionPlanInput {
 }
 
 /**
- * Backward-compatible alias for `playbookToBuildSource`.
- * Prefer `playbookToBuildSource` in new code.
+ * Structured seed data extracted from a planning-mode playbook.
+ * Returned by `playbookToPlanSeed` and consumed by `createSessionPlanFromPlaybookSeed`.
  */
-export const playbookToSessionPlan = playbookToBuildSource;
+export interface PlaybookPlanSeed {
+  /** Suggested session ID derived from the current date and playbook name. */
+  sessionId: string;
+  /** Suggested topic derived from the playbook description. */
+  topic: string;
+  /**
+   * Section content keyed by lowercase heading slug:
+   * - `'goal'` — playbook goal text
+   * - `'out of scope'` — playbook out-of-scope text
+   * - `'acceptance criteria'` — playbook acceptance-criteria text
+   * - `'notes from playbook'` — playbook planner-notes text (heading renamed)
+   */
+  sections: Map<string, string>;
+  /** The playbook name; used as the `seeded_from_playbook` frontmatter field. */
+  seededFrom: string;
+}
+
+/**
+ * Extract plan-seed data from a planning-mode `Playbook`.
+ *
+ * Throws `PlaybookModeMismatchError` when called on an `autonomous` playbook —
+ * use `playbookToBuildSource` for that mode instead.
+ *
+ * Returns a `PlaybookPlanSeed` with a suggested session ID, topic, and a
+ * sections Map keyed by lowercase heading slugs matching the session-plan
+ * `parseSections` convention.
+ */
+export function playbookToPlanSeed(playbook: Playbook): PlaybookPlanSeed {
+  if (playbook.mode !== 'planning') {
+    throw new PlaybookModeMismatchError(playbook.name, 'planning', playbook.mode);
+  }
+
+  const now = new Date();
+  const yyyy = now.getFullYear().toString();
+  const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+  const dd = now.getDate().toString().padStart(2, '0');
+  const sessionId = `${yyyy}-${mm}-${dd}-${playbook.name}`;
+
+  const sections = new Map<string, string>();
+  sections.set('goal', playbook.goal);
+  sections.set('out of scope', playbook.outOfScope);
+  sections.set('acceptance criteria', playbook.acceptanceCriteria);
+  sections.set('notes from playbook', playbook.plannerNotes);
+
+  return {
+    sessionId,
+    topic: playbook.description,
+    sections,
+    seededFrom: playbook.name,
+  };
+}
