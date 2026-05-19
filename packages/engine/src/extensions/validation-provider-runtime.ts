@@ -7,6 +7,7 @@ import { execFile as nodeExecFile, type ChildProcess } from 'node:child_process'
 
 import type { EforgeEvent } from '../events.js';
 import type { ValidationProviderRegistration } from './types.js';
+import { runExec } from './event-runtime.js';
 
 interface ExecFileResult { stdout: string; stderr: string }
 interface ExecFileError extends Error { code?: number; killed?: boolean; signal?: string; stdout?: string; stderr?: string }
@@ -242,8 +243,25 @@ export async function runValidationProvider(
     warn: () => {},
     error: () => {},
   };
-  const noopExec = {
-    run: async (_cmd: string, _args?: string[], _opts?: unknown) => ({ stdout: '', stderr: '', exitCode: 0 }),
+  // Local AbortController scoped to this validate call. It aborts when either
+  // the parent build's `ctx.signal` aborts OR the local `withTimeout` fires —
+  // so any subprocess spawned via `ctx.exec.run` is killed when the validate
+  // function's wall-clock budget is exhausted (matching the command-form path,
+  // which explicitly kills its child on timeout).
+  const execAbort = new AbortController();
+  const onParentAbort = (): void => execAbort.abort();
+  if (signal) {
+    if (signal.aborted) execAbort.abort();
+    else signal.addEventListener('abort', onParentAbort, { once: true });
+  }
+
+  const exec = {
+    run: (command: string, args: string[] = [], opts: { cwd?: string; env?: Record<string, string> } = {}) =>
+      runExec(command, args, {
+        cwd: opts.cwd ?? worktreePath,
+        env: opts.env ? { ...process.env, ...opts.env } : process.env,
+        signal: execAbort.signal,
+      }),
   };
 
   const providerCtx = {
@@ -251,7 +269,7 @@ export async function runValidationProvider(
     planOutputDir,
     worktreePath,
     logger: noopLogger,
-    exec: noopExec,
+    exec,
     signal,
     changedFiles,
   };
@@ -261,6 +279,11 @@ export async function runValidationProvider(
   );
 
   const result = await withTimeout(callPromise, timeoutMs);
+
+  // Detach the parent-signal listener; abort the local controller so any
+  // subprocesses still in flight are killed before we return.
+  if (signal) signal.removeEventListener('abort', onParentAbort);
+  if (!execAbort.signal.aborted) execAbort.abort();
 
   if (result.kind === 'timeout') {
     const errorTs = new Date().toISOString();

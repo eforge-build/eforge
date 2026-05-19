@@ -229,6 +229,37 @@ describe('runValidationProvider (function form)', () => {
     expect(typeof receivedCtx?.exec).toBe('object');
   });
 
+  it('ctx.exec.run actually spawns a subprocess and returns its output', async () => {
+    let execResult: { stdout: string; stderr: string; exitCode: number } | undefined;
+    const reg = makeRegistration({
+      validate: async (_dir, ctx) => {
+        const c = ctx as { exec: { run: (cmd: string, args?: string[], opts?: unknown) => Promise<{ stdout: string; stderr: string; exitCode: number }> } };
+        execResult = await c.exec.run('node', ['-e', "process.stdout.write('hello'); process.exit(0)"]);
+        return null;
+      },
+    });
+    await runValidationProvider(reg, defaultCtx, defaultOptions);
+
+    expect(execResult).toBeDefined();
+    expect(execResult?.exitCode).toBe(0);
+    expect(execResult?.stdout).toContain('hello');
+  });
+
+  it('ctx.exec.run returns the actual exit code for a failing command', async () => {
+    let execResult: { stdout: string; stderr: string; exitCode: number } | undefined;
+    const reg = makeRegistration({
+      validate: async (_dir, ctx) => {
+        const c = ctx as { exec: { run: (cmd: string, args?: string[], opts?: unknown) => Promise<{ stdout: string; stderr: string; exitCode: number }> } };
+        execResult = await c.exec.run('node', ['-e', 'process.exit(7)']);
+        return null;
+      },
+    });
+    await runValidationProvider(reg, defaultCtx, defaultOptions);
+
+    expect(execResult).toBeDefined();
+    expect(execResult?.exitCode).toBe(7);
+  });
+
   it('structured failed without message uses a default error message', async () => {
     const reg = makeRegistration({ validate: () => ({ status: 'failed' as const }) });
     const result = await runValidationProvider(reg, defaultCtx, defaultOptions);
