@@ -109,6 +109,26 @@ export interface ReviewerPerspectiveDetail {
   applicability?: ReviewerPerspectiveApplicabilitySummary;
 }
 // --- eforge:endregion plan-03-observability-docs-examples ---
+
+// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+/**
+ * Safe metadata about a registered validation provider.
+ *
+ * Includes name, description, kind, optional commandCount, and extension provenance.
+ * Raw command strings are intentionally omitted; only the count is exposed.
+ */
+export interface ValidationProviderDetail {
+  name: string;
+  description: string;
+  /** 'function' when registered with `validate`, 'commands' when registered with `commands`. */
+  kind: 'function' | 'commands';
+  /** Number of commands in the commands array (only present when kind is 'commands'). */
+  commandCount?: number;
+  extensionName: string;
+  extensionPath: string;
+}
+// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
+
 export type ExtensionStatus = 'pending' | 'loaded' | 'shadowed' | 'skipped' | 'error' | 'excluded';
 export type ExtensionDiagnosticSeverity = 'warning' | 'error';
 export type ExtensionFormat = 'js' | 'mjs' | 'ts' | 'mts';
@@ -188,6 +208,10 @@ export interface ExtensionEntry {
   /** Metadata for each reviewer perspective registered by this extension. Absent when the extension has no registered perspectives. */
   reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
   // --- eforge:endregion plan-03-observability-docs-examples ---
+  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+  /** Metadata for each validation provider registered by this extension. Absent when the extension has no registered providers. */
+  validationProviderDetails?: ValidationProviderDetail[];
+  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
   // --- eforge:region plan-01-extension-package-foundation ---
   /** Package provenance, populated for directory-layout extensions with a `package.json`. */
   package?: ExtensionPackageProvenance;

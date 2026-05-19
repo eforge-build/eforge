@@ -1160,6 +1160,49 @@ const EforgeEventVariantsSchema = Type.Union([
   ]),
   // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
+  // --- eforge:region plan-01-validation-provider-runtime ---
+  // Extension validation provider lifecycle events
+  Type.Object({
+    type: Type.Literal('extension:validation-provider:start'),
+    planId: Type.String(),
+    providerName: Type.String(),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    kind: Type.Union([Type.Literal('validate'), Type.Literal('commands')]),
+    commandCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:validation-provider:complete'),
+    planId: Type.String(),
+    providerName: Type.String(),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    status: Type.Union([Type.Literal('passed'), Type.Literal('skipped')]),
+    message: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:validation-provider:error'),
+    planId: Type.String(),
+    providerName: Type.String(),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    status: Type.Literal('failed'),
+    message: Type.String(),
+    details: Type.Optional(Type.String()),
+    command: Type.Optional(Type.String()),
+    exitCode: Type.Optional(Type.Integer()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:validation-provider:timeout'),
+    planId: Type.String(),
+    providerName: Type.String(),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    timeoutMs: Type.Integer({ minimum: 0 }),
+    command: Type.Optional(Type.String()),
+  }),
+  // --- eforge:endregion plan-01-validation-provider-runtime ---
+
   // Planning
   Type.Object({
     type: Type.Literal('planning:start'),

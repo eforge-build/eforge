@@ -326,6 +326,36 @@ const eventRegistry = {
   },
   // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
+  // --- eforge:region plan-01-validation-provider-runtime ---
+  'extension:validation-provider:start': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} validation provider "${e.providerName}" started (${e.kind}${e.commandCount !== undefined ? `, ${e.commandCount} command(s)` : ''})`,
+  },
+
+  'extension:validation-provider:complete': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} validation provider "${e.providerName}" ${e.status}${e.message ? `: ${e.message}` : ''}`,
+  },
+
+  'extension:validation-provider:error': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} validation provider "${e.providerName}" failed${e.command ? ` (command: ${e.command})` : ''}: ${e.message}`,
+  },
+
+  'extension:validation-provider:timeout': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} validation provider "${e.providerName}" timed out after ${e.timeoutMs}ms${e.command ? ` (command: ${e.command})` : ''}`,
+  },
+  // --- eforge:endregion plan-01-validation-provider-runtime ---
+
   // -------------------------------------------------------------------------
   // Planning
   // -------------------------------------------------------------------------

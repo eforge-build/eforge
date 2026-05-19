@@ -335,12 +335,15 @@ describe('extension runtime documentation', () => {
       expect(reviewerRow).toContain('Yes');
     }
 
-    // registerValidationProvider: still deferred.
+    // registerValidationProvider: plan-02 shipped the runtime — docs now reflect per-plan validate build stage dispatch.
+    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
     for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
       const validationRow = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerValidationProvider'));
       expect(validationRow, 'registerValidationProvider row').toBeDefined();
-      expect(validationRow).toContain('Deferred');
+      expect(validationRow).not.toContain('Deferred');
+      expect(validationRow).toContain('Yes');
     }
+    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 
     // registerProfileRouter: plan-02 shipped the runtime — all three sources now reflect pre-build dispatch.
     for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {

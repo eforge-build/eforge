@@ -410,6 +410,9 @@ export class EforgeEngine {
         // --- eforge:region plan-02-extension-perspective-runtime ---
         extensionReviewerPerspectives: this.extensionRegistry.reviewerPerspectives,
         // --- eforge:endregion plan-02-extension-perspective-runtime ---
+        // --- eforge:region plan-01-validation-provider-runtime ---
+        extensionValidationProviders: this.extensionRegistry.validationProviders,
+        // --- eforge:endregion plan-01-validation-provider-runtime ---
       };
 
       // Run compile pipeline
@@ -636,6 +639,9 @@ export class EforgeEngine {
       // --- eforge:region plan-02-extension-perspective-runtime ---
       const extensionReviewerPerspectives = this.extensionRegistry.reviewerPerspectives;
       // --- eforge:endregion plan-02-extension-perspective-runtime ---
+      // --- eforge:region plan-01-validation-provider-runtime ---
+      const extensionValidationProviders = this.extensionRegistry.validationProviders;
+      // --- eforge:endregion plan-01-validation-provider-runtime ---
 
       // Use the pipeline persisted in orchestration.yaml during compile
       const buildPipeline = orchConfig.pipeline;
@@ -696,6 +702,9 @@ export class EforgeEngine {
           // --- eforge:region plan-02-extension-perspective-runtime ---
           extensionReviewerPerspectives: extensionReviewerPerspectives,
           // --- eforge:endregion plan-02-extension-perspective-runtime ---
+          // --- eforge:region plan-01-validation-provider-runtime ---
+          extensionValidationProviders: extensionValidationProviders,
+          // --- eforge:endregion plan-01-validation-provider-runtime ---
         };
 
         yield* runBuildPipeline(buildCtx);

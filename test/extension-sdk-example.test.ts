@@ -35,6 +35,9 @@ import issueTracker from '../examples/extensions/issue-tracker.js';
 // --- eforge:region plan-03-observability-docs-examples ---
 import reviewerPerspective from '../examples/extensions/reviewer-perspective.js';
 // --- eforge:endregion plan-03-observability-docs-examples ---
+// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+import validationProvider from '../examples/extensions/validation-provider.js';
+// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 
 const EXTENSION_EXAMPLE_DIR = resolve(fileURLToPath(new URL('../examples/extensions', import.meta.url)));
 const importedExampleFiles = [
@@ -52,6 +55,9 @@ const importedExampleFiles = [
   'reviewer-perspective.ts',
   // --- eforge:endregion plan-03-observability-docs-examples ---
   'slack-webhook-notifier.ts',
+  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+  'validation-provider.ts',
+  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 ].sort();
 
 const _factoryCheck1: sdk.EforgeExtensionFactory = minimalEventLogger;
@@ -86,6 +92,10 @@ void _factoryCheckIssueTracker;
 const _factoryCheckReviewerPerspective: sdk.EforgeExtensionFactory = reviewerPerspective;
 void _factoryCheckReviewerPerspective;
 // --- eforge:endregion plan-03-observability-docs-examples ---
+// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+const _factoryCheckValidationProvider: sdk.EforgeExtensionFactory = validationProvider;
+void _factoryCheckValidationProvider;
+// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 void _factoryCheck1;
 void _factoryCheck2;
 void _factoryCheck3;

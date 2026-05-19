@@ -280,7 +280,23 @@ export interface EforgeExtensionAPI {
    * Register a custom validation provider that runs after the build stage
    * completes, before review.
    *
-   * @remarks Runtime not yet wired. Typed contract only in this slice.
+   * Providers are **plan-failing but daemon-safe**: a failed result, thrown
+   * error, timeout, or non-zero command exit emits `plan:build:failed` and
+   * halts the current plan. The daemon process is never crashed.
+   *
+   * Each provider spec must supply exactly one of:
+   * - `validate`: an async function receiving `(planOutputDir, ctx?)` — return
+   *   `null`/`undefined` to pass, a non-empty `string` to fail, or a
+   *   {@link ValidationProviderResult} for structured outcomes.
+   * - `commands`: an array of shell command strings executed in the plan
+   *   worktree; any non-zero exit code fails the plan.
+   *
+   * @remarks Runtime-supported. Providers run inside the built-in `validate`
+   * build stage, bounded by `extensions.validationProviderTimeoutMs`.
+   *
+   * @see {@link ValidationProviderSpec} for the full type.
+   * @see {@link ValidationProviderResult} for the structured result shape.
+   * @see {@link ValidationProviderContext} for the rich context object.
    */
   registerValidationProvider(spec: ValidationProviderSpec): void;
 

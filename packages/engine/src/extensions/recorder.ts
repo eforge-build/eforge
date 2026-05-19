@@ -137,8 +137,23 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       state.reviewerPerspectives.push({ kind: 'reviewerPerspective', extensionName, extensionPath, name: spec.key, value: spec as unknown as ReviewerPerspectiveSpec });
     },
     registerValidationProvider(spec: unknown): void {
-      if (!isObject(spec) || !isNonEmptyString(spec.name) || !isNonEmptyString(spec.description) || typeof spec.validate !== 'function') {
-        addDiagnostic('registerValidationProvider requires { name: string, description: string, validate: function }', 'extension:invalid-registration', isObject(spec) && typeof spec.name === 'string' ? spec.name : undefined);
+      if (!isObject(spec) || !isNonEmptyString(spec.name) || !isNonEmptyString(spec.description)) {
+        addDiagnostic('registerValidationProvider requires { name: string, description: string, validate: function } or { name: string, description: string, commands: string[] }', 'extension:invalid-registration', isObject(spec) && typeof spec.name === 'string' ? spec.name : undefined);
+        return;
+      }
+      const hasValidate = typeof spec.validate === 'function';
+      const hasCommandsField = spec.commands !== undefined;
+      const hasCommands = Array.isArray(spec.commands) && spec.commands.length > 0 && spec.commands.every((c) => isNonEmptyString(c));
+      if (hasValidate && hasCommandsField) {
+        addDiagnostic(`registerValidationProvider "${spec.name}": provide either validate or commands, not both`, 'extension:invalid-registration', spec.name);
+        return;
+      }
+      if (hasCommandsField && !hasCommands) {
+        addDiagnostic(`registerValidationProvider "${spec.name}": commands must be a non-empty array of non-empty strings`, 'extension:invalid-registration', spec.name);
+        return;
+      }
+      if (!hasValidate && !hasCommands) {
+        addDiagnostic(`registerValidationProvider "${spec.name}": provide exactly one of validate (function) or commands (non-empty string array)`, 'extension:invalid-registration', spec.name);
         return;
       }
       state.validationProviders.push({ kind: 'validationProvider', extensionName, extensionPath, name: spec.name, value: spec as unknown as ValidationProviderSpec });

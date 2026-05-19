@@ -175,3 +175,16 @@ export type {
   SelectExtensionPerspectivesResult,
 } from './reviewer-perspective-runtime.js';
 // --- eforge:endregion plan-02-extension-perspective-runtime ---
+
+// --- eforge:region plan-01-validation-provider-runtime ---
+export {
+  runValidationProvider,
+  normalizeValidationResult,
+} from './validation-provider-runtime.js';
+export type {
+  NormalizedValidationResult,
+  ValidationProviderRuntimeContext,
+  RunValidationProviderOptions,
+  RunValidationProviderResult,
+} from './validation-provider-runtime.js';
+// --- eforge:endregion plan-01-validation-provider-runtime ---

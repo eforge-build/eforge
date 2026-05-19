@@ -450,11 +450,102 @@ export interface ReviewerPerspectiveSpec {
 // ---------------------------------------------------------------------------
 
 /**
+ * Structured result returned by a validation provider's `validate` function.
+ *
+ * Use this form when you need to report a status explicitly (including
+ * `'skipped'`) or attach structured annotations to the build output.
+ */
+export interface ValidationProviderResult {
+  /** Validation outcome. */
+  status: 'passed' | 'failed' | 'skipped';
+  /** Optional human-readable message describing the outcome. */
+  message?: string;
+  /** Optional extended details (e.g. full command output). */
+  details?: string;
+  /** Optional structured annotations for individual files. */
+  annotations?: Array<{
+    severity: 'info' | 'warning' | 'error';
+    message: string;
+    file?: string;
+    line?: number;
+  }>;
+}
+
+/**
+ * Rich context passed to validation provider `validate` functions.
+ *
+ * Carries read-only build facts. Do not attempt to mutate engine state, the
+ * extension registry, or plan status from within a provider.
+ */
+export interface ValidationProviderContext {
+  /** The plan ID being validated. */
+  planId: string;
+  /** Absolute path to the worktree root for the plan. */
+  planOutputDir: string;
+  /** Same as `planOutputDir` — the worktree root path. */
+  worktreePath: string;
+  /** Structured logger routed through the eforge daemon's log pipeline. */
+  logger: import('./context.js').ExtensionLogger;
+  /** Shell-exec API for running subprocesses from a validation provider. */
+  exec: import('./context.js').ExtensionExecApi;
+  /** AbortSignal for the current build, if available. */
+  signal?: AbortSignal;
+  /** Files changed in the plan worktree, if available. */
+  changedFiles?: string[];
+}
+
+type ValidationProviderReturn =
+  | Promise<string | null | undefined | ValidationProviderResult>
+  | string | null | undefined | ValidationProviderResult;
+
+/**
  * Specification for a custom validation provider registered via
  * `registerValidationProvider`.
  *
  * Validation providers run after a plan's build stage completes, before the
  * review stage, allowing extensions to enforce project-specific quality gates.
+ *
+ * A provider is **plan-failing but daemon-safe**: any failure outcome (string
+ * return, `failed` structured status, thrown error, non-zero command exit, or
+ * timeout) fails the current plan and emits `plan:build:failed`. The daemon
+ * process itself is never crashed by a provider.
+ *
+ * @remarks Runtime-supported. Providers execute inside the built-in `validate`
+ * build stage, bounded by `extensions.validationProviderTimeoutMs` (falls back
+ * to `eventHookTimeoutMs`).
+ *
+ * @example Function form (for pure-JS validation logic):
+ * ```ts
+ * import { readFile } from 'node:fs/promises';
+ * import { join } from 'node:path';
+ *
+ * eforge.registerValidationProvider({
+ *   name: 'no-debugger-statements',
+ *   description: 'Rejects any debugger statements left in changed source files',
+ *   validate: async (planOutputDir, ctx) => {
+ *     for (const file of ctx?.changedFiles ?? []) {
+ *       const contents = await readFile(join(planOutputDir, file), 'utf8');
+ *       if (contents.includes('debugger;')) {
+ *         return `debugger statement found in ${file}`;
+ *       }
+ *     }
+ *     return null; // passed
+ *   },
+ * });
+ * ```
+ *
+ * For running shell commands (lint, type-check, tests, etc.), prefer the
+ * command form below — it spawns subprocesses properly with timeout and exit-code
+ * handling built in.
+ *
+ * @example Command form:
+ * ```ts
+ * eforge.registerValidationProvider({
+ *   name: 'type-check',
+ *   description: 'Runs TypeScript type checking',
+ *   commands: ['pnpm type-check'],
+ * });
+ * ```
  */
 export interface ValidationProviderSpec {
   /** Unique provider name. */
@@ -464,11 +555,32 @@ export interface ValidationProviderSpec {
   /**
    * Run validation for the given plan output directory.
    *
-   * @param planOutputDir - Absolute path to the worktree root for the plan.
-   * @returns `null` or `undefined` to signal success; a `string` message to
-   *   signal failure (the message is surfaced in build output).
+   * Supports the legacy single-argument signature `(planOutputDir: string)` as
+   * well as the richer two-argument form
+   * `(planOutputDir: string, ctx: ValidationProviderContext)`. The second
+   * argument is optional so existing one-arg implementations remain assignable.
+   *
+   * Return values:
+   * - `null` or `undefined` — passed
+   * - non-empty `string` — failed (the string is the failure message)
+   * - `ValidationProviderResult` — explicit structured outcome
+   *
+   * Mutually exclusive with `commands`. Provide exactly one.
    */
-  validate: (planOutputDir: string) => Promise<string | null | undefined> | string | null | undefined;
+  validate?: (
+    planOutputDir: string,
+    context?: ValidationProviderContext,
+  ) => ValidationProviderReturn;
+  /**
+   * Shell commands to run in the plan worktree, one per entry. Each command is
+   * split on whitespace into `[executable, ...args]` and run via `execFile`
+   * (no shell interpretation — quoted args, env-var expansion, redirects, and
+   * pipes are not supported). A non-zero exit code fails the plan with the
+   * command's stderr (or stdout if stderr is empty) as the message.
+   *
+   * Mutually exclusive with `validate`. Provide exactly one.
+   */
+  commands?: string[];
 }
 
 // Re-export EventPattern for use in API signatures

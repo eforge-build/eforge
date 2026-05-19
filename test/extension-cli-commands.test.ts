@@ -668,7 +668,7 @@ describe('extension CLI commands', () => {
     const { stdout } = await runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', fixture]);
     // reviewerPerspectives should NOT appear in deferred registrations
     expect(stdout).not.toMatch(/Deferred registrations:[\s\S]*reviewerPerspectives/);
-    // validationProviders should still be deferred
+    // validationProviders appear in deferred registrations (replay does not execute them)
     expect(stdout).toContain('validationProviders: 1');
     // Reviewer perspectives section should appear
     expect(stdout).toContain('Reviewer perspectives (runtime-supported):');
@@ -708,4 +708,83 @@ describe('extension CLI commands', () => {
     expect(JSON.stringify(data)).not.toContain('secret prompt text');
   });
   // --- eforge:endregion plan-03-observability-docs-examples ---
+
+  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+  it('extension test non-JSON output lists validation providers as runtime-supported, not deferred', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      `export default function extension(eforge) {
+        eforge.registerValidationProvider({ name: 'type-check-gate', description: 'Runs TypeScript type checking', validate: () => null });
+        eforge.registerValidationProvider({ name: 'lint-gate', description: 'Runs linter', commands: ['pnpm lint', 'pnpm lint:css'] });
+      }`,
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'events.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', fixture]);
+    // Validation providers section should appear
+    expect(stdout).toContain('Validation providers (runtime-supported):');
+    // Provider names and descriptions should be printed
+    expect(stdout).toContain('type-check-gate');
+    expect(stdout).toContain('Runs TypeScript type checking');
+    expect(stdout).toContain('lint-gate');
+    expect(stdout).toContain('function');   // type-check-gate kind
+    expect(stdout).toContain('commands');   // lint-gate kind
+    // validationProviders count appears in the runtime-supported section
+    expect(stdout).toContain('validationProviders: 2');
+    // Should NOT appear as a deferred registration entry (the "    - <family>: <count>" format)
+    // validationProviders are shown in the runtime-supported section instead
+    expect(stdout).not.toMatch(/^\s+- validationProviders: \d+$/m);
+  });
+
+  it('extension show JSON includes validationProviderDetails with correct shape and no raw command strings', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      `export default function extension(eforge) {
+        eforge.registerValidationProvider({
+          name: 'type-check-gate',
+          description: 'Runs TypeScript type checking',
+          validate: () => null,
+        });
+        eforge.registerValidationProvider({
+          name: 'lint-gate',
+          description: 'Runs linter',
+          commands: ['pnpm lint', 'pnpm lint:css'],
+        });
+      }`,
+      'utf-8',
+    );
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'show', 'loaded', '--json']);
+    const data = JSON.parse(stdout) as ExtensionShowResponse;
+    expect(data.extension.validationProviderDetails).toEqual([
+      expect.objectContaining({
+        name: 'type-check-gate',
+        description: 'Runs TypeScript type checking',
+        kind: 'function',
+        extensionName: 'loaded',
+        extensionPath: expect.any(String),
+      }),
+      expect.objectContaining({
+        name: 'lint-gate',
+        description: 'Runs linter',
+        kind: 'commands',
+        commandCount: 2,
+        extensionName: 'loaded',
+        extensionPath: expect.any(String),
+      }),
+    ]);
+    // Raw command strings must NOT be exposed
+    expect(JSON.stringify(data)).not.toContain('pnpm lint:css');
+    // commandCount for function form should be absent
+    expect(data.extension.validationProviderDetails![0].commandCount).toBeUndefined();
+  });
+  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 });

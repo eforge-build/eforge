@@ -95,6 +95,30 @@ export function eventToProgress(
       const error = (event as { error?: unknown }).error as string | undefined;
       return { message: `Phase error: ${error ?? 'failed'}`, counters };
     }
+    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+    case 'extension:validation-provider:error': {
+      const providerName = (event as { providerName?: unknown }).providerName as string | undefined;
+      const extensionName = (event as { extensionName?: unknown }).extensionName as string | undefined;
+      const message = (event as { message?: unknown }).message as string | undefined;
+      const label = providerName && extensionName ? `${providerName} (${extensionName})` : (providerName ?? 'unknown');
+      return { message: `Validation provider ${label} failed: ${message ?? 'unknown error'}`, counters };
+    }
+    case 'extension:validation-provider:timeout': {
+      const providerName = (event as { providerName?: unknown }).providerName as string | undefined;
+      const timeoutMs = (event as { timeoutMs?: unknown }).timeoutMs as number | undefined;
+      return { message: `Validation provider ${providerName ?? 'unknown'} timed out after ${timeoutMs ?? '?'}ms`, counters };
+    }
+    case 'extension:validation-provider:complete': {
+      const status = (event as { status?: unknown }).status;
+      // filter passed (low-signal) — only surface skipped or unexpected statuses
+      if (status === 'passed') return null;
+      const providerName = (event as { providerName?: unknown }).providerName as string | undefined;
+      return { message: `Validation provider ${providerName ?? 'unknown'} ${String(status)}`, counters };
+    }
+    case 'extension:validation-provider:start':
+      // filtered — provider start events are low-signal for consumers
+      return null;
+    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
     default: {
       // For recognized EforgeEvent types, look up the registry summary.
       // Legacy DaemonStreamEvent types not in the registry return null.

@@ -314,7 +314,7 @@ export async function* withNativeEventHooks(
   }
 }
 
-async function runExec(
+export async function runExec(
   command: string,
   args: readonly string[],
   options: Required<Pick<EventHookExecOptions, 'cwd' | 'env'>> & Omit<EventHookExecOptions, 'cwd' | 'env'>,

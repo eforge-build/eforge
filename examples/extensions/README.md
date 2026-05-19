@@ -14,6 +14,7 @@ These examples demonstrate the `@eforge-build/extension-sdk` API. Each example i
 | `protected-paths.ts` | `beforePlanMerge(...)`, `beforeFinalMerge(...)` | Runtime-supported policy enforcement for plan/final merge protected paths |
 | `issue-tracker.ts` | `registerInputSource(...)` x3 | Runtime-supported input source dispatch via `eforge://input/<adapter>/<id>` |
 | `reviewer-perspective.ts` | `registerReviewerPerspective(...)` | Runtime-supported parallel review-cycle dispatch; perspective runs when diff includes matching UI/TSX files |
+| `validation-provider.ts` | `registerValidationProvider(...)` | Runtime-supported per-plan validate-stage execution; demonstrates both function-form (programmatic) and command-form (subprocess) providers |
 
 ### `minimal-event-logger.ts`
 
@@ -88,6 +89,12 @@ eforge://input/jira/<KEY-123>
 Adapter selection is by `name` match against the `<adapter>` segment. Each adapter receives the remaining `<id>` path.
 
 For the full URI syntax, failure policy (`null` return is fatal to enqueue), and provenance event names (`extension:input-source:fetched`, `extension:input-source:failed`), see [`docs/extensions.md`](../../docs/extensions.md) — "Input sources and PRD enrichers" section.
+
+### `validation-provider.ts`
+
+Registers two validation providers using `registerValidationProvider`. Demonstrates both the function form (`type-check-gate`, using `ctx.exec.run` to invoke `pnpm type-check` programmatically) and the command form (`lint-gate`, using the `commands` array for simpler exit-code-is-failure subprocess dispatch). Documents failure semantics (plan-failing, daemon-safe), the wall-clock timeout controlled by `extensions.validationProviderTimeoutMs`, the no-mutation contract, and the four runtime events emitted during provider execution.
+
+> **Runtime note:** `registerValidationProvider` is runtime-supported. Providers execute during the per-plan `validate` build stage, after the implement stage and before the review stage, when `validate` is included in the build pipeline. Failures/timeouts are plan-failing. See [`docs/extensions.md`](../../docs/extensions.md) — "Validation providers" and [`docs/extensions-api.md`](../../docs/extensions-api.md) — `registerValidationProvider`.
 
 ### `reviewer-perspective.ts`
 

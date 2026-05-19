@@ -1,4 +1,4 @@
-import type { ReviewerPerspectiveDetail, ReviewerPerspectiveApplicabilitySummary } from '@eforge-build/client';
+import type { ReviewerPerspectiveDetail, ReviewerPerspectiveApplicabilitySummary, ValidationProviderDetail } from '@eforge-build/client';
 import type { NativeExtensionCandidate, NativeExtensionDiagnostic, NativeExtensionInstallProvenance, NativeExtensionPackageProvenance, NativeExtensionRegistry } from './types.js';
 
 export interface NativeExtensionRegistryProjection {
@@ -13,6 +13,9 @@ export interface NativeExtensionRegistryProjection {
     // --- eforge:region plan-03-observability-docs-examples ---
     reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
     // --- eforge:endregion plan-03-observability-docs-examples ---
+    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+    validationProviderDetails?: ValidationProviderDetail[];
+    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
     packageProvenance?: NativeExtensionPackageProvenance;
     installProvenance?: NativeExtensionInstallProvenance;
   }>;
@@ -92,12 +95,40 @@ function buildReviewerPerspectiveDetails(
 }
 // --- eforge:endregion plan-03-observability-docs-examples ---
 
+// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+function buildValidationProviderDetails(
+  registry: NativeExtensionRegistry,
+  extensionName: string,
+  extensionPath: string,
+): ValidationProviderDetail[] | undefined {
+  const details = registry.validationProviders
+    .filter((reg) => reg.extensionName === extensionName && reg.extensionPath === extensionPath)
+    .map((reg): ValidationProviderDetail => {
+      const kind: 'function' | 'commands' = reg.value.commands ? 'commands' : 'function';
+      return {
+        name: reg.value.name,
+        description: reg.value.description,
+        kind,
+        ...(kind === 'commands' && reg.value.commands !== undefined
+          ? { commandCount: reg.value.commands.length }
+          : {}),
+        extensionName: reg.extensionName,
+        extensionPath: reg.extensionPath,
+      };
+    });
+  return details.length > 0 ? details : undefined;
+}
+// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
+
 export function projectExtensionRegistry(registry: NativeExtensionRegistry): NativeExtensionRegistryProjection {
   return {
     extensions: registry.extensions.map((extension) => {
       // --- eforge:region plan-03-observability-docs-examples ---
       const reviewerPerspectiveDetails = buildReviewerPerspectiveDetails(registry, extension.name, extension.path);
       // --- eforge:endregion plan-03-observability-docs-examples ---
+      // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+      const validationProviderDetails = buildValidationProviderDetails(registry, extension.name, extension.path);
+      // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
       return {
         name: extension.name,
         path: extension.path,
@@ -109,6 +140,9 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
         // --- eforge:region plan-03-observability-docs-examples ---
         ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
         // --- eforge:endregion plan-03-observability-docs-examples ---
+        // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+        ...(validationProviderDetails !== undefined && { validationProviderDetails }),
+        // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
         ...(extension.packageProvenance !== undefined && { packageProvenance: { ...extension.packageProvenance } }),
         ...(extension.installProvenance !== undefined && { installProvenance: { ...extension.installProvenance } }),
       };

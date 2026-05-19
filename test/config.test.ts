@@ -82,6 +82,7 @@ describe('resolveConfig', () => {
       policyGateTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
       policyGateFailurePolicy: 'fail-closed',
       profileRouterTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+      validationProviderTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
       include: undefined,
       exclude: undefined,
       paths: undefined,

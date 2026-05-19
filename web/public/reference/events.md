@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 31ac2f09 -->
+<!-- Commit: 0fdd9d5f -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -13,7 +13,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 186
+Total variants: 190
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -56,6 +56,10 @@ Total variants: 186
 | `extension:prd-enricher:applied` | `changed`, `enricherName`, `extensionName`, `extensionPath`, `inputLength`, `outputLength`, `sourceId` |
 | `extension:prd-enricher:failed` | `enricherName`, `extensionName`, `extensionPath`, `message`, `reason`, `sourceId`, `stack`, `timeoutMs` |
 | `extension:reviewer-perspective:applied` | `extensionName`, `extensionPath`, `perspectiveKey`, `perspectiveLabel`, `planId` |
+| `extension:validation-provider:start` | `commandCount`, `extensionName`, `extensionPath`, `kind`, `planId`, `providerName` |
+| `extension:validation-provider:complete` | `extensionName`, `extensionPath`, `message`, `planId`, `providerName`, `status` |
+| `extension:validation-provider:error` | `command`, `details`, `exitCode`, `extensionName`, `extensionPath`, `message`, `planId`, `providerName`, `status` |
+| `extension:validation-provider:timeout` | `command`, `extensionName`, `extensionPath`, `planId`, `providerName`, `timeoutMs` |
 | `planning:start` | `label`, `source` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |

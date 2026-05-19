@@ -234,6 +234,9 @@ registerCompileStage({
     phase: 'compile',
     stage: 'pipeline-composer',
     harness: composerHarness,
+    // --- eforge:region plan-01-validation-provider-runtime ---
+    validationProviders: ctx.extensionValidationProviders,
+    // --- eforge:endregion plan-01-validation-provider-runtime ---
   })) {
     if (event.type === 'planning:pipeline') {
       // Update the context pipeline from the composer result

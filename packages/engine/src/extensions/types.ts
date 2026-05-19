@@ -54,7 +54,7 @@ export interface ReviewerPerspectiveApplicability {
   fn?: (changedFiles: string[], changedLines: number) => boolean | Promise<boolean>;
 }
 export interface ReviewerPerspectiveSpec { key: string; label: string; description: string; promptFragment: string; appliesTo?: ReviewerPerspectiveApplicability; }
-export interface ValidationProviderSpec { name: string; description: string; validate: ExtensionHandler }
+export interface ValidationProviderSpec { name: string; description: string; validate?: ExtensionHandler; commands?: string[] }
 export interface ExtensionTool { name: string; description: string; inputSchema: object; handler: ExtensionHandler }
 export interface PrdEnricherSpec { name: string; description: string; enrich: ExtensionHandler }
 export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';

@@ -273,6 +273,18 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
     }
   }
   // --- eforge:endregion plan-03-observability-docs-examples ---
+  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+  if (entry.validationProviderDetails && entry.validationProviderDetails.length > 0) {
+    console.log('  Validation providers:');
+    for (const provider of entry.validationProviderDetails) {
+      const kindLabel = provider.kind === 'commands'
+        ? `commands (${provider.commandCount ?? 0} command(s))`
+        : 'function';
+      console.log(`    - ${chalk.cyan(provider.name)}: ${provider.description}`);
+      console.log(chalk.dim(`      Kind: ${kindLabel}`));
+    }
+  }
+  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
   if (entry.shadows.length > 0) {
     console.log('  Shadows:');
     for (const shadow of entry.shadows) {
@@ -332,7 +344,12 @@ function renderExtensionTestResult(data: ExtensionTestResponse): void {
   }
 
   // --- eforge:region plan-03-observability-docs-examples ---
-  const deferredEntries = data.deferredRegistrations.filter((entry) => entry.count > 0);
+  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+  // Filter out validationProviders from the deferred display — they are runtime-supported
+  // and shown in their own section below. The API response still carries the count.
+  const RUNTIME_SUPPORTED_FAMILIES = new Set(['validationProviders']);
+  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
+  const deferredEntries = data.deferredRegistrations.filter((entry) => entry.count > 0 && !RUNTIME_SUPPORTED_FAMILIES.has(entry.family));
   if (deferredEntries.length > 0) {
     console.log('  Deferred registrations:');
     for (const entry of deferredEntries) {
@@ -350,6 +367,21 @@ function renderExtensionTestResult(data: ExtensionTestResponse): void {
     }
   }
   // --- eforge:endregion plan-03-observability-docs-examples ---
+  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
+  // Surface runtime-supported validation providers from the extension entries
+  const allValidationProviders = data.extensions.flatMap((ext) => ext.validationProviderDetails ?? []);
+  const validationProviderCount = data.extensions.reduce((sum, ext) => sum + (ext.registrations.validationProviders), 0);
+  if (allValidationProviders.length > 0 || validationProviderCount > 0) {
+    console.log('  Validation providers (runtime-supported):');
+    console.log(`    validationProviders: ${validationProviderCount} (execution skipped in replay mode)`);
+    for (const p of allValidationProviders) {
+      const kindLabel = p.kind === 'commands'
+        ? `commands (${p.commandCount ?? 0} command(s))`
+        : 'function';
+      console.log(`    - ${p.name} [${p.extensionName}]: ${p.description} (${kindLabel})`);
+    }
+  }
+  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 
   if (data.diagnostics.length > 0) {
     console.log('  Diagnostics:');

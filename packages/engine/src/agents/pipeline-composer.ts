@@ -7,6 +7,9 @@ import { pipelineCompositionSchema, getPipelineCompositionSchemaYaml } from '../
 import type { PipelineComposition } from '../schemas.js';
 import { formatStageRegistry, validatePipeline } from '../pipeline.js';
 import { REVIEW_PERSPECTIVES, parseWithSchema } from '@eforge-build/client';
+// --- eforge:region plan-01-validation-provider-runtime ---
+import type { ValidationProviderRegistration } from '../extensions/types.js';
+// --- eforge:endregion plan-01-validation-provider-runtime ---
 
 /**
  * Options for the pipeline composer agent.
@@ -22,6 +25,14 @@ export interface PipelineComposerOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  // --- eforge:region plan-01-validation-provider-runtime ---
+  /**
+   * Validation provider registrations from loaded native extensions.
+   * When present and non-empty, the composer is informed to include the
+   * `validate` build stage so providers run.
+   */
+  validationProviders?: ValidationProviderRegistration[];
+  // --- eforge:endregion plan-01-validation-provider-runtime ---
 }
 
 /**
@@ -81,18 +92,33 @@ export async function* composePipeline(
   const stageRegistry = formatStageRegistry();
   const schema = getPipelineCompositionSchemaYaml();
 
+  // --- eforge:region plan-01-validation-provider-runtime ---
+  // Build validation provider summary for injection into the prompt append so
+  // the composer knows to include the `validate` build stage when providers are loaded.
+  let validationProviderAppend: string | undefined;
+  if (options.validationProviders && options.validationProviders.length > 0) {
+    const summary = options.validationProviders
+      .map((p) => `${p.name} (${p.extensionName})`)
+      .join(', ');
+    validationProviderAppend = `\n\n## Validation providers loaded\n\nThe following validation providers are registered and will run in the \`validate\` build stage: ${summary}.\n\nInclude the \`validate\` stage in defaultBuild pipelines (after \`implement\`, before review stages) so these providers run as quality gates.`;
+  }
+  // --- eforge:endregion plan-01-validation-provider-runtime ---
+
   const maxAttempts = 3;
   const maxPriorOutputChars = 8192;
   let lastError: string | undefined;
   let lastResultText: string | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // --- eforge:region plan-01-validation-provider-runtime ---
+    const composedAppend = [options.promptAppend, validationProviderAppend].filter(Boolean).join('\n\n') || undefined;
+    // --- eforge:endregion plan-01-validation-provider-runtime ---
     let promptText = await loadPrompt('pipeline-composer', {
       source,
       stageRegistry,
       schema,
       validPerspectives: `${REVIEW_PERSPECTIVES.join(', ')} (built-in defaults; custom extension keys are also accepted as lowercase slugs such as "accessibility" or "performance-review", but generated plans should use built-ins unless a project explicitly configures extension keys)`,
-    }, options.promptAppend);
+    }, composedAppend);
 
     // On retry, include the prior output AND the error so the model has
     // concrete state to correct from, not just the error string.

@@ -597,6 +597,76 @@ describe('native extension loader', () => {
     })]);
   });
 
+  it('accepts a command-form validation provider spec', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'cmd-provider.js'), `
+      export default function extension(eforge) {
+        eforge.registerValidationProvider({ name: 'cmd-validator', description: 'Runs pnpm lint', commands: ['pnpm lint', 'pnpm type-check'] });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.validationProviders).toHaveLength(1);
+    expect(result.registry.validationProviders[0]).toMatchObject({
+      name: 'cmd-validator',
+      value: { name: 'cmd-validator', description: 'Runs pnpm lint', commands: ['pnpm lint', 'pnpm type-check'] },
+    });
+    expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toHaveLength(0);
+  });
+
+  it('rejects a validation provider spec with both validate and commands', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'ambiguous-provider.js'), `
+      export default function extension(eforge) {
+        eforge.registerValidationProvider({ name: 'ambiguous', description: 'Both validate and commands', validate: () => null, commands: ['pnpm lint'] });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.validationProviders).toHaveLength(0);
+    expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toEqual([
+      expect.objectContaining({ message: expect.stringContaining('provide either validate or commands, not both') }),
+    ]);
+  });
+
+  it('rejects a validation provider spec with neither validate nor commands', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'empty-provider.js'), `
+      export default function extension(eforge) {
+        eforge.registerValidationProvider({ name: 'empty', description: 'No validate or commands' });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.validationProviders).toHaveLength(0);
+    expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toEqual([
+      expect.objectContaining({ message: expect.stringContaining('provide exactly one of validate') }),
+    ]);
+  });
+
+  it('rejects a validation provider spec with an empty commands array', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'empty-commands-provider.js'), `
+      export default function extension(eforge) {
+        eforge.registerValidationProvider({ name: 'empty-cmds', description: 'Empty commands array', commands: [] });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.validationProviders).toHaveLength(0);
+    expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toEqual([
+      expect.objectContaining({ message: expect.stringContaining('commands must be a non-empty array of non-empty strings') }),
+    ]);
+  });
+
   it('diagnoses invalid handlers for all policy gate methods', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
