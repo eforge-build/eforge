@@ -14,6 +14,7 @@ import {
   serializeSessionPlan,
   sessionPlanFrontmatterSchema,
   PlaybookModeMismatchError,
+  createSessionPlan,
   type Playbook,
 } from '@eforge-build/input';
 
@@ -235,5 +236,109 @@ describe('sessionPlanFrontmatterSchema — seeded_from_playbook', () => {
 
     const reparsed = parseSessionPlan(serialized);
     expect(reparsed.seeded_from_playbook).toBe(pb.name);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// agent_profile — createSessionPlanFromPlaybookSeed
+// ---------------------------------------------------------------------------
+
+describe('createSessionPlanFromPlaybookSeed — agent_profile', () => {
+  it('sets agent_profile when the playbook has a profile', () => {
+    const pb = makePlanningPlaybook({ profile: 'docs-heavy' });
+    const plan = createSessionPlanFromPlaybookSeed({ playbook: pb });
+    expect((plan as Record<string, unknown>).agent_profile).toBe('docs-heavy');
+  });
+
+  it('does not set agent_profile when the playbook has no profile', () => {
+    const pb = makePlanningPlaybook();
+    const plan = createSessionPlanFromPlaybookSeed({ playbook: pb });
+    expect((plan as Record<string, unknown>).agent_profile).toBeUndefined();
+  });
+
+  it('sets profile to null (workflow profile) regardless of agent_profile', () => {
+    const pb = makePlanningPlaybook({ profile: 'docs-heavy' });
+    const plan = createSessionPlanFromPlaybookSeed({ playbook: pb });
+    expect(plan.profile).toBeNull();
+  });
+
+  it('round-trips agent_profile through serialize/parse', () => {
+    const pb = makePlanningPlaybook({ profile: 'docs-heavy' });
+    const plan = createSessionPlanFromPlaybookSeed({ playbook: pb, session: '2026-05-01-agent-profile' });
+
+    const serialized = serializeSessionPlan(plan);
+    expect(serialized).toContain('agent_profile:');
+
+    const reparsed = parseSessionPlan(serialized);
+    expect((reparsed as Record<string, unknown>).agent_profile).toBe('docs-heavy');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// agent_profile — sessionPlanFrontmatterSchema
+// ---------------------------------------------------------------------------
+
+describe('sessionPlanFrontmatterSchema — agent_profile field', () => {
+  const baseFrontmatter = {
+    session: '2026-04-01-test-plan',
+    topic: 'Test Plan',
+    status: 'planning',
+    planning_type: 'unknown',
+    planning_depth: 'focused',
+    required_dimensions: [],
+    optional_dimensions: [],
+    skipped_dimensions: [],
+    open_questions: [],
+    profile: null,
+  };
+
+  it('parses successfully without agent_profile (optional field)', () => {
+    const result = sessionPlanFrontmatterSchema.safeParse(baseFrontmatter);
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error('unexpected');
+    expect((result.data as Record<string, unknown>).agent_profile).toBeUndefined();
+  });
+
+  it('parses successfully with agent_profile present', () => {
+    const result = sessionPlanFrontmatterSchema.safeParse({
+      ...baseFrontmatter,
+      agent_profile: 'docs-heavy',
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error('unexpected');
+    expect((result.data as Record<string, unknown>).agent_profile).toBe('docs-heavy');
+  });
+
+  it('rejects non-string agent_profile values', () => {
+    const result = sessionPlanFrontmatterSchema.safeParse({
+      ...baseFrontmatter,
+      agent_profile: 42,
+    });
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error('unexpected');
+    expect(result.error.issues.some((issue) => issue.path.includes('agent_profile'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// agent_profile — createSessionPlan helper
+// ---------------------------------------------------------------------------
+
+describe('createSessionPlan — agentProfile option', () => {
+  it('sets agent_profile in the session plan when agentProfile is provided', () => {
+    const plan = createSessionPlan({
+      session: '2026-05-01-test',
+      topic: 'Test plan',
+      agentProfile: 'docs-heavy',
+    });
+    expect((plan as Record<string, unknown>).agent_profile).toBe('docs-heavy');
+  });
+
+  it('does not set agent_profile when agentProfile is not provided', () => {
+    const plan = createSessionPlan({
+      session: '2026-05-01-test',
+      topic: 'Test plan',
+    });
+    expect((plan as Record<string, unknown>).agent_profile).toBeUndefined();
   });
 });

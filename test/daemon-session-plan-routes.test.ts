@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdir, writeFile, readFile, rm, access } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, rm, access, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { useTempDir } from './test-tmpdir.js';
@@ -60,6 +60,7 @@ function makeSessionPlanRaw(opts: {
   topic?: string;
   status?: string;
   requiredDimensions?: string[];
+  agentProfile?: string;
 } = {}): string {
   const session = opts.session ?? '2026-01-01-add-feature';
   const topic = opts.topic ?? 'Add Feature';
@@ -79,6 +80,7 @@ function makeSessionPlanRaw(opts: {
     'skipped_dimensions: []',
     'open_questions: []',
     'profile: null',
+    ...(opts.agentProfile ? [`agent_profile: ${opts.agentProfile}`] : []),
     '---',
     '',
     `# ${topic}`,
@@ -146,6 +148,13 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: Array<{ command: st
   };
 
   return { tracker, calls };
+}
+
+/** Create a minimal profile file in the project config profiles directory. */
+async function createProfile(tmpDir: string, name: string): Promise<void> {
+  const profilesDir = resolve(tmpDir, 'eforge', 'profiles');
+  await mkdir(profilesDir, { recursive: true });
+  await writeFile(resolve(profilesDir, `${name}.yaml`), '# test profile\n', 'utf-8');
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +361,31 @@ describe('POST /api/session-plan/create', () => {
     const content = await readFile(data.path, 'utf-8');
     expect(content).toContain('session: 2026-01-01-add-feature');
     expect(content).toContain('topic: Add Feature');
+  });
+
+  it('writes agent_profile without validating profile existence at draft creation time', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanCreate}`, {
+      session: '2026-01-01-profiled-plan',
+      topic: 'Profiled Plan',
+      agent_profile: 'missing-profile',
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { session: string; path: string };
+    expect(data.session).toBe('2026-01-01-profiled-plan');
+    const content = await readFile(data.path, 'utf-8');
+    expect(content).toContain('agent_profile: missing-profile');
+
+    const showRes = await fetch(`http://localhost:${server.port}${API_ROUTES.sessionPlanShow}?session=2026-01-01-profiled-plan`);
+    expect(showRes.status).toBe(200);
+    const showData = await showRes.json() as { plan: { agent_profile?: string } };
+    expect(showData.plan.agent_profile).toBe('missing-profile');
   });
 });
 
@@ -819,6 +853,79 @@ describe('POST /api/enqueue — session-plan auto-submit', () => {
     const data = await res.json() as { sessionId: string };
     expect(typeof data.sessionId).toBe('string');
   });
+
+  it('passes inherited agent_profile to the worker as --profile when no request profile is provided', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await createProfile(tmpDir, 'docs-heavy');
+
+    const planSession = '2026-01-01-profiled-plan';
+    await writeSessionPlanFile(tmpDir, planSession, makeSessionPlanRaw({
+      session: planSession,
+      agentProfile: 'docs-heavy',
+    }));
+
+    const { tracker, calls } = makeStubTracker();
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, workerTracker: tracker });
+
+    const sourcePath = `.eforge/session-plans/${planSession}.md`;
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, { source: sourcePath });
+    expect(res.status).toBe(200);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toEqual([sourcePath, '--profile', 'docs-heavy']);
+  });
+
+  it('uses explicit request profile instead of inherited agent_profile when both are present', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await createProfile(tmpDir, 'other');
+
+    const planSession = '2026-01-01-profiled-plan';
+    await writeSessionPlanFile(tmpDir, planSession, makeSessionPlanRaw({
+      session: planSession,
+      // Leave the inherited profile undefined in profile scopes so this test fails
+      // if the daemon validates inherited agent_profile despite an explicit override.
+      agentProfile: 'missing-inherited-profile',
+    }));
+
+    const { tracker, calls } = makeStubTracker();
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, workerTracker: tracker });
+
+    const sourcePath = `.eforge/session-plans/${planSession}.md`;
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: sourcePath,
+      profile: 'other',
+    });
+    expect(res.status).toBe(200);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toEqual([sourcePath, '--profile', 'other']);
+  });
+
+  it('returns 400 without spawning a worker when inherited agent_profile is missing', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const planSession = '2026-01-01-missing-profile-plan';
+    await writeSessionPlanFile(tmpDir, planSession, makeSessionPlanRaw({
+      session: planSession,
+      agentProfile: 'missing-profile',
+    }));
+
+    const { tracker, calls } = makeStubTracker();
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, workerTracker: tracker });
+
+    const sourcePath = `.eforge/session-plans/${planSession}.md`;
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, { source: sourcePath });
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toContain('missing-profile');
+    expect(calls).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -826,7 +933,7 @@ describe('POST /api/enqueue — session-plan auto-submit', () => {
 // ---------------------------------------------------------------------------
 
 /** Build a valid planning-mode playbook raw string. */
-function validPlanningPlaybookRaw(opts: { name?: string; description?: string } = {}): string {
+function validPlanningPlaybookRaw(opts: { name?: string; description?: string; profile?: string } = {}): string {
   const name = opts.name ?? 'my-planning';
   const description = opts.description ?? 'Plan the my-planning feature';
   return [
@@ -835,6 +942,7 @@ function validPlanningPlaybookRaw(opts: { name?: string; description?: string } 
     `description: ${description}`,
     'scope: project-team',
     'mode: planning',
+    ...(opts.profile ? [`profile: ${opts.profile}`] : []),
     '---',
     '',
     '## Goal',
@@ -892,6 +1000,30 @@ describe('POST /api/session-plan/create-from-playbook', () => {
     const planContent = await readFile(data.path, 'utf-8');
     expect(planContent).toContain('seeded_from_playbook:');
     expect(planContent).toContain('my-planning');
+  });
+
+  it('writes agent_profile inherited from the planning playbook profile without validating it', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const configDir = resolve(tmpDir, 'eforge');
+    const playbooksDir = resolve(configDir, 'playbooks');
+    await mkdir(playbooksDir, { recursive: true });
+    await writeFile(resolve(playbooksDir, 'my-planning.md'), validPlanningPlaybookRaw({ profile: 'missing-profile' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanCreateFromPlaybook}`, {
+      playbook_name: 'my-planning',
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { session: string; path: string };
+    expect(typeof data.session).toBe('string');
+    const planContent = await readFile(data.path, 'utf-8');
+    expect(planContent).toContain('profile: null');
+    expect(planContent).toContain('agent_profile: missing-profile');
   });
 
   it('returns 400 when the named playbook is autonomous (must use playbook/run instead)', async () => {

@@ -1880,15 +1880,20 @@ export async function startServer(
           return;
         }
         // --- eforge:region plan-01-per-build-profile-override ---
-        // Validate profile override before spawning any worker.
-        if (body.profile && typeof body.profile === 'string') {
-          const profileName = body.profile;
+        // Validate explicit profile override before spawning any worker.
+        let explicitProfileName: string | undefined;
+        if (body.profile !== undefined) {
+          if (typeof body.profile !== 'string' || body.profile.trim().length === 0) {
+            sendJsonError(res, 400, 'Invalid field: profile must be a non-empty string');
+            return;
+          }
+          explicitProfileName = body.profile;
           const { getConfigDir, getConventionalConfigDir, loadProfile } = await import('@eforge-build/engine/config');
           const discoveredConfigDir = await getConfigDir(cwd);
           const configDir = discoveredConfigDir ?? getConventionalConfigDir(cwd);
-          const profileResult = await loadProfile(configDir, profileName, cwd);
+          const profileResult = await loadProfile(configDir, explicitProfileName, cwd);
           if (!profileResult) {
-            sendJsonError(res, 400, `Profile '${profileName}' not found`);
+            sendJsonError(res, 400, `Profile '${explicitProfileName}' not found`);
             return;
           }
         }
@@ -1903,6 +1908,7 @@ export async function startServer(
         //
         // Extension references (eforge://input/...) and inline content pass
         // through to the worker unchanged.
+        let inheritedAgentProfile: string | undefined;
         if (cwd) {
           let resolvedSourcePath: string | undefined;
           let rawSourceContent: string | undefined;
@@ -1918,8 +1924,8 @@ export async function startServer(
           if (resolvedSourcePath !== undefined && rawSourceContent !== undefined) {
             try {
               const { normalizeBuildSource } = await import('@eforge-build/input');
-              // Prevalidation only — discard result; worker keeps original source.
-              normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawSourceContent });
+              const normalized = normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawSourceContent });
+              inheritedAgentProfile = normalized.agentProfile;
             } catch (parseErr) {
               // Session-plan parse failure — surface as a client error.
               sendJsonError(res, 400, parseErr instanceof Error ? parseErr.message : 'Failed to parse source');
@@ -1927,12 +1933,29 @@ export async function startServer(
             }
           }
         }
+        // --- eforge:endregion plan-04-daemon-cli-wiring ---
+        // --- eforge:region plan-01-core-profile-propagation ---
+        // When no explicit profile was provided, validate the inherited agent_profile from the session plan.
+        if (explicitProfileName === undefined && inheritedAgentProfile) {
+          const { getConfigDir, getConventionalConfigDir, loadProfile } = await import('@eforge-build/engine/config');
+          const discoveredConfigDir = await getConfigDir(cwd);
+          const configDir = discoveredConfigDir ?? getConventionalConfigDir(cwd);
+          const profileResult = await loadProfile(configDir, inheritedAgentProfile, cwd);
+          if (!profileResult) {
+            sendJsonError(res, 400, `Inherited agent profile '${inheritedAgentProfile}' not found`);
+            return;
+          }
+        }
+        // --- eforge:endregion plan-01-core-profile-propagation ---
         // Worker always receives the original source string — not normalized content.
         const args = [body.source, ...(body.flags ?? [])];
-        if (body.profile && typeof body.profile === 'string') {
-          args.push('--profile', body.profile);
+        // --- eforge:region plan-01-core-profile-propagation ---
+        // Effective profile: explicit request profile takes precedence over inherited agent_profile.
+        const effectiveEnqueueProfile = explicitProfileName ?? inheritedAgentProfile;
+        if (effectiveEnqueueProfile) {
+          args.push('--profile', effectiveEnqueueProfile);
         }
-        // --- eforge:endregion plan-04-daemon-cli-wiring ---
+        // --- eforge:endregion plan-01-core-profile-propagation ---
         // --- eforge:region plan-01-semantic-enqueue-wake ---
         // Wake is now driven by the persisted enqueue:complete DB event via the
         // daemon semantic-event reaction path (daemon-event-reactions.ts).
@@ -3366,6 +3389,19 @@ export async function startServer(
           });
         } else {
           // Autonomous-mode: enqueue as PRD
+          // --- eforge:region plan-01-core-profile-propagation ---
+          // Validate the playbook's profile before enqueueing.
+          if (playbook.profile) {
+            const { getConfigDir, getConventionalConfigDir, loadProfile } = await import('@eforge-build/engine/config');
+            const discoveredConfigDir = await getConfigDir(cwd);
+            const playbookConfigDir = discoveredConfigDir ?? getConventionalConfigDir(cwd);
+            const playbookProfileResult = await loadProfile(playbookConfigDir, playbook.profile, cwd);
+            if (!playbookProfileResult) {
+              sendJsonError(res, 400, `Playbook profile '${playbook.profile}' not found`);
+              return;
+            }
+          }
+          // --- eforge:endregion plan-01-core-profile-propagation ---
           // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
           const { enqueuePrd, inferTitle, validateDependsOnExists, commitEnqueuedPrd } = await import('@eforge-build/engine/prd-queue');
           // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
@@ -3396,6 +3432,9 @@ export async function startServer(
             intoWaiting: afterQueueId ? true : false,
             // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
             postMerge: plan.postMerge,
+            // --- eforge:region plan-01-core-profile-propagation ---
+            profile: plan.profile,
+            // --- eforge:endregion plan-01-core-profile-propagation ---
           });
           await commitEnqueuedPrd(result.filePath, result.id, title, cwd);
           notifyQueueMutation(options.daemonState, 'playbook-enqueue');
@@ -3728,7 +3767,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Working directory not configured');
         return;
       }
-      let body: { session?: unknown; topic?: unknown; planning_type?: unknown; planning_depth?: unknown; profile?: unknown };
+      let body: { session?: unknown; topic?: unknown; planning_type?: unknown; planning_depth?: unknown; profile?: unknown; agent_profile?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
@@ -3765,6 +3804,11 @@ export async function startServer(
         sendJsonError(res, 400, `Invalid profile (must be null or one of: ${VALID_PROFILES.join(', ')})`);
         return;
       }
+      // agent_profile is accepted as-is (no existence validation at create time)
+      if (body.agent_profile !== undefined && typeof body.agent_profile !== 'string') {
+        sendJsonError(res, 400, 'Invalid agent_profile (must be a string)');
+        return;
+      }
       try {
         const { createSessionPlan, writeSessionPlan, resolveSessionPlanPath } = await import('@eforge-build/input');
         const plan = createSessionPlan({
@@ -3773,6 +3817,9 @@ export async function startServer(
           planningType: body.planning_type as typeof VALID_PLANNING_TYPES[number] | undefined,
           planningDepth: body.planning_depth as typeof VALID_PLANNING_DEPTHS[number] | undefined,
           profile: body.profile as typeof VALID_PROFILES[number] | null | undefined,
+          // --- eforge:region plan-01-core-profile-propagation ---
+          agentProfile: body.agent_profile as string | undefined,
+          // --- eforge:endregion plan-01-core-profile-propagation ---
         });
         await writeSessionPlan({ cwd, plan });
         const path = resolveSessionPlanPath({ cwd, session: body.session });

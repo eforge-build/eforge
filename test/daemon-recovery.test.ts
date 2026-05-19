@@ -124,13 +124,15 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 34', () => {
-    // v34: POST /api/playbook/run for planning-mode playbooks now returns
-    // { kind: 'requires-agent'; mode: 'planning'; name; message } (HTTP 200) instead of
-    // creating a session-plan file; PlaybookRunResponse union is enqueued | requires-agent
-    // (removing planning); mode field added to GET /api/playbook/list entries and
-    // GET /api/playbook/show playbook object.
-    expect(DAEMON_API_VERSION).toBe(34);
+  it('is 35', () => {
+    // v35: optional `profile` field added to playbook frontmatter wire shapes
+    // (`PlaybookListEntry`, `PlaybookData`, `PlaybookFrontmatterFields`); optional
+    // `agent_profile` field added to `SessionPlanDataWire` and `SessionPlanCreateRequest`;
+    // `/api/playbook/run` for autonomous playbooks with `profile` persists profile in queued
+    // PRD frontmatter; `/api/session-plan/create` and `/api/session-plan/create-from-playbook`
+    // propagate `agent_profile`; `/api/enqueue` validates and propagates inherited session-plan
+    // `agent_profile` to worker `--profile` arg.
+    expect(DAEMON_API_VERSION).toBe(35);
   });
 });
 

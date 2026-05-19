@@ -78,6 +78,12 @@ export const sessionPlanFrontmatterSchema = z.object({
   profile: z.enum(['errand', 'excursion', 'expedition']).nullable().default(null),
   /** Playbook name this plan was seeded from, when created via `createSessionPlanFromPlaybookSeed`. */
   seeded_from_playbook: z.string().optional(),
+  /**
+   * Inherited agent runtime profile name, set when a session plan is created from a planning-mode playbook
+   * that declares a `profile` in its frontmatter. Used as a per-build profile override when the session
+   * plan is submitted to the queue. Existence is validated at enqueue time, not at draft time.
+   */
+  agent_profile: z.string().optional(),
 }).passthrough();
 
 export type SessionPlanFrontmatter = z.output<typeof sessionPlanFrontmatterSchema>;
@@ -584,6 +590,12 @@ export interface CreateSessionPlanOpts {
   planningType?: PlanningType;
   planningDepth?: PlanningDepth;
   profile?: PlanningProfile;
+  /**
+   * Optional inherited agent runtime profile name. Set when creating a session plan
+   * from a planning-mode playbook that declares a `profile` in its frontmatter.
+   * Validated at enqueue time, not at draft time.
+   */
+  agentProfile?: string;
 }
 
 /**
@@ -607,6 +619,7 @@ export function createSessionPlan(opts: CreateSessionPlanOpts): SessionPlan {
     skipped_dimensions: [],
     open_questions: [],
     profile: opts.profile ?? null,
+    ...(opts.agentProfile !== undefined && { agent_profile: opts.agentProfile }),
     body,
     sections: parseSections(body),
   };
@@ -697,6 +710,7 @@ export function createSessionPlanFromPlaybookSeed(opts: CreateSessionPlanFromPla
     open_questions: [],
     profile: null,
     seeded_from_playbook: opts.playbook.name,
+    ...(opts.playbook.profile !== undefined && { agent_profile: opts.playbook.profile }),
     body,
     sections: parseSections(body),
   };
@@ -1027,6 +1041,12 @@ export interface NormalizeBuildSourceResult {
   sourcePath: string;
   /** Normalized content (converted build source for session plans; original for others). */
   content: string;
+  /**
+   * Agent runtime profile inherited from the session plan's `agent_profile` frontmatter field.
+   * Only present for session-plan paths that declare `agent_profile`. Used by callers to pass the
+   * inherited profile to the engine enqueue when no explicit profile override is provided.
+   */
+  agentProfile?: string;
 }
 
 /**
@@ -1060,5 +1080,9 @@ export function normalizeBuildSource(input: NormalizeBuildSourceInput): Normaliz
 
   const plan = parseSessionPlan(input.content);
   const content = sessionPlanToBuildSource(plan);
-  return { sourcePath: input.sourcePath, content };
+  const result: NormalizeBuildSourceResult = { sourcePath: input.sourcePath, content };
+  if (typeof plan.agent_profile === 'string') {
+    result.agentProfile = plan.agent_profile;
+  }
+  return result;
 }

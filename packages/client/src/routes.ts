@@ -254,6 +254,8 @@ export interface SessionPlanDataWire {
   open_questions: string[];
   profile: 'errand' | 'excursion' | 'expedition' | null;
   body: string;
+  /** Optional inherited agent runtime profile name. Set when created from a planning-mode playbook with a profile. */
+  agent_profile?: string;
 }
 
 /** Response for GET /api/session-plan/list */
@@ -275,6 +277,8 @@ export interface SessionPlanCreateRequest {
   planning_type?: PlanningTypeWire;
   planning_depth?: PlanningDepthWire;
   profile?: 'errand' | 'excursion' | 'expedition' | null;
+  /** Optional inherited agent runtime profile name. Not validated at create time. */
+  agent_profile?: string;
 }
 
 /** Response for POST /api/session-plan/create */

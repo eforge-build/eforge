@@ -634,6 +634,87 @@ describe('preprocessBuildSource — event ordering', () => {
 });
 
 // ---------------------------------------------------------------------------
+// agentProfile — session-plan file sources expose agentProfile
+// ---------------------------------------------------------------------------
+
+describe('preprocessBuildSource — agentProfile from session-plan file', () => {
+  it('exposes agentProfile when session-plan file declares agent_profile', async () => {
+    const tmpDir = makeTempDir();
+    const sessionPlansDir = resolve(tmpDir, '.eforge', 'session-plans');
+    await mkdir(sessionPlansDir, { recursive: true });
+
+    const sessionPlanContent = [
+      '---',
+      'session: 2026-05-01-test-plan',
+      'topic: "Test Plan"',
+      'status: planning',
+      'planning_type: feature',
+      'planning_depth: focused',
+      'required_dimensions: []',
+      'optional_dimensions: []',
+      'skipped_dimensions: []',
+      'open_questions: []',
+      'profile: null',
+      'agent_profile: docs-heavy',
+      '---',
+      '',
+      '# Test Plan',
+      '',
+      '## Scope',
+      '',
+      'Do the thing.',
+    ].join('\n');
+
+    const planPath = resolve(sessionPlansDir, '2026-05-01-test-plan.md');
+    await writeFile(planPath, sessionPlanContent, 'utf-8');
+
+    const result = await preprocessBuildSource({
+      source: planPath,
+      inputSources: [],
+      prdEnrichers: [],
+      cwd: tmpDir,
+      timeoutMs: 5000,
+    });
+
+    expect(result.agentProfile).toBe('docs-heavy');
+    expect(result.content).toContain('# Test Plan');
+    // The content should be build source (no frontmatter)
+    expect(result.content).not.toMatch(/^---/);
+  });
+
+  it('does not expose agentProfile for non-session-plan file sources', async () => {
+    const tmpDir = makeTempDir();
+    const prdPath = resolve(tmpDir, 'my-prd.md');
+    await writeFile(prdPath, '# My PRD\n\nDo the thing.', 'utf-8');
+
+    const result = await preprocessBuildSource({
+      source: prdPath,
+      inputSources: [],
+      prdEnrichers: [],
+      cwd: tmpDir,
+      timeoutMs: 5000,
+    });
+
+    expect(result.agentProfile).toBeUndefined();
+  });
+
+  it('does not expose agentProfile for adapter/inline sources', async () => {
+    const tmpDir = makeTempDir();
+    const adapter = makeInputSource('static', async () => '# Fetched content');
+
+    const result = await preprocessBuildSource({
+      source: 'eforge://input/static/DOC-1',
+      inputSources: [adapter],
+      prdEnrichers: [],
+      cwd: tmpDir,
+      timeoutMs: 5000,
+    });
+
+    expect(result.agentProfile).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // No engine-import boundary
 // ---------------------------------------------------------------------------
 

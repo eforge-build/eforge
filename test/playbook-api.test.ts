@@ -691,3 +691,168 @@ describe('POST /api/playbook/validate', () => {
     expect(data.errors.some((e) => /goal/i.test(e))).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Playbook profile field — /api/playbook/run
+// ---------------------------------------------------------------------------
+
+/** Build a playbook raw string with an optional profile field. */
+function validPlaybookRawWithProfile(opts: {
+  name?: string;
+  mode?: string;
+  profile?: string;
+} = {}): string {
+  const name = opts.name ?? 'my-feature';
+  const mode = opts.mode ?? 'autonomous';
+  const lines = [
+    '---',
+    `name: ${name}`,
+    'description: Add the my-feature capability',
+    'scope: project-team',
+    `mode: ${mode}`,
+  ];
+  if (opts.profile) {
+    lines.push(`profile: ${opts.profile}`);
+  }
+  lines.push('---', '', '## Goal', '', 'Implement the feature.');
+  return lines.join('\n');
+}
+
+/** Create a minimal profile file in the eforge/profiles/ directory. */
+async function createProfile(configDir: string, name: string): Promise<void> {
+  const profilesDir = resolve(configDir, 'profiles');
+  await mkdir(profilesDir, { recursive: true });
+  await writeFile(resolve(profilesDir, `${name}.yaml`), '# test profile\n', 'utf-8');
+}
+
+describe('POST /api/playbook/run — profile field', () => {
+  it('does not validate missing profile for a planning-mode playbook', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRawWithProfile({
+      name: 'my-planning',
+      mode: 'planning',
+      profile: 'missing-profile',
+    }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-planning',
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { kind: string; mode: string; name: string };
+    expect(data).toEqual(expect.objectContaining({
+      kind: 'requires-agent',
+      mode: 'planning',
+      name: 'my-planning',
+    }));
+
+    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    await expect(readdir(queueDir)).rejects.toThrow();
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('creates queued PRD with profile: frontmatter when autonomous playbook has a known profile', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    await createProfile(configDir, 'docs-heavy');
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRawWithProfile({ profile: 'docs-heavy' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-feature',
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { kind: string; id: string };
+    expect(data.kind).toBe('enqueued');
+
+    // Verify the queued PRD contains profile: docs-heavy in frontmatter
+    const queueFile = resolve(tmpDir, 'eforge', 'queue', `${data.id}.md`);
+    const content = await readFile(queueFile, 'utf-8');
+    const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
+    expect(frontmatter).toBeDefined();
+    expect(frontmatter).toContain('profile: docs-heavy');
+  });
+
+  it('returns 400 and does not enqueue when autonomous playbook profile is absent from all profile scopes', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+    // Note: no profile file created
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRawWithProfile({ profile: 'missing-profile' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-feature',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('missing-profile');
+
+    // Verify no PRD was created
+    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    await expect(readdir(queueDir)).rejects.toThrow();
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('save/show/list round-trip includes profile field and required mode', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const saveRes = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
+      scope: 'project-team',
+      playbook: {
+        frontmatter: {
+          name: 'my-feature',
+          description: 'Add the my-feature capability',
+          scope: 'project-team',
+          mode: 'autonomous',
+          profile: 'docs-heavy',
+        },
+        body: { goal: 'Implement the feature.', outOfScope: '', acceptanceCriteria: '', plannerNotes: '' },
+      },
+    });
+    expect(saveRes.status).toBe(200);
+    const saveData = await saveRes.json() as { path: string };
+    const savedRaw = await readFile(saveData.path, 'utf-8');
+    expect(savedRaw).toContain('mode: autonomous');
+    expect(savedRaw).toContain('profile: docs-heavy');
+
+    // GET /api/playbook/show includes profile
+    const showRes = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookShow}?name=my-feature`);
+    expect(showRes.status).toBe(200);
+    const showData = await showRes.json() as { playbook: { profile?: string; mode: string } };
+    expect(showData.playbook.profile).toBe('docs-heavy');
+    expect(showData.playbook.mode).toBe('autonomous');
+
+    // GET /api/playbook/list includes profile
+    const listRes = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookList}`);
+    expect(listRes.status).toBe(200);
+    const listData = await listRes.json() as { playbooks: Array<{ name: string; profile?: string; mode: string }> };
+    const entry = listData.playbooks.find((p) => p.name === 'my-feature');
+    expect(entry).toBeDefined();
+    expect(entry!.profile).toBe('docs-heavy');
+    expect(entry!.mode).toBe('autonomous');
+  });
+});

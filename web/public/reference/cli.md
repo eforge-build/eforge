@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.13 -->
-<!-- Commit: ed0e5613 -->
+<!-- Commit: ee5f45d5 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -48,6 +48,7 @@ Compile + build + validate in one step
 | `--no-plugins` | Disable plugin loading |
 | `--watch` | Watch mode: continuously poll the queue for new PRDs |
 | `--poll-interval <ms>` | Poll interval in milliseconds for watch mode |
+| `--profile <name>` | Override active profile for this build |
 
 ### `monitor`
 
