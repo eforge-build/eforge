@@ -1,5 +1,180 @@
 # Changelog
 
+## [0.7.13] - 2026-05-19
+
+### Features
+
+- **add-build-time-syntax-highlighting-for-docs-code-blocks**: Markdown pipeline with rehype-pretty-code syntax highlighting
+- **add-extend-06-eforge-extend-authoring-ux-in-pi-and-claude-code**: Add /eforge:extend authoring skills and wiring
+- **add-extension-discovery-config-and-loader**: Add native eforge extension discovery, configuration, loading, registry capture, diagnostics, and provenance tooling.
+- **add-extension-packaging-and-install-support**: Add packaged native extension manifest, install/update/remove/promote/demote support, provenance, and parity across CLI, MCP, Pi, docs, and tests.
+- **add-guided-toolbelt-ux-and-presets-for-least-privilege-mcp-configuration**: Add guided least-privilege MCP toolbelt presets to Pi profile creation, surface toolbelts in config viewing, and update public docs plus fallback skills.
+- **add-mode-autonomous-planning-to-playbooks-bundle-first-planning-mode-playbook-complexity-hotspot-reduction**: Add `mode: autonomous | planning` to playbooks, introduce session-plan seed flow, rename `playbook/enqueue` → `playbook/run` with discriminated response, update CLI/MCP/Pi/skills, and bundle the first planning-mode playbook (`complexity-hotspot-reduction`) with its measurement tooling.
+- **add-monitor-ui-agent-detail-observability-for-existing-agent-events-plus-deterministic-per-agent-activity-facts**: Add monitor UI agent detail observability: clickable agent lifespan bars open a deterministic-facts drawer (final result text, lifecycle/usage, warnings/retries/tool activity, plus per-agent git diffstat facts for reliably attributable mutating stages). Adds `agentId` to `agent:result` and introduces a new `agent:activity` event; the monitor UI reducer prefers `agentId` matching with a fallback for legacy logs. No LLM summarization is introduced.
+- **add-profile-metadata-fields-toolbelts-02**: Add optional profile metadata fields (description, whenToUse, tags) to agent runtime profiles, surfaced through profile list/show/create across the daemon API, Claude Code MCP/skills, Pi tool/native commands, and documentation. Metadata is descriptive only and does not affect active profile selection or runtime behavior.
+- **aggressively-migrate-eforge-owned-schemas-to-typebox**: Aggressively migrate eforge-owned domain schemas from Zod to TypeBox, starting with the first coherent slice: a shared TypeBox schema utility, the @eforge-build/client event/wire schemas, and the engine's structured-output schemas plus custom-tool harness adapters. Zod is retained only inside explicit third-party SDK compatibility adapters. Preserves JSON wire shapes via parity tests and bans new Zod imports outside an allowlist.
+- **build-evaluator-enforcement**: Build Evaluator Enforcement and Reporting
+- **cli-mcp-pi-docs-extension-test**: CLI, MCP, Pi, and Docs Extension Test Surface
+- **client-events**: Migrate @eforge-build/client Event/Wire Schemas to TypeBox
+- **compile-evaluator-parity**: Compile Evaluator Parity
+- **consumers-and-docs**: Surface profile metadata in MCP, Pi, skills, and docs
+- **core**: PRD Gap Close
+- **daemon-supervisor-integration**: Daemon Runtime and Route Integration for Auto-Build Supervisor
+- **docs-and-skills**: Trust Model Documentation and Skill Guidance
+- **docs-examples**: Documentation and Examples for Extension Agent Tools
+- **docs-gen**: Docs generator package and checked-in generated reference artifacts
+- **document-ui-profile-using-playwright-mcp-toolbelt**: Document UI Profile Toolbelt (Playwright canonical example)
+- **dynamic-perspective-contracts**: Dynamic Perspective Contracts and Schema Foundation
+- **emit-auto-build-disabled-events-for-connected-monitor-ui-tabs**: Emit and Project Auto-build Disabled Events
+- **engine-and-api**: Profile metadata schema, parsing, and daemon API
+- **engine-daemon-extension-replay**: Engine and Daemon Extension Replay Harness
+- **engine-schemas-and-custom-tools**: Migrate Engine Structured-Output Schemas and Custom-Tool Contracts to TypeBox
+- **engine-trust-foundation**: Engine Trust Store, Hashing, and Loader Enforcement
+- **enqueue-preprocessing-runtime**: Enqueue Preprocessing Runtime
+- **evaluation-application-core**: Evaluation Application Core
+- **event-contract-and-engine-emission**: Event contract changes and engine emission for per-agent detail observability
+- **extend-01-extension-api-design-sdk-package**: Extension SDK package, example, and docs
+- **extend-04-extension-management-surface-mvp**: EXTEND_04 Extension Management Surface MVP — add extension scaffold/new and reload management API, CLI, MCP/Pi tooling, explicit enablement state, tests, and docs on top of the existing list/show/validate surface.
+- **extend-05-phase-1-extension-docs-and-examples**: Synchronize Extension Docs, Examples, and Validation
+- **extend-07-extension-validation-and-replay-test-harness**: extension replay test harness
+- **extend-08a-agent-prompt-context-extension-hooks**: Agent prompt/context extension runtime
+- **extend-08b-extension-contributed-agent-tools-and-tool-availability**: Implement EXTEND_08B extension-contributed agent tools, per-run tool availability tuning, observability events, tests, and documentation updates.
+- **extend-09-usage-aware-profile-router**: Deliver pre-build runtime execution of profile router extensions so queued PRDs without explicit profile overrides are routed at dispatch time with observable provenance, validation, fail-open semantics, and best-effort usage signals.
+- **extend-11-successor-docs-issue-tracker-example-and-skill-updates**: Issue-Tracker Example, Docs, and Skill Updates
+- **extend-12b-validation-provider-extension-point**: Wire extension-registered validation providers into the built-in `validate` build stage as a runtime-supported per-plan quality gate, with typed/legacy results, command-style alternative, provider-specific events, fail-closed timeout semantics, and coherent projections/UI/CLI/docs/example coverage.
+- **extension-docs-and-reference**: Extension Documentation and Generated Reference
+- **extension-input-contracts**: Extension Input and Enricher Contracts
+- **extension-management-api**: Extension Management API, Scaffold Helper, and Reload Runtime
+- **extension-management-surfaces-docs**: Extension Management CLI, MCP/Pi Tooling, and Documentation
+- **extension-package-daemon-operations**: Daemon Extension Package Operations
+- **extension-package-foundation**: Extension Package Manifest and Provenance Foundation
+- **extension-package-surfaces-docs**: Extension Package CLI, MCP, Pi, and Documentation
+- **extension-perspective-runtime**: Extension Reviewer Perspective Runtime
+- **extension-runtime-foundation**: Extension Runtime Foundation
+- **extension-tooling-surfaces**: Extension Tooling Surfaces
+- **fix-auto-build-scheduler-capacity-overrun-and-claimed-lock-dependency-unblock**: Lock-Aware Queue Scheduler and Claimed-Skip Semantics
+- **fix-auto-build-scheduler-pause-resume-after-a-failed-queued-build-so-parallelism-and-independent-queued-builds-continue-correctly**: Decouple auto-build pause from watcher abort and make re-enable deterministic
+- **generalize-transient-transport-retry-handling-across-eforge-agents**: Evaluator Transient Transport Retry Policy
+- **harden-extension-trust-model**: Harden committed project/team native extension trust with per-extension hash trust metadata, changed-extension blocking, management surfaces, docs, and tests.
+- **harden-websocket-transport-retry-handling-for-planner-failures**: Harden WebSocket Close Transport Classification
+- **implement-adaptive-reviewer-subset-selection**: Adaptive Review-Cycle Perspective Selection
+- **implement-blocking-policy-gates**: Implement runtime-supported blocking policy gates for queue dispatch, plan merge, and final merge with typed SDK contexts, policy runtime, config, event schemas, engine integration, docs, examples, and tests.
+- **implement-durable-daemon-scoped-event-persistence-for-live-monitor-queue-updates**: Durable Daemon Event Persistence for Live Queue Updates
+- **improve-monitor-daemon-scheduler-fsm-card-reporting**: Scheduler FSM Card Reporting
+- **improve-monitor-ui-decision-markers-by-positioning-decision-events-on-the-pipeline-timeline-and-adding-clearer-event-timeline-console-summaries**: Position decision events on the pipeline timeline and add event-card summaries
+- **input-schema-and-helpers**: Input schema, planning-mode helpers, and existing playbook migration
+- **make-monitor-ui-auto-build-toggle-safer**: Safer Monitor UI Auto-build Toggle
+- **make-pi-transport-websocket-close-resilient**: Pi Transport Close Resilience
+- **management-surfaces**: Daemon, Client, CLI, MCP, and Pi Trust Management
+- **monitor-ui-agent-detail-drawer**: Monitor UI agent detail drawer and deterministic facts rendering
+- **monitor-ui-fsm-card**: Monitor UI Scheduler FSM Status Card
+- **no-start-client-helpers**: Add Non-Starting Client API Helpers
+- **observability-docs-examples**: Observability, Management Surfaces, Docs, and Examples
+- **pi-mcp-multi-build-status**: Pi Extension and MCP Proxy Multi-Build Status Awareness
+- **pi-passive-daemon-usage**: Refactor Pi Extension to Passive Daemon Usage
+- **pi-toolbelt-preset-ux**: Pi Guided Toolbelt Preset UX
+- **plan-a-public-eforge-marketing-documentation-site-with-agent-readable-docs-and-drift-preventing-generated-references**: Public eforge.build marketing/documentation site with agent-readable docs and drift-preventing generated references derived from code-owned sources of truth (CLI, daemon API routes, event protocol, config schema, MCP tools, Pi/Claude integration skills). Plan-01 lands a deterministic `packages/docs-gen/` generator package with provenance-bearing outputs (Markdown + JSON schemas + curated `llms.txt` / concatenated `llms-full.txt`) checked into `web/content/` and `web/public/`, plus root `docs:generate` / `docs:check` scripts and a drift-prevention test. Plan-02 scaffolds the Next.js app at `web/`, wires it into the pnpm workspace, ships a minimal human docs shell with landing + getting-started/concepts/configuration + generated-reference index, exposes stable raw `/reference/*.md` and `/schemas/*.json` routes plus the agent-readable `/llms.txt` and `/llms-full.txt`, adds `docs:dev` / `docs:build`, links from README, and extends CI to fail on stale generated docs or a broken site build.
+- **policy-gate-docs-examples-skills**: Policy Gate Documentation, Examples, and Integration Skill Updates
+- **policy-gate-foundation**: Policy Gate SDK, Config, Events, and Runtime Foundation
+- **prevent-pi-eforge-ambient-status-polling-from-auto-starting-the-daemon**: Prevent Pi eforge ambient status polling and all non-lifecycle Pi operations from auto-starting the daemon; add no-start client helper variants, refactor Pi calls, update docs, and add regression/static tests.
+- **profile-ux-and-docs**: Profile UX surfaces, monitor rendering, and docs cleanup
+- **recover-extend-03-typed-event-runtime-from-websocket-close**: Recover EXTEND_03 typed event extension runtime after a transient WebSocket close by preserving the landed native event runtime foundation and wiring onEvent dispatch into CLI, queue, daemon watcher, tests, and docs.
+- **recover-native-event-runtime-foundation**: Recover Native Event Runtime Foundation
+- **redesign-auto-build-queue-watcher-lifecycle-around-an-fsm-supervisor**: Redesign the daemon auto-build watcher lifecycle around a supervisor/FSM and expose the resulting scheduler health in the monitor UI.
+- **reference-and-mirror-content**: Enrich Generated Reference Content and Raw Mirrors
+- **rendered-anchors-and-link-check**: Add Rendered Anchors and Docs Link Checking
+- **repair-public-docs-links-heading-anchors-and-reference-gaps**: Repair public docs heading IDs, generated config reference gaps, raw Markdown mirrors, llms manifest entries, profile-new skill links, and add docs link/anchor validation to docs checks.
+- **resolve-tier-toolbelts-into-harness-mcp-config-and-expose-toolbelt-observability**: Resolve tier toolbelts into harness MCP config and expose toolbelt observability
+- **run-summary-pending-plans**: Re-apply RunSummary Pending Plans and planning:complete Seeding
+- **runtime-and-integration**: Profile router runtime, scheduler integration, usage provider, example, docs
+- **runtime-and-observability**: Runtime MCP filtering and observability schema
+- **runtime-reviewer-perspective-extension-point**: Promote registerReviewerPerspective from loader-only provenance to a runtime-supported, bounded review-cycle extension point with dynamic perspective identifiers, applicability rules, events, observability, examples, and docs.
+- **runtime-wire-contract**: Runtime and Wire Contract for Extension Agent Tools
+- **runtime-wiring-and-docs**: Runtime Wiring and Documentation
+- **schema-utility**: Shared TypeBox Schema Utility Layer
+- **sdk-and-wire-contracts**: Profile router SDK contracts, wire events, and recorder validation
+- **skills-complexity-playbook-and-tooling**: Plugin skills, complexity-hotspot-reduction playbook, and complexity scan tooling
+- **stabilize-run-summary-pending-plans-and-implement-pi-mcp-multi-build-status**: Stabilize the RunSummary `pending` plans wire change (re-apply plan-01 on top of current main) and implement Pi/MCP multi-build status awareness (plan-02).
+- **supervisor-foundation**: Auto-Build Supervisor Foundation and Wire Contract
+- **toolbelt-docs-skills-parity**: Toolbelt Preset Documentation and Skill Parity
+- **toolbelts-03-add-mcp-toolbelt-schema-and-static-validation**: Toolbelt schema and static validation
+- **update-eforge-docs-to-recommend-pi-harness-and-caveat-claude-agent-sdk-pricing**: Pi-first Docs and Setup Guidance
+- **use-semantic-enqueue-events-for-auto-build-wake-and-live-queue-ui**: Semantic Enqueue Wake and Queue Projection
+- **validation-provider-projections-ui-docs**: Validation provider projections, monitor UI, CLI, docs, and example extension
+- **validation-provider-runtime**: Validation provider runtime, build-stage execution, and event schemas
+- **web**: add Vercel analytics
+- **web**: improve landing page positioning
+- **web-site**: Next.js web/ public site, dev/build wiring, README and CI integration
+- **wire-surface-and-mode-dispatch**: Daemon route rename, mode dispatch, MCP/Pi/CLI surface, and api-version bump
+
+### Bug Fixes
+
+- **core**: add .npmrc with ci=true to allow pnpm install without TTY
+- **core**: regenerate docs artifacts to resolve drift check failure
+- **core**: remove registerValidationProvider from config table description in extensions.md
+- **core**: resolve TS2454 variable used before assignment in server.ts
+- **core**: resolve validation failures
+- **harden-review-evaluation-cycles**: type-check enriched cycle decisions
+- **pi-eforge**: send follow updates as tool results
+- **web**: build docs-gen dependencies for deployment
+
+### Documentation
+
+- **core**: refresh generated reference artifacts
+- **extension-docs-examples-sync**: sync documentation with implementation
+- **llms**: improve agent-readable documentation index
+- **prd**: add extensibility and toolbelt proposals
+- **prd**: clarify extension epic boundaries
+- **profile**: add profile toolbelts design
+- **roadmap**: prune shipped roadmap items
+- **roadmap**: refresh roadmap and promote wrapper-app boundary to AGENTS.md
+- **web**: add why eforge positioning page
+
+### Maintenance
+
+- **core**: remove tracked node_modules symlinks
+- **deps**: bump workspace dependency versions
+- **deps**: rename Pi packages from @mariozechner to @earendil-works
+- **enqueue-preprocessing-runtime**: fix test issues
+- **harden-review-evaluation-cycles**: align retry expectations after rebase
+- **queue**: add EXTEND_03 recovery path
+- **queue**: remove failed extension loader entry
+- **queue**: revise stale PRD extend-11-runtime-input-transformers-and-prd-enrichers
+- **queue**: revise stale PRD make-pi-transport-websocket-close-resilient
+- **queue**: revise stale PRD repair-public-docs-links-heading-anchors-and-reference-gaps
+- **queue**: revise stale PRD stabilize-run-summary-pending-plans-and-implement-pi-mcp-multi-build-status
+- **safer-auto-build-toggle**: add tests
+- **web**: stop tracking Next build output
+- **web**: stop tracking TypeScript build info
+
+### Other
+
+- **core**: add favicon
+- **core**: add link to llms-full.txt
+- **core**: cleanup
+- **core**: cleanup stale prd
+- **core**: Ignore .vercel
+- **core**: prepare for vercel deploy of docs
+- **core**: remove failed build
+- **core**: remove old failed build
+- **core**: Remove recovered failed builds
+- **core**: update failed build analysis
+- **core**: update failure sidecars
+- **core**: update failure sidecars with analysis
+- **core**: upgrade deps
+- **core**: Upgrade deps
+- **extend-07-extension-validation-and-replay-test-harness**: mark manually salvaged
+- **extend-09-usage-aware-profile-router**: unblock
+- **extend-11-runtime-input-transformers-and-prd-enrichers**: enqueue successor extend-11-successor-docs-issue-tracker-example-and-skill-updates
+- **extend-11-runtime-input-transformers-and-prd-enrichers**: integrate feature branch into successor base
+- **extend-12a-continuation-runtime-catalog-review-execution-planning-guidance-ui-docs-and-examples**: failed - manual
+- **extend-12a-support-custom-reviewer-perspectives**: enqueue successor extend-12a-continuation-runtime-catalog-review-execution-planning-guidance-ui-docs-and-examples
+- **improve-monitor-daemon-scheduler-fsm-card-reporting**: failed - retry
+- **improve-monitor-daemon-scheduler-fsm-card-reporting**: requeue per recovery verdict
+- **improve-pi-eforge-footer-status-so-active-builds-and-plan-counts-are-accurate**: enqueue successor stabilize-run-summary-pending-plans-and-implement-pi-mcp-multi-build-status
+- **make-pi-transport-websocket-close-resilient**: requeue with compile transport scope
+- **web**: switch docs theme to black/green with Inter + JetBrains Mono
+
 ## [0.7.12] - 2026-05-07
 
 ### Features
@@ -411,20 +586,5 @@ Maintenance release
 
 - remove merged PRD from queue/failed
 
-## [0.5.11] - 2026-04-21
-
-### Features
-
-- **fix-planner-submission-tools-on-the-pi-backend:** Backend-aware submission tool naming and Pi 0.68 ToolDefinition conformance
-
-### Bug Fixes
-
-- **engine:** register custom tools in Pi session allowlist and retry-frame submission validation errors
-
-### Maintenance
-
-- **deps:** bump pi packages to 0.68.0 and adapt backend
-
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
-
