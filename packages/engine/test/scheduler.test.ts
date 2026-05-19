@@ -36,7 +36,7 @@ function makePrd(id: string, dependsOn: string[] = []): QueuedPrd {
 }
 
 /** spawnPrdChild that never settles — tests drain the queue before any build finishes. */
-const spawnNeverResolves = (): Promise<'completed' | 'failed' | 'skipped'> =>
+const spawnNeverResolves = (): Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'> =>
   new Promise(() => {});
 
 const CONFIG_PROFILE = {

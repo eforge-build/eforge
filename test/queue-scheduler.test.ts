@@ -19,10 +19,12 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from '@eforge-build/engine/queue/scheduler';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { AsyncEventQueue } from '@eforge-build/engine/concurrency';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
+import { QueueExecExitCode, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 import type { PolicyGateRegistration, ProfileRouterRegistration } from '@eforge-build/engine/extensions/types';
+import { StubHarness } from './stub-harness';
 
 const exec = promisify(execFile);
 
@@ -92,7 +94,7 @@ async function createTestEnv(): Promise<{
   eventQueue.addProducer();
 
   // Stub spawnPrdChild: resolves to 'completed' by default.
-  const spawnPrdChild = vi.fn<[QueuedPrd, unknown, string], Promise<'completed' | 'failed' | 'skipped'>>()
+  const spawnPrdChild = vi.fn<[QueuedPrd, unknown, string], Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>>()
     .mockResolvedValue('completed');
 
   const abortController = new AbortController();
@@ -382,7 +384,46 @@ describe('QueueScheduler — queue:prd:complete (completed)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 3: queue:prd:complete (failed) blocks dependents
+// Test 3: queue:prd:complete (skipped) unblocks dependent PRD
+// ---------------------------------------------------------------------------
+
+describe('QueueScheduler — queue:prd:complete (skipped)', () => {
+  it('spawns dependent PRD after upstream is terminally skipped', async () => {
+    const { bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+
+    const foundation = makeQueuedPrd('foundation');
+    const feature = makeQueuedPrd('feature', ['foundation']);
+
+    spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
+
+    const scheduler = makeScheduler([foundation, feature]);
+    await scheduler.start();
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+    expect(spawnPrdChild.mock.calls[0][0].id).toBe('foundation');
+
+    const skippedEvent: SchedulerInputEvent = {
+      type: 'queue:prd:complete',
+      prdId: 'foundation',
+      status: 'skipped',
+      timestamp: new Date().toISOString(),
+    };
+    bus.emit('queue:prd:complete', skippedEvent);
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(spawnPrdChild).toHaveBeenCalledTimes(2);
+    expect(spawnPrdChild.mock.calls[1][0].id).toBe('feature');
+    expect(scheduler.processed).toBe(0);
+    expect(scheduler.skipped).toBe(1);
+
+    eventQueue.removeProducer();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 4: queue:prd:complete (failed) blocks dependents
 // ---------------------------------------------------------------------------
 
 describe('QueueScheduler — queue:prd:complete (failed)', () => {
@@ -476,6 +517,255 @@ describe('QueueScheduler — pause() suspends new launches', () => {
     expect(typesAfterResume).toContain('daemon:scheduler:dequeued');
     expect(spawnPrdChild).toHaveBeenCalledTimes(1);
     expect(spawnPrdChild.mock.calls[0][0].id).toBe('prd-a');
+
+    eventQueue.removeProducer();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 5: lock-aware startup regression
+// ---------------------------------------------------------------------------
+
+describe('QueueScheduler — lock-aware startup', () => {
+  it('treats locked PRDs as running, dequeues only independent PRDs, emits correct diagnostic events', async () => {
+    const { cwd, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+
+    // PRDs: a (will be locked), b (independent), c (depends_on a), d (independent)
+    // With parallelism=2, locked a (running) + launched b = 2 = capacity.
+    // c is dependency-blocked (a is running, not completed/skipped).
+    // d is capacity-blocked (runningCount=2 >= parallelism=2).
+    const aPrd = makeQueuedPrd('a');
+    const bPrd = makeQueuedPrd('b');
+    const cPrd = makeQueuedPrd('c', ['a']);
+    const dPrd = makeQueuedPrd('d');
+
+    // Create a live queue lock for PRD a to simulate an in-flight build.
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writeFile(join(cwd, '.eforge', 'queue-locks', 'a.lock'), String(process.pid));
+
+    // spawnPrdChild never resolves so we can inspect the scheduler events synchronously.
+    spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
+
+    const scheduler = makeScheduler([aPrd, bPrd, cPrd, dPrd]);
+    await scheduler.start();
+
+    // Give the IIFE a tick to start before draining events.
+    await new Promise((r) => setTimeout(r, 50));
+
+    const events = eventQueue.drainAvailable();
+
+    // spawnPrdChild must NOT be called for a (it's locked) or d (capacity-blocked).
+    // It IS called for b.
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+    expect(spawnPrdChild.mock.calls[0][0].id).toBe('b');
+
+    // daemon:scheduler:dequeued for b: locked a counts as one running PRD,
+    // so after launching b, runningCount=2 and capacityRemaining=0.
+    type DequeuedEvent = Extract<EforgeEvent, { type: 'daemon:scheduler:dequeued' }>;
+    const dequeued = events.find((e) => e.type === 'daemon:scheduler:dequeued') as DequeuedEvent | undefined;
+    expect(dequeued).toBeDefined();
+    expect(dequeued?.prdId).toBe('b');
+    expect(dequeued?.capacityRemaining).toBe(0);
+
+    // daemon:scheduler:dependency-blocked for c with blockedBy: ['a'].
+    type DepBlockedEvent = Extract<EforgeEvent, { type: 'daemon:scheduler:dependency-blocked' }>;
+    const depBlocked = events.find((e) => e.type === 'daemon:scheduler:dependency-blocked') as DepBlockedEvent | undefined;
+    expect(depBlocked).toBeDefined();
+    expect(depBlocked?.prdId).toBe('c');
+    expect(depBlocked?.blockedBy).toContain('a');
+
+    // daemon:scheduler:capacity-blocked emitted because d is ready but capacity is full.
+    // runningCount includes locked a plus scheduler-started b.
+    type CapacityBlockedEvent = Extract<EforgeEvent, { type: 'daemon:scheduler:capacity-blocked' }>;
+    const capBlocked = events.find((e) => e.type === 'daemon:scheduler:capacity-blocked') as CapacityBlockedEvent | undefined;
+    expect(capBlocked).toBeDefined();
+    expect(capBlocked?.runningCount).toBe(2);
+    expect(capBlocked?.limit).toBe(2);
+
+    eventQueue.removeProducer();
+  });
+
+  it('reconciles locks for newly discovered PRDs before dispatching them', async () => {
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+
+    const scheduler = makeScheduler([]);
+    await scheduler.start();
+
+    await writeFile(join(cwd, 'eforge', 'queue', 'a.md'), '---\ntitle: A\n---\n\n# A');
+    await writeFile(join(cwd, 'eforge', 'queue', 'b.md'), '---\ntitle: B\n---\n\n# B');
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writeFile(join(cwd, '.eforge', 'queue-locks', 'a.lock'), String(process.pid));
+
+    spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
+
+    const mutationEvent: SchedulerInputEvent = {
+      type: 'queue:mutation',
+      reason: 'enqueue',
+      timestamp: new Date().toISOString(),
+    };
+    bus.emit('queue:mutation', mutationEvent);
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    const events = eventQueue.drainAvailable();
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+    expect(spawnPrdChild.mock.calls[0][0].id).toBe('b');
+
+    type DequeuedEvent = Extract<EforgeEvent, { type: 'daemon:scheduler:dequeued' }>;
+    const dequeued = events.find((e) => e.type === 'daemon:scheduler:dequeued') as DequeuedEvent | undefined;
+    expect(dequeued).toEqual(expect.objectContaining({
+      prdId: 'b',
+      capacityRemaining: 0,
+    }));
+
+    eventQueue.removeProducer();
+  });
+
+  it('reconciles locks for re-queued PRDs before redispatching them', async () => {
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+    const prdPath = join(cwd, 'eforge', 'queue', 'a.md');
+    await writeFile(prdPath, '---\ntitle: A\n---\n\n# A');
+
+    spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
+
+    const scheduler = makeScheduler([makeQueuedPrd('a', [], prdPath)]);
+    await scheduler.start();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+    eventQueue.drainAvailable();
+
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writeFile(join(cwd, '.eforge', 'queue-locks', 'a.lock'), String(process.pid));
+
+    const failedEvent: SchedulerInputEvent = {
+      type: 'queue:prd:complete',
+      prdId: 'a',
+      status: 'failed',
+      timestamp: new Date().toISOString(),
+    };
+    bus.emit('queue:prd:complete', failedEvent);
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    const events = eventQueue.drainAvailable();
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+    expect(events.filter((e) => e.type === 'daemon:scheduler:dequeued')).toHaveLength(0);
+    expect(scheduler.processed).toBe(1);
+
+    eventQueue.removeProducer();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 6: already-claimed child result semantics
+// ---------------------------------------------------------------------------
+
+describe('QueueScheduler — already-claimed child result', () => {
+  it('maps the already-claimed child exit code to a non-terminal scheduler result', async () => {
+    const { cwd, eventQueue } = await createTestEnv();
+    const prdPath = join(cwd, 'eforge', 'queue', 'a.md');
+    const lockPath = join(cwd, '.eforge', 'queue-locks', 'a.lock');
+    const cliPath = join(cwd, 'fake-eforge-cli.js');
+
+    await writeFile(prdPath, '---\ntitle: A\n---\n\n# A');
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writeFile(lockPath, String(process.pid));
+    await writeFile(cliPath, `process.exit(${QueueExecExitCode.SkippedAlreadyClaimed});\n`);
+
+    const previousCliPath = process.env.EFORGE_CLI_PATH;
+    process.env.EFORGE_CLI_PATH = cliPath;
+
+    try {
+      const engine = await EforgeEngine.create({ cwd, agentRuntimes: new StubHarness([]) });
+      type SpawnPrdChildForTest = {
+        spawnPrdChild: (
+          prd: QueuedPrd,
+          options: { auto?: boolean; verbose?: boolean; noMonitor?: boolean },
+          prdSessionId: string,
+          pushEvent: (event: EforgeEvent) => void,
+        ) => Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>;
+      };
+
+      const result = await (engine as unknown as SpawnPrdChildForTest).spawnPrdChild(
+        makeQueuedPrd('a', [], prdPath),
+        { auto: true, noMonitor: true },
+        'session-a',
+        () => {},
+      );
+
+      expect(result).toBe('already-claimed');
+      expect(existsSync(prdPath)).toBe(true);
+      expect(existsSync(lockPath)).toBe(true);
+    } finally {
+      if (previousCliPath === undefined) {
+        delete process.env.EFORGE_CLI_PATH;
+      } else {
+        process.env.EFORGE_CLI_PATH = previousCliPath;
+      }
+      eventQueue.removeProducer();
+    }
+  });
+
+  it('leaves dependents blocked and counters unchanged when spawnPrdChild returns already-claimed', async () => {
+    const { bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+
+    // PRDs: a (no deps), c (depends_on a)
+    const aPrd = makeQueuedPrd('a');
+    const cPrd = makeQueuedPrd('c', ['a']);
+
+    // a resolves with 'already-claimed'; c should never be launched.
+    spawnPrdChild
+      .mockResolvedValueOnce('already-claimed')
+      .mockResolvedValue('completed');
+
+    const scheduler = makeScheduler([aPrd, cPrd]);
+    await scheduler.start();
+
+    // Wait for the IIFE to resolve.
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Counters must not be incremented for an already-claimed result.
+    expect(scheduler.processed).toBe(0);
+    expect(scheduler.skipped).toBe(0);
+
+    // No queue:prd:complete must have been emitted for a.
+    const eventsAfterSpawn = eventQueue.drainAvailable();
+    const completions = eventsAfterSpawn.filter((e) => e.type === 'queue:prd:complete');
+    expect(completions).toHaveLength(0);
+
+    // spawnPrdChild was called once (for a). c was not launched because a is
+    // still 'running' in the scheduler's prdState.
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+    expect(spawnPrdChild.mock.calls[0][0].id).toBe('a');
+
+    // Trigger a scheduler tick via mutation — c must still not be launched.
+    const mutationEvent: SchedulerInputEvent = {
+      type: 'queue:mutation',
+      reason: 'enqueue',
+      timestamp: new Date().toISOString(),
+    };
+    bus.emit('queue:mutation', mutationEvent);
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Still only one call (for a); c remains blocked by a's running state.
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+
+    // Once the original worker emits a real terminal completion, the dependent
+    // PRD can proceed and the completion is counted normally.
+    const completeEvent: SchedulerInputEvent = {
+      type: 'queue:prd:complete',
+      prdId: 'a',
+      status: 'completed',
+      timestamp: new Date().toISOString(),
+    };
+    bus.emit('queue:prd:complete', completeEvent);
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(scheduler.processed).toBe(1);
+    expect(scheduler.skipped).toBe(0);
+    expect(spawnPrdChild).toHaveBeenCalledTimes(2);
+    expect(spawnPrdChild.mock.calls[1][0].id).toBe('c');
 
     eventQueue.removeProducer();
   });
