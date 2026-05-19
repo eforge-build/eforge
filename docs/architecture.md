@@ -118,7 +118,7 @@ Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool f
 
 ### Pi Package
 
-`packages/pi-eforge/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, extension management, playbook, session-plan, and daemon management. Native Pi overlay commands handle agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive TUI overlays, while skill-based slash commands (`/eforge:build`, `/eforge:init`, `/eforge:plan`, `/eforge:extend`, `/eforge:playbook`, `/eforge:recover`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity. The Claude Code MCP proxy and the Pi extension both use `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. Routes are centralised there too: `API_ROUTES` plus a typed helper per route (`apiEnqueue`, `apiCancel`, `apiHealth`, ...) live under `packages/client/src/api/`, and the daemon (`packages/monitor/src/server.ts`), CLI, MCP proxy, Pi extension, and monitor-ui all dispatch off the same constants so a route rename surfaces as a type error.
+`packages/pi-eforge/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, extension management, playbook, session-plan, and daemon management. Native Pi overlay commands handle agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`), config viewing (`/eforge:config`), and playbook management (`/eforge:playbook`) with interactive TUI overlays; `/eforge:build` is a native wrapper that presents a profile-picker overlay when the UI is available before delegating to the build skill. Skill-based slash commands (`/eforge:init`, `/eforge:plan`, `/eforge:extend`, `/eforge:recover`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity. The Claude Code MCP proxy and the Pi extension both use `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. Routes are centralised there too: `API_ROUTES` plus a typed helper per route (`apiEnqueue`, `apiCancel`, `apiHealth`, ...) live under `packages/client/src/api/`, and the daemon (`packages/monitor/src/server.ts`), CLI, MCP proxy, Pi extension, and monitor-ui all dispatch off the same constants so a route rename surfaces as a type error.
 
 ## Event System
 
@@ -218,14 +218,14 @@ Two harness implementations exist:
 - **ClaudeSDKHarness** - uses `@anthropic-ai/claude-agent-sdk`
 - **PiHarness** - uses pi-mono for multi-provider support (OpenAI, Google, Mistral, and more)
 
-Agent roles by function:
+Agent roles by tier:
 
-| Function | Roles |
-|----------|-------|
-| **Planning** | formatter, planner, module-planner, staleness-assessor, prd-validator, dependency-detector |
-| **Building** | builder, doc-author, doc-syncer, test-writer, tester |
-| **Review** | reviewer, parallel-reviewer, review-fixer, plan-evaluator, cohesion-reviewer, architecture-reviewer |
-| **Recovery** | validation-fixer, merge-conflict-resolver, gap-closer, recovery-analyst |
+| Tier | Roles |
+|------|-------|
+| **Planning** | planner, module-planner, formatter, pipeline-composer, merge-conflict-resolver, gap-closer |
+| **Implementation** | builder, doc-author, doc-syncer, review-fixer, validation-fixer, test-writer, tester, recovery-analyst, dependency-detector, prd-validator, staleness-assessor |
+| **Review** | reviewer, architecture-reviewer, cohesion-reviewer, plan-reviewer |
+| **Evaluation** | evaluator, architecture-evaluator, cohesion-evaluator, plan-evaluator |
 
 Per-role configuration (effort level, thinking, tool filters, maxTurns, promptAppend, and builder-only shards) is set via `eforge/config.yaml` under `agents.roles`. See [config.md](config.md). Model, harness, and provider always flow from the role's tier - they cannot be overridden per role.
 

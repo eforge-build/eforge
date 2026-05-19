@@ -951,7 +951,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, profile-router, policy-gate, input-source/enricher, and reviewer perspective examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, profile-router, policy-gate, input-source/enricher, and reviewer perspective examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
 
 ---
 
