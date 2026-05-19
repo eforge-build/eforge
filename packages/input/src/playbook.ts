@@ -401,11 +401,12 @@ export async function listPlaybooks(
       try {
         const raw = await readFile(entry.path, 'utf-8');
         const [fm] = splitFrontmatter(raw);
-        const fmResult = playbookFrontmatterSchema.safeParse(fm);
-        if (fmResult.success) {
-          description = fmResult.data.description;
-          mode = fmResult.data.mode;
-          const declaredScope = fmResult.data.scope;
+        if (typeof fm.description === 'string') {
+          description = fm.description;
+        }
+        const scopeResult = playbookScopeSchema.safeParse(fm.scope);
+        if (scopeResult.success) {
+          const declaredScope = scopeResult.data;
           const expectedScope = entry.scope as PlaybookScope;
           if (declaredScope !== expectedScope) {
             warnings.push(
@@ -414,6 +415,9 @@ export async function listPlaybooks(
             );
           }
           scope = declaredScope;
+        }
+        if (fm.mode === 'autonomous' || fm.mode === 'planning') {
+          mode = fm.mode;
         }
       } catch {
         // unreadable — include with empty description and default mode
