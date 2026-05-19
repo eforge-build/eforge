@@ -3,6 +3,7 @@ name: public-docs-generate-and-gap-audit
 description: Generate public web docs and audit for user-facing gaps
 scope: project-team
 mode: autonomous
+profile: docs-heavy
 ---
 
 ## Goal
