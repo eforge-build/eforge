@@ -320,6 +320,7 @@ function AppContent() {
               <PlanTab
                 orchestration={effectiveOrchestration}
                 pipelineEvent={latestPipelineEvent}
+                profile={runState.profile}
               />
             ) : null}
           </ConsolePanel>

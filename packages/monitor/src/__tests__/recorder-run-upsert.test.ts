@@ -287,6 +287,146 @@ describe('withRecording() phase-driven build sequence', () => {
   });
 });
 
+// --- eforge:region plan-01-profile-replay-and-plan-tab ---
+
+// ---------------------------------------------------------------------------
+// session:profile buffering and flush
+// ---------------------------------------------------------------------------
+
+describe('withRecording() session:profile buffering — phase-driven sequence', () => {
+  it('flushes buffered session:profile into the run when phase:start establishes correlation', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const ts = new Date().toISOString();
+    const runId = `run-profile-phase-${Date.now()}`;
+    const sessionId = `sess-profile-phase-${Date.now()}`;
+    const profileName = 'my-build-profile';
+
+    const inputEvents: EforgeEvent[] = [
+      { type: 'session:start', sessionId, timestamp: ts },
+      // session:profile arrives before phase:start (no runId, no enqueueRunId)
+      {
+        type: 'session:profile',
+        profileName,
+        source: 'project',
+        scope: 'project',
+        config: null,
+        timestamp: ts,
+      } as unknown as EforgeEvent,
+      { type: 'phase:start', runId, sessionId, planSet: 'test-set', command: 'build', timestamp: ts },
+      { type: 'phase:end', runId, result: { status: 'completed', summary: 'done' }, timestamp: ts },
+      { type: 'session:end', sessionId, result: { status: 'completed', summary: 'done' }, timestamp: ts },
+    ];
+
+    await collectEvents(withRecording(asGenerator(inputEvents), db, cwd));
+
+    // session:profile must be stored as a run-correlated row
+    const profileRows = db.getEventsByTypeForSession(sessionId, 'session:profile');
+    expect(profileRows).toHaveLength(1);
+    expect(profileRows[0].origin).toBe('run');
+    expect(profileRows[0].runId).toBe(runId);
+
+    // Must NOT produce a daemon-owned session:profile row
+    const daemonEvents = db.getDaemonEventsAfter(0);
+    const daemonProfileRows = daemonEvents.filter((e) => e.type === 'session:profile');
+    expect(daemonProfileRows).toHaveLength(0);
+
+    // Session metadata must reflect the profile name
+    const metadata = db.getSessionMetadataBatch();
+    expect(metadata[sessionId]).toBeDefined();
+    expect(metadata[sessionId].baseProfile).toBe(profileName);
+
+    db.close();
+  });
+
+  it('does not produce duplicate rows for an already-correlated session:profile', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const ts = new Date().toISOString();
+    const runId = `run-profile-correlated-${Date.now()}`;
+    const sessionId = `sess-profile-correlated-${Date.now()}`;
+
+    // session:profile arrives after phase:start, so it has activeRunId available
+    // and goes through the normal insertion path — should produce exactly one row.
+    const inputEvents: EforgeEvent[] = [
+      { type: 'session:start', sessionId, timestamp: ts },
+      { type: 'phase:start', runId, sessionId, planSet: 'test-set', command: 'build', timestamp: ts },
+      {
+        type: 'session:profile',
+        profileName: 'post-phase-profile',
+        source: 'project',
+        scope: 'project',
+        config: null,
+        timestamp: ts,
+      } as unknown as EforgeEvent,
+      { type: 'phase:end', runId, result: { status: 'completed', summary: 'done' }, timestamp: ts },
+      { type: 'session:end', sessionId, result: { status: 'completed', summary: 'done' }, timestamp: ts },
+    ];
+
+    await collectEvents(withRecording(asGenerator(inputEvents), db, cwd));
+
+    const profileRows = db.getEventsByTypeForSession(sessionId, 'session:profile');
+    expect(profileRows).toHaveLength(1);
+    expect(profileRows[0].runId).toBe(runId);
+
+    db.close();
+  });
+});
+
+describe('withRecording() session:profile buffering — enqueue sequence', () => {
+  it('flushes buffered session:profile into the enqueue run when enqueue:start establishes correlation', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const ts = new Date().toISOString();
+    const sessionId = `sess-enq-profile-${Date.now()}`;
+    const profileName = 'enqueue-profile';
+
+    const inputEvents: EforgeEvent[] = [
+      { type: 'session:start', sessionId, timestamp: ts },
+      {
+        type: 'session:profile',
+        profileName,
+        source: 'project',
+        scope: 'project',
+        config: null,
+        timestamp: ts,
+      } as unknown as EforgeEvent,
+      { type: 'enqueue:start', source: 'api', timestamp: ts },
+      {
+        type: 'enqueue:complete',
+        id: 'prd-enq-profile',
+        filePath: '/queue/prd-enq-profile.md',
+        title: 'Profile Enqueue',
+        planSet: 'profile-enqueue',
+        timestamp: ts,
+      },
+      { type: 'session:end', sessionId, result: { status: 'completed', summary: 'done' }, timestamp: ts },
+    ];
+
+    await collectEvents(withRecording(asGenerator(inputEvents), db, cwd));
+
+    // session:profile must be stored as a run-correlated row
+    const profileRows = db.getEventsByTypeForSession(sessionId, 'session:profile');
+    expect(profileRows).toHaveLength(1);
+    expect(profileRows[0].origin).toBe('run');
+    expect(profileRows[0].runId).not.toBeNull();
+
+    // Must NOT produce a daemon-owned session:profile row
+    const daemonEvents = db.getDaemonEventsAfter(0);
+    const daemonProfileRows = daemonEvents.filter((e) => e.type === 'session:profile');
+    expect(daemonProfileRows).toHaveLength(0);
+
+    // Session metadata must reflect the profile name
+    const metadata = db.getSessionMetadataBatch();
+    expect(metadata[sessionId]).toBeDefined();
+    expect(metadata[sessionId].baseProfile).toBe(profileName);
+
+    db.close();
+  });
+});
+
+// --- eforge:endregion plan-01-profile-replay-and-plan-tab ---
+
 // --- eforge:region plan-01-durable-daemon-event-persistence ---
 
 // ---------------------------------------------------------------------------
