@@ -1,0 +1,131 @@
+name: add-mode-autonomous-planning-to-playbooks-bundle-first-planning-mode-playbook-complexity-hotspot-reduction
+description: "Add `mode: autonomous | planning` to playbooks, introduce
+  session-plan seed flow, rename `playbook/enqueue` → `playbook/run` with
+  discriminated response, update CLI/MCP/Pi/skills, and bundle the first
+  planning-mode playbook (`complexity-hotspot-reduction`) with its measurement
+  tooling."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-input-schema-and-helpers
+    name: Input schema, planning-mode helpers, and existing playbook migration
+    depends_on: []
+    branch: add-mode-autonomous-planning-to-playbooks-bundle-first-planning-mode-playbook-complexity-hotspot-reduction/plan-01-input-schema-and-helpers
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-wire-surface-and-mode-dispatch
+    name: Daemon route rename, mode dispatch, MCP/Pi/CLI surface, and api-version
+      bump
+    depends_on:
+      - plan-01-input-schema-and-helpers
+    branch: add-mode-autonomous-planning-to-playbooks-bundle-first-planning-mode-playbook-complexity-hotspot-reduction/plan-02-wire-surface-and-mode-dispatch
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: "Discriminated union response wired through six surfaces (HTTP route,
+          client helper, MCP tool, Pi tool, CLI subcommand, tests) in one atomic
+          change. Each surface must agree on the same `kind: 'enqueued' |
+          'planning'` shape, the new `'run'` action enum, the renamed route
+          literal, and the new `create-from-playbook` action. High effort buys
+          careful coordination."
+      reviewer:
+        effort: high
+        rationale: Wire-version breaking change; reviewer needs to confirm route
+          literal, MCP action enum, Pi parity, CLI text output, version bump,
+          and that the old `enqueue` literal is gone from all consumer surfaces.
+  - id: plan-03-skills-complexity-playbook-and-tooling
+    name: Plugin skills, complexity-hotspot-reduction playbook, and complexity scan
+      tooling
+    depends_on:
+      - plan-02-wire-surface-and-mode-dispatch
+    branch: add-mode-autonomous-planning-to-playbooks-bundle-first-planning-mode-playbook-complexity-hotspot-reduction/plan-03-skills-complexity-playbook-and-tooling
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: "Three orthogonal surfaces in one plan (markdown skill rewrites, a
+          flat-config ESLint scan script, and a new planning-mode playbook). The
+          skill rewrites are judgment-heavy: the playbook skill's Create branch
+          must prompt for mode without breaking the existing auto-classify scope
+          flow, and the plan skill's Step 1 must add a third path that
+          lists/filters/seeds without making the resume vs new-vs-seed branching
+          confusing."
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - docs
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "The PRD itself recommends excursion in its Profile Signal section,
+    with strong justification: this is multi-package, cross-cutting work with a
+    clear sequential dependency chain (schema → routes → daemon handlers → MCP
+    tools → skills → playbook content). The plan enumerates every file change
+    exhaustively in a single coherent pass — there are no independent
+    module-level design questions warranting separate planner sessions, and the
+    schema change cascades mechanically through each layer. This matches the
+    'sequential dependency chains' negative expedition signal explicitly.
+    Compile uses planner + plan-review-cycle because the PRD has many
+    interlocking acceptance criteria across 11 in-scope items spanning input
+    schema, HTTP routes, MCP parity, skills, and new tooling — plan quality
+    matters and a review gate catches scope/coverage gaps before build. Build
+    pipeline runs implement parallel with doc-author (new playbook content +
+    skill doc updates can be authored independently of the schema/code changes),
+    then doc-sync to reconcile against the diff (skills, generated reference
+    docs via pnpm docs:check are explicitly called out as drift gates), then
+    review-cycle for quality (this is a wire-version-bump breaking-change PR
+    with parity requirements across mcp-proxy + pi-eforge that benefits from
+    iterative review), then test-cycle because the PRD explicitly enumerates
+    test extensions across 4 test files plus type-check and pnpm test as
+    acceptance criteria. Review perspectives chosen: code (correctness across
+    the dispatch logic), api (route rename + discriminated-union response + MCP
+    action enum changes are explicit breaking-API changes), docs (skill docs +
+    generated reference docs are in scope), test (test coverage is explicitly
+    enumerated). Security omitted (no auth/data-handling surface). 2 rounds with
+    standard strictness fits a moderately-risky but well-specified change."
