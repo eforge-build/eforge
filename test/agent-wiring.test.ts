@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { EforgeEvent } from '@eforge-build/engine/events';
+import type { EforgeEvent, AgentRole } from '@eforge-build/engine/events';
 import { PlannerSubmissionError } from '@eforge-build/engine/harness';
-import type { AgentHarness, CustomTool } from '@eforge-build/engine/harness';
+import type { AgentHarness, AgentRunOptions, CustomTool } from '@eforge-build/engine/harness';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -400,6 +400,61 @@ describe('runReview wiring', () => {
 
 // --- Builder ---
 
+/**
+ * A harness that yields agent:start and agent:stop with an error, but never throws
+ * and never emits agent:result. Models the Pi configuration failure path where
+ * the harness signals failure via the stop event rather than a thrown exception.
+ */
+class StopErrorHarness implements AgentHarness {
+  constructor(
+    private readonly stopErrorMessage: string,
+    private readonly emitResultBeforeStop = false,
+  ) {}
+
+  effectiveCustomToolName(name: string): string { return name; }
+
+  async *run(_options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+    const agentId = 'stop-error-agent-1';
+    yield {
+      type: 'agent:start',
+      timestamp: new Date().toISOString(),
+      planId,
+      agentId,
+      agent,
+      model: 'stub-model',
+      harness: 'pi' as const,
+      harnessSource: 'tier' as const,
+      tier: 'stub',
+      tierSource: 'tier' as const,
+    };
+    if (this.emitResultBeforeStop) {
+      yield {
+        type: 'agent:result',
+        planId,
+        agentId,
+        agent,
+        result: {
+          durationMs: 100,
+          durationApiMs: 80,
+          numTurns: 1,
+          totalCostUsd: 0,
+          usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 },
+          modelUsage: {},
+          resultText: 'Implementation done.',
+        },
+      };
+    }
+    yield {
+      type: 'agent:stop',
+      timestamp: new Date().toISOString(),
+      planId,
+      agentId,
+      agent,
+      error: this.stopErrorMessage,
+    };
+  }
+}
+
 describe('builderImplement wiring', () => {
   it('emits implement lifecycle events on success', async () => {
     const backend = new StubHarness([{ text: 'Implementation done.' }]);
@@ -427,6 +482,52 @@ describe('builderImplement wiring', () => {
     expect(failed!.error).toContain('Agent timeout');
     // Should NOT emit implement:complete on failure
     expect(findEvent(events, 'plan:build:implement:complete')).toBeUndefined();
+  });
+
+  it('emits plan:build:failed when harness yields agent:stop with error and no agent:result', async () => {
+    const harness = new StopErrorHarness('Pi configuration error: provider unavailable');
+
+    const events = await collectEvents(builderImplement(
+      { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
+      { harness, cwd: '/tmp' },
+    ));
+
+    const failures = filterEvents(events, 'plan:build:failed');
+    expect(failures).toHaveLength(1);
+    expect(failures[0].error).toContain('Pi configuration error: provider unavailable');
+    expect(findEvent(events, 'plan:build:implement:complete')).toBeUndefined();
+
+    const stopEvents = filterEvents(events, 'agent:stop');
+    expect(stopEvents).toHaveLength(1);
+    expect(stopEvents[0].error).toBe('Pi configuration error: provider unavailable');
+    expect(events.indexOf(stopEvents[0])).toBeLessThan(events.indexOf(failures[0]));
+  });
+
+  it('classifies transient transport stop errors on plan:build:failed', async () => {
+    const harness = new StopErrorHarness('Backend error: WebSocket closed 1000');
+
+    const events = await collectEvents(builderImplement(
+      { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
+      { harness, cwd: '/tmp' },
+    ));
+
+    const failures = filterEvents(events, 'plan:build:failed');
+    expect(failures).toHaveLength(1);
+    expect(failures[0].terminalSubtype).toBe('error_transient_transport');
+  });
+
+  it('does not fail a completed builder run when agent:stop has an error after agent:result', async () => {
+    const harness = new StopErrorHarness('Backend error: WebSocket closed 1000', true);
+
+    const events = await collectEvents(builderImplement(
+      { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
+      { harness, cwd: '/tmp' },
+    ));
+
+    expect(filterEvents(events, 'agent:result')).toHaveLength(1);
+    expect(filterEvents(events, 'agent:stop')).toHaveLength(1);
+    expect(filterEvents(events, 'plan:build:failed')).toHaveLength(0);
+    expect(filterEvents(events, 'plan:build:implement:complete')).toHaveLength(1);
   });
 });
 

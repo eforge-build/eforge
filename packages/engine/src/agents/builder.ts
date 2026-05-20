@@ -215,6 +215,7 @@ ${completedDiff}
   let builderAgentId: string | undefined;
   let sawAgentResult = false;
   // --- eforge:endregion plan-01-transport-resilience ---
+  let builderStopError: string | undefined;
 
   try {
     for await (const event of options.harness.run(
@@ -231,6 +232,9 @@ ${completedDiff}
         if (event.agentId) builderAgentId = event.agentId;
       }
       // --- eforge:endregion plan-01-transport-resilience ---
+      if (event.type === 'agent:stop' && event.agent === 'builder' && event.error !== undefined) {
+        builderStopError = event.error;
+      }
       if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
       }
@@ -260,6 +264,13 @@ ${completedDiff}
     }
     // --- eforge:endregion plan-01-transport-resilience ---
     yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: message, ...(terminalSubtype && { terminalSubtype }) };
+    return;
+  }
+
+  if (builderStopError !== undefined && !sawAgentResult) {
+    const error = builderStopError || 'Builder stopped with an unspecified error';
+    const terminalSubtype = classifyAgentTerminalSubtype(error);
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error, ...(terminalSubtype && { terminalSubtype }) };
     return;
   }
 
