@@ -4,6 +4,7 @@ import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { runGapCloser, type GapCloserContext } from '@eforge-build/engine/agents/gap-closer';
 import type { BuildStageContext } from '@eforge-build/engine/pipeline';
+import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 
 const GAPS = [
   { requirement: 'Must support dark mode', explanation: 'No dark mode CSS classes found in the theme configuration' },
@@ -11,7 +12,8 @@ const GAPS = [
 
 const PRD_CONTENT = '# Feature PRD\n\n## Requirements\n\n- Must support dark mode\n- Must have responsive layout';
 
-function makePipelineContext() {
+function makePipelineContext(agentRegistryOverride?: ReturnType<typeof singletonRegistry>) {
+  const stubHarness = new StubHarness([]);
   return {
     config: {
       agents: {
@@ -29,6 +31,7 @@ function makePipelineContext() {
     planSetName: 'test-set',
     orchConfig: { name: 'test', description: '', created: '', mode: 'errand' as const, baseBranch: 'main', pipeline: { compile: [], build: [] }, plans: [] } as never,
     planFileMap: new Map(),
+    agentRuntimes: agentRegistryOverride ?? singletonRegistry(stubHarness),
   };
 }
 
@@ -191,14 +194,18 @@ describe('runGapCloser two-stage flow', () => {
     };
 
     let thrown: Error | undefined;
+    const events: EforgeEvent[] = [];
     try {
-      await collectEvents(runGapCloser(makeOptions(backend, { runBuildPipeline })));
+      for await (const event of runGapCloser(makeOptions(backend, { runBuildPipeline }))) {
+        events.push(event);
+      }
     } catch (err) {
       thrown = err as Error;
     }
 
     expect(thrown).toBeDefined();
     expect(thrown!.name).toBe('AbortError');
+    expect(findEvent(events, 'gap_close:complete')).toBeUndefined();
   });
 
   it('formats gaps and PRD content into prompt', async () => {
@@ -210,5 +217,70 @@ describe('runGapCloser two-stage flow', () => {
     expect(backend.prompts[0]).toContain('Must support dark mode');
     expect(backend.prompts[0]).toContain('No dark mode CSS classes found');
     expect(backend.prompts[0]).toContain('Feature PRD');
+  });
+
+  it('emits gap_close:complete with passed: false when runBuildPipeline yields plan:build:failed', async () => {
+    const backend = new StubHarness([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const runBuildPipeline = async function* (): AsyncGenerator<EforgeEvent> {
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:start', planId: 'gap-close' } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: 'gap-close', error: 'Builder stopped with error' } as EforgeEvent;
+    };
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend, { runBuildPipeline })));
+
+    const completes = filterEvents(events, 'gap_close:complete');
+    expect(completes).toHaveLength(1);
+    expect((completes[0] as { passed?: boolean }).passed).toBe(false);
+
+    // The plan:build:failed event should still have been forwarded before completion
+    const buildFailed = filterEvents(events, 'plan:build:failed');
+    expect(buildFailed).toHaveLength(1);
+    expect(events.indexOf(buildFailed[0])).toBeLessThan(events.indexOf(completes[0]));
+  });
+});
+
+describe('runGapCloser registry inheritance', () => {
+  it('synthetic BuildStageContext uses inherited agentRuntimes, not gap-closer harness', async () => {
+    const gapCloserHarness = new StubHarness([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
+
+    const implHarness = new StubHarness([]);
+    const reviewHarness = new StubHarness([]);
+    const evalHarness = new StubHarness([]);
+
+    // Build a registry that maps specific roles to distinct harness instances
+    const inheritedRegistry = {
+      forRole: (role: string) => {
+        if (role === 'builder' || role === 'review-fixer') return implHarness;
+        if (role === 'reviewer') return reviewHarness;
+        if (role === 'evaluator') return evalHarness;
+        return implHarness;
+      },
+      forRoleResolved: (role: string) => ({
+        harness: inheritedRegistry.forRole(role),
+        toolbeltSummary: { toolbeltSource: 'default' as const, projectMcpSelection: 'all' as const, projectMcpServerNames: [] },
+      }),
+    };
+
+    let capturedCtx: BuildStageContext | undefined;
+    const runBuildPipeline = async function* (ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
+      capturedCtx = ctx;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:start', planId: ctx.planId } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:complete', planId: ctx.planId } as EforgeEvent;
+    };
+
+    await collectEvents(runGapCloser(makeOptions(gapCloserHarness, {
+      runBuildPipeline,
+      pipelineContext: makePipelineContext(inheritedRegistry as ReturnType<typeof singletonRegistry>),
+    })));
+
+    expect(capturedCtx).toBeDefined();
+    // The synthetic BuildStageContext should use the inherited registry
+    expect(capturedCtx!.agentRuntimes.forRoleResolved('builder').harness).toBe(implHarness);
+    expect(capturedCtx!.agentRuntimes.forRoleResolved('review-fixer').harness).toBe(implHarness);
+    expect(capturedCtx!.agentRuntimes.forRoleResolved('reviewer').harness).toBe(reviewHarness);
+    expect(capturedCtx!.agentRuntimes.forRoleResolved('evaluator').harness).toBe(evalHarness);
+    // The gap-closer harness should NOT be the registry harness for implementation roles
+    expect(capturedCtx!.agentRuntimes.forRoleResolved('builder').harness).not.toBe(gapCloserHarness);
   });
 });

@@ -1,6 +1,6 @@
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
-import { singletonRegistry } from '../agent-runtime-registry.js';
+import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap, type OrchestrationConfig, type PlanFile } from '../events.js';
 import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig } from '../config.js';
 import { DEFAULT_REVIEW } from '../config.js';
@@ -24,6 +24,7 @@ export interface GapCloserContext extends SdkPassthroughConfig {
     planSetName: string;
     orchConfig: OrchestrationConfig;
     planFileMap: Map<string, PlanFile>;
+    agentRuntimes: AgentRuntimeRegistry;
   };
   /** Function to run the build pipeline */
   runBuildPipeline: (ctx: import('../pipeline.js').BuildStageContext) => AsyncGenerator<EforgeEvent>;
@@ -103,7 +104,7 @@ export async function* runGapCloser(
   yield { timestamp: new Date().toISOString(), type: 'gap_close:plan_ready', planBody: planMarkdown, gaps: options.gaps };
 
   // Stage 2: Execute the generated plan via runBuildPipeline
-  const { config, pipeline, tracing, planSetName, orchConfig, planFileMap } = options.pipelineContext;
+  const { config, pipeline, tracing, planSetName, orchConfig, planFileMap, agentRuntimes } = options.pipelineContext;
 
   const syntheticPlanFile: PlanFile = {
     id: 'gap-close',
@@ -118,7 +119,7 @@ export async function* runGapCloser(
   const review: ReviewProfileConfig = { ...DEFAULT_REVIEW };
 
   const buildCtx: import('../pipeline.js').BuildStageContext = {
-    agentRuntimes: singletonRegistry(options.harness),
+    agentRuntimes,
     config,
     pipeline,
     tracing,
@@ -141,11 +142,22 @@ export async function* runGapCloser(
     modelTracker: new ModelTracker(),
   };
 
+  let sawBuildFailure = false;
   try {
-    yield* options.runBuildPipeline(buildCtx);
+    for await (const event of options.runBuildPipeline(buildCtx)) {
+      if (event.type === 'plan:build:failed') {
+        sawBuildFailure = true;
+      }
+      yield event;
+    }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') throw err;
     // Build pipeline failure is non-fatal for gap closing
+    yield { timestamp: new Date().toISOString(), type: 'gap_close:complete', passed: false };
+    return;
+  }
+
+  if (sawBuildFailure) {
     yield { timestamp: new Date().toISOString(), type: 'gap_close:complete', passed: false };
     return;
   }

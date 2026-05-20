@@ -867,6 +867,7 @@ export class EforgeEngine {
               planSetName: planSet,
               orchConfig,
               planFileMap,
+              agentRuntimes,
             },
             runBuildPipeline,
             verbose,
