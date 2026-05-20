@@ -56,17 +56,18 @@ If the check reports broken internal links, update the link target in the releva
 
 ## Recover from a failed build
 
-When a build fails, auto-build disables and the PRD is marked `failed` in the queue. Do not re-enqueue manually; use the recovery workflow instead.
+When a queued build fails, auto-build pauses and the PRD is marked `failed` in the queue. Do not re-enqueue manually; use the recovery workflow instead.
 
 **Check for failed builds:**
 
 ```bash
-eforge status
+eforge queue list
 ```
 
 Or from Claude Code or Pi:
 
 ```
+/eforge:status
 /eforge:recover
 ```
 
@@ -104,7 +105,7 @@ When a registered profile router returns a profile name that does not exist in a
 
 **Diagnose:** check the monitor UI event stream or run `eforge extension show <router-extension-name>` to see recent diagnostics.
 
-**Fix:** update the profile router extension to return a profile name that exists, or create the missing profile with `/eforge:profile-new`. The `availableProfiles` field in `ProfileRouterContext` lists all currently loadable profile names - use it to guard against stale names.
+**Fix:** update the profile router extension to return a profile name that exists, or create the missing profile with `/eforge:profile-new` in Claude Code or `/eforge:profile:new` in Pi. The `availableProfiles` field in `ProfileRouterContext` lists all currently loadable profile names - use it to guard against stale names.
 
 ## Queue lock files
 

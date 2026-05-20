@@ -57,12 +57,11 @@ Do not create new docs sections; only update existing content.
 Focus on packages/ and web/content/. Cross-check against generated reference.
 ```
 
-**Required frontmatter fields:** `name`, `mode`.
+**Required frontmatter fields:** `name`, `description`, `scope`, `mode`.
 
 **Optional frontmatter fields:**
-- `description` - one-line human-readable summary
-- `scope` - `user`, `project-team`, or `project-local`
 - `profile` - agent runtime profile name to use when the playbook runs
+- `postMerge` - list of post-merge commands to forward to the build
 
 ## Use a profile with a playbook
 
@@ -97,8 +96,10 @@ The skill gathers the workflow description, infers a scope (project-team, projec
 From the CLI:
 
 ```bash
-eforge playbook new <name>
+eforge playbook new --scope project-team --name docs-sync --description "Keep docs current"
 ```
+
+The CLI scaffold is non-interactive and creates an autonomous playbook. Use `--scope user`, `--scope project-team`, or `--scope project-local`; add `--profile <name>` when the playbook should pin a runtime profile.
 
 ## Run a playbook
 
@@ -166,7 +167,7 @@ eforge playbook promote release-prep
 eforge playbook demote release-prep     # move back to project-local
 ```
 
-After promotion, the playbook is committed with the project. Your project-local version no longer shadows the team version.
+After promotion, the playbook moves into the committed project-team directory. The CLI stages the promoted file with `git add`; review and commit it with the rest of your change. Demotion moves it back to project-local scope, where it shadows any team version of the same name.
 
 ## Dependency on queue items
 

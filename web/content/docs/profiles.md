@@ -77,7 +77,7 @@ The daemon resolves the active profile in the same precedence order: project-loc
 
 ## Create a profile
 
-Use `/eforge:profile-new` in Claude Code or Pi to create a profile through a guided wizard. The wizard walks through:
+Use `/eforge:profile-new` in Claude Code or `/eforge:profile:new` in Pi to create a profile through a guided wizard. The wizard walks through:
 
 1. **Scope** - project-local, project, or user
 2. **Name** - e.g. `pi-anthropic`, `local-qwen`, `mixed`
@@ -85,34 +85,25 @@ Use `/eforge:profile-new` in Claude Code or Pi to create a profile through a gui
 4. **Toolbelt preset** (optional) - focused MCP server access for UI, docs, or database work
 5. **Activation** - optionally make the new profile active immediately
 
-From the CLI directly:
-
-```bash
-# Start the wizard
-eforge profile new
-```
+There is no standalone CLI profile wizard today. The host skills call the daemon's `eforge_profile` MCP tool with `action: "create"` after collecting the tier recipes.
 
 Profile names must match `[A-Za-z0-9._-]+`.
 
 ## Switch the active profile
 
 ```
-/eforge:profile use <name>
+/eforge:profile <name>
 ```
 
-Or from the CLI:
+On success, the daemon writes the active-profile marker at project scope (`eforge/.active-profile`) by default. Ask the skill to use local or user scope when you need the marker at `.eforge/.active-profile` or `~/.config/eforge/.active-profile` instead.
+
+The standalone CLI does not have profile-management subcommands yet, but build enqueue supports a one-off override:
 
 ```bash
-eforge profile use pi-anthropic
+eforge build --profile pi-anthropic "Add rate limiting"
 ```
 
-On success, the daemon writes the active-profile marker at project scope (`eforge/.active-profile`). Pass `--scope local` to write to project-local scope instead:
-
-```bash
-eforge profile use pi-anthropic --scope local
-```
-
-The next build picks up the new profile immediately - no daemon restart needed.
+The next build picks up the new active profile immediately - no daemon restart needed.
 
 ## Inspect the active profile
 
@@ -122,13 +113,7 @@ The next build picks up the new profile immediately - no daemon restart needed.
 
 Reports the active profile name, source (local, project, or user), resolved harness, metadata (description, tags), and per-tier toolbelt assignments if configured.
 
-To list all available profiles:
-
-```bash
-eforge profile list
-```
-
-Output includes name, scope, harness, description, and a marker for the active profile.
+The same command also lists all available profiles. Output includes name, scope, harness, description, and a marker for the active profile.
 
 ## Profile precedence over other selection mechanisms
 
@@ -204,15 +189,11 @@ agents:
 
 Omitting `toolbelt` keeps the default: all servers from `.mcp.json` pass through.
 
-The `/eforge:profile-new` wizard includes an optional toolbelt step with a preset gallery covering `browser-ui`, `docs-research`, `issue-triage`, `repo-review`, `observability`, `database-readonly`, `api-testing`, and `design-ui`. See [Configuration - Guided Toolbelt Presets](/docs/configuration#guided-toolbelt-presets) for the full setup instructions and [Configuration Reference - Toolbelts](/reference/config#toolbelts) for the schema.
+The Claude Code `/eforge:profile-new` wizard and Pi `/eforge:profile:new` wizard include an optional toolbelt step with a preset gallery covering `browser-ui`, `docs-research`, `issue-triage`, `repo-review`, `observability`, `database-readonly`, `api-testing`, and `design-ui`. See [Configuration - Guided Toolbelt Presets](/docs/configuration#guided-toolbelt-presets) for the full setup instructions and [Configuration Reference - Toolbelts](/reference/config#toolbelts) for the schema.
 
-## Promote and demote profiles
+## Move profiles between scopes
 
-Profiles follow the same promote/demote model as extensions and playbooks:
-
-- Start in project-local scope (`.eforge/profiles/`) for personal experiments.
-- Promote to project scope (`eforge/profiles/`) with `eforge profile promote <name>` once the team needs to share it.
-- Demote back to project-local with `eforge profile demote <name>`.
+Profiles can live at any of the three scope directories, but there are no standalone `promote` or `demote` profile commands today. To share a personal profile with the team, create a project-scope profile with `/eforge:profile-new` in Claude Code or `/eforge:profile:new` in Pi, or move the YAML file from `.eforge/profiles/` to `eforge/profiles/` and then switch to it with `/eforge:profile <name>`.
 
 User-scope profiles (`~/.config/eforge/profiles/`) apply across all projects on the machine and are never committed.
 

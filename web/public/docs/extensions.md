@@ -35,6 +35,7 @@ extensions:
   # agentContextHookTimeoutMs: 5000  # default: inherits eventHookTimeoutMs; positive integer milliseconds
   # profileRouterTimeoutMs: 5000 # default: inherits eventHookTimeoutMs; positive integer milliseconds
   # policyGateTimeoutMs: 5000 # default: inherits eventHookTimeoutMs; positive integer milliseconds
+  # validationProviderTimeoutMs: 5000 # default: inherits eventHookTimeoutMs; positive integer milliseconds
   # policyGateFailurePolicy: fail-closed # fail-closed (default) or fail-open
   # include: [build-notifier]    # optional allowlist by extension name
   # exclude: [experimental]      # optional denylist by extension name
@@ -53,6 +54,7 @@ Fields:
 | `extensions.agentContextHookTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `onAgentRun` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.profileRouterTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each profile-router handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.policyGateTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each policy-gate handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
+| `extensions.validationProviderTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for validation-provider handlers and commands. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for policy-gate throws, timeouts, or invalid decisions. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |

@@ -41,11 +41,12 @@ export default defineEforgeExtension((eforge) => {
 
 ## Configuration fields
 
-Policy gate runtime behavior is controlled by native extension config:
+Policy gate and validation-provider runtime behavior is controlled by native extension config:
 
 | Field | Default | Meaning |
 |-------|---------|---------|
 | `extensions.policyGateTimeoutMs` | inherits `extensions.eventHookTimeoutMs` | Timeout in milliseconds for each `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge` handler. Must be a positive integer. |
+| `extensions.validationProviderTimeoutMs` | inherits `extensions.eventHookTimeoutMs` | Timeout in milliseconds for each validation-provider function or command. Must be a positive integer. |
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for thrown, timed-out, or invalid policy gates. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 
 ---
@@ -938,7 +939,7 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, and `registerReviewerPerspective` parallel review-cycle dispatch. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. Validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred for later phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, and `registerValidationProvider` per-plan validate-stage execution. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred for later phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -956,7 +957,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, profile-router, policy-gate, input-source/enricher, and reviewer perspective examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, profile-router, policy-gate, input-source/enricher, reviewer perspective, and validation-provider examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
 
 ---
 

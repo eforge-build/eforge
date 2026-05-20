@@ -89,7 +89,7 @@ eforge publishes machine-readable reference artifacts for use by AI coding assis
 
 - `/llms.txt` - Structured index of available documentation, getting-started guides, reference docs, packages, schemas, and optional context
 - `/llms-full.txt` - Full reference documentation bundle in a single file
-- `/docs/getting-started.md`, `/docs/concepts.md`, `/docs/configuration.md`, `/docs/extensions.md`, `/docs/extensions-api.md`, `/docs/glossary.md` - Raw Markdown guide pages useful for onboarding and terminology
+- `/docs/getting-started.md`, `/docs/concepts.md`, `/docs/configuration.md`, `/docs/profiles.md`, `/docs/playbooks.md`, `/docs/extensions.md`, `/docs/extensions-api.md`, `/docs/integrations.md`, `/docs/troubleshooting.md`, `/docs/glossary.md` - Raw Markdown guide pages useful for onboarding, operations, and terminology
 - `/reference/cli.md`, `/reference/api.md`, `/reference/events.md`, `/reference/config.md`, `/reference/tools.md` - Raw Markdown reference docs
 - `/schemas/events.schema.json`, `/schemas/config.schema.json` - JSON Schemas for wire types and config
 

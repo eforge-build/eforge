@@ -83,20 +83,20 @@ npm install -g @eforge-build/eforge
 npx @eforge-build/eforge build "Add rate limiting to the API"
 ```
 
-All daemon management, profile operations, and playbook commands are available from the CLI:
+Daemon management, playbook commands, extension commands, and one-off build profile overrides are available from the CLI:
 
 ```bash
 eforge build "Add dark mode toggle"
-eforge build plans/my-feature-prd.md
+eforge build --profile pi-anthropic plans/my-feature-prd.md
 eforge play docs-sync
-eforge profile use pi-anthropic
+eforge playbook list
 eforge daemon status
 eforge daemon start
 eforge daemon stop
 eforge extension list
 ```
 
-For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config.
+For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands.
 
 ## Shell hooks
 
@@ -109,7 +109,7 @@ hooks:
     timeout: 5000
   - event: plan:build:failed
     command: "curl -X POST $SLACK_WEBHOOK -d '{\"text\": \"Build failed\"}'"
-  - event: session:complete
+  - event: session:end
     command: "./scripts/notify-team.sh"
 ```
 
@@ -127,11 +127,11 @@ eforge build "eforge://input/jira/ENG-42"
 
 URI dispatch: the `<adapter>` segment selects a registered adapter by name. The `<id>` path is passed to the adapter's `fetch` function. The adapter returns Markdown content that eforge uses as build input.
 
-Example adapters are available at `examples/extensions/issue-tracker.ts` in the eforge repository. See [Extensions - Input sources and PRD enrichers](/docs/extensions#input-sources-and-prd-enrichers) for the full adapter API.
+Example adapters are available at `examples/extensions/issue-tracker.ts` in the eforge repository. The example GitHub adapter reads `GITHUB_TOKEN` (and optional `GITHUB_API_BASE` for Enterprise Server), the Linear adapter reads `LINEAR_API_KEY`, and the Jira adapter reads `JIRA_BASE_URL` plus `JIRA_TOKEN` in `<email>:<api-token>` format. See [Extensions - Input sources and PRD enrichers](/docs/extensions#input-sources-and-prd-enrichers) for the full adapter API.
 
 ## Observability with Langfuse
 
-If you have a `langfuse` block in `eforge/config.yaml`, eforge sends agent trace data to your Langfuse project. The `langfuse` field is listed in the [Configuration Reference](/reference/config#top-level-fields) top-level fields table. See the Langfuse documentation for how to configure your project host, public key, and secret key.
+eforge sends agent trace data to Langfuse when both a public key and secret key are configured. Set them in `eforge/config.yaml` under `langfuse.publicKey`, `langfuse.secretKey`, and optional `langfuse.host`, or use the environment variables `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optional `LANGFUSE_BASE_URL`. The default host is `https://cloud.langfuse.com`. The `langfuse` field is listed in the [Configuration Reference](/reference/config#top-level-fields) top-level fields table.
 
 ## Monitor UI
 
