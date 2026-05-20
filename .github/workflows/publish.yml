@@ -29,5 +29,3 @@ jobs:
       # it propagates the lockstep version, runs build/type-check/test,
       # then `pnpm -r publish`. Do not duplicate those steps here.
       - run: pnpm publish-all
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
