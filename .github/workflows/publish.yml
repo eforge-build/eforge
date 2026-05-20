@@ -21,11 +21,14 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
-          registry-url: "https://registry.npmjs.org"
 
       - run: pnpm install --frozen-lockfile
 
       # publish-all.mjs is the single source of truth for a release:
       # it propagates the lockstep version, runs build/type-check/test,
       # then `pnpm -r publish`. Do not duplicate those steps here.
-      - run: pnpm publish-all
+      # setup-node's registry-url mode injects a placeholder NODE_AUTH_TOKEN and
+      # .npmrc auth config, which prevents npm trusted publishing from using OIDC.
+      # Keep the publish environment token-free so pnpm can exchange the GitHub
+      # id-token granted above.
+      - run: env -u NODE_AUTH_TOKEN -u NPM_CONFIG_USERCONFIG pnpm publish-all
