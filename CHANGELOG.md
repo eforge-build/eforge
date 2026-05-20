@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.21] - 2026-05-20
+
+### Features
+
+- **core**: PRD Gap Close
+- **fix-gap-close-runtime-profile-inheritance-and-fatal-agent-stop-handling**: Fix Gap-Close Runtime Inheritance and Builder Stop Failures
+- **improve-adaptive-reviewer-selection-and-follow-up**: Risk-Budgeted Adaptive Review Selection
+
+### Maintenance
+
+- **deps**: update workspace dependencies
+
 ## [0.7.20] - 2026-05-19
 
 Maintenance release
@@ -504,12 +516,6 @@ Maintenance release
 ### Maintenance
 
 - **engine**: fix test issues
-
-## [0.7.1] - 2026-04-25
-
-### Maintenance
-
-- **deps**: bump pi-* packages to 0.70.2 (clears uuid <14 advisory GHSA-w5hq-g745-h8pq)
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
