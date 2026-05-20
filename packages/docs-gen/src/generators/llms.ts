@@ -22,7 +22,7 @@ async function writeToPath(content: string, path: string): Promise<void> {
   await writeFile(path, content, 'utf-8');
 }
 
-function buildLlmsTxt(provenance: ProvenanceInfo): string {
+function buildLlmsTxt(): string {
   const lines: string[] = [
     '# eforge',
     '',
@@ -70,8 +70,6 @@ function buildLlmsTxt(provenance: ProvenanceInfo): string {
     lines.push(`- [${optional.title}](${optional.url}): ${optional.description}`);
   }
 
-  lines.push('');
-  lines.push(`eforge version: ${provenance.eforgeVersion}`);
   lines.push('');
 
   return lines.join('\n');
@@ -162,7 +160,7 @@ export async function generateLlms(opts: {
 }): Promise<void> {
   await mirrorGuideMarkdown(opts.repoRoot, opts.outputPaths);
 
-  const llmsTxt = buildLlmsTxt(opts.provenance);
+  const llmsTxt = buildLlmsTxt();
   await writeToPath(llmsTxt, opts.outputPaths.llmsTxt);
 
   const llmsFullTxt = await buildLlmsFullTxt(opts.outputPaths);

@@ -41,5 +41,3 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 - [Core concepts](/docs/concepts.md): Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts
 - [Glossary](/docs/glossary.md): eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook
 - [Project README](https://github.com/eforge-build/eforge#readme): Broader project narrative, screenshots, install notes, and examples
-
-eforge version: 0.7.13

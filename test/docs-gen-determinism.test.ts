@@ -26,6 +26,17 @@ describe('docs-gen drift check', () => {
     expect(result.ok).toBe(true);
     expect(result.changed).toHaveLength(0);
   }, 120_000);
+
+  it('omits volatile eforge package versions from generated artifacts', async () => {
+    const repoRoot = findRepoRoot();
+    const paths = getOutputPaths(repoRoot);
+
+    for (const [key, path] of Object.entries(paths)) {
+      const content = await readFile(path, 'utf-8');
+      expect(content, `${key} should not include release-version provenance`).not.toContain('eforge version:');
+      expect(content, `${key} should not include release-version comments`).not.toContain('<!-- eforge version');
+    }
+  });
 });
 
 describe('docs-gen determinism', () => {

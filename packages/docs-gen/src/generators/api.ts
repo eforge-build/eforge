@@ -26,7 +26,6 @@ export async function generateApi(opts: {
 }): Promise<void> {
   const header = buildProvenanceHeader({
     sourceFiles: ['packages/client/src/routes.ts'],
-    eforgeVersion: opts.provenance.eforgeVersion,
   });
 
   // Sort routes alphabetically for deterministic output

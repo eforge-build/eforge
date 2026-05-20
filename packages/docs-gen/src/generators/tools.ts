@@ -240,7 +240,6 @@ export async function generateTools(opts: {
       'eforge-plugin/skills/',
       'packages/pi-eforge/skills/',
     ],
-    eforgeVersion: opts.provenance.eforgeVersion,
   });
 
   const mcpTools = extractMcpTools(opts.repoRoot);

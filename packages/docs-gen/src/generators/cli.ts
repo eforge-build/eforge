@@ -77,7 +77,6 @@ export async function generateCli(opts: {
 
   const header = buildProvenanceHeader({
     sourceFiles: ['packages/eforge/src/cli/index.ts'],
-    eforgeVersion: opts.provenance.eforgeVersion,
   });
 
   const lines: string[] = [

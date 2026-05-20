@@ -1,5 +1,4 @@
 <!-- Generated file. Do not edit. -->
-<!-- eforge version: 0.7.13 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
