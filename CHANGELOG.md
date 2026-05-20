@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.18] - 2026-05-19
+
+### Bug Fixes
+
+- **release**: use npm 11 for trusted publishing
+
 ## [0.7.17] - 2026-05-19
 
 ### Bug Fixes
@@ -546,16 +552,6 @@ Maintenance release
 ### Refactoring
 
 - **compile**: split pipeline injection from expedition compiler
-
-## [0.6.3] - 2026-04-23
-
-### Bug Fixes
-
-- **compile**: capture planner expedition modules from structured event
-
-### Documentation
-
-- **config**: scope config.yaml skill to team-wide settings
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
