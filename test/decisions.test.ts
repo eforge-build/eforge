@@ -490,3 +490,38 @@ describe('BuildDecisionSchema — enriched cycle-terminated decisions', () => {
   });
 });
 // --- eforge:endregion plan-02-build-evaluator-enforcement ---
+
+// --- eforge:region plan-01-adaptive-review-policy ---
+describe('BuildDecisionSchema — cycle-terminated with early-termination rationale', () => {
+  it('parses early-termination no-issues with rationale naming accepted verdicts', () => {
+    // No schema change for early termination — uses existing no-issues shape.
+    // Rationale carries the accepted verdicts and confidence signal details.
+    const result = parseWithSchema(BuildDecisionSchema, {
+      kind: 'cycle-terminated',
+      rationale: 'Terminated: all fixes accepted and verify passed in this round. Accepted: src/app.ts',
+      round: 0,
+      reason: 'no-issues',
+      issuesRemaining: 0,
+    });
+    expect(result.kind).toBe('cycle-terminated');
+    expect(result.reason).toBe('no-issues');
+    expect(result.issuesRemaining).toBe(0);
+    expect(result.rationale).toContain('all fixes accepted');
+  });
+
+  it('cycle-terminated no-issues schema is unchanged — no new required fields for early termination', () => {
+    // Verify that the existing no-issues shape is still valid without optional evaluation metadata.
+    const result = parseWithSchema(BuildDecisionSchema, {
+      kind: 'cycle-terminated',
+      rationale: 'Terminated: docs-only scope — no command/integration risk',
+      round: 0,
+      reason: 'no-issues',
+      issuesRemaining: 0,
+    });
+    expect(result.kind).toBe('cycle-terminated');
+    expect(result.reason).toBe('no-issues');
+    // No lastReviewIssueCount / finalEvaluationRan needed for early termination
+    expect('lastReviewIssueCount' in result).toBe(false);
+  });
+});
+// --- eforge:endregion plan-01-adaptive-review-policy ---

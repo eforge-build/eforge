@@ -38,6 +38,205 @@ export interface DiffStats {
 export const FILE_COUNT_THRESHOLD = 10;
 export const LINE_COUNT_THRESHOLD = 500;
 
+// ---------------------------------------------------------------------------
+// Security risk signals
+// ---------------------------------------------------------------------------
+
+/**
+ * Path/name terms that indicate security-sensitive code.
+ * Covers authentication, secrets, network boundaries, subprocess execution,
+ * file-system access, and crypto/permission patterns.
+ */
+const SECURITY_SENSITIVE_TERMS: readonly string[] = [
+  'auth', 'session', 'token', 'secret', 'credential', 'crypto',
+  'encrypt', 'permission', 'sandbox', 'webhook', 'request',
+  'http', 'client', 'server', 'shell', 'exec', 'spawn',
+  'filesystem', 'fs', 'path-traversal', 'cors', 'csrf', 'jwt', 'oauth',
+];
+
+/**
+ * Returns true when the file path contains a security-sensitive term at a
+ * component/name boundary (as prefix, whole name, or hyphen/underscore-separated part).
+ * Checked per path segment to avoid cross-segment false positives.
+ */
+export function isSecuritySensitivePath(file: string): boolean {
+  const lower = file.toLowerCase();
+  return lower.split('/').some(component => {
+    if (component === '.env' || component.startsWith('.env.')) return true;
+    // Remove file extension for name-only matching
+    const name = component.replace(/\.[^.]+$/, '');
+    return SECURITY_SENSITIVE_TERMS.some(term => {
+      if (name === term) return true;
+      if (name.startsWith(term + '-') || name.startsWith(term + '_')) return true;
+      if (name.endsWith('-' + term) || name.endsWith('_' + term)) return true;
+      if (
+        name.includes('-' + term + '-') || name.includes('_' + term + '_') ||
+        name.includes('-' + term + '_') || name.includes('_' + term + '-')
+      ) return true;
+      // Also match prefix (authentication → auth, filesystem → filesystem, executor → exec)
+      if (name.startsWith(term)) return true;
+      return false;
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Risk-based perspective ranking
+// ---------------------------------------------------------------------------
+
+/** Risk rank for auto-inferred built-in perspectives (lower = higher risk). */
+const RISK_RANK: Record<ReviewPerspective, number> = {
+  security: 0,
+  verify: 1,
+  api: 2,
+  code: 3,
+  test: 4,
+  docs: 5,
+};
+
+function sortByRisk(perspectives: ReviewPerspective[]): ReviewPerspective[] {
+  return [...perspectives].sort((a, b) => RISK_RANK[a] - RISK_RANK[b]);
+}
+
+// ---------------------------------------------------------------------------
+// Initial perspective selection API
+// ---------------------------------------------------------------------------
+
+export interface InitialPerspectiveSelection {
+  /** Perspectives selected after budget/ranking, in risk-descending order. */
+  perspectives: ReviewPerspective[];
+  /** Active file categories detected in the changeset. */
+  categories: string[];
+  /** Rule strings that fired during inference, including the budget rule. */
+  rules: string[];
+  /** Risk signals that elevated the budget or triggered security inference. */
+  riskSignals: string[];
+  /** Budget cap applied (2 for normal risk, 3 for security-critical or large). */
+  budget: number;
+  /** Human-readable summary of inferred perspectives and budget. */
+  rationale: string;
+}
+
+/**
+ * Select initial review perspectives for auto-inferred parallel review.
+ *
+ * Applies risk-signal detection, a default budget of 2 (raised to 3 for
+ * security-critical or large changesets), and risk-based ranking to determine
+ * which built-in perspectives to launch.
+ *
+ * Explicit planner-configured perspectives bypass this function entirely —
+ * they are passed through without budget trimming.
+ */
+export function selectInitialReviewPerspectives({
+  changedFiles,
+  changedLines,
+}: {
+  changedFiles: string[];
+  changedLines: number;
+}): InitialPerspectiveSelection {
+  const categories = categorizeFiles(changedFiles);
+  const { perspectives: raw, rules, riskSignals } = buildCandidatePerspectives(categories);
+
+  const hasSecuritySignal = riskSignals.length > 0;
+  const isLargeChange = changedFiles.length >= FILE_COUNT_THRESHOLD || changedLines >= LINE_COUNT_THRESHOLD;
+
+  // Budget: 2 by default; raised to 3 for security-critical or large changes
+  const budget = (hasSecuritySignal || isLargeChange) ? 3 : 2;
+  const budgetRule = hasSecuritySignal
+    ? 'security-critical change — budget raised to 3'
+    : isLargeChange
+      ? 'large changeset — budget raised to 3'
+      : 'normal-risk change — budget 2';
+
+  const ranked = sortByRisk(raw);
+  const perspectives = ranked.slice(0, budget);
+
+  const activeCategories = Object.entries(categories)
+    .filter(([, files]) => files.length > 0)
+    .map(([cat]) => cat);
+
+  const droppedByBudget = ranked.slice(budget);
+  const rationaleFragments = ranked.length > 0
+    ? [...rules, budgetRule]
+    : ['No perspectives inferred', budgetRule];
+  if (droppedByBudget.length > 0) {
+    rationaleFragments.push(`Dropped by budget cap (${budget}): ${droppedByBudget.join(', ')}`);
+  }
+
+  return {
+    perspectives,
+    categories: activeCategories,
+    rules: [...rules, budgetRule],
+    riskSignals,
+    budget,
+    rationale: rationaleFragments.join('; '),
+  };
+}
+
+/**
+ * Compute all candidate perspectives for the given categories without applying
+ * any budget cap. Used by `selectInitialReviewPerspectives` and the
+ * compatibility wrappers below.
+ */
+function buildCandidatePerspectives(
+  categories: FileCategories,
+): { perspectives: ReviewPerspective[]; rules: string[]; riskSignals: string[] } {
+  const perspectives = new Set<ReviewPerspective>();
+  const rules: string[] = [];
+  const riskSignals: string[] = [];
+
+  if (categories.code.length > 0) {
+    perspectives.add('code');
+    rules.push('code-files → code');
+  }
+
+  if (categories.api.length > 0) {
+    perspectives.add('api');
+    rules.push('api-files → api');
+  }
+
+  if (categories.docs.length > 0) {
+    perspectives.add('docs');
+    rules.push('docs-files → docs');
+  }
+
+  if (categories.test.length > 0) {
+    perspectives.add('test');
+    perspectives.add('verify');
+    rules.push('test-files → test+verify');
+  }
+
+  if (categories.deps.length > 0) {
+    perspectives.add('security');
+    perspectives.add('verify');
+    rules.push('dep-files → security+verify');
+    riskSignals.push('dependency-files: supply-chain security risk');
+  }
+
+  if (categories.config.length > 0) {
+    perspectives.add('verify');
+    rules.push('config-files → verify');
+    // Security-sensitive config names also infer security
+    const secConfigFiles = categories.config.filter(isSecuritySensitivePath);
+    if (secConfigFiles.length > 0) {
+      perspectives.add('security');
+      rules.push(`security-sensitive-config → security (${secConfigFiles.join(', ')})`);
+      riskSignals.push(`security-sensitive-config: ${secConfigFiles.join(', ')}`);
+    }
+  }
+
+  // Apply security path signals to code, api, and test files
+  const checkableFiles = [...categories.code, ...categories.api, ...categories.test];
+  const secFiles = checkableFiles.filter(isSecuritySensitivePath);
+  if (secFiles.length > 0) {
+    perspectives.add('security');
+    rules.push(`security-sensitive-paths → security (${secFiles.join(', ')})`);
+    riskSignals.push(`security-sensitive-paths: ${secFiles.join(', ')}`);
+  }
+
+  return { perspectives: Array.from(perspectives), rules, riskSignals };
+}
+
 /**
  * Categorize a list of changed file paths into buckets.
  * A file can appear in at most one category (first match wins).
@@ -73,39 +272,32 @@ export function categorizeFiles(files: string[]): FileCategories {
 
 /**
  * Given file categories, determine which review perspectives apply.
- * Rules:
- * - code files -> code + security
- * - API files -> api
- * - docs files -> docs
- * - test files -> test
- * - deps files -> security (if not already included)
- * - config files -> no perspective
+ *
+ * Updated policy:
+ * - Ordinary code files infer `code` only (not automatic `security`).
+ * - Security-sensitive path/name matches infer `security`.
+ * - Dep and lockfiles infer `security` and `verify`.
+ * - Config/build files infer `verify`; security-sensitive config also infers `security`.
+ * - Test files infer `test` and `verify`.
+ * - Docs-only changes infer `docs` only.
+ *
+ * Results are sorted by risk (highest first) for deterministic ordering.
  */
 export function determineApplicableReviews(categories: FileCategories): ReviewPerspective[] {
-  const perspectives = new Set<ReviewPerspective>();
+  const { perspectives } = buildCandidatePerspectives(categories);
+  return sortByRisk(perspectives);
+}
 
-  if (categories.code.length > 0) {
-    perspectives.add('code');
-    perspectives.add('security');
-  }
-
-  if (categories.api.length > 0) {
-    perspectives.add('api');
-  }
-
-  if (categories.docs.length > 0) {
-    perspectives.add('docs');
-  }
-
-  if (categories.test.length > 0) {
-    perspectives.add('test');
-  }
-
-  if (categories.deps.length > 0) {
-    perspectives.add('security');
-  }
-
-  return Array.from(perspectives);
+/**
+ * Same as `determineApplicableReviews` but also returns rule attribution strings
+ * for decision event metadata.
+ */
+export function determineApplicableReviewsWithRules(categories: FileCategories): {
+  perspectives: ReviewPerspective[];
+  rules: string[];
+} {
+  const { perspectives, rules } = buildCandidatePerspectives(categories);
+  return { perspectives: sortByRisk(perspectives), rules };
 }
 
 /**
@@ -114,47 +306,6 @@ export function determineApplicableReviews(categories: FileCategories): ReviewPe
  */
 export function shouldParallelizeReview(files: string[], stats: DiffStats): boolean {
   return files.length >= FILE_COUNT_THRESHOLD || stats.lines >= LINE_COUNT_THRESHOLD;
-}
-
-/**
- * Given file categories, determine which review perspectives apply and which
- * rules fired. Same logic as `determineApplicableReviews` but also returns
- * rule attribution strings for decision event metadata.
- */
-export function determineApplicableReviewsWithRules(categories: FileCategories): {
-  perspectives: ReviewPerspective[];
-  rules: string[];
-} {
-  const perspectives = new Set<ReviewPerspective>();
-  const rules: string[] = [];
-
-  if (categories.code.length > 0) {
-    perspectives.add('code');
-    perspectives.add('security');
-    rules.push('code-files → code+security');
-  }
-
-  if (categories.api.length > 0) {
-    perspectives.add('api');
-    rules.push('api-files → api');
-  }
-
-  if (categories.docs.length > 0) {
-    perspectives.add('docs');
-    rules.push('docs-files → docs');
-  }
-
-  if (categories.test.length > 0) {
-    perspectives.add('test');
-    rules.push('test-files → test');
-  }
-
-  if (categories.deps.length > 0) {
-    perspectives.add('security');
-    rules.push('dep-files → security');
-  }
-
-  return { perspectives: Array.from(perspectives), rules };
 }
 
 // --- Pattern matchers ---

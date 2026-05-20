@@ -164,6 +164,8 @@ After writing the module plan, emit a `<build-config>` XML block containing JSON
 
 Tailor the config to the module's complexity. A simple utility module may need only `[implement, review-cycle]` with one round, while a security-critical module may warrant `strategy: parallel` with `perspectives: [code, security]` and `maxRounds: 2`. For modules with testable features, include `test-cycle` after `implement`: `[implement, test-cycle, review-cycle]`. For TDD, place `test-write` before `implement`: `[test-write, implement, test-cycle]`. For modules with user-facing changes, include `doc-author` parallel with `implement` and `doc-sync` after: `[[implement, doc-author], doc-sync, review-cycle]`.
 
+**Perspective list guidance:** Keep explicit `perspectives` lists small (1-2 entries) and risk-based. Only include `security` when the module explicitly touches authentication, secrets, crypto, sandboxing, network trust boundaries, subprocess execution, or dependency files. Only include `verify` when the module changes build commands, config, package dependencies, test infrastructure, or uses sharded builders. Omitting `perspectives` lets the engine infer them from the changeset — prefer omission for ordinary code changes.
+
 **Doc stage guidance:**
 - Use `doc-author` (parallel with `implement`) when the module specifies new documentation files to create or describes specific existing docs to update.
 - Use `doc-sync` (after `implement`) when the implementation will change symbols, paths, APIs, or flags that existing docs reference.

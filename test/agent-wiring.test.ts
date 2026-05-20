@@ -1747,10 +1747,11 @@ describe('runParallelReview decision events', () => {
 
     expect(perspectivesInferred).toBeDefined();
     expect(perspectivesInferred!.decision.kind).toBe('perspectives-inferred');
-    // With no files detected, categories/rules/perspectives are all empty arrays
-    const d = perspectivesInferred!.decision as unknown as { kind: string; perspectives: unknown[]; categories: unknown[]; rules: unknown[] };
+    // With no files detected, categories and perspectives are empty arrays.
+    // rules always contains at least the budget rule from selectInitialReviewPerspectives.
+    const d = perspectivesInferred!.decision as unknown as { kind: string; perspectives: unknown[]; categories: unknown[]; rules: string[] };
     expect(d.categories).toEqual([]);
-    expect(d.rules).toEqual([]);
+    expect(d.rules).toContain('normal-risk change — budget 2');
     expect(d.perspectives).toEqual([]);
   });
 });
