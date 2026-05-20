@@ -568,6 +568,14 @@ describe('Skill-forwarding removed for native commands (plan-02-native-pi-ux)', 
     expect(block).toContain('handleStatusCommand');
     expect(block).not.toContain('sendUserMessage');
   });
+
+  it('native eforge:restart handler calls handleRestartCommand (not skill forwarding)', () => {
+    const idx = source.indexOf('pi.registerCommand("eforge:restart"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = source.slice(idx, idx + 400);
+    expect(block).toContain('handleRestartCommand');
+    expect(block).not.toContain('sendUserMessage');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -580,10 +588,11 @@ describe('Remaining commands still forward to skills (plan-02-native-pi-ux)', ()
   const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
   const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
 
-  // eforge:build is now a dedicated native command (plan-01-per-build-profile-override)
-  // and eforge:status now has a native overlay handler, so neither command is
-  // in the skillCommands array.
-  for (const cmd of ['eforge:init', 'eforge:plan', 'eforge:restart', 'eforge:update']) {
+  // eforge:build is now a dedicated native command (plan-01-per-build-profile-override),
+  // eforge:status now has a native overlay handler, and eforge:restart has a
+  // native safe-restart overlay, so none of those commands is in the
+  // skillCommands array.
+  for (const cmd of ['eforge:init', 'eforge:plan', 'eforge:update']) {
     it(`${cmd} remains in the skillCommands array`, () => {
       expect(skillCommandsBlock).toContain(`"${cmd}"`);
     });
@@ -900,9 +909,10 @@ describe('packages/pi-eforge/README.md - native command UX (plan-02-native-pi-ux
     expect(raw).toContain('/eforge:profile-new');
   });
 
-  it('mentions native config and status commands', () => {
+  it('mentions native config, status, and restart commands', () => {
     expect(raw).toContain('/eforge:config');
     expect(raw).toContain('/eforge:status');
+    expect(raw).toContain('/eforge:restart');
   });
 
   it('describes interactive overlay UX', () => {

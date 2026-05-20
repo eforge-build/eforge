@@ -9,8 +9,9 @@
  *   2. No `api*` client helpers lacking an `IfRunning` suffix are value-imported
  *      in packages/pi-eforge/extensions/eforge/. Type-only imports and
  *      non-api* identifiers are excluded from this check.
- *   3. Exactly two `ensureDaemon(` call-sites exist in packages/pi-eforge/,
- *      both inside the eforge_daemon start/restart handling in index.ts.
+ *   3. Exactly three `ensureDaemon(` call-sites exist in packages/pi-eforge/:
+ *      eforge_daemon start/restart in index.ts, plus the explicit native
+ *      /eforge:restart command handler.
  *   4. Pi skill docs (.md files under packages/pi-eforge/skills/) contain no
  *      passive auto-start claims ("daemon auto-starts", "auto-start the daemon",
  *      "auto starts the daemon", "automatically starts the daemon").
@@ -203,12 +204,11 @@ describe('Pi extension: no non-IfRunning api* client imports', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Check 3: Exactly two ensureDaemon calls in packages/pi-eforge, both in
-//          eforge_daemon start/restart handling
+// Check 3: ensureDaemon calls only appear in explicit daemon lifecycle surfaces
 // ---------------------------------------------------------------------------
 
-describe('Pi extension: exactly two ensureDaemon calls, both in start/restart', () => {
-  it('finds exactly two ensureDaemon( call-sites in packages/pi-eforge/', () => {
+describe('Pi extension: ensureDaemon calls stay in explicit lifecycle handlers', () => {
+  it('finds exactly three ensureDaemon( call-sites in packages/pi-eforge/', () => {
     const callSites: Array<{ file: string; line: number; context: string }> = [];
 
     for (const filePath of piEforgeTsFiles) {
@@ -227,16 +227,15 @@ describe('Pi extension: exactly two ensureDaemon calls, both in start/restart', 
 
     expect(
       callSites,
-      `Expected exactly 2 ensureDaemon() call-sites in packages/pi-eforge/, found ${callSites.length}:\n` +
+      `Expected exactly 3 ensureDaemon() call-sites in packages/pi-eforge/, found ${callSites.length}:\n` +
         callSites.map((s) => `  ${s.file}:${s.line}: ${s.context}`).join('\n'),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
 
-    // Both calls must be in index.ts (not in any command helper file)
     for (const site of callSites) {
       expect(
         site.file,
-        `ensureDaemon() must only appear in index.ts, found in: ${site.file}`,
-      ).toMatch(/extensions\/eforge\/index\.ts$/);
+        `ensureDaemon() must only appear in explicit lifecycle handlers, found in: ${site.file}`,
+      ).toMatch(/extensions\/eforge\/(index|restart-command)\.ts$/);
     }
 
     const contexts = callSites.map((site) => site.context).join('\n---\n');
@@ -248,6 +247,13 @@ describe('Pi extension: exactly two ensureDaemon calls, both in start/restart', 
       contexts,
       'one ensureDaemon() call must be in the explicit eforge_daemon restart branch',
     ).toMatch(/(?:restart|stopResult)[\s\S]*ensureDaemon\s*\(/);
+
+    const nativeRestartSites = callSites.filter((site) => /extensions\/eforge\/restart-command\.ts$/.test(site.file));
+    expect(
+      nativeRestartSites,
+      'one ensureDaemon() call must power the explicit native /eforge:restart command',
+    ).toHaveLength(1);
+    expect(nativeRestartSites[0]?.context).toMatch(/stopDaemonForRestart[\s\S]*ensureDaemon\s*\(/);
   });
 });
 

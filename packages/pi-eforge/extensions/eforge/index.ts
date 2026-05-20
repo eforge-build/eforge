@@ -77,6 +77,7 @@ import type {
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
 import { handlePlaybookCommand } from './playbook-commands';
+import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
 import type { UIContext } from './ui-helpers';
 export {
@@ -2320,6 +2321,15 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("eforge:restart", {
+    description: "Safely restart the eforge daemon",
+    handler: async (args, ctx) => {
+      await handleRestartCommand(pi, ctx as UIContext, args ?? "", async () => {
+        if (_latestCtx) await refreshStatus(_latestCtx);
+      });
+    },
+  });
+
   const skillCommands: Array<{
     name: string;
     description: string;
@@ -2342,11 +2352,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       skill: "eforge-extend",
     },
     // --- eforge:endregion plan-01-extend-authoring-ux ---
-    {
-      name: "eforge:restart",
-      description: "Safely restart the eforge daemon",
-      skill: "eforge-restart",
-    },
     {
       name: "eforge:update",
       description: "Check for eforge updates and guide through updating",
