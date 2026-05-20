@@ -77,6 +77,7 @@ import type {
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
 import { handlePlaybookCommand } from './playbook-commands';
+import { handleStatusCommand } from './status-command';
 import type { UIContext } from './ui-helpers';
 export {
   formatSingleBuildFooter,
@@ -2312,16 +2313,18 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("eforge:status", {
+    description: "Check eforge run status and queue state",
+    handler: async (args, ctx) => {
+      await handleStatusCommand(pi, ctx as UIContext, args ?? "", PI_EFORGE_VERSION);
+    },
+  });
+
   const skillCommands: Array<{
     name: string;
     description: string;
     skill: string;
   }> = [
-    {
-      name: "eforge:status",
-      description: "Check eforge run status and queue state",
-      skill: "eforge-status",
-    },
     {
       name: "eforge:init",
       description: "Initialize eforge in the current project",

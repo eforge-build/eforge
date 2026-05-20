@@ -23,8 +23,8 @@ Then, in your project:
 ## What this package provides
 
 - Native Pi tools for eforge daemon operations
-- Native Pi commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX
-- Slash commands for build operations (`/eforge:build`, `/eforge:init`, `/eforge:status`, `/eforge:restart`, `/eforge:update`)
+- Native Pi commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`), config viewing (`/eforge:config`), and status dashboards (`/eforge:status`) with interactive overlay UX
+- Slash commands for build operations (`/eforge:build`, `/eforge:init`, `/eforge:restart`, `/eforge:update`)
 - The `/eforge:plan` skill for structured handoff planning before build execution
 - The `/eforge:extend` skill for assisted eforge TypeScript extension authoring
 - The `/eforge:playbook` skill for creating, editing, running, and managing reusable automation playbooks

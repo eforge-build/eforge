@@ -232,31 +232,22 @@ export async function showInfoOverlay(
     container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
     container.addChild(new Markdown(content, 1, 1, mdTheme));
 
-    const items: SelectItem[] = [
-      { value: "close", label: "Close", description: "Dismiss this view" },
-    ];
-
-    const selectList = new SelectList(items, 1, {
-      selectedPrefix: (text) => theme.fg("accent", text),
-      selectedText: (text) => theme.fg("accent", text),
-      description: (text) => theme.fg("muted", text),
-      scrollInfo: (text) => theme.fg("dim", text),
-      noMatch: (text) => theme.fg("warning", text),
-    });
-
-    selectList.onSelect = () => done(undefined);
-    selectList.onCancel = () => done(undefined);
-
-    container.addChild(selectList);
-    container.addChild(new Text(theme.fg("dim", "enter/esc close"), 1, 0));
+    container.addChild(new Text(theme.fg("dim", "esc/enter close"), 1, 0));
     container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 
     return {
       render: (width: number) => container.render(width),
       invalidate: () => container.invalidate(),
       handleInput: (data: string) => {
-        selectList.handleInput(data);
-        tui.requestRender();
+        if (
+          matchesKey(data, Key.escape) ||
+          matchesKey(data, Key.enter) ||
+          matchesKey(data, Key.ctrl("c"))
+        ) {
+          done(undefined);
+        } else {
+          tui.requestRender();
+        }
       },
     };
   }, INFO_OVERLAY_OPTIONS);

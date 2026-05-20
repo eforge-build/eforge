@@ -482,7 +482,7 @@ describe('Native command module exports (plan-02-native-pi-ux)', () => {
 // Skill-forwarding removal for native commands (plan-02-native-pi-ux)
 // ---------------------------------------------------------------------------
 
-describe('Skill-forwarding removed for 3 native commands (plan-02-native-pi-ux)', () => {
+describe('Skill-forwarding removed for native commands (plan-02-native-pi-ux)', () => {
   const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
 
   it('eforge:profile is NOT in the skillCommands array', () => {
@@ -511,6 +511,14 @@ describe('Skill-forwarding removed for 3 native commands (plan-02-native-pi-ux)'
     expect(skillCommandsBlock).not.toContain("'eforge:config'");
   });
 
+  it('eforge:status is NOT in the skillCommands array', () => {
+    const skillCommandsStart = source.indexOf('const skillCommands');
+    const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
+    const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
+    expect(skillCommandsBlock).not.toContain('"eforge:status"');
+    expect(skillCommandsBlock).not.toContain("'eforge:status'");
+  });
+
   it('eforge:profile is registered natively via pi.registerCommand', () => {
     // Should appear as a native command registration, not in skillCommands
     expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:profile["']/);
@@ -522,6 +530,10 @@ describe('Skill-forwarding removed for 3 native commands (plan-02-native-pi-ux)'
 
   it('eforge:config is registered natively via pi.registerCommand', () => {
     expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:config["']/);
+  });
+
+  it('eforge:status is registered natively via pi.registerCommand', () => {
+    expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:status["']/);
   });
 
   it('native eforge:profile handler calls handleProfileCommand (not skill forwarding)', () => {
@@ -548,21 +560,30 @@ describe('Skill-forwarding removed for 3 native commands (plan-02-native-pi-ux)'
     expect(block).toContain('handleConfigCommand');
     expect(block).not.toContain('sendUserMessage');
   });
+
+  it('native eforge:status handler calls handleStatusCommand (not skill forwarding)', () => {
+    const idx = source.indexOf('pi.registerCommand("eforge:status"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = source.slice(idx, idx + 300);
+    expect(block).toContain('handleStatusCommand');
+    expect(block).not.toContain('sendUserMessage');
+  });
 });
 
 // ---------------------------------------------------------------------------
-// Remaining 6 commands still use skill forwarding (plan-02-native-pi-ux)
+// Remaining commands still use skill forwarding (plan-02-native-pi-ux)
 // ---------------------------------------------------------------------------
 
-describe('Remaining 6 commands still forward to skills (plan-02-native-pi-ux)', () => {
+describe('Remaining commands still forward to skills (plan-02-native-pi-ux)', () => {
   const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
   const skillCommandsStart = source.indexOf('const skillCommands');
   const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
   const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
 
   // eforge:build is now a dedicated native command (plan-01-per-build-profile-override)
-  // and is no longer in the skillCommands array.
-  for (const cmd of ['eforge:status', 'eforge:init', 'eforge:plan', 'eforge:restart', 'eforge:update']) {
+  // and eforge:status now has a native overlay handler, so neither command is
+  // in the skillCommands array.
+  for (const cmd of ['eforge:init', 'eforge:plan', 'eforge:restart', 'eforge:update']) {
     it(`${cmd} remains in the skillCommands array`, () => {
       expect(skillCommandsBlock).toContain(`"${cmd}"`);
     });
@@ -879,8 +900,9 @@ describe('packages/pi-eforge/README.md - native command UX (plan-02-native-pi-ux
     expect(raw).toContain('/eforge:profile-new');
   });
 
-  it('mentions native config command', () => {
+  it('mentions native config and status commands', () => {
     expect(raw).toContain('/eforge:config');
+    expect(raw).toContain('/eforge:status');
   });
 
   it('describes interactive overlay UX', () => {
