@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.17] - 2026-05-19
+
+### Bug Fixes
+
+- **release**: publish without npm token config
+
 ## [0.7.16] - 2026-05-19
 
 ### Bug Fixes
@@ -550,27 +556,6 @@ Maintenance release
 ### Documentation
 
 - **config**: scope config.yaml skill to team-wide settings
-
-## [0.6.2] - 2026-04-23
-
-### Features
-
-- **add-session-scoped-model-registry-to-append-models-used-trailer-to-eforge-commits**: ModelTracker and Models-Used commit trailer
-- **core**: PRD Gap Close
-- **per-command-timeout-for-post-merge-validate-phase**: Per-command timeout for post-merge validate phase
-- **sunset-legacy-eforge-yaml-and-monitor-lock-paths**: Sunset legacy eforge.yaml and monitor.lock paths
-
-### Bug Fixes
-
-- **engine**: emit terminal event when PRD validator crashes
-
-### Documentation
-
-- **eforge-release**: include package scope in changelog entries
-
-### Maintenance
-
-- **validate-command-timeout**: fix validate-phase timeout test
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
