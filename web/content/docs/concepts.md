@@ -21,6 +21,12 @@ Every eforge build runs two phases:
 
 The compile phase produces `orchestration.yaml` - a dependency graph over the plans. The orchestrator launches plans as soon as their dependencies have merged, not in fixed waves. Since agent execution is IO-bound, all ready plans run immediately in parallel.
 
+## Build Sources and Session Plans
+
+A **build source** is the input eforge hands to the compile phase after normalizing a user-facing artifact. It can start as a CLI prompt, rough notes, a PRD file, an autonomous playbook, a wrapper-app artifact, or a session-plan file.
+
+`/eforge:plan` creates session plans under `.eforge/session-plans/`. A session plan is a driver-side planning artifact: it records the planning type and depth, required and optional dimensions, skipped dimensions with reasons, open questions, readiness, and any inherited `agent_profile` from a planning-mode playbook. When `/eforge:build` uses a ready session-plan file, eforge converts that file into ordinary build source before writing the normalized PRD to the queue.
+
 ## Workflow Profiles
 
 The planner selects one of three profiles based on scope complexity:
@@ -73,9 +79,9 @@ The active profile is resolved highest-priority-first: project-local beats proje
 
 ## The Queue and Daemon
 
-When you run `/eforge:build` or `eforge build`, eforge writes a normalized PRD file to `eforge/queue/`. A long-running **daemon** watches the queue and processes PRDs automatically. The daemon runs in the background and survives terminal exit.
+When you run `/eforge:build` or `eforge build`, eforge writes a normalized PRD file to the configured queue directory (`eforge/queue/` by default). A long-running **daemon** watches the queue and, when `prdQueue.autoBuild` is enabled, processes PRDs automatically. The daemon runs in the background and survives terminal exit. `prdQueue.watchPollIntervalMs` controls how often the watcher polls for queued work.
 
-The queue supports dependencies: a PRD can declare `depends_on` to wait for upstream PRDs to complete before it starts. This lets you enqueue a sequence of work and let eforge process it in order, handling failures by holding dependents rather than cascading.
+The queue supports dependencies and priority. A PRD can declare `depends_on` to wait for upstream PRDs to complete before it starts; eforge validates that dependencies refer to pending, running, or waiting queue items. Within each dependency wave, lower numeric `priority` values run first, PRDs without `priority` run last, and ties fall back to creation date. If an upstream PRD fails or is cancelled, waiting dependents are skipped instead of cascading a broken build.
 
 The **web monitor** (`http://localhost:<port>`) tracks cost, token usage, and pipeline progress in real time. It keeps running after the build completes so you can inspect results.
 

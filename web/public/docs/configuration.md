@@ -300,6 +300,30 @@ Keep all documentation in sync with the latest code changes.
 
 **Blank profile fallback**: omitting `profile` allows a registered profile router to select a profile first; if no router selects one, eforge uses the project's active-profile marker or engine defaults.
 
+## Queue and Auto-Build
+
+The daemon watches `prdQueue.dir` for normalized PRDs. Leave `prdQueue.autoBuild` enabled for normal usage so queued PRDs start automatically; disable it when you want to stage multiple queue items before running them. `prdQueue.watchPollIntervalMs` tunes how often the auto-build watcher polls for queue changes.
+
+```yaml
+maxConcurrentBuilds: 2   # default: concurrent PRD builds across the queue
+prdQueue:
+  dir: eforge/queue
+  autoBuild: true
+  watchPollIntervalMs: 5000
+```
+
+Queue item frontmatter can also carry scheduling hints:
+
+```yaml
+---
+title: Add billing export
+priority: 10          # lower numbers run earlier within the same dependency wave
+depends_on: [api-v2]  # wait for pending/running/waiting queue item ids
+---
+```
+
+`depends_on` is validated at enqueue time and only live queue items can be dependencies. Items blocked on dependencies live under the queue's `waiting/` state until all upstream items complete; if an upstream item fails or is cancelled, its waiting dependents move to `skipped/`.
+
 ## Post-Merge Commands
 
 Commands to run after all plans merge - compile, test, lint, or any validation step:
@@ -309,18 +333,11 @@ build:
   postMergeCommands:
     - "pnpm type-check"
     - "pnpm test"
+  postMergeCommandTimeoutMs: 300000
   maxValidationRetries: 2
 ```
 
-Each command runs under a 5-minute wall-clock timeout. On failure, a validation-fixer agent attempts repairs up to `maxValidationRetries` times. When retries are exhausted, the build is marked failed. See [Troubleshooting - Validation-fixer retries exhausted](/docs/troubleshooting#validation-fixer-retries-exhausted) for recovery steps.
-
-## Queue Concurrency
-
-How many PRDs to build concurrently when processing the queue:
-
-```yaml
-maxConcurrentBuilds: 2   # default
-```
+`build.postMergeCommands` run in order after the merge. `build.postMergeCommandTimeoutMs` is the wall-clock timeout for each command in milliseconds (default 300000, five minutes). On failure, a validation-fixer agent attempts repairs up to `build.maxValidationRetries` times (default 2). When retries are exhausted, the build is marked failed. See [Troubleshooting - Validation-fixer retries exhausted](/docs/troubleshooting#validation-fixer-retries-exhausted) for recovery steps.
 
 Within a single build, plans run in parallel automatically as their dependencies are satisfied - no configuration needed there.
 

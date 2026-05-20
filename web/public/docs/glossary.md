@@ -9,9 +9,13 @@ description: Definitions for eforge-specific terms used across the docs and agen
 
 A named YAML file that selects the harness, model, and effort settings for eforge tiers. Profiles live at user, project, or project-local scope and can be switched without editing `eforge/config.yaml`. See [Profiles](/docs/profiles).
 
+## Auto-build
+
+The daemon mode that automatically processes queued PRDs when `prdQueue.autoBuild` is enabled. Auto-build can be disabled intentionally while staging work and pauses after failed builds until recovery is handled.
+
 ## Build source
 
-The normalized input handed to the engine. It may originate from a CLI prompt, rough notes, a session plan, a playbook, a wrapper app, or a PRD file.
+The normalized input handed to the engine. It may originate from a CLI prompt, rough notes, a session plan, a playbook, a wrapper app, an input-source URI, or a PRD file.
 
 ## Builder
 
@@ -65,9 +69,17 @@ The agent stage that sizes work, chooses the workflow profile, and writes implem
 
 Product Requirements Document. A PRD file is one supported input surface, but eforge can also accept prompts, notes, session plans, playbooks, and wrapper-app input.
 
+## Post-merge validation
+
+The validation step after all plans merge. eforge runs `build.postMergeCommands` with `build.postMergeCommandTimeoutMs`; on failure it can invoke the validation-fixer up to `build.maxValidationRetries` times.
+
 ## Queue
 
-The committed `eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue items can depend on earlier items.
+The committed `eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave.
+
+## Queue priority
+
+An optional PRD frontmatter number. Lower numbers run before higher numbers within the same dependency wave; PRDs without `priority` run after prioritized items.
 
 ## Recovery sidecar
 
@@ -83,7 +95,7 @@ The blind review agent stage that evaluates a diff without the builder's reasoni
 
 ## Session plan
 
-A driver-side planning artifact created by `/eforge:plan`. It captures scope, acceptance criteria, risks, and other dimensions before being converted into build source.
+A driver-side planning artifact created by `/eforge:plan` under `.eforge/session-plans/`. It captures planning type/depth, scope, acceptance criteria, risks, assumptions, skipped dimensions, readiness, and other dimensions before `/eforge:build` converts a ready file into build source.
 
 ## Tier
 

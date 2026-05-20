@@ -17,6 +17,8 @@ Every playbook has a `mode` field in its YAML frontmatter:
 
 When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning" }` - this signals that a Claude Code or Pi agent must take over the investigation, not that the build failed.
 
+Planning-mode playbooks produce session plans through the host agent workflow, not by directly enqueueing a PRD. The agent creates or resumes a file in `.eforge/session-plans/`, writes investigation findings into the relevant dimensions, checks readiness, and then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded only when an autonomous playbook is converted directly to build source.
+
 ## Scope tiers
 
 Playbooks live at three scope directories, shadowed by higher-precedence tiers:

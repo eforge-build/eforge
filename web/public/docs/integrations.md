@@ -33,6 +33,8 @@ eforge mcp-proxy
 
 The proxy translates MCP tool calls from Claude Code into HTTP requests to the local daemon HTTP API. The daemon auto-starts on first use; you do not need to start it manually.
 
+The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, and auto-build state. The `eforge_auto_build` tool reads or updates the daemon's auto-build mode; the monitor UI uses the same daemon API state.
+
 ### Skills (slash commands)
 
 All eforge workflows are available as slash commands:
@@ -69,7 +71,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable overlays for profile and playbook selection.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable overlays for profile and playbook selection. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_session_plan`, `eforge_playbook`, and `eforge_extension`.
 
 ## Standalone CLI
 
@@ -97,6 +99,10 @@ eforge extension list
 ```
 
 For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands.
+
+## Daemon HTTP API
+
+The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, the monitor UI, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
 
 ## Shell hooks
 

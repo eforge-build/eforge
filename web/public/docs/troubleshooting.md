@@ -54,6 +54,24 @@ Run `pnpm docs:generate` any time you edit hand-authored guide pages under `web/
 
 If the check reports broken internal links, update the link target in the relevant `web/content/docs/*.md` file to point at a slug that exists under `/docs/`, `/reference/`, or `/schemas/`.
 
+## Auto-build is disabled or paused
+
+If a PRD is queued but does not start, check whether daemon auto-build is disabled or paused. Auto-build starts from `prdQueue.autoBuild` in config, can be toggled at runtime through the host `eforge_auto_build` tool or the monitor UI, and pauses after a queued build fails so dependents do not cascade.
+
+**Diagnose:**
+
+- Run `/eforge:status` in Claude Code or Pi and inspect the queue/auto-build summary.
+- In host tooling, call `eforge_auto_build` with `{ "action": "get" }` to read the daemon's current state.
+- Check the monitor event stream for `daemon:auto-build:disabled`, `daemon:auto-build:paused`, or `daemon:auto-build:transition`.
+
+**Resume safely:**
+
+1. If auto-build paused because a build failed, run `/eforge:recover` first and apply the recovery verdict.
+2. Re-enable auto-build with `eforge_auto_build` `{ "action": "set", "enabled": true }` or the monitor UI.
+3. If you intentionally disabled auto-build to stage queue items, either re-enable it or run `eforge build --queue` / `eforge queue run --all` from the CLI.
+
+For persistent defaults, set `prdQueue.autoBuild: true` in `eforge/config.yaml`. If the watcher is slow to notice new PRDs, tune `prdQueue.watchPollIntervalMs` rather than manually editing queue files.
+
 ## Recover from a failed build
 
 When a queued build fails, auto-build pauses and the PRD is marked `failed` in the queue. Do not re-enqueue manually; use the recovery workflow instead.
