@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.19] - 2026-05-19
+
+### Bug Fixes
+
+- **release**: use Node 24 for trusted publishing
+
 ## [0.7.18] - 2026-05-19
 
 ### Bug Fixes
@@ -546,12 +552,6 @@ Maintenance release
 - **monitor-ui**: add API route path hygiene grep assertion
 - **registry-pipeline**: add dual-stub dispatch tests and fix Pi lazy-load test
 - **schema-resolver**: fix two failing tests in agent-config.mixed-harness
-
-## [0.6.4] - 2026-04-23
-
-### Refactoring
-
-- **compile**: split pipeline injection from expedition compiler
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
