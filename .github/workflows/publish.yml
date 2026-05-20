@@ -19,12 +19,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: pnpm
 
-      # npm 11 includes trusted-publishing OIDC token exchange support. pnpm
-      # delegates publishing to npm, so make sure the delegated npm is new enough.
-      - run: npm install -g npm@11
+      # Node 24 ships with npm 11, which includes trusted-publishing OIDC token
+      # exchange support. pnpm delegates publishing to npm, so keep the delegated
+      # npm version visible in the release logs.
       - run: npm --version
 
       - run: pnpm install --frozen-lockfile
