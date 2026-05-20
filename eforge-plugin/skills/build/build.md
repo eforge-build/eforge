@@ -138,10 +138,8 @@ After successful enqueue:
 
 > PRD enqueued (session: `{sessionId}`). The daemon will auto-build.
 >
-<!-- parity-skip-start -->
-> Watch live at {monitorUrl} or run `/eforge:status` for progress.
+> Watch live in the monitor dashboard, or run `/eforge:status` later for a prompt status refresh.
 >
-<!-- parity-skip-end -->
 > The daemon formats your source into a PRD, selects a workflow profile, then compiles and builds. The pipeline varies by profile — errands skip straight to building, while excursions and expeditions go through planning and plan review first. Every profile gets blind code review (a separate agent with no builder context), merge, and post-merge validation.
 
 If the monitor is running, also include the monitor URL.

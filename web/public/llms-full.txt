@@ -2,7 +2,7 @@
 <!-- section: cli -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.13 -->
-<!-- Commit: b70a7b0f -->
+<!-- Commit: 7ae46825 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -449,7 +449,7 @@ Run the MCP stdio proxy server (used by Claude Code plugin)
 <!-- section: api -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.13 -->
-<!-- Commit: b70a7b0f -->
+<!-- Commit: 7ae46825 -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -539,7 +539,7 @@ Use `buildPath(pattern, params)` from `@eforge-build/client` to resolve `:param`
 <!-- section: events -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.13 -->
-<!-- Commit: b70a7b0f -->
+<!-- Commit: 7ae46825 -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -757,7 +757,7 @@ Use `safeParseEforgeEvent(value)` from `@eforge-build/client` to validate at run
 <!-- section: config -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.13 -->
-<!-- Commit: b70a7b0f -->
+<!-- Commit: 7ae46825 -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -854,7 +854,7 @@ The complete machine-readable schema is at [`/schemas/config.schema.json`](/sche
 <!-- section: tools -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.13 -->
-<!-- Commit: b70a7b0f -->
+<!-- Commit: 7ae46825 -->
 <!-- Source: packages/eforge/src/cli/mcp-proxy.ts, packages/pi-eforge/extensions/eforge/index.ts, eforge-plugin/skills/, packages/pi-eforge/skills/ -->
 
 # eforge MCP Tools and Skills Reference
@@ -867,12 +867,11 @@ Both surfaces are kept in parity per `AGENTS.md`.
 
 ## MCP tools (Claude Code)
 
-Total tools: 16
+Total tools: 15
 
 | Tool name | Description |
 |-----------|-------------|
 | `eforge_build` | Enqueue a PRD source for the eforge daemon to build. Returns a sessionId and autoBuild status. |
-| `eforge_follow` | Follow a running eforge session: streams phase/files-changed/issue updates as progress notifications and returns the final session summary. Use after eforge_build to surface live build status in the conversation. |
 | `eforge_auto_build` | Get or set the daemon auto-build state. When enabled, the daemon automatically builds PRDs as they are enqueued. |
 | `eforge_status` | Get the current run status including plan progress, session state, event summary, and the daemon vs CLI version. |
 | `eforge_queue_list` | List all PRDs currently in the eforge queue with their metadata. |
@@ -890,12 +889,11 @@ Total tools: 16
 
 ## Native tools (Pi extension)
 
-Total tools: 17
+Total tools: 16
 
 | Tool name | Description |
 |-----------|-------------|
 | `eforge_build` | Enqueue a PRD source for the eforge daemon to build. Returns a sessionId and autoBuild status. |
-| `eforge_follow` | Follow a running eforge session: streams phase/files-changed/issue updates as tool progress messages and returns the final session summary. Use after eforge_build to surface live build status in the conversation. |
 | `eforge_status` | Get the current run status including plan progress, session state, event summary, and the daemon vs Pi-extension version. |
 | `eforge_queue_list` | List all PRDs currently in the eforge queue with their metadata. |
 | `eforge_config` | Show resolved eforge configuration or validate eforge/config.yaml. |

@@ -283,9 +283,6 @@ export type {
 
 export { aggregateSessionSummary } from './aggregate-session-summary.js';
 
-export { eventToProgress } from './event-to-progress.js';
-export type { FollowCounters, ProgressUpdate } from './event-to-progress.js';
-
 export {
   eventRegistry,
   DAEMON_EVENT_TYPES,

@@ -11,17 +11,13 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiTestExtension, apiNewExtension, apiReloadExtensions, apiTrustExtension, apiUntrustExtension, apiInstallExtension, apiUpdateExtension, apiRemoveExtension, apiPromoteExtension, apiDemoteExtension } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiTestExtension, apiNewExtension, apiReloadExtensions, apiTrustExtension, apiUntrustExtension, apiInstallExtension, apiUpdateExtension, apiRemoveExtension, apiPromoteExtension, apiDemoteExtension } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   RunInfo,
   EnqueueResponse,
   RunSummary,
   ConfigValidateResponse,
-  DaemonStreamEvent,
-  SessionSummary,
-  SessionStreamSnapshot,
-  FollowCounters,
   VersionResponse,
   ExtensionNewRequest,
   ExtensionTestRequest,
@@ -36,13 +32,6 @@ declare const EFORGE_VERSION: string;
 
 // Re-export for any consumers that imported from here
 export { ensureDaemon, daemonRequest, daemonRequestIfRunning };
-
-// `eventToProgress` and `FollowCounters` are imported from `@eforge-build/client`
-// so the MCP proxy and the Pi extension share a single source of truth for the
-// event -> progress mapping. See packages/client/src/event-to-progress.ts.
-// Re-export for any existing consumers of the previous in-file surface.
-export { eventToProgress };
-export type { FollowCounters };
 
 async function ensureGitignoreEntries(projectDir: string, entries: string[]): Promise<void> {
   const gitignorePath = join(projectDir, '.gitignore');
@@ -221,132 +210,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       if (profile) body.profile = profile;
       const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, body);
       return { ...data, monitorUrl: `http://localhost:${port}` };
-    },
-  });
-
-  // Tool: eforge_follow
-  // Long-running tool that blocks for the lifetime of a session and streams
-  // high-signal events as MCP `notifications/progress`. Resolves with the
-  // session summary so the outcome lands in the conversation transcript.
-  const DEFAULT_FOLLOW_TIMEOUT_MS = 1_800_000; // 30 minutes
-
-  createDaemonTool(server, cwd, {
-    name: 'eforge_follow',
-    description: 'Follow a running eforge session: streams phase/files-changed/issue updates as progress notifications and returns the final session summary. Use after eforge_build to surface live build status in the conversation.',
-    schema: {
-      sessionId: z.string().describe('The session to follow (from eforge_build or eforge_status).'),
-      timeoutMs: z.number().optional().describe('Max time to wait for session completion in ms. Default 1,800,000 (30 minutes).'),
-    },
-    handler: async ({ sessionId, timeoutMs }, { cwd: toolCwd, extra, server: toolServer }) => {
-      const timeout = timeoutMs ?? DEFAULT_FOLLOW_TIMEOUT_MS;
-      const progressToken = extra?._meta?.progressToken;
-
-      // Combine the caller's abort signal with a timeout signal so the tool
-      // terminates cleanly on either cancellation or timeout.
-      const timeoutController = new AbortController();
-      const timeoutHandle = setTimeout(() => {
-        const timeoutReason = Object.assign(new Error('eforge_follow timed out'), { name: 'AbortError' });
-        timeoutController.abort(timeoutReason);
-      }, timeout);
-
-      const signals: AbortSignal[] = [timeoutController.signal];
-      if (extra?.signal) signals.push(extra.signal as AbortSignal);
-      // `AbortSignal.any` is available on Node 22+ (the engines requirement).
-      const signal = AbortSignal.any(signals);
-
-      let progressCounter = 0;
-      let counters: FollowCounters = { filesChanged: 0 };
-
-      async function emitProgress(message: string): Promise<void> {
-        if (progressToken === undefined) return;
-        progressCounter += 1;
-        try {
-          await toolServer.server.notification({
-            method: 'notifications/progress',
-            params: {
-              progressToken,
-              progress: progressCounter,
-              message,
-            },
-          });
-        } catch {
-          // Transport may be closed or the client may not support progress
-        }
-      }
-
-      let summary: SessionSummary | null = null;
-      let followError: Error | null = null;
-      const startedAt = Date.now();
-      const events: DaemonStreamEvent[] = [];
-
-      try {
-        // Resolve base URL from lockfile — consistent with the pre-plan-02 subscriber
-        // behavior which did the same resolution internally.
-        const lock = readLockfile(toolCwd);
-        if (!lock) throw new Error('Daemon not running — lockfile not found');
-        const monitorUrl = `http://127.0.0.1:${lock.port}`;
-        const url = `${monitorUrl}${buildPath(API_ROUTES.events, { runId: sessionId })}`;
-
-        for await (const frame of subscribeWithSnapshot<SessionStreamSnapshot, DaemonStreamEvent>(
-          url,
-          { signal },
-        )) {
-          if (frame.kind === 'snapshot') {
-            const snapshot = frame.snapshot;
-            // Re-seed events from snapshot (handles initial connect and reconnect).
-            events.length = 0;
-            for (const ev of snapshot.events) {
-              try {
-                events.push(JSON.parse(ev.data) as DaemonStreamEvent);
-              } catch { /* skip unparseable */ }
-            }
-            // If terminal, aggregate from snapshot events and stop.
-            if (snapshot.status === 'completed' || snapshot.status === 'failed') {
-              summary = aggregateSessionSummary(sessionId, events, monitorUrl);
-              break;
-            }
-          } else if (frame.kind === 'event') {
-            events.push(frame.event);
-            const update = eventToProgress(frame.event, counters);
-            if (update) {
-              counters = update.counters;
-              // Fire-and-forget; emitProgress swallows its own errors.
-              void emitProgress(update.message);
-            }
-            if (frame.event.type === 'session:end') {
-              summary = aggregateSessionSummary(sessionId, events, monitorUrl);
-              break;
-            }
-          }
-        }
-      } catch (err) {
-        followError = err instanceof Error ? err : new Error(String(err));
-      } finally {
-        clearTimeout(timeoutHandle);
-      }
-
-      if (followError || !summary) {
-        const message = followError?.message ?? 'eforge_follow failed';
-        const isAbort = followError?.name === 'AbortError' || /timed out/.test(message);
-        throw new McpUserError({
-          status: isAbort ? 'aborted' : 'error',
-          sessionId,
-          message,
-          filesChanged: counters.filesChanged,
-        });
-      }
-
-      return {
-        status: summary.status,
-        sessionId: summary.sessionId,
-        summary: summary.summary,
-        monitorUrl: summary.monitorUrl,
-        durationMs: Date.now() - startedAt,
-        phaseCounts: { total: summary.phaseCount },
-        filesChanged: summary.filesChanged,
-        issueCounts: { errors: summary.errorCount },
-        eventCount: summary.eventCount,
-      };
     },
   });
 

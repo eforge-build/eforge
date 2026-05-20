@@ -30,7 +30,7 @@ Then, in your project:
 - The `/eforge:playbook` skill for creating, editing, running, and managing reusable automation playbooks
 - The `/eforge:recover` skill for reviewing and acting on failed-PRD recovery verdicts
 - Ambient status display showing active profile, queue count, and build progress (passive — does not start the daemon)
-- Orchestrator decision events (`plan:build:decision`) flow through the Pi extension unchanged. `eforge_follow` surfaces them via the shared `eventToProgress` registry in `@eforge-build/client` (rendered as `"Plan <planId>: decision (<kind>)"`), so no Pi-specific UI work is needed for v1. Richer rendering (timeline track, hover detail) lives in the monitor UI.
+- Orchestrator decision events (`plan:build:decision`) flow through the daemon event stream unchanged. Rich live rendering (timeline track, decision detail, and build activity) lives in the monitor UI.
 
 ## Requirements
 

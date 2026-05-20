@@ -113,7 +113,6 @@ describe('Pi extension: no non-IfRunning api* client imports', () => {
   //   - ensureDaemon: only used in explicit start/restart (tested separately)
   //   - daemonRequestIfRunning: non-starting request helper (allowed by name convention)
   //   - sleep, sanitizeProfileName, parseRawConfigLegacy: utilities
-  //   - subscribeWithSnapshot, aggregateSessionSummary, eventToProgress: stream/data utilities
   //   - LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS: constants
   //   - API_ROUTES, buildPath: routing utilities
   //   - DaemonInWorktreeError, isAgentWorktreeCwd: error/guard utilities
@@ -126,9 +125,6 @@ describe('Pi extension: no non-IfRunning api* client imports', () => {
     'sleep',
     'sanitizeProfileName',
     'parseRawConfigLegacy',
-    'subscribeWithSnapshot',
-    'aggregateSessionSummary',
-    'eventToProgress',
     'LOCKFILE_POLL_INTERVAL_MS',
     'LOCKFILE_POLL_TIMEOUT_MS',
     'API_ROUTES',

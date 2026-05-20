@@ -58,13 +58,7 @@ For each pending PRD, show the title. If there are more than 5, show the first 5
 
 If the overall status is `running`, show:
 
-> The daemon is processing the build in the background. Use `/eforge:status` again to refresh.
-
-Then offer to follow the running session inline:
-
-> Would you like me to follow this build and stream live progress? (yes / no)
-
-If the user agrees, call the `eforge_follow` tool with `{ sessionId: "<sessionId>" }` using the `sessionId` from Step 1. The tool blocks until the build completes and streams phase transitions, files-changed updates, and high/critical review issues as progress messages. On completion, report the final summary (`status`, `phaseCounts`, `filesChanged`, `issueCounts`, `monitorUrl`).
+> The daemon is processing the build in the background. Use `/eforge:status` again to refresh, or open the monitor dashboard for live details.
 
 If the status is `completed` or `failed`:
 - **Completed**: "All plans completed successfully. Post-merge validation was included in the run."
