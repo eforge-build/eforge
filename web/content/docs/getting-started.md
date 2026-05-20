@@ -62,11 +62,15 @@ Once eforge is installed and initialized, start a build from Claude Code or Pi:
 /eforge:plan
 ```
 
-The `/eforge:plan` skill guides a structured planning conversation - exploring scope, architecture, and risks - before handing off to the build pipeline. When you are ready to build:
+The `/eforge:plan` skill guides a structured planning conversation - exploring scope, architecture, risks, acceptance criteria, readiness, and any assumptions that need validation. It writes the conversation to a session-plan file under `.eforge/session-plans/` and records planning type, planning depth, required/optional dimensions, skipped dimensions, open questions, and a readiness status.
+
+When the session plan is ready to build:
 
 ```
 /eforge:build
 ```
+
+With no arguments, `/eforge:build` looks for active session plans. Ready session-plan files are submitted by file path as build source; the daemon converts the session plan into a normalized PRD, enqueues it, and marks the session plan `submitted` with the resulting session ID.
 
 Or enqueue directly with a prompt:
 
