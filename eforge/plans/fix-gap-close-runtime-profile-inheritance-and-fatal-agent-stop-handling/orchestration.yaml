@@ -1,0 +1,50 @@
+name: fix-gap-close-runtime-profile-inheritance-and-fatal-agent-stop-handling
+description: Fix gap-close runtime registry inheritance and treat builder
+  agent-stop errors as fatal failures when no successful result is emitted.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm vitest run test/gap-closer.test.ts test/agent-wiring.test.ts
+    test/pi-transport-resilience.test.ts test/agent-runtime-registry.test.ts
+plans:
+  - id: plan-01-gap-close-runtime-and-fatal-stop
+    name: Fix Gap-Close Runtime Inheritance and Builder Stop Failures
+    depends_on: []
+    branch: fix-gap-close-runtime-profile-inheritance-and-fatal-agent-stop-handling/plan-01-gap-close-runtime-and-fatal-stop
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused but non-trivial engine bugfix touching
+    orchestration wiring, agent failure semantics, and regression tests across
+    several files, so excursion is appropriate. A plan review gate helps ensure
+    the runtime-registry and failure-propagation fixes are scoped correctly
+    without expedition overhead. The build pipeline implements the fix, adds
+    required tests, runs review/fix cycles, then executes test-focused
+    validation. Review emphasizes code correctness and test coverage, with
+    standard strictness suitable for an engine bugfix.
