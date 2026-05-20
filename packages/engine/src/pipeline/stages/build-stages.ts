@@ -21,7 +21,7 @@ import {
 import { builderImplement, builderEvaluate, type BuilderEvaluationResult } from '../../agents/builder.js';
 import { runParallelReview } from '../../agents/parallel-reviewer.js';
 // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
-import { selectNextReviewPerspectives } from '../../review-cycle-perspectives.js';
+import { selectNextReviewPerspectives, shouldTerminateCycleEarly } from '../../review-cycle-perspectives.js';
 // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 import { runReviewFixer } from '../../agents/review-fixer.js';
 import { runDocAuthor } from '../../agents/doc-author.js';
@@ -1047,6 +1047,31 @@ registerBuildStage({
       const previousActiveForSelection = reviewMetadata.activePerspectives.length > 0
         ? reviewMetadata.activePerspectives
         : activePerspectivesForRound ?? [];
+
+      // Post-evaluation early termination: skip next round when all fixes are
+      // accepted, no critical concerns remain, and confidence is satisfied.
+      const planShards = ctx.planFile.agents?.['builder']?.shards;
+      const isShardedBuild = (planShards?.length ?? 0) > 0;
+      const earlyTerm = shouldTerminateCycleEarly({
+        evaluation: getLastBuildEvaluation(ctx),
+        issuesByPerspective: reviewMetadata.issuesByPerspective,
+        previousActive: previousActiveForSelection,
+        perspectiveErrors: reviewMetadata.perspectiveErrors,
+        hasTestCycle: ctx.build.flat().includes('test-cycle'),
+        verifyWasActive: previousActiveForSelection.includes('verify'),
+      });
+      if (!isShardedBuild && earlyTerm.terminate) {
+        yield emitBuildDecision(ctx, {
+          kind: 'cycle-terminated',
+          rationale: earlyTerm.rationale,
+          round,
+          reason: 'no-issues',
+          issuesRemaining: 0,
+        });
+        terminationReason = 'no-issues';
+        break;
+      }
+
       const selection = selectNextReviewPerspectives({
         initialOrder: initialPerspectiveOrder ?? previousActiveForSelection,
         previousActive: previousActiveForSelection,
@@ -1054,6 +1079,7 @@ registerBuildStage({
         evaluation: getLastBuildEvaluation(ctx),
         previousReviewWasParallel: reviewMetadata.parallel,
         perspectiveErrors: reviewMetadata.perspectiveErrors,
+        mandatoryPerspectives: isShardedBuild ? ['verify'] : undefined,
       });
       activePerspectivesForRound = selection.perspectives.length > 0
         ? selection.perspectives

@@ -10,7 +10,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import type { ReviewPerspective } from '../review-heuristics.js';
-import { categorizeFiles, determineApplicableReviewsWithRules, shouldParallelizeReview, isBuiltInReviewPerspective, FILE_COUNT_THRESHOLD, LINE_COUNT_THRESHOLD } from '../review-heuristics.js';
+import { selectInitialReviewPerspectives, shouldParallelizeReview, isBuiltInReviewPerspective, FILE_COUNT_THRESHOLD, LINE_COUNT_THRESHOLD } from '../review-heuristics.js';
 import { emitBuildDecisionForPlan } from '../decisions.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { loadPrompt } from '../prompts.js';
@@ -205,20 +205,16 @@ export async function* runParallelReview(
     perspectives = [...builtInPerspectives, ...selectedExtensionPerspectives];
     // --- eforge:endregion plan-02-extension-perspective-runtime ---
   } else {
-    const categories = categorizeFiles(changedFiles);
-    const { perspectives: inferred, rules } = determineApplicableReviewsWithRules(categories);
-    perspectives = inferred;
+    const selection = selectInitialReviewPerspectives({ changedFiles, changedLines });
+    perspectives = selection.perspectives;
 
     // Emit perspectives-inferred decision — only when inference ran (no override supplied)
-    const activeCategories = Object.entries(categories)
-      .filter(([, files]) => files.length > 0)
-      .map(([cat]) => cat);
     yield emitBuildDecisionForPlan(planId, {
       kind: 'perspectives-inferred',
-      rationale: `Perspectives inferred from ${changedFiles.length} changed files: ${inferred.length > 0 ? inferred.join(', ') : 'none (falling back to single reviewer)'}`,
-      perspectives: inferred,
-      categories: activeCategories,
-      rules,
+      rationale: `Perspectives inferred from ${changedFiles.length} changed files: ${selection.perspectives.length > 0 ? selection.perspectives.join(', ') : 'none (falling back to single reviewer)'}. ${selection.rationale}`,
+      perspectives: selection.perspectives,
+      categories: selection.categories,
+      rules: selection.rules,
     });
 
     // --- eforge:region plan-02-extension-perspective-runtime ---

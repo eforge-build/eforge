@@ -163,7 +163,7 @@ function makeDynamicKeyContext(repo: string, harness: StubHarness, preImplementC
 describe('adaptive review-cycle perspective selection', () => {
   const makeTempDir = useTempDir('eforge-review-cycle-adaptive-');
 
-  it('starts round 2 with fewer reviewer perspectives and records dropped perspectives', async () => {
+  it('terminates after round 1 when warning fixes on ordinary code are all accepted (all perspectives dropped)', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
     await writeRepoFile(repo, 'docs/guide.md', '# Guide\n');
@@ -215,7 +215,7 @@ describe('adaptive review-cycle perspective selection', () => {
       { text: 'Applied review fix.' },
       { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'src/app.ts', action: 'accept', reason: 'Correct' }] }, output: '' }] },
     ], {
-      code: [{ text: round1Issue }, { text: '<review-issues></review-issues>' }],
+      code: [{ text: round1Issue }],
       docs: [{ text: '<review-issues></review-issues>' }],
       api: [{ text: '<review-issues></review-issues>' }],
     });
@@ -224,26 +224,251 @@ describe('adaptive review-cycle perspective selection', () => {
     const events = await collectEvents(getBuildStage('review-cycle')(ctx));
     const reviewStarts = filterEvents(events, 'plan:build:review:parallel:start');
 
-    expect(reviewStarts).toHaveLength(2);
+    // Only one review round: after round 1, the accepted fix on ordinary code
+    // (src/app.ts) does not create concern overlap for code, docs, or api, so
+    // all perspectives are dropped and the cycle terminates.
+    expect(reviewStarts).toHaveLength(1);
     expect(reviewStarts[0].perspectives).toHaveLength(3);
-    expect(reviewStarts[1].perspectives.length).toBeLessThan(reviewStarts[0].perspectives.length);
 
     const respawned = events.filter(
       (event): event is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
         event.type === 'plan:build:decision' && event.decision.kind === 'perspectives-respawned',
     );
-    expect(respawned).toHaveLength(2);
+    expect(respawned).toHaveLength(1);
     expect(respawned[0].decision.perspectives).toEqual(['code', 'docs', 'api']);
     expect(respawned[0].decision.dropped).toEqual([]);
-    const round2Respawned = respawned[1].decision;
-    expect(round2Respawned.perspectives).toEqual(reviewStarts[1].perspectives);
-    expect(round2Respawned.perspectives).toEqual(['code']);
-    expect(round2Respawned.dropped).toEqual(['docs', 'api']);
-    expect(round2Respawned.rationale).toContain('Retained 1 perspective(s) and dropped 2');
-    for (const dropped of round2Respawned.dropped) {
-      expect(round2Respawned.perspectives).not.toContain(dropped);
-    }
+
+    const terminated = events.filter(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        e.type === 'plan:build:decision' && e.decision.kind === 'cycle-terminated',
+    );
+    expect(terminated).toHaveLength(1);
+    const termDecision = terminated[0].decision as { kind: 'cycle-terminated'; reason: string; rationale: string };
+    expect(termDecision.reason).toBe('no-issues');
+    expect(termDecision.rationale).toContain('no review perspectives remain relevant after evaluation');
   });
+
+  // --- eforge:region plan-01-adaptive-review-policy ---
+  it('terminates early after round 1 when verify passed and all fixes accepted', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(repo, 'chore: initial');
+    const preImplementCommit = await head(repo);
+
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 2;\n');
+    await commitAll(repo, 'feat: implementation');
+
+    const round1Issue = `<review-issues>
+  <issue severity="warning" category="bugs" file="src/app.ts">
+    Value should be updated.
+    <fix>Change value from 2 to 3.</fix>
+  </issue>
+</review-issues>`;
+
+    class VerifyFixingHarness extends StubHarness {
+      private readonly reviewerResponses: Record<string, StubResponse[]>;
+
+      constructor(nonReviewerResponses: StubResponse[], reviewerResponses: Record<string, StubResponse[]>) {
+        super(nonReviewerResponses);
+        this.reviewerResponses = reviewerResponses;
+      }
+
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        if (agent === 'reviewer') {
+          const perspective = options.perspective;
+          const routedResponse = perspective ? this.reviewerResponses[perspective]?.shift() : undefined;
+          if (!perspective || !routedResponse) {
+            throw new Error(`Missing routed reviewer response for perspective ${perspective ?? '<none>'}`);
+          }
+          for await (const event of new StubHarness([routedResponse]).run(options, agent, planId)) {
+            yield event;
+          }
+          return;
+        }
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'review-fixer') {
+            const current = await readFile(join(repo, 'src/app.ts'), 'utf8');
+            await writeRepoFile(repo, 'src/app.ts', current.replace('2', '3'));
+          }
+        }
+      }
+    }
+
+    const harness = new VerifyFixingHarness(
+      [
+        { text: 'Applied review fix.' },
+        { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'src/app.ts', action: 'accept', reason: 'Correct' }] }, output: '' }] },
+      ],
+      {
+        code: [{ text: round1Issue }],
+        verify: [{ text: '<review-issues></review-issues>' }],
+      },
+    );
+
+    // Context with code + verify perspectives
+    const planId = 'plan-01-early-term-test';
+    const review: ReviewProfileConfig = {
+      strategy: 'parallel',
+      perspectives: ['code', 'verify'],
+      maxRounds: 2,
+      evaluatorStrictness: 'standard',
+    };
+    const pipeline: PipelineComposition = {
+      scope: 'excursion',
+      compile: [],
+      defaultBuild: ['review-cycle'],
+      defaultReview: DEFAULT_REVIEW,
+      rationale: 'early termination test',
+    };
+    const planFile: PlanFile = {
+      id: planId,
+      name: 'Early Termination Test',
+      dependsOn: [],
+      branch: `test/${planId}`,
+      body: '# Plan\n\nImplement the feature.\n',
+      filePath: join(repo, 'plan.md'),
+    };
+    const orchConfig: OrchestrationConfig = {
+      name: 'early-term-test',
+      description: 'early termination test',
+      created: new Date().toISOString(),
+      mode: 'errand',
+      baseBranch: 'main',
+      pipeline,
+      plans: [{ id: planId, name: planFile.name, dependsOn: [], branch: planFile.branch, build: ['review-cycle'], review }],
+    };
+    const ctx: BuildStageContext = {
+      agentRuntimes: singletonRegistry(harness),
+      config: DEFAULT_CONFIG,
+      pipeline,
+      tracing: createNoopTracingContext(),
+      cwd: repo,
+      planSetName: 'early-term-test',
+      sourceContent: '',
+      modelTracker: new ModelTracker(),
+      plans: [planFile],
+      expeditionModules: [],
+      moduleBuildConfigs: new Map(),
+      planId,
+      worktreePath: repo,
+      planFile,
+      orchConfig,
+      planEntry: orchConfig.plans[0],
+      reviewIssues: [],
+      build: ['review-cycle'],
+      review,
+      preImplementCommit,
+    };
+
+    const events = await collectEvents(getBuildStage('review-cycle')(ctx));
+
+    // Only one review round should start (early termination fires after round 1 evaluate)
+    const reviewStarts = filterEvents(events, 'plan:build:review:parallel:start');
+    expect(reviewStarts).toHaveLength(1);
+
+    // cycle-terminated should be emitted with reason 'no-issues' and early-term rationale
+    const terminated = events.filter(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        e.type === 'plan:build:decision' && e.decision.kind === 'cycle-terminated',
+    );
+    expect(terminated).toHaveLength(1);
+    const termDecision = terminated[0].decision as { kind: 'cycle-terminated'; reason: string; rationale: string };
+    expect(termDecision.reason).toBe('no-issues');
+    expect(termDecision.rationale).toContain('Terminated');
+    expect(termDecision.rationale).toContain('all fixes accepted');
+    expect(termDecision.rationale).toContain('no unresolved high-risk concerns');
+  });
+
+  it('starts round 2 with narrower perspectives when evaluator rejects the fix', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
+    await writeRepoFile(repo, 'docs/guide.md', '# Guide\n');
+    await commitAll(repo, 'chore: initial');
+    const preImplementCommit = await head(repo);
+
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 2;\n');
+    await commitAll(repo, 'feat: implementation');
+
+    const round1Issue = `<review-issues>
+  <issue severity="warning" category="bugs" file="src/app.ts">
+    Value should be updated.
+    <fix>Change value from 2 to 3.</fix>
+  </issue>
+</review-issues>`;
+
+    class RejectingHarness extends StubHarness {
+      private readonly reviewerResponses: Record<string, StubResponse[]>;
+
+      constructor(nonReviewerResponses: StubResponse[], reviewerResponses: Record<string, StubResponse[]>) {
+        super(nonReviewerResponses);
+        this.reviewerResponses = reviewerResponses;
+      }
+
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        if (agent === 'reviewer') {
+          const perspective = options.perspective;
+          const routedResponse = perspective ? this.reviewerResponses[perspective]?.shift() : undefined;
+          if (!perspective || !routedResponse) {
+            throw new Error(`Missing routed reviewer response for perspective ${perspective ?? '<none>'}`);
+          }
+          for await (const event of new StubHarness([routedResponse]).run(options, agent, planId)) {
+            yield event;
+          }
+          return;
+        }
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'review-fixer') {
+            // Write a fixer change so the evaluator has something to reject
+            const current = await readFile(join(repo, 'src/app.ts'), 'utf8');
+            await writeRepoFile(repo, 'src/app.ts', current.replace('2', '3'));
+          }
+        }
+      }
+    }
+
+    const harness = new RejectingHarness(
+      [
+        { text: 'Applied review fix.' },
+        // Evaluator REJECTS the fix — this triggers continued review, not early termination
+        { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'src/app.ts', action: 'reject', reason: 'Fix is wrong' }] }, output: '' }] },
+        // Round 2 code reviewer finds no issues
+      ],
+      {
+        code: [{ text: round1Issue }, { text: '<review-issues></review-issues>' }],
+        docs: [{ text: '<review-issues></review-issues>' }],
+        api: [{ text: '<review-issues></review-issues>' }],
+      },
+    );
+
+    const ctx = makeContext(repo, harness, preImplementCommit);
+    // Make sure maxRounds is >= 3 so round 2 can run
+    const ctxWithRounds: BuildStageContext = {
+      ...ctx,
+      review: { ...ctx.review, maxRounds: 3 },
+    };
+
+    const events = await collectEvents(getBuildStage('review-cycle')(ctxWithRounds));
+
+    const reviewStarts = filterEvents(events, 'plan:build:review:parallel:start');
+    expect(reviewStarts).toHaveLength(2);
+    expect(reviewStarts[0].perspectives).toHaveLength(3);  // code, docs, api in round 1
+    expect(reviewStarts[1].perspectives).toEqual(['code']); // only code in round 2
+
+    // Round 2 perspectives-respawned should have non-empty dropped
+    const respawned = events.filter(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        e.type === 'plan:build:decision' && e.decision.kind === 'perspectives-respawned',
+    );
+    const round2Respawned = respawned.find(r => (r.decision as { round: number }).round === 1)?.decision as
+      { kind: 'perspectives-respawned'; perspectives: string[]; dropped: string[] } | undefined;
+    expect(round2Respawned?.perspectives).toEqual(['code']);
+    expect(round2Respawned?.dropped).not.toHaveLength(0);
+    expect(round2Respawned?.dropped).toContain('docs');
+    expect(round2Respawned?.dropped).toContain('api');
+  });
+  // --- eforge:endregion plan-01-adaptive-review-policy ---
 
   // --- eforge:region plan-01-dynamic-perspective-contracts ---
   it('diagnoses and skips unregistered dynamic perspective keys in review-cycle', async () => {

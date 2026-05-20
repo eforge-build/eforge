@@ -20,6 +20,7 @@ import { extractVerificationCommands } from '@eforge-build/engine/verification';
 import { getVerifyReviewIssueSchemaYaml } from '@eforge-build/engine/schemas';
 import { applyShardedPlanGuard } from '@eforge-build/engine/sharded-plan-guard';
 import { StubHarness } from './stub-harness.js';
+import type { AgentRunOptions } from '@eforge-build/engine/harness';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
@@ -29,7 +30,7 @@ import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
-import type { ReviewIssue, PlanFile, OrchestrationConfig } from '@eforge-build/engine/events';
+import type { ReviewIssue, PlanFile, OrchestrationConfig, EforgeEvent, AgentRole } from '@eforge-build/engine/events';
 import type { BuildStageSpec } from '@eforge-build/engine/config';
 import type { ReviewProfileConfig } from '@eforge-build/client';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
@@ -347,8 +348,9 @@ describe('sharded build → review-cycle full pipeline integration', () => {
     // --- StubHarness responses (consumed in order across all agent calls) ---
     // Call 0: builder shard-a (builderImplement) — no-op text response
     // Call 1: reviewer (verify perspective, round 1) — 1 critical issue
-    // Call 2: review-fixer — applies fix (text only, no real file writes)
-    // Call 3: reviewer (verify perspective, round 2) — no issues
+    // Call 2: review-fixer — writes the accepted non-doc fix below
+    // Call 3: evaluator — accepts the review-fixer change
+    // Call 4: reviewer (verify perspective, round 2) — no issues
     const round1VerifyText = `<review-issues>
   <issue severity="critical" category="verification-failure" file="src/version.ts">
     CONST_VALUE must be 10, not 9.
@@ -356,10 +358,22 @@ describe('sharded build → review-cycle full pipeline integration', () => {
   </issue>
 </review-issues>`;
 
-    const harness = new StubHarness([
+    class ShardedFixHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'review-fixer') {
+            writeFileSync(join(cwd, 'src', 'version.ts'), 'export const CONST_VALUE = 10;\n');
+          }
+        }
+      }
+    }
+
+    const harness = new ShardedFixHarness([
       { text: 'Implementation complete.' },
       { text: round1VerifyText },
       { text: 'Applied fix to src/version.ts: updated CONST_VALUE to 10.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'src/version.ts', action: 'accept', reason: 'Correct sharded fix' }] }, output: '' }] },
       { text: '<review-issues></review-issues>' },
     ]);
 
@@ -384,6 +398,7 @@ describe('sharded build → review-cycle full pipeline integration', () => {
       strategy: 'parallel',
       perspectives: ['verify'],
       maxRounds: 2,
+      evaluatorStrictness: 'standard',
     };
 
     const buildPipeline: PipelineComposition = {
@@ -464,10 +479,20 @@ describe('sharded build → review-cycle full pipeline integration', () => {
     expect(findEvent(events, 'plan:build:review:fix:start')).toBeDefined();
     expect(findEvent(events, 'plan:build:review:fix:complete')).toBeDefined();
 
-    // Review round 2: parallel start with verify perspective
+    // Review round 2: parallel start with verify perspective (mandatory for sharded builds)
     expect(reviewStarts.length).toBeGreaterThanOrEqual(2);
     const round2Start = reviewStarts[1] as { perspectives: string[] };
     expect(round2Start.perspectives).toContain('verify');
+
+    // The perspectives-respawned decision for round 2 should retain verify
+    const respawned = events.filter(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        e.type === 'plan:build:decision' && e.decision.kind === 'perspectives-respawned',
+    );
+    const round2Respawned = respawned.find(r => (r.decision as { round: number }).round === 1);
+    expect(round2Respawned).toBeDefined();
+    const decision = round2Respawned!.decision as { kind: 'perspectives-respawned'; perspectives: string[] };
+    expect(decision.perspectives).toContain('verify');
 
     // Review round 2: clean (0 issues)
     expect(reviewCompletes.length).toBeGreaterThanOrEqual(2);
