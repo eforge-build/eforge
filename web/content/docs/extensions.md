@@ -28,7 +28,7 @@ Toolbelts answer "which project MCP servers from `.mcp.json` should this tier ex
 
 A typical extension workflow has four parts:
 
-1. **Install or author** - use `eforge extension install <source>` for npm packages, local package directories, or tarballs, or scaffold a local TypeScript module with `eforge extension new <name>`. The Claude Code `/eforge:extend` skill and Pi extension expose the same management actions through their host UIs.
+1. **Install or author** - use `eforge extension install <source>` for npm packages, local package directories, or tarballs, or scaffold a local TypeScript module with `eforge extension new <name>`. Consumer integrations expose the same management actions through their host UIs.
 2. **Configure loading** - keep `extensions.enabled: true`, then optionally use `extensions.include`, `extensions.exclude`, or `extensions.paths` to select discovered modules. Start experiments in `.eforge/extensions/` and promote to `eforge/extensions/` only when the team should share them.
 3. **Trust and validate** - project/team extensions are skipped until each user runs `eforge extension trust <name>` after inspecting the code. Run `eforge extension validate` and, for event hooks, `eforge extension test` before reload or a real build.
 4. **Use at runtime** - reload the daemon's extension registry with `eforge extension reload`, then run normal builds. Loaded extensions can observe events, add per-agent prompt/tool context, route profiles, enforce shipped policy gates, provide input sources and PRD enrichers, add reviewer perspectives, and run validation providers depending on what they registered.
