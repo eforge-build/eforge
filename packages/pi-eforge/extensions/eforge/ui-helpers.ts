@@ -2,12 +2,11 @@
  * Shared TUI overlay utilities for native Pi command handlers.
  *
  * Provides reusable overlay patterns: select lists, info panels, and
- * loading indicators - wrapping the Container/SelectList/DynamicBorder
- * composition that the eforge_confirm_build tool established.
+ * loading indicators.
  */
 
-import { DynamicBorder, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
-import { Container, Input, Markdown, type SelectItem, SelectList, Text, matchesKey, Key, fuzzyFilter } from "@earendil-works/pi-tui";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { Container, Input, Markdown, type SelectItem, SelectList, Text, matchesKey, Key, fuzzyFilter, truncateToWidth } from "@earendil-works/pi-tui";
 
 type OverlayAnchor =
   | "center"
@@ -80,6 +79,31 @@ const INFO_OVERLAY_OPTIONS: CustomUiOptions = {
 };
 
 /**
+ * Wrap rendered component lines in a full box border so floating overlays have
+ * clear side boundaries. Uses ANSI-aware truncation/padding to preserve theme
+ * styling while keeping every rendered line within the requested width.
+ */
+export function renderBorderedLines(
+  lines: string[],
+  width: number,
+  color: (text: string) => string,
+): string[] {
+  if (width < 3) {
+    return (lines.length > 0 ? lines : [""]).map((line) => truncateToWidth(line, width, "", true));
+  }
+
+  const innerWidth = width - 2;
+  const contentLines = lines.length > 0 ? lines : [""];
+  return [
+    color(`╭${"─".repeat(innerWidth)}╮`),
+    ...contentLines.map((line) =>
+      color("│") + truncateToWidth(line, innerWidth, "", true) + color("│"),
+    ),
+    color(`╰${"─".repeat(innerWidth)}╯`),
+  ];
+}
+
+/**
  * Show a select-list overlay and return the chosen item's value,
  * or null if the user cancelled.
  */
@@ -91,7 +115,6 @@ export async function showSelectOverlay(
   return ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
     const container = new Container();
 
-    container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
     container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
 
     const visibleCount = Math.min(items.length, 15);
@@ -108,10 +131,13 @@ export async function showSelectOverlay(
 
     container.addChild(selectList);
     container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc cancel"), 1, 0));
-    container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 
     return {
-      render: (width: number) => container.render(width),
+      render: (width: number) => renderBorderedLines(
+        container.render(Math.max(1, width - 2)),
+        width,
+        (s: string) => theme.fg("accent", s),
+      ),
       invalidate: () => container.invalidate(),
       handleInput: (data: string) => {
         selectList.handleInput(data);
@@ -134,14 +160,12 @@ export async function showSearchableSelectOverlay(
     const MAX_VISIBLE = 15;
     const container = new Container();
 
-    const topBorder = new DynamicBorder((s: string) => theme.fg("accent", s));
     const titleText = new Text(theme.fg("accent", theme.bold(title)), 1, 0);
     const helpText = new Text(
       theme.fg("dim", "type to filter • ↑↓ navigate • enter select • esc cancel"),
       1,
       0,
     );
-    const bottomBorder = new DynamicBorder((s: string) => theme.fg("accent", s));
 
     const listTheme = {
       selectedPrefix: (text: string) => theme.fg("accent", text),
@@ -165,7 +189,6 @@ export async function showSearchableSelectOverlay(
 
     function rebuildContainer(filteredItems: SelectItem[]) {
       container.clear();
-      container.addChild(topBorder);
       container.addChild(titleText);
       container.addChild(input);
       selectList = new SelectList(filteredItems, Math.min(filteredItems.length, MAX_VISIBLE), listTheme);
@@ -173,7 +196,6 @@ export async function showSearchableSelectOverlay(
       selectList.onCancel = () => done(null);
       container.addChild(selectList);
       container.addChild(helpText);
-      container.addChild(bottomBorder);
     }
 
     rebuildContainer(items);
@@ -186,7 +208,11 @@ export async function showSearchableSelectOverlay(
         input.focused = value;
       },
       render(width: number) {
-        return container.render(width);
+        return renderBorderedLines(
+          container.render(Math.max(1, width - 2)),
+          width,
+          (s: string) => theme.fg("accent", s),
+        );
       },
       invalidate() {
         container.invalidate();
@@ -228,15 +254,17 @@ export async function showInfoOverlay(
     const container = new Container();
     const mdTheme = getMarkdownTheme();
 
-    container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
     container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
     container.addChild(new Markdown(content, 1, 1, mdTheme));
 
     container.addChild(new Text(theme.fg("dim", "esc/enter close"), 1, 0));
-    container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 
     return {
-      render: (width: number) => container.render(width),
+      render: (width: number) => renderBorderedLines(
+        container.render(Math.max(1, width - 2)),
+        width,
+        (s: string) => theme.fg("accent", s),
+      ),
       invalidate: () => container.invalidate(),
       handleInput: (data: string) => {
         if (

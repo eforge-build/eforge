@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, type SelectItem, SelectList, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -79,7 +79,7 @@ import { handleConfigCommand } from './config-command';
 import { handlePlaybookCommand } from './playbook-commands';
 import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
-import type { UIContext } from './ui-helpers';
+import { renderBorderedLines, type UIContext } from './ui-helpers';
 export {
   formatSingleBuildFooter,
   formatAggregateFooter,
@@ -1715,7 +1715,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const container = new Container();
         const mdTheme = getMarkdownTheme();
 
-        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
         container.addChild(new Text(theme.fg("accent", theme.bold("eforge - Confirm Build")), 1, 0));
         container.addChild(new Markdown(params.source, 1, 1, mdTheme));
 
@@ -1732,10 +1731,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
         container.addChild(selectList);
         container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc cancel"), 1, 0));
-        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 
         return {
-          render: (width: number) => container.render(width),
+          render: (width: number) => renderBorderedLines(
+            container.render(Math.max(1, width - 2)),
+            width,
+            (s: string) => theme.fg("accent", s),
+          ),
           invalidate: () => container.invalidate(),
           handleInput: (data: string) => {
             selectList.handleInput(data);
