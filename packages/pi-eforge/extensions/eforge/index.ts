@@ -1740,6 +1740,15 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             tui.requestRender();
           },
         };
+      }, {
+        overlay: true,
+        overlayOptions: {
+          anchor: "center",
+          width: "80%",
+          minWidth: 40,
+          maxHeight: "85%",
+          margin: 1,
+        },
       });
 
       return jsonResult({ choice: choice ?? "cancel" });

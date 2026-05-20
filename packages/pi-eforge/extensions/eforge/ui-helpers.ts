@@ -9,6 +9,39 @@
 import { DynamicBorder, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Input, Markdown, type SelectItem, SelectList, Text, matchesKey, Key, fuzzyFilter } from "@earendil-works/pi-tui";
 
+type OverlayAnchor =
+  | "center"
+  | "top-left"
+  | "top-center"
+  | "top-right"
+  | "left-center"
+  | "right-center"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right";
+
+type OverlaySize = number | `${number}%`;
+
+interface OverlayOptions {
+  width?: OverlaySize;
+  minWidth?: number;
+  maxHeight?: OverlaySize;
+  anchor?: OverlayAnchor;
+  margin?: number | { top?: number; right?: number; bottom?: number; left?: number };
+}
+
+interface CustomUiOptions {
+  overlay?: boolean;
+  overlayOptions?: OverlayOptions;
+}
+
+interface CustomComponent {
+  focused?: boolean;
+  render(width: number): string[];
+  invalidate(): void;
+  handleInput(data: string): void;
+}
+
 /** Minimal UI context type for overlay helpers. */
 export interface UIContext {
   cwd: string;
@@ -19,14 +52,32 @@ export interface UIContext {
       theme: { fg(color: string, text: string): string; bold(text: string): string },
       kb: unknown,
       done: (result: T) => void,
-    ) => {
-      render(width: number): string[];
-      invalidate(): void;
-      handleInput(data: string): void;
-    }): Promise<T>;
+    ) => CustomComponent, options?: CustomUiOptions): Promise<T>;
     setStatus(key: string, text: string | undefined): void;
   };
 }
+
+const SELECT_OVERLAY_OPTIONS: CustomUiOptions = {
+  overlay: true,
+  overlayOptions: {
+    anchor: "center",
+    width: "70%",
+    minWidth: 40,
+    maxHeight: "80%",
+    margin: 1,
+  },
+};
+
+const INFO_OVERLAY_OPTIONS: CustomUiOptions = {
+  overlay: true,
+  overlayOptions: {
+    anchor: "center",
+    width: "80%",
+    minWidth: 40,
+    maxHeight: "85%",
+    margin: 1,
+  },
+};
 
 /**
  * Show a select-list overlay and return the chosen item's value,
@@ -67,7 +118,7 @@ export async function showSelectOverlay(
         tui.requestRender();
       },
     };
-  });
+  }, SELECT_OVERLAY_OPTIONS);
 }
 
 /**
@@ -161,7 +212,7 @@ export async function showSearchableSelectOverlay(
         tui.requestRender();
       },
     };
-  });
+  }, SELECT_OVERLAY_OPTIONS);
 }
 
 /**
@@ -208,7 +259,7 @@ export async function showInfoOverlay(
         tui.requestRender();
       },
     };
-  });
+  }, INFO_OVERLAY_OPTIONS);
 }
 
 /**
