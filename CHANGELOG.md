@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.16] - 2026-05-19
+
+### Bug Fixes
+
+- **release**: include extension sdk in lockstep versioning
+
+### Other
+
+- **core**: remove auth token (using trusted publisher)
+
 ## [0.7.15] - 2026-05-19
 
 ### Bug Fixes
@@ -561,12 +571,6 @@ Maintenance release
 ### Maintenance
 
 - **validate-command-timeout**: fix validate-phase timeout test
-
-## [0.6.1] - 2026-04-23
-
-### Features
-
-- add searchable overlays for provider and model selection
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
