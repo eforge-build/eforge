@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.7.14] - 2026-05-19
+
+### Features
+
+- **add-profile-support-to-playbook-frontmatter**: Add optional playbook frontmatter profile support, propagate planning playbook profile metadata via session-plan agent_profile, and update consumer surfaces/docs.
+- **consumer-surfaces-and-docs**: Consumer Surfaces and Documentation
+- **core**: PRD Gap Close
+- **core-profile-propagation**: Core Playbook Profile Propagation
+- **generate-public-web-docs-and-audit-for-user-facing-gaps**: Audit public docs and fill user-facing gaps
+- **investigation-first-planning-playbook-invocation-semantics**: Investigation-first invocation semantics for planning-mode playbooks: daemon run returns requires-agent, clients branch on mode, and skills document agent-led investigation before planning.
+- **investigation-first-skills-docs**: Investigation-First Skills and Documentation
+- **keep-public-documentation-synchronized-with-the-current-implementation**: Sync public documentation with current implementation
+- **pi-eforge**: add native restart overlay
+- **pi-eforge**: add native status overlay
+- **pi-eforge**: show extension dialogs as overlays
+- **playbook-run-contract**: Playbook Run Requires-Agent Contract
+- **reconcile-scheduler-state-for-stale-queue-locks-and-phantom-running-capacity**: Runtime Queue Lock Reconciliation
+- **surface-and-persist-selected-build-profile-in-monitor-ui**: Persist Session Profiles and Render Plan Tab Badge
+
+### Bug Fixes
+
+- **docs-gen**: drop volatile commit provenance
+- **pi-eforge**: render side borders on overlays
+
+### Refactoring
+
+- **integrations**: remove follow tool
+
+### Maintenance
+
+- **playbooks**: replace docs sync workflow
+- **playbooks**: set public docs audit profile
+- **profiles**: add docs-heavy eforge profile
+
+### Other
+
+- **core**: remove stale build
+
 ## [0.7.13] - 2026-05-19
 
 ### Features
@@ -573,18 +611,6 @@ Maintenance release
 ### Other
 
 - Upgrade deps
-
-## [0.5.12] - 2026-04-21
-
-### Features
-
-- **pi-follow-parity:** Pi extension parity: eforge_follow tool and command wiring
-- **mcp-follow-tool:** Add eforge_follow MCP tool and deprecate logging forwarder
-- **client-subscribe-helper:** Extract subscribeToSession helper into @eforge-build/client
-
-### Maintenance
-
-- remove merged PRD from queue/failed
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
