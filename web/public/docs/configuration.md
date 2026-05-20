@@ -108,19 +108,21 @@ Claude Agent SDK usage follows Anthropic's Agent SDK credit/API-pricing policy d
 
 A profile bundles tier recipes into a reusable named file. This lets you switch between configurations - such as "use Claude for review, local model for implementation" - without editing `eforge/config.yaml`.
 
-Profiles live at three scopes:
+Profiles live at three scopes (highest-priority-first):
 
-- `~/.config/eforge/profiles/` - User scope
-- `eforge/profiles/` - Project scope (committed)
-- `.eforge/profiles/` - Project-local scope (gitignored)
+| Scope | Directory | Committed? |
+|-------|-----------|-----------|
+| Project-local | `.eforge/profiles/` | No (gitignored) |
+| Project | `eforge/profiles/` | Yes |
+| User | `~/.config/eforge/profiles/` | No |
 
-The active profile is resolved highest-priority-first. Set one with:
+Set the active profile from Claude Code or Pi with:
 
 ```
-/eforge:profile use <name>
+/eforge:profile <name>
 ```
 
-Or from the CLI: `eforge profile use <name>`.
+The standalone CLI can override the active profile for one build with `eforge build --profile <name> ...`; profile creation and switching are handled by the host skills. For a complete walkthrough covering profile creation, scope resolution, toolbelts inside profiles, and profile-router precedence, see [Profiles](/docs/profiles).
 
 ## Native Extensions
 
@@ -141,6 +143,7 @@ extensions:
   agentContextHookTimeoutMs: 5000 # optional onAgentRun timeout; defaults to eventHookTimeoutMs
   profileRouterTimeoutMs: 5000   # optional registerProfileRouter timeout; defaults to eventHookTimeoutMs
   policyGateTimeoutMs: 5000      # optional policy gate timeout; defaults to eventHookTimeoutMs
+  validationProviderTimeoutMs: 5000 # optional validation-provider timeout; defaults to eventHookTimeoutMs
   policyGateFailurePolicy: fail-closed # fail-closed blocks on failures; fail-open allows after diagnostics
   include:
     - build-notifier             # optional allowlist by name
@@ -153,7 +156,7 @@ extensions:
 
 Supported extension entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. The loader executes the default-export factory in the eforge daemon/worker Node process without a sandbox, records registrations, and surfaces status, diagnostics, shadows, trust, source, strategy, registration counts, and event replay results through `eforge extension list/show/validate/test` and extension API routes.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, and management commands (`eforge extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote`). Package-managed extensions installed via `eforge extension install` carry nested `package.*` and `install.*` provenance fields such as `install.sourceKind`, `install.sourceSpec`, and `install.installedAt`; install sidecar files are excluded from the trust hash. `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, reviewer perspective execution, validation-provider execution, and management commands (`eforge extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote`). Package-managed extensions installed via `eforge extension install` carry nested `package.*` and `install.*` provenance fields such as `install.sourceKind`, `install.sourceSpec`, and `install.installedAt`; install sidecar files are excluded from the trust hash. `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
 
 ## Guided Toolbelt Presets
 
@@ -309,7 +312,7 @@ build:
   maxValidationRetries: 2
 ```
 
-Each command runs under a 5-minute wall-clock timeout. On failure, a validation-fixer agent attempts repairs up to `maxValidationRetries` times.
+Each command runs under a 5-minute wall-clock timeout. On failure, a validation-fixer agent attempts repairs up to `maxValidationRetries` times. When retries are exhausted, the build is marked failed. See [Troubleshooting - Validation-fixer retries exhausted](/docs/troubleshooting#validation-fixer-retries-exhausted) for recovery steps.
 
 ## Queue Concurrency
 
@@ -366,7 +369,7 @@ hooks:
     command: "curl -X POST $SLACK_WEBHOOK -d '{\"text\": \"Build failed\"}'"
 ```
 
-Hooks do not block the pipeline. See the [Hooks](/reference/config#hooks) section in the Configuration Reference for field details.
+Hooks do not block the pipeline. See the [Hooks](/reference/config#hooks) section in the Configuration Reference for field details and the [Integrations](/docs/integrations#shell-hooks) page for examples.
 
 ## Full Reference
 

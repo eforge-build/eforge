@@ -96,6 +96,10 @@ eforge build plans/my-feature-prd.md
 
 - [Concepts](./concepts) - How the pipeline works, what blind review means, and what harnesses do
 - [Configuration](./configuration) - The most important config options and how to tune them
+- [Profiles](./profiles) - Create and switch agent runtime profiles that control harness, model, and effort
+- [Playbooks](./playbooks) - Build reusable workflow templates for recurring work
+- [Integrations](./integrations) - How to use eforge from Claude Code, Pi, the CLI, and external issue trackers
+- [Troubleshooting](./troubleshooting) - Daemon startup, failed builds, and common error remedies
 - [Glossary](./glossary) - Definitions for eforge-specific terms such as profiles, worktrees, and playbooks
 - [CLI Reference](/reference/cli) - All CLI commands and flags
 - [Configuration Reference](/reference/config) - Full `eforge/config.yaml` schema

@@ -15,8 +15,12 @@ export const DOCS_NAV: DocNavItem[] = [
   { slug: 'getting-started', title: 'Getting Started', group: 'Guides' },
   { slug: 'concepts', title: 'Core Concepts', group: 'Guides' },
   { slug: 'configuration', title: 'Configuration', group: 'Guides' },
+  { slug: 'profiles', title: 'Profiles', group: 'Guides' },
+  { slug: 'playbooks', title: 'Playbooks', group: 'Guides' },
   { slug: 'extensions', title: 'Extensions', group: 'Extensibility' },
   { slug: 'extensions-api', title: 'Extensions API Reference', group: 'Extensibility' },
+  { slug: 'integrations', title: 'Integrations', group: 'Integrations' },
+  { slug: 'troubleshooting', title: 'Troubleshooting', group: 'Troubleshooting' },
   { slug: 'glossary', title: 'Glossary', group: 'Reference' },
 ];
 

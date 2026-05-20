@@ -61,6 +61,26 @@ export const LLMS_MANIFEST: LlmsManifest = {
       url: '/docs/extensions-api.md',
       description: 'Typed extension SDK concepts, hook registration, context objects, and runtime boundaries',
     },
+    {
+      title: 'Profiles guide',
+      url: '/docs/profiles.md',
+      description: 'Create, activate, and route agent runtime profiles across project and user scopes',
+    },
+    {
+      title: 'Playbooks guide',
+      url: '/docs/playbooks.md',
+      description: 'Create, manage, and run reusable workflow playbooks',
+    },
+    {
+      title: 'Integrations guide',
+      url: '/docs/integrations.md',
+      description: 'Use shell hooks, input sources, Langfuse tracing, and the monitor UI',
+    },
+    {
+      title: 'Troubleshooting guide',
+      url: '/docs/troubleshooting.md',
+      description: 'Recover from failed builds, docs drift, invalid profiles, and other common issues',
+    },
     // --- eforge:endregion plan-01-reference-and-mirror-content ---
   ],
   entries: [

@@ -130,6 +130,24 @@ async function mirrorGuideMarkdown(repoRoot: string, outputPaths: OutputPaths): 
       source: join(repoRoot, 'web', 'content', 'docs', 'glossary.md'),
       target: outputPaths.publicDocsGlossary,
     },
+    // --- eforge:region plan-01-public-docs-audit-and-fill-gaps ---
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'profiles.md'),
+      target: outputPaths.publicDocsProfiles,
+    },
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'playbooks.md'),
+      target: outputPaths.publicDocsPlaybooks,
+    },
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'integrations.md'),
+      target: outputPaths.publicDocsIntegrations,
+    },
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'troubleshooting.md'),
+      target: outputPaths.publicDocsTroubleshooting,
+    },
+    // --- eforge:endregion plan-01-public-docs-audit-and-fill-gaps ---
   ];
 
   for (const mirror of guideMirrors) {
