@@ -9,7 +9,7 @@
  *   - On publish, the source-of-truth version is re-propagated to the other
  *     lockstep packages as a safety net.
  *   - pnpm -r publish rewrites workspace:* refs to concrete versions and
- *     skips packages marked "private": true (currently monitor-ui).
+ *     skips packages marked "private": true (currently docs-gen and monitor-ui).
  *
  * Usage:
  *   pnpm publish-all            # full publish
@@ -47,7 +47,7 @@ run("pnpm test");
 // 4. Publish (or dry-run). pnpm -r publish:
 //   - publishes workspace packages in topological dependency order
 //   - rewrites workspace:* to the concrete version of the target package
-//   - auto-skips packages with "private": true (monitor-ui)
+//   - auto-skips packages with "private": true (docs-gen and monitor-ui)
 //   - --no-git-checks lets CI publish from a detached HEAD on a tag
 const publishArgs = [
   "pnpm -r publish",
