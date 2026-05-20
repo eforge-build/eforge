@@ -22,6 +22,11 @@ jobs:
           node-version: "22"
           cache: pnpm
 
+      # npm 11 includes trusted-publishing OIDC token exchange support. pnpm
+      # delegates publishing to npm, so make sure the delegated npm is new enough.
+      - run: npm install -g npm@11
+      - run: npm --version
+
       - run: pnpm install --frozen-lockfile
 
       # publish-all.mjs is the single source of truth for a release:
