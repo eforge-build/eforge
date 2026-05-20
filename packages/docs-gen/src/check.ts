@@ -55,28 +55,7 @@ export async function runGenerators(
 }
 
 /**
- * Normalize content for drift comparison by stripping commit-hash lines.
- *
- * The commit hash in provenance headers changes every time a commit is made,
- * creating a circular dependency when comparing checked-in files against
- * freshly generated ones (different HEAD). We strip those lines so only
- * actual content changes trigger a drift failure.
- *
- * Two formats are normalized:
- *   - HTML comment: `<!-- Commit: <hash> -->`  (Markdown reference files)
- *   - Plain text:   `Docs commit: <hash>`       (llms.txt)
- */
-function normalizeForDrift(content: string): string {
-  return content
-    .replace(/^<!-- Commit: [0-9a-f]+ -->$/gm, '<!-- Commit: <normalized> -->')
-    .replace(/^Docs commit: [0-9a-f]+$/gm, 'Docs commit: <normalized>');
-}
-
-/**
  * Generate all docs into a temp directory and diff against checked-in files.
- *
- * The comparison normalizes commit-hash provenance lines so that routine
- * commit-hash churn does not register as content drift.
  *
  * @returns `{ ok: true, changed: [] }` when all files are byte-identical,
  *          `{ ok: false, changed: ['contentCli', ...] }` on drift.
@@ -105,7 +84,7 @@ export async function runDriftCheck(repoRoot?: string): Promise<DriftCheckResult
         readFile(checkedInPath, 'utf-8').catch(() => null),
         readFile(tmpPath, 'utf-8').catch(() => null),
       ]);
-      if (normalizeForDrift(checkedIn ?? '') !== normalizeForDrift(generated ?? '')) {
+      if ((checkedIn ?? '') !== (generated ?? '')) {
         changed.push(key);
       }
     }

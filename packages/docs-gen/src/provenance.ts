@@ -2,24 +2,19 @@
  * Provenance metadata for generated reference files.
  *
  * Every generated file begins with a provenance header that records the
- * eforge version and git commit. No timestamps are included so that
- * byte-identical regeneration is possible on the same commit.
+ * eforge version and source files. No timestamps or commit hashes are included
+ * so byte-identical regeneration remains possible across commits.
  */
 
-import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export interface ProvenanceInfo {
   eforgeVersion: string;
-  gitCommit: string;
 }
 
 /**
  * Gather provenance information from the repo.
- *
- * Falls back gracefully when git is unavailable (e.g. detached CI) by
- * reading `EFORGE_GIT_COMMIT` from the environment.
  */
 export function gatherProvenance(repoRoot: string): ProvenanceInfo {
   let eforgeVersion = 'unknown';
@@ -31,19 +26,7 @@ export function gatherProvenance(repoRoot: string): ProvenanceInfo {
     // Ignore — keep 'unknown'
   }
 
-  let gitCommit = process.env['EFORGE_GIT_COMMIT'] ?? 'unknown';
-  try {
-    gitCommit = execSync('git rev-parse --short HEAD', {
-      stdio: ['ignore', 'pipe', 'ignore'],
-      cwd: repoRoot,
-    })
-      .toString()
-      .trim();
-  } catch {
-    // Ignore — keep env value or 'unknown'
-  }
-
-  return { eforgeVersion, gitCommit };
+  return { eforgeVersion };
 }
 
 /**
@@ -55,13 +38,11 @@ export function gatherProvenance(repoRoot: string): ProvenanceInfo {
 export function buildProvenanceHeader(opts: {
   sourceFiles: string[];
   eforgeVersion: string;
-  gitCommit: string;
 }): string {
   const sourceList = opts.sourceFiles.join(', ');
   return [
     '<!-- Generated file. Do not edit. -->',
     `<!-- eforge version: ${opts.eforgeVersion} -->`,
-    `<!-- Commit: ${opts.gitCommit} -->`,
     `<!-- Source: ${sourceList} -->`,
     '',
   ].join('\n');

@@ -72,7 +72,6 @@ function buildLlmsTxt(provenance: ProvenanceInfo): string {
 
   lines.push('');
   lines.push(`eforge version: ${provenance.eforgeVersion}`);
-  lines.push(`Docs commit: ${provenance.gitCommit}`);
   lines.push('');
 
   return lines.join('\n');

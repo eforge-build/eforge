@@ -80,7 +80,6 @@ export async function generateEvents(opts: {
   const header = buildProvenanceHeader({
     sourceFiles: ['packages/client/src/events.schemas.ts'],
     eforgeVersion: opts.provenance.eforgeVersion,
-    gitCommit: opts.provenance.gitCommit,
   });
 
   // Write JSON Schema — TypeBox schema objects are JSON Schema (sans Symbol keys)

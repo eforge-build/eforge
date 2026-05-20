@@ -47,7 +47,6 @@ export async function generateConfig(opts: {
   const header = buildProvenanceHeader({
     sourceFiles: ['packages/engine/src/config.ts'],
     eforgeVersion: opts.provenance.eforgeVersion,
-    gitCommit: opts.provenance.gitCommit,
   });
 
   // Generate JSON Schema using Zod v4 native converter
