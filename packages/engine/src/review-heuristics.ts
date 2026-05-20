@@ -62,6 +62,7 @@ const SECURITY_SENSITIVE_TERMS: readonly string[] = [
 export function isSecuritySensitivePath(file: string): boolean {
   const lower = file.toLowerCase();
   return lower.split('/').some(component => {
+    if (component === '.env' || component.startsWith('.env.')) return true;
     // Remove file extension for name-only matching
     const name = component.replace(/\.[^.]+$/, '');
     return SECURITY_SENSITIVE_TERMS.some(term => {
@@ -155,7 +156,9 @@ export function selectInitialReviewPerspectives({
     .map(([cat]) => cat);
 
   const droppedByBudget = ranked.slice(budget);
-  const rationaleFragments = [...rules];
+  const rationaleFragments = ranked.length > 0
+    ? [...rules, budgetRule]
+    : ['No perspectives inferred', budgetRule];
   if (droppedByBudget.length > 0) {
     rationaleFragments.push(`Dropped by budget cap (${budget}): ${droppedByBudget.join(', ')}`);
   }
@@ -166,7 +169,7 @@ export function selectInitialReviewPerspectives({
     rules: [...rules, budgetRule],
     riskSignals,
     budget,
-    rationale: rationaleFragments.length > 0 ? rationaleFragments.join('; ') : 'No perspectives inferred',
+    rationale: rationaleFragments.join('; '),
   };
 }
 

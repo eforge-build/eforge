@@ -145,6 +145,14 @@ export function shouldTerminateCycleEarly(
     };
   }
 
+  const highRiskAcceptedFiles = acceptedFiles.filter(isHighRiskAcceptedFile);
+  if (highRiskAcceptedFiles.length > 0) {
+    return {
+      terminate: false,
+      rationale: `Accepted command/integration-risk file(s) require follow-up confirmation: ${highRiskAcceptedFiles.join(', ')}`,
+    };
+  }
+
   // Test-cycle in pipeline: tests confirm command-level behavior
   if (input.hasTestCycle) {
     return {
@@ -207,14 +215,20 @@ function hasCompletionForEveryActive(input: SelectNextReviewPerspectivesInput): 
   );
 }
 
-function hasAnyVerdict(summary: ReviewCycleEvaluationFileSummary): boolean {
-  if (summary.mode === 'file') return summary.action !== undefined;
-  return summary.acceptedHunks.length > 0 || summary.rejectedHunks.length > 0 || summary.reviewHunks.length > 0;
-}
-
 function hasAcceptedVerdict(summary: ReviewCycleEvaluationFileSummary): boolean {
   if (summary.mode === 'file') return summary.action === 'accept';
   return summary.acceptedHunks.length > 0;
+}
+
+function hasRejectedOrReviewVerdict(summary: ReviewCycleEvaluationFileSummary): boolean {
+  if (summary.mode === 'file') return summary.action === 'reject' || summary.action === 'review';
+  return summary.rejectedHunks.length > 0 || summary.reviewHunks.length > 0;
+}
+
+function isHighRiskAcceptedFile(file: string): boolean {
+  const categories = categorizeFiles([file]);
+  return categories.deps.length > 0 || categories.config.length > 0 ||
+    categories.test.length > 0 || isSecuritySensitivePath(file);
 }
 
 /**
@@ -320,7 +334,7 @@ function verifyKeepRationale(
  */
 function concernPerspectives(evaluation: ReviewCycleEvaluationSummary): Set<string> {
   const nonAcceptedFiles = evaluation.files
-    .filter(s => hasAnyVerdict(s) && !hasAcceptedVerdict(s))
+    .filter(hasRejectedOrReviewVerdict)
     .map(summary => summary.file);
   const acceptedFiles = evaluation.files
     .filter(hasAcceptedVerdict)
@@ -328,11 +342,7 @@ function concernPerspectives(evaluation: ReviewCycleEvaluationSummary): Set<stri
   // Accepted ordinary-code files are excluded from concern inference — the fix was
   // accepted, so the code concern is resolved. Only accepted high-risk files (deps,
   // config, docs, test, security-sensitive paths) still warrant re-review.
-  const highRiskAcceptedFiles = acceptedFiles.filter(file => {
-    const cats = categorizeFiles([file]);
-    return cats.deps.length > 0 || cats.config.length > 0 || cats.docs.length > 0 ||
-      cats.test.length > 0 || isSecuritySensitivePath(file);
-  });
+  const highRiskAcceptedFiles = acceptedFiles.filter(file => isDocsPath(file) || isHighRiskAcceptedFile(file));
   const relevantFiles = [...nonAcceptedFiles, ...highRiskAcceptedFiles];
   const categories = categorizeFiles(relevantFiles);
   return new Set<string>(determineApplicableReviewsWithRules(categories).perspectives);
