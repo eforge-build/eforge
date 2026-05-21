@@ -165,6 +165,8 @@ The project-local tier (`.eforge/`) is automatically gitignored by `/eforge:init
 
 ## Development
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch/PR workflow and [docs/releasing.md](docs/releasing.md) for the maintainer release process.
+
 ```bash
 pnpm build        # Bundle all workspace packages
 pnpm test         # Run unit tests (vitest)
