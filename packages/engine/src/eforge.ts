@@ -123,6 +123,10 @@ export interface QueueOptions {
    * on fs.watch. The inject function is a no-op after the watcher is aborted.
    */
   onInjectEventRegister?: (inject: (event: SchedulerInputEvent) => void) => void;
+  // --- eforge:region plan-02-api-queue-and-ui ---
+  /** Override the project-level on-success landing action for this build. */
+  onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  // --- eforge:endregion plan-02-api-queue-and-ui ---
   // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
   /**
    * Callback invoked once the scheduler is ready, passing a control object
@@ -533,6 +537,7 @@ export class EforgeEngine {
         cwd,
         depends_on: dependsOn,
         ...(options.profile !== undefined && { profile: options.profile }),
+        ...(options.onSuccess !== undefined && { onSuccess: options.onSuccess }),
       });
 
       // Commit the enqueued PRD
@@ -1126,6 +1131,8 @@ export class EforgeEngine {
       }
 
       // Build the plan — PRD cleanup flows through build()
+      // Resolve onSuccess precedence: explicit options.onSuccess > PRD frontmatter.onSuccess
+      const resolvedOnSuccess = options.onSuccess ?? prd.frontmatter.onSuccess;
       let buildFailed = false;
       for await (const event of withRunId(this.build(planSetName, {
         auto: options.auto,
@@ -1133,6 +1140,7 @@ export class EforgeEngine {
         cwd,
         abortController,
         prdFilePath: prd.filePath,
+        ...(resolvedOnSuccess !== undefined && { onSuccess: resolvedOnSuccess }),
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
@@ -1241,6 +1249,9 @@ export class EforgeEngine {
           args.push('--profile', routedProfileOverride);
         }
         // --- eforge:endregion plan-02-runtime-and-integration ---
+        if (prd.frontmatter.onSuccess) {
+          args.push('--on-success', prd.frontmatter.onSuccess);
+        }
         doSpawn(args);
       };
 
