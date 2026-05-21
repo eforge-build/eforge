@@ -84,6 +84,14 @@ export const ReviewPerspectiveKeySchema = Type.String({
 });
 // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
+// --- eforge:region plan-01-engine-config-and-landing ---
+export const LandingActionSchema = Type.Union([
+  Type.Literal('merge-to-base-branch'),
+  Type.Literal('issue-pr'),
+  Type.Literal('leave-branch'),
+]);
+// --- eforge:endregion plan-01-engine-config-and-landing ---
+
 const StalenessVerdictSchema = Type.Union([
   Type.Literal('proceed'),
   Type.Literal('revise'),
@@ -1534,6 +1542,32 @@ const EforgeEventVariantsSchema = Type.Union([
     reason: Type.String(),
   }),
 
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  // Landing action lifecycle events — uniform family for all three onSuccess actions.
+  // merge:finalize:* is additionally emitted for the merge-to-base-branch action (backward compat).
+  Type.Object({
+    type: Type.Literal('landing:start'),
+    action: LandingActionSchema,
+    featureBranch: Type.String(),
+    baseBranch: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('landing:complete'),
+    action: LandingActionSchema,
+    featureBranch: Type.String(),
+    baseBranch: Type.String(),
+    commitSha: Type.Optional(Type.String()),
+    prUrl: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('landing:skipped'),
+    action: LandingActionSchema,
+    featureBranch: Type.String(),
+    baseBranch: Type.String(),
+    reason: Type.String(),
+  }),
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
+
   // Merge worktree lifecycle events
   Type.Object({
     type: Type.Literal('merge:worktree:set'),
@@ -2012,6 +2046,9 @@ export type AutoBuildRuntimeMode = Static<typeof AutoBuildRuntimeModeSchema>;
 export type AutoBuildSchedulerState = Static<typeof AutoBuildSchedulerStateSchema>;
 export type AutoBuildTransitionDetail = Static<typeof AutoBuildTransitionDetailSchema>;
 // --- eforge:endregion plan-01-supervisor-foundation ---
+// --- eforge:region plan-01-engine-config-and-landing ---
+export type LandingAction = Static<typeof LandingActionSchema>;
+// --- eforge:endregion plan-01-engine-config-and-landing ---
 
 // ---------------------------------------------------------------------------
 // Re-export constants and utilities

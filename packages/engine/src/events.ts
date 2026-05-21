@@ -57,6 +57,10 @@ export interface BuildOptions {
   cwd?: string;
   abortController?: AbortController;
   prdFilePath?: string;
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  /** Override the configured onSuccess landing action for this build. */
+  onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
 }
 
 export interface EnqueueOptions {
@@ -66,4 +70,8 @@ export interface EnqueueOptions {
   abortController?: AbortController;
   /** Override profile name to persist in PRD frontmatter for per-build profile binding. */
   profile?: string;
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  /** Override the configured onSuccess landing action for this enqueued build. */
+  onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
 }

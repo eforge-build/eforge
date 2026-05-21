@@ -888,6 +888,9 @@ export class EforgeEngine {
       // Create and run orchestrator
       const signal = abortController?.signal;
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
+      // --- eforge:region plan-01-engine-config-and-landing ---
+      const effectiveOnSuccess = options.onSuccess ?? this.config.build.onSuccess;
+      // --- eforge:endregion plan-01-engine-config-and-landing ---
       const orchestrator = new Orchestrator({
         repoRoot: cwd,
         planRunner,
@@ -910,6 +913,9 @@ export class EforgeEngine {
         policyGateTimeoutMs: this.config.extensions.policyGateTimeoutMs,
         policyGateFailurePolicy: this.config.extensions.policyGateFailurePolicy,
         // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+        // --- eforge:region plan-01-engine-config-and-landing ---
+        onSuccess: effectiveOnSuccess,
+        // --- eforge:endregion plan-01-engine-config-and-landing ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {

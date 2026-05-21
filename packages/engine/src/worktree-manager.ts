@@ -20,6 +20,12 @@ import {
   type ExtensionDiff,
   // --- eforge:endregion plan-02-policy-gate-engine-integration ---
   type MergeResolver,
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  pushFeatureBranch as pushFeatureBranchOp,
+  createPullRequest as createPullRequestOp,
+  getExistingPullRequestUrl,
+  ensureGhAvailable,
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
 } from './worktree-ops.js';
 import type { ModelTracker } from './model-tracker.js';
 import { composeCommitMessage } from './model-tracker.js';
@@ -269,6 +275,47 @@ export class WorktreeManager {
       mergeResolver,
     );
   }
+
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  /**
+   * Push the feature branch to the remote with tracking set.
+   */
+  async pushFeatureBranch(remote = 'origin'): Promise<void> {
+    return pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch, remote);
+  }
+
+  /**
+   * Create a pull request for the feature branch targeting baseBranch.
+   * Pushes the branch first, then runs `gh pr create`.
+   * Detects an already-existing PR and returns its URL instead of throwing.
+   * Returns `{ url }` on success or throws on any other failure.
+   */
+  async issuePr(opts: { baseBranch: string }): Promise<{ url: string }> {
+    await ensureGhAvailable(this.mergeWorktreePath);
+    await pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch);
+    try {
+      return await createPullRequestOp(this.mergeWorktreePath, {
+        baseBranch: opts.baseBranch,
+        featureBranch: this.featureBranch,
+      });
+    } catch (err) {
+      // PR may already exist — retrieve its URL
+      const existing = await getExistingPullRequestUrl(this.mergeWorktreePath, this.featureBranch);
+      if (existing) {
+        return { url: existing };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Leave the feature branch as-is: no merge, no PR.
+   * No-op — the branch is preserved for manual workflow.
+   */
+  async leaveBranch(): Promise<void> {
+    // No-op: branch remains for manual inspection or follow-up
+  }
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
 
   /**
    * Reconcile persisted state with the actual filesystem and git state.

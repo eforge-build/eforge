@@ -11,7 +11,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 190
+Total variants: 193
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -123,6 +123,9 @@ Total variants: 190
 | `merge:finalize:start` | `baseBranch`, `featureBranch` |
 | `merge:finalize:complete` | `baseBranch`, `commitSha`, `featureBranch` |
 | `merge:finalize:skipped` | `baseBranch`, `featureBranch`, `reason` |
+| `landing:start` | `action`, `baseBranch`, `featureBranch` |
+| `landing:complete` | `action`, `baseBranch`, `commitSha`, `featureBranch`, `prUrl` |
+| `landing:skipped` | `action`, `baseBranch`, `featureBranch`, `reason` |
 | `merge:worktree:set` | `path` |
 | `merge:worktree:clear` | - |
 | `expedition:architecture:complete` | `modules` |

@@ -425,6 +425,14 @@
         },
         "cleanupPlanFiles": {
           "type": "boolean"
+        },
+        "onSuccess": {
+          "type": "string",
+          "enum": [
+            "merge-to-base-branch",
+            "issue-pr",
+            "leave-branch"
+          ]
         }
       },
       "additionalProperties": false

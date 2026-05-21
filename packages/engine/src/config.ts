@@ -331,6 +331,9 @@ const eforgeConfigBaseSchema = z.object({
     postMergeCommandTimeoutMs: z.number().int().positive().optional(),
     maxValidationRetries: z.number().int().nonnegative().optional(),
     cleanupPlanFiles: z.boolean().optional(),
+    // --- eforge:region plan-01-engine-config-and-landing ---
+    onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional(),
+    // --- eforge:endregion plan-01-engine-config-and-landing ---
   }).optional(),
   plan: z.object({
     outputDir: z.string().optional(),
@@ -476,7 +479,9 @@ export interface EforgeConfig {
     tiers: Partial<Record<AgentTier, TierConfig>>;
     roles?: Partial<Record<AgentRole, z.output<typeof roleOverrideSchema>>>;
   };
-  build: { worktreeDir?: string; postMergeCommands?: string[]; postMergeCommandTimeoutMs?: number; maxValidationRetries: number; cleanupPlanFiles: boolean };
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  build: { worktreeDir?: string; postMergeCommands?: string[]; postMergeCommandTimeoutMs?: number; maxValidationRetries: number; cleanupPlanFiles: boolean; onSuccess: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' };
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: { outputDir: string };
   plugins: PluginConfig;
   // --- eforge:region plan-01-extension-runtime-foundation ---
@@ -654,7 +659,9 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     bare: false,
     tiers: DEFAULT_TIER_RECIPES,
   }),
-  build: Object.freeze({ worktreeDir: undefined, postMergeCommands: undefined, postMergeCommandTimeoutMs: 300_000, maxValidationRetries: 2, cleanupPlanFiles: true }),
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  build: Object.freeze({ worktreeDir: undefined, postMergeCommands: undefined, postMergeCommandTimeoutMs: 300_000, maxValidationRetries: 2, cleanupPlanFiles: true, onSuccess: 'merge-to-base-branch' as const }),
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
   plugins: Object.freeze({ enabled: true }),
   // --- eforge:region plan-01-extension-runtime-foundation ---
@@ -751,6 +758,9 @@ export function resolveConfig(
       postMergeCommandTimeoutMs: fileConfig.build?.postMergeCommandTimeoutMs ?? DEFAULT_CONFIG.build.postMergeCommandTimeoutMs,
       maxValidationRetries: fileConfig.build?.maxValidationRetries ?? DEFAULT_CONFIG.build.maxValidationRetries,
       cleanupPlanFiles: fileConfig.build?.cleanupPlanFiles ?? DEFAULT_CONFIG.build.cleanupPlanFiles,
+      // --- eforge:region plan-01-engine-config-and-landing ---
+      onSuccess: fileConfig.build?.onSuccess ?? DEFAULT_CONFIG.build.onSuccess,
+      // --- eforge:endregion plan-01-engine-config-and-landing ---
     }),
     plan: Object.freeze({
       outputDir: fileConfig.plan?.outputDir ?? DEFAULT_CONFIG.plan.outputDir,

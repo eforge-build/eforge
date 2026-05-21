@@ -26,6 +26,9 @@ import { ModelTracker } from './model-tracker.js';
 import type { NativeExtensionRegistry } from './extensions/types.js';
 import type { PolicyGateFailurePolicy } from './extensions/policy-gate-runtime.js';
 // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+// --- eforge:region plan-01-engine-config-and-landing ---
+import type { LandingAction } from './landing.js';
+// --- eforge:endregion plan-01-engine-config-and-landing ---
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -102,6 +105,10 @@ export interface OrchestratorOptions {
   /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
   policyGateFailurePolicy?: PolicyGateFailurePolicy;
   // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  /** What to do with the feature branch after a successful build. Defaults to 'merge-to-base-branch'. */
+  onSuccess?: LandingAction;
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
 }
 
 /**
@@ -168,7 +175,11 @@ export class Orchestrator {
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
       mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, gapCloser: this.options.gapCloser,
       minCompletionPercent: this.options.minCompletionPercent ?? 75, worktreeManager: wm,
-      failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, gapClosePerformed: false,
+      failedMerges: new Set<string>(), recentlyMergedIds: [],
+      // --- eforge:region plan-01-engine-config-and-landing ---
+      landingSucceeded: false, onSuccess: this.options.onSuccess ?? 'merge-to-base-branch',
+      // --- eforge:endregion plan-01-engine-config-and-landing ---
+      gapClosePerformed: false,
       modelTracker: new ModelTracker(),
       shouldCleanup: this.options.shouldCleanup, cleanupPlanSet: this.options.cleanupPlanSet,
       cleanupOutputDir: this.options.cleanupOutputDir, cleanupPrdFilePath: this.options.cleanupPrdFilePath,
@@ -187,7 +198,11 @@ export class Orchestrator {
     } finally {
       await wm.cleanupAll();
       for (const [, plan] of planMap) { try { await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot }); } catch { /* best-effort */ } }
-      if (ctx.featureBranchMerged) { try { await exec('git', ['branch', '-D', featureBranch], { cwd: repoRoot }); } catch { /* best-effort */ } }
+      // --- eforge:region plan-01-engine-config-and-landing ---
+      // Only delete the feature branch when it was merged into base — for issue-pr and leave-branch
+      // the branch must be preserved so the PR or manual workflow can reference it.
+      if (ctx.landingSucceeded && ctx.onSuccess === 'merge-to-base-branch') { try { await exec('git', ['branch', '-D', featureBranch], { cwd: repoRoot }); } catch { /* best-effort */ } }
+      // --- eforge:endregion plan-01-engine-config-and-landing ---
     }
   }
 }
