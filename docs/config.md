@@ -87,6 +87,10 @@ maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (defaul
 build:
   maxValidationRetries: 2     # Fix attempts on validation failure (0 = no retries)
   cleanupPlanFiles: true      # Remove plan files after successful build
+  # onSuccess: merge-to-base-branch  # Landing action after a successful build:
+  #                           #   merge-to-base-branch (default) - auto-merge worktree to base branch
+  #                           #   issue-pr - open a GitHub PR via gh CLI (requires gh)
+  #                           #   leave-branch - leave the branch in place for manual handling
   # worktreeDir: /custom/path # Override worktree base directory
   # postMergeCommandTimeoutMs: 300000  # Per-command timeout (ms) for postMerge/validate commands (default: 300000, floor: 10000)
   # postMergeCommands:        # Extra validation commands
