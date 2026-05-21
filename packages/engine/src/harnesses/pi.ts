@@ -143,6 +143,75 @@ function filterTools<T extends { name: string }>(
 // Event translation
 // ---------------------------------------------------------------------------
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+}
+
+function extractTextContent(content: unknown): string | undefined {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return undefined;
+
+  const texts = content.flatMap((block) => {
+    const record = asRecord(block);
+    if (!record) return [];
+
+    const type = typeof record.type === 'string' ? record.type : undefined;
+    const text = typeof record.text === 'string'
+      ? record.text
+      : typeof record.content === 'string'
+        ? record.content
+        : undefined;
+
+    // Pi/pi-ai providers have historically used `text` blocks; OpenAI
+    // Responses-style providers may expose `output_text`-like shapes. Accept
+    // any block with textual payload unless it is clearly a non-text block.
+    if (text === undefined) return [];
+    if (type === undefined || type === 'text' || type === 'output_text') return [text];
+    return [];
+  });
+
+  return texts.length > 0 ? texts.join('') : undefined;
+}
+
+function extractAssistantMessageText(message: unknown): string | undefined {
+  const record = asRecord(message);
+  if (!record) return undefined;
+  if (record.role !== undefined && record.role !== 'assistant') return undefined;
+  return extractTextContent(record.content);
+}
+
+function extractLastAssistantMessageText(messages: unknown): string | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const text = extractAssistantMessageText(messages[i]);
+    if (text !== undefined) return text;
+  }
+  return undefined;
+}
+
+function extractMessageUpdateText(event: unknown): { fullText?: string; delta?: string } {
+  const record = asRecord(event);
+  const update = asRecord(record?.assistantMessageEvent);
+  if (!update) return {};
+
+  const partialText = extractAssistantMessageText(update.partial);
+  if (partialText !== undefined) return { fullText: partialText };
+
+  const messageText = extractAssistantMessageText(record?.message);
+  if (messageText !== undefined) return { fullText: messageText };
+
+  if (typeof update.content === 'string') return { fullText: update.content };
+  if (typeof update.delta === 'string') return { delta: update.delta };
+
+  return {};
+}
+
+export const piHarnessInternalsForTest = {
+  extractAssistantMessageText,
+  extractLastAssistantMessageText,
+  extractMessageUpdateText,
+};
+
 /**
  * Translate a Pi AgentEvent to EforgeEvent(s) and push them into the queue.
  */
@@ -208,27 +277,9 @@ function translatePiEvent(
       break;
     }
 
-    case 'agent_end': {
-      // Extract final text from messages
-      const messages = event.messages;
-      let resultText = '';
-      for (const m of messages) {
-        if ('role' in m && m.role === 'assistant' && 'content' in m) {
-          const content = m.content;
-          if (typeof content === 'string') {
-            resultText = content;
-          } else if (Array.isArray(content)) {
-            const texts = content
-              .filter((c: { type: string }) => c.type === 'text')
-              .map((c: { type: string; text?: string }) => c.text ?? '');
-            if (texts.length > 0) resultText = texts.join('');
-          }
-        }
-      }
-
-      // We'll emit agent:result from the run() method after session stats are available
+    case 'agent_end':
+      // We'll emit agent:result from the run() method after session stats are available.
       break;
-    }
 
     default:
       // turn_start, turn_end, agent_start, tool_execution_update — not mapped
@@ -606,6 +657,7 @@ export class PiHarness implements AgentHarness {
       let totalCost = 0;
       let numTurns = 0;
       let resultText = '';
+      let streamingAssistantText = '';
 
       // Cumulative snapshot captured at the end of each turn. Pi's
       // `session.getSessionStats()` reports cumulative session totals; we
@@ -623,6 +675,29 @@ export class PiHarness implements AgentHarness {
       // Subscribe to Pi agent events (session emits AgentSessionEvent which is a superset of AgentEvent)
       const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
         translatePiEvent(event, eventQueue, agent, agentId, planId);
+
+        if (event.type === 'message_start') {
+          streamingAssistantText = '';
+        }
+
+        if (event.type === 'message_update') {
+          const updateText = extractMessageUpdateText(event);
+          if (updateText.fullText !== undefined) {
+            streamingAssistantText = updateText.fullText;
+            resultText = updateText.fullText;
+          } else if (updateText.delta !== undefined) {
+            streamingAssistantText += updateText.delta;
+            resultText = streamingAssistantText;
+          }
+        }
+
+        if (event.type === 'message_end') {
+          const text = extractAssistantMessageText((event as { message?: unknown }).message);
+          if (text !== undefined) {
+            streamingAssistantText = text;
+            resultText = text;
+          }
+        }
 
         // Track turns and check budget per-turn
         if (event.type === 'turn_end') {
@@ -695,22 +770,13 @@ export class PiHarness implements AgentHarness {
           error = errMsg;
         }
 
-        // Capture final result text from agent_end
+        // Capture final result text from agent_end when Pi delivers it, but
+        // do not rely on agent_end exclusively. Some provider/session paths can
+        // resolve the prompt before the final lifecycle event is observed; the
+        // streaming/message_end fallback above keeps agent:result populated.
         if (event.type === 'agent_end') {
-          const messages = event.messages;
-          for (const m of messages) {
-            if ('role' in m && m.role === 'assistant' && 'content' in m) {
-              const content = m.content;
-              if (typeof content === 'string') {
-                resultText = content;
-              } else if (Array.isArray(content)) {
-                const texts = (content as Array<{ type: string; text?: string }>)
-                  .filter(c => c.type === 'text')
-                  .map(c => c.text ?? '');
-                if (texts.length > 0) resultText = texts.join('');
-              }
-            }
-          }
+          const text = extractLastAssistantMessageText(event.messages);
+          if (text !== undefined) resultText = text;
         }
       });
 
@@ -800,6 +866,18 @@ export class PiHarness implements AgentHarness {
       // turns always consume at least the prompt's input tokens.
       if (!error && numTurns > 0 && totalInputTokens === 0 && totalOutputTokens === 0) {
         error = `Agent completed ${numTurns} turn(s) with zero token usage — backend may be unreachable or misconfigured`;
+      }
+
+      if (!error && resultText.length === 0 && totalOutputTokens > 0) {
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'agent:warning',
+          planId,
+          agentId,
+          agent,
+          code: 'pi-empty-result-text',
+          message: `Pi session reported ${totalOutputTokens} output token(s) but no extractable assistant text for ${model.provider}/${model.id}.`,
+        };
       }
 
       // Emit agent:result
