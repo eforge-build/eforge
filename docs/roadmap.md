@@ -8,6 +8,17 @@
 
 ---
 
+## Overseer / Multi-project Observability
+
+**Goal**: Provide a durable unified view across many eforge projects and daemons without moving orchestration out of project-local daemons. Schaake OS epic: `cf245870-90f4-48db-b5e7-b7a0f17a458b`.
+
+- **Local overseer service** - Machine-local server that receives project daemon events, stores them durably, and shows all reporting projects/builds in one UI.
+- **Overseer publishing protocol** - First-class daemon-side event publishing with project identity, authentication, retry, batching, idempotency, and privacy controls.
+- **Cross-project usage analytics** - Aggregate token, model, cost, profile, queue, daemon health, and build-status metrics across projects.
+- **Cloud-ready deployment path** - Protocol and configuration suitable for hosted/team overseer instances while preserving local-first operation.
+
+---
+
 ## Extensibility
 
 **Goal**: Make eforge a platform that agent runtime profiles and TypeScript modules can extend without forking the engine.
