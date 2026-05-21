@@ -497,16 +497,33 @@ async function landBranch(
 	if (!mode || mode === LAND_MODE.CANCEL) return;
 
 	if (mode === LAND_MODE.AUTO_MERGE || mode === LAND_MODE.PR_ONLY) {
-		const steps: Step[] = [
-			{ label: `Push ${initial.branch}`, command: "git", args: ["push", "-u", "origin", initial.branch], timeout: 60_000 },
-			{ label: "Create GitHub PR", command: "gh", args: ["pr", "create", "--fill"], timeout: 60_000 },
-		];
-		if (mode === LAND_MODE.AUTO_MERGE) {
-			steps.push({ label: "Enable PR auto-merge", command: "gh", args: ["pr", "merge", "--auto", "--squash", "--delete-branch"], timeout: 60_000 });
+		const pushResults = await runSteps(pi, ctx, "push branch", [{ label: `Push ${initial.branch}`, command: "git", args: ["push", "-u", "origin", initial.branch], timeout: 60_000 }]);
+		if (!pushResults.every((result) => result.status === "passed")) {
+			ctx.ui.notify("Push failed; check the progress output", "error");
+			return;
 		}
-		const results = await runSteps(pi, ctx, mode === LAND_MODE.PR_ONLY ? "push branch + open PR" : "push branch + open PR + auto-merge", steps);
-		const ok = results.every((result) => result.status === "passed");
-		ctx.ui.notify(ok ? (mode === LAND_MODE.PR_ONLY ? "PR created" : "PR created; auto-merge enabled") : "PR flow failed; check the progress output", ok ? "info" : "error");
+
+		const existingPr = await pi.exec("gh", ["pr", "view", "--json", "number,url", "--jq", '"#" + (.number|tostring) + " " + .url'], { timeout: 30_000 });
+		if (existingPr.code === 0) {
+			ctx.ui.notify(`Using existing PR ${existingPr.stdout.trim()}`, "info");
+		} else {
+			const createResults = await runSteps(pi, ctx, "open PR", [{ label: "Create GitHub PR", command: "gh", args: ["pr", "create", "--fill"], timeout: 60_000 }]);
+			if (!createResults.every((result) => result.status === "passed")) {
+				ctx.ui.notify("PR creation failed; check the progress output", "error");
+				return;
+			}
+		}
+
+		if (mode === LAND_MODE.AUTO_MERGE) {
+			const mergeResults = await runSteps(pi, ctx, "enable PR auto-merge", [
+				{ label: "Enable PR auto-merge", command: "gh", args: ["pr", "merge", "--auto", "--squash", "--delete-branch"], timeout: 60_000 },
+			]);
+			const ok = mergeResults.every((result) => result.status === "passed");
+			ctx.ui.notify(ok ? "PR auto-merge enabled" : "Auto-merge failed; check the progress output", ok ? "info" : "error");
+			return;
+		}
+
+		ctx.ui.notify(existingPr.code === 0 ? "Existing PR is up to date" : "PR created", "info");
 		return;
 	}
 
