@@ -15,6 +15,7 @@ import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfil
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   RunInfo,
+  EnqueueRequest,
   EnqueueResponse,
   RunSummary,
   ConfigValidateResponse,
@@ -204,10 +205,15 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         .string()
         .optional()
         .describe('Run this build on the named profile instead of the active profile'),
+      onSuccess: z
+        .enum(['merge-to-base-branch', 'issue-pr', 'leave-branch'])
+        .optional()
+        .describe("Override the project-level on-success landing action for this build. 'merge-to-base-branch' merges the worktree branch back (default). 'issue-pr' opens a GitHub PR instead of merging (requires gh CLI). 'leave-branch' commits to the worktree branch and exits without merging or opening a PR."),
     },
-    handler: async ({ source, profile }, { cwd: toolCwd }) => {
-      const body: { source: string; profile?: string } = { source };
+    handler: async ({ source, profile, onSuccess }, { cwd: toolCwd }) => {
+      const body: EnqueueRequest = { source };
       if (profile) body.profile = profile;
+      if (onSuccess) body.onSuccess = onSuccess;
       const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, body);
       return { ...data, monitorUrl: `http://localhost:${port}` };
     },
@@ -676,6 +682,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     schema: {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands. Only applied when creating a new config.'),
+      onSuccess: z
+        .enum(['merge-to-base-branch', 'issue-pr', 'leave-branch'])
+        .optional()
+        .describe("On-success landing action to persist in eforge/config.yaml. 'merge-to-base-branch' merges the worktree branch back (default). 'issue-pr' opens a GitHub PR instead of merging (requires gh CLI). 'leave-branch' commits to the worktree branch and exits without merging or opening a PR."),
       existingProfile: z.object({
         name: z.string().describe('Name of the existing local- or user-scope profile to activate.'),
         scope: z.enum(['local', 'user']).describe('Scope of the existing profile.'),
@@ -695,7 +705,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         ).describe('Self-contained tier recipes — each tier carries harness + model + effort + tuning'),
       }).optional().describe('Multi-tier profile spec. When omitted, falls back to a minimal claude-sdk default and emits a deprecation note.'),
     },
-    handler: async ({ force, postMergeCommands, existingProfile, profile }, { cwd: toolCwd }) => {
+    handler: async ({ force, postMergeCommands, onSuccess, existingProfile, profile }, { cwd: toolCwd }) => {
       const configDir = join(toolCwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
 
@@ -751,9 +761,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }
 
         const existingProfileConfigData: Record<string, unknown> = {};
-        if (postMergeCommands && postMergeCommands.length > 0) {
-          existingProfileConfigData.build = { postMergeCommands };
-        }
+        const existingProfileBuildBlock: Record<string, unknown> = {};
+        if (postMergeCommands && postMergeCommands.length > 0) existingProfileBuildBlock.postMergeCommands = postMergeCommands;
+        if (onSuccess) existingProfileBuildBlock.onSuccess = onSuccess;
+        if (Object.keys(existingProfileBuildBlock).length > 0) existingProfileConfigData.build = existingProfileBuildBlock;
         const existingProfileConfigContent = Object.keys(existingProfileConfigData).length > 0
           ? stringifyYaml(existingProfileConfigData)
           : '';
@@ -845,9 +856,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       }
 
       const configData: Record<string, unknown> = {};
-      if (postMergeCommands && postMergeCommands.length > 0) {
-        configData.build = { postMergeCommands };
-      }
+      const buildBlock: Record<string, unknown> = {};
+      if (postMergeCommands && postMergeCommands.length > 0) buildBlock.postMergeCommands = postMergeCommands;
+      if (onSuccess) buildBlock.onSuccess = onSuccess;
+      if (Object.keys(buildBlock).length > 0) configData.build = buildBlock;
       const configContent = Object.keys(configData).length > 0
         ? stringifyYaml(configData)
         : '';

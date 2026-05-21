@@ -52,7 +52,7 @@ Agent settings resolve through three layers of granularity: **global** (applies 
 
 **Sections to cover:**
 
-1. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`
+1. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`, `onSuccess` (default landing action when a build completes: `merge-to-base-branch` auto-merges the worktree, `issue-pr` opens a GitHub PR via `gh` CLI, `leave-branch` leaves the branch in place for manual handling; engine default is `merge-to-base-branch`)
 2. **Global agent defaults** (opt-in - "Would you like to customize thinking or effort settings? Most users keep defaults.") - Global `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`xhigh`/`max`). Resolution order (highest → lowest): plan override → per-role config → per-tier config → global config → built-in per-role default → built-in per-tier default. Harness and model selection live in the active profile's tier entries — do not configure them here. Whenever you need to suggest a specific model ID (for per-role `model` overrides), **call `mcp__eforge__eforge_models` first** with `{ action: "list", harness: "<resolved-harness>" }` (and `provider: "<profile-provider>"` for Pi) and pick from the returned list (newest-first). Never propose a model ID from memory.
 3. **Tier tuning** (opt-in - "Would you like to tune agents by group? eforge organises agents into four groups by what they do: **planning**, **implementation**, **review**, and **evaluation**. You can give each group its own effort level without touching individual roles.") - Group membership: **planning** — `planner`, `module-planner`, `formatter`, `pipeline-composer`, `merge-conflict-resolver`, `gap-closer`; **implementation** — `builder`, `review-fixer`, `validation-fixer`, `doc-author`, `doc-syncer`, `test-writer`, `tester`, `recovery-analyst`, `dependency-detector`, `prd-validator`, `staleness-assessor`; **review** — `reviewer`, `architecture-reviewer`, `cohesion-reviewer`, `plan-reviewer`; **evaluation** — `evaluator`, `architecture-evaluator`, `cohesion-evaluator`, `plan-evaluator`. Built-in defaults: `implementation` defaults to `effort=medium`; `planning`, `review`, and `evaluation` default to `effort=high`. Harness and model selection come from the active profile's tier entries. Available per-tier knobs in config.yaml: `effort`, `model`, `thinking`, `maxTurns`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`. Set them under `agents.tiers.<tier>`.
 4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false)
@@ -129,6 +129,10 @@ build:
     - pnpm test
   maxValidationRetries: 2              # Retry count for validation fixes
   cleanupPlanFiles: true               # Remove plan files after successful build
+  onSuccess: issue-pr                  # Landing action: merge-to-base-branch | issue-pr | leave-branch
+                                       # merge-to-base-branch: auto-merge worktree (default)
+                                       # issue-pr: open a GitHub PR via gh CLI (requires gh)
+                                       # leave-branch: leave the branch in place for manual handling
 
 # Agent settings
 agents:

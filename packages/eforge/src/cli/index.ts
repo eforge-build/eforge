@@ -423,6 +423,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--verbose', 'Stream agent output')
     .option('--no-plugins', 'Disable plugin loading')
     .option('--profile <name>', 'Override active profile for this enqueue + build')
+    .option('--on-success <action>', 'Override the project default on-success landing action (merge-to-base-branch|issue-pr|leave-branch)')
     .action(
       async (
         source: string,
@@ -431,8 +432,14 @@ export function createProgram(abortController?: AbortController, version?: strin
           verbose?: boolean;
           plugins?: boolean;
           profile?: string;
+          onSuccess?: string;
         },
       ) => {
+        const VALID_ON_SUCCESS = ['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const;
+        if (options.onSuccess !== undefined && !VALID_ON_SUCCESS.includes(options.onSuccess as typeof VALID_ON_SUCCESS[number])) {
+          console.error(chalk.red(`Error: --on-success must be one of: ${VALID_ON_SUCCESS.join(', ')}`));
+          process.exit(1);
+        }
         initDisplay({ verbose: options.verbose });
 
         const configOverrides = buildConfigOverrides(options);
@@ -493,6 +500,7 @@ export function createProgram(abortController?: AbortController, version?: strin
               verbose: options.verbose,
               abortController,
               ...(effectiveProfile && { profile: effectiveProfile }),
+              ...(options.onSuccess && { onSuccess: options.onSuccess as 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' }),
             });
           }
           // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
@@ -528,6 +536,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--watch', 'Watch mode: continuously poll the queue for new PRDs')
     .option('--poll-interval <ms>', 'Poll interval in milliseconds for watch mode', parseInt)
     .option('--profile <name>', 'Override active profile for this build')
+    .option('--on-success <action>', 'Override the project default on-success landing action (merge-to-base-branch|issue-pr|leave-branch)')
     .action(
       async (
         source: string | undefined,
@@ -545,8 +554,14 @@ export function createProgram(abortController?: AbortController, version?: strin
           watch?: boolean;
           pollInterval?: number;
           profile?: string;
+          onSuccess?: string;
         },
       ) => {
+        const VALID_ON_SUCCESS_BUILD = ['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const;
+        if (options.onSuccess !== undefined && !VALID_ON_SUCCESS_BUILD.includes(options.onSuccess as typeof VALID_ON_SUCCESS_BUILD[number])) {
+          console.error(chalk.red(`Error: --on-success must be one of: ${VALID_ON_SUCCESS_BUILD.join(', ')}`));
+          process.exit(1);
+        }
         // --queue mode: delegate to engine.runQueue() or engine.watchQueue()
         if (options.queue) {
           if (options.watch) process.title = 'eforge-watcher';
@@ -744,6 +759,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--no-plugins', 'Disable plugin loading')
     .option('--session-id <uuid>', 'Session ID injected by parent scheduler (skips child session:start emission)')
     .option('--profile <name>', 'Override active profile for this build')
+    .option('--on-success <action>', 'Override the project default on-success landing action (merge-to-base-branch|issue-pr|leave-branch)')
     .action(
       async (
         prdId: string,
@@ -754,8 +770,14 @@ export function createProgram(abortController?: AbortController, version?: strin
           plugins?: boolean;
           sessionId?: string;
           profile?: string;
+          onSuccess?: string;
         },
       ) => {
+        const VALID_ON_SUCCESS_EXEC = ['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const;
+        if (options.onSuccess !== undefined && !VALID_ON_SUCCESS_EXEC.includes(options.onSuccess as typeof VALID_ON_SUCCESS_EXEC[number])) {
+          console.error(chalk.red(`Error: --on-success must be one of: ${VALID_ON_SUCCESS_EXEC.join(', ')}`));
+          process.exit(QueueExecExitCode.Failed);
+        }
         process.title = `eforge-build:${prdId}`;
         initDisplay({ verbose: options.verbose });
 
@@ -784,6 +806,7 @@ export function createProgram(abortController?: AbortController, version?: strin
             auto: options.auto,
             verbose: options.verbose,
             abortController,
+            ...(options.onSuccess && { onSuccess: options.onSuccess as 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' }),
           }, options.sessionId);
 
           const wrapped = wrapEvents(buildEvents, {

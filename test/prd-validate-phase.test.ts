@@ -65,7 +65,7 @@ function makeCtx(stateDir: string, prdValidator: PhaseContext['prdValidator']): 
     worktreeManager: stubWorktreeManager,
     failedMerges: new Set(),
     recentlyMergedIds: [],
-    featureBranchMerged: false,
+    landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
     resumed: false,
     modelTracker: new ModelTracker(),
     prdValidator,

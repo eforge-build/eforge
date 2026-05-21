@@ -11,6 +11,7 @@ Enqueue a PRD file or description for the eforge daemon to build. Uses the eforg
 ## Arguments
 
 - `source` (optional) - PRD file path or inline description of what to build
+- `onSuccess` (optional) - Override the landing action for this build. One of `merge-to-base-branch`, `issue-pr`, or `leave-branch`. Precedence: this argument > PRD frontmatter > `build.onSuccess` in `eforge/config.yaml` > engine default (`merge-to-base-branch`). If omitted, the project config default applies.
 
 ## Workflow
 
@@ -122,7 +123,11 @@ First, validate the project config by calling the `eforge_config` tool with `{ a
 
 - If `valid` is `true`, continue silently.
 
-Call the `eforge_build` tool with `{ source: "<source>" }`.
+Call the `eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified an `onSuccess` override for this build, include `onSuccess: "<value>"` in the call.
+
+<!-- parity-skip-start -->
+If the user asks to choose a per-build landing action, use `showSelectOverlay` with the three options (`merge-to-base-branch`, `issue-pr`, `leave-branch`) before calling the tool.
+<!-- parity-skip-end -->
 
 The tool returns a JSON response with a `sessionId` and `autoBuild` status.
 

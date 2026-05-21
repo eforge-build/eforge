@@ -37,6 +37,28 @@ If `eforge/config.yaml` already exists, also read its current `build.postMergeCo
 Present your suggested commands to the user briefly: "I'd suggest these postMergeCommands based on your project: ..." and ask if they look right. Accept corrections.
 
 <!-- parity-skip-start -->
+### Step 1.3: On-success landing action
+
+Ask the user to choose what happens when a build completes successfully. Present the three options using `showSelectOverlay` (or equivalent native UI):
+
+| Option | Value | When to use |
+|--------|-------|-------------|
+| Open a PR _(Recommended)_ | `issue-pr` | Creates a GitHub pull request from the build branch instead of merging automatically. Requires the `gh` CLI. Best for team code review workflows. |
+| Merge to base branch | `merge-to-base-branch` | Merges the worktree back to the base branch automatically. Fast path with no manual review step. |
+| Leave branch | `leave-branch` | Leaves the worktree branch in place without merging or creating a PR. Use when you want to inspect, cherry-pick, or handle the branch manually. |
+
+Default/recommended selection: `issue-pr`.
+
+After the user picks `issue-pr`, run a shell check to verify `gh` is available:
+
+```
+gh --version
+```
+
+If the command is not found or returns non-zero: warn the user that `issue-pr` requires the `gh` CLI and that builds configured with `issue-pr` will fail until it is installed. Proceed with the selection anyway — the user may install `gh` later. Do **not** block or ask them to rechoose.
+
+Store the chosen value for use in the `eforge_init` calls below (both the existingProfile and fresh-init paths).
+
 ### Step 1.5: Existing local- and user-scope profiles
 
 Call `eforge_profile { action: "list", scope: "local" }` and `eforge_profile { action: "list", scope: "user" }` to check for existing profiles outside the project tier.
@@ -59,7 +81,8 @@ Call `eforge_init` with:
 ```json
 {
   "existingProfile": { "name": "<chosen>", "scope": "<local|user>" },
-  "postMergeCommands": [...]
+  "postMergeCommands": [...],
+  "onSuccess": "<selectedOption>"
 }
 ```
 
@@ -68,9 +91,9 @@ Include `force: true` if `$ARGUMENTS` contains `--force` or `force`.
 Skip Steps 2–6. Proceed directly to the result message.
 
 - For a **local**-scope pick:
-  > eforge initialized with local-scope profile `<name>` activated. The profile lives at `.eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands.
+  > eforge initialized with local-scope profile `<name>` activated. The profile lives at `.eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands and on-success landing action.
 - For a **user**-scope pick:
-  > eforge initialized with user-scope profile `<name>` activated. The profile lives at `~/.config/eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands.
+  > eforge initialized with user-scope profile `<name>` activated. The profile lives at `~/.config/eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands and on-success landing action.
 
 **On "create new project profile":** Fall through to Step 2.
 
@@ -190,6 +213,7 @@ Call `eforge_init` with:
     }
   },
   "postMergeCommands": [...],
+  "onSuccess": "<selectedOption>",
   "force": true
 }
 ```

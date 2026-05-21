@@ -19,6 +19,9 @@ import { cleanupPlanFiles } from '../cleanup.js';
 import { execWithTimeout } from '../exec-with-timeout.js';
 import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS } from '../config.js';
 import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
+// --- eforge:region plan-01-engine-config-and-landing ---
+import { executeLandingAction, type LandingAction, type LandingResult } from '../landing.js';
+// --- eforge:endregion plan-01-engine-config-and-landing ---
 // --- eforge:region plan-02-policy-gate-engine-integration ---
 import {
   buildFinalMergePolicyGateContext,
@@ -57,8 +60,12 @@ export interface PhaseContext {
   failedMerges: Set<string>;
   /** Tracks recently merged plan IDs for merge resolver context enrichment */
   recentlyMergedIds: string[];
-  /** Whether the feature branch was successfully merged to baseBranch */
-  featureBranchMerged: boolean;
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  /** Whether the landing action completed successfully (replaces featureBranchMerged). */
+  landingSucceeded: boolean;
+  /** Which post-build landing action to execute. */
+  onSuccess: LandingAction;
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
   /** Accumulates model IDs from agent:start events across all phases. Used for the final merge commit's Models-Used: trailer. */
   modelTracker: ModelTracker;
   /** Whether to run cleanup on the feature branch before the final merge. */
@@ -584,7 +591,12 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
   }
 
   if (!passed) {
-    yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'Validation failed' };
+    // --- eforge:region plan-01-engine-config-and-landing ---
+    yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action: ctx.onSuccess, featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'Validation failed' };
+    if (ctx.onSuccess === 'merge-to-base-branch') {
+      yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'Validation failed' };
+    }
+    // --- eforge:endregion plan-01-engine-config-and-landing ---
     state.status = 'failed';
     state.completedAt = new Date().toISOString();
   }
@@ -658,112 +670,117 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
 }
 
 /**
- * Final merge of feature branch to baseBranch and status determination.
- * Yields merge:finalize events.
+ * Final landing of the feature branch and status determination.
+ * Dispatches on ctx.onSuccess to run merge-to-base-branch, issue-pr, or leave-branch.
+ * Yields landing:* events (and merge:finalize:* for the merge-to-base action).
  */
 export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   const { state, config, signal, featureBranch } = ctx;
   const allMerged = Object.values(state.plans).every((p) => p.status === 'merged');
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  const action = ctx.onSuccess;
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
 
   if (allMerged && !signal?.aborted) {
-    yield { timestamp: new Date().toISOString(), type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
-
-    try {
-      // Pre-merge dirty tree detection and auto-recovery on repoRoot
-      {
-        const { stdout: statusOut } = await exec('git', ['status', '--porcelain'], { cwd: ctx.repoRoot });
-        const dirtyFiles = statusOut.trim().split('\n').filter(Boolean);
-        if (dirtyFiles.length > 0) {
-          const preview = dirtyFiles.slice(0, 10).join('\n');
-          const suffix = dirtyFiles.length > 10 ? `\n... and ${dirtyFiles.length - 10} more` : '';
-          yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Dirty working tree detected in repoRoot (${dirtyFiles.length} files). Attempting auto-recovery.\n${preview}${suffix}` };
-
-          // Auto-recover: discard modifications and remove untracked files
-          await exec('git', ['checkout', '--', '.'], { cwd: ctx.repoRoot });
-          await exec('git', ['clean', '-fd'], { cwd: ctx.repoRoot });
-
-          // Verify recovery succeeded
-          const { stdout: statusAfter } = await exec('git', ['status', '--porcelain'], { cwd: ctx.repoRoot });
-          const remainingFiles = statusAfter.trim().split('\n').filter(Boolean);
-          if (remainingFiles.length > 0) {
-            const remainingPreview = remainingFiles.slice(0, 10).join('\n');
-            throw new Error(`Failed to clean dirty working tree in repoRoot. Remaining files (${remainingFiles.length}):\n${remainingPreview}`);
-          }
-
-          yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Dirty working tree auto-recovery succeeded.' };
-        }
-      }
-
-      // Run cleanup on the feature branch before the final merge
-      if (ctx.shouldCleanup && ctx.cleanupPlanSet && ctx.cleanupOutputDir) {
-        try {
-          await exec('git', ['checkout', featureBranch], { cwd: ctx.mergeWorktreePath });
-          for await (const event of cleanupPlanFiles(ctx.mergeWorktreePath, ctx.cleanupPlanSet, ctx.cleanupOutputDir, ctx.cleanupPrdFilePath)) {
-            yield event;
-          }
-        } catch (cleanupErr) {
-          yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Feature branch cleanup failed (non-fatal): ${(cleanupErr as Error).message}` };
-        }
-      }
-
-      // Build the merge commit message
-      const prefix = config.mode === 'errand' ? 'fix' : 'feat';
-      let commitMessage: string;
-      if (config.plans.length === 1) {
-        commitMessage = composeCommitMessage(`${prefix}(${config.name}): ${config.plans[0].name}`, ctx.modelTracker);
-      } else {
-        const planList = config.plans.map((p) => `- ${p.id}: ${p.name}`).join('\n');
-        commitMessage = composeCommitMessage(`${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}`, ctx.modelTracker);
-      }
-      // --- eforge:region plan-02-policy-gate-engine-integration ---
-      if (hasPolicyGates(ctx, 'final-merge')) {
-        const diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch);
-        const policyResult = await executePolicyGate({
-          registry: ctx.extensionRegistry,
-          gateKind: 'final-merge',
-          context: buildFinalMergePolicyGateContext(
-            {
-              featureBranch,
-              baseBranch: config.baseBranch,
-              planIds: config.plans.map((plan) => plan.id),
-              diff,
-            },
-            { cwd: ctx.mergeWorktreePath },
-          ),
-          timeoutMs: ctx.policyGateTimeoutMs ?? 5_000,
-          failurePolicy: ctx.policyGateFailurePolicy ?? 'fail-closed',
-        });
-
-        for (const e of policyResult.events) yield e;
-
-        if (policyResult.blocked) {
-          const reason = policyBlockReason('Policy gate blocked final merge', policyResult.decision);
-          yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason };
-          state.status = 'failed';
-          state.completedAt = new Date().toISOString();
-          return;
-        }
-      }
-      // --- eforge:endregion plan-02-policy-gate-engine-integration ---
-
-      const commitSha = await ctx.worktreeManager.mergeToBase(config.baseBranch, commitMessage, ctx.mergeResolver);
-      ctx.featureBranchMerged = true;
-      yield { timestamp: new Date().toISOString(), type: 'merge:finalize:complete', featureBranch, baseBranch: config.baseBranch, commitSha };
-    } catch (err) {
-      yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: `Final merge failed: ${(err as Error).message}` };
-      state.status = 'failed';
-      state.completedAt = new Date().toISOString();
-      return;
+    // Build the merge commit message (used by merge-to-base-branch only; passed through for completeness)
+    const prefix = config.mode === 'errand' ? 'fix' : 'feat';
+    let commitMessage: string;
+    if (config.plans.length === 1) {
+      commitMessage = composeCommitMessage(`${prefix}(${config.name}): ${config.plans[0].name}`, ctx.modelTracker);
+    } else {
+      const planList = config.plans.map((p) => `- ${p.id}: ${p.name}`).join('\n');
+      commitMessage = composeCommitMessage(`${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}`, ctx.modelTracker);
     }
+
+    // --- eforge:region plan-02-policy-gate-engine-integration ---
+    // Policy gate applies only to merge-to-base-branch; stays here per plan spec.
+    if (action === 'merge-to-base-branch' && hasPolicyGates(ctx, 'final-merge')) {
+      const diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch);
+      const policyResult = await executePolicyGate({
+        registry: ctx.extensionRegistry,
+        gateKind: 'final-merge',
+        context: buildFinalMergePolicyGateContext(
+          {
+            featureBranch,
+            baseBranch: config.baseBranch,
+            planIds: config.plans.map((plan) => plan.id),
+            diff,
+          },
+          { cwd: ctx.mergeWorktreePath },
+        ),
+        timeoutMs: ctx.policyGateTimeoutMs ?? 5_000,
+        failurePolicy: ctx.policyGateFailurePolicy ?? 'fail-closed',
+      });
+
+      for (const e of policyResult.events) yield e;
+
+      if (policyResult.blocked) {
+        const reason = policyBlockReason('Policy gate blocked final merge', policyResult.decision);
+        // --- eforge:region plan-01-engine-config-and-landing ---
+        yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason };
+        yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason };
+        // --- eforge:endregion plan-01-engine-config-and-landing ---
+        state.status = 'failed';
+        state.completedAt = new Date().toISOString();
+        return;
+      }
+    }
+    // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+
+    // --- eforge:region plan-01-engine-config-and-landing ---
+    // Delegate to executeLandingAction for dirty-tree check, cleanup, and the chosen action.
+    const landingGen = executeLandingAction({
+      action,
+      featureBranch,
+      baseBranch: config.baseBranch,
+      repoRoot: ctx.repoRoot,
+      mergeWorktreePath: ctx.mergeWorktreePath,
+      worktreeManager: ctx.worktreeManager,
+      mergeResolver: ctx.mergeResolver,
+      modelTracker: ctx.modelTracker,
+      commitMessage,
+      signal: ctx.signal,
+      shouldCleanup: ctx.shouldCleanup,
+      cleanupPlanSet: ctx.cleanupPlanSet,
+      cleanupOutputDir: ctx.cleanupOutputDir,
+      cleanupPrdFilePath: ctx.cleanupPrdFilePath,
+      state,
+      config,
+    });
+
+    // Manually iterate to capture the generator return value (LandingResult).
+    let landingResult: LandingResult = { landingSucceeded: false };
+    while (true) {
+      const next = await landingGen.next();
+      if (next.done) {
+        landingResult = next.value;
+        break;
+      }
+      yield next.value;
+    }
+    ctx.landingSucceeded = landingResult.landingSucceeded;
+    // --- eforge:endregion plan-01-engine-config-and-landing ---
   } else if (!allMerged) {
-    // Not all plans merged — skip finalize, leave feature branch for inspection
-    yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
+    // Not all plans merged — skip landing, leave feature branch for inspection.
+    // --- eforge:region plan-01-engine-config-and-landing ---
+    yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
+    if (action === 'merge-to-base-branch') {
+      yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
+    }
+    // --- eforge:endregion plan-01-engine-config-and-landing ---
   } else if (signal?.aborted) {
-    // Aborted before finalize — leave feature branch for inspection
-    yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
+    // Aborted before finalize — leave feature branch for inspection.
+    // --- eforge:region plan-01-engine-config-and-landing ---
+    yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
+    if (action === 'merge-to-base-branch') {
+      yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
+    }
+    // --- eforge:endregion plan-01-engine-config-and-landing ---
   }
 
-  // Determine final status — only completed if feature branch was merged to baseBranch
-  state.status = ctx.featureBranchMerged ? 'completed' : 'failed';
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  // Determine final status — completed only when the landing action succeeded.
+  state.status = ctx.landingSucceeded ? 'completed' : 'failed';
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
   state.completedAt = new Date().toISOString();
 }

@@ -71,6 +71,8 @@ export interface BuildRunOpts {
     maxConcurrentBuilds?: number;
     /** Explicit profile override for this build. Takes precedence over any inherited session-plan agent_profile. */
     profile?: string;
+    /** Override the project-level on-success landing action for this build. */
+    onSuccess?: string;
   };
   abortController?: AbortController;
   /** Called with the active monitor on start and undefined on teardown. */
@@ -298,6 +300,7 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
             source,
             // Pass explicit profile to daemon; daemon handles inherited agent_profile detection
             ...(options.profile && { profile: options.profile }),
+            ...(options.onSuccess && { onSuccess: options.onSuccess as 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' }),
           },
         });
         const result = data as EnqueueResponse;
@@ -387,6 +390,7 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
         verbose: options.verbose,
         abortController,
         ...(effectiveProfile && { profile: effectiveProfile }),
+        ...(options.onSuccess && { onSuccess: options.onSuccess as 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' }),
       });
     }
 

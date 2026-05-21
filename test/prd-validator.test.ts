@@ -33,7 +33,7 @@ function makePhaseContext(overrides: Partial<PhaseContext> = {}): PhaseContext {
     worktreeManager: {} as PhaseContext['worktreeManager'],
     failedMerges: new Set(),
     recentlyMergedIds: [],
-    featureBranchMerged: false,
+    landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
     resumed: false,
     ...overrides,
   } as PhaseContext;

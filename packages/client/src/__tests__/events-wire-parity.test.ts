@@ -1468,6 +1468,62 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
     },
   },
 
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  {
+    label: 'landing:start',
+    payload: {
+      type: 'landing:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'merge-to-base-branch',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'main',
+    },
+  },
+  {
+    label: 'landing:complete (merge-to-base-branch)',
+    payload: {
+      type: 'landing:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'merge-to-base-branch',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'main',
+      commitSha: 'abc123',
+    },
+  },
+  {
+    label: 'landing:complete (issue-pr)',
+    payload: {
+      type: 'landing:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'issue-pr',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'main',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+    },
+  },
+  {
+    label: 'landing:complete (leave-branch)',
+    payload: {
+      type: 'landing:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'leave-branch',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'main',
+    },
+  },
+  {
+    label: 'landing:skipped',
+    payload: {
+      type: 'landing:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'merge-to-base-branch',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'main',
+      reason: 'Validation failed',
+    },
+  },
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
+
   // --- eforge:region plan-02-extension-perspective-runtime ---
   {
     label: 'extension:reviewer-perspective:applied',
@@ -1657,6 +1713,43 @@ describe('events-wire-parity — invalid payloads (wrong literal)', () => {
     expect(result.success).toBe(false);
   });
 });
+
+// --- eforge:region plan-01-engine-config-and-landing ---
+describe('events-wire-parity — invalid payloads (landing action)', () => {
+  it('rejects landing:start with invalid action value', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'foo',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'main',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects landing:complete missing required action field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'main',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects landing:skipped with invalid action value', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'push-to-remote',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'main',
+      reason: 'some reason',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+// --- eforge:endregion plan-01-engine-config-and-landing ---
 
 describe('events-wire-parity — invalid payloads (unknown discriminant)', () => {
   it('rejects an event with a completely unknown type', () => {

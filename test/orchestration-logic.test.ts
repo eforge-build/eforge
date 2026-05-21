@@ -365,7 +365,7 @@ describe('executePlans - build:failed handling', () => {
       worktreeManager: stubWorktreeManager,
       failedMerges: new Set(),
       recentlyMergedIds: [],
-      featureBranchMerged: false,
+      landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
       modelTracker: new ModelTracker(),
     };
 
@@ -430,7 +430,7 @@ describe('executePlans - build:failed handling', () => {
       worktreeManager: stubWorktreeManager,
       failedMerges: new Set(),
       recentlyMergedIds: [],
-      featureBranchMerged: false,
+      landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
       modelTracker: new ModelTracker(),
       extensionRegistry: {
         policyGates: [makePolicyGate('plan-merge', 'beforePlanMerge', ((gateContext: unknown) => {
@@ -505,7 +505,7 @@ describe('executePlans - build:failed handling', () => {
       worktreeManager: stubWorktreeManager,
       failedMerges: new Set(),
       recentlyMergedIds: ['plan-a'],
-      featureBranchMerged: false,
+      landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
       modelTracker: new ModelTracker(),
       extensionRegistry: {
         policyGates: [makePolicyGate('final-merge', 'beforeFinalMerge', ((gateContext: unknown) => {
@@ -582,7 +582,7 @@ describe('executePlans - build:failed handling', () => {
       worktreeManager: stubWorktreeManager,
       failedMerges: new Set(),
       recentlyMergedIds: [],
-      featureBranchMerged: false,
+      landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
       modelTracker: new ModelTracker(),
     };
 
@@ -701,7 +701,7 @@ describe('executePlans - ModelTracker recording', () => {
       worktreeManager: stubWorktreeManager,
       failedMerges: new Set(),
       recentlyMergedIds: [],
-      featureBranchMerged: false,
+      landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
       modelTracker,
     };
 
@@ -759,7 +759,7 @@ describe('executePlans - ModelTracker recording', () => {
       worktreeManager: stubWorktreeManager,
       failedMerges: new Set(),
       recentlyMergedIds: [],
-      featureBranchMerged: false,
+      landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
       modelTracker,
     };
 

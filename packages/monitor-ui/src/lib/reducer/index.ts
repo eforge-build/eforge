@@ -338,6 +338,13 @@ export const IGNORED_EVENT_TYPES = [
   'extension:validation-provider:error',
   'extension:validation-provider:timeout',
   // --- eforge:endregion plan-01-validation-provider-runtime ---
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  // Landing action events — monitor UI rendering is plan-02's responsibility.
+  // Listed here so the exhaustive check passes without requiring plan-02 to land first.
+  'landing:start',
+  'landing:complete',
+  'landing:skipped',
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
 ] as const;
 
 // ---------------------------------------------------------------------------

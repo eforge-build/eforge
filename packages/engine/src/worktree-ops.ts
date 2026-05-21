@@ -441,3 +441,71 @@ export async function cleanupWorktrees(repoRoot: string, worktreeBase: string): 
   await exec('git', ['worktree', 'prune'], { cwd: repoRoot });
   await rm(worktreeBase, { recursive: true, force: true });
 }
+
+// --- eforge:region plan-01-engine-config-and-landing ---
+
+/**
+ * Ensure `gh` CLI is available in PATH.
+ * Throws a descriptive error if it is not found.
+ */
+export async function ensureGhAvailable(cwd: string): Promise<void> {
+  try {
+    await exec('gh', ['--version'], { cwd });
+  } catch {
+    throw new Error(
+      'The `gh` CLI is required for the `issue-pr` landing action but was not found in PATH. ' +
+      'Install it from https://cli.github.com/ and authenticate with `gh auth login`.',
+    );
+  }
+}
+
+/**
+ * Push the feature branch to the remote with tracking set.
+ */
+export async function pushFeatureBranch(
+  cwd: string,
+  branch: string,
+  remote = 'origin',
+): Promise<void> {
+  await exec('git', ['push', '-u', remote, branch], { cwd });
+}
+
+/**
+ * Create a pull request via `gh pr create`.
+ * Returns `{ url: string }` with the PR URL on success.
+ * Throws when creation fails for any reason (callers handle existing-PR detection).
+ */
+export async function createPullRequest(
+  cwd: string,
+  opts: { baseBranch: string; featureBranch: string },
+): Promise<{ url: string }> {
+  const { stdout } = await exec(
+    'gh',
+    ['pr', 'create', '--base', opts.baseBranch, '--head', opts.featureBranch, '--fill'],
+    { cwd },
+  );
+  return { url: stdout.trim() };
+}
+
+/**
+ * Retrieve the URL of an existing PR for the given branch.
+ * Returns the URL string when a PR exists, or null when none is found.
+ */
+export async function getExistingPullRequestUrl(
+  cwd: string,
+  featureBranch: string,
+): Promise<string | null> {
+  try {
+    const { stdout } = await exec(
+      'gh',
+      ['pr', 'view', featureBranch, '--json', 'url', '-q', '.url'],
+      { cwd },
+    );
+    const url = stdout.trim();
+    return url.length > 0 ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+// --- eforge:endregion plan-01-engine-config-and-landing ---
