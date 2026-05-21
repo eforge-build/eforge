@@ -70,13 +70,24 @@ const CHECK_CHOICE = {
 const CHECK_CHOICES = [CHECK_CHOICE.RUN, CHECK_CHOICE.SKIP, CHECK_CHOICE.CANCEL];
 
 const LAND_MODE = {
-	AUTO_MERGE: "Open PR + auto-merge on CI pass",
-	PR_ONLY: "Open PR only",
+	CREATE_AUTO_MERGE: "Open PR + auto-merge on CI pass",
+	CREATE_PR_ONLY: "Open PR only",
+	UPDATE_AUTO_MERGE: "Update PR + auto-merge on CI pass",
+	UPDATE_PR_ONLY: "Update PR only",
 	LOCAL_FAST_FORWARD: "Local fast-forward merge",
 	CANCEL: "Cancel",
 } as const;
 
-const LAND_MODES = [LAND_MODE.AUTO_MERGE, LAND_MODE.PR_ONLY, LAND_MODE.LOCAL_FAST_FORWARD, LAND_MODE.CANCEL];
+const NEW_PR_LAND_MODES = [LAND_MODE.CREATE_AUTO_MERGE, LAND_MODE.CREATE_PR_ONLY, LAND_MODE.LOCAL_FAST_FORWARD, LAND_MODE.CANCEL];
+const EXISTING_PR_LAND_MODES = [LAND_MODE.UPDATE_AUTO_MERGE, LAND_MODE.UPDATE_PR_ONLY, LAND_MODE.LOCAL_FAST_FORWARD, LAND_MODE.CANCEL];
+
+function isPrLandMode(mode: string): boolean {
+	return [LAND_MODE.CREATE_AUTO_MERGE, LAND_MODE.CREATE_PR_ONLY, LAND_MODE.UPDATE_AUTO_MERGE, LAND_MODE.UPDATE_PR_ONLY].includes(mode as never);
+}
+
+function isAutoMergeLandMode(mode: string): boolean {
+	return mode === LAND_MODE.CREATE_AUTO_MERGE || mode === LAND_MODE.UPDATE_AUTO_MERGE;
+}
 
 const RELEASE_BUMP_TYPES = ["patch", "minor", "major"];
 
@@ -397,6 +408,11 @@ async function getCommitsAheadOfMain(pi: ExtensionAPI): Promise<string[]> {
 	return commits.stdout.trim().split("\n").filter(Boolean);
 }
 
+async function getExistingPr(pi: ExtensionAPI): Promise<string | undefined> {
+	const existingPr = await pi.exec("gh", ["pr", "view", "--json", "number,url", "--jq", '"#" + (.number|tostring) + " " + .url'], { timeout: 30_000 });
+	return existingPr.code === 0 ? existingPr.stdout.trim() : undefined;
+}
+
 async function showPrReadiness(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
 	const state = await getGitState(pi);
 	if (!state.insideGit) {
@@ -493,19 +509,20 @@ async function landBranch(
 		if (!checksPassed) return;
 	}
 
-	const mode = await ctx.ui.select("Land branch", LAND_MODES);
+	const existingPrBeforePush = await getExistingPr(pi);
+	const mode = await ctx.ui.select("Land branch", existingPrBeforePush ? EXISTING_PR_LAND_MODES : NEW_PR_LAND_MODES);
 	if (!mode || mode === LAND_MODE.CANCEL) return;
 
-	if (mode === LAND_MODE.AUTO_MERGE || mode === LAND_MODE.PR_ONLY) {
+	if (isPrLandMode(mode)) {
 		const pushResults = await runSteps(pi, ctx, "push branch", [{ label: `Push ${initial.branch}`, command: "git", args: ["push", "-u", "origin", initial.branch], timeout: 60_000 }]);
 		if (!pushResults.every((result) => result.status === "passed")) {
 			ctx.ui.notify("Push failed; check the progress output", "error");
 			return;
 		}
 
-		const existingPr = await pi.exec("gh", ["pr", "view", "--json", "number,url", "--jq", '"#" + (.number|tostring) + " " + .url'], { timeout: 30_000 });
-		if (existingPr.code === 0) {
-			ctx.ui.notify(`Using existing PR ${existingPr.stdout.trim()}`, "info");
+		const existingPr = existingPrBeforePush ?? (await getExistingPr(pi));
+		if (existingPr) {
+			ctx.ui.notify(`Updated existing PR ${existingPr}`, "info");
 		} else {
 			const createResults = await runSteps(pi, ctx, "open PR", [{ label: "Create GitHub PR", command: "gh", args: ["pr", "create", "--fill"], timeout: 60_000 }]);
 			if (!createResults.every((result) => result.status === "passed")) {
@@ -514,7 +531,7 @@ async function landBranch(
 			}
 		}
 
-		if (mode === LAND_MODE.AUTO_MERGE) {
+		if (isAutoMergeLandMode(mode)) {
 			const mergeResults = await runSteps(pi, ctx, "enable PR auto-merge", [
 				{ label: "Enable PR auto-merge", command: "gh", args: ["pr", "merge", "--auto", "--squash", "--delete-branch"], timeout: 60_000 },
 			]);
@@ -523,7 +540,7 @@ async function landBranch(
 			return;
 		}
 
-		ctx.ui.notify(existingPr.code === 0 ? "Existing PR is up to date" : "PR created", "info");
+		ctx.ui.notify(existingPr ? "Existing PR is up to date" : "PR created", "info");
 		return;
 	}
 
