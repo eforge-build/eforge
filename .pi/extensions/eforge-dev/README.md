@@ -11,6 +11,7 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 /dev branch       Create or switch to a short-lived feature branch
 /dev checks       Run build, type-check, test, docs:check, and docs:build
 /dev pr           Show PR-readiness summary
+/dev land         Auto-commit with /skill:commit, check, and open a PR or fast-forward merge locally
 /dev restart      Build from source and restart the local eforge daemon
 /dev release      Guided main-only release flow
 /dev plan         Prefill /eforge:plan for the published pi-eforge flow

@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, type SelectItem, SelectList, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 type CheckStatus = "pending" | "running" | "passed" | "failed" | "skipped";
@@ -62,6 +61,20 @@ function statusIcon(status: CheckStatus): string {
 function formatDuration(ms: number | undefined): string {
 	if (ms === undefined) return "";
 	return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+function renderBorderedLines(lines: string[], width: number, color: (text: string) => string): string[] {
+	if (width < 3) {
+		return (lines.length > 0 ? lines : [""]).map((line) => truncateToWidth(line, width, "", true));
+	}
+
+	const innerWidth = width - 2;
+	const contentLines = lines.length > 0 ? lines : [""];
+	return [
+		color(`╭${"─".repeat(innerWidth)}╮`),
+		...contentLines.map((line) => color("│") + truncateToWidth(line, innerWidth, "", true) + color("│")),
+		color(`╰${"─".repeat(innerWidth)}╯`),
+	];
 }
 
 async function getGitState(pi: ExtensionAPI): Promise<DevState> {
@@ -172,16 +185,14 @@ class InfoPanel {
 	render(width: number): string[] {
 		const innerWidth = Math.max(20, width - 2);
 		const out: string[] = [];
-		out.push(this.theme.fg("accent", "─".repeat(Math.min(width, 80))));
-		out.push(truncateToWidth(this.theme.fg("accent", this.theme.bold(this.title)), width));
+		out.push(truncateToWidth(this.theme.fg("accent", this.theme.bold(this.title)), innerWidth, "", true));
 		out.push("");
 		for (const line of this.lines) {
-			out.push(...wrapTextWithAnsi(line, innerWidth).map((wrapped) => truncateToWidth(wrapped, width)));
+			out.push(...wrapTextWithAnsi(line, innerWidth).map((wrapped) => truncateToWidth(wrapped, innerWidth, "", true)));
 		}
 		out.push("");
 		out.push(this.theme.fg("dim", "esc/enter close"));
-		out.push(this.theme.fg("accent", "─".repeat(Math.min(width, 80))));
-		return out;
+		return renderBorderedLines(out, width, (s: string) => this.theme.fg("accent", s));
 	}
 
 	handleInput(data: string): void {
@@ -217,27 +228,26 @@ class ProgressPanel {
 	render(width: number): string[] {
 		if (this.cachedWidth === width && this.cachedLines) return this.cachedLines;
 
+		const innerWidth = Math.max(1, width - 2);
 		const lines: string[] = [];
-		lines.push(this.theme.fg("accent", "─".repeat(Math.min(width, 90))));
-		lines.push(truncateToWidth(this.theme.fg("accent", this.theme.bold(this.title)), width));
+		lines.push(truncateToWidth(this.theme.fg("accent", this.theme.bold(this.title)), innerWidth, "", true));
 		lines.push("");
 
 		for (const result of this.results) {
 			const color = result.status === "passed" ? "success" : result.status === "failed" ? "error" : result.status === "running" ? "accent" : "muted";
 			const duration = formatDuration(result.durationMs);
-			lines.push(truncateToWidth(`${this.theme.fg(color, statusIcon(result.status))} ${result.label}${duration ? ` ${this.theme.fg("dim", duration)}` : ""}`, width));
+			lines.push(truncateToWidth(`${this.theme.fg(color, statusIcon(result.status))} ${result.label}${duration ? ` ${this.theme.fg("dim", duration)}` : ""}`, innerWidth, "", true));
 			if (result.status === "failed") {
 				const detail = oneLine(result.stderr) || oneLine(result.stdout) || `exit ${result.code ?? "unknown"}`;
-				lines.push(truncateToWidth(`  ${this.theme.fg("error", detail)}`, width));
+				lines.push(truncateToWidth(`  ${this.theme.fg("error", detail)}`, innerWidth, "", true));
 			}
 		}
 
 		lines.push("");
 		lines.push(this.theme.fg("dim", "esc cancel"));
-		lines.push(this.theme.fg("accent", "─".repeat(Math.min(width, 90))));
 		this.cachedWidth = width;
-		this.cachedLines = lines;
-		return lines;
+		this.cachedLines = renderBorderedLines(lines, width, (s: string) => this.theme.fg("accent", s));
+		return this.cachedLines;
 	}
 
 	handleInput(data: string): void {
@@ -340,6 +350,12 @@ async function createBranch(pi: ExtensionAPI, ctx: ExtensionContext, branchArg?:
 	}
 }
 
+async function getCommitsAheadOfMain(pi: ExtensionAPI): Promise<string[]> {
+	const commits = await pi.exec("git", ["log", "--oneline", "main..HEAD"], { timeout: 5_000 });
+	if (commits.code !== 0) return [];
+	return commits.stdout.trim().split("\n").filter(Boolean);
+}
+
 async function showPrReadiness(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
 	const state = await getGitState(pi);
 	if (!state.insideGit) {
@@ -347,9 +363,8 @@ async function showPrReadiness(pi: ExtensionAPI, ctx: ExtensionContext): Promise
 		return;
 	}
 
-	const [baseExists, commits, stat, docsDrift] = await Promise.all([
+	const [baseExists, stat, docsDrift] = await Promise.all([
 		pi.exec("git", ["rev-parse", "--verify", "main"], { timeout: 5_000 }),
-		pi.exec("git", ["log", "--oneline", "main..HEAD"], { timeout: 5_000 }),
 		pi.exec("git", ["diff", "--stat", "main...HEAD"], { timeout: 5_000 }),
 		pi.exec("git", ["status", "--porcelain", "docs", "web"], { timeout: 5_000 }),
 	]);
@@ -359,7 +374,7 @@ async function showPrReadiness(pi: ExtensionAPI, ctx: ExtensionContext): Promise
 		return;
 	}
 
-	const commitLines = commits.stdout.trim().split("\n").filter(Boolean);
+	const commitLines = await getCommitsAheadOfMain(pi);
 	const lines = [
 		`Branch: ${state.branch ?? "detached"}${state.isMain ? " ⚠ on main" : ""}`,
 		`Worktree: ${state.dirtyCount === 0 ? "clean" : `${state.dirtyCount} changed file(s)`}`,
@@ -373,11 +388,106 @@ async function showPrReadiness(pi: ExtensionAPI, ctx: ExtensionContext): Promise
 		docsDrift.stdout.trim() || "none",
 		"",
 		"Suggested next steps:",
-		state.isMain ? "- Create a feature branch with /dev branch before opening a PR." : "- Run /dev checks before opening a PR.",
+		state.isMain ? "- Create a feature branch with /dev branch before opening a PR." : "- Run /dev checks or /dev land before opening a PR.",
 		"- Include tests/docs notes and call out any breaking changes in the PR body.",
 	];
 
 	await showInfo(ctx, "PR readiness", lines);
+}
+
+async function stageAllChanges(pi: ExtensionAPI, ctx: ExtensionContext): Promise<boolean> {
+	const results = await runSteps(pi, ctx, "prepare /skill:commit", [{ label: "Stage all changes", command: "git", args: ["add", "-A"], timeout: 30_000 }]);
+	return results.every((result) => result.status === "passed");
+}
+
+async function landBranch(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	setLastChecks: (status: DevState["lastChecks"]) => Promise<void>,
+	options: { autoCommitDirtyWorktree?: boolean; onCommitQueued?: (branch: string) => void } = { autoCommitDirtyWorktree: true },
+): Promise<void> {
+	const initial = await getGitState(pi);
+	if (!initial.insideGit) {
+		ctx.ui.notify("Not in a git repository", "error");
+		return;
+	}
+	if (!initial.branch) {
+		ctx.ui.notify("Cannot land a detached HEAD", "error");
+		return;
+	}
+	if (initial.isMain) {
+		ctx.ui.notify("You are already on main. Create a feature branch before landing work.", "warning");
+		return;
+	}
+
+	const mainExists = await pi.exec("git", ["rev-parse", "--verify", "main"], { timeout: 5_000 });
+	if (mainExists.code !== 0) {
+		ctx.ui.notify("Cannot find local main branch", "error");
+		return;
+	}
+
+	if (initial.dirtyCount > 0) {
+		if (!options.autoCommitDirtyWorktree) {
+			ctx.ui.notify("Worktree is still dirty after /skill:commit. Resolve it and run /dev land again.", "error");
+			return;
+		}
+		const staged = await stageAllChanges(pi, ctx);
+		if (!staged) return;
+		options.onCommitQueued?.(initial.branch);
+		ctx.ui.notify("Staged changes and queued /skill:commit. /dev land will resume after the commit.", "info");
+		pi.sendUserMessage(`/skill:commit\n\nAfter committing, do not push. The eforge-dev extension will continue landing branch ${initial.branch}.`);
+		return;
+	}
+
+	const commitsAhead = await getCommitsAheadOfMain(pi);
+	if (commitsAhead.length === 0) {
+		ctx.ui.notify("No commits ahead of main to land", "warning");
+		return;
+	}
+
+	const checkChoice = await ctx.ui.select("Checks before landing", ["Run checks", "Skip checks", "Cancel"]);
+	if (!checkChoice || checkChoice === "Cancel") return;
+	if (checkChoice === "Run checks") {
+		const checksPassed = await runChecks(pi, ctx, setLastChecks);
+		if (!checksPassed) return;
+	}
+
+	const mode = await ctx.ui.select("Land branch", ["Open PR (recommended)", "Local fast-forward merge", "Cancel"]);
+	if (!mode || mode === "Cancel") return;
+
+	if (mode === "Open PR (recommended)") {
+		const results = await runSteps(pi, ctx, "push branch + open PR", [
+			{ label: `Push ${initial.branch}`, command: "git", args: ["push", "-u", "origin", initial.branch], timeout: 60_000 },
+			{ label: "Create GitHub PR", command: "gh", args: ["pr", "create", "--fill"], timeout: 60_000 },
+		]);
+		const ok = results.every((result) => result.status === "passed");
+		ctx.ui.notify(ok ? "PR created" : "PR flow failed; check the progress output", ok ? "info" : "error");
+		return;
+	}
+
+	const confirmed = await ctx.ui.confirm("Local merge", `Fast-forward merge ${initial.branch} into local main?`);
+	if (!confirmed) return;
+
+	const mergeResults = await runSteps(pi, ctx, "land branch locally", [
+		{ label: "Checkout main", command: "git", args: ["checkout", "main"], timeout: 30_000 },
+		{ label: "Update main", command: "git", args: ["pull", "--ff-only"], timeout: 60_000 },
+		{ label: `Fast-forward merge ${initial.branch}`, command: "git", args: ["merge", "--ff-only", initial.branch], timeout: 60_000 },
+	]);
+	const merged = mergeResults.every((result) => result.status === "passed");
+	if (!merged) {
+		ctx.ui.notify("Local landing failed. Rebase/update the branch, then try again.", "error");
+		return;
+	}
+
+	const pushMain = await ctx.ui.confirm("Push main", "Push local main to origin now?");
+	if (!pushMain) {
+		ctx.ui.notify("Branch landed locally on main. Push when ready with: git push origin main", "info");
+		return;
+	}
+
+	const pushResults = await runSteps(pi, ctx, "push main", [{ label: "Push main", command: "git", args: ["push", "origin", "main"], timeout: 60_000 }]);
+	const pushed = pushResults.every((result) => result.status === "passed");
+	ctx.ui.notify(pushed ? "main pushed" : "Push failed", pushed ? "info" : "error");
 }
 
 async function restartDaemon(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
@@ -459,6 +569,7 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 		{ value: "plan", label: "Prefill /eforge:plan", description: "Start the published pi-eforge planning flow" },
 		{ value: "checks", label: "Run checks", description: "build, type-check, test, docs:check, docs:build" },
 		{ value: "pr", label: "Show PR readiness", description: "Branch, diff, docs drift, and next steps" },
+		{ value: "land", label: "Land current branch", description: "Commit, check, and open a PR or fast-forward merge" },
 		{ value: "restart", label: "Rebuild + restart daemon", description: "Use after local engine/CLI changes" },
 		{ value: "release", label: "Release wizard", description: "Main-only checks, version bump, tag, optional push" },
 		{ value: "refresh", label: "Refresh status", description: "Update footer/widget state" },
@@ -478,18 +589,16 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 
 			const container = {
 				render(width: number) {
+					const innerWidth = Math.max(1, width - 2);
 					const lines: string[] = [];
-					const border = new DynamicBorder((s: string) => theme.fg("accent", s));
-					lines.push(...border.render(width));
-					lines.push(truncateToWidth(theme.fg("accent", theme.bold("eforge dev cockpit")), width));
+					lines.push(truncateToWidth(theme.fg("accent", theme.bold("eforge dev cockpit")), innerWidth, "", true));
 					lines.push("");
-					for (const line of renderStateLines(state, theme)) lines.push(truncateToWidth(line, width));
+					for (const line of renderStateLines(state, theme)) lines.push(truncateToWidth(line, innerWidth, "", true));
 					lines.push("");
-					lines.push(...selectList.render(width));
+					lines.push(...selectList.render(innerWidth));
 					lines.push("");
 					lines.push(theme.fg("dim", "↑↓ navigate • enter select • esc cancel"));
-					lines.push(...border.render(width));
-					return lines;
+					return renderBorderedLines(lines, width, (s: string) => theme.fg("accent", s));
 				},
 				invalidate() {
 					selectList.invalidate();
@@ -508,6 +617,7 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 
 export default function eforgeDevExtension(pi: ExtensionAPI) {
 	let state: DevState | undefined;
+	let pendingLandAfterCommit: { branch: string } | undefined;
 
 	async function refresh(ctx: ExtensionContext): Promise<void> {
 		state = await updateDevUi(pi, ctx, state);
@@ -520,7 +630,7 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 	pi.registerCommand("dev", {
 		description: "Open the eforge maintainer cockpit",
 		getArgumentCompletions: (prefix: string) => {
-			const values = ["branch", "checks", "pr", "release", "restart", "plan", "refresh"];
+			const values = ["branch", "checks", "pr", "land", "release", "restart", "plan", "refresh"];
 			return values.filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value }));
 		},
 		handler: async (args, ctx) => {
@@ -538,6 +648,15 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 					return;
 				case "pr":
 					await showPrReadiness(pi, ctx);
+					return;
+				case "land":
+					await landBranch(pi, ctx, setLastChecks, {
+						autoCommitDirtyWorktree: true,
+						onCommitQueued: (branch) => {
+							pendingLandAfterCommit = { branch };
+						},
+					});
+					await refresh(ctx);
 					return;
 				case "release":
 					await releaseWizard(pi, ctx, setLastChecks);
@@ -568,6 +687,25 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
+		await refresh(ctx);
+	});
+
+	pi.on("agent_end", async (_event, ctx) => {
+		if (!pendingLandAfterCommit) return;
+		const pending = pendingLandAfterCommit;
+		pendingLandAfterCommit = undefined;
+
+		const current = await getGitState(pi);
+		if (current.branch !== pending.branch) {
+			ctx.ui.notify(`Not resuming /dev land: branch changed from ${pending.branch} to ${current.branch ?? "detached"}`, "warning");
+			return;
+		}
+		if (current.dirtyCount > 0) {
+			ctx.ui.notify("/skill:commit finished but the worktree is still dirty. Resolve it and run /dev land again.", "error");
+			return;
+		}
+
+		await landBranch(pi, ctx, setLastChecks, { autoCommitDirtyWorktree: false });
 		await refresh(ctx);
 	});
 
