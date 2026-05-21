@@ -1,7 +1,7 @@
 ---
 title: Parameterize eforge On-Success Landing Actions
 created: 2026-05-21
-profile: gpt-claude-combo
+profile: claude-sdk-4-7
 ---
 
 # Parameterize eforge On-Success Landing Actions
@@ -10,7 +10,7 @@ profile: gpt-claude-combo
 
 Metadata:
 - Created: 2026-05-21
-- Profile: `gpt-claude-combo`
+- Profile: `claude-sdk-4-7`
 
 Current eforge builds always finalize successful work by merging the generated feature branch back into the captured base branch. This local merge model is inconvenient and potentially unsafe when multiple top-level eforge builds run in parallel against the same project/base branch, because finalization mutates `repoRoot` and requires a clean checkout on the exact base branch.
 
