@@ -39,6 +39,47 @@ const CHECK_STEPS: Step[] = [
 
 const BRANCH_NAME_RE = /^(feat|fix|docs|refactor|test|chore|release)\/[a-z0-9][a-z0-9._-]*$/;
 
+const DEV_ACTION = {
+	BRANCH: "branch",
+	CHECKS: "checks",
+	PR: "pr",
+	LAND: "land",
+	RELEASE: "release",
+	RESTART: "restart",
+	PLAN: "plan",
+	REFRESH: "refresh",
+} as const;
+
+const DEV_ACTIONS = [
+	DEV_ACTION.BRANCH,
+	DEV_ACTION.CHECKS,
+	DEV_ACTION.PR,
+	DEV_ACTION.LAND,
+	DEV_ACTION.RELEASE,
+	DEV_ACTION.RESTART,
+	DEV_ACTION.PLAN,
+	DEV_ACTION.REFRESH,
+];
+
+const CHECK_CHOICE = {
+	RUN: "Run checks",
+	SKIP: "Skip checks",
+	CANCEL: "Cancel",
+} as const;
+
+const CHECK_CHOICES = [CHECK_CHOICE.RUN, CHECK_CHOICE.SKIP, CHECK_CHOICE.CANCEL];
+
+const LAND_MODE = {
+	AUTO_MERGE: "Open PR + auto-merge on CI pass",
+	PR_ONLY: "Open PR only",
+	LOCAL_FAST_FORWARD: "Local fast-forward merge",
+	CANCEL: "Cancel",
+} as const;
+
+const LAND_MODES = [LAND_MODE.AUTO_MERGE, LAND_MODE.PR_ONLY, LAND_MODE.LOCAL_FAST_FORWARD, LAND_MODE.CANCEL];
+
+const RELEASE_BUMP_TYPES = ["patch", "minor", "major"];
+
 function oneLine(value: string | undefined, fallback = ""): string {
 	return (value ?? fallback).trim().split("\n").filter(Boolean).at(-1) ?? fallback;
 }
@@ -445,23 +486,27 @@ async function landBranch(
 		return;
 	}
 
-	const checkChoice = await ctx.ui.select("Checks before landing", ["Run checks", "Skip checks", "Cancel"]);
-	if (!checkChoice || checkChoice === "Cancel") return;
-	if (checkChoice === "Run checks") {
+	const checkChoice = await ctx.ui.select("Checks before landing", CHECK_CHOICES);
+	if (!checkChoice || checkChoice === CHECK_CHOICE.CANCEL) return;
+	if (checkChoice === CHECK_CHOICE.RUN) {
 		const checksPassed = await runChecks(pi, ctx, setLastChecks);
 		if (!checksPassed) return;
 	}
 
-	const mode = await ctx.ui.select("Land branch", ["Open PR (recommended)", "Local fast-forward merge", "Cancel"]);
-	if (!mode || mode === "Cancel") return;
+	const mode = await ctx.ui.select("Land branch", LAND_MODES);
+	if (!mode || mode === LAND_MODE.CANCEL) return;
 
-	if (mode === "Open PR (recommended)") {
-		const results = await runSteps(pi, ctx, "push branch + open PR", [
+	if (mode === LAND_MODE.AUTO_MERGE || mode === LAND_MODE.PR_ONLY) {
+		const steps: Step[] = [
 			{ label: `Push ${initial.branch}`, command: "git", args: ["push", "-u", "origin", initial.branch], timeout: 60_000 },
 			{ label: "Create GitHub PR", command: "gh", args: ["pr", "create", "--fill"], timeout: 60_000 },
-		]);
+		];
+		if (mode === LAND_MODE.AUTO_MERGE) {
+			steps.push({ label: "Enable PR auto-merge", command: "gh", args: ["pr", "merge", "--auto", "--squash", "--delete-branch"], timeout: 60_000 });
+		}
+		const results = await runSteps(pi, ctx, mode === LAND_MODE.PR_ONLY ? "push branch + open PR" : "push branch + open PR + auto-merge", steps);
 		const ok = results.every((result) => result.status === "passed");
-		ctx.ui.notify(ok ? "PR created" : "PR flow failed; check the progress output", ok ? "info" : "error");
+		ctx.ui.notify(ok ? (mode === LAND_MODE.PR_ONLY ? "PR created" : "PR created; auto-merge enabled") : "PR flow failed; check the progress output", ok ? "info" : "error");
 		return;
 	}
 
@@ -533,7 +578,7 @@ async function releaseWizard(pi: ExtensionAPI, ctx: ExtensionContext, setLastChe
 	const passed = await runChecks(pi, ctx, setLastChecks);
 	if (!passed) return;
 
-	const bump = await ctx.ui.select("Version bump", ["patch", "minor", "major"]);
+	const bump = await ctx.ui.select("Version bump", RELEASE_BUMP_TYPES);
 	if (!bump) return;
 
 	const bumpResult = await runSteps(pi, ctx, `pnpm release ${bump}`, [{ label: `Bump ${bump}`, command: "pnpm", args: ["release", bump], timeout: 30_000 }]);
@@ -565,14 +610,14 @@ async function prefillEforgePlan(ctx: ExtensionContext): Promise<void> {
 
 async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevState): Promise<string | null> {
 	const items: SelectItem[] = [
-		{ value: "branch", label: "Create/switch feature branch", description: "Keep main releasable before eforge work" },
-		{ value: "plan", label: "Prefill /eforge:plan", description: "Start the published pi-eforge planning flow" },
-		{ value: "checks", label: "Run checks", description: "build, type-check, test, docs:check, docs:build" },
-		{ value: "pr", label: "Show PR readiness", description: "Branch, diff, docs drift, and next steps" },
-		{ value: "land", label: "Land current branch", description: "Commit, check, and open a PR or fast-forward merge" },
-		{ value: "restart", label: "Rebuild + restart daemon", description: "Use after local engine/CLI changes" },
-		{ value: "release", label: "Release wizard", description: "Main-only checks, version bump, tag, optional push" },
-		{ value: "refresh", label: "Refresh status", description: "Update footer/widget state" },
+		{ value: DEV_ACTION.BRANCH, label: "Create/switch feature branch", description: "Keep main releasable before eforge work" },
+		{ value: DEV_ACTION.PLAN, label: "Prefill /eforge:plan", description: "Start the published pi-eforge planning flow" },
+		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, docs:check, docs:build" },
+		{ value: DEV_ACTION.PR, label: "Show PR readiness", description: "Branch, diff, docs drift, and next steps" },
+		{ value: DEV_ACTION.LAND, label: "Land current branch", description: "Commit, check, and open a PR or fast-forward merge" },
+		{ value: DEV_ACTION.RESTART, label: "Rebuild + restart daemon", description: "Use after local engine/CLI changes" },
+		{ value: DEV_ACTION.RELEASE, label: "Release wizard", description: "Main-only checks, version bump, tag, optional push" },
+		{ value: DEV_ACTION.REFRESH, label: "Refresh status", description: "Update footer/widget state" },
 	];
 
 	return ctx.ui.custom<string | null>(
@@ -630,26 +675,25 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 	pi.registerCommand("dev", {
 		description: "Open the eforge maintainer cockpit",
 		getArgumentCompletions: (prefix: string) => {
-			const values = ["branch", "checks", "pr", "land", "release", "restart", "plan", "refresh"];
-			return values.filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value }));
+			return DEV_ACTIONS.filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value }));
 		},
 		handler: async (args, ctx) => {
 			await refresh(ctx);
 			const [subcommand, ...rest] = (args ?? "").trim().split(/\s+/).filter(Boolean);
 
 			switch (subcommand) {
-				case "branch":
+				case DEV_ACTION.BRANCH:
 					await createBranch(pi, ctx, rest.join(" "));
 					await refresh(ctx);
 					return;
-				case "checks":
+				case DEV_ACTION.CHECKS:
 					await runChecks(pi, ctx, setLastChecks);
 					await refresh(ctx);
 					return;
-				case "pr":
+				case DEV_ACTION.PR:
 					await showPrReadiness(pi, ctx);
 					return;
-				case "land":
+				case DEV_ACTION.LAND:
 					await landBranch(pi, ctx, setLastChecks, {
 						autoCommitDirtyWorktree: true,
 						onCommitQueued: (branch) => {
@@ -658,17 +702,17 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 					});
 					await refresh(ctx);
 					return;
-				case "release":
+				case DEV_ACTION.RELEASE:
 					await releaseWizard(pi, ctx, setLastChecks);
 					await refresh(ctx);
 					return;
-				case "restart":
+				case DEV_ACTION.RESTART:
 					await restartDaemon(pi, ctx);
 					return;
-				case "plan":
+				case DEV_ACTION.PLAN:
 					await prefillEforgePlan(ctx);
 					return;
-				case "refresh":
+				case DEV_ACTION.REFRESH:
 					ctx.ui.notify("eforge-dev status refreshed", "info");
 					return;
 				case undefined: {
