@@ -53,7 +53,11 @@ async function setupProject(tmpDir: string): Promise<{ configDir: string }> {
   execFileSync('git', ['init', '-b', 'main'], gitOpts);
   execFileSync('git', ['config', 'user.email', 'test@example.com'], gitOpts);
   execFileSync('git', ['config', 'user.name', 'Test'], gitOpts);
-  execFileSync('git', ['commit', '--allow-empty', '-m', 'chore: initial commit'], gitOpts);
+
+  // Add .gitignore ignoring .eforge/ so queue writes don't appear in git status
+  await writeFile(resolve(tmpDir, '.gitignore'), '.eforge/\n', 'utf-8');
+  execFileSync('git', ['add', '.gitignore'], gitOpts);
+  execFileSync('git', ['commit', '-m', 'chore: initial commit'], gitOpts);
 
   // Create eforge config directory (so getConfigDir resolves it)
   const configDir = resolve(tmpDir, 'eforge');
@@ -362,11 +366,12 @@ describe('POST /api/playbook/run', () => {
     const content = await readFile(queueFile, 'utf-8');
     expect(content).toContain('title:');
 
-    // Verify the enqueue commit was created with the correct subject
+    // Enqueue is filesystem-only — no commit should have been created.
+    // The initial empty commit is still the latest commit.
     const commitSubject = execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: tmpDir }).toString().trim();
-    expect(commitSubject).toMatch(new RegExp(`^enqueue\\(${data.id}\\): `));
+    expect(commitSubject).toBe('chore: initial commit');
 
-    // Verify the queue directory is clean (no untracked or modified files)
+    // Verify the queue directory shows no changes (queue is gitignored)
     const gitStatus = execFileSync('git', ['status', '--porcelain', '.eforge/queue/'], { cwd: tmpDir }).toString().trim();
     expect(gitStatus).toBe('');
 

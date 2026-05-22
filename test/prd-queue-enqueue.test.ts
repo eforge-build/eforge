@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { enqueuePrd, inferTitle } from '@eforge-build/engine/prd-queue';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -161,5 +162,38 @@ describe('enqueuePrd', () => {
 
     const today = new Date().toISOString().split('T')[0];
     expect(result.frontmatter.created).toBe(today);
+  });
+
+  it('does NOT create a git commit — queue is filesystem-only', async () => {
+    const cwd = makeTempDir();
+    // Set up a minimal git repo
+    execFileSync('git', ['init'], { cwd });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd });
+    // Add .gitignore so .eforge/ is ignored
+    writeFileSync(join(cwd, '.gitignore'), '.eforge/\n');
+    execFileSync('git', ['add', '.gitignore'], { cwd });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd });
+
+    const initialHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd }).toString().trim();
+
+    const result = await enqueuePrd({
+      body: 'body',
+      title: 'Queue Test',
+      queueDir: '.eforge/queue',
+      cwd,
+    });
+
+    // No new commit should have been created
+    const currentHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd }).toString().trim();
+    expect(currentHash).toBe(initialHash);
+
+    // Queue file exists at the configured path
+    expect(existsSync(result.filePath)).toBe(true);
+    expect(result.filePath).toBe(join(cwd, '.eforge', 'queue', 'queue-test.md'));
+
+    // Git status shows nothing for the queue dir (gitignored)
+    const gitStatus = execFileSync('git', ['status', '--porcelain', '.eforge/queue/'], { cwd }).toString().trim();
+    expect(gitStatus).toBe('');
   });
 });

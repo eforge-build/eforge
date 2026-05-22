@@ -3416,7 +3416,7 @@ export async function startServer(
           }
           // --- eforge:endregion plan-01-core-profile-propagation ---
           // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-          const { enqueuePrd, inferTitle, validateDependsOnExists, commitEnqueuedPrd } = await import('@eforge-build/engine/prd-queue');
+          const { enqueuePrd, inferTitle, validateDependsOnExists } = await import('@eforge-build/engine/prd-queue');
           // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
           const plan = playbookToBuildSource(playbook);
           const queueDir = options?.queueDir ?? '.eforge/queue';
@@ -3449,7 +3449,7 @@ export async function startServer(
             profile: plan.profile,
             // --- eforge:endregion plan-01-core-profile-propagation ---
           });
-          await commitEnqueuedPrd(result.filePath, result.id, title, cwd);
+          // Enqueue is filesystem-only — queue state is runtime, not tracked in git.
           notifyQueueMutation(options.daemonState, 'playbook-enqueue');
           sendJson(res, { kind: 'enqueued', id: result.id });
         }

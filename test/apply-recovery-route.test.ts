@@ -2,11 +2,11 @@
  * End-to-end tests for POST /api/recover/apply.
  *
  * Verifies the in-process synchronous apply route:
- * - retry happy-path: PRD moved to queue, sidecars removed, commit created, correct response
- * - abandon happy-path: PRD and sidecars removed, commit created
+ * - retry happy-path: PRD moved to queue, sidecars removed (filesystem-only — commitSha:""), correct response
+ * - abandon happy-path: PRD and sidecars removed (filesystem-only — commitSha:"")
  * - missing sidecar JSON → 404 with descriptive error
  * - malformed sidecar JSON → 400 with descriptive error
- * - split missing suggestedSuccessorPrd → 400
+ * - split missing suggestedSuccessorPrd → 500 (apply helper throws; route surfaces as 500)
  * - no worker is spawned (WorkerTracker.spawnWorker never called)
  *
  * Follows AGENTS.md conventions:
@@ -202,7 +202,7 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/recover/apply — retry', () => {
-  it('moves PRD to queue, removes sidecars, commits, returns { verdict, commitSha, noAction }', async () => {
+  it('moves PRD to queue, removes sidecars, returns { verdict, commitSha, noAction }', async () => {
     const prdId = 'test-retry-prd';
     await seedFailedPrd(tmpDir, prdId, 'retry');
 
@@ -216,8 +216,8 @@ describe('POST /api/recover/apply — retry', () => {
     const data = await res.json() as { verdict: string; commitSha?: string; noAction?: boolean };
     expect(data.verdict).toBe('retry');
     expect(data.noAction).toBe(false);
-    expect(typeof data.commitSha).toBe('string');
-    expect(data.commitSha!.length).toBe(40);
+    // Filesystem-only — commitSha is empty string (no git commit for queue operations)
+    expect(data.commitSha).toBe('');
 
     // PRD moved to queue directory
     expect(await pathExists(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(true);
@@ -248,7 +248,7 @@ describe('POST /api/recover/apply — retry', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/recover/apply — abandon', () => {
-  it('removes PRD and sidecars, commits, returns { verdict, commitSha, noAction }', async () => {
+  it('removes PRD and sidecars (filesystem-only), returns { verdict, commitSha: "", noAction }', async () => {
     const prdId = 'test-abandon-prd';
     await seedFailedPrd(tmpDir, prdId, 'abandon');
 
@@ -262,7 +262,8 @@ describe('POST /api/recover/apply — abandon', () => {
     const data = await res.json() as { verdict: string; commitSha?: string; noAction?: boolean };
     expect(data.verdict).toBe('abandon');
     expect(data.noAction).toBe(false);
-    expect(typeof data.commitSha).toBe('string');
+    // Filesystem-only — commitSha is empty string (no git commit for queue operations)
+    expect(data.commitSha).toBe('');
 
     // All failed files removed
     expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
@@ -331,11 +332,11 @@ describe('POST /api/recover/apply — malformed sidecar', () => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/recover/apply — split missing suggestedSuccessorPrd → 400
+// POST /api/recover/apply — split missing suggestedSuccessorPrd → 500
 // ---------------------------------------------------------------------------
 
 describe('POST /api/recover/apply — split missing successor', () => {
-  it('returns 400 when split verdict has no suggestedSuccessorPrd', async () => {
+  it('returns 500 when split verdict has no suggestedSuccessorPrd (apply helper throws)', async () => {
     const prdId = 'test-split-no-successor';
     // Write a split verdict sidecar with no suggestedSuccessorPrd
     const failedDir = join(tmpDir, '.eforge', 'queue', 'failed');

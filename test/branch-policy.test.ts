@@ -43,11 +43,16 @@ describe('resolveTrunkBranch', () => {
   });
 
   it('returns "main" when config is undefined and no git repo exists', async () => {
-    const result = await resolveTrunkBranch(undefined, tmpdir());
-    // Either 'main' (no origin/HEAD) or whatever origin/HEAD says — but in a bare
-    // temp dir with no git repo, git will fail and we fall back to 'main'.
-    expect(typeof result).toBe('string');
-    expect(result.length).toBeGreaterThan(0);
+    // Use a freshly-created subdir of tmpdir() that is guaranteed not to be a
+    // git repo (passing tmpdir() directly can pick up an enclosing repo's
+    // origin/HEAD on some systems and make this assertion non-deterministic).
+    const isolatedDir = await mkdtemp(join(tmpdir(), 'eforge-branch-policy-no-repo-'));
+    try {
+      const result = await resolveTrunkBranch(undefined, isolatedDir);
+      expect(result).toBe('main');
+    } finally {
+      await rm(isolatedDir, { recursive: true });
+    }
   });
 });
 

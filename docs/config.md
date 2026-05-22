@@ -101,7 +101,7 @@ plan:
   outputDir: eforge/plans     # Where plan artifacts are written
 
 prdQueue:
-  dir: eforge/queue           # Where queued PRDs are stored
+  dir: .eforge/queue          # Where queued PRDs are stored (gitignored — runtime state)
   autoBuild: true             # Daemon automatically builds after enqueue
   watchPollIntervalMs: 5000   # Poll interval for watch mode (ms)
 

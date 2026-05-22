@@ -75,7 +75,7 @@ The validation step after all plans merge. eforge runs `build.postMergeCommands`
 
 ## Queue
 
-The committed `eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave.
+The `.eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue state is runtime-only (gitignored) — queue mutations are filesystem operations and do not produce git commits. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave.
 
 ## Queue priority
 

@@ -1,14 +1,13 @@
 /**
- * Tests for the new inline atomic recovery architecture.
+ * Tests for the inline recovery architecture.
  *
- * Architecture change: recovery now runs inline in the queue parent's finalize
+ * Architecture change: recovery runs inline in the queue parent's finalize
  * handler (no daemon polling loop). The PRD move + both sidecar files are
- * committed atomically via moveAndCommitFailedWithSidecar. The daemon's
- * POST /api/recover route still exists for manual backfill.
+ * handled by moveFailedWithSidecar (filesystem-only — queue is gitignored).
+ * The daemon's POST /api/recover route still exists for manual backfill.
  *
  * Tests covered:
- * 1. moveAndCommitFailedWithSidecar produces a single atomic commit with
- *    the moved PRD + both sidecar paths.
+ * 1. moveFailedWithSidecar moves the PRD and writes both sidecar files (no commit).
  * 2. Sidecar path uses prdId not planId (multi-plan scenario).
  * 3. Recovery analyst parse error -> manual-verdict sidecar still written.
  * 4. EforgeEngine.recover() with no state.json + populated event DB -> partial sidecar.
@@ -28,7 +27,7 @@ import { join, resolve } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type WorkerTracker, type MonitorServer } from '@eforge-build/monitor/server';
-import { moveAndCommitFailedWithSidecar } from '@eforge-build/engine/prd-queue';
+import { moveFailedWithSidecar } from '@eforge-build/engine/prd-queue';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { StubHarness } from './stub-harness.js';
 import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
@@ -246,23 +245,21 @@ describe('GET /api/recovery/sidecar', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 1. moveAndCommitFailedWithSidecar creates single atomic commit
+// 1. moveFailedWithSidecar moves PRD and writes sidecars (filesystem-only)
 // ---------------------------------------------------------------------------
 
-describe('moveAndCommitFailedWithSidecar', () => {
+describe('moveFailedWithSidecar', () => {
   const makeTestDir = useTempDir('eforge-inline-recovery-test-');
 
-  it('produces a single commit with git mv + both sidecar files', async () => {
+  it('moves PRD to failed/ and writes both sidecar files without creating a git commit', async () => {
     const dir = makeTestDir();
     initGitRepo(dir);
 
-    // Create queue dir and PRD file, then commit it
-    const queueDir = join(dir, 'eforge', 'queue');
+    // Create queue dir and PRD file (gitignored — not committed)
+    const queueDir = join(dir, '.eforge', 'queue');
     await mkdir(queueDir, { recursive: true });
     const prdPath = join(queueDir, 'my-prd.md');
     await writeFile(prdPath, '---\ntitle: My PRD\ncreated: 2024-01-01\n---\n\n# My PRD\n\nDo a thing.\n');
-    execFileSync('git', ['add', '--', prdPath], { cwd: dir });
-    execFileSync('git', ['commit', '-m', 'queue(my-prd): enqueue'], { cwd: dir });
 
     const headBefore = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
 
@@ -288,7 +285,7 @@ describe('moveAndCommitFailedWithSidecar', () => {
       risks: [],
     };
 
-    const { mdPath, jsonPath, destPath } = await moveAndCommitFailedWithSidecar(
+    const { mdPath, jsonPath, destPath } = await moveFailedWithSidecar(
       prdPath,
       summary,
       verdict,
@@ -296,31 +293,9 @@ describe('moveAndCommitFailedWithSidecar', () => {
       dir,
     );
 
-    // Exactly one new commit since headBefore
-    const newCommits = execFileSync(
-      'git', ['log', '--format=%s', `${headBefore}..HEAD`],
-      { cwd: dir },
-    ).toString().trim().split('\n').filter(Boolean);
-    expect(newCommits).toHaveLength(1);
-    expect(newCommits[0]).toMatch(/^queue\(my-prd\): failed - manual/);
-
-    // Commit shows exactly 3 paths: renamed PRD + both sidecars
-    const nameStatus = execFileSync(
-      'git', ['show', '--name-status', '--format=', 'HEAD'],
-      { cwd: dir },
-    ).toString().trim().split('\n').filter(Boolean);
-
-    // Check renamed PRD
-    const renamedLines = nameStatus.filter(l => l.startsWith('R'));
-    expect(renamedLines).toHaveLength(1);
-    expect(renamedLines[0]).toContain('my-prd.md');
-
-    // Check both sidecar files are added
-    const addedLines = nameStatus.filter(l => l.startsWith('A'));
-    expect(addedLines).toHaveLength(2);
-    const addedPaths = addedLines.map(l => l.split('\t')[1]);
-    expect(addedPaths.some(p => p.endsWith('.recovery.md'))).toBe(true);
-    expect(addedPaths.some(p => p.endsWith('.recovery.json'))).toBe(true);
+    // No new commit since headBefore — filesystem-only
+    const headAfter = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
+    expect(headAfter).toBe(headBefore);
 
     // Verify the sidecar JSON is v2
     const sidecarJson = JSON.parse(await readFile(jsonPath, 'utf-8'));
@@ -329,8 +304,18 @@ describe('moveAndCommitFailedWithSidecar', () => {
 
     // Verify the PRD moved to failed/
     expect(destPath).toContain('failed');
+    expect(destPath).toContain('my-prd.md');
     expect(mdPath).toContain('.recovery.md');
     expect(jsonPath).toContain('.recovery.json');
+
+    // Verify the filesystem mutation actually occurred:
+    // source PRD path is gone, destination PRD path exists, and both sidecar
+    // files exist on disk.
+    const { existsSync } = await import('node:fs');
+    expect(existsSync(prdPath)).toBe(false);
+    expect(existsSync(destPath)).toBe(true);
+    expect(existsSync(mdPath)).toBe(true);
+    expect(existsSync(jsonPath)).toBe(true);
   });
 });
 

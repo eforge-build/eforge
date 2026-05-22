@@ -263,12 +263,55 @@ export async function getPrdDiffSummary(hash: string, cwd: string): Promise<stri
 }
 
 // ---------------------------------------------------------------------------
+// PRD provenance artifact
+// ---------------------------------------------------------------------------
+
+/**
+ * Materialize a temporary PRD provenance artifact on the eforge work branch.
+ *
+ * Writes `eforge/prds/{prdId}.md` in the merge worktree, stages it, and commits
+ * it via `forgeCommit` with message `build({prdId}): record PRD provenance`.
+ * The artifact is committed early in the eforge work branch history so it
+ * appears in every PR diff window before cleanup runs.
+ *
+ * @returns The relative path to the created artifact (`eforge/prds/{prdId}.md`),
+ *          which callers should pass to `cleanupPlanFiles` so cleanup removes it.
+ */
+export async function materializePrdArtifact(options: {
+  mergeWorktreePath: string;
+  prdId: string;
+  prdContent: string;
+  modelTracker?: ModelTracker;
+}): Promise<{ artifactRelPath: string }> {
+  const { mergeWorktreePath, prdId, prdContent, modelTracker } = options;
+
+  const artifactRelPath = `eforge/prds/${prdId}.md`;
+  const artifactAbsPath = resolve(mergeWorktreePath, artifactRelPath);
+  const artifactDir = resolve(mergeWorktreePath, 'eforge', 'prds');
+
+  await mkdir(artifactDir, { recursive: true });
+  await writeFile(artifactAbsPath, prdContent, 'utf-8');
+
+  await retryOnLock(
+    () => exec('git', ['add', '--', artifactAbsPath], { cwd: mergeWorktreePath }),
+    mergeWorktreePath,
+  );
+  await forgeCommit(
+    mergeWorktreePath,
+    composeCommitMessage(`build(${prdId}): record PRD provenance`, modelTracker),
+    { paths: [artifactAbsPath] },
+  );
+
+  return { artifactRelPath };
+}
+
+// ---------------------------------------------------------------------------
 // PRD removal
 // ---------------------------------------------------------------------------
 
 /**
- * Remove a completed PRD file from disk and git.
- * Handles `git rm`, empty queue directory cleanup, and commit.
+ * Remove a completed PRD file from disk.
+ * Filesystem-only — queue state is runtime, not tracked in git.
  */
 export async function cleanupCompletedPrd(filePath: string, queueDir: string, cwd: string): Promise<void> {
   // Guard: filePath must reside within the queue directory
@@ -278,41 +321,7 @@ export async function cleanupCompletedPrd(filePath: string, queueDir: string, cw
     throw new Error(`filePath ${filePath} is outside queue directory ${absQueueDir}`);
   }
 
-  // git rm (tracked files), fall back to fs rm (untracked)
-  try {
-    await retryOnLock(() => exec('git', ['rm', '-f', '--', filePath], { cwd }), cwd);
-  } catch {
-    await rm(absFilePath);
-    // Stage the deletion so forgeCommit picks it up
-    try {
-      await retryOnLock(() => exec('git', ['add', '--', filePath], { cwd }), cwd);
-    } catch { /* file may have been untracked */ }
-  }
-
-
-  const prdId = basename(filePath, '.md');
-  await forgeCommit(cwd, composeCommitMessage(`cleanup(${prdId}): remove completed PRD`), { paths: [filePath] });
-}
-
-/**
- * Stage and commit a freshly enqueued PRD file.
- *
- * Used by both enqueue paths (engine subprocess and daemon HTTP playbook route)
- * to keep the write-and-commit step in one place. `paths: [filePath]` scopes the
- * commit so any unrelated staged changes in the working tree are not swept in.
- */
-export async function commitEnqueuedPrd(
-  filePath: string,
-  prdId: string,
-  title: string,
-  cwd: string,
-): Promise<void> {
-  await retryOnLock(() => exec('git', ['add', '--', filePath], { cwd }), cwd);
-  await forgeCommit(
-    cwd,
-    composeCommitMessage(`enqueue(${prdId}): ${title}`),
-    { paths: [filePath] },
-  );
+  await rm(absFilePath, { force: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -320,38 +329,32 @@ export async function commitEnqueuedPrd(
 // ---------------------------------------------------------------------------
 
 /**
- * Move a PRD file to a subdirectory (e.g. `failed/` or `skipped/`) via `git mv` + commit.
- * Keeps the working tree clean by committing the move.
+ * Move a PRD file to a subdirectory (e.g. `failed/` or `skipped/`) via filesystem rename.
+ * Filesystem-only — queue state is runtime, not tracked in git.
  */
-export async function movePrdToSubdir(filePath: string, subdir: string, cwd: string): Promise<void> {
+export async function movePrdToSubdir(filePath: string, subdir: string, _cwd: string): Promise<void> {
   const dir = resolve(filePath, '..');
   const destDir = resolve(dir, subdir);
   await mkdir(destDir, { recursive: true });
 
   const destPath = resolve(destDir, basename(filePath));
-  const prdId = basename(filePath, '.md');
-
-  await retryOnLock(() => exec('git', ['mv', '--', filePath, destPath], { cwd }), cwd);
-  await forgeCommit(cwd, composeCommitMessage(`queue(${prdId}): move to ${subdir}`));
+  await rename(filePath, destPath);
 }
 
 /**
- * Move a failed PRD to `failed/` and commit the move + both recovery sidecar files
- * (`.recovery.md` + `.recovery.json`) in a single atomic `forgeCommit` call.
- *
- * This is the inline-recovery path: the queue parent runs recovery synchronously
- * after the child exits with a failure code, then calls this helper to produce
- * exactly one commit that contains the `git mv` + both sidecar paths. No prior
- * commit moves the PRD — the move and sidecars land atomically.
+ * Move a failed PRD to `failed/` and write both recovery sidecar files
+ * (`.recovery.md` + `.recovery.json`). Filesystem-only — queue state is
+ * runtime, not tracked in git. Sidecars live alongside the failed PRD
+ * under `.eforge/queue/failed/` as runtime state.
  *
  * @returns Absolute paths to the moved PRD and the two sidecar files.
  */
-export async function moveAndCommitFailedWithSidecar(
+export async function moveFailedWithSidecar(
   filePath: string,
   summary: BuildFailureSummary,
   verdict: RecoveryVerdict,
-  modelTracker: ModelTracker | undefined,
-  cwd: string,
+  _modelTracker: ModelTracker | undefined,
+  _cwd: string,
 ): Promise<{ mdPath: string; jsonPath: string; destPath: string }> {
   const dir = resolve(filePath, '..');
   const destDir = resolve(dir, 'failed');
@@ -360,8 +363,8 @@ export async function moveAndCommitFailedWithSidecar(
   const destPath = resolve(destDir, basename(filePath));
   const prdId = basename(filePath, '.md');
 
-  // git mv: move the PRD file to failed/
-  await retryOnLock(() => exec('git', ['mv', '--', filePath, destPath], { cwd }), cwd);
+  // Filesystem-only: move PRD file to failed/
+  await rename(filePath, destPath);
 
   // Write both sidecar files (atomic temp-then-rename inside writeRecoverySidecar)
   const { mdPath, jsonPath } = await writeRecoverySidecar({
@@ -370,15 +373,6 @@ export async function moveAndCommitFailedWithSidecar(
     summary,
     verdict,
   });
-
-  // Stage both sidecar files
-  await retryOnLock(() => exec('git', ['add', '--', mdPath, jsonPath], { cwd }), cwd);
-
-  // Commit everything (git mv + both sidecars) in one forgeCommit
-  await forgeCommit(
-    cwd,
-    composeCommitMessage(`queue(${prdId}): failed - ${verdict.verdict}`, modelTracker),
-  );
 
   return { mdPath, jsonPath, destPath };
 }
@@ -729,21 +723,20 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
 
 /**
  * Rewrite the `profile:` frontmatter field in a queued PRD file to the given
- * profile name, then stage and commit only that file via `forgeCommit`.
+ * profile name. Filesystem-only — queue state is runtime, not tracked in git.
  *
  * - Adds the `profile:` line if absent from the frontmatter block.
  * - Replaces the existing `profile:` line if already present.
  * - All other frontmatter fields are preserved unchanged.
- * - Uses `paths: [filePath]` to scope the commit to only the PRD file.
  *
  * Returns a new `QueuedPrd` with `frontmatter.profile` set to the routed value.
- * Throws on read/write or commit failure; callers must handle and fall back to
+ * Throws on read/write failure; callers must handle and fall back to
  * the in-memory `routedProfileOverride` path.
  */
 export async function setQueuedPrdProfile(
   prd: QueuedPrd,
   profile: string,
-  cwd: string,
+  _cwd: string,
 ): Promise<QueuedPrd> {
   const content = prd.content;
 
@@ -767,16 +760,8 @@ export async function setQueuedPrdProfile(
 
   const newContent = `${openDelim}${newFmBody}${closeDelim}${bodyPart}`;
 
-  // Write updated file
+  // Write updated file (filesystem-only)
   await writeFile(prd.filePath, newContent, 'utf-8');
-
-  // Stage and commit only this file
-  await retryOnLock(() => exec('git', ['add', '--', prd.filePath], { cwd }), cwd);
-  await forgeCommit(
-    cwd,
-    composeCommitMessage(`chore(queue): route ${prd.id} to profile ${profile}`),
-    { paths: [prd.filePath] },
-  );
 
   // Return updated QueuedPrd with new frontmatter and content
   return {
@@ -799,38 +784,17 @@ export function findDependents(prds: QueuedPrd[], upstreamId: string): QueuedPrd
 
 /**
  * Move a PRD file from `waiting/` to a destination directory.
- *
- * Tries `git mv` first (for git-tracked files), then falls back to
- * `fs.rename` + `git add` for untracked files (e.g. written by the
- * daemon without a prior commit). Non-fatal when git is unavailable.
+ * Filesystem-only — queue state is runtime, not tracked in git.
  */
 async function movePrdFromWaiting(
   filePath: string,
   destDir: string,
-  cwd: string,
-  message: string,
+  _cwd: string,
+  _message: string,
 ): Promise<void> {
   const destPath = resolve(destDir, basename(filePath));
   await mkdir(destDir, { recursive: true });
-  const prdId = basename(filePath, '.md');
-
-  // Try git mv first (tracked files)
-  try {
-    await retryOnLock(() => exec('git', ['mv', '--', filePath, destPath], { cwd }), cwd);
-    await forgeCommit(cwd, composeCommitMessage(`queue(${prdId}): ${message}`), { paths: [filePath, destPath] });
-    return;
-  } catch {
-    // Not tracked — fall back to fs rename
-  }
-
-  // fs rename for untracked files
   await rename(filePath, destPath);
-  try {
-    await retryOnLock(() => exec('git', ['add', '--', destPath], { cwd }), cwd);
-    await forgeCommit(cwd, composeCommitMessage(`queue(${prdId}): ${message}`), { paths: [destPath] });
-  } catch {
-    // No git repo — non-fatal, file is in the correct location
-  }
 }
 
 /**

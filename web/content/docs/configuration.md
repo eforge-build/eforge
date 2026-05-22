@@ -307,7 +307,7 @@ The daemon watches `prdQueue.dir` for normalized PRDs. Leave `prdQueue.autoBuild
 ```yaml
 maxConcurrentBuilds: 2   # default: concurrent PRD builds across the queue
 prdQueue:
-  dir: eforge/queue
+  dir: .eforge/queue
   autoBuild: true
   watchPollIntervalMs: 5000
 ```
