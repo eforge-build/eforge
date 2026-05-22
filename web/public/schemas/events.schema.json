@@ -5103,6 +5103,33 @@
             },
             "baseBranch": {
               "type": "string"
+            },
+            "trunkBranch": {
+              "type": "string"
+            },
+            "workflow": {
+              "anyOf": [
+                {
+                  "const": "trunk-pr",
+                  "type": "string"
+                },
+                {
+                  "const": "trunk-local-merge",
+                  "type": "string"
+                },
+                {
+                  "const": "feature-pr-after-local-merge",
+                  "type": "string"
+                },
+                {
+                  "const": "feature-local-merge",
+                  "type": "string"
+                },
+                {
+                  "const": "leave-branch",
+                  "type": "string"
+                }
+              ]
             }
           }
         },

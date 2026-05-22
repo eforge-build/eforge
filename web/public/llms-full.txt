@@ -661,7 +661,7 @@ Total variants: 193
 | `merge:finalize:start` | `baseBranch`, `featureBranch` |
 | `merge:finalize:complete` | `baseBranch`, `commitSha`, `featureBranch` |
 | `merge:finalize:skipped` | `baseBranch`, `featureBranch`, `reason` |
-| `landing:start` | `action`, `baseBranch`, `featureBranch` |
+| `landing:start` | `action`, `baseBranch`, `featureBranch`, `trunkBranch`, `workflow` |
 | `landing:complete` | `action`, `baseBranch`, `commitSha`, `featureBranch`, `prUrl` |
 | `landing:skipped` | `action`, `baseBranch`, `featureBranch`, `reason` |
 | `merge:worktree:set` | `path` |

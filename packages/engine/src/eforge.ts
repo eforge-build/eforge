@@ -930,6 +930,9 @@ export class EforgeEngine {
         // --- eforge:region plan-01-engine-config-and-landing ---
         onSuccess: effectiveOnSuccess,
         // --- eforge:endregion plan-01-engine-config-and-landing ---
+        // --- eforge:region plan-03-branch-aware-landing ---
+        engineConfig: config,
+        // --- eforge:endregion plan-03-branch-aware-landing ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {

@@ -20,6 +20,7 @@ import { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import { createMergeWorktree } from '@eforge-build/engine/worktree-ops';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
 import type { EforgeEvent, EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
+import type { EforgeConfig } from '@eforge-build/engine/config';
 
 const exec = promisify(execFile);
 
@@ -160,6 +161,22 @@ function makeMinimalState(featureBranch: string): EforgeState {
   };
 }
 
+/** Make a minimal engineConfig that locks trunk to a specific branch. */
+function makeEngineConfig(trunkBranch: string, allowLocalMergeToTrunk = false): Pick<EforgeConfig, 'build'> {
+  return {
+    build: {
+      worktreeDir: undefined,
+      postMergeCommands: undefined,
+      postMergeCommandTimeoutMs: undefined,
+      maxValidationRetries: 2,
+      cleanupPlanFiles: false,
+      onSuccess: 'merge-to-base-branch',
+      trunkBranch,
+      allowLocalMergeToTrunk,
+    },
+  };
+}
+
 /** Drain the async generator and return all yielded events plus the return value. */
 async function drainLanding(
   gen: ReturnType<typeof executeLandingAction>,
@@ -192,6 +209,8 @@ describe('executeLandingAction', () => {
       const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
       const state = makeMinimalState(featureBranch);
       const config = makeMinimalConfig(featureBranch);
+      // Allow local merge to trunk so the action succeeds
+      const engineConfig = makeEngineConfig('main', true);
 
       const opts: LandingActionOptions = {
         action: 'merge-to-base-branch',
@@ -204,6 +223,7 @@ describe('executeLandingAction', () => {
         commitMessage: 'feat(test-set): merge feature',
         state,
         config,
+        engineConfig,
       };
 
       const { events, result } = await drainLanding(executeLandingAction(opts));
@@ -219,6 +239,8 @@ describe('executeLandingAction', () => {
       // Events contain action field
       const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
       expect(landingStart.action).toBe('merge-to-base-branch');
+      expect(landingStart.trunkBranch).toBe('main');
+      expect(landingStart.workflow).toBe('trunk-local-merge');
 
       const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
       expect(landingComplete.action).toBe('merge-to-base-branch');
@@ -238,6 +260,7 @@ describe('executeLandingAction', () => {
       const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
       const state = makeMinimalState(featureBranch);
       const config = makeMinimalConfig(featureBranch);
+      const engineConfig = makeEngineConfig('main', true);
 
       await drainLanding(executeLandingAction({
         action: 'merge-to-base-branch',
@@ -250,6 +273,7 @@ describe('executeLandingAction', () => {
         commitMessage: 'feat(test-set): merge feature',
         state,
         config,
+        engineConfig,
       }));
 
       // Feature branch should now be on main (merged)
@@ -275,6 +299,7 @@ describe('executeLandingAction', () => {
       const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
       const state = makeMinimalState(featureBranch);
       const config = makeMinimalConfig(featureBranch);
+      const engineConfig = makeEngineConfig('main', true);
 
       const { events, result } = await drainLanding(executeLandingAction({
         action: 'merge-to-base-branch',
@@ -287,6 +312,7 @@ describe('executeLandingAction', () => {
         commitMessage: 'feat(test-set): merge feature',
         state,
         config,
+        engineConfig,
       }));
 
       const eventTypes = events.map((e) => e.type);
@@ -299,6 +325,126 @@ describe('executeLandingAction', () => {
 
       expect(result.landingSucceeded).toBe(false);
     });
+
+    // --- eforge:region plan-03-branch-aware-landing ---
+    it('rejects merge-to-base-branch when baseBranch is trunk and allowLocalMergeToTrunk is false', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+      const mergeWorktreePath = await setupFeatureBranch(repoRoot, worktreeBase, featureBranch);
+
+      const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+      const state = makeMinimalState(featureBranch);
+      const config = makeMinimalConfig(featureBranch);
+      // Trunk is "main" but allowLocalMergeToTrunk is false (default)
+      const engineConfig = makeEngineConfig('main', false);
+
+      const { events, result } = await drainLanding(executeLandingAction({
+        action: 'merge-to-base-branch',
+        featureBranch,
+        baseBranch: 'main',
+        repoRoot,
+        mergeWorktreePath,
+        worktreeManager: wm,
+        modelTracker: new ModelTracker(),
+        commitMessage: 'feat(test-set): merge feature',
+        state,
+        config,
+        engineConfig,
+      }));
+
+      const eventTypes = events.map((e) => e.type);
+      expect(eventTypes).toContain('landing:start');
+      expect(eventTypes).toContain('merge:finalize:skipped');
+      expect(eventTypes).toContain('landing:skipped');
+      expect(eventTypes).not.toContain('merge:finalize:start');
+      expect(eventTypes).not.toContain('landing:complete');
+
+      const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
+      expect(landingStart.workflow).toBe('trunk-local-merge');
+
+      const landingSkipped = events.find((e) => e.type === 'landing:skipped') as Extract<EforgeEvent, { type: 'landing:skipped' }>;
+      // Reason must mention the rejected workflow AND the opt-in escape hatch, not
+      // just one or the other (loose `/allowLocalMergeToTrunk/` matches any unrelated
+      // message that happens to name the flag).
+      expect(landingSkipped.reason).toMatch(/[Ll]ocal merge to trunk/);
+      expect(landingSkipped.reason).toMatch(/allowLocalMergeToTrunk/);
+      // mergeToBase must NOT have run — feature.ts from the eforge work branch
+      // must be absent from main's tree.
+      const featureOnMain = await exec('git', ['cat-file', '-e', 'main:feature.ts'], { cwd: repoRoot })
+        .then(() => 'exists' as const, () => 'missing' as const);
+      expect(featureOnMain).toBe('missing');
+
+      expect(result.landingSucceeded).toBe(false);
+    });
+
+    it('allows merge-to-base-branch for non-trunk feature branch regardless of allowLocalMergeToTrunk', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+
+      // Create a feature branch "feature/parent" as the target base branch
+      execFileSync('git', ['-C', repoRoot, 'checkout', '-b', 'feature/parent']);
+      writeFileSync(join(repoRoot, 'parent.ts'), 'export const p = 1;\n');
+      execFileSync('git', ['-C', repoRoot, 'add', '.']);
+      execFileSync('git', ['-C', repoRoot, 'commit', '-m', 'feat: add parent.ts']);
+
+      // Create eforge feature branch from feature/parent
+      execFileSync('git', ['-C', repoRoot, 'checkout', '-b', featureBranch]);
+      writeFileSync(join(repoRoot, 'feature.ts'), 'export const x = 1;\n');
+      execFileSync('git', ['-C', repoRoot, 'add', '.']);
+      execFileSync('git', ['-C', repoRoot, 'commit', '-m', 'feat: add feature.ts']);
+      // Go back to feature/parent for the merge worktree
+      execFileSync('git', ['-C', repoRoot, 'checkout', 'feature/parent']);
+
+      const mergeWorktreePath = await createMergeWorktree(repoRoot, worktreeBase, featureBranch, 'feature/parent');
+
+      const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+      const state = makeMinimalState(featureBranch);
+      const config = { ...makeMinimalConfig(featureBranch), baseBranch: 'feature/parent' };
+      // Trunk is "main", allowLocalMergeToTrunk is false — but baseBranch is not trunk
+      const engineConfig = makeEngineConfig('main', false);
+
+      const { events, result } = await drainLanding(executeLandingAction({
+        action: 'merge-to-base-branch',
+        featureBranch,
+        baseBranch: 'feature/parent',
+        repoRoot,
+        mergeWorktreePath,
+        worktreeManager: wm,
+        modelTracker: new ModelTracker(),
+        commitMessage: 'feat(test-set): merge feature',
+        state,
+        config,
+        engineConfig,
+      }));
+
+      const eventTypes = events.map((e) => e.type);
+      expect(eventTypes).toContain('landing:start');
+      expect(eventTypes).toContain('merge:finalize:start');
+      expect(eventTypes).toContain('merge:finalize:complete');
+      expect(eventTypes).toContain('landing:complete');
+      expect(eventTypes).not.toContain('landing:skipped');
+
+      const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
+      expect(landingStart.workflow).toBe('feature-local-merge');
+      expect(landingStart.trunkBranch).toBe('main');
+
+      expect(result.landingSucceeded).toBe(true);
+
+      // The eforge work branch's file must be present on feature/parent (the merge
+      // target), and absent from main (which must be untouched).
+      const { stdout: currentBranch } = await exec('git', ['branch', '--show-current'], { cwd: repoRoot });
+      expect(currentBranch.trim()).toBe('feature/parent');
+      expect(existsSync(join(repoRoot, 'feature.ts'))).toBe(true);
+
+      const featureOnMain = await exec('git', ['cat-file', '-e', 'main:feature.ts'], { cwd: repoRoot })
+        .then(() => 'exists' as const, () => 'missing' as const);
+      expect(featureOnMain).toBe('missing');
+    });
+    // --- eforge:endregion plan-03-branch-aware-landing ---
   });
 
   describe('leave-branch', () => {
@@ -336,6 +482,11 @@ describe('executeLandingAction', () => {
 
       const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
       expect(landingComplete.action).toBe('leave-branch');
+
+      // --- eforge:region plan-03-branch-aware-landing ---
+      const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
+      expect(landingStart.workflow).toBe('leave-branch');
+      // --- eforge:endregion plan-03-branch-aware-landing ---
 
       expect(result.landingSucceeded).toBe(true);
     });
@@ -397,6 +548,8 @@ describe('executeLandingAction', () => {
         const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
         const state = makeMinimalState(featureBranch);
         const config = makeMinimalConfig(featureBranch);
+        // Lock trunk to "main" for deterministic workflow classification
+        const engineConfig = makeEngineConfig('main');
 
         const { events, result } = await drainLanding(executeLandingAction({
           action: 'issue-pr',
@@ -409,6 +562,7 @@ describe('executeLandingAction', () => {
           commitMessage: '',
           state,
           config,
+          engineConfig,
         }));
 
         const eventTypes = events.map((e) => e.type);
@@ -418,6 +572,11 @@ describe('executeLandingAction', () => {
         expect(eventTypes).not.toContain('merge:finalize:complete');
         expect(eventTypes).not.toContain('merge:finalize:skipped');
         expect(eventTypes).not.toContain('landing:skipped');
+
+        const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
+        // --- eforge:region plan-03-branch-aware-landing ---
+        expect(landingStart.workflow).toBe('trunk-pr');
+        // --- eforge:endregion plan-03-branch-aware-landing ---
 
         const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
         expect(landingComplete.action).toBe('issue-pr');

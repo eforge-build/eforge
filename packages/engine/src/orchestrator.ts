@@ -29,6 +29,9 @@ import type { PolicyGateFailurePolicy } from './extensions/policy-gate-runtime.j
 // --- eforge:region plan-01-engine-config-and-landing ---
 import type { LandingAction } from './landing.js';
 // --- eforge:endregion plan-01-engine-config-and-landing ---
+// --- eforge:region plan-03-branch-aware-landing ---
+import type { EforgeConfig } from './config.js';
+// --- eforge:endregion plan-03-branch-aware-landing ---
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -109,6 +112,10 @@ export interface OrchestratorOptions {
   /** What to do with the feature branch after a successful build. Defaults to 'merge-to-base-branch'. */
   onSuccess?: LandingAction;
   // --- eforge:endregion plan-01-engine-config-and-landing ---
+  // --- eforge:region plan-03-branch-aware-landing ---
+  /** EforgeConfig subset for trunk policy resolution. When omitted, trunk defaults to "main". */
+  engineConfig?: Pick<EforgeConfig, 'build'>;
+  // --- eforge:endregion plan-03-branch-aware-landing ---
 }
 
 /**
@@ -188,6 +195,9 @@ export class Orchestrator {
       policyGateTimeoutMs: this.options.policyGateTimeoutMs,
       policyGateFailurePolicy: this.options.policyGateFailurePolicy,
       // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+      // --- eforge:region plan-03-branch-aware-landing ---
+      engineConfig: this.options.engineConfig,
+      // --- eforge:endregion plan-03-branch-aware-landing ---
     };
     try {
       yield* executePlans(ctx);
