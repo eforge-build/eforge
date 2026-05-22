@@ -4,8 +4,9 @@
  * Build, test, and publish all public @eforge-build/* packages in lockstep.
  *
  * Version source of truth: packages/eforge/package.json
- *   - Bump via `pnpm release patch|minor|major` (bumps + tags + commits), or
- *     hand-edit the source of truth before running this script.
+ *   - Bump via `pnpm release patch|minor|major` (bumps + tags + commits),
+ *     `pnpm release patch|minor|major --no-tag` for protected-branch PR flows,
+ *     or hand-edit the source of truth before running this script.
  *   - On publish, the source-of-truth version is re-propagated to the other
  *     lockstep packages as a safety net.
  *   - pnpm -r publish rewrites workspace:* refs to concrete versions and

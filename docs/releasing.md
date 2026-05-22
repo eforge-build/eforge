@@ -25,47 +25,39 @@ The supported public surface should stay explicit. CLI behavior, config files, d
 
 ## Standard release flow
 
-1. Start from a clean checkout of `main`.
+Use the project-local Pi maintainer extension:
 
-   ```bash
-   git checkout main
-   git pull --ff-only
-   git status --short
-   ```
+```text
+/dev release
+```
 
-2. Confirm the release candidate is healthy.
+The wizard:
 
-   ```bash
-   pnpm build
-   pnpm type-check
-   pnpm test
-   pnpm docs:check
-   pnpm docs:build
-   ```
+1. Starts from a clean checkout of `main`.
+2. Runs the release check suite (`build`, `type-check`, `test`, `docs:check`, `docs:build`).
+3. Creates a `release/vX.Y.Z` branch.
+4. Generates release notes from commits since the previous tag.
+5. Updates and commits `CHANGELOG.md`.
+6. Runs `pnpm release patch|minor|major --no-tag` to commit the lockstep version bump without tagging.
+7. Opens a PR to `main` and enables auto-merge.
+8. After the PR merges, tags the merged `main` commit.
+9. Pushes only `refs/tags/vX.Y.Z`.
+10. Creates the GitHub Release from the changelog notes.
 
-3. Bump the lockstep package version and create the annotated tag.
+If Pi exits before the PR merges, run:
 
-   ```bash
-   pnpm release patch   # or minor / major
-   ```
+```text
+/dev release-finalize vX.Y.Z
+```
 
-   The release script updates lockstep package versions, commits the version bump, and creates `vX.Y.Z`.
+Pushing the `v*` tag triggers the **Publish to npm** GitHub Actions workflow. The workflow runs `pnpm publish-all`, which propagates the lockstep version, builds, type-checks, tests, and publishes public packages with npm trusted publishing.
 
-4. Push `main` and tags.
+Afterward, verify the release:
 
-   ```bash
-   git push origin HEAD --follow-tags
-   ```
-
-5. Watch the **Publish to npm** GitHub Actions workflow.
-
-   The workflow runs `pnpm publish-all`, which propagates the lockstep version, builds, type-checks, tests, and publishes public packages with npm trusted publishing.
-
-6. Verify the release.
-
-   - confirm the GitHub Actions workflow passed
-   - confirm npm shows the expected package versions
-   - sanity-check installation with `npx @eforge-build/eforge --help` or an equivalent smoke test
+- confirm the GitHub Actions workflow passed
+- confirm npm shows the expected package versions
+- confirm the GitHub Release exists
+- sanity-check installation with `npx @eforge-build/eforge --help` or an equivalent smoke test
 
 ## Prereleases and npm dist-tags
 

@@ -2,13 +2,12 @@
 
 /**
  * Bump the lockstep version, propagate across all lockstep package.jsons,
- * commit the bump, and create an annotated tag.
+ * commit the bump, and optionally create an annotated tag.
  *
- * Does NOT push. The caller (e.g. the /eforge-release skill) pushes with
- * `git push origin <branch> --follow-tags` once the changelog commit is also
- * in place.
+ * Does NOT push. In protected-branch release flows, pass `--no-tag`, merge the
+ * release PR into main, then tag the resulting main commit and push only the tag.
  *
- * Usage: node scripts/bump-version.mjs <patch|minor|major>
+ * Usage: node scripts/bump-version.mjs <patch|minor|major> [--no-tag]
  */
 
 import { execSync } from "node:child_process";
@@ -25,8 +24,9 @@ import {
 } from "./lib/lockstep-version.mjs";
 
 const bumpType = process.argv[2];
+const noTag = process.argv.includes("--no-tag");
 if (!["patch", "minor", "major"].includes(bumpType)) {
-  console.error("Usage: node scripts/bump-version.mjs <patch|minor|major>");
+  console.error("Usage: node scripts/bump-version.mjs <patch|minor|major> [--no-tag]");
   process.exit(1);
 }
 
@@ -64,11 +64,17 @@ propagateVersion(next);
 // 3. Verify.
 verifyAllAtVersion(next);
 
-// 4. Commit and tag. The proxy pin is also rewritten by propagateVersion(); stage it
-//    so the bump commit captures every lockstep-version surface in one atomic move.
+// 4. Commit, and optionally tag. The proxy pin is also rewritten by
+//    propagateVersion(); stage it so the bump commit captures every
+//    lockstep-version surface in one atomic move.
 run(`git add ${ALL_PACKAGE_PATHS.join(" ")} ${EFORGE_MCP_PROXY}`);
 run(`git commit -m "${next}"`);
-run(`git tag -a v${next} -m "v${next}"`);
 
-console.log(`\nBumped ${previous} -> ${next} and tagged v${next}.`);
-console.log(`Push with: git push origin HEAD --follow-tags`);
+if (!noTag) {
+  run(`git tag -a v${next} -m "v${next}"`);
+  console.log(`\nBumped ${previous} -> ${next} and tagged v${next}.`);
+  console.log(`Push with: git push origin HEAD --follow-tags`);
+} else {
+  console.log(`\nBumped ${previous} -> ${next} without creating a tag.`);
+  console.log(`Merge this commit to main, then tag the merged main commit with: git tag -a v${next} -m "v${next}"`);
+}
