@@ -341,6 +341,27 @@ build:
 
 Within a single build, plans run in parallel automatically as their dependencies are satisfied - no configuration needed there.
 
+## On-Success Landing Action
+
+`build.onSuccess` controls what happens when a build completes successfully. Three options are available:
+
+| Value | Behavior |
+|-------|----------|
+| `merge-to-base-branch` | Merges the worktree back to the base branch automatically. This is the engine default. |
+| `issue-pr` | Opens a GitHub pull request from the build branch instead of merging. Requires the `gh` CLI to be installed and authenticated. Recommended for team code review workflows. |
+| `leave-branch` | Leaves the worktree branch in place without merging or creating a PR. Useful when you want to inspect the output, cherry-pick commits, or handle the branch manually. |
+
+```yaml
+build:
+  onSuccess: issue-pr   # merge-to-base-branch (default) | issue-pr | leave-branch
+```
+
+The default when `onSuccess` is not set is `merge-to-base-branch`, preserving the original auto-merge behavior.
+
+**Precedence**: a per-build override passed to `eforge_build` or `eforge build` takes precedence over this config value. PRD frontmatter `on_success` (if present) also overrides the config default.
+
+**`issue-pr` prerequisite**: if you select `issue-pr`, ensure `gh` is installed (`gh --version`) and authenticated (`gh auth status`). Builds configured with `issue-pr` will fail at the landing step if `gh` is unavailable.
+
 ## Per-Role Tuning
 
 Fine-tune individual agent roles without reassigning them to a different tier:

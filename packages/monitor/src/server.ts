@@ -1874,10 +1874,20 @@ export async function startServer(
         return;
       }
       try {
-        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string };
+        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; onSuccess?: string };
         if (!body.source || typeof body.source !== 'string') {
           sendJsonError(res, 400, 'Missing required field: source');
           return;
+        }
+        // Validate onSuccess override before any other work.
+        const VALID_ON_SUCCESS = ['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const;
+        let explicitOnSuccess: typeof VALID_ON_SUCCESS[number] | undefined;
+        if (body.onSuccess !== undefined) {
+          if (typeof body.onSuccess !== 'string' || !VALID_ON_SUCCESS.includes(body.onSuccess as typeof VALID_ON_SUCCESS[number])) {
+            sendJsonError(res, 400, `Invalid field: onSuccess must be one of: ${VALID_ON_SUCCESS.join(', ')}`);
+            return;
+          }
+          explicitOnSuccess = body.onSuccess as typeof VALID_ON_SUCCESS[number];
         }
         // --- eforge:region plan-01-per-build-profile-override ---
         // Validate explicit profile override before spawning any worker.
@@ -1956,6 +1966,9 @@ export async function startServer(
           args.push('--profile', effectiveEnqueueProfile);
         }
         // --- eforge:endregion plan-01-core-profile-propagation ---
+        if (explicitOnSuccess) {
+          args.push('--on-success', explicitOnSuccess);
+        }
         // --- eforge:region plan-01-semantic-enqueue-wake ---
         // Wake is now driven by the persisted enqueue:complete DB event via the
         // daemon semantic-event reaction path (daemon-event-reactions.ts).

@@ -5073,6 +5073,127 @@
           "type": "object",
           "required": [
             "type",
+            "action",
+            "featureBranch",
+            "baseBranch"
+          ],
+          "properties": {
+            "type": {
+              "const": "landing:start",
+              "type": "string"
+            },
+            "action": {
+              "anyOf": [
+                {
+                  "const": "merge-to-base-branch",
+                  "type": "string"
+                },
+                {
+                  "const": "issue-pr",
+                  "type": "string"
+                },
+                {
+                  "const": "leave-branch",
+                  "type": "string"
+                }
+              ]
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "action",
+            "featureBranch",
+            "baseBranch"
+          ],
+          "properties": {
+            "type": {
+              "const": "landing:complete",
+              "type": "string"
+            },
+            "action": {
+              "anyOf": [
+                {
+                  "const": "merge-to-base-branch",
+                  "type": "string"
+                },
+                {
+                  "const": "issue-pr",
+                  "type": "string"
+                },
+                {
+                  "const": "leave-branch",
+                  "type": "string"
+                }
+              ]
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "commitSha": {
+              "type": "string"
+            },
+            "prUrl": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "action",
+            "featureBranch",
+            "baseBranch",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "landing:skipped",
+              "type": "string"
+            },
+            "action": {
+              "anyOf": [
+                {
+                  "const": "merge-to-base-branch",
+                  "type": "string"
+                },
+                {
+                  "const": "issue-pr",
+                  "type": "string"
+                },
+                {
+                  "const": "leave-branch",
+                  "type": "string"
+                }
+              ]
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "path"
           ],
           "properties": {

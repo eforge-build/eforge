@@ -31,6 +31,7 @@ const prdFrontmatterSchema = z.object({
   depends_on: z.array(z.string()).optional(),
   skip_reason: z.string().optional(),
   profile: z.string().optional(),
+  onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional(),
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -614,6 +615,8 @@ export interface EnqueuePrdOptions {
   postMerge?: string[];
   /** Override profile name to persist in frontmatter for per-build profile binding. */
   profile?: string;
+  /** Override the project-level on-success landing action for this build. */
+  onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
 }
 
 export interface EnqueuePrdResult {
@@ -649,7 +652,7 @@ function slugify(title: string): string {
  * - Optional `intoWaiting` flag to write to the waiting/ subdirectory
  */
 export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrdResult> {
-  const { body, title, queueDir, cwd, priority, depends_on, intoWaiting, postMerge, profile } = options;
+  const { body, title, queueDir, cwd, priority, depends_on, intoWaiting, postMerge, profile, onSuccess } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
   const targetSubdir = intoWaiting ? 'waiting' : undefined;
@@ -704,6 +707,9 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   }
   if (profile !== undefined) {
     fmLines.push(`profile: ${profile}`);
+  }
+  if (onSuccess !== undefined) {
+    fmLines.push(`onSuccess: ${onSuccess}`);
   }
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;

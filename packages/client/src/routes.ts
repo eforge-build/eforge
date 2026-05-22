@@ -3,12 +3,17 @@
  * Re-export from index so callers can import the request/response pair together.
  */
 
+/** The set of valid on-success landing actions for a per-build override. */
+export type BuildOnSuccess = 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+
 /** POST /api/enqueue */
 export interface EnqueueRequest {
   source: string;
   flags?: string[];
   /** Override the active profile for this build (profile name, validated at enqueue time). */
   profile?: string;
+  /** Override the project-level on-success landing action for this build. */
+  onSuccess?: BuildOnSuccess;
 }
 
 /** POST /api/auto-build */

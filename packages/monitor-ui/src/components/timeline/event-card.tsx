@@ -103,6 +103,19 @@ function eventSummary(event: EforgeEvent): string {
     case 'merge:finalize:start': return `Finalizing: ${event.featureBranch} → ${event.baseBranch}`;
     case 'merge:finalize:complete': return `Finalized: ${event.featureBranch} → ${event.baseBranch}`;
     case 'merge:finalize:skipped': return `Finalize skipped: ${event.reason}`;
+    // --- eforge:region plan-02-api-queue-and-ui ---
+    case 'landing:start': return `Landing (${event.action}): ${event.featureBranch} → ${event.baseBranch}`;
+    case 'landing:complete': {
+      if (event.action === 'merge-to-base-branch') {
+        return `Merged: ${event.featureBranch} → ${event.baseBranch}${event.commitSha ? ` (${event.commitSha.slice(0, 8)})` : ''}`;
+      }
+      if (event.action === 'issue-pr') {
+        return `PR opened: ${event.prUrl ?? event.featureBranch}`;
+      }
+      return `Branch ready: ${event.featureBranch}`;
+    }
+    case 'landing:skipped': return `Landing skipped (${event.action}): ${event.reason}`;
+    // --- eforge:endregion plan-02-api-queue-and-ui ---
     case 'expedition:architecture:complete': return `Architecture: ${event.modules?.length || 0} module(s)`;
     case 'expedition:module:start': return `Module planning: ${event.moduleId}`;
     case 'expedition:module:complete': return `Module complete: ${event.moduleId}`;

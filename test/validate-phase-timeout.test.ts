@@ -77,7 +77,7 @@ function makeCtx(
     worktreeManager: stubWorktreeManager,
     failedMerges: new Set(),
     recentlyMergedIds: [],
-    featureBranchMerged: false,
+    landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
     resumed: false,
     modelTracker: new ModelTracker(),
     ...overrides,

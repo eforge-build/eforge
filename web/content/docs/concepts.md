@@ -87,7 +87,7 @@ The **web monitor** (`http://localhost:<port>`) tracks cost, token usage, and pi
 
 ## Post-Merge Validation
 
-After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete.
+After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete. The `build.onSuccess` setting controls what happens after validation passes: by default the worktree merges to the base branch, but builds can also be configured to open a GitHub pull request (`issue-pr`) or leave the branch in place for manual handling (`leave-branch`) — meaning a successful build does not always result in an automatic merge.
 
 ## Agent-Readable Artifacts
 

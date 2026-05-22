@@ -810,6 +810,35 @@ const eventRegistry = {
         : `Failed to resolve merge conflicts for plan ${e.planId}`,
   },
 
+  // --- eforge:region plan-01-engine-config-and-landing ---
+  'landing:start': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Landing (${e.action}): starting ${e.featureBranch} → ${e.baseBranch}`,
+  },
+
+  'landing:complete': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => {
+      if (e.action === 'issue-pr') {
+        return e.prUrl
+          ? `Landing (${e.action}): PR ${e.prUrl}`
+          : `Landing (${e.action}): PR created for ${e.featureBranch}`;
+      }
+      if (e.action === 'merge-to-base-branch') return `Landing (${e.action}): merged ${e.featureBranch} into ${e.baseBranch}`;
+      if (e.action === 'leave-branch') return `Landing (${e.action}): ${e.featureBranch} left for manual workflow`;
+      return `Landing (${e.action}): completed`;
+    },
+  },
+
+  'landing:skipped': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Landing (${e.action}) skipped: ${e.reason}`,
+  },
+  // --- eforge:endregion plan-01-engine-config-and-landing ---
+
   'merge:finalize:start': {
     scope: 'session',
     persist: false,

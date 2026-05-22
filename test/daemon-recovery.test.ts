@@ -124,7 +124,11 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 35', () => {
+  it('is 36', () => {
+    // v36: optional `onSuccess` field added to `EnqueueRequest` (per-build landing action
+    // override: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch'); `onSuccess` persisted
+    // in PRD frontmatter so override survives queue scheduler child-process boundaries; new
+    // `landing:start`, `landing:complete`, `landing:skipped` event variants added in plan-01.
     // v35: optional `profile` field added to playbook frontmatter wire shapes
     // (`PlaybookListEntry`, `PlaybookData`, `PlaybookFrontmatterFields`); optional
     // `agent_profile` field added to `SessionPlanDataWire` and `SessionPlanCreateRequest`;
@@ -132,7 +136,7 @@ describe('DAEMON_API_VERSION', () => {
     // PRD frontmatter; `/api/session-plan/create` and `/api/session-plan/create-from-playbook`
     // propagate `agent_profile`; `/api/enqueue` validates and propagates inherited session-plan
     // `agent_profile` to worker `--profile` arg.
-    expect(DAEMON_API_VERSION).toBe(35);
+    expect(DAEMON_API_VERSION).toBe(36);
   });
 });
 

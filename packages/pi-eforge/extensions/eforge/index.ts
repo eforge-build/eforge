@@ -63,6 +63,7 @@ import {
 import { requireDaemon, piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
+  EnqueueRequest,
   EnqueueResponse,
   ConfigValidateResponse,
   QueueItem,
@@ -315,10 +316,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       profile: Type.Optional(Type.String({
         description: "Run this build on the named profile instead of the active profile",
       })),
+      onSuccess: Type.Optional(StringEnum(['merge-to-base-branch', 'issue-pr', 'leave-branch'], {
+        description: "Override the project-level on-success landing action for this build. 'merge-to-base-branch' merges the worktree branch back (default). 'issue-pr' opens a GitHub PR instead of merging (requires gh CLI). 'leave-branch' commits to the worktree branch and exits without merging or opening a PR.",
+      })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const body: { source: string; profile?: string } = { source: params.source };
+      const body: EnqueueRequest = { source: params.source };
       if (params.profile) body.profile = params.profile;
+      if (params.onSuccess) body.onSuccess = params.onSuccess;
       const { data, port } = await requireDaemon<EnqueueResponse>(
         ctx.cwd,
         "POST",
@@ -1336,6 +1341,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             'Post-merge validation commands. Only applied when creating a new config.',
         }),
       ),
+      onSuccess: Type.Optional(StringEnum(['merge-to-base-branch', 'issue-pr', 'leave-branch'], {
+        description: "On-success landing action to persist in eforge/config.yaml. 'merge-to-base-branch' merges the worktree branch back (default). 'issue-pr' opens a GitHub PR instead of merging (requires gh CLI). 'leave-branch' commits to the worktree branch and exits without merging or opening a PR.",
+      })),
       migrate: Type.Optional(
         Type.Boolean({
           description:
@@ -1512,9 +1520,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }
 
         const existingProfileConfigData: Record<string, unknown> = {};
-        if (params.postMergeCommands && params.postMergeCommands.length > 0) {
-          existingProfileConfigData.build = { postMergeCommands: params.postMergeCommands };
-        }
+        const existingProfileBuildBlock: Record<string, unknown> = {};
+        if (params.postMergeCommands && params.postMergeCommands.length > 0) existingProfileBuildBlock.postMergeCommands = params.postMergeCommands;
+        if (params.onSuccess) existingProfileBuildBlock.onSuccess = params.onSuccess;
+        if (Object.keys(existingProfileBuildBlock).length > 0) existingProfileConfigData.build = existingProfileBuildBlock;
         const existingProfileConfigContent = Object.keys(existingProfileConfigData).length > 0
           ? stringifyYaml(existingProfileConfigData)
           : "";
@@ -1648,9 +1657,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
       // Write config.yaml
       const configData: Record<string, unknown> = {};
-      if (params.postMergeCommands && params.postMergeCommands.length > 0) {
-        configData.build = { postMergeCommands: params.postMergeCommands };
-      }
+      const buildBlock: Record<string, unknown> = {};
+      if (params.postMergeCommands && params.postMergeCommands.length > 0) buildBlock.postMergeCommands = params.postMergeCommands;
+      if (params.onSuccess) buildBlock.onSuccess = params.onSuccess;
+      if (Object.keys(buildBlock).length > 0) configData.build = buildBlock;
       const configContent = Object.keys(configData).length > 0
         ? stringifyYaml(configData)
         : "";
