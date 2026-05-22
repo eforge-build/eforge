@@ -95,8 +95,8 @@ After the user responds, incorporate their answers into the working source and p
 
 When the current branch is the **trunk branch** (e.g. `main`) and the effective `onSuccess` is `merge-to-base-branch`:
 
-- The engine will reject the build by default — trunk is protected from direct local merges unless `build.allowLocalMergeToTrunk: true` is set in `eforge/config.yaml`.
-- To proceed, either pass `onSuccess: "issue-pr"` for this build, or enable the solo-dev opt-in by adding `build.allowLocalMergeToTrunk: true` to `eforge/config.yaml`.
+- Trunk is protected from direct local merges unless `build.allowLocalMergeToTrunk: true` is set in `eforge/config.yaml`.
+- Do **not** ask the user to create a feature branch in this flow. Prompt the user to choose one of the two valid resolutions before enqueueing: pass `onSuccess: "issue-pr"` for this build, or update `eforge/config.yaml` to set `build.allowLocalMergeToTrunk: true`.
 
 When the current branch is a **feature branch**:
 
