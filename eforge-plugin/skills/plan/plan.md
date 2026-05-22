@@ -1,6 +1,6 @@
 ---
 description: Start or resume a structured planning conversation for changes to be built by eforge. Classifies work type and depth, selects relevant dimensions from a per-type playbook, captures acceptance criteria, and produces a session plan that /eforge:build enqueues.
-argument-hint: "[topic] [--resume]"
+argument-hint: "[topic] [--resume] [--session <session-id>] [--playbook <name>]"
 ---
 
 # /eforge:plan — Planning Conversation
@@ -19,13 +19,15 @@ Planning must distinguish **facts**, **evidence-backed conclusions**, and **assu
 ## Arguments
 
 - `topic` (optional) — What to plan. If omitted, ask the user.
-- `--resume` — Resume the most recent active session instead of starting a new one.
+- `--resume` — Resume an active session.
+- `--session <session-id>` — Resume this exact session plan. Used by Pi's native `/eforge:plan` selector to avoid a follow-up numbered prompt.
+- `--playbook <name>` — Start from this exact planning-mode playbook. Used by Pi's native `/eforge:plan` selector to avoid a follow-up numbered prompt.
 
 ## Workflow
 
 ### Step 1: Session Setup
 
-If no `--resume` flag is given and no topic was provided, present three options:
+If `--session <session-id>` is provided, skip the start menu and follow Path (a) for that exact session. If `--playbook <name>` is provided, skip the start menu and follow Path (c) for that exact playbook. Otherwise, if no `--resume` flag is given and no topic was provided, present three options:
 
 > "How would you like to start?
 > 1. **Resume** an existing planning session
@@ -34,10 +36,10 @@ If no `--resume` flag is given and no topic was provided, present three options:
 
 Then follow the corresponding path below.
 
-**Path (a): Resume** — If `--resume` is passed, the user says "resume" / "continue planning", or picks option 1:
-1. Call `mcp__eforge__eforge_session_plan { action: 'list-active' }` to discover active sessions.
-2. If one found, call `{ action: 'show', session, open: true }` and present a summary of where things stand: topic, planning type, depth, what dimensions have content, key decisions so far, any open questions.
-3. If multiple found, list them and ask which to resume; then call `{ action: 'show', session, open: true }` for the chosen one.
+**Path (a): Resume** — If `--session <session-id>` is provided, the user says "resume" / "continue planning", `--resume` is passed, or the user picks option 1:
+1. If `--session <session-id>` is provided, call `mcp__eforge__eforge_session_plan { action: 'show', session: '<session-id>', open: true }` directly and skip the active-session menu. Otherwise, call `mcp__eforge__eforge_session_plan { action: 'list-active' }` to discover active sessions.
+2. If one session is found, call `{ action: 'show', session, open: true }` and present a summary of where things stand: topic, planning type, depth, what dimensions have content, key decisions so far, any open questions.
+3. If multiple sessions are found and no exact `--session` was provided, list them and ask which to resume; then call `{ action: 'show', session, open: true }` for the chosen one.
 4. If none found, tell the user and offer to start a new session.
 5. If the session has the legacy boolean `dimensions` shape (detected when `plan.required_dimensions` is empty in the `show` response and the plan body references old-format frontmatter), call `{ action: 'migrate-legacy', session }` to convert it, then call `{ action: 'show', session }` again to reload.
 6. Continue from whatever dimension needs work.
@@ -49,11 +51,11 @@ Then follow the corresponding path below.
 3. Call `mcp__eforge__eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}', open: true }` to create the session file. The wrapper best-effort opens the new session plan file in your default Markdown app; planning continues whether or not the open succeeds.
 4. Proceed to Step 2.
 
-**Path (c): Start from a planning-mode playbook** — If the user picks option 3:
-1. Call `mcp__eforge__eforge_playbook { action: 'list' }`.
-2. Filter the results to entries whose `mode === 'planning'`. If none exist, tell the user and offer to start a new session (path b) or create a planning-mode playbook with `/eforge:playbook create`.
-3. Present the filtered list as a numbered menu and ask the user to pick one.
-4. Call `mcp__eforge__eforge_playbook { action: 'show', name: '{name}' }` to load the full playbook content.
+**Path (c): Start from a planning-mode playbook** — If `--playbook <name>` is provided or the user picks option 3:
+1. If `--playbook <name>` is provided, use that exact playbook name and skip the playbook menu. Otherwise, call `mcp__eforge__eforge_playbook { action: 'list' }`.
+2. If no exact `--playbook` was provided, filter the results to entries whose `mode === 'planning'`. If none exist, tell the user and offer to start a new session (path b) or create a planning-mode playbook with `/eforge:playbook create`.
+3. If no exact `--playbook` was provided, present the filtered list and ask the user to pick one.
+4. Call `mcp__eforge__eforge_playbook { action: 'show', name: '{name}' }` to load the full playbook content. If an exact `--playbook` was provided but the playbook is not `mode: planning`, stop and explain that `/eforge:plan` only starts from planning-mode playbooks.
 5. Read the playbook's Goal, Acceptance criteria, and Notes for the planner sections. Identify what needs to be investigated: relevant files, codebase areas, questions to answer, commands to run.
 6. Perform the investigation using read, search, and command capabilities. Gather evidence from the codebase. Validate cheap assumptions immediately.
 7. Ask the user for a topic to anchor the session (the playbook provides the shape; the topic anchors it to the current work). If the Goal makes the topic obvious, suggest it and allow override.

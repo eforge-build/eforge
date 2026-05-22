@@ -76,9 +76,11 @@ import type {
   ExtensionInstallRequest,
   ExtensionUpdateRequest,
 } from '@eforge-build/client';
+import { handleBuildCommand } from './build-command';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
 import { handlePlaybookCommand } from './playbook-commands';
+import { handlePlanCommand } from './plan-command';
 import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
 import { renderBorderedLines, type UIContext } from './ui-helpers';
@@ -2416,51 +2418,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   // sendUserMessage which injects the skill command as user input.
   // ------------------------------------------------------------------
 
-  // Register /eforge:build as a native command with profile picker when UI is available.
+  // Register /eforge:build as a native command with source/profile pickers when UI is available.
   // Falls back to skill alias when headless (no UI).
   pi.registerCommand("eforge:build", {
     description: "Enqueue a build for eforge",
     handler: async (args, ctx) => {
-      if (ctx.hasUI) {
-        // Fetch profiles and show a searchable picker
-        let profiles: Array<{ name: string; scope: string; harness?: string; shadowedBy?: string }> = [];
-        const profileListResult = await daemonRequestIfRunning<{ profiles: Array<{ name: string; scope: string; harness?: string; shadowedBy?: string }>; active: string | null }>(
-          ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`
-        );
-        if (profileListResult === null) {
-          // Daemon not running or profile list unavailable — fall through to alias
-          pi.sendUserMessage((`/skill:eforge-build${args ? " " + args : ""}`).trim());
-          return;
-        }
-        profiles = profileListResult.data.profiles;
-
-        const items = [
-          {
-            value: "__no_override__",
-            label: "Use active profile (no override)",
-            description: "Run on the daemon's currently bound profile",
-          },
-          ...profiles.map((p) => ({
-            value: p.name,
-            label: p.name,
-            description: `${p.shadowedBy ? p.scope + " (shadowed)" : p.scope}${p.harness ? " - " + p.harness : ""}`,
-          })),
-        ];
-
-        const { showSearchableSelectOverlay } = await import("./ui-helpers.js");
-        const selected = await showSearchableSelectOverlay(ctx, "eforge build - select profile", items);
-        if (!selected) return;
-
-        if (selected === "__no_override__") {
-          pi.sendUserMessage((`/skill:eforge-build${args ? " " + args : ""}`).trim());
-        } else {
-          const profileArg = `--profile ${selected}`;
-          pi.sendUserMessage((`/skill:eforge-build ${profileArg}${args ? " " + args : ""}`).trim());
-        }
-      } else {
-        // Headless: pass args through unchanged
-        pi.sendUserMessage((`/skill:eforge-build${args ? " " + args : ""}`).trim());
-      }
+      await handleBuildCommand(pi, ctx as UIContext, args ?? "");
     },
   });
 
@@ -2490,11 +2453,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       description: "Initialize eforge in the current project",
       skill: "eforge-init",
     },
-    {
-      name: "eforge:plan",
-      description: "Start or resume a structured planning conversation",
-      skill: "eforge-plan",
-    },
     // --- eforge:region plan-01-extend-authoring-ux ---
     {
       name: "eforge:extend",
@@ -2523,6 +2481,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       },
     });
   }
+
+  pi.registerCommand("eforge:plan", {
+    description: "Start or resume a structured planning conversation",
+    handler: async (args, ctx) => {
+      await handlePlanCommand(pi, ctx as UIContext, args ?? "");
+    },
+  });
 
   // ------------------------------------------------------------------
   // Native commands - /eforge:profile, /eforge:profile:new, /eforge:config
