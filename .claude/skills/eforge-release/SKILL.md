@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # /eforge-release
 
-Release a new version of eforge. Parses the release type from arguments, checks git status, optionally commits staged changes, generates release notes from the git log, updates CHANGELOG.md, bumps the version, pushes with tags, and creates a GitHub Release.
+Release a new version of eforge. Parses the release type from arguments, checks git status, optionally commits staged changes, generates release notes from the git log, updates CHANGELOG.md, bumps the version on a release PR, tags merged main, pushes the tag, and creates a GitHub Release.
 
 ## Workflow
 
@@ -167,31 +167,41 @@ git add CHANGELOG.md
 git commit -m "docs: update CHANGELOG.md for vX.Y.Z"
 ```
 
-### Step 6: Bump Version and Push
+### Step 6: Bump Version, Open PR, and Tag Merged Main
 
-Run these commands sequentially:
+Use the protected-main flow. Create a release branch, bump without tagging, open a PR, and enable auto-merge:
 
 ```bash
-pnpm release <bump-type>
-git push origin HEAD --follow-tags
+git checkout -b release/v<version>
+pnpm release <bump-type> --no-tag
+git push -u origin release/v<version>
+gh pr create --base main --head release/v<version> --title "release: v<version>" --body-file <notes-file>
+gh pr merge release/v<version> --auto --squash --delete-branch
 ```
 
 (Where `<bump-type>` is the resolved bump type from Step 1.)
 
-`pnpm release` (scripts/bump-version.mjs) bumps `packages/eforge/package.json` (source of truth), propagates the version to the other lockstep packages (`client`, `engine`, `monitor`, `pi-eforge`), commits all five package.jsons with message `X.Y.Z`, and creates an annotated tag `vX.Y.Z`. The push then ships the changelog commit, the version commit, and the tag.
+`pnpm release --no-tag` (scripts/bump-version.mjs) bumps `packages/eforge/package.json` (source of truth), propagates the version to the other lockstep packages (`client`, `engine`, `monitor`, `pi-eforge`), and commits the lockstep package/version surfaces with message `X.Y.Z`, but does not create a tag.
+
+After the PR merges, update `main`, verify the version, create the annotated tag on the merged main commit, and push only that tag:
+
+```bash
+git checkout main
+git pull --ff-only origin main
+git tag -a v<version> -m "v<version>"
+git push origin refs/tags/v<version>
+```
 
 ### Step 7: Create GitHub Release and Summary
 
-Create a GitHub Release:
+Create a GitHub Release from the generated release notes:
 
 ```bash
-gh release create v<version> --title "v<version>" --notes "<release-notes>"
+gh release create v<version> --title "v<version>" --notes-file <notes-file>
 ```
-
-(Use a heredoc or temp file for the notes if they contain special characters.)
 
 Report:
 - The new version number
 - The release type (patch, minor, or major)
 - Link to the GitHub Release
-- Remind the user that npm publish is handled by the GitHub Action
+- Remind the user that npm publish is handled by the tag-triggered GitHub Action

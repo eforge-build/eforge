@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, type SelectItem, SelectList, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
@@ -45,6 +45,7 @@ const DEV_ACTION = {
 	PR: "pr",
 	LAND: "land",
 	RELEASE: "release",
+	RELEASE_FINALIZE: "release-finalize",
 	RESTART: "restart",
 	PLAN: "plan",
 	REFRESH: "refresh",
@@ -56,6 +57,7 @@ const DEV_ACTIONS = [
 	DEV_ACTION.PR,
 	DEV_ACTION.LAND,
 	DEV_ACTION.RELEASE,
+	DEV_ACTION.RELEASE_FINALIZE,
 	DEV_ACTION.RESTART,
 	DEV_ACTION.PLAN,
 	DEV_ACTION.REFRESH,
@@ -89,7 +91,8 @@ function isAutoMergeLandMode(mode: string): boolean {
 	return mode === LAND_MODE.CREATE_AUTO_MERGE || mode === LAND_MODE.UPDATE_AUTO_MERGE;
 }
 
-const RELEASE_BUMP_TYPES = ["patch", "minor", "major"];
+const RELEASE_BUMP_TYPES = ["patch", "minor", "major"] as const;
+type ReleaseBumpType = (typeof RELEASE_BUMP_TYPES)[number];
 
 function oneLine(value: string | undefined, fallback = ""): string {
 	return (value ?? fallback).trim().split("\n").filter(Boolean).at(-1) ?? fallback;
@@ -592,6 +595,226 @@ async function readPackageVersion(cwd: string): Promise<string | undefined> {
 	}
 }
 
+function bumpVersionString(version: string, bump: ReleaseBumpType): string | undefined {
+	const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());
+	if (!match) return undefined;
+	const major = Number(match[1]);
+	const minor = Number(match[2]);
+	const patch = Number(match[3]);
+	switch (bump) {
+		case "major":
+			return `${major + 1}.0.0`;
+		case "minor":
+			return `${major}.${minor + 1}.0`;
+		case "patch":
+			return `${major}.${minor}.${patch + 1}`;
+	}
+}
+
+function normalizeReleaseVersion(input: string | undefined): { version: string; tag: string } | undefined {
+	const raw = input?.trim().split(/\s+/)[0]?.trim() ?? "";
+	const version = raw.replace(/^v/, "");
+	if (!/^\d+\.\d+\.\d+$/.test(version)) return undefined;
+	return { version, tag: `v${version}` };
+}
+
+function releaseSectionTitle(type: string): string {
+	switch (type) {
+		case "feat": return "Features";
+		case "fix": return "Bug Fixes";
+		case "refactor": return "Refactoring";
+		case "perf": return "Performance";
+		case "docs": return "Documentation";
+		case "chore":
+		case "ci":
+		case "build":
+		case "test": return "Maintenance";
+		default: return "Other";
+	}
+}
+
+function normalizeReleaseScope(scope: string | undefined): string | undefined {
+	if (!scope) return "core";
+	const cleaned = scope.replace(/^(plan-\d+-|hardening-\d+-)/, "");
+	if (["engine", "client", "monitor", "monitor-ui", "eforge", "pi-eforge", "plugin", "mcp", "backends", "queue"].includes(cleaned)) return cleaned;
+	if (cleaned === "deps" || cleaned === "dependencies") return "deps";
+	if (cleaned === "cleanup") return undefined;
+	if (cleaned === "revert" || cleaned.startsWith("revert-") || cleaned === "gap-close") return "core";
+	return cleaned;
+}
+
+async function generateReleaseNotes(pi: ExtensionAPI): Promise<string> {
+	const previousTag = await pi.exec("git", ["describe", "--tags", "--abbrev=0"], { timeout: 5_000 });
+	let fromRef = previousTag.stdout.trim();
+	if (previousTag.code !== 0 || !fromRef) {
+		const root = await pi.exec("git", ["rev-list", "--max-parents=0", "HEAD"], { timeout: 5_000 });
+		fromRef = root.stdout.trim().split("\n")[0] ?? "HEAD";
+	}
+
+	const log = await pi.exec("git", ["log", `${fromRef}..HEAD`, "--oneline"], { timeout: 10_000 });
+	const sections = new Map<string, Array<{ scope: string; description: string }>>();
+	const seenDescriptions = new Set<string>();
+
+	for (const line of log.stdout.split("\n").map((l) => l.trim()).filter(Boolean)) {
+		const message = line.replace(/^[0-9a-f]+\s+/, "");
+		if (/^\d+\.\d+\.\d+$/.test(message)) continue;
+		if (/enqueue\(|cleanup\(|plan\(|^Merge\s|bump plugin version/i.test(message)) continue;
+
+		const conventional = /^(\w+)(?:\(([^)]+)\))?!?:\s+(.+)$/.exec(message);
+		const type = conventional?.[1] ?? "other";
+		const scope = normalizeReleaseScope(conventional?.[2]);
+		if (!scope) continue;
+		const description = (conventional?.[3] ?? message).trim();
+		if (!description || seenDescriptions.has(description)) continue;
+		seenDescriptions.add(description);
+
+		const section = releaseSectionTitle(type);
+		const entries = sections.get(section) ?? [];
+		entries.push({ scope, description });
+		sections.set(section, entries);
+	}
+
+	const order = ["Features", "Bug Fixes", "Refactoring", "Performance", "Documentation", "Maintenance", "Other"];
+	const out: string[] = [];
+	for (const section of order) {
+		const entries = sections.get(section);
+		if (!entries?.length) continue;
+		entries.sort((a, b) => a.scope.localeCompare(b.scope) || a.description.localeCompare(b.description));
+		out.push(`### ${section}`, "", ...entries.map((entry) => `- **${entry.scope}**: ${entry.description}`), "");
+	}
+	return out.join("\n").trim() || "Maintenance release";
+}
+
+async function updateChangelogAndCommit(pi: ExtensionAPI, ctx: ExtensionContext, version: string, releaseNotes: string): Promise<boolean> {
+	const changelogPath = join(ctx.cwd, "CHANGELOG.md");
+	let changelog: string;
+	try {
+		changelog = await readFile(changelogPath, "utf8");
+	} catch {
+		changelog = "# Changelog\n";
+	}
+
+	if (!changelog.startsWith("# Changelog")) changelog = `# Changelog\n\n${changelog.trim()}\n`;
+	const today = new Date().toISOString().slice(0, 10);
+	const entry = `## [${version}] - ${today}\n\n${releaseNotes.trim()}\n\n`;
+	const withoutDuplicate = changelog.replace(new RegExp(`\\n?## \\[${version.replace(/\./g, "\\.")}\\][\\s\\S]*?(?=\\n## \\[|$)`), "\n");
+	let next = withoutDuplicate.replace(/^# Changelog\s*\n*/, `# Changelog\n\n${entry}`);
+
+	const parts = next.split(/(?=^## \[)/m);
+	if (parts.length > 21) {
+		next = parts.slice(0, 21).join("").trimEnd() + "\n\n---\nFor older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).\n";
+	}
+
+	await writeFile(changelogPath, next, "utf8");
+	const results = await runSteps(pi, ctx, `commit changelog for v${version}`, [
+		{ label: "Stage CHANGELOG.md", command: "git", args: ["add", "CHANGELOG.md"], timeout: 30_000 },
+		{ label: "Commit changelog", command: "git", args: ["commit", "-m", `docs: update CHANGELOG.md for v${version}`], timeout: 30_000 },
+	]);
+	return results.every((result) => result.status === "passed");
+}
+
+async function readChangelogReleaseNotes(cwd: string, version: string): Promise<string | undefined> {
+	try {
+		const changelog = await readFile(join(cwd, "CHANGELOG.md"), "utf8");
+		const escaped = version.replace(/\./g, "\\.");
+		const match = new RegExp(`^## \\[${escaped}\\][^\n]*\n\n([\\s\\S]*?)(?=\n## \\[|\n---|$)`, "m").exec(changelog);
+		return match?.[1]?.trim();
+	} catch {
+		return undefined;
+	}
+}
+
+async function waitForReleasePrMerge(pi: ExtensionAPI, ctx: ExtensionContext, branch: string, tag: string): Promise<boolean> {
+	const wait = await ctx.ui.confirm("Wait for auto-merge", `Auto-merge is enabled for ${branch}. Wait for CI/merge now, then tag ${tag}?`);
+	if (!wait) {
+		ctx.ui.notify(`Release PR is open. After it merges, run: /dev release-finalize ${tag}`, "info");
+		return false;
+	}
+
+	const waitResults = await runSteps(pi, ctx, `wait for ${tag} PR merge`, [
+		{
+			label: "Wait for PR to merge",
+			command: "bash",
+			args: [
+				"-lc",
+				'for i in {1..120}; do state=$(gh pr view "$1" --json state --jq .state 2>/dev/null || echo UNKNOWN); if [ "$state" = MERGED ]; then exit 0; fi; if [ "$state" = CLOSED ]; then exit 2; fi; sleep 30; done; exit 1',
+				"bash",
+				branch,
+			],
+			timeout: 3_700_000,
+		},
+	]);
+	const merged = waitResults.every((result) => result.status === "passed");
+	if (!merged) ctx.ui.notify(`PR did not merge while waiting. After it merges, run: /dev release-finalize ${tag}`, "warning");
+	return merged;
+}
+
+async function finalizeRelease(pi: ExtensionAPI, ctx: ExtensionContext, versionArg?: string): Promise<void> {
+	const release = normalizeReleaseVersion(versionArg);
+	if (!release) {
+		ctx.ui.notify("Usage: /dev release-finalize vX.Y.Z", "error");
+		return;
+	}
+
+	const prepResults = await runSteps(pi, ctx, `finalize ${release.tag}`, [
+		{ label: "Fetch main + tags", command: "git", args: ["fetch", "origin", "main", "--tags"], timeout: 60_000 },
+		{ label: "Checkout main", command: "git", args: ["checkout", "main"], timeout: 30_000 },
+		{ label: "Pull main", command: "git", args: ["pull", "--ff-only", "origin", "main"], timeout: 60_000 },
+	]);
+	if (!prepResults.every((result) => result.status === "passed")) return;
+
+	const mergedVersion = await readPackageVersion(ctx.cwd);
+	if (mergedVersion !== release.version) {
+		ctx.ui.notify(`main is at version ${mergedVersion ?? "unknown"}, not ${release.version}. Is the release PR merged?`, "error");
+		return;
+	}
+
+	const remoteTag = await pi.exec("git", ["ls-remote", "--exit-code", "--tags", "origin", `refs/tags/${release.tag}`], { timeout: 10_000 });
+	const tagAlreadyOnOrigin = remoteTag.code === 0;
+
+	const head = (await pi.exec("git", ["rev-parse", "HEAD"], { timeout: 5_000 })).stdout.trim();
+	const localTag = await pi.exec("git", ["rev-parse", "--verify", `refs/tags/${release.tag}`], { timeout: 5_000 });
+	if (localTag.code === 0) {
+		const taggedCommit = (await pi.exec("git", ["rev-list", "-n", "1", release.tag], { timeout: 5_000 })).stdout.trim();
+		if (taggedCommit !== head) {
+			ctx.ui.notify(`${release.tag} exists locally but does not point at current main`, "error");
+			return;
+		}
+	} else if (!tagAlreadyOnOrigin) {
+		const tagResult = await runSteps(pi, ctx, `tag ${release.tag}`, [
+			{ label: `Create ${release.tag}`, command: "git", args: ["tag", "-a", release.tag, "-m", release.tag], timeout: 30_000 },
+		]);
+		if (!tagResult.every((result) => result.status === "passed")) return;
+	}
+
+	if (!tagAlreadyOnOrigin) {
+		const pushResult = await runSteps(pi, ctx, `push ${release.tag}`, [
+			{ label: `Push ${release.tag}`, command: "git", args: ["push", "origin", `refs/tags/${release.tag}`], timeout: 60_000 },
+		]);
+		const pushed = pushResult.every((result) => result.status === "passed");
+		if (!pushed) {
+			ctx.ui.notify(`Failed to push ${release.tag}`, "error");
+			return;
+		}
+	}
+
+	const existingRelease = await pi.exec("gh", ["release", "view", release.tag, "--json", "url", "--jq", ".url"], { timeout: 30_000 });
+	if (existingRelease.code === 0) {
+		ctx.ui.notify(`${release.tag} already has a GitHub Release: ${existingRelease.stdout.trim()}`, "info");
+		return;
+	}
+
+	const releaseNotes = await readChangelogReleaseNotes(ctx.cwd, release.version) ?? "Maintenance release";
+	const releaseResult = await runSteps(pi, ctx, `create GitHub Release ${release.tag}`, [
+		{ label: "Create GitHub Release", command: "gh", args: ["release", "create", release.tag, "--title", release.tag, "--notes", releaseNotes], timeout: 60_000 },
+	]);
+	const releaseCreated = releaseResult.every((result) => result.status === "passed");
+	ctx.ui.notify(
+		releaseCreated ? `${release.tag} pushed and GitHub Release created; npm publish workflow should start` : `${release.tag} pushed, but GitHub Release creation failed`,
+		releaseCreated ? "info" : "error",
+	);
+}
+
 async function releaseWizard(pi: ExtensionAPI, ctx: ExtensionContext, setLastChecks: (status: DevState["lastChecks"]) => Promise<void>): Promise<void> {
 	const state = await getGitState(pi);
 	if (!state.insideGit) {
@@ -599,7 +822,7 @@ async function releaseWizard(pi: ExtensionAPI, ctx: ExtensionContext, setLastChe
 		return;
 	}
 	if (!state.isMain) {
-		ctx.ui.notify("Releases must be cut from main", "error");
+		ctx.ui.notify("Start releases from a clean, up-to-date main checkout", "error");
 		return;
 	}
 	if (state.dirtyCount > 0) {
@@ -607,34 +830,96 @@ async function releaseWizard(pi: ExtensionAPI, ctx: ExtensionContext, setLastChe
 		return;
 	}
 
-	const checksOk = await ctx.ui.confirm("Release checks", "Run the full release check suite before bumping?");
+	const initialSyncResults = await runSteps(pi, ctx, "sync main for release", [
+		{ label: "Fetch main + tags", command: "git", args: ["fetch", "origin", "main", "--tags"], timeout: 60_000 },
+		{ label: "Update local main", command: "git", args: ["pull", "--ff-only", "origin", "main"], timeout: 60_000 },
+	]);
+	if (!initialSyncResults.every((result) => result.status === "passed")) return;
+
+	const currentVersion = await readPackageVersion(ctx.cwd);
+	if (!currentVersion) {
+		ctx.ui.notify("Could not read packages/eforge/package.json version", "error");
+		return;
+	}
+
+	const bump = await ctx.ui.select("Version bump", [...RELEASE_BUMP_TYPES]);
+	if (!bump) return;
+	const nextVersion = bumpVersionString(currentVersion, bump as ReleaseBumpType);
+	if (!nextVersion) {
+		ctx.ui.notify(`Unsupported current version: ${currentVersion}`, "error");
+		return;
+	}
+
+	const tag = `v${nextVersion}`;
+	const releaseBranch = `release/${tag}`;
+	const existingTag = await pi.exec("git", ["ls-remote", "--exit-code", "--tags", "origin", `refs/tags/${tag}`], { timeout: 10_000 });
+	if (existingTag.code === 0) {
+		ctx.ui.notify(`${tag} already exists on origin`, "error");
+		return;
+	}
+	const existingBranch = await pi.exec("git", ["ls-remote", "--exit-code", "--heads", "origin", releaseBranch], { timeout: 10_000 });
+	if (existingBranch.code === 0) {
+		ctx.ui.notify(`${releaseBranch} already exists on origin`, "error");
+		return;
+	}
+
+	const checksOk = await ctx.ui.confirm("Release checks", `Run the full release check suite before opening ${releaseBranch}?`);
 	if (!checksOk) return;
 	const passed = await runChecks(pi, ctx, setLastChecks);
 	if (!passed) return;
 
-	const bump = await ctx.ui.select("Version bump", RELEASE_BUMP_TYPES);
-	if (!bump) return;
+	const updateResults = await runSteps(pi, ctx, `update main before ${releaseBranch}`, [
+		{ label: "Fetch main + tags", command: "git", args: ["fetch", "origin", "main", "--tags"], timeout: 60_000 },
+		{ label: "Update local main", command: "git", args: ["pull", "--ff-only", "origin", "main"], timeout: 60_000 },
+	]);
+	if (!updateResults.every((result) => result.status === "passed")) return;
 
-	const bumpResult = await runSteps(pi, ctx, `pnpm release ${bump}`, [{ label: `Bump ${bump}`, command: "pnpm", args: ["release", bump], timeout: 30_000 }]);
+	const latestVersion = await readPackageVersion(ctx.cwd);
+	if (latestVersion !== currentVersion) {
+		ctx.ui.notify(`main version changed from ${currentVersion} to ${latestVersion ?? "unknown"}; restart the release wizard`, "error");
+		return;
+	}
+
+	const prepResults = await runSteps(pi, ctx, `prepare ${releaseBranch}`, [
+		{ label: `Create ${releaseBranch}`, command: "git", args: ["checkout", "-b", releaseBranch], timeout: 30_000 },
+	]);
+	if (!prepResults.every((result) => result.status === "passed")) return;
+
+	const releaseNotes = await generateReleaseNotes(pi);
+	const changelogCommitted = await updateChangelogAndCommit(pi, ctx, nextVersion, releaseNotes);
+	if (!changelogCommitted) return;
+
+	const bumpResult = await runSteps(pi, ctx, `pnpm release ${bump} --no-tag`, [
+		{ label: `Bump ${bump}`, command: "pnpm", args: ["release", bump, "--no-tag"], timeout: 30_000 },
+	]);
 	if (!bumpResult.every((result) => result.status === "passed")) return;
 
-	const version = await readPackageVersion(ctx.cwd);
-	const tag = version ? `v${version}` : "new tag";
-	const tagCheck = version ? await pi.exec("git", ["rev-parse", "--verify", tag], { timeout: 5_000 }) : undefined;
-	if (tagCheck && tagCheck.code !== 0) {
-		ctx.ui.notify(`Expected tag ${tag} was not created`, "error");
+	const bumpedVersion = await readPackageVersion(ctx.cwd);
+	if (bumpedVersion !== nextVersion) {
+		ctx.ui.notify(`Expected version ${nextVersion}, found ${bumpedVersion ?? "unknown"}`, "error");
 		return;
 	}
 
-	const push = await ctx.ui.confirm("Push release", `Created ${tag}. Push main and tags to trigger npm publish?`);
-	if (!push) {
-		ctx.ui.notify(`Release bump created locally. Push with: git push origin HEAD --follow-tags`, "warning");
+	const localTag = await pi.exec("git", ["rev-parse", "--verify", `refs/tags/${tag}`], { timeout: 5_000 });
+	if (localTag.code === 0) {
+		ctx.ui.notify(`${tag} was created locally even though release used --no-tag; aborting before push`, "error");
 		return;
 	}
 
-	const pushResult = await runSteps(pi, ctx, "push release", [{ label: "Push main + tags", command: "git", args: ["push", "origin", "HEAD", "--follow-tags"], timeout: 60_000 }]);
-	const ok = pushResult.every((result) => result.status === "passed");
-	ctx.ui.notify(ok ? `${tag} pushed; npm publish workflow should start` : "Push failed", ok ? "info" : "error");
+	const openPrResults = await runSteps(pi, ctx, `open ${tag} release PR`, [
+		{ label: `Push ${releaseBranch}`, command: "git", args: ["push", "-u", "origin", releaseBranch], timeout: 60_000 },
+		{ label: "Create release PR", command: "gh", args: ["pr", "create", "--base", "main", "--head", releaseBranch, "--title", `release: ${tag}`, "--body", `Release ${tag}\n\n${releaseNotes}`], timeout: 60_000 },
+		{ label: "Enable PR auto-merge", command: "gh", args: ["pr", "merge", releaseBranch, "--auto", "--squash", "--delete-branch"], timeout: 60_000 },
+	]);
+	if (!openPrResults.every((result) => result.status === "passed")) {
+		ctx.ui.notify(`Release branch ${releaseBranch} is prepared, but PR setup failed`, "error");
+		return;
+	}
+
+	ctx.ui.notify(`${tag} release PR opened with auto-merge. The npm publish tag will be created only after main contains the bump.`, "info");
+	if (await waitForReleasePrMerge(pi, ctx, releaseBranch, tag)) {
+		await finalizeRelease(pi, ctx, tag);
+	}
 }
 
 async function prefillEforgePlan(ctx: ExtensionContext): Promise<void> {
@@ -650,7 +935,8 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 		{ value: DEV_ACTION.PR, label: "Show PR readiness", description: "Branch, diff, docs drift, and next steps" },
 		{ value: DEV_ACTION.LAND, label: "Land current branch", description: "Commit, check, and open a PR or fast-forward merge" },
 		{ value: DEV_ACTION.RESTART, label: "Rebuild + restart daemon", description: "Use after local engine/CLI changes" },
-		{ value: DEV_ACTION.RELEASE, label: "Release wizard", description: "Main-only checks, version bump, tag, optional push" },
+		{ value: DEV_ACTION.RELEASE, label: "Release wizard", description: "Open PR, auto-merge, then tag merged main" },
+		{ value: DEV_ACTION.RELEASE_FINALIZE, label: "Finalize release tag", description: "After release PR merge: tag main and push only the tag" },
 		{ value: DEV_ACTION.REFRESH, label: "Refresh status", description: "Update footer/widget state" },
 	];
 
@@ -738,6 +1024,10 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 					return;
 				case DEV_ACTION.RELEASE:
 					await releaseWizard(pi, ctx, setLastChecks);
+					await refresh(ctx);
+					return;
+				case DEV_ACTION.RELEASE_FINALIZE:
+					await finalizeRelease(pi, ctx, rest.join(" "));
 					await refresh(ctx);
 					return;
 				case DEV_ACTION.RESTART:
