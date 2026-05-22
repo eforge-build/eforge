@@ -13,6 +13,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { synthesizeFromEvents } from './event-history.js';
 import type { BuildFailureSummary, LandedCommit, PlanSummaryEntry, FailingPlanEntry } from '../events.js';
+import { resolveTrunkBranch } from '../branch-policy.js';
 
 const exec = promisify(execFile);
 
@@ -34,21 +35,6 @@ function parseModelsFromLog(logBody: string): string[] {
     }
   }
   return [...models].sort();
-}
-
-/**
- * Derive the base branch from git remote tracking info.
- * Tries `git symbolic-ref refs/remotes/origin/HEAD --short`, falls back to `main`.
- */
-async function deriveBaseBranch(cwd: string): Promise<string> {
-  try {
-    const { stdout } = await exec('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', '--short'], { cwd });
-    const ref = stdout.trim();
-    // Strip "origin/" prefix (e.g., "origin/main" → "main")
-    return ref.replace(/^origin\//, '') || 'main';
-  } catch {
-    return 'main';
-  }
 }
 
 /**
@@ -77,7 +63,7 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
   prdContent?: string;
 }): Promise<BuildFailureSummary> {
   const featureBranch = `eforge/${setName}`;
-  const baseBranch = await deriveBaseBranch(cwd);
+  const baseBranch = await resolveTrunkBranch(undefined, cwd);
 
   // Try event-history synthesis from monitor DB
   const eventFragment = synthesizeFromEvents({ setName, prdId, dbPath });

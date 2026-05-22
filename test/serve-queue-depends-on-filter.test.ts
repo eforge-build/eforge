@@ -32,7 +32,7 @@ type QueueItem = {
 };
 
 async function setupQueue(tmpDir: string): Promise<void> {
-  const queueDir = resolve(tmpDir, 'eforge', 'queue');
+  const queueDir = resolve(tmpDir, '.eforge', 'queue');
   const failedDir = resolve(queueDir, 'failed');
   await mkdir(queueDir, { recursive: true });
   await mkdir(failedDir, { recursive: true });
@@ -119,7 +119,7 @@ describe('serveQueue dependsOn filter', () => {
 
   it('drops dependsOn entirely from pending item when all deps are unknown', async () => {
     const tmpDir = makeTempDir();
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await mkdir(queueDir, { recursive: true });
 
     // Pending item with only unknown deps

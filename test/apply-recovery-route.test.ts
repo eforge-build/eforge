@@ -97,7 +97,7 @@ async function seedFailedPrd(
   verdict: 'retry' | 'split' | 'abandon' | 'manual',
   opts?: { suggestedSuccessorPrd?: string; malformedJson?: boolean; missingJson?: boolean },
 ): Promise<void> {
-  const failedDir = join(dir, 'eforge', 'queue', 'failed');
+  const failedDir = join(dir, '.eforge', 'queue', 'failed');
   await mkdir(failedDir, { recursive: true });
 
   // Write PRD file
@@ -220,12 +220,12 @@ describe('POST /api/recover/apply — retry', () => {
     expect(data.commitSha!.length).toBe(40);
 
     // PRD moved to queue directory
-    expect(await pathExists(join(tmpDir, 'eforge', 'queue', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(true);
     // Failed PRD removed
-    expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
     // Both sidecar files removed
-    expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
-    expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
     expect(autoBuildWakeReasons).toContain('apply-recovery');
   });
 
@@ -265,9 +265,9 @@ describe('POST /api/recover/apply — abandon', () => {
     expect(typeof data.commitSha).toBe('string');
 
     // All failed files removed
-    expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
-    expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
-    expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
     expect(autoBuildWakeReasons).toContain('apply-recovery');
   });
 });
@@ -338,7 +338,7 @@ describe('POST /api/recover/apply — split missing successor', () => {
   it('returns 400 when split verdict has no suggestedSuccessorPrd', async () => {
     const prdId = 'test-split-no-successor';
     // Write a split verdict sidecar with no suggestedSuccessorPrd
-    const failedDir = join(tmpDir, 'eforge', 'queue', 'failed');
+    const failedDir = join(tmpDir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(
       join(failedDir, `${prdId}.md`),

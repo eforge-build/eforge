@@ -698,7 +698,7 @@ export async function startServer(
       // id > helloCursor and be re-delivered when the live stream catches up.
       .filter((x): x is { id: number; event: EforgeEvent } => x !== null && x.id <= helloCursor);
     const snapshotCwd = options?.cwd;
-    const snapshotQueueDir = snapshotCwd ? resolve(snapshotCwd, options?.queueDir ?? 'eforge/queue') : '';
+    const snapshotQueueDir = snapshotCwd ? resolve(snapshotCwd, options?.queueDir ?? '.eforge/queue') : '';
     const snapshotLockDir = snapshotCwd ? resolve(snapshotCwd, '.eforge', 'queue-locks') : '';
     const daemonSnapshot = {
       liveness: buildHeartbeatObject(),
@@ -856,7 +856,7 @@ export async function startServer(
     let queueDepth = 0;
     if (options?.cwd) {
       try {
-        const queuePath = resolve(options.cwd, options?.queueDir ?? 'eforge/queue');
+        const queuePath = resolve(options.cwd, options?.queueDir ?? '.eforge/queue');
         const entries = readdirSync(queuePath);
         queueDepth = entries.filter((f) => f.endsWith('.md')).length;
       } catch {
@@ -1337,7 +1337,7 @@ export async function startServer(
       return;
     }
 
-    const queueDir = resolve(cwd, options?.queueDir ?? 'eforge/queue');
+    const queueDir = resolve(cwd, options?.queueDir ?? '.eforge/queue');
     const lockDir = resolve(cwd, '.eforge', 'queue-locks');
     const items = await loadQueueItems(queueDir, lockDir);
     sendJson(res, items);
@@ -2107,7 +2107,7 @@ export async function startServer(
         return;
       }
       const prdId = body.prdId;
-      const queueDir = resolve(cwd, options?.queueDir ?? 'eforge/queue');
+      const queueDir = resolve(cwd, options?.queueDir ?? '.eforge/queue');
       const failedDir = resolve(queueDir, 'failed');
       const sidecarJsonPath = resolve(failedDir, `${prdId}.recovery.json`);
 
@@ -3419,7 +3419,7 @@ export async function startServer(
           const { enqueuePrd, inferTitle, validateDependsOnExists, commitEnqueuedPrd } = await import('@eforge-build/engine/prd-queue');
           // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
           const plan = playbookToBuildSource(playbook);
-          const queueDir = options?.queueDir ?? 'eforge/queue';
+          const queueDir = options?.queueDir ?? '.eforge/queue';
           const title = inferTitle(plan.source, plan.name);
 
           // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
@@ -4224,7 +4224,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Working directory not configured');
         return;
       }
-      const prdQueueDir = options?.config?.prdQueue?.dir ?? 'eforge/queue';
+      const prdQueueDir = options?.config?.prdQueue?.dir ?? '.eforge/queue';
       const failedPrdDir = resolve(cwd, prdQueueDir, 'failed');
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);

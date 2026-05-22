@@ -333,6 +333,10 @@ const eforgeConfigBaseSchema = z.object({
     cleanupPlanFiles: z.boolean().optional(),
     // --- eforge:region plan-01-engine-config-and-landing ---
     onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional(),
+    // --- eforge:region plan-01-config-and-trunk-resolution ---
+    trunkBranch: z.string().optional(),
+    allowLocalMergeToTrunk: z.boolean().optional(),
+    // --- eforge:endregion plan-01-config-and-trunk-resolution ---
     // --- eforge:endregion plan-01-engine-config-and-landing ---
   }).optional(),
   plan: z.object({
@@ -480,7 +484,18 @@ export interface EforgeConfig {
     roles?: Partial<Record<AgentRole, z.output<typeof roleOverrideSchema>>>;
   };
   // --- eforge:region plan-01-engine-config-and-landing ---
-  build: { worktreeDir?: string; postMergeCommands?: string[]; postMergeCommandTimeoutMs?: number; maxValidationRetries: number; cleanupPlanFiles: boolean; onSuccess: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' };
+  build: {
+    worktreeDir?: string;
+    postMergeCommands?: string[];
+    postMergeCommandTimeoutMs?: number;
+    maxValidationRetries: number;
+    cleanupPlanFiles: boolean;
+    onSuccess: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+    // --- eforge:region plan-01-config-and-trunk-resolution ---
+    trunkBranch?: string;
+    allowLocalMergeToTrunk: boolean;
+    // --- eforge:endregion plan-01-config-and-trunk-resolution ---
+  };
   // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: { outputDir: string };
   plugins: PluginConfig;
@@ -660,7 +675,18 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     tiers: DEFAULT_TIER_RECIPES,
   }),
   // --- eforge:region plan-01-engine-config-and-landing ---
-  build: Object.freeze({ worktreeDir: undefined, postMergeCommands: undefined, postMergeCommandTimeoutMs: 300_000, maxValidationRetries: 2, cleanupPlanFiles: true, onSuccess: 'merge-to-base-branch' as const }),
+  build: Object.freeze({
+    worktreeDir: undefined,
+    postMergeCommands: undefined,
+    postMergeCommandTimeoutMs: 300_000,
+    maxValidationRetries: 2,
+    cleanupPlanFiles: true,
+    onSuccess: 'merge-to-base-branch' as const,
+    // --- eforge:region plan-01-config-and-trunk-resolution ---
+    trunkBranch: undefined as string | undefined,
+    allowLocalMergeToTrunk: false,
+    // --- eforge:endregion plan-01-config-and-trunk-resolution ---
+  }),
   // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
   plugins: Object.freeze({ enabled: true }),
@@ -686,7 +712,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     // --- eforge:endregion plan-01-validation-provider-runtime ---
   }),
   // --- eforge:endregion plan-01-extension-runtime-foundation ---
-  prdQueue: Object.freeze({ dir: 'eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
+  prdQueue: Object.freeze({ dir: '.eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   monitor: Object.freeze({ retentionCount: 20 }),
   hooks: Object.freeze([]),
@@ -760,6 +786,10 @@ export function resolveConfig(
       cleanupPlanFiles: fileConfig.build?.cleanupPlanFiles ?? DEFAULT_CONFIG.build.cleanupPlanFiles,
       // --- eforge:region plan-01-engine-config-and-landing ---
       onSuccess: fileConfig.build?.onSuccess ?? DEFAULT_CONFIG.build.onSuccess,
+      // --- eforge:region plan-01-config-and-trunk-resolution ---
+      trunkBranch: fileConfig.build?.trunkBranch,
+      allowLocalMergeToTrunk: fileConfig.build?.allowLocalMergeToTrunk ?? DEFAULT_CONFIG.build.allowLocalMergeToTrunk,
+      // --- eforge:endregion plan-01-config-and-trunk-resolution ---
       // --- eforge:endregion plan-01-engine-config-and-landing ---
     }),
     plan: Object.freeze({

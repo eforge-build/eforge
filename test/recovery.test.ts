@@ -830,7 +830,7 @@ describe('EforgeEngine.recover', () => {
 
   async function seedFixtures(dir: string): Promise<void> {
     // Write PRD file in failed dir
-    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nBuild a thing.', 'utf-8');
   }
@@ -991,7 +991,7 @@ describe('EforgeEngine.recover', () => {
     seedGitRepo(dir);
     await seedFixtures(dir);
 
-    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
     const prdPath = join(failedDir, 'test-prd.md');
 
     const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);

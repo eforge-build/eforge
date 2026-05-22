@@ -8,3 +8,8 @@
  * Note: Playbook API has moved to @eforge-build/input.
  * Note: Set-resolver types have moved to @eforge-build/scopes.
  */
+
+// --- eforge:region plan-01-config-and-trunk-resolution ---
+export { resolveTrunkBranch, isTrunkBranch } from './branch-policy.js';
+export type { BranchPolicy } from './branch-policy.js';
+// --- eforge:endregion plan-01-config-and-trunk-resolution ---

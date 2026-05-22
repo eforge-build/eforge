@@ -28,7 +28,7 @@ const execAsync = promisify(execFile);
 /**
  * Set up a minimal git repository with:
  * - 1 commit on `main`
- * - `eforge/queue/failed/` directory created
+ * - `.eforge/queue/failed/` directory created
  */
 function seedGitRepo(dir: string): void {
   const gitOpts = { cwd: dir };
@@ -45,7 +45,7 @@ async function seedFailedPrd(
   verdict: 'retry' | 'split' | 'abandon' | 'manual',
   opts?: { suggestedSuccessorPrd?: string },
 ): Promise<void> {
-  const failedDir = join(dir, 'eforge', 'queue', 'failed');
+  const failedDir = join(dir, '.eforge', 'queue', 'failed');
   await mkdir(failedDir, { recursive: true });
 
   // Write the PRD file
@@ -164,12 +164,12 @@ describe('applyRecovery — retry', () => {
     expect(result.commitSha!.length).toBe(40);
 
     // Working tree: queued PRD present
-    expect(await pathExists(join(dir, 'eforge', 'queue', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', `${prdId}.md`))).toBe(true);
     // Working tree: failed PRD absent
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
     // Working tree: sidecar files absent
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
 
     // Git log
     const subject = await gitLogSubject(dir);
@@ -225,16 +225,16 @@ describe('applyRecovery — split', () => {
     const successorPrdId = result.successorPrdId!;
 
     // Working tree: successor PRD present in queue
-    expect(await pathExists(join(dir, 'eforge', 'queue', `${successorPrdId}.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', `${successorPrdId}.md`))).toBe(true);
     // Working tree: failed PRD still present
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
     // Working tree: sidecars still present
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
 
     // Successor content matches suggestedSuccessorPrd
     const successorContent = await readFile(
-      join(dir, 'eforge', 'queue', `${successorPrdId}.md`),
+      join(dir, '.eforge', 'queue', `${successorPrdId}.md`),
       'utf-8',
     );
     expect(successorContent).toContain('Successor Feature');
@@ -280,7 +280,7 @@ describe('applyRecovery — split', () => {
     expect(result.successorPrdId).toBe('real-title');
 
     // Successor file should exist
-    const successorPath = join(dir, 'eforge', 'queue', 'real-title.md');
+    const successorPath = join(dir, '.eforge', 'queue', 'real-title.md');
     expect(await pathExists(successorPath)).toBe(true);
 
     const successorContent = await readFile(successorPath, 'utf-8');
@@ -334,9 +334,9 @@ describe('applyRecovery — abandon', () => {
     expect(result.commitSha).toBeDefined();
 
     // Working tree: all three paths absent
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
 
     // Git log
     const subject = await gitLogSubject(dir);
@@ -384,9 +384,9 @@ describe('applyRecovery — manual', () => {
     expect(headAfter).toBe(headBefore);
 
     // Working tree: files still present
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
 
     // Events
     const startEvent = events.find((e) => e.type === 'recovery:apply:start');
@@ -413,7 +413,7 @@ describe('applyRecovery — error paths', () => {
     seedGitRepo(dir);
 
     // Only create the PRD file, no sidecar
-    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, `${prdId}.md`), '# PRD', 'utf-8');
 
@@ -429,7 +429,7 @@ describe('applyRecovery — error paths', () => {
     const prdId = 'split-no-successor';
     seedGitRepo(dir);
 
-    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, `${prdId}.md`), '# PRD', 'utf-8');
     await writeFile(join(failedDir, `${prdId}.recovery.md`), '# Report', 'utf-8');

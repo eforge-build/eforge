@@ -433,6 +433,12 @@
             "issue-pr",
             "leave-branch"
           ]
+        },
+        "trunkBranch": {
+          "type": "string"
+        },
+        "allowLocalMergeToTrunk": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

@@ -357,7 +357,7 @@ describe('POST /api/playbook/run', () => {
     expect(data.id.length).toBeGreaterThan(0);
 
     // Verify the PRD file exists in the queue
-    const queueFile = resolve(tmpDir, 'eforge', 'queue', `${data.id}.md`);
+    const queueFile = resolve(tmpDir, '.eforge', 'queue', `${data.id}.md`);
     await expect(access(queueFile)).resolves.toBeUndefined();
     const content = await readFile(queueFile, 'utf-8');
     expect(content).toContain('title:');
@@ -367,7 +367,7 @@ describe('POST /api/playbook/run', () => {
     expect(commitSubject).toMatch(new RegExp(`^enqueue\\(${data.id}\\): `));
 
     // Verify the queue directory is clean (no untracked or modified files)
-    const gitStatus = execFileSync('git', ['status', '--porcelain', 'eforge/queue/'], { cwd: tmpDir }).toString().trim();
+    const gitStatus = execFileSync('git', ['status', '--porcelain', '.eforge/queue/'], { cwd: tmpDir }).toString().trim();
     expect(gitStatus).toBe('');
 
     expect(autoBuildWakeReasons).toContain('playbook-enqueue');
@@ -407,7 +407,7 @@ describe('POST /api/playbook/run', () => {
     await expect(readFile(sentinelSessionPlan, 'utf-8')).resolves.toBe('# Existing plan\n\nDo not modify.\n');
 
     // Verify no queue mutation (no PRD created) and no auto-build wake
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
@@ -435,7 +435,7 @@ describe('POST /api/playbook/run', () => {
       mode: 'planning',
       name: 'my-planning',
     }));
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
@@ -485,7 +485,7 @@ describe('POST /api/playbook/run', () => {
     const data = await res.json() as { error: string };
     expect(data.error).toContain('depends_on references unknown queue item: "missing-upstream"');
 
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
@@ -519,7 +519,7 @@ describe('POST /api/playbook/run', () => {
     const data = await res.json() as { kind: string; id: string };
     expect(data.kind).toBe('enqueued');
     // When afterQueueId is provided, the PRD goes into waiting/ not queue root
-    const queueFile = resolve(tmpDir, 'eforge', 'queue', 'waiting', `${data.id}.md`);
+    const queueFile = resolve(tmpDir, '.eforge', 'queue', 'waiting', `${data.id}.md`);
     const content = await readFile(queueFile, 'utf-8');
 
     // The PRD frontmatter should include depends_on
@@ -753,7 +753,7 @@ describe('POST /api/playbook/run — profile field', () => {
       name: 'my-planning',
     }));
 
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
@@ -780,7 +780,7 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(data.kind).toBe('enqueued');
 
     // Verify the queued PRD contains profile: docs-heavy in frontmatter
-    const queueFile = resolve(tmpDir, 'eforge', 'queue', `${data.id}.md`);
+    const queueFile = resolve(tmpDir, '.eforge', 'queue', `${data.id}.md`);
     const content = await readFile(queueFile, 'utf-8');
     const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
     expect(frontmatter).toBeDefined();
@@ -808,7 +808,7 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(data.error).toContain('missing-profile');
 
     // Verify no PRD was created
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });

@@ -209,8 +209,8 @@ describe('GET /api/recovery/sidecar', () => {
   });
 
   it('reads v2 sidecar (schemaVersion: 2, partial: true)', async () => {
-    // Create sidecar at the computed path: cwd/eforge/queue/failed/<prdId>.recovery.*
-    const failedDir = join(tmpDir, 'eforge', 'queue', 'failed');
+    // Create sidecar at the computed path: cwd/.eforge/queue/failed/<prdId>.recovery.*
+    const failedDir = join(tmpDir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
 
     const v2Sidecar = {
@@ -399,7 +399,7 @@ describe('recovery analyst parse error -> manual-verdict sidecar', () => {
     initGitRepo(dir);
 
     // Create failed PRD (no state.json — synthesis uses monitor DB and git)
-    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nDo a thing.', 'utf-8');
 
@@ -433,7 +433,7 @@ describe('EforgeEngine.recover() with no state.json + populated event db', () =>
     initGitRepo(dir);
 
     // Create failed PRD (no state.json)
-    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nDo a thing.', 'utf-8');
 
@@ -504,7 +504,7 @@ describe('EforgeEngine.recover() with no state.json AND no event db', () => {
     initGitRepo(dir);
 
     // Create failed PRD — no state.json, no event DB
-    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nDo a thing.', 'utf-8');
 
