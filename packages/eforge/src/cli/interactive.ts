@@ -1,5 +1,6 @@
 import readline from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
+import chalk from 'chalk';
 import type { ClarificationQuestion } from '@eforge-build/engine/events';
 
 /**
@@ -56,3 +57,43 @@ export function createApprovalHandler(
     }
   };
 }
+
+// --- eforge:region plan-04-ux-init-build-and-docs ---
+
+/** Possible outcomes from the trunk landing confirmation prompt. */
+export type TrunkLandingChoice = 'switch-to-pr' | 'cancel' | 'feature-branch' | 'solo-dev';
+
+/**
+ * Interactive confirmation prompt shown when the CLI detects that the user is
+ * building from trunk with merge-to-base-branch and allowLocalMergeToTrunk is
+ * not enabled. Presents four options and returns the user's choice.
+ */
+export async function confirmTrunkLanding(trunkBranch: string): Promise<TrunkLandingChoice> {
+  const rl = readline.createInterface({ input: stdin, output: stdout });
+  try {
+    console.error('');
+    console.error(chalk.yellow.bold(`  ⚠  Building from trunk (${trunkBranch}) with merge-to-base-branch`));
+    console.error('');
+    console.error(`  eforge protects trunk from direct local merges by default.`);
+    console.error(`  merge-to-base-branch on ${chalk.bold(trunkBranch)} requires build.allowLocalMergeToTrunk: true.`);
+    console.error('');
+    console.error(`  Options:`);
+    console.error(`    1. Switch to ${chalk.bold('issue-pr')} — open a GitHub PR from the build branch [default]`);
+    console.error(`    2. ${chalk.bold('Cancel')} — abort this build`);
+    console.error(`    3. ${chalk.bold('Feature branch')} — print steps to switch to a feature branch first`);
+    console.error(`    4. ${chalk.bold('Solo-dev opt-in')} — print steps to enable local trunk merges`);
+    console.error('');
+    const answer = await rl.question('  Choose 1, 2, 3, or 4 [1]: ');
+    const choice = answer.trim() || '1';
+    switch (choice) {
+      case '2': return 'cancel';
+      case '3': return 'feature-branch';
+      case '4': return 'solo-dev';
+      default: return 'switch-to-pr';
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+// --- eforge:endregion plan-04-ux-init-build-and-docs ---

@@ -8,3 +8,12 @@
  * Note: Playbook API has moved to @eforge-build/input.
  * Note: Set-resolver types have moved to @eforge-build/scopes.
  */
+
+// --- eforge:region plan-01-config-and-trunk-resolution ---
+export { resolveTrunkBranch, isTrunkBranch } from './branch-policy.js';
+export type { BranchPolicy } from './branch-policy.js';
+// --- eforge:endregion plan-01-config-and-trunk-resolution ---
+// --- eforge:region plan-02-queue-runtime-and-prd-provenance ---
+export { materializePrdArtifact } from './prd-queue.js';
+export { moveFailedWithSidecar } from './prd-queue.js';
+// --- eforge:endregion plan-02-queue-runtime-and-prd-provenance ---

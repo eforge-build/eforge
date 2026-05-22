@@ -3,7 +3,7 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, isPrdRunning, readPrdLockStatus, type QueuedPrd } from '@eforge-build/engine/prd-queue';
+import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, cleanupCompletedPrd, setQueuedPrdProfile, isPrdRunning, readPrdLockStatus, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -163,25 +163,151 @@ describe('resolveQueueOrder', () => {
 describe('movePrdToSubdir', () => {
   const makeTempDir = useTempDir('eforge-prd-move-');
 
-  it('moves a PRD file to a subdirectory via git mv', async () => {
+  it('moves a PRD file to a subdirectory via filesystem rename (no git commit)', async () => {
     const dir = makeTempDir();
-    // Initialize git repo
+    // Initialize git repo (queue is gitignored)
     execFileSync('git', ['init'], { cwd: dir });
     execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: dir });
     execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
+    writeFileSync(join(dir, '.gitignore'), '.eforge/\n');
+    execFileSync('git', ['add', '.gitignore'], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir });
 
-    const queueDir = join(dir, 'eforge', 'queue');
+    const queueDir = join(dir, '.eforge', 'queue');
     mkdirSync(queueDir, { recursive: true });
 
     const filePath = join(queueDir, 'test-prd.md');
     writeFileSync(filePath, '---\ntitle: Test\n---\n\n# Test\n');
-    execFileSync('git', ['add', '.'], { cwd: dir });
-    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir });
+
+    const initialHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
 
     await movePrdToSubdir(filePath, 'failed', dir);
 
     expect(existsSync(join(queueDir, 'failed', 'test-prd.md'))).toBe(true);
     expect(existsSync(filePath)).toBe(false);
+
+    // No new commit was created
+    const currentHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
+    expect(currentHash).toBe(initialHash);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cleanupCompletedPrd — filesystem-only, no git commit
+// ---------------------------------------------------------------------------
+
+describe('cleanupCompletedPrd', () => {
+  const makeTempDir = useTempDir('eforge-prd-cleanup-');
+
+  it('removes the PRD file via rm and does NOT create a git commit', async () => {
+    const dir = makeTempDir();
+    execFileSync('git', ['init'], { cwd: dir });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: dir });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
+    writeFileSync(join(dir, '.gitignore'), '.eforge/\n');
+    execFileSync('git', ['add', '.gitignore'], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir });
+
+    const queueDirAbs = join(dir, '.eforge', 'queue');
+    mkdirSync(queueDirAbs, { recursive: true });
+    const filePath = join(queueDirAbs, 'done.md');
+    writeFileSync(filePath, '---\ntitle: Done\n---\n\n# Done\n');
+
+    const initialHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
+
+    await cleanupCompletedPrd(filePath, '.eforge/queue', dir);
+
+    expect(existsSync(filePath)).toBe(false);
+
+    // No new commit was created
+    const currentHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
+    expect(currentHash).toBe(initialHash);
+  });
+
+  it('throws when filePath is outside the queue directory (path traversal guard)', async () => {
+    const dir = makeTempDir();
+    const queueDirAbs = join(dir, '.eforge', 'queue');
+    mkdirSync(queueDirAbs, { recursive: true });
+    const outsidePath = join(dir, 'outside.md');
+    writeFileSync(outsidePath, 'unrelated');
+
+    await expect(
+      cleanupCompletedPrd(outsidePath, '.eforge/queue', dir),
+    ).rejects.toThrow(/outside queue directory/);
+
+    // The "outside" file must still exist (rm was not called)
+    expect(existsSync(outsidePath)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setQueuedPrdProfile — filesystem-only, no git commit
+// ---------------------------------------------------------------------------
+
+describe('setQueuedPrdProfile', () => {
+  const makeTempDir = useTempDir('eforge-prd-profile-');
+
+  it('appends profile: when absent and does NOT create a git commit', async () => {
+    const dir = makeTempDir();
+    execFileSync('git', ['init'], { cwd: dir });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: dir });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
+    writeFileSync(join(dir, '.gitignore'), '.eforge/\n');
+    execFileSync('git', ['add', '.gitignore'], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir });
+
+    const queueDirAbs = join(dir, '.eforge', 'queue');
+    mkdirSync(queueDirAbs, { recursive: true });
+    const filePath = join(queueDirAbs, 'p.md');
+    const original = '---\ntitle: P\n---\n\n# P\n\nBody.\n';
+    writeFileSync(filePath, original);
+
+    const initialHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
+
+    const prd = makeQueuedPrd({
+      id: 'p',
+      filePath,
+      content: original,
+      frontmatter: { title: 'P' },
+    });
+
+    const result = await setQueuedPrdProfile(prd, 'docs-heavy', dir);
+
+    expect(result.frontmatter.profile).toBe('docs-heavy');
+    const written = readFileSync(filePath, 'utf-8');
+    expect(written).toContain('profile: docs-heavy');
+    expect(written).toContain('# P');
+    expect(written).toContain('Body.');
+
+    // No new commit was created
+    const currentHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
+    expect(currentHash).toBe(initialHash);
+  });
+
+  it('replaces an existing profile: line in-place without committing', async () => {
+    const dir = makeTempDir();
+    const queueDirAbs = join(dir, '.eforge', 'queue');
+    mkdirSync(queueDirAbs, { recursive: true });
+    const filePath = join(queueDirAbs, 'p.md');
+    const original = '---\ntitle: P\nprofile: old-profile\n---\n\n# P\n';
+    writeFileSync(filePath, original);
+
+    const prd = makeQueuedPrd({
+      id: 'p',
+      filePath,
+      content: original,
+      frontmatter: { title: 'P', profile: 'old-profile' },
+    });
+
+    const result = await setQueuedPrdProfile(prd, 'new-profile', dir);
+
+    expect(result.frontmatter.profile).toBe('new-profile');
+    const written = readFileSync(filePath, 'utf-8');
+    expect(written).toContain('profile: new-profile');
+    expect(written).not.toContain('old-profile');
+    // Exactly one profile: line
+    const matches = written.match(/^profile\s*:/gm);
+    expect(matches?.length).toBe(1);
   });
 });
 

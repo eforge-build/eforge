@@ -241,7 +241,7 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     });
 
     // --- Seed queue: pending PRD, pending PRD with depends_on, and failed PRD with recovery sidecar ---
-    const queueDir = join(cwd, 'eforge', 'queue');
+    const queueDir = join(cwd, '.eforge', 'queue');
     mkdirSync(queueDir, { recursive: true });
     const prdContent = '---\ntitle: Test PRD for parity\npriority: 5\n---\n\n# My PRD\n';
     writeFileSync(join(queueDir, 'test-prd.md'), prdContent, 'utf-8');
@@ -560,7 +560,7 @@ describe('stream:hello queue parity with live queue:prd:discovered projection', 
     });
 
     // Write a PRD file so the server's loadQueueItemsSync picks it up
-    const queueDir = join(cwd, 'eforge', 'queue');
+    const queueDir = join(cwd, '.eforge', 'queue');
     mkdirSync(queueDir, { recursive: true });
     writeFileSync(join(queueDir, `${prdId}.md`), `---\ntitle: ${prdTitle}\n---\n\n# Body\n`, 'utf-8');
 

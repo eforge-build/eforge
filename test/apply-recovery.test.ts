@@ -2,8 +2,11 @@
  * Tests for EforgeEngine.applyRecovery — all four verdict dispatches plus error paths.
  *
  * Each test builds a real git fixture, seeds the failed PRD + both sidecar files,
- * calls engine.applyRecovery(), then asserts post-conditions on the working tree
- * and git log.
+ * calls engine.applyRecovery(), then asserts post-conditions on the working tree.
+ *
+ * Per plan-02: queue state is filesystem-only (queue is gitignored). Recovery
+ * operations no longer make git commits — commitSha is always '' (empty string)
+ * for retry/split/abandon, and undefined for manual (noAction).
  *
  * Per AGENTS.md: no harness or git mocks — all tests use real git operations.
  */
@@ -22,13 +25,23 @@ import type { ApplyRecoveryResult } from '@eforge-build/engine/schemas';
 const execAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Get the HEAD SHA. */
+async function gitHeadSha(cwd: string): Promise<string> {
+  const { stdout } = await execAsync('git', ['rev-parse', 'HEAD'], { cwd });
+  return stdout.trim();
+}
+
+// ---------------------------------------------------------------------------
 // Shared fixtures
 // ---------------------------------------------------------------------------
 
 /**
  * Set up a minimal git repository with:
  * - 1 commit on `main`
- * - `eforge/queue/failed/` directory created
+ * - `.eforge/queue/failed/` directory created
  */
 function seedGitRepo(dir: string): void {
   const gitOpts = { cwd: dir };
@@ -45,7 +58,7 @@ async function seedFailedPrd(
   verdict: 'retry' | 'split' | 'abandon' | 'manual',
   opts?: { suggestedSuccessorPrd?: string },
 ): Promise<void> {
-  const failedDir = join(dir, 'eforge', 'queue', 'failed');
+  const failedDir = join(dir, '.eforge', 'queue', 'failed');
   await mkdir(failedDir, { recursive: true });
 
   // Write the PRD file
@@ -122,24 +135,6 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
-/** Get the subject of the most recent commit. */
-async function gitLogSubject(cwd: string): Promise<string> {
-  const { stdout } = await execAsync('git', ['log', '-1', '--format=%s'], { cwd });
-  return stdout.trim();
-}
-
-/** Get the full body of the most recent commit. */
-async function gitLogBody(cwd: string): Promise<string> {
-  const { stdout } = await execAsync('git', ['log', '-1', '--format=%B'], { cwd });
-  return stdout.trim();
-}
-
-/** Get the HEAD SHA. */
-async function gitHeadSha(cwd: string): Promise<string> {
-  const { stdout } = await execAsync('git', ['rev-parse', 'HEAD'], { cwd });
-  return stdout.trim();
-}
-
 // ---------------------------------------------------------------------------
 // retry verdict
 // ---------------------------------------------------------------------------
@@ -156,24 +151,18 @@ describe('applyRecovery — retry', () => {
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
-    // Result shape
+    // Result shape — filesystem-only, no commit
     expect(result.verdict).toBe('retry');
     expect(result.noAction).toBe(false);
-    expect(result.commitSha).toBeDefined();
-    expect(typeof result.commitSha).toBe('string');
-    expect(result.commitSha!.length).toBe(40);
+    expect(result.commitSha).toBe('');
 
     // Working tree: queued PRD present
-    expect(await pathExists(join(dir, 'eforge', 'queue', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', `${prdId}.md`))).toBe(true);
     // Working tree: failed PRD absent
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
     // Working tree: sidecar files absent
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
-
-    // Git log
-    const subject = await gitLogSubject(dir);
-    expect(subject).toContain(`recover(${prdId}): requeue`);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
 
     // Events
     const startEvent = events.find((e) => e.type === 'recovery:apply:start');
@@ -184,17 +173,20 @@ describe('applyRecovery — retry', () => {
     expect((completeEvent as Extract<EforgeEvent, { type: 'recovery:apply:complete' }>).noAction).toBe(false);
   });
 
-  it('commit carries Co-Authored-By: forged-by-eforge trailer', async () => {
+  it('does not create a new git commit (filesystem-only)', async () => {
     const dir = makeTempDir();
-    const prdId = 'test-retry-trailer';
+    const prdId = 'test-retry-no-commit';
     seedGitRepo(dir);
     await seedFailedPrd(dir, prdId, 'retry');
+
+    const headBefore = await gitHeadSha(dir);
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     await driveGenerator(engine.applyRecovery(prdId));
 
-    const body = await gitLogBody(dir);
-    expect(body).toContain('Co-Authored-By: forged-by-eforge');
+    // HEAD must not advance — no commit is made for filesystem-only queue operations
+    const headAfter = await gitHeadSha(dir);
+    expect(headAfter).toBe(headBefore);
   });
 });
 
@@ -216,32 +208,28 @@ describe('applyRecovery — split', () => {
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
-    // Result shape
+    // Result shape — filesystem-only, no commit
     expect(result.verdict).toBe('split');
     expect(result.noAction).toBe(false);
     expect(result.successorPrdId).toBeDefined();
-    expect(result.commitSha).toBeDefined();
+    expect(result.commitSha).toBe('');
 
     const successorPrdId = result.successorPrdId!;
 
     // Working tree: successor PRD present in queue
-    expect(await pathExists(join(dir, 'eforge', 'queue', `${successorPrdId}.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', `${successorPrdId}.md`))).toBe(true);
     // Working tree: failed PRD still present
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
     // Working tree: sidecars still present
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
 
     // Successor content matches suggestedSuccessorPrd
     const successorContent = await readFile(
-      join(dir, 'eforge', 'queue', `${successorPrdId}.md`),
+      join(dir, '.eforge', 'queue', `${successorPrdId}.md`),
       'utf-8',
     );
     expect(successorContent).toContain('Successor Feature');
-
-    // Git log subject
-    const subject = await gitLogSubject(dir);
-    expect(subject).toContain(`recover(${prdId}): enqueue successor ${successorPrdId}`);
 
     // Events
     const completeEvent = events.find((e) => e.type === 'recovery:apply:complete') as
@@ -250,10 +238,6 @@ describe('applyRecovery — split', () => {
     expect(completeEvent).toBeDefined();
     expect(completeEvent!.verdict).toBe('split');
     expect(completeEvent!.successorPrdId).toBe(successorPrdId);
-
-    // Co-Authored-By trailer
-    const body = await gitLogBody(dir);
-    expect(body).toContain('Co-Authored-By: forged-by-eforge');
   });
 
   it('strips agent-emitted frontmatter and rebuilds clean frontmatter with no depends_on', async () => {
@@ -280,7 +264,7 @@ describe('applyRecovery — split', () => {
     expect(result.successorPrdId).toBe('real-title');
 
     // Successor file should exist
-    const successorPath = join(dir, 'eforge', 'queue', 'real-title.md');
+    const successorPath = join(dir, '.eforge', 'queue', 'real-title.md');
     expect(await pathExists(successorPath)).toBe(true);
 
     const successorContent = await readFile(successorPath, 'utf-8');
@@ -328,19 +312,15 @@ describe('applyRecovery — abandon', () => {
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
-    // Result shape
+    // Result shape — filesystem-only, no commit
     expect(result.verdict).toBe('abandon');
     expect(result.noAction).toBe(false);
-    expect(result.commitSha).toBeDefined();
+    expect(result.commitSha).toBe('');
 
     // Working tree: all three paths absent
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
-
-    // Git log
-    const subject = await gitLogSubject(dir);
-    expect(subject).toContain(`recover(${prdId}): abandon`);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
 
     // Events
     const completeEvent = events.find((e) => e.type === 'recovery:apply:complete') as
@@ -349,10 +329,6 @@ describe('applyRecovery — abandon', () => {
     expect(completeEvent).toBeDefined();
     expect(completeEvent!.verdict).toBe('abandon');
     expect(completeEvent!.noAction).toBe(false);
-
-    // Co-Authored-By trailer
-    const body = await gitLogBody(dir);
-    expect(body).toContain('Co-Authored-By: forged-by-eforge');
   });
 });
 
@@ -384,9 +360,9 @@ describe('applyRecovery — manual', () => {
     expect(headAfter).toBe(headBefore);
 
     // Working tree: files still present
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
-    expect(await pathExists(join(dir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
 
     // Events
     const startEvent = events.find((e) => e.type === 'recovery:apply:start');
@@ -413,7 +389,7 @@ describe('applyRecovery — error paths', () => {
     seedGitRepo(dir);
 
     // Only create the PRD file, no sidecar
-    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, `${prdId}.md`), '# PRD', 'utf-8');
 
@@ -429,7 +405,7 @@ describe('applyRecovery — error paths', () => {
     const prdId = 'split-no-successor';
     seedGitRepo(dir);
 
-    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, `${prdId}.md`), '# PRD', 'utf-8');
     await writeFile(join(failedDir, `${prdId}.recovery.md`), '# Report', 'utf-8');

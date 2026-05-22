@@ -22,8 +22,8 @@ export function sleep(ms: number): Promise<void> {
  * True when `cwd` looks like an eforge agent worktree: the merge worktree
  * (`.../<project>-<setName>-worktrees/__merge__`) or a per-module worktree
  * (`.../<project>-<setName>-worktrees/<moduleId>`). Spawning a daemon there
- * causes a recursive auto-build of the still-committed PRD in
- * `eforge/queue/`. See the bug report in `eforge/queue/`.
+ * could cause a recursive auto-build. Queue state lives under `.eforge/queue/`
+ * which is gitignored and not committed into worktrees.
  */
 export function isAgentWorktreeCwd(cwd: string): boolean {
   if (basename(cwd) === '__merge__') return true;

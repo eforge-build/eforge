@@ -1,12 +1,37 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { abortableSleep, EforgeEngine } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 import { StubHarness } from './stub-harness.js';
+
+// ---------------------------------------------------------------------------
+// Test environment setup
+// ---------------------------------------------------------------------------
+
+// Point EFORGE_CLI_PATH at a minimal stub that exits immediately with code 1.
+// Without this, spawnPrdChild falls back to process.argv[1] which may be the
+// vitest runner — causing subprocesses to take several seconds to fail, making
+// tests that wait for queue:prd:complete unreliable.
+const CLI_STUB = resolve(fileURLToPath(import.meta.url), '..', 'fixtures', 'cli-stub-fail.mjs');
+let previousCliPath: string | undefined;
+
+beforeAll(() => {
+  previousCliPath = process.env.EFORGE_CLI_PATH;
+  process.env.EFORGE_CLI_PATH = CLI_STUB;
+});
+
+afterAll(() => {
+  if (previousCliPath === undefined) {
+    delete process.env.EFORGE_CLI_PATH;
+  } else {
+    process.env.EFORGE_CLI_PATH = previousCliPath;
+  }
+});
 
 describe('abortableSleep', () => {
   it('returns false when timer completes normally', async () => {
@@ -142,10 +167,19 @@ describe('watchQueue', () => {
   });
 
   it('re-queued PRD that was previously failed is re-discovered after inject', async () => {
+    // The scheduler only emits queue:prd:discovered for PRDs injected via
+    // queue:mutation (not for initialPrds loaded at startup). This test uses
+    // two inject cycles to verify both the first-time discovery and re-discovery
+    // work correctly:
+    //
+    //   1. watchQueue starts with an empty queue.
+    //   2. After queue:start, inject the PRD for the first time (first discovery).
+    //   3. After queue:prd:complete fires (PRD fails), inject again (second discovery).
+    //
+    // EFORGE_CLI_PATH must be set so the subprocess exits immediately (see beforeAll).
     const { engine, queueDir } = await createTestEngine();
     const abortController = new AbortController();
 
-    // Pre-write a PRD so it's discovered on initial start
     const prdContent = [
       '---',
       'title: Requeue PRD',
@@ -156,12 +190,12 @@ describe('watchQueue', () => {
       '',
       'Do something.',
     ].join('\n');
-    await writeFile(join(queueDir, 'requeue-prd.md'), prdContent);
 
     let capturedInject: ((event: SchedulerInputEvent) => void) | null = null;
     const events: EforgeEvent[] = [];
     let discoveredCount = 0;
     let sawComplete = false;
+    let injectedInitial = false;
 
     const abortTimer = setTimeout(() => abortController.abort(), 15000);
 
@@ -173,6 +207,19 @@ describe('watchQueue', () => {
         },
       })) {
         events.push(event);
+
+        // After queue:start, inject the PRD for the first time
+        if (event.type === 'queue:start' && capturedInject && !injectedInitial) {
+          injectedInitial = true;
+          setTimeout(async () => {
+            await writeFile(join(queueDir, 'requeue-prd.md'), prdContent);
+            capturedInject!({
+              type: 'queue:mutation',
+              reason: 'enqueue',
+              timestamp: new Date().toISOString(),
+            });
+          }, 100);
+        }
 
         if (event.type === 'queue:prd:discovered') {
           discoveredCount++;
@@ -199,7 +246,7 @@ describe('watchQueue', () => {
       clearTimeout(abortTimer);
     }
 
-    // Should have been discovered twice: once initially, once after re-queue
+    // Should have been discovered twice: once via first inject, once after re-queue
     expect(discoveredCount).toBeGreaterThanOrEqual(2);
     const discoveredEvents = events.filter((e) => e.type === 'queue:prd:discovered');
     expect(discoveredEvents.length).toBeGreaterThanOrEqual(2);

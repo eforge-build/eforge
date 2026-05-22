@@ -678,7 +678,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_init
   createDaemonTool(server, cwd, {
     name: 'eforge_init',
-    description: 'Initialize eforge in a project. The skill is responsible for picking harness/model/effort per tier interactively; the tool is a pure persister. Pass `profile.tiers` with one self-contained recipe per tier (planning/implementation/review/evaluation). Each tier carries its own harness + model + effort.',
+    description: 'Initialize eforge in a project. The skill is responsible for picking harness/model/effort per tier interactively; the tool is a pure persister. Pass `profile.tiers` with one self-contained recipe per tier (planning/implementation/review/evaluation). Each tier carries its own harness + model + effort. Pass `trunkBranch` and `allowLocalMergeToTrunk` to configure the branch protection policy.',
     schema: {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands. Only applied when creating a new config.'),
@@ -686,6 +686,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         .enum(['merge-to-base-branch', 'issue-pr', 'leave-branch'])
         .optional()
         .describe("On-success landing action to persist in eforge/config.yaml. 'merge-to-base-branch' merges the worktree branch back (default). 'issue-pr' opens a GitHub PR instead of merging (requires gh CLI). 'leave-branch' commits to the worktree branch and exits without merging or opening a PR."),
+      // --- eforge:region plan-04-ux-init-build-and-docs ---
+      trunkBranch: z.string().optional().describe("The trunk branch name (e.g. 'main', 'master'). Stored as build.trunkBranch in eforge/config.yaml. When omitted, eforge resolves trunk via git symbolic-ref at runtime."),
+      allowLocalMergeToTrunk: z.boolean().optional().describe("When true, merge-to-base-branch is allowed to land directly on the trunk branch without a PR. Default: false (trunk is protected). Enable only for solo developers on unprotected branches."),
+      // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       existingProfile: z.object({
         name: z.string().describe('Name of the existing local- or user-scope profile to activate.'),
         scope: z.enum(['local', 'user']).describe('Scope of the existing profile.'),
@@ -705,7 +709,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         ).describe('Self-contained tier recipes — each tier carries harness + model + effort + tuning'),
       }).optional().describe('Multi-tier profile spec. When omitted, falls back to a minimal claude-sdk default and emits a deprecation note.'),
     },
-    handler: async ({ force, postMergeCommands, onSuccess, existingProfile, profile }, { cwd: toolCwd }) => {
+    handler: async ({ force, postMergeCommands, onSuccess, trunkBranch, allowLocalMergeToTrunk, existingProfile, profile }, { cwd: toolCwd }) => {
       const configDir = join(toolCwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
 
@@ -764,6 +768,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const existingProfileBuildBlock: Record<string, unknown> = {};
         if (postMergeCommands && postMergeCommands.length > 0) existingProfileBuildBlock.postMergeCommands = postMergeCommands;
         if (onSuccess) existingProfileBuildBlock.onSuccess = onSuccess;
+        // --- eforge:region plan-04-ux-init-build-and-docs ---
+        if (trunkBranch) existingProfileBuildBlock.trunkBranch = trunkBranch;
+        if (allowLocalMergeToTrunk !== undefined) existingProfileBuildBlock.allowLocalMergeToTrunk = allowLocalMergeToTrunk;
+        // --- eforge:endregion plan-04-ux-init-build-and-docs ---
         if (Object.keys(existingProfileBuildBlock).length > 0) existingProfileConfigData.build = existingProfileBuildBlock;
         const existingProfileConfigContent = Object.keys(existingProfileConfigData).length > 0
           ? stringifyYaml(existingProfileConfigData)
@@ -859,6 +867,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const buildBlock: Record<string, unknown> = {};
       if (postMergeCommands && postMergeCommands.length > 0) buildBlock.postMergeCommands = postMergeCommands;
       if (onSuccess) buildBlock.onSuccess = onSuccess;
+      // --- eforge:region plan-04-ux-init-build-and-docs ---
+      if (trunkBranch) buildBlock.trunkBranch = trunkBranch;
+      if (allowLocalMergeToTrunk !== undefined) buildBlock.allowLocalMergeToTrunk = allowLocalMergeToTrunk;
+      // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       if (Object.keys(buildBlock).length > 0) configData.build = buildBlock;
       const configContent = Object.keys(configData).length > 0
         ? stringifyYaml(configData)

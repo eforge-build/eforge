@@ -22,6 +22,9 @@ import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
 // --- eforge:region plan-01-engine-config-and-landing ---
 import { executeLandingAction, type LandingAction, type LandingResult } from '../landing.js';
 // --- eforge:endregion plan-01-engine-config-and-landing ---
+// --- eforge:region plan-03-branch-aware-landing ---
+import type { EforgeConfig } from '../config.js';
+// --- eforge:endregion plan-03-branch-aware-landing ---
 // --- eforge:region plan-02-policy-gate-engine-integration ---
 import {
   buildFinalMergePolicyGateContext,
@@ -84,6 +87,10 @@ export interface PhaseContext {
   /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
   policyGateFailurePolicy?: PolicyGateFailurePolicy;
   // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+  // --- eforge:region plan-03-branch-aware-landing ---
+  /** EforgeConfig subset for trunk policy resolution in executeLandingAction. */
+  engineConfig?: Pick<EforgeConfig, 'build'>;
+  // --- eforge:endregion plan-03-branch-aware-landing ---
 }
 
 /**
@@ -746,6 +753,9 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       cleanupPrdFilePath: ctx.cleanupPrdFilePath,
       state,
       config,
+      // --- eforge:region plan-03-branch-aware-landing ---
+      engineConfig: ctx.engineConfig,
+      // --- eforge:endregion plan-03-branch-aware-landing ---
     });
 
     // Manually iterate to capture the generator return value (LandingResult).

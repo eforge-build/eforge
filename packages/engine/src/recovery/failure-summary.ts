@@ -13,6 +13,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { synthesizeFromEvents } from './event-history.js';
 import type { BuildFailureSummary, LandedCommit, PlanSummaryEntry, FailingPlanEntry } from '../events.js';
+import { resolveTrunkBranch } from '../branch-policy.js';
 
 const exec = promisify(execFile);
 
@@ -37,21 +38,6 @@ function parseModelsFromLog(logBody: string): string[] {
 }
 
 /**
- * Derive the base branch from git remote tracking info.
- * Tries `git symbolic-ref refs/remotes/origin/HEAD --short`, falls back to `main`.
- */
-async function deriveBaseBranch(cwd: string): Promise<string> {
-  try {
-    const { stdout } = await exec('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', '--short'], { cwd });
-    const ref = stdout.trim();
-    // Strip "origin/" prefix (e.g., "origin/main" → "main")
-    return ref.replace(/^origin\//, '') || 'main';
-  } catch {
-    return 'main';
-  }
-}
-
-/**
  * Build a failure summary for a PRD that failed during an eforge build session.
  *
  * Always synthesizes from:
@@ -68,16 +54,23 @@ async function deriveBaseBranch(cwd: string): Promise<string> {
  * @param cwd - Repository root
  * @param dbPath - Optional path to monitor.db for event-history synthesis
  * @param prdContent - Optional PRD file content (unused currently, reserved for future)
+ * @param trunkBranch - Optional configured trunk branch. When omitted, resolves via
+ *                      git symbolic-ref + `main` fallback. Pass `config.build.trunkBranch`
+ *                      from callers that have access to the resolved config so the
+ *                      failure summary honors the project's trunk configuration.
  */
-export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdContent }: {
+export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdContent, trunkBranch }: {
   setName: string;
   prdId: string;
   cwd: string;
   dbPath?: string;
   prdContent?: string;
+  trunkBranch?: string;
 }): Promise<BuildFailureSummary> {
   const featureBranch = `eforge/${setName}`;
-  const baseBranch = await deriveBaseBranch(cwd);
+  // When trunkBranch is explicitly configured, use it directly without git I/O.
+  // Otherwise, fall back to git symbolic-ref + `main` via resolveTrunkBranch.
+  const baseBranch = trunkBranch ?? await resolveTrunkBranch(undefined, cwd);
 
   // Try event-history synthesis from monitor DB
   const eventFragment = synthesizeFromEvents({ setName, prdId, dbPath });
