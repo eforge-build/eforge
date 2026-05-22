@@ -1,0 +1,163 @@
+name: branch-aware-landing-and-queue-provenance-split-for-eforge-builds
+description: Rework eforge successful-build landing to be branch-aware, move
+  runtime queue state to .eforge/queue, replace enqueue commits with a temporary
+  PRD provenance artifact on the eforge work branch, and add an explicit
+  solo-dev opt-in for local trunk merge.
+base_branch: feat/make-on-success-override-prominent-in-ui
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-config-and-trunk-resolution
+    name: "Config foundation: trunk branch policy and .eforge/queue default"
+    depends_on: []
+    branch: branch-aware-landing-and-queue-provenance-split-for-eforge-builds/plan-01-config-and-trunk-resolution
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Touches the central config schema and the default queue-path literal
+          scattered across the monitor server; needs careful regression-free
+          edits.
+  - id: plan-02-queue-runtime-and-prd-provenance
+    name: Decouple runtime queue state from git; commit PRD provenance on the eforge
+      work branch
+    depends_on:
+      - plan-01-config-and-trunk-resolution
+    branch: branch-aware-landing-and-queue-provenance-split-for-eforge-builds/plan-02-queue-runtime-and-prd-provenance
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: "Touches the most subtle invariants in the project: enqueue commit
+          timing, queue-state transitions, and the new committed-then-cleaned
+          PRD artifact. Requires careful coordination across enqueue, recovery,
+          and orchestrator phases without breaking the daemon snapshot or
+          scheduler semantics."
+      reviewer:
+        effort: high
+        rationale: Runtime state mutation invariants and the new commit-then-cleanup
+          contract need thorough review.
+  - id: plan-03-branch-aware-landing
+    name: "Branch-aware landing: trunk policy, non-trunk PR-after-local-merge,
+      cleanup-before-PR"
+    depends_on:
+      - plan-02-queue-runtime-and-prd-provenance
+    branch: branch-aware-landing-and-queue-provenance-split-for-eforge-builds/plan-03-branch-aware-landing
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: Engine landing semantics change for both PR and merge actions across
+          trunk/non-trunk; requires precise sequencing of cleanup, push,
+          merge-into-feature-branch, and PR creation.
+      reviewer:
+        effort: high
+        rationale: Landing changes have user-visible consequences for trunk safety and
+          PR shape; thorough review required.
+  - id: plan-04-ux-init-build-and-docs
+    name: "UX surface: eforge_init schema, init/build skills, CLI confirmation, docs"
+    depends_on:
+      - plan-03-branch-aware-landing
+    branch: branch-aware-landing-and-queue-provenance-split-for-eforge-builds/plan-04-ux-init-build-and-docs
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Cross-cuts MCP tool schemas, two parallel skill markdown files, CLI
+          confirmation flow, and four+ doc files; needs careful parity between
+          Pi and Claude Code surfaces.
+      doc-author:
+        effort: high
+        rationale: Multiple user-facing docs need new sections on queue/provenance
+          split, branch policy, solo-dev opt-in.
+      doc-syncer:
+        effort: high
+        rationale: Existing docs reference 'eforge/queue', enqueue commits, and issue-pr
+          semantics that all change.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - docs
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This PRD is a cohesive, cross-cutting workflow refactor touching
+    engine queue semantics, landing behavior, daemon/monitor queue paths,
+    CLI/skill UX, and docs. The PRD itself explicitly recommends excursion and
+    notes that a single planner can enumerate the required slices with clear
+    sequential dependencies (config defaults -> queue helpers -> enqueue flow ->
+    landing policy -> CLI/skill UX -> docs). There are no 4+ genuinely
+    independent subsystems requiring delegated module planning - the changes
+    form a sequential dependency chain around shared config/types, which is a
+    negative expedition signal. plan-review-cycle is added because plan quality
+    matters here (subtle policy/branch semantics, multiple integration packages
+    must stay in sync, and acceptance criteria include parity across Pi/Claude
+    skills and docs/schema drift). For build, implement runs in parallel with
+    doc-author since the PRD names specific docs to author (docs/config.md,
+    web/content/docs/configuration.md, concepts.md, reference docs/schemas for
+    queue/provenance split, branch-aware landing, and solo-dev opt-in). doc-sync
+    follows implement to catch stale references to eforge/queue defaults,
+    onSuccess semantics, and landing behavior across the codebase/docs.
+    review-cycle (maxRounds 2) provides iterative quality gating for a
+    behavior-changing refactor. Perspectives are limited to code (core
+    correctness of branch/landing/queue logic) and docs (PRD explicitly requires
+    consistent documentation updates and CLI/skill parity); security and verify
+    are omitted because the PRD does not touch auth/secrets/crypto/subprocess
+    trust boundaries or build/test infrastructure - branch policy is a UX safety
+    concern, not a security boundary. Standard evaluator strictness fits a
+    behavior refactor that needs careful but not paranoid gating.
