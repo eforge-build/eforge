@@ -1327,7 +1327,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_init",
     label: "eforge init",
     description:
-      "Initialize eforge in a project. The skill is responsible for picking provider/model interactively; the tool is a pure persister. Pass `profile` with the assembled multi-runtime spec (every runtime must use harness: 'pi'). With migrate: true, extracts legacy harness config from a pre-overhaul config.yaml.",
+      "Initialize eforge in a project. The skill is responsible for picking provider/model interactively; the tool is a pure persister. Pass `profile` with the assembled multi-runtime spec (every runtime must use harness: 'pi'). With migrate: true, extracts legacy harness config from a pre-overhaul config.yaml. Pass `trunkBranch` and `allowLocalMergeToTrunk` to configure the branch protection policy.",
     parameters: Type.Object({
       force: Type.Optional(
         Type.Boolean({
@@ -1344,6 +1344,18 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       onSuccess: Type.Optional(StringEnum(['merge-to-base-branch', 'issue-pr', 'leave-branch'], {
         description: "On-success landing action to persist in eforge/config.yaml. 'merge-to-base-branch' merges the worktree branch back (default). 'issue-pr' opens a GitHub PR instead of merging (requires gh CLI). 'leave-branch' commits to the worktree branch and exits without merging or opening a PR.",
       })),
+      // --- eforge:region plan-04-ux-init-build-and-docs ---
+      trunkBranch: Type.Optional(
+        Type.String({
+          description: "The trunk branch name (e.g. 'main', 'master'). Stored as build.trunkBranch in eforge/config.yaml. When omitted, eforge resolves trunk via git symbolic-ref at runtime.",
+        }),
+      ),
+      allowLocalMergeToTrunk: Type.Optional(
+        Type.Boolean({
+          description: "When true, merge-to-base-branch is allowed to land directly on the trunk branch without a PR. Default: false (trunk is protected). Enable only for solo developers on unprotected branches.",
+        }),
+      ),
+      // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       migrate: Type.Optional(
         Type.Boolean({
           description:
@@ -1523,6 +1535,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const existingProfileBuildBlock: Record<string, unknown> = {};
         if (params.postMergeCommands && params.postMergeCommands.length > 0) existingProfileBuildBlock.postMergeCommands = params.postMergeCommands;
         if (params.onSuccess) existingProfileBuildBlock.onSuccess = params.onSuccess;
+        // --- eforge:region plan-04-ux-init-build-and-docs ---
+        if (params.trunkBranch) existingProfileBuildBlock.trunkBranch = params.trunkBranch;
+        if (params.allowLocalMergeToTrunk !== undefined) existingProfileBuildBlock.allowLocalMergeToTrunk = params.allowLocalMergeToTrunk;
+        // --- eforge:endregion plan-04-ux-init-build-and-docs ---
         if (Object.keys(existingProfileBuildBlock).length > 0) existingProfileConfigData.build = existingProfileBuildBlock;
         const existingProfileConfigContent = Object.keys(existingProfileConfigData).length > 0
           ? stringifyYaml(existingProfileConfigData)
@@ -1660,6 +1676,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const buildBlock: Record<string, unknown> = {};
       if (params.postMergeCommands && params.postMergeCommands.length > 0) buildBlock.postMergeCommands = params.postMergeCommands;
       if (params.onSuccess) buildBlock.onSuccess = params.onSuccess;
+      // --- eforge:region plan-04-ux-init-build-and-docs ---
+      if (params.trunkBranch) buildBlock.trunkBranch = params.trunkBranch;
+      if (params.allowLocalMergeToTrunk !== undefined) buildBlock.allowLocalMergeToTrunk = params.allowLocalMergeToTrunk;
+      // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       if (Object.keys(buildBlock).length > 0) configData.build = buildBlock;
       const configContent = Object.keys(configData).length > 0
         ? stringifyYaml(configData)

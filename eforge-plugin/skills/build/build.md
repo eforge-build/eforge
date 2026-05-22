@@ -11,7 +11,7 @@ Enqueue a PRD file or description for the eforge daemon to build. Uses the eforg
 ## Arguments
 
 - `source` (optional) - PRD file path or inline description of what to build
-- `onSuccess` (optional) - Override the landing action for this build. One of `merge-to-base-branch`, `issue-pr`, or `leave-branch`. Precedence: this argument > PRD frontmatter > `build.onSuccess` in `eforge/config.yaml` > engine default (`merge-to-base-branch`). If omitted, the project config default applies.
+- `onSuccess` (optional) - Override the landing action for this build. One of `merge-to-base-branch`, `issue-pr`, or `leave-branch`. Precedence: this argument > PRD frontmatter > `build.onSuccess` in `eforge/config.yaml` > engine default (`merge-to-base-branch`). If omitted, the project config default applies. Note: `merge-to-base-branch` on the trunk branch requires `build.allowLocalMergeToTrunk: true` in `eforge/config.yaml`.
 
 ## Workflow
 
@@ -90,6 +90,19 @@ Ask about **missing sections only**. Use the question lookup table below to form
 After the user responds, incorporate their answers into the working source and proceed to **Step 4**.
 
 ### Step 4: Confirm Source Preview
+
+#### Branch-aware landing behavior
+
+When the current branch is the **trunk branch** (e.g. `main`) and the effective `onSuccess` is `merge-to-base-branch`:
+
+- The engine will reject the build by default — trunk is protected from direct local merges unless `build.allowLocalMergeToTrunk: true` is set in `eforge/config.yaml`.
+- To proceed, either pass `onSuccess: "issue-pr"` for this build, or enable the solo-dev opt-in by adding `build.allowLocalMergeToTrunk: true` to `eforge/config.yaml`.
+
+When the current branch is a **feature branch**:
+
+- `merge-to-base-branch` merges the eforge work branch into the user's feature branch locally (no PR required for this step).
+- `issue-pr` merges the eforge work branch into the feature branch locally, then opens a PR from the feature branch to the trunk branch.
+- `leave-branch` commits to the eforge work branch and exits without merging.
 
 <!-- parity-skip-start -->
 Present the assembled source for confirmation:

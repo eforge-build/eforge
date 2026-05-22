@@ -18,7 +18,10 @@ import chalk from 'chalk';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { stat as fsStat, readFile as fsReadFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { resolveTrunkBranch, isTrunkBranch } from '@eforge-build/engine/branch-policy';
 import { preprocessBuildSource, normalizeBuildSource, FatalPreprocessingError } from '@eforge-build/input';
 import {
   validatePlanSet,
@@ -43,7 +46,7 @@ import {
   renderDryRun,
   renderLangfuseStatus,
 } from './display.js';
-import { createClarificationHandler, createApprovalHandler } from './interactive.js';
+import { createClarificationHandler, createApprovalHandler, confirmTrunkLanding, type TrunkLandingChoice } from './interactive.js';
 import { formatCliError } from './errors.js';
 
 // ---------------------------------------------------------------------------
@@ -353,6 +356,49 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
     ...(configOverrides && { config: configOverrides }),
     ...(effectiveProfile && { profileOverride: effectiveProfile }),
   });
+
+  // --- eforge:region plan-04-ux-init-build-and-docs ---
+  // Interactive trunk landing confirmation (in-process, non-auto runs only).
+  // When `--auto` is set or the daemon handled the request (Path 1), the engine's
+  // runtime rejection handles the trunk policy violation instead.
+  if (!options.auto) {
+    const effectiveOnSuccess = options.onSuccess ?? engine.resolvedConfig.build.onSuccess;
+    if (effectiveOnSuccess === 'merge-to-base-branch' && !engine.resolvedConfig.build.allowLocalMergeToTrunk) {
+      const trunk = await resolveTrunkBranch(engine.resolvedConfig, cwd);
+      const execFileAsync = promisify(execFile);
+      let currentBranch = '';
+      try {
+        const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
+        currentBranch = stdout.trim();
+      } catch {
+        // Not a git repo or HEAD not set; skip trunk check
+      }
+      if (currentBranch && isTrunkBranch(currentBranch, trunk)) {
+        const choice: TrunkLandingChoice = await confirmTrunkLanding(trunk);
+        if (choice === 'switch-to-pr') {
+          options.onSuccess = 'issue-pr';
+        } else if (choice === 'cancel') {
+          return { code: 0 };
+        } else if (choice === 'feature-branch') {
+          console.error('');
+          console.error(chalk.bold('  To build from a feature branch instead:'));
+          console.error(`    git checkout -b my-feature-branch`);
+          console.error(`    (then re-run your eforge command)`);
+          return { code: 0 };
+        } else {
+          // solo-dev
+          console.error('');
+          console.error(chalk.bold('  To enable local trunk merges (solo-dev opt-in):'));
+          console.error(`    Add to eforge/config.yaml:`);
+          console.error(`      build:`);
+          console.error(`        allowLocalMergeToTrunk: true`);
+          console.error(`    (then re-run your eforge command)`);
+          return { code: 0 };
+        }
+      }
+    }
+  }
+  // --- eforge:endregion plan-04-ux-init-build-and-docs ---
 
   // Phase 1: Enqueue (with build-source preprocessing for session-plan and enricher support)
   let enqueuedName: string | undefined;

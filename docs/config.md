@@ -91,6 +91,9 @@ build:
   #                           #   merge-to-base-branch (default) - auto-merge worktree to base branch
   #                           #   issue-pr - open a GitHub PR via gh CLI (requires gh)
   #                           #   leave-branch - leave the branch in place for manual handling
+  # trunkBranch: main         # Trunk branch name (default: detected from origin/HEAD, fallback: main)
+  # allowLocalMergeToTrunk: false # Allow merge-to-base-branch to land directly on trunk without a PR
+  #                           #   Default false; set to true only for solo/unprotected projects
   # worktreeDir: /custom/path # Override worktree base directory
   # postMergeCommandTimeoutMs: 300000  # Per-command timeout (ms) for postMerge/validate commands (default: 300000, floor: 10000)
   # postMergeCommands:        # Extra validation commands
@@ -113,6 +116,18 @@ monitor:
 ```
 
 Each command in `postMergeCommands` and the planner-generated validate commands runs under a wall-clock timeout. On expiry the full subprocess tree is killed and the validation-fixer loop is invoked as if the command had exited non-zero. Default 300000 ms (5 minutes). Values below 10000 ms are clamped and emit a `config:warning` event.
+
+## Trunk branch policy
+
+`build.trunkBranch` names the project's trunk. eforge detects it automatically from `origin/HEAD` during `eforge init` and writes the result to `eforge/config.yaml`. Override it here if detection is wrong or the repository uses a non-standard default branch name.
+
+`build.allowLocalMergeToTrunk` controls whether `onSuccess: merge-to-base-branch` is permitted to land directly on trunk without opening a pull request. The default is `false`, which is appropriate for team projects with branch protection rules. Set to `true` only for solo projects or repositories where direct trunk commits are acceptable.
+
+When `allowLocalMergeToTrunk` is `false` and the current branch is trunk, the interactive CLI prompts before enqueue and offers four alternatives: switch to `issue-pr`, cancel, create a feature branch, or enable the solo-dev opt-in. With `--auto`, the engine rejects the build at runtime with a clear error message rather than prompting.
+
+## PRD provenance
+
+When the daemon dispatches a PRD from `.eforge/queue/`, it writes a canonical copy to `eforge/prds/{prdId}.md` as a provenance record. Unlike queue state (`.eforge/queue/` — gitignored), `eforge/prds/` files are committed artifacts that link each build session to its originating requirements and survive queue cleanup. These files are written by the engine at dispatch time and are retained after the build completes.
 
 ## Native extensions
 

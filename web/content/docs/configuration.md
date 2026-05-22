@@ -312,6 +312,8 @@ prdQueue:
   watchPollIntervalMs: 5000
 ```
 
+**PRD provenance**: when the daemon dispatches a PRD from `.eforge/queue/`, it writes a canonical copy to `eforge/prds/{prdId}.md`. Queue state is ephemeral and gitignored; `eforge/prds/` files are committed provenance artifacts that record what was built.
+
 Queue item frontmatter can also carry scheduling hints:
 
 ```yaml
@@ -361,6 +363,29 @@ The default when `onSuccess` is not set is `merge-to-base-branch`, preserving th
 **Precedence**: a per-build override passed to `eforge_build` or `eforge build` takes precedence over this config value. PRD frontmatter `on_success` (if present) also overrides the config default.
 
 **`issue-pr` prerequisite**: if you select `issue-pr`, ensure `gh` is installed (`gh --version`) and authenticated (`gh auth status`). Builds configured with `issue-pr` will fail at the landing step if `gh` is unavailable.
+
+## Trunk Branch Policy
+
+`build.trunkBranch` and `build.allowLocalMergeToTrunk` govern how eforge lands builds when you are on the project's trunk branch.
+
+eforge detects the trunk automatically from `origin/HEAD` during `/eforge:init` and writes the result to `eforge/config.yaml`. Override `build.trunkBranch` if the detected value is wrong or the repository uses a non-standard default branch name.
+
+```yaml
+build:
+  onSuccess: merge-to-base-branch
+  trunkBranch: main               # detected from origin/HEAD; fallback: main
+  allowLocalMergeToTrunk: false   # default: false; set to true for solo/unprotected projects
+```
+
+**What each option does:**
+
+| Scenario | `allowLocalMergeToTrunk: false` (default) | `allowLocalMergeToTrunk: true` |
+|---|---|---|
+| On trunk, `onSuccess: merge-to-base-branch` | Rejected; CLI prompts to redirect | Merges directly to trunk |
+| On trunk, `onSuccess: issue-pr` | PR from build branch to trunk | PR from build branch to trunk |
+| On feature branch (either `onSuccess`) | Normal behavior, unaffected | Normal behavior, unaffected |
+
+When `allowLocalMergeToTrunk` is `false` and you run interactively on trunk with `onSuccess: merge-to-base-branch`, the CLI prompts before enqueue and offers four alternatives: switch to `issue-pr`, cancel, create or switch to a feature branch, or enable the solo-dev opt-in in `eforge/config.yaml`. With `--auto`, the engine rejects the build at runtime with a clear error message.
 
 ## Per-Role Tuning
 

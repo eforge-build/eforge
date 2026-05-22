@@ -357,6 +357,14 @@ export async function* executeLandingAction(
       if (!baseBranchIsTrunk) {
         // Non-trunk: merge into the base feature branch first, push that branch,
         // then open a PR from the base feature branch to trunk.
+        //
+        // The feature-pr-after-local-merge workflow performs a local merge in
+        // repoRoot (via mergeFeatureBranchToBase), which rejects on a dirty
+        // working tree. Auto-recover dirty files first to match the behavior
+        // of the merge-to-base-branch path above.
+        for await (const event of recoverDirtyTree(repoRoot, ts)) {
+          yield event;
+        }
         const prResult = await worktreeManager.issuePr({
           baseBranch,
           trunkBranch: trunk,
