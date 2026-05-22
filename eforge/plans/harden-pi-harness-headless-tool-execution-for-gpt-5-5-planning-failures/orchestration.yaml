@@ -1,0 +1,85 @@
+name: harden-pi-harness-headless-tool-execution-for-gpt-5-5-planning-failures
+description: "Harden the Pi harness for headless eforge agent runs by isolating
+  Pi sessions from ambient project/user/global Pi extensions, skills, prompts,
+  and themes by default. Add an explicit opt-in (`pi.resources: 'isolated' |
+  'ambient'`) for ambient resources, ensure `agents.bare` remains at least as
+  isolated as the deterministic default, classify Pi tool-call infrastructure
+  failures (e.g. `Theme not initialized`) as harness errors instead of silent
+  tool text, and add regression tests + docs."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-pi-headless-isolation
+    name: Pi Harness Headless Isolation, Tool-Infra Error Classification, and Config
+      Surface
+    depends_on: []
+    branch: harden-pi-harness-headless-tool-execution-for-gpt-5-5-planning-failures/plan-01-pi-headless-isolation
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Touches harness construction, DefaultResourceLoader overrides, tier
+          wiring, config schema/types, and error classification across ~10
+          files. Requires careful coordination so deterministic default,
+          explicit opt-in, and bare-mode semantics all hold simultaneously.
+      reviewer:
+        effort: high
+        rationale: "Cross-cutting harness reliability change. Reviewer must verify: (a)
+          isolated default actually suppresses ambient resources, (b) opt-in
+          ambient still filters @eforge-build/pi-eforge, (c) agents.bare is
+          never weaker than the isolated default, and (d) required custom +
+          bridged MCP tools remain callable."
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test-write
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: The PRD explicitly recommends Excursion and the work is a focused
+    harness reliability fix touching a small set of cohesive files
+    (packages/engine/src/harnesses/pi.ts, pi-extensions.ts,
+    agent-runtime-registry.ts, config.ts) plus tests and docs - well within a
+    single planner session, no delegated module planning required, so Excursion
+    (not Expedition) is correct. Compile uses planner + plan-review-cycle
+    because the change has subtle semantics (deterministic-by-default vs opt-in
+    ambient resources, agents.bare ordering, error classification) that benefit
+    from a plan quality gate before build. Build runs implement in parallel with
+    doc-author (doc-author has no predecessors and the PRD calls for new
+    docs/config help on the deterministic default, opt-in shape, and agents.bare
+    semantics), then doc-sync and test-write in parallel after implement (both
+    only depend on implement; doc-sync catches stale references to Pi
+    resource-loading behavior; test-write produces the explicit regression tests
+    the Acceptance Criteria mandate), then review-cycle as the iterative quality
+    gate. Perspectives are limited to code (core harness/config changes) and
+    test (the PRD's Acceptance Criteria centers on a specific regression test
+    matrix). Security is omitted - this is not an
+    auth/secrets/sandboxing/network-trust change; verify is omitted - no build
+    commands, package deps, or sharded builder changes. maxRounds=2 with
+    standard strictness is appropriate for a reliability bug fix that is
+    important but not safety- or data-critical.
