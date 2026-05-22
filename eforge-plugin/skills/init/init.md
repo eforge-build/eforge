@@ -58,6 +58,27 @@ If the command is not found or fails: warn the user that `issue-pr` requires the
 
 Store the chosen value for use in the `mcp__eforge__eforge_init` calls below (both the existingProfile and fresh-init paths).
 
+### Step 1.4: Confirm trunk branch and protection policy
+
+1. Run this Bash command to detect the remote default branch:
+   ```
+   git symbolic-ref refs/remotes/origin/HEAD --short
+   ```
+   Strip the `origin/` prefix from the output (e.g. `origin/main` → `main`). If the command fails or the output is empty, fall back to `main`.
+
+2. Tell the user: "I detected your trunk branch as `<trunk>`. Is this correct? (Press Enter to confirm, or type a different name.)" Accept a correction if provided.
+
+3. Ask:
+
+   > **Should builds be allowed to merge directly to `<trunk>` without opening a PR? (solo-dev opt-in)**
+   >
+   > - **No (recommended)** — protect the trunk. eforge will open a PR when landing on trunk. Best for team workflows.
+   > - **Yes** — allow `merge-to-base-branch` to land directly on trunk. Use for solo developers on unprotected branches.
+
+   Default: **No**.
+
+4. Store the confirmed `trunkBranch` and whether `allowLocalMergeToTrunk` is `true` (Yes) or `false` (No). Pass both when calling `mcp__eforge__eforge_init` in the next steps (both the existingProfile and fresh-init paths).
+
 ### Step 1.5: Existing local- and user-scope profiles
 
 Call `mcp__eforge__eforge_profile { action: "list", scope: "local" }` and `mcp__eforge__eforge_profile { action: "list", scope: "user" }` to check for existing profiles outside the project tier.
@@ -81,7 +102,9 @@ Call `mcp__eforge__eforge_init` with:
 {
   "existingProfile": { "name": "<chosen>", "scope": "<local|user>" },
   "postMergeCommands": [...],
-  "onSuccess": "<selectedOption>"
+  "onSuccess": "<selectedOption>",
+  "trunkBranch": "<confirmedTrunk>",
+  "allowLocalMergeToTrunk": <true|false>
 }
 ```
 
@@ -246,6 +269,8 @@ Call `mcp__eforge__eforge_init` with:
   },
   "postMergeCommands": [...],
   "onSuccess": "<selectedOption>",
+  "trunkBranch": "<confirmedTrunk>",
+  "allowLocalMergeToTrunk": <true|false>,
   "force": true
 }
 ```

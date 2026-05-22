@@ -474,14 +474,19 @@ export async function pushFeatureBranch(
  * Create a pull request via `gh pr create`.
  * Returns `{ url: string }` with the PR URL on success.
  * Throws when creation fails for any reason (callers handle existing-PR detection).
+ *
+ * @param headBranch - The branch to use as the PR head. Defaults to `featureBranch`
+ *                     when absent (existing trunk-PR behavior). For non-trunk
+ *                     feature-PR-after-local-merge, pass the base branch here.
  */
 export async function createPullRequest(
   cwd: string,
-  opts: { baseBranch: string; featureBranch: string },
+  opts: { baseBranch: string; featureBranch: string; headBranch?: string },
 ): Promise<{ url: string }> {
+  const headBranch = opts.headBranch ?? opts.featureBranch;
   const { stdout } = await exec(
     'gh',
-    ['pr', 'create', '--base', opts.baseBranch, '--head', opts.featureBranch, '--fill'],
+    ['pr', 'create', '--base', opts.baseBranch, '--head', headBranch, '--fill'],
     { cwd },
   );
   return { url: stdout.trim() };

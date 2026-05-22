@@ -52,7 +52,7 @@ export async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir:
     }
 
     const commitMsg = prdFilePath
-      ? `cleanup(${planSet}): remove plan files and PRD`
+      ? `cleanup(${planSet}): remove plan files and PRD provenance artifact`
       : `cleanup(${planSet}): remove plan files after successful build`;
     await forgeCommit(cwd, composeCommitMessage(commitMsg));
 

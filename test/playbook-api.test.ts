@@ -53,7 +53,11 @@ async function setupProject(tmpDir: string): Promise<{ configDir: string }> {
   execFileSync('git', ['init', '-b', 'main'], gitOpts);
   execFileSync('git', ['config', 'user.email', 'test@example.com'], gitOpts);
   execFileSync('git', ['config', 'user.name', 'Test'], gitOpts);
-  execFileSync('git', ['commit', '--allow-empty', '-m', 'chore: initial commit'], gitOpts);
+
+  // Add .gitignore ignoring .eforge/ so queue writes don't appear in git status
+  await writeFile(resolve(tmpDir, '.gitignore'), '.eforge/\n', 'utf-8');
+  execFileSync('git', ['add', '.gitignore'], gitOpts);
+  execFileSync('git', ['commit', '-m', 'chore: initial commit'], gitOpts);
 
   // Create eforge config directory (so getConfigDir resolves it)
   const configDir = resolve(tmpDir, 'eforge');
@@ -357,17 +361,18 @@ describe('POST /api/playbook/run', () => {
     expect(data.id.length).toBeGreaterThan(0);
 
     // Verify the PRD file exists in the queue
-    const queueFile = resolve(tmpDir, 'eforge', 'queue', `${data.id}.md`);
+    const queueFile = resolve(tmpDir, '.eforge', 'queue', `${data.id}.md`);
     await expect(access(queueFile)).resolves.toBeUndefined();
     const content = await readFile(queueFile, 'utf-8');
     expect(content).toContain('title:');
 
-    // Verify the enqueue commit was created with the correct subject
+    // Enqueue is filesystem-only — no commit should have been created.
+    // The initial empty commit is still the latest commit.
     const commitSubject = execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: tmpDir }).toString().trim();
-    expect(commitSubject).toMatch(new RegExp(`^enqueue\\(${data.id}\\): `));
+    expect(commitSubject).toBe('chore: initial commit');
 
-    // Verify the queue directory is clean (no untracked or modified files)
-    const gitStatus = execFileSync('git', ['status', '--porcelain', 'eforge/queue/'], { cwd: tmpDir }).toString().trim();
+    // Verify the queue directory shows no changes (queue is gitignored)
+    const gitStatus = execFileSync('git', ['status', '--porcelain', '.eforge/queue/'], { cwd: tmpDir }).toString().trim();
     expect(gitStatus).toBe('');
 
     expect(autoBuildWakeReasons).toContain('playbook-enqueue');
@@ -407,7 +412,7 @@ describe('POST /api/playbook/run', () => {
     await expect(readFile(sentinelSessionPlan, 'utf-8')).resolves.toBe('# Existing plan\n\nDo not modify.\n');
 
     // Verify no queue mutation (no PRD created) and no auto-build wake
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
@@ -435,7 +440,7 @@ describe('POST /api/playbook/run', () => {
       mode: 'planning',
       name: 'my-planning',
     }));
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
@@ -485,7 +490,7 @@ describe('POST /api/playbook/run', () => {
     const data = await res.json() as { error: string };
     expect(data.error).toContain('depends_on references unknown queue item: "missing-upstream"');
 
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
@@ -519,7 +524,7 @@ describe('POST /api/playbook/run', () => {
     const data = await res.json() as { kind: string; id: string };
     expect(data.kind).toBe('enqueued');
     // When afterQueueId is provided, the PRD goes into waiting/ not queue root
-    const queueFile = resolve(tmpDir, 'eforge', 'queue', 'waiting', `${data.id}.md`);
+    const queueFile = resolve(tmpDir, '.eforge', 'queue', 'waiting', `${data.id}.md`);
     const content = await readFile(queueFile, 'utf-8');
 
     // The PRD frontmatter should include depends_on
@@ -753,7 +758,7 @@ describe('POST /api/playbook/run — profile field', () => {
       name: 'my-planning',
     }));
 
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
@@ -780,7 +785,7 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(data.kind).toBe('enqueued');
 
     // Verify the queued PRD contains profile: docs-heavy in frontmatter
-    const queueFile = resolve(tmpDir, 'eforge', 'queue', `${data.id}.md`);
+    const queueFile = resolve(tmpDir, '.eforge', 'queue', `${data.id}.md`);
     const content = await readFile(queueFile, 'utf-8');
     const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
     expect(frontmatter).toBeDefined();
@@ -808,7 +813,7 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(data.error).toContain('missing-profile');
 
     // Verify no PRD was created
-    const queueDir = resolve(tmpDir, 'eforge', 'queue');
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });

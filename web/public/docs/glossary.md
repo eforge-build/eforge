@@ -69,13 +69,17 @@ The agent stage that sizes work, chooses the workflow profile, and writes implem
 
 Product Requirements Document. A PRD file is one supported input surface, but eforge can also accept prompts, notes, session plans, playbooks, and wrapper-app input.
 
+## PRD provenance
+
+The `eforge/prds/` directory where the engine writes a canonical copy of each PRD at dispatch time. Each file is named `{prdId}.md` and serves as a committed artifact linking a build session to its originating requirements. Unlike queue state (`.eforge/queue/` — gitignored), PRD provenance files persist after builds complete and survive queue cleanup.
+
 ## Post-merge validation
 
 The validation step after all plans merge. eforge runs `build.postMergeCommands` with `build.postMergeCommandTimeoutMs`; on failure it can invoke the validation-fixer up to `build.maxValidationRetries` times.
 
 ## Queue
 
-The committed `eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave.
+The `.eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue state is runtime-only (gitignored) — queue mutations are filesystem operations and do not produce git commits. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave.
 
 ## Queue priority
 
@@ -104,6 +108,10 @@ A configuration slot such as `planning`, `implementation`, `review`, or `evaluat
 ## Toolbelt
 
 A named declarative bundle of project MCP servers (from `.mcp.json`) that a tier can opt into via `toolbelt: <name>` in a profile. Filters project MCP access per tier without affecting engine tools or harness built-ins. See [Configuration - Guided Toolbelt Presets](/docs/configuration#guided-toolbelt-presets) and [Extensions API - Toolbelt-vs-extension boundary](/docs/extensions-api#toolbelt-vs-extension-boundary).
+
+## Trunk branch policy
+
+The pair of config fields (`build.trunkBranch` and `build.allowLocalMergeToTrunk`) that control how eforge handles landing when the current branch is the project trunk. By default, `merge-to-base-branch` is rejected on trunk to prevent accidental direct commits to a protected branch; the policy must be explicitly opted into for solo or unprotected projects. See [Configuration - Trunk Branch Policy](/docs/configuration#trunk-branch-policy).
 
 ## Worktree
 

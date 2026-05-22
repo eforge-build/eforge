@@ -289,9 +289,55 @@ export class WorktreeManager {
    * Pushes the branch first, then runs `gh pr create`.
    * Detects an already-existing PR and returns its URL instead of throwing.
    * Returns `{ url }` on success or throws on any other failure.
+   *
+   * @param opts.baseBranch        - The PR target (base) branch.
+   * @param opts.trunkBranch       - When provided along with `mergeIntoBaseFirst: true`,
+   *                                 the PR is opened `--base trunkBranch --head baseBranch`
+   *                                 after merging the feature branch locally into baseBranch.
+   * @param opts.mergeIntoBaseFirst - When true, merge the feature branch into `baseBranch`
+   *                                  (the non-trunk feature branch) locally before pushing,
+   *                                  then open the PR from that branch to trunk.
    */
-  async issuePr(opts: { baseBranch: string }): Promise<{ url: string }> {
+  async issuePr(opts: {
+    baseBranch: string;
+    trunkBranch?: string;
+    mergeIntoBaseFirst?: boolean;
+    commitMessage?: string;
+    mergeResolver?: import('./worktree-ops.js').MergeResolver;
+  }): Promise<{ url: string }> {
     await ensureGhAvailable(this.mergeWorktreePath);
+
+    if (opts.mergeIntoBaseFirst && opts.trunkBranch) {
+      // Non-trunk PR-after-local-merge workflow:
+      // 1. Merge feature branch into the base (feature) branch locally
+      // 2. Push the base (feature) branch to origin
+      // 3. Open PR: --base trunkBranch --head baseBranch
+      const commitMsg = opts.commitMessage ?? `feat: merge ${this.featureBranch} into ${opts.baseBranch}`;
+      await mergeFeatureBranchToBase(
+        this.repoRoot,
+        this.featureBranch,
+        opts.baseBranch,
+        commitMsg,
+        opts.mergeResolver,
+      );
+      await pushFeatureBranchOp(this.mergeWorktreePath, opts.baseBranch);
+      try {
+        return await createPullRequestOp(this.mergeWorktreePath, {
+          baseBranch: opts.trunkBranch,
+          featureBranch: this.featureBranch,
+          headBranch: opts.baseBranch,
+        });
+      } catch (err) {
+        // PR may already exist — retrieve its URL
+        const existing = await getExistingPullRequestUrl(this.mergeWorktreePath, opts.baseBranch);
+        if (existing) {
+          return { url: existing };
+        }
+        throw err;
+      }
+    }
+
+    // Standard trunk-PR workflow: push feature branch, open PR targeting baseBranch
     await pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch);
     try {
       return await createPullRequestOp(this.mergeWorktreePath, {

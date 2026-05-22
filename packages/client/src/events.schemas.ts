@@ -1550,6 +1550,16 @@ const EforgeEventVariantsSchema = Type.Union([
     action: LandingActionSchema,
     featureBranch: Type.String(),
     baseBranch: Type.String(),
+    // --- eforge:region plan-03-branch-aware-landing ---
+    trunkBranch: Type.Optional(Type.String()),
+    workflow: Type.Optional(Type.Union([
+      Type.Literal('trunk-pr'),
+      Type.Literal('trunk-local-merge'),
+      Type.Literal('feature-pr-after-local-merge'),
+      Type.Literal('feature-local-merge'),
+      Type.Literal('leave-branch'),
+    ])),
+    // --- eforge:endregion plan-03-branch-aware-landing ---
   }),
   Type.Object({
     type: Type.Literal('landing:complete'),

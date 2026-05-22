@@ -3,10 +3,10 @@
  * recovery sidecars, and omits it for items with missing or malformed sidecars.
  *
  * Layout used across all tests:
- *   - eforge/queue/pending-prd.md        → pending item (no sidecar, irrelevant)
- *   - eforge/queue/failed/with-sidecar.md + .recovery.json  → verdict embedded
- *   - eforge/queue/failed/no-sidecar.md                     → verdict absent (missing JSON)
- *   - eforge/queue/failed/bad-sidecar.md + .recovery.json   → verdict absent (malformed JSON)
+ *   - .eforge/queue/pending-prd.md        → pending item (no sidecar, irrelevant)
+ *   - .eforge/queue/failed/with-sidecar.md + .recovery.json  → verdict embedded
+ *   - .eforge/queue/failed/no-sidecar.md                     → verdict absent (missing JSON)
+ *   - .eforge/queue/failed/bad-sidecar.md + .recovery.json   → verdict absent (malformed JSON)
  *
  * Follows AGENTS.md conventions:
  * - No mocks. Real SQLite, real filesystem, real HTTP server.
@@ -32,7 +32,7 @@ const FAILED_NO_SIDECAR_ID = 'no-sidecar';
 const FAILED_BAD_SIDECAR_ID = 'bad-sidecar';
 
 async function seedQueueFixtures(dir: string): Promise<void> {
-  const queueDir = join(dir, 'eforge', 'queue');
+  const queueDir = join(dir, '.eforge', 'queue');
   const failedDir = join(queueDir, 'failed');
   await mkdir(queueDir, { recursive: true });
   await mkdir(failedDir, { recursive: true });

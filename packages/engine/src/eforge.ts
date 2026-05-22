@@ -24,7 +24,7 @@ import type {
   RecoveryVerdict,
   BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveAndCommitFailedWithSidecar, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting, commitEnqueuedPrd } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
@@ -529,7 +529,7 @@ export class EforgeEngine {
         dependsOn = [];
       }
 
-      // Write to queue
+      // Write to queue (filesystem-only — queue state is runtime, not tracked in git)
       const enqueueResult = await enqueuePrd({
         body: formattedBody,
         title,
@@ -539,17 +539,6 @@ export class EforgeEngine {
         ...(options.profile !== undefined && { profile: options.profile }),
         ...(options.onSuccess !== undefined && { onSuccess: options.onSuccess }),
       });
-
-      // Commit the enqueued PRD
-      try {
-        await commitEnqueuedPrd(enqueueResult.filePath, enqueueResult.id, title, cwd);
-      } catch (err) {
-        yield {
-          timestamp: new Date().toISOString(),
-          type: 'enqueue:commit-failed',
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
 
       yield {
         timestamp: new Date().toISOString(),
@@ -890,6 +879,26 @@ export class EforgeEngine {
         }
       } : undefined;
 
+      // Materialize PRD provenance artifact on the eforge work branch.
+      // Done before the orchestrator starts so the artifact appears early in
+      // the eforge work branch history. The artifact path replaces the source
+      // queue path for cleanup purposes — the queue file is gitignored and
+      // never needs cleanup.
+      let cleanupPrdFilePath: string | undefined;
+      if (options.prdFilePath) {
+        try {
+          const prdContent = await readFile(resolve(cwd, options.prdFilePath), 'utf-8');
+          const { artifactRelPath } = await materializePrdArtifact({
+            mergeWorktreePath,
+            prdId: planSet,
+            prdContent,
+          });
+          cleanupPrdFilePath = artifactRelPath;
+        } catch {
+          // Non-fatal — build continues without PRD provenance artifact
+        }
+      }
+
       // Create and run orchestrator
       const signal = abortController?.signal;
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
@@ -912,7 +921,7 @@ export class EforgeEngine {
         shouldCleanup,
         cleanupPlanSet: planSet,
         cleanupOutputDir: this.config.plan.outputDir,
-        cleanupPrdFilePath: options.prdFilePath ? relative(cwd, options.prdFilePath) : undefined,
+        cleanupPrdFilePath,
         // --- eforge:region plan-02-policy-gate-engine-integration ---
         extensionRegistry: this.extensionRegistry,
         policyGateTimeoutMs: this.config.extensions.policyGateTimeoutMs,
@@ -921,6 +930,9 @@ export class EforgeEngine {
         // --- eforge:region plan-01-engine-config-and-landing ---
         onSuccess: effectiveOnSuccess,
         // --- eforge:endregion plan-01-engine-config-and-landing ---
+        // --- eforge:region plan-03-branch-aware-landing ---
+        engineConfig: config,
+        // --- eforge:endregion plan-03-branch-aware-landing ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
@@ -1338,7 +1350,7 @@ export class EforgeEngine {
             // Build failure summary (tolerates missing state.json)
             let summary: BuildFailureSummary;
             try {
-              summary = await buildFailureSummary({ setName, prdId, cwd, dbPath });
+              summary = await buildFailureSummary({ setName, prdId, cwd, dbPath, trunkBranch: config.build.trunkBranch });
             } catch {
               summary = {
                 prdId,
@@ -1417,9 +1429,9 @@ export class EforgeEngine {
               clearTimeout(recoveryTimer);
             }
 
-            // Atomic commit: git mv + both sidecar files in one forgeCommit
+            // Move PRD to failed/ and write sidecar files (filesystem-only)
             try {
-              await moveAndCommitFailedWithSidecar(filePath, summary, verdict!, recoveryModelTracker, cwd);
+              await moveFailedWithSidecar(filePath, summary, verdict!, recoveryModelTracker, cwd);
             } catch {
               // Fallback: plain move without sidecars
               try { await movePrdToSubdir(filePath, 'failed', cwd); } catch { /* best-effort */ }
@@ -1925,7 +1937,7 @@ export class EforgeEngine {
       // Get failure summary (tolerates missing state.json via partial synthesis)
       let summary: BuildFailureSummary;
       try {
-        summary = await buildFailureSummary({ setName, prdId, cwd, dbPath });
+        summary = await buildFailureSummary({ setName, prdId, cwd, dbPath, trunkBranch: this.config.build.trunkBranch });
       } catch {
         summary = {
           prdId, setName,

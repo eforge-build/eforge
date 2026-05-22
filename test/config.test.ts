@@ -546,6 +546,46 @@ describe('DEFAULT_CONFIG', () => {
     expect(i?.model).toBe('claude-sonnet-4-6');
     expect(i?.effort).toBe('medium');
   });
+
+  it('prdQueue.dir defaults to .eforge/queue', () => {
+    expect(DEFAULT_CONFIG.prdQueue.dir).toBe('.eforge/queue');
+  });
+
+  it('build.allowLocalMergeToTrunk defaults to false', () => {
+    expect(DEFAULT_CONFIG.build.allowLocalMergeToTrunk).toBe(false);
+  });
+
+  it('build.trunkBranch defaults to undefined', () => {
+    expect(DEFAULT_CONFIG.build.trunkBranch).toBeUndefined();
+  });
+});
+
+describe('resolveConfig new build fields', () => {
+  it('resolveConfig({}) prdQueue.dir equals .eforge/queue', () => {
+    const config = resolveConfig({});
+    expect(config.prdQueue.dir).toBe('.eforge/queue');
+  });
+
+  it('resolveConfig({}) build.allowLocalMergeToTrunk equals false', () => {
+    const config = resolveConfig({});
+    expect(config.build.allowLocalMergeToTrunk).toBe(false);
+  });
+
+  it('resolveConfig({}) build.trunkBranch equals undefined', () => {
+    const config = resolveConfig({});
+    expect(config.build.trunkBranch).toBeUndefined();
+  });
+
+  it('trunkBranch and allowLocalMergeToTrunk round-trip through resolveConfig', () => {
+    const config = resolveConfig({ build: { trunkBranch: 'develop', allowLocalMergeToTrunk: true } });
+    expect(config.build.trunkBranch).toBe('develop');
+    expect(config.build.allowLocalMergeToTrunk).toBe(true);
+  });
+
+  it('user-provided prdQueue.dir eforge/queue round-trips (back-compat)', () => {
+    const config = resolveConfig({ prdQueue: { dir: 'eforge/queue' } });
+    expect(config.prdQueue.dir).toBe('eforge/queue');
+  });
 });
 
 describe('monitor config', () => {
