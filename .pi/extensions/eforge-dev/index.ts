@@ -536,7 +536,7 @@ async function landBranch(
 
 		if (isAutoMergeLandMode(mode)) {
 			const mergeResults = await runSteps(pi, ctx, "enable PR auto-merge", [
-				{ label: "Enable PR auto-merge", command: "gh", args: ["pr", "merge", "--auto", "--squash", "--delete-branch"], timeout: 60_000 },
+				{ label: "Enable PR auto-merge", command: "gh", args: ["pr", "merge", "--auto", "--merge", "--delete-branch"], timeout: 60_000 },
 			]);
 			const ok = mergeResults.every((result) => result.status === "passed");
 			ctx.ui.notify(ok ? "PR auto-merge enabled" : "Auto-merge failed; check the progress output", ok ? "info" : "error");
@@ -909,7 +909,7 @@ async function releaseWizard(pi: ExtensionAPI, ctx: ExtensionContext, setLastChe
 	const openPrResults = await runSteps(pi, ctx, `open ${tag} release PR`, [
 		{ label: `Push ${releaseBranch}`, command: "git", args: ["push", "-u", "origin", releaseBranch], timeout: 60_000 },
 		{ label: "Create release PR", command: "gh", args: ["pr", "create", "--base", "main", "--head", releaseBranch, "--title", `release: ${tag}`, "--body", `Release ${tag}\n\n${releaseNotes}`], timeout: 60_000 },
-		{ label: "Enable PR auto-merge", command: "gh", args: ["pr", "merge", releaseBranch, "--auto", "--squash", "--delete-branch"], timeout: 60_000 },
+		{ label: "Enable PR auto-merge", command: "gh", args: ["pr", "merge", releaseBranch, "--auto", "--merge", "--delete-branch"], timeout: 60_000 },
 	]);
 	if (!openPrResults.every((result) => result.status === "passed")) {
 		ctx.ui.notify(`Release branch ${releaseBranch} is prepared, but PR setup failed`, "error");

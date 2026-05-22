@@ -176,7 +176,7 @@ git checkout -b release/v<version>
 pnpm release <bump-type> --no-tag
 git push -u origin release/v<version>
 gh pr create --base main --head release/v<version> --title "release: v<version>" --body-file <notes-file>
-gh pr merge release/v<version> --auto --squash --delete-branch
+gh pr merge release/v<version> --auto --merge --delete-branch
 ```
 
 (Where `<bump-type>` is the resolved bump type from Step 1.)
