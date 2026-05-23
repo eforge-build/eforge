@@ -1,38 +1,13 @@
 /**
- * Shared TUI overlay utilities for native Pi command handlers.
+ * Shared TUI panel utilities for native Pi command handlers.
  *
- * Provides reusable overlay patterns: select lists, info panels, and
- * loading indicators.
+ * Provides reusable non-floating panel patterns: select lists, info panels,
+ * and loading indicators. Compatibility exports with the old Overlay suffix
+ * delegate to these panel implementations.
  */
 
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Input, Markdown, type SelectItem, SelectList, Text, matchesKey, Key, fuzzyFilter, truncateToWidth } from "@earendil-works/pi-tui";
-
-type OverlayAnchor =
-  | "center"
-  | "top-left"
-  | "top-center"
-  | "top-right"
-  | "left-center"
-  | "right-center"
-  | "bottom-left"
-  | "bottom-center"
-  | "bottom-right";
-
-type OverlaySize = number | `${number}%`;
-
-interface OverlayOptions {
-  width?: OverlaySize;
-  minWidth?: number;
-  maxHeight?: OverlaySize;
-  anchor?: OverlayAnchor;
-  margin?: number | { top?: number; right?: number; bottom?: number; left?: number };
-}
-
-interface CustomUiOptions {
-  overlay?: boolean;
-  overlayOptions?: OverlayOptions;
-}
 
 interface CustomComponent {
   focused?: boolean;
@@ -41,47 +16,71 @@ interface CustomComponent {
   handleInput(data: string): void;
 }
 
-/** Minimal UI context type for overlay helpers. */
+interface PanelTui {
+  requestRender(): void;
+  terminal?: { rows?: number };
+}
+
+/** Minimal UI context type for panel helpers. */
 export interface UIContext {
   cwd: string;
   hasUI: boolean;
   ui: {
     custom<T>(factory: (
-      tui: { requestRender(): void },
+      tui: PanelTui,
       theme: { fg(color: string, text: string): string; bold(text: string): string },
       kb: unknown,
       done: (result: T) => void,
-    ) => CustomComponent, options?: CustomUiOptions): Promise<T>;
+    ) => CustomComponent): Promise<T>;
+    editor(title: string, prefill?: string): Promise<string | undefined>;
     setStatus(key: string, text: string | undefined): void;
   };
 }
 
-const SELECT_OVERLAY_OPTIONS: CustomUiOptions = {
-  overlay: true,
-  overlayOptions: {
-    anchor: "center",
-    width: "70%",
-    minWidth: 40,
-    maxHeight: "80%",
-    margin: 1,
-  },
-};
+const FALLBACK_TERMINAL_ROWS = 12;
+const MAX_SELECT_VISIBLE = 15;
+const MIN_SELECT_VISIBLE = 1;
+const SELECT_RESERVED_ROWS = 6;
+const INFO_RESERVED_ROWS = 7;
 
-const INFO_OVERLAY_OPTIONS: CustomUiOptions = {
-  overlay: true,
-  overlayOptions: {
-    anchor: "center",
-    width: "80%",
-    minWidth: 40,
-    maxHeight: "85%",
-    margin: 1,
-  },
-};
+function terminalRows(tui: PanelTui): number {
+  const rows = tui.terminal?.rows;
+  return typeof rows === "number" && Number.isFinite(rows) && rows > 0
+    ? rows
+    : FALLBACK_TERMINAL_ROWS;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
+}
+
+function visibleSelectCount(tui: PanelTui, itemCount: number): number {
+  const available = clamp(terminalRows(tui) - SELECT_RESERVED_ROWS, MIN_SELECT_VISIBLE, MAX_SELECT_VISIBLE);
+  return Math.max(1, Math.min(Math.max(1, itemCount), available));
+}
+
+function infoViewportRows(tui: PanelTui): number {
+  return Math.max(1, terminalRows(tui) - INFO_RESERVED_ROWS);
+}
+
+function themedSelectList(
+  items: SelectItem[],
+  visibleCount: number,
+  theme: { fg(color: string, text: string): string },
+): SelectList {
+  return new SelectList(items, visibleCount, {
+    selectedPrefix: (text) => theme.fg("accent", text),
+    selectedText: (text) => theme.fg("accent", text),
+    description: (text) => theme.fg("muted", text),
+    scrollInfo: (text) => theme.fg("dim", text),
+    noMatch: (text) => theme.fg("warning", text),
+  });
+}
 
 /**
- * Wrap rendered component lines in a full box border so floating overlays have
- * clear side boundaries. Uses ANSI-aware truncation/padding to preserve theme
- * styling while keeping every rendered line within the requested width.
+ * Wrap rendered component lines in a full box border so panels have clear side
+ * boundaries. Uses ANSI-aware truncation/padding to preserve theme styling
+ * while keeping every rendered line within the requested width.
  */
 export function renderBorderedLines(
   lines: string[],
@@ -104,10 +103,10 @@ export function renderBorderedLines(
 }
 
 /**
- * Show a select-list overlay and return the chosen item's value,
+ * Show a compact select-list panel and return the chosen item's value,
  * or null if the user cancelled.
  */
-export async function showSelectOverlay(
+export async function showSelectPanel(
   ctx: UIContext,
   title: string,
   items: SelectItem[],
@@ -117,15 +116,7 @@ export async function showSelectOverlay(
 
     container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
 
-    const visibleCount = Math.min(items.length, 15);
-    const selectList = new SelectList(items, visibleCount, {
-      selectedPrefix: (text) => theme.fg("accent", text),
-      selectedText: (text) => theme.fg("accent", text),
-      description: (text) => theme.fg("muted", text),
-      scrollInfo: (text) => theme.fg("dim", text),
-      noMatch: (text) => theme.fg("warning", text),
-    });
-
+    const selectList = themedSelectList(items, visibleSelectCount(tui, items.length), theme);
     selectList.onSelect = (item) => done(item.value);
     selectList.onCancel = () => done(null);
 
@@ -144,20 +135,19 @@ export async function showSelectOverlay(
         tui.requestRender();
       },
     };
-  }, SELECT_OVERLAY_OPTIONS);
+  });
 }
 
 /**
- * Show a searchable select-list overlay with a filter input and return
+ * Show a searchable select-list panel with a filter input and return
  * the chosen item's value, or null if the user cancelled.
  */
-export async function showSearchableSelectOverlay(
+export async function showSearchableSelectPanel(
   ctx: UIContext,
   title: string,
   items: SelectItem[],
 ): Promise<string | null> {
   return ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-    const MAX_VISIBLE = 15;
     const container = new Container();
 
     const titleText = new Text(theme.fg("accent", theme.bold(title)), 1, 0);
@@ -167,15 +157,7 @@ export async function showSearchableSelectOverlay(
       0,
     );
 
-    const listTheme = {
-      selectedPrefix: (text: string) => theme.fg("accent", text),
-      selectedText: (text: string) => theme.fg("accent", text),
-      description: (text: string) => theme.fg("muted", text),
-      scrollInfo: (text: string) => theme.fg("dim", text),
-      noMatch: (text: string) => theme.fg("warning", text),
-    };
-
-    let selectList = new SelectList(items, Math.min(items.length, MAX_VISIBLE), listTheme);
+    let selectList = themedSelectList(items, visibleSelectCount(tui, items.length), theme);
 
     const input = new Input();
     input.onSubmit = () => {
@@ -191,7 +173,7 @@ export async function showSearchableSelectOverlay(
       container.clear();
       container.addChild(titleText);
       container.addChild(input);
-      selectList = new SelectList(filteredItems, Math.min(filteredItems.length, MAX_VISIBLE), listTheme);
+      selectList = themedSelectList(filteredItems, visibleSelectCount(tui, filteredItems.length), theme);
       selectList.onSelect = (item) => done(item.value);
       selectList.onCancel = () => done(null);
       container.addChild(selectList);
@@ -238,47 +220,110 @@ export async function showSearchableSelectOverlay(
         tui.requestRender();
       },
     };
-  }, SELECT_OVERLAY_OPTIONS);
+  });
 }
 
 /**
- * Show a read-only info overlay with markdown content.
+ * Show a read-only, scrollable info panel with markdown content.
  * Resolves when the user presses enter or esc.
  */
-export async function showInfoOverlay(
+export async function showInfoPanel(
   ctx: UIContext,
   title: string,
   content: string,
 ): Promise<void> {
   await ctx.ui.custom<void>((tui, theme, _kb, done) => {
-    const container = new Container();
     const mdTheme = getMarkdownTheme();
+    const markdown = new Markdown(content, 1, 1, mdTheme);
+    let scrollOffset = 0;
+    let lastRenderWidth = 80;
 
-    container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
-    container.addChild(new Markdown(content, 1, 1, mdTheme));
-
-    container.addChild(new Text(theme.fg("dim", "esc/enter close"), 1, 0));
+    function scrollBy(delta: number, maxScroll: number) {
+      scrollOffset = clamp(scrollOffset + delta, 0, maxScroll);
+    }
 
     return {
-      render: (width: number) => renderBorderedLines(
-        container.render(Math.max(1, width - 2)),
-        width,
-        (s: string) => theme.fg("accent", s),
-      ),
-      invalidate: () => container.invalidate(),
+      render: (width: number) => {
+        const innerWidth = Math.max(1, width - 2);
+        lastRenderWidth = innerWidth;
+        const renderedContent = markdown.render(innerWidth);
+        const viewportRows = infoViewportRows(tui);
+        const maxScroll = Math.max(0, renderedContent.length - viewportRows);
+        scrollOffset = clamp(scrollOffset, 0, maxScroll);
+        const visibleEnd = Math.min(renderedContent.length, scrollOffset + viewportRows);
+        const scrollText = renderedContent.length > viewportRows
+          ? ` • lines ${scrollOffset + 1}-${visibleEnd}/${renderedContent.length}`
+          : "";
+        const lines = [
+          theme.fg("accent", theme.bold(title)),
+          ...renderedContent.slice(scrollOffset, visibleEnd),
+          theme.fg("dim", `↑↓/PgUp/PgDn scroll • esc/enter close${scrollText}`),
+        ];
+
+        return renderBorderedLines(lines, width, (s: string) => theme.fg("accent", s));
+      },
+      invalidate: () => markdown.invalidate(),
       handleInput: (data: string) => {
+        const viewportRows = infoViewportRows(tui);
+        const renderedContent = markdown.render(lastRenderWidth);
+        const maxScroll = Math.max(0, renderedContent.length - viewportRows);
         if (
           matchesKey(data, Key.escape) ||
           matchesKey(data, Key.enter) ||
           matchesKey(data, Key.ctrl("c"))
         ) {
           done(undefined);
+        } else if (matchesKey(data, Key.up)) {
+          scrollBy(-1, maxScroll);
+          tui.requestRender();
+        } else if (matchesKey(data, Key.down)) {
+          scrollBy(1, maxScroll);
+          tui.requestRender();
+        } else if (matchesKey(data, Key.pageUp)) {
+          scrollBy(-viewportRows, maxScroll);
+          tui.requestRender();
+        } else if (matchesKey(data, Key.pageDown)) {
+          scrollBy(viewportRows, maxScroll);
+          tui.requestRender();
+        } else if (matchesKey(data, Key.home)) {
+          scrollOffset = 0;
+          tui.requestRender();
+        } else if (matchesKey(data, Key.end)) {
+          scrollOffset = maxScroll;
+          tui.requestRender();
         } else {
           tui.requestRender();
         }
       },
     };
-  }, INFO_OVERLAY_OPTIONS);
+  });
+}
+
+/** Compatibility alias for callers that still import the old helper name. */
+export async function showSelectOverlay(
+  ctx: UIContext,
+  title: string,
+  items: SelectItem[],
+): Promise<string | null> {
+  return showSelectPanel(ctx, title, items);
+}
+
+/** Compatibility alias for callers that still import the old helper name. */
+export async function showSearchableSelectOverlay(
+  ctx: UIContext,
+  title: string,
+  items: SelectItem[],
+): Promise<string | null> {
+  return showSearchableSelectPanel(ctx, title, items);
+}
+
+/** Compatibility alias for callers that still import the old helper name. */
+export async function showInfoOverlay(
+  ctx: UIContext,
+  title: string,
+  content: string,
+): Promise<void> {
+  return showInfoPanel(ctx, title, content);
 }
 
 /**

@@ -117,18 +117,41 @@ function formatDuration(ms: number | undefined): string {
 	return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-function renderBorderedLines(lines: string[], width: number, color: (text: string) => string): string[] {
+const FALLBACK_TERMINAL_ROWS = 12;
+const INFO_RESERVED_ROWS = 4;
+const PROGRESS_RESERVED_ROWS = 4;
+const COCKPIT_RESERVED_ROWS = 7;
+const MAX_COCKPIT_VISIBLE = 15;
+
+function terminalRows(tui: { terminal?: { rows?: number } }): number {
+	const rows = tui.terminal?.rows;
+	return typeof rows === "number" && Number.isFinite(rows) && rows > 0 ? rows : FALLBACK_TERMINAL_ROWS;
+}
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.max(min, Math.min(value, max));
+}
+
+function borderedLineBudget(tui: { terminal?: { rows?: number } }): number {
+	return Math.max(1, terminalRows(tui));
+}
+
+function renderBorderedLines(lines: string[], width: number, color: (text: string) => string, maxRows?: number): string[] {
+	const rowBudget = maxRows === undefined ? undefined : Math.max(1, Math.floor(maxRows));
 	if (width < 3) {
-		return (lines.length > 0 ? lines : [""]).map((line) => truncateToWidth(line, width, "", true));
+		const rendered = (lines.length > 0 ? lines : [""]).map((line) => truncateToWidth(line, width, "", true));
+		return rowBudget === undefined ? rendered : rendered.slice(0, rowBudget);
 	}
 
 	const innerWidth = width - 2;
-	const contentLines = lines.length > 0 ? lines : [""];
-	return [
+	const contentRows = rowBudget === undefined ? undefined : Math.max(0, rowBudget - 2);
+	const contentLines = (lines.length > 0 ? lines : [""]).slice(0, contentRows);
+	const rendered = [
 		color(`╭${"─".repeat(innerWidth)}╮`),
 		...contentLines.map((line) => color("│") + truncateToWidth(line, innerWidth, "", true) + color("│")),
 		color(`╰${"─".repeat(innerWidth)}╯`),
 	];
+	return rowBudget === undefined ? rendered : rendered.slice(0, rowBudget);
 }
 
 async function getGitState(pi: ExtensionAPI): Promise<DevState> {
@@ -224,48 +247,92 @@ async function promptForWorkDescription(ctx: ExtensionContext): Promise<string |
 }
 
 class InfoPanel {
+	private scrollOffset = 0;
+	private lastRenderWidth = 80;
+
 	constructor(
 		private title: string,
 		private lines: string[],
 		private theme: any,
+		private rows: () => number,
+		private requestRender: () => void,
 		private done: () => void,
 	) {}
 
-	render(width: number): string[] {
-		const innerWidth = Math.max(20, width - 2);
+	private contentLines(width: number): string[] {
+		const innerWidth = Math.max(1, width);
 		const out: string[] = [];
-		out.push(truncateToWidth(this.theme.fg("accent", this.theme.bold(this.title)), innerWidth, "", true));
-		out.push("");
 		for (const line of this.lines) {
 			out.push(...wrapTextWithAnsi(line, innerWidth).map((wrapped) => truncateToWidth(wrapped, innerWidth, "", true)));
 		}
-		out.push("");
-		out.push(this.theme.fg("dim", "esc/enter close"));
-		return renderBorderedLines(out, width, (s: string) => this.theme.fg("accent", s));
+		return out;
+	}
+
+	private viewportRows(): number {
+		return Math.max(0, this.rows() - INFO_RESERVED_ROWS);
+	}
+
+	render(width: number): string[] {
+		const innerWidth = Math.max(20, width - 2);
+		this.lastRenderWidth = innerWidth;
+		const content = this.contentLines(innerWidth);
+		const viewportRows = this.viewportRows();
+		const maxScroll = Math.max(0, content.length - viewportRows);
+		this.scrollOffset = clamp(this.scrollOffset, 0, maxScroll);
+		const visibleEnd = Math.min(content.length, this.scrollOffset + viewportRows);
+		const scrollText = content.length > viewportRows ? ` • lines ${this.scrollOffset + 1}-${visibleEnd}/${content.length}` : "";
+		const out = [
+			truncateToWidth(this.theme.fg("accent", this.theme.bold(this.title)), innerWidth, "", true),
+			...content.slice(this.scrollOffset, visibleEnd),
+			this.theme.fg("dim", `↑↓/PgUp/PgDn/Home/End scroll • esc/enter close${scrollText}`),
+		];
+		return renderBorderedLines(out, width, (s: string) => this.theme.fg("accent", s), this.rows());
 	}
 
 	handleInput(data: string): void {
-		if (matchesKey(data, Key.escape) || matchesKey(data, Key.enter)) this.done();
+		const content = this.contentLines(this.lastRenderWidth);
+		const viewportRows = this.viewportRows();
+		const maxScroll = Math.max(0, content.length - viewportRows);
+		if (matchesKey(data, Key.escape) || matchesKey(data, Key.enter)) {
+			this.done();
+		} else if (matchesKey(data, Key.up)) {
+			this.scrollOffset = clamp(this.scrollOffset - 1, 0, maxScroll);
+			this.requestRender();
+		} else if (matchesKey(data, Key.down)) {
+			this.scrollOffset = clamp(this.scrollOffset + 1, 0, maxScroll);
+			this.requestRender();
+		} else if (matchesKey(data, Key.pageUp)) {
+			this.scrollOffset = clamp(this.scrollOffset - viewportRows, 0, maxScroll);
+			this.requestRender();
+		} else if (matchesKey(data, Key.pageDown)) {
+			this.scrollOffset = clamp(this.scrollOffset + viewportRows, 0, maxScroll);
+			this.requestRender();
+		} else if (matchesKey(data, Key.home)) {
+			this.scrollOffset = 0;
+			this.requestRender();
+		} else if (matchesKey(data, Key.end)) {
+			this.scrollOffset = maxScroll;
+			this.requestRender();
+		}
 	}
 
 	invalidate(): void {}
 }
 
 async function showInfo(ctx: ExtensionContext, title: string, lines: string[]): Promise<void> {
-	await ctx.ui.custom<void>(
-		(_tui, theme, _kb, done) => new InfoPanel(title, lines, theme, done),
-		{ overlay: true, overlayOptions: { width: "75%", minWidth: 60, maxHeight: "80%", margin: 2 } },
-	);
+	await ctx.ui.custom<void>((tui, theme, _kb, done) => new InfoPanel(title, lines, theme, () => borderedLineBudget(tui), () => tui.requestRender(), done));
 }
 
 class ProgressPanel {
 	private cachedWidth?: number;
+	private cachedRows?: number;
 	private cachedLines?: string[];
 
 	constructor(
 		private title: string,
 		private results: StepResult[],
 		private theme: any,
+		private rows: () => number,
 		private abort: () => void,
 	) {}
 
@@ -275,27 +342,40 @@ class ProgressPanel {
 	}
 
 	render(width: number): string[] {
-		if (this.cachedWidth === width && this.cachedLines) return this.cachedLines;
+		const rows = this.rows();
+		if (this.cachedWidth === width && this.cachedRows === rows && this.cachedLines) return this.cachedLines;
 
 		const innerWidth = Math.max(1, width - 2);
-		const lines: string[] = [];
-		lines.push(truncateToWidth(this.theme.fg("accent", this.theme.bold(this.title)), innerWidth, "", true));
-		lines.push("");
+		const stepLines: string[] = [];
 
 		for (const result of this.results) {
 			const color = result.status === "passed" ? "success" : result.status === "failed" ? "error" : result.status === "running" ? "accent" : "muted";
 			const duration = formatDuration(result.durationMs);
-			lines.push(truncateToWidth(`${this.theme.fg(color, statusIcon(result.status))} ${result.label}${duration ? ` ${this.theme.fg("dim", duration)}` : ""}`, innerWidth, "", true));
+			stepLines.push(truncateToWidth(`${this.theme.fg(color, statusIcon(result.status))} ${result.label}${duration ? ` ${this.theme.fg("dim", duration)}` : ""}`, innerWidth, "", true));
 			if (result.status === "failed") {
 				const detail = oneLine(result.stderr) || oneLine(result.stdout) || `exit ${result.code ?? "unknown"}`;
-				lines.push(truncateToWidth(`  ${this.theme.fg("error", detail)}`, innerWidth, "", true));
+				stepLines.push(truncateToWidth(`  ${this.theme.fg("error", detail)}`, innerWidth, "", true));
 			}
 		}
 
-		lines.push("");
-		lines.push(this.theme.fg("dim", "esc cancel"));
+		const stepBudget = Math.max(0, rows - PROGRESS_RESERVED_ROWS);
+		const runningIndex = this.results.findIndex((result) => result.status === "running");
+		const failedIndex = this.results.findIndex((result) => result.status === "failed");
+		const focusIndex = failedIndex >= 0 ? failedIndex : runningIndex;
+		let visibleSteps = stepLines.slice(0, stepBudget);
+		if (stepLines.length > stepBudget && focusIndex >= 0) {
+			const start = clamp(focusIndex - Math.floor(stepBudget / 2), 0, Math.max(0, stepLines.length - stepBudget));
+			visibleSteps = stepLines.slice(start, start + stepBudget);
+		}
+
+		const lines = [
+			truncateToWidth(this.theme.fg("accent", this.theme.bold(this.title)), innerWidth, "", true),
+			...visibleSteps,
+			this.theme.fg("dim", "esc/ctrl-c cancel"),
+		];
 		this.cachedWidth = width;
-		this.cachedLines = renderBorderedLines(lines, width, (s: string) => this.theme.fg("accent", s));
+		this.cachedRows = rows;
+		this.cachedLines = renderBorderedLines(lines, width, (s: string) => this.theme.fg("accent", s), rows);
 		return this.cachedLines;
 	}
 
@@ -305,6 +385,7 @@ class ProgressPanel {
 
 	invalidate(): void {
 		this.cachedWidth = undefined;
+		this.cachedRows = undefined;
 		this.cachedLines = undefined;
 	}
 }
@@ -316,7 +397,7 @@ async function runSteps(pi: ExtensionAPI, ctx: ExtensionContext, title: string, 
 	const results = await ctx.ui.custom<StepResult[]>(
 		(tui, theme, _kb, done) => {
 			let panelResults = [...initial];
-			const panel = new ProgressPanel(title, panelResults, theme, () => controller.abort());
+			const panel = new ProgressPanel(title, panelResults, theme, () => borderedLineBudget(tui), () => controller.abort());
 
 			async function execute() {
 				for (let i = 0; i < panelResults.length; i++) {
@@ -363,7 +444,6 @@ async function runSteps(pi: ExtensionAPI, ctx: ExtensionContext, title: string, 
 
 			return panel;
 		},
-		{ overlay: true, overlayOptions: { width: "82%", minWidth: 70, maxHeight: "80%", margin: 2 } },
 	);
 
 	return results;
@@ -940,7 +1020,12 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 
 	return ctx.ui.custom<string | null>(
 		(tui, theme, _kb, done) => {
-			const selectList = new SelectList(items, Math.min(items.length, 10), {
+			const stateLines = renderStateLines(state, theme);
+			const selectListRowBudget = () => Math.max(1, terminalRows(tui) - COCKPIT_RESERVED_ROWS - stateLines.length);
+			const initialSelectRows = selectListRowBudget();
+			let visibleCount = Math.min(items.length, initialSelectRows, MAX_COCKPIT_VISIBLE);
+			if (items.length > visibleCount && initialSelectRows > 1) visibleCount = Math.min(visibleCount, initialSelectRows - 1);
+			const selectList = new SelectList(items, visibleCount, {
 				selectedPrefix: (text) => theme.fg("accent", text),
 				selectedText: (text) => theme.fg("accent", text),
 				description: (text) => theme.fg("muted", text),
@@ -956,12 +1041,12 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 					const lines: string[] = [];
 					lines.push(truncateToWidth(theme.fg("accent", theme.bold("eforge dev cockpit")), innerWidth, "", true));
 					lines.push("");
-					for (const line of renderStateLines(state, theme)) lines.push(truncateToWidth(line, innerWidth, "", true));
+					for (const line of stateLines) lines.push(truncateToWidth(line, innerWidth, "", true));
 					lines.push("");
-					lines.push(...selectList.render(innerWidth));
+					lines.push(...selectList.render(innerWidth).slice(0, selectListRowBudget()));
 					lines.push("");
 					lines.push(theme.fg("dim", "↑↓ navigate • enter select • esc cancel"));
-					return renderBorderedLines(lines, width, (s: string) => theme.fg("accent", s));
+					return renderBorderedLines(lines, width, (s: string) => theme.fg("accent", s), borderedLineBudget(tui));
 				},
 				invalidate() {
 					selectList.invalidate();
@@ -974,7 +1059,6 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 
 			return container;
 		},
-		{ overlay: true, overlayOptions: { width: "78%", minWidth: 68, maxHeight: "85%", margin: 2 } },
 	);
 }
 

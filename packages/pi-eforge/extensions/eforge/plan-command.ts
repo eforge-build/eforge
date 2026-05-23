@@ -17,8 +17,8 @@ import {
 } from "@eforge-build/client";
 import { DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import {
-  showInfoOverlay,
-  showSelectOverlay,
+  showInfoPanel,
+  showSelectPanel,
   withLoader,
   type UIContext,
 } from "./ui-helpers";
@@ -77,12 +77,12 @@ async function handleResumeSession(pi: ExtensionAPI, ctx: UIContext): Promise<vo
       apiSessionPlanListIfRunning({ cwd: ctx.cwd }),
     );
     if (result === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      await showInfoPanel(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
       return;
     }
     plans = result.data.plans;
   } catch (err) {
-    await showInfoOverlay(
+    await showInfoPanel(
       ctx,
       "eforge - Error",
       `Failed to load planning sessions:\n\n${err instanceof Error ? err.message : String(err)}`,
@@ -91,7 +91,7 @@ async function handleResumeSession(pi: ExtensionAPI, ctx: UIContext): Promise<vo
   }
 
   if (plans.length === 0) {
-    await showInfoOverlay(
+    await showInfoPanel(
       ctx,
       "eforge - Planning Sessions",
       "No active or ready planning sessions found.\n\nRun `/eforge:plan` again and choose New session to start from scratch.",
@@ -99,7 +99,7 @@ async function handleResumeSession(pi: ExtensionAPI, ctx: UIContext): Promise<vo
     return;
   }
 
-  const selectedSession = await showSelectOverlay(
+  const selectedSession = await showSelectPanel(
     ctx,
     "eforge - Resume Planning Session",
     plans.map(formatSessionPlanItem),
@@ -116,12 +116,12 @@ async function handlePlanningPlaybook(pi: ExtensionAPI, ctx: UIContext): Promise
       apiPlaybookListIfRunning({ cwd: ctx.cwd }),
     );
     if (result === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+      await showInfoPanel(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
       return;
     }
     playbooks = result.data.playbooks.filter((playbook) => playbook.mode === "planning");
   } catch (err) {
-    await showInfoOverlay(
+    await showInfoPanel(
       ctx,
       "eforge - Error",
       `Failed to load planning playbooks:\n\n${err instanceof Error ? err.message : String(err)}`,
@@ -130,7 +130,7 @@ async function handlePlanningPlaybook(pi: ExtensionAPI, ctx: UIContext): Promise
   }
 
   if (playbooks.length === 0) {
-    await showInfoOverlay(
+    await showInfoPanel(
       ctx,
       "eforge - Planning Playbooks",
       "No planning-mode playbooks found.\n\nUse `/eforge:playbook create` to create one, or run `/eforge:plan` again and choose New session.",
@@ -138,7 +138,7 @@ async function handlePlanningPlaybook(pi: ExtensionAPI, ctx: UIContext): Promise
     return;
   }
 
-  const selectedPlaybook = await showSelectOverlay(
+  const selectedPlaybook = await showSelectPanel(
     ctx,
     "eforge - Start from Planning Playbook",
     playbooks.map(formatPlanningPlaybookItem),
@@ -179,7 +179,7 @@ export async function handlePlanCommand(
     return;
   }
 
-  const choice = await showSelectOverlay(ctx, "eforge - Plan", [
+  const choice = await showSelectPanel(ctx, "eforge - Plan", [
     {
       value: "resume",
       label: "Resume an existing planning session",

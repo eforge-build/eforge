@@ -4,7 +4,7 @@ description: List, inspect, and switch agent runtime profiles
 disable-model-invocation: true
 ---
 
-> **Note:** In Pi, the native `/eforge:profile` command provides a richer interactive experience with overlay-based profile browsing and switching. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
+> **Note:** In Pi, the native `/eforge:profile` command provides a richer interactive experience with TUI selector/panel profile browsing and switching. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
 
 # /eforge:profile
 

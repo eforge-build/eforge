@@ -1,7 +1,7 @@
 /**
  * Native Pi command handler for /eforge:status.
  *
- * Presents a read-only overlay dashboard without involving the agent. The
+ * Presents a read-only scrollable status panel without involving the agent. The
  * command is passive: it only talks to an already-running daemon and never
  * starts one implicitly.
  */

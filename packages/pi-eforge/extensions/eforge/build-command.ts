@@ -14,9 +14,9 @@ import {
 } from "@eforge-build/client";
 import { DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import {
-  showInfoOverlay,
-  showSearchableSelectOverlay,
-  showSelectOverlay,
+  showInfoPanel,
+  showSearchableSelectPanel,
+  showSelectPanel,
   withLoader,
   type UIContext,
 } from "./ui-helpers";
@@ -63,7 +63,7 @@ async function selectProfileArgs(ctx: UIContext, args: string): Promise<string |
   );
 
   if (profileListResult === null) {
-    await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+    await showInfoPanel(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
     return null;
   }
 
@@ -78,7 +78,7 @@ async function selectProfileArgs(ctx: UIContext, args: string): Promise<string |
     ...profileListResult.data.profiles.map(formatProfileItem),
   ];
 
-  const selected = await showSearchableSelectOverlay(ctx, "eforge build - select profile", items);
+  const selected = await showSearchableSelectPanel(ctx, "eforge build - select profile", items);
   if (!selected) return null;
   if (selected === "__no_override__") return args;
   return `--profile ${quoteSkillArg(selected)}${args ? ` ${args}` : ""}`;
@@ -100,7 +100,7 @@ async function selectBuildSource(ctx: BuildUIContext): Promise<string | null> {
   );
 
   if (result === null) {
-    await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
+    await showInfoPanel(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
     return null;
   }
 
@@ -128,7 +128,7 @@ async function selectBuildSource(ctx: BuildUIContext): Promise<string | null> {
     },
   ];
 
-  const sourceChoice = await showSelectOverlay(ctx, "eforge - Build Source", sourceItems);
+  const sourceChoice = await showSelectPanel(ctx, "eforge - Build Source", sourceItems);
   if (!sourceChoice) return null;
 
   if (sourceChoice === "__infer__") return "--infer";
@@ -137,7 +137,7 @@ async function selectBuildSource(ctx: BuildUIContext): Promise<string | null> {
     return selectManualSource(ctx);
   }
 
-  const selectedPlanPath = await showSelectOverlay(
+  const selectedPlanPath = await showSelectPanel(
     ctx,
     "eforge - Ready Session Plans",
     readyPlans.map(formatReadyPlanItem),

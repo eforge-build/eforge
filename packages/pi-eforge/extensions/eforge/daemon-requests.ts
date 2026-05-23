@@ -8,7 +8,7 @@
  * Usage:
  *   - `piDaemonRequest(...)` — same as daemonRequestIfRunning; returns null
  *     when no daemon is running. Use in ambient/polling contexts and commands
- *     that want to show a daemon-not-running overlay.
+ *     that want to show daemon-not-running panel or selector feedback.
  *   - `requireDaemon(...)` — throws DAEMON_NOT_RUNNING_GUIDANCE when the
  *     daemon is not running. Use in Pi tool execute handlers that
  *     unconditionally require a live daemon.

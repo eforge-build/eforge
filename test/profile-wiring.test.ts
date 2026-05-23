@@ -429,7 +429,7 @@ describe('Pi extension native command modules (plan-02-native-pi-ux)', () => {
 
     const backendNewSkill = readRepoFile('packages/pi-eforge/skills/eforge-profile-new/SKILL.md');
     expect(backendNewSkill.toLowerCase()).toContain('fallback');
-    expect(backendNewSkill).toContain('/eforge:profile-new');
+    expect(backendNewSkill).toContain('/eforge:profile:new');
 
     const configSkill = readRepoFile('packages/pi-eforge/skills/eforge-config/SKILL.md');
     expect(configSkill.toLowerCase()).toContain('fallback');
@@ -442,14 +442,21 @@ describe('Pi extension native command modules (plan-02-native-pi-ux)', () => {
 // ---------------------------------------------------------------------------
 
 describe('Native command module exports (plan-02-native-pi-ux)', () => {
-  it('ui-helpers.ts exports showSelectOverlay', () => {
+  it('ui-helpers.ts exports preferred panel helpers', () => {
     const source = readRepoFile('packages/pi-eforge/extensions/eforge/ui-helpers.ts');
-    expect(source).toMatch(/export\s+(async\s+)?function\s+showSelectOverlay/);
+    expect(source).toMatch(/export\s+(async\s+)?function\s+showSelectPanel/);
+    expect(source).toMatch(/export\s+(async\s+)?function\s+showSearchableSelectPanel/);
+    expect(source).toMatch(/export\s+(async\s+)?function\s+showInfoPanel/);
   });
 
-  it('ui-helpers.ts exports showInfoOverlay', () => {
+  it('ui-helpers.ts keeps compatibility overlay helper exports', () => {
     const source = readRepoFile('packages/pi-eforge/extensions/eforge/ui-helpers.ts');
+    expect(source).toMatch(/export\s+(async\s+)?function\s+showSelectOverlay/);
+    expect(source).toMatch(/export\s+(async\s+)?function\s+showSearchableSelectOverlay/);
     expect(source).toMatch(/export\s+(async\s+)?function\s+showInfoOverlay/);
+    expect(source).toContain('return showSelectPanel(ctx, title, items);');
+    expect(source).toContain('return showSearchableSelectPanel(ctx, title, items);');
+    expect(source).toContain('return showInfoPanel(ctx, title, content);');
   });
 
   it('ui-helpers.ts exports withLoader', () => {
@@ -605,9 +612,9 @@ describe('Remaining commands still forward to skills (plan-02-native-pi-ux)', ()
   const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
 
   // eforge:build is now a dedicated native command (plan-01-per-build-profile-override),
-  // eforge:status now has a native overlay handler, eforge:restart has a
-  // native safe-restart overlay, and eforge:plan has native selectors, so none
-  // of those commands is in the skillCommands array.
+  // eforge:status now has a native panel handler, eforge:restart has a
+  // native safe-restart selector/panel flow, and eforge:plan has native selectors,
+  // so none of those commands is in the skillCommands array.
   for (const cmd of ['eforge:init', 'eforge:update']) {
     it(`${cmd} remains in the skillCommands array`, () => {
       expect(skillCommandsBlock).toContain(`"${cmd}"`);
@@ -892,15 +899,15 @@ describe('docs/architecture.md - native command mentions (plan-02-native-pi-ux)'
     expect(piSection.toLowerCase()).toContain('native');
   });
 
-  it('Pi Package section mentions overlay commands for profile management', () => {
+  it('Pi Package section mentions native commands for profile management', () => {
     const piStart = raw.indexOf('### Pi Package');
     const nextSection = raw.indexOf('\n## ', piStart);
     const piSection = raw.slice(piStart, nextSection > -1 ? nextSection : undefined);
     expect(piSection).toContain('/eforge:profile');
-    expect(piSection).toContain('/eforge:profile-new');
+    expect(piSection).toContain('/eforge:profile:new');
   });
 
-  it('Pi Package section mentions overlay commands for config', () => {
+  it('Pi Package section mentions native commands for config', () => {
     const piStart = raw.indexOf('### Pi Package');
     const nextSection = raw.indexOf('\n## ', piStart);
     const piSection = raw.slice(piStart, nextSection > -1 ? nextSection : undefined);
@@ -922,7 +929,7 @@ describe('packages/pi-eforge/README.md - native command UX (plan-02-native-pi-ux
 
   it('mentions native commands for agent runtime profile management', () => {
     expect(raw).toContain('/eforge:profile');
-    expect(raw).toContain('/eforge:profile-new');
+    expect(raw).toContain('/eforge:profile:new');
   });
 
   it('mentions native config, status, and restart commands', () => {
@@ -931,8 +938,9 @@ describe('packages/pi-eforge/README.md - native command UX (plan-02-native-pi-ux
     expect(raw).toContain('/eforge:restart');
   });
 
-  it('describes interactive overlay UX', () => {
-    expect(raw.toLowerCase()).toContain('overlay');
+  it('describes interactive TUI panel and selector UX', () => {
+    expect(raw.toLowerCase()).toContain('tui panels and selectors');
+    expect(raw.toLowerCase()).not.toContain('overlay ux');
   });
 
   it('mentions ambient status display', () => {
