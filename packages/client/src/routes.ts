@@ -368,6 +368,8 @@ export interface SessionPlanMigrateLegacyRequest {
 export interface PlaybookRunRequest {
   name: string;
   afterQueueId?: string;
+  /** Override the project-level on-success landing action for this autonomous playbook run. */
+  onSuccess?: BuildOnSuccess;
 }
 
 /** Response for POST /api/playbook/run when the playbook is autonomous */

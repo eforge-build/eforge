@@ -2077,6 +2077,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           description: 'Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].',
         }),
       ),
+      onSuccess: Type.Optional(
+        StringEnum(['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const, {
+          description: 'Override the project-level on-success landing action for this run (optional, "run" only for autonomous playbooks).',
+        }),
+      ),
       raw: Type.Optional(
         Type.String({
           description: 'Raw Markdown playbook string (required for "validate")',
@@ -2084,7 +2089,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, name, scope, playbook, afterQueueId, raw } = params;
+      const { action, name, scope, playbook, afterQueueId, onSuccess, raw } = params;
 
       if (action === "list") {
         const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.playbookList);
@@ -2112,6 +2117,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!name) throw new Error('"name" is required when action is "run"');
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
+        if (onSuccess !== undefined) body.onSuccess = onSuccess;
         const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookRun, body);
         return jsonResult(data);
       }
