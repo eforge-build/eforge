@@ -9,7 +9,7 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 ```text
 /dev              Open the maintainer cockpit overlay
 /dev branch       Describe the work; the model creates/switches to a short-lived branch
-/dev checks       Run build, type-check, test, docs:check, and docs:build
+/dev checks       Run build, type-check, test, and the generated docs drift/link check
 /dev pr           Show PR-readiness summary
 /dev land         Auto-commit with /skill:commit, check, and open a PR, optionally enabling auto-merge after CI passes
 /dev restart      Build from source and restart the local eforge daemon
