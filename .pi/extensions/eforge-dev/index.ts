@@ -134,6 +134,7 @@ function formatDuration(ms: number | undefined): string {
 const FALLBACK_TERMINAL_ROWS = 12;
 const INFO_RESERVED_ROWS = 4;
 const PROGRESS_RESERVED_ROWS = 4;
+const COCKPIT_RESERVED_ROWS = 7;
 const MAX_COCKPIT_VISIBLE = 15;
 
 function terminalRows(tui: { terminal?: { rows?: number } }): number {
@@ -1035,11 +1036,11 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 	return ctx.ui.custom<string | null>(
 		(tui, theme, _kb, done) => {
 			const stateLines = renderStateLines(state, theme);
-			const selectListRowBudget = () => Math.max(1, borderedLineBudget(tui) - 2 - (5 + stateLines.length));
+			const selectListRowBudget = () => Math.max(1, terminalRows(tui) - COCKPIT_RESERVED_ROWS - stateLines.length);
 			const initialSelectRows = selectListRowBudget();
 			let visibleCount = Math.min(items.length, initialSelectRows, MAX_COCKPIT_VISIBLE);
 			if (items.length > visibleCount && initialSelectRows > 1) visibleCount = Math.min(visibleCount, initialSelectRows - 1);
-			const selectList = new SelectList(items, clamp(visibleCount, 1, MAX_COCKPIT_VISIBLE), {
+			const selectList = new SelectList(items, visibleCount, {
 				selectedPrefix: (text) => theme.fg("accent", text),
 				selectedText: (text) => theme.fg("accent", text),
 				description: (text) => theme.fg("muted", text),
