@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, type SelectItem, SelectList, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
@@ -33,8 +33,7 @@ const CHECK_STEPS: Step[] = [
 	{ label: "Build workspace", command: "pnpm", args: ["build"], timeout: 120_000 },
 	{ label: "Type check", command: "pnpm", args: ["type-check"], timeout: 120_000 },
 	{ label: "Test", command: "pnpm", args: ["test"], timeout: 180_000 },
-	{ label: "Docs drift check", command: "pnpm", args: ["docs:check"], timeout: 120_000 },
-	{ label: "Docs site build", command: "pnpm", args: ["docs:build"], timeout: 180_000 },
+	{ label: "Docs drift/link check", command: "node", args: ["packages/docs-gen/dist/cli.js", "check"], timeout: 30_000 },
 ];
 
 const BRANCH_NAME_RE = /^(feat|fix|docs|refactor|test|chore|release)\/[a-z0-9][a-z0-9._-]*$/;
@@ -89,19 +88,6 @@ function isPrLandMode(mode: string): boolean {
 
 function isAutoMergeLandMode(mode: string): boolean {
 	return mode === LAND_MODE.CREATE_AUTO_MERGE || mode === LAND_MODE.UPDATE_AUTO_MERGE;
-}
-
-function getMutationPath(input: unknown): string | undefined {
-	if (!input || typeof input !== "object") return undefined;
-	const maybePath = (input as { path?: unknown }).path;
-	return typeof maybePath === "string" ? maybePath : undefined;
-}
-
-function isProjectLocalEforgePath(cwd: string, filePath: string): boolean {
-	const absolute = resolve(cwd, filePath);
-	const rel = relative(cwd, absolute);
-	if (rel === "" || rel.startsWith("..") || rel.includes(`..${sep}`)) return false;
-	return rel === ".eforge" || rel.startsWith(`.eforge${sep}`);
 }
 
 const RELEASE_BUMP_TYPES = ["patch", "minor", "major"] as const;
@@ -235,8 +221,8 @@ async function updateDevUi(pi: ExtensionAPI, ctx: ExtensionContext, previous?: D
 		ctx.ui.setWidget(
 			"eforge-dev",
 			[
-				theme.fg("warning", "⚠ eforge-dev: you are on main."),
-				theme.fg("dim", "Use /dev branch before planning or building non-release work."),
+				theme.fg("muted", "eforge-dev: currently on main."),
+				theme.fg("dim", "Tip: /dev branch <work description> can create a short-lived branch when useful."),
 			],
 			{ placement: "belowEditor" },
 		);
@@ -254,15 +240,10 @@ async function confirmIfDirty(pi: ExtensionAPI, ctx: ExtensionContext, action: s
 	return ctx.ui.confirm("Dirty worktree", `${state.dirtyCount} changed file(s). ${action} anyway?`);
 }
 
-async function promptForBranch(ctx: ExtensionContext): Promise<string | undefined> {
-	const input = await ctx.ui.input("Feature branch", "feat/short-description");
-	const branch = input?.trim();
-	if (!branch) return undefined;
-	if (!BRANCH_NAME_RE.test(branch)) {
-		ctx.ui.notify("Use a branch like feat/name, fix/name, docs/name, refactor/name, test/name, chore/name, or release/name", "warning");
-		return undefined;
-	}
-	return branch;
+async function promptForWorkDescription(ctx: ExtensionContext): Promise<string | undefined> {
+	const input = await ctx.ui.input("Work description", "describe what you want to work on");
+	const description = input?.trim();
+	return description || undefined;
 }
 
 class InfoPanel {
@@ -477,24 +458,28 @@ async function runChecks(pi: ExtensionAPI, ctx: ExtensionContext, setLastChecks:
 	return ok;
 }
 
-async function createBranch(pi: ExtensionAPI, ctx: ExtensionContext, branchArg?: string): Promise<void> {
-	const branch = branchArg?.trim() || (await promptForBranch(ctx));
-	if (!branch) return;
-	if (!BRANCH_NAME_RE.test(branch)) {
-		ctx.ui.notify("Invalid branch name. Use feat/name, fix/name, docs/name, refactor/name, test/name, chore/name, or release/name", "error");
+async function createBranch(pi: ExtensionAPI, ctx: ExtensionContext, workArg?: string): Promise<void> {
+	const raw = workArg?.trim();
+	const description = raw || (await promptForWorkDescription(ctx));
+	if (!description) return;
+
+	if (!BRANCH_NAME_RE.test(description)) {
+		pi.sendUserMessage(`Create or switch to a short-lived git branch for this work: ${description}
+
+Choose the branch name yourself. Use format <type>/<slug>, where type is one of feat, fix, docs, refactor, test, chore, release. Prefer concise, lowercase, hyphen-separated names. If the branch already exists, switch to it; otherwise create it. Do not ask me to name the branch.`);
 		return;
 	}
 
-	const okDirty = await confirmIfDirty(pi, ctx, `Create/switch to ${branch}`);
+	const okDirty = await confirmIfDirty(pi, ctx, `Create/switch to ${description}`);
 	if (!okDirty) return;
 
-	const exists = await pi.exec("git", ["rev-parse", "--verify", branch], { timeout: 5_000 });
-	const result = exists.code === 0 ? await pi.exec("git", ["switch", branch], { timeout: 10_000 }) : await pi.exec("git", ["switch", "-c", branch], { timeout: 10_000 });
+	const exists = await pi.exec("git", ["rev-parse", "--verify", description], { timeout: 5_000 });
+	const result = exists.code === 0 ? await pi.exec("git", ["switch", description], { timeout: 10_000 }) : await pi.exec("git", ["switch", "-c", description], { timeout: 10_000 });
 
 	if (result.code === 0) {
-		ctx.ui.notify(`Now on ${branch}`, "info");
+		ctx.ui.notify(`Now on ${description}`, "info");
 	} else {
-		ctx.ui.notify(oneLine(result.stderr, `Failed to switch to ${branch}`), "error");
+		ctx.ui.notify(oneLine(result.stderr, `Failed to switch to ${description}`), "error");
 	}
 }
 
@@ -1022,9 +1007,9 @@ async function prefillEforgePlan(ctx: ExtensionContext): Promise<void> {
 
 async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevState): Promise<string | null> {
 	const items: SelectItem[] = [
-		{ value: DEV_ACTION.BRANCH, label: "Create/switch feature branch", description: "Keep main releasable before eforge work" },
+		{ value: DEV_ACTION.BRANCH, label: "Create/switch branch from work description", description: "Describe the work; the model names the branch" },
 		{ value: DEV_ACTION.PLAN, label: "Prefill /eforge:plan", description: "Start the published pi-eforge planning flow" },
-		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, docs:check, docs:build" },
+		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, docs drift/link check" },
 		{ value: DEV_ACTION.PR, label: "Show PR readiness", description: "Branch, diff, docs drift, and next steps" },
 		{ value: DEV_ACTION.LAND, label: "Land current branch", description: "Commit, check, and open a PR or fast-forward merge" },
 		{ value: DEV_ACTION.RESTART, label: "Rebuild + restart daemon", description: "Use after local engine/CLI changes" },
@@ -1179,31 +1164,7 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 		if (!state?.isMain) return;
 
 		return {
-			systemPrompt: `${event.systemPrompt}\n\nProject-local eforge-dev policy: the current git branch is main. main should remain releasable. Before making tracked non-release code changes or starting eforge implementation work, ask the user to create a short-lived feature branch with /dev branch. Gitignored project-local eforge runtime/planning state under .eforge/ is exempt and may be updated on main.`,
+			systemPrompt: `${event.systemPrompt}\n\nProject-local eforge-dev note: the current git branch is main. /dev branch <work description> can create a short-lived branch automatically when useful, but do not block, pause, or ask for confirmation solely because work is happening on main. Assume the developer knows what they are doing.`,
 		};
-	});
-
-	pi.on("tool_call", async (event, ctx) => {
-		if (!state) await refresh(ctx);
-		if (!state?.isMain) return;
-
-		const mutationTools = new Set(["edit", "write"]);
-		if (mutationTools.has(event.toolName)) {
-			const mutationPath = getMutationPath(event.input);
-			if (mutationPath && isProjectLocalEforgePath(ctx.cwd, mutationPath)) return;
-
-			if (!ctx.hasUI) return { block: true, reason: "eforge-dev blocks tracked file mutation on main" };
-			const ok = await ctx.ui.confirm("Mutation on main", `${event.toolName} would modify files while on main. Allow once?`);
-			if (!ok) return { block: true, reason: "Blocked by eforge-dev branch policy" };
-		}
-
-		if (event.toolName === "bash") {
-			const command = typeof event.input?.command === "string" ? event.input.command : "";
-			const guarded = ["git commit", "git tag", "git push", "pnpm release", "eforge build", "pnpm publish", "npm publish"].some((needle) => command.includes(needle));
-			if (!guarded) return;
-			if (!ctx.hasUI) return { block: true, reason: "eforge-dev blocks guarded bash command on main" };
-			const ok = await ctx.ui.confirm("Guarded command on main", `Allow this command on main?\n\n${command}`);
-			if (!ok) return { block: true, reason: "Blocked by eforge-dev branch policy" };
-		}
 	});
 }

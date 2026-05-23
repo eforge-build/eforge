@@ -28,6 +28,7 @@ jobs:
 
       - run: pnpm test
 
-      - run: pnpm docs:check
-
-      - run: pnpm docs:build
+      # pnpm build already builds @eforge-build/docs-gen and the web docs site.
+      # Run the generated docs drift/link check directly to avoid rebuilding the
+      # docs-gen dependency closure, and leave production docs builds to Vercel.
+      - run: node packages/docs-gen/dist/cli.js check

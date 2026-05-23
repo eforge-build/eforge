@@ -24,7 +24,7 @@ import type {
   RecoveryVerdict,
   BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
@@ -1305,6 +1305,7 @@ export class EforgeEngine {
 
         let status: 'completed' | 'failed' | 'skipped' | 'already-claimed';
         let moveTo: 'failed' | 'skipped' | null;
+        let shouldCleanupCompleted = false;
         const shouldRelease = !isAlreadyClaimed;
 
         if (isSignalKill && wasAborted) {
@@ -1321,6 +1322,7 @@ export class EforgeEngine {
         } else if (exitCode === QueueExecExitCode.Completed) {
           status = 'completed';
           moveTo = null;
+          shouldCleanupCompleted = true;
         } else if (exitCode === QueueExecExitCode.Skipped) {
           status = 'skipped';
           moveTo = 'skipped';
@@ -1342,7 +1344,13 @@ export class EforgeEngine {
           if (shouldRelease) {
             try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
           }
-          if (moveTo === 'failed') {
+          if (shouldCleanupCompleted) {
+            // Successful builds leave the committed provenance copy under
+            // `eforge/prds/` to the normal git cleanup path, but the runtime
+            // queue source under `.eforge/queue/` is gitignored and must be
+            // removed here so daemon restarts do not rediscover completed work.
+            try { await cleanupCompletedPrd(filePath, config.prdQueue.dir, cwd); } catch { /* best-effort */ }
+          } else if (moveTo === 'failed') {
             // Run recovery inline, synthesizing from monitor DB and git.
             const setName = prdId;
             const dbPath = resolve(cwd, '.eforge', 'monitor.db');
