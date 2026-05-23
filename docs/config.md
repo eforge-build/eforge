@@ -50,7 +50,7 @@ agents:
   #     pi:                   #   Pi-specific sub-block (required for harness: pi)
   #       provider: openrouter
   #     # claudeSdk:          #   Claude SDK-specific sub-block (ignored unless harness: claude-sdk)
-  #     #   disableSubagents: false
+  #     #   disableSubagents: true  # Default; set false to allow Claude Code subagents
   #   implementation:
   #     harness: pi
   #     model: anthropic/claude-sonnet-4-6
@@ -208,7 +208,7 @@ agents:
         # thinkingLevel: xhigh # Pi only: 'off', 'low', 'medium', 'high', 'xhigh'
         # resources: isolated  # 'isolated' (default) or 'ambient' — see Headless resource isolation below
       claudeSdk:               # Optional: Claude SDK-specific config (ignored unless harness: claude-sdk)
-        disableSubagents: false # Prevent agents in this tier from spawning subagents
+        disableSubagents: true  # Default: prevent agents in this tier from spawning subagents
 ```
 
 ### Pi Backend Tiers
@@ -314,7 +314,7 @@ The `claude-sdk` harness remains supported as an Anthropic-specific secondary pa
 
 The `claudeSdk:` sub-block on a tier holds options specific to the Claude SDK harness:
 
-- **`disableSubagents: true`** appends `'Task'` to every agent run's `disallowedTools` for all roles in that tier, preventing agents from spawning Claude Code subagents. Useful for debugging, cost control, or determinism.
+- **`disableSubagents`** defaults to `true`. When enabled, eforge appends `'Task'` to every agent run's `disallowedTools` for all roles in that tier, preventing agents from spawning Claude Code subagents. Set `disableSubagents: false` only when you intentionally want Claude Code subagents available.
 
 ```yaml
 agents:
@@ -327,7 +327,7 @@ agents:
         disableSubagents: true
 ```
 
-Per-role `agents.roles.<role>.disallowedTools` values are preserved; `'Task'` is appended (de-duplicated).
+Per-role `agents.roles.<role>.disallowedTools` values are preserved; when subagents are disabled, `'Task'` is appended (de-duplicated).
 
 ## Model References
 

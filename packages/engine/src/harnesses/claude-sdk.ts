@@ -133,8 +133,8 @@ export interface ClaudeSDKHarnessOptions {
   bare?: boolean;
   /**
    * When true, the backend appends the `Task` tool to every agent run's
-   * `disallowedTools` list so agents cannot spawn subagents. Claude SDK-only —
-   * Pi has no Task tool / subagent concept.
+   * `disallowedTools` list so agents cannot spawn subagents. Defaults to true.
+   * Claude SDK-only — Pi has no Task tool / subagent concept.
    */
   disableSubagents?: boolean;
   /**
@@ -193,7 +193,7 @@ export class ClaudeSDKHarness implements AgentHarness {
     this.plugins = options?.plugins;
     this.settingSources = options?.settingSources;
     this.bare = options?.bare ?? false;
-    this.disableSubagents = options?.disableSubagents ?? false;
+    this.disableSubagents = options?.disableSubagents ?? true;
     this.onDebugPayload = options?.onDebugPayload;
   }
 

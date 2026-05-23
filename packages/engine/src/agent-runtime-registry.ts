@@ -6,7 +6,8 @@
  * harness instances are memoized by (harness, provider, sortedProjectMcpServers,
  * disableSubagents) so two tiers sharing the same effective tool surface share
  * one instance; tiers with different toolbelts (different effective project MCP
- * server sets) get distinct instances.
+ * server sets) get distinct instances. Claude SDK tiers disable subagents by default
+ * unless they explicitly opt out.
  */
 
 import type { AgentRole } from './events.js';
@@ -263,7 +264,8 @@ function makeKey(
  * Lazily imports `./harnesses/pi.js` the first time a Pi tier is needed.
  * Harness instances are memoized by (harness, provider, sortedProjectMcpServerNames,
  * disableSubagents) so tiers sharing the same effective tool surface reuse one
- * instance; tiers with different toolbelts get distinct instances.
+ * instance; tiers with different toolbelts get distinct instances. Claude SDK tiers
+ * default disableSubagents to true.
  */
 export async function buildAgentRuntimeRegistry(
   config: EforgeConfig,
@@ -308,7 +310,7 @@ export async function buildAgentRuntimeRegistry(
     const { projectMcpServerMap, summary } = resolveTierToolbelt(tierName, tierRecipe, globalMcp, toolbelts);
     const provider = tierRecipe.harness === 'pi' ? tierRecipe.pi?.provider : undefined;
     const disableSubagents = tierRecipe.harness === 'claude-sdk'
-      ? (tierRecipe.claudeSdk?.disableSubagents ?? false)
+      ? (tierRecipe.claudeSdk?.disableSubagents ?? true)
       : false;
 
     // --- eforge:region plan-01-pi-headless-isolation ---

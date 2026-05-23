@@ -210,7 +210,7 @@ describe('memoization: toolbelt differences create distinct instances', () => {
       agents: {
         tiers: {
           planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
-          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const, claudeSdk: { disableSubagents: true } },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const, claudeSdk: { disableSubagents: false } },
           review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
           evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
         },
@@ -220,9 +220,9 @@ describe('memoization: toolbelt differences create distinct instances', () => {
       mcpServers: FAKE_MCP,
     });
 
-    const { harness: planHarness } = registry.forRoleResolved('planner');     // disableSubagents=false
-    const { harness: implHarness } = registry.forRoleResolved('builder');     // disableSubagents=true
-    const { harness: reviewHarness } = registry.forRoleResolved('reviewer');  // disableSubagents=false
+    const { harness: planHarness } = registry.forRoleResolved('planner');     // disableSubagents=true by default
+    const { harness: implHarness } = registry.forRoleResolved('builder');     // disableSubagents=false by explicit opt-out
+    const { harness: reviewHarness } = registry.forRoleResolved('reviewer');  // disableSubagents=true by default
 
     // Different disableSubagents → distinct instances
     expect(planHarness).not.toBe(implHarness);

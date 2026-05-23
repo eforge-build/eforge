@@ -102,7 +102,7 @@ agents:
         disableSubagents: true
 ```
 
-Claude Agent SDK usage follows Anthropic's Agent SDK credit/API-pricing policy described in Getting Started; choose this path only when you intentionally want the Anthropic-specific SDK.
+Claude Agent SDK usage follows Anthropic's Agent SDK credit/API-pricing policy described in Getting Started; choose this path only when you intentionally want the Anthropic-specific SDK. Claude SDK tiers disable Claude Code subagents by default by denying the `Task` tool; set `claudeSdk.disableSubagents: false` only when you intentionally want subagents available.
 
 ## Agent Runtime Profiles
 

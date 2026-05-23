@@ -188,7 +188,7 @@
                 "type": "object",
                 "properties": {
                   "disableSubagents": {
-                    "description": "Disable the Task tool so agents cannot spawn subagents. Claude SDK harness only.",
+                    "description": "Disable the Task tool so agents cannot spawn subagents. Defaults to true. Claude SDK harness only.",
                     "type": "boolean"
                   }
                 },
