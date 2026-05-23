@@ -223,7 +223,7 @@ describe('buildAgentRuntimeRegistry — forRoleResolved toolbelt summary', () =>
       agents: {
         tiers: {
           planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
-          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const, claudeSdk: { disableSubagents: true } },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const, claudeSdk: { disableSubagents: false } },
           review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
           evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
         },
@@ -231,9 +231,9 @@ describe('buildAgentRuntimeRegistry — forRoleResolved toolbelt summary', () =>
     });
     const registry = await buildAgentRuntimeRegistry(config, { mcpServers: FAKE_MCP });
 
-    const { harness: planH } = registry.forRoleResolved('planner');    // disableSubagents=false
-    const { harness: implH } = registry.forRoleResolved('builder');    // disableSubagents=true
-    const { harness: reviewH } = registry.forRoleResolved('reviewer'); // disableSubagents=false
+    const { harness: planH } = registry.forRoleResolved('planner');    // disableSubagents=true by default
+    const { harness: implH } = registry.forRoleResolved('builder');    // disableSubagents=false by explicit opt-out
+    const { harness: reviewH } = registry.forRoleResolved('reviewer'); // disableSubagents=true by default
 
     expect(planH).not.toBe(implH);  // different disableSubagents
     expect(planH).toBe(reviewH);    // same disableSubagents and toolbelt

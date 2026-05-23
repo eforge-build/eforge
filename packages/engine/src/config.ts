@@ -212,7 +212,7 @@ export const harnessSchema = harnessTypeSchema;
 export const piThinkingLevelSchema = z.enum(['off', 'low', 'medium', 'high', 'xhigh']).describe('Pi-native thinking level');
 
 export const claudeSdkConfigSchema = z.object({
-  disableSubagents: z.boolean().optional().describe('Disable the Task tool so agents cannot spawn subagents. Claude SDK harness only.'),
+  disableSubagents: z.boolean().optional().describe('Disable the Task tool so agents cannot spawn subagents. Defaults to true. Claude SDK harness only.'),
 }).describe('Configuration specific to the Claude SDK harness');
 
 export const piConfigSchema = z.object({
@@ -537,6 +537,7 @@ export interface PiConfig {
 
 /** Resolved Claude SDK harness config. */
 export interface ClaudeSdkConfig {
+  /** Defaults to true for Claude SDK tiers; set false to allow the Task/subagent tool. */
   disableSubagents: boolean;
 }
 

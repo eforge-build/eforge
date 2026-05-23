@@ -171,7 +171,7 @@ async function buildBackendForDebug(
   }
 
   // default: claude-sdk
-  const disableSubagents = tier?.claudeSdk?.disableSubagents ?? false;
+  const disableSubagents = tier?.claudeSdk?.disableSubagents ?? true;
   return new ClaudeSDKHarness({
     settingSources: config.agents.settingSources as never,
     bare: config.agents.bare,
