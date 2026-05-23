@@ -1,7 +1,7 @@
 /**
  * Native Pi command handler for /eforge:restart.
  *
- * Provides a confirmation-oriented overlay flow for safely restarting the
+ * Provides a confirmation-oriented selector/panel flow for safely restarting the
  * daemon. The command is an explicit lifecycle action, so it may start the
  * daemon after user confirmation, but it never starts the daemon from passive
  * status/polling paths.

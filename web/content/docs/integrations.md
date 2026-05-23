@@ -56,7 +56,7 @@ All eforge workflows are available as slash commands:
 
 ## Pi extension
 
-The Pi extension provides the same capabilities as the Claude Code plugin through Pi's native command and overlay system.
+The Pi extension provides the same capabilities as the Claude Code plugin through Pi's native command system and interactive TUI surfaces.
 
 ### Install
 
@@ -71,7 +71,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable overlays for profile and playbook selection. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_session_plan`, `eforge_playbook`, and `eforge_extension`.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_session_plan`, `eforge_playbook`, and `eforge_extension`.
 
 ## Standalone CLI
 

@@ -1,7 +1,7 @@
 /**
  * Native Pi command handler for playbook management.
  *
- * Provides interactive overlay-based UX for listing, running, promoting,
+ * Provides interactive selector/panel UX for listing, running, promoting,
  * and demoting playbooks (/eforge:playbook). Create and Edit are conversational
  * and delegate to the Pi skill for scope-classification reasoning and
  * section-by-section walkthrough. Falls back to skill forwarding when the

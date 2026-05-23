@@ -1,7 +1,7 @@
 /**
  * Native Pi command handler for config viewing.
  *
- * Provides a structured read-only overlay of the resolved eforge
+ * Provides a structured read-only panel of the resolved eforge
  * configuration (/eforge:config). Falls back to skill forwarding
  * when the Pi UI is not available.
  */

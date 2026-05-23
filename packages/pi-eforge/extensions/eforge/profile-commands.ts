@@ -1,7 +1,7 @@
 /**
  * Native Pi command handlers for profile management.
  *
- * Provides interactive overlay-based UX for listing, inspecting, and
+ * Provides interactive selector/panel UX for listing, inspecting, and
  * switching profiles (/eforge:profile) and a multi-step creation
  * wizard (/eforge:profile:new). Falls back to skill forwarding when
  * the Pi UI is not available.
@@ -127,7 +127,7 @@ export async function handleProfileCommand(
   const selected = await showSelectOverlay(ctx, "eforge - Profiles", items);
   if (!selected) return;
 
-  // Show metadata info overlay before action items when metadata is present
+  // Show metadata info panel before action items when metadata is present
   const selectedProfile = profiles.find((p) => p.name === selected);
   if (
     selectedProfile?.metadata &&

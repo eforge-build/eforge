@@ -2,7 +2,7 @@
  * Pure helper for building the daemon profileCreate payload from per-tier
  * agent runtime selections collected by the /eforge:profile:new wizard.
  *
- * This module contains no TUI overlay calls and is fully unit-testable.
+ * This module contains no TUI panel calls and is fully unit-testable.
  */
 
 // ---------------------------------------------------------------------------

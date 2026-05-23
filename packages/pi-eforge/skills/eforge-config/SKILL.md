@@ -4,7 +4,7 @@ description: Initialize or edit eforge/config.yaml team-wide settings, with vali
 disable-model-invocation: true
 ---
 
-> **Note:** In Pi, the native `/eforge:config` command provides a richer interactive experience with a structured config viewer overlay. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
+> **Note:** In Pi, the native `/eforge:config` command provides a richer interactive experience with a structured TUI panel viewer. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
 
 # /eforge:config
 

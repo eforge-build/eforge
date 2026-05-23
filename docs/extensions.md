@@ -12,7 +12,7 @@ Native eforge extensions are distinct from other extensibility mechanisms:
 |-----------|----------------|---------------|---------|
 | Native eforge extensions | TypeScript/JavaScript modules in `extensions/` | eforge daemon/worker | Typed lifecycle registrations, per-run prompt/tool augmentation, and runtime hooks |
 | Claude Code plugins | Claude Code plugin package | Claude Code host | Slash commands, MCP proxy wiring, Claude Code UX |
-| Pi extensions | Pi extension package | Pi host | Native Pi commands, tools, and overlays |
+| Pi extensions | Pi extension package | Pi host | Native Pi commands, tools, and TUI surfaces |
 | Shell hooks | YAML + shell command | eforge hook runner | Fire-and-forget notifications/integrations |
 | Playbooks/session plans | Markdown input artifacts | `@eforge-build/input` then engine queue | Reusable build sources and planning artifacts |
 | Profile toolbelts | YAML MCP server bundles | agent runtime registry | Declarative project MCP server selection |
