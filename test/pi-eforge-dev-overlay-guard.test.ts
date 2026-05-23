@@ -53,11 +53,15 @@ describe('project-local eforge-dev panel guardrails', () => {
     expect(block).toContain('matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))');
   });
 
-  it('uses maintainer cockpit panel wording in local docs', () => {
+  it('documents the /dev cockpit as a panel, not an overlay', () => {
     const readme = readRepoFile('.pi/extensions/eforge-dev/README.md');
+    const commands = extractTextCommandDescriptions(readme);
+    const devDescription = commands.get('/dev');
 
-    expect(readme).toContain('/dev              Open the maintainer cockpit panel');
-    expect(readme).not.toMatch(/cockpit overlay/i);
+    expect(devDescription, 'README command table should document /dev').toBeDefined();
+    expect(devDescription).toMatch(/\bmaintainer cockpit\b/i);
+    expect(devDescription).toMatch(/\bpanel\b/i);
+    expect(devDescription).not.toMatch(/\boverlay\b/i);
   });
 });
 
@@ -67,4 +71,17 @@ function sliceBetween(source: string, startNeedle: string, endNeedle: string): s
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   return source.slice(start, end);
+}
+
+function extractTextCommandDescriptions(markdown: string): Map<string, string> {
+  const block = markdown.match(/```text\n(?<commands>[\s\S]*?)\n```/)?.groups?.commands;
+  expect(block, 'README should include a fenced text command table').toBeDefined();
+
+  const commands = new Map<string, string>();
+  for (const line of block!.split('\n')) {
+    const match = line.match(/^(?<command>\S+(?:\s+\S+)*)\s{2,}(?<description>\S.*)$/);
+    if (!match?.groups) continue;
+    commands.set(match.groups.command, match.groups.description.trim());
+  }
+  return commands;
 }
