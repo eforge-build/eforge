@@ -576,6 +576,22 @@ describe('Skill-forwarding removed for native commands (plan-02-native-pi-ux)', 
     expect(block).toContain('handleRestartCommand');
     expect(block).not.toContain('sendUserMessage');
   });
+
+  it('native eforge:build handler calls handleBuildCommand (not skill forwarding)', () => {
+    const idx = source.indexOf('pi.registerCommand("eforge:build"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = source.slice(idx, idx + 400);
+    expect(block).toContain('handleBuildCommand');
+    expect(block).not.toContain('sendUserMessage');
+  });
+
+  it('native eforge:plan handler calls handlePlanCommand (not skill forwarding)', () => {
+    const idx = source.indexOf('pi.registerCommand("eforge:plan"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = source.slice(idx, idx + 400);
+    expect(block).toContain('handlePlanCommand');
+    expect(block).not.toContain('sendUserMessage');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -589,10 +605,10 @@ describe('Remaining commands still forward to skills (plan-02-native-pi-ux)', ()
   const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
 
   // eforge:build is now a dedicated native command (plan-01-per-build-profile-override),
-  // eforge:status now has a native overlay handler, and eforge:restart has a
-  // native safe-restart overlay, so none of those commands is in the
-  // skillCommands array.
-  for (const cmd of ['eforge:init', 'eforge:plan', 'eforge:update']) {
+  // eforge:status now has a native overlay handler, eforge:restart has a
+  // native safe-restart overlay, and eforge:plan has native selectors, so none
+  // of those commands is in the skillCommands array.
+  for (const cmd of ['eforge:init', 'eforge:update']) {
     it(`${cmd} remains in the skillCommands array`, () => {
       expect(skillCommandsBlock).toContain(`"${cmd}"`);
     });

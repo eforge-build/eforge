@@ -10,14 +10,16 @@ Enqueue a PRD file or description for the eforge daemon to build. Uses the eforg
 
 ## Arguments
 
-- `source` (optional) - PRD file path or inline description of what to build
+- `source` (optional) - PRD file path, session-plan path, or inline description of what to build
+- `--infer` (optional) - Skip session-plan discovery and infer the source from conversation context. Used by Pi's native `/eforge:build` source selector.
+- `--profile <name>` (optional) - Use this eforge agent runtime profile for the build instead of the active profile.
 - `onSuccess` (optional) - Override the landing action for this build. One of `merge-to-base-branch`, `issue-pr`, or `leave-branch`. Precedence: this argument > PRD frontmatter > `build.onSuccess` in `eforge/config.yaml` > engine default (`merge-to-base-branch`). If omitted, the project config default applies. Note: `merge-to-base-branch` on the trunk branch requires `build.allowLocalMergeToTrunk: true` in `eforge/config.yaml`.
 
 ## Workflow
 
 ### Step 1: Resolve Source Input
 
-Determine the working source from one of three branches:
+Parse and remember any `--profile <name>` override before resolving the source. Determine the working source from one of four branches:
 
 **Branch A — File path**: If `$ARGUMENTS` is a file path (ends in `.md`, `.txt`, `.yaml`, or contains `/`):
 1. Verify the file exists with the Read tool
@@ -28,7 +30,9 @@ Determine the working source from one of three branches:
 1. Note the inline description as the working source
 2. Proceed to **Step 2**
 
-**Branch C — No arguments**: If `$ARGUMENTS` is empty or not provided:
+**Branch C — Infer from context**: If `$ARGUMENTS` includes `--infer`, skip session-plan discovery and go directly to Branch D step 2 (conversation-context inference). Remove the `--infer` flag from the working source; it is a control flag, not build content.
+
+**Branch D — No source arguments**: If `$ARGUMENTS` is empty, not provided, or contains only control flags like `--profile`:
 
 1. **Check for active session plan** — Call `eforge_session_plan { action: 'list-active' }` to discover active plans. If found:
    - If one plan exists, present a summary: "I found a planning session: _{topic}_. Status: {status}."
@@ -40,7 +44,7 @@ Determine the working source from one of three branches:
      - Ask the user whether to submit as-is or continue planning (suggest `/eforge:plan --resume`)
    - If the user confirms a `planning` session, use the **session plan file path** as the source and proceed to **Step 4**
 
-2. **Fall back to conversation context** — If no session plans are found (or the user declines to use one):
+2. **Fall back to conversation context** — If `--infer` was provided, no session plans are found, or the user declines to use one:
    - Examine conversation context for intent signals:
      - Recently discussed features or requirements
      - Files the user has been editing or asking about
@@ -136,7 +140,7 @@ First, validate the project config by calling the `eforge_config` tool with `{ a
 
 - If `valid` is `true`, continue silently.
 
-Call the `eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified an `onSuccess` override for this build, include `onSuccess: "<value>"` in the call.
+Call the `eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If the user explicitly specified an `onSuccess` override for this build, include `onSuccess: "<value>"` in the call.
 
 <!-- parity-skip-start -->
 If the user asks to choose a per-build landing action, use `showSelectOverlay` with the three options (`merge-to-base-branch`, `issue-pr`, `leave-branch`) before calling the tool.
@@ -146,7 +150,7 @@ The tool returns a JSON response with a `sessionId` and `autoBuild` status.
 
 After successful enqueue:
 
-1. If the source came from a session plan file (Branch C, step 1), the daemon automatically updates the session file's status to `submitted` and records the session ID — no manual frontmatter edit is needed.
+1. If the source came from a session plan file (Branch A path input, or Branch D session-plan selection), the daemon automatically updates the session file's status to `submitted` and records the session ID — no manual frontmatter edit is needed.
 
 2. Tell the user:
 
