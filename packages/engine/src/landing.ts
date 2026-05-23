@@ -16,7 +16,7 @@
  * Branch-aware workflow classification:
  *   - `trunk-pr`: issue-pr when baseBranch is trunk
  *   - `trunk-local-merge`: merge-to-base-branch when baseBranch is trunk + opt-in
- *   - `feature-pr-after-local-merge`: issue-pr when baseBranch is non-trunk feature branch
+ *   - `feature-pr`: issue-pr when baseBranch is non-trunk feature branch (direct PR: featureBranch → baseBranch)
  *   - `feature-local-merge`: merge-to-base-branch when baseBranch is non-trunk feature branch
  *   - `leave-branch`: no landing action
  * --- eforge:endregion plan-03-branch-aware-landing ---
@@ -50,7 +50,7 @@ export type LandingAction = 'merge-to-base-branch' | 'issue-pr' | 'leave-branch'
 export type LandingWorkflow =
   | 'trunk-pr'
   | 'trunk-local-merge'
-  | 'feature-pr-after-local-merge'
+  | 'feature-pr'
   | 'feature-local-merge'
   | 'leave-branch';
 // --- eforge:endregion plan-03-branch-aware-landing ---
@@ -214,7 +214,7 @@ export async function* executeLandingAction(
     workflow = baseBranchIsTrunk ? 'trunk-local-merge' : 'feature-local-merge';
   } else {
     // issue-pr
-    workflow = baseBranchIsTrunk ? 'trunk-pr' : 'feature-pr-after-local-merge';
+    workflow = baseBranchIsTrunk ? 'trunk-pr' : 'feature-pr';
   }
   // --- eforge:endregion plan-03-branch-aware-landing ---
 
@@ -336,7 +336,7 @@ export async function* executeLandingAction(
 
   if (action === 'issue-pr') {
     // --- eforge:region plan-03-branch-aware-landing ---
-    // Run cleanup BEFORE issuing the PR for both trunk-pr and feature-pr-after-local-merge.
+    // Run cleanup BEFORE issuing the PR for both trunk-pr and feature-pr.
     if (shouldCleanup && cleanupPlanSet && cleanupOutputDir) {
       for await (const event of runCleanup(
         mergeWorktreePath,
@@ -352,33 +352,9 @@ export async function* executeLandingAction(
     // --- eforge:endregion plan-03-branch-aware-landing ---
 
     try {
-      // --- eforge:region plan-03-branch-aware-landing ---
-      let url: string;
-      if (!baseBranchIsTrunk) {
-        // Non-trunk: merge into the base feature branch first, push that branch,
-        // then open a PR from the base feature branch to trunk.
-        //
-        // The feature-pr-after-local-merge workflow performs a local merge in
-        // repoRoot (via mergeFeatureBranchToBase), which rejects on a dirty
-        // working tree. Auto-recover dirty files first to match the behavior
-        // of the merge-to-base-branch path above.
-        for await (const event of recoverDirtyTree(repoRoot, ts)) {
-          yield event;
-        }
-        const prResult = await worktreeManager.issuePr({
-          baseBranch,
-          trunkBranch: trunk,
-          mergeIntoBaseFirst: true,
-          commitMessage,
-          mergeResolver,
-        });
-        url = prResult.url;
-      } else {
-        // Trunk: standard push-and-PR workflow
-        const prResult = await worktreeManager.issuePr({ baseBranch });
-        url = prResult.url;
-      }
-      // --- eforge:endregion plan-03-branch-aware-landing ---
+      // Direct PR workflow: always publish featureBranch -> baseBranch
+      const prResult = await worktreeManager.issuePr({ baseBranch });
+      const url = prResult.url;
 
       yield {
         type: 'landing:complete' as const,

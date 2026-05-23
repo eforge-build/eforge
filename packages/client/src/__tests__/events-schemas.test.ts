@@ -848,6 +848,51 @@ describe('safeParseEforgeEvent — rejection of invalid payloads', () => {
 // agent:start — thinkingCoerced / thinkingOriginal fields (AC #8 precursor)
 // ---------------------------------------------------------------------------
 
+// --- eforge:region plan-01-direct-pr-landing ---
+describe('safeParseEforgeEvent — landing workflow literals', () => {
+  it('accepts landing:start with feature-pr workflow literal (direct non-trunk PR)', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'issue-pr',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'feature/parent',
+      trunkBranch: 'main',
+      workflow: 'feature-pr',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects landing:start with removed feature-pr-after-local-merge literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'issue-pr',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'feature/parent',
+      trunkBranch: 'main',
+      workflow: 'feature-pr-after-local-merge',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts all valid workflow literals in landing:start', () => {
+    const workflows = ['trunk-pr', 'trunk-local-merge', 'feature-pr', 'feature-local-merge', 'leave-branch'] as const;
+    for (const workflow of workflows) {
+      const result = safeParseEforgeEvent({
+        type: 'landing:start',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        action: 'issue-pr',
+        featureBranch: 'eforge/my-set',
+        baseBranch: 'main',
+        workflow,
+      });
+      expect(result.success, `workflow '${workflow}' should be accepted`).toBe(true);
+    }
+  });
+});
+// --- eforge:endregion plan-01-direct-pr-landing ---
+
 describe('agent:start — runtime decision fields survive schema round-trip', () => {
   it('accepts agent:start with thinkingCoerced and thinkingOriginal', () => {
     const event = {

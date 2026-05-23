@@ -1602,7 +1602,7 @@ const EforgeEventVariantsSchema = Type.Union([
     workflow: Type.Optional(Type.Union([
       Type.Literal('trunk-pr'),
       Type.Literal('trunk-local-merge'),
-      Type.Literal('feature-pr-after-local-merge'),
+      Type.Literal('feature-pr'),
       Type.Literal('feature-local-merge'),
       Type.Literal('leave-branch'),
     ])),

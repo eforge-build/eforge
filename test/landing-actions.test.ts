@@ -119,7 +119,11 @@ if (args[0] === 'pr' && args[1] === 'create') {
   process.exit(1);
 }
 if (args[0] === 'pr' && args[1] === 'view') {
-  process.stdout.write('https://github.com/test/repo/pull/42\\n');
+  if (args.includes('url,baseRefName')) {
+    process.stdout.write(JSON.stringify({ url: 'https://github.com/test/repo/pull/42', baseRefName: 'main' }) + '\\n');
+  } else {
+    process.stdout.write('https://github.com/test/repo/pull/42\\n');
+  }
   process.exit(0);
 }
 process.exit(1);
@@ -698,7 +702,7 @@ describe('executeLandingAction', () => {
     });
 
     // --- eforge:region plan-03-branch-aware-landing ---
-    it('non-trunk issue-pr: merges locally, pushes base feature branch, opens PR targeting trunk', async () => {
+    it('non-trunk issue-pr: direct PR — pushes eforge artifact branch, opens PR targeting base feature branch', async () => {
       const dir = makeTempDir();
       const repoRoot = await initRepo(dir);
       const remotePath = setupRemote(dir);
@@ -723,7 +727,7 @@ describe('executeLandingAction', () => {
       execFileSync('git', ['-C', repoRoot, 'add', '.']);
       execFileSync('git', ['-C', repoRoot, 'commit', '-m', 'feat: add feature.ts']);
 
-      // Check out feature/parent so repoRoot is on the base branch for mergeFeatureBranchToBase
+      // Go back to feature/parent
       execFileSync('git', ['-C', repoRoot, 'checkout', 'feature/parent']);
 
       // Create merge worktree with eforge work branch
@@ -763,7 +767,8 @@ describe('executeLandingAction', () => {
         expect(eventTypes).not.toContain('landing:skipped');
 
         const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
-        expect(landingStart.workflow).toBe('feature-pr-after-local-merge');
+        // Direct non-trunk PR: workflow is feature-pr, not feature-pr-after-local-merge
+        expect(landingStart.workflow).toBe('feature-pr');
         expect(landingStart.trunkBranch).toBe('main');
 
         const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
@@ -773,30 +778,30 @@ describe('executeLandingAction', () => {
         expect(result.landingSucceeded).toBe(true);
         expect(result.prUrl).toBe('https://github.com/test/repo/pull/1');
 
-        // Local feature/parent must contain feature.ts (local merge happened)
+        // Regression: feature/parent must NOT contain feature.ts — no local merge occurred
         const featureOnParent = await exec('git', ['cat-file', '-e', 'feature/parent:feature.ts'], { cwd: repoRoot })
           .then(() => 'exists' as const, () => 'missing' as const);
-        expect(featureOnParent).toBe('exists');
+        expect(featureOnParent).toBe('missing');
 
         // Trunk (main) must NOT contain feature.ts
         const featureOnMain = await exec('git', ['cat-file', '-e', 'main:feature.ts'], { cwd: repoRoot })
           .then(() => 'exists' as const, () => 'missing' as const);
         expect(featureOnMain).toBe('missing');
 
-        // Remote feature/parent must have been updated to match local
-        const { stdout: localParentSha } = await exec('git', ['-C', repoRoot, 'rev-parse', 'feature/parent']);
-        const { stdout: remoteParentSha } = await exec('git', ['--git-dir', remotePath, 'rev-parse', 'feature/parent']);
-        expect(remoteParentSha.trim()).toBe(localParentSha.trim());
+        // eforge artifact branch (eforge/test-set) must have been pushed to origin
+        const { stdout: localFeatureSha } = await exec('git', ['-C', repoRoot, 'rev-parse', featureBranch]);
+        const { stdout: remoteFeatureSha } = await exec('git', ['--git-dir', remotePath, 'rev-parse', featureBranch]);
+        expect(remoteFeatureSha.trim()).toBe(localFeatureSha.trim());
 
-        // gh pr create must have been called with --base main --head feature/parent
+        // gh pr create must have been called with --base feature/parent --head eforge/test-set
         const ghArgsLog = readFileSync(join(ghBinDir, 'gh-args.log'), 'utf-8').trim();
         const lastInvocation: string[] = JSON.parse(ghArgsLog.split('\n').at(-1)!);
         const baseIdx = lastInvocation.indexOf('--base');
         const headIdx = lastInvocation.indexOf('--head');
         expect(baseIdx).toBeGreaterThan(-1);
         expect(headIdx).toBeGreaterThan(-1);
-        expect(lastInvocation[baseIdx + 1]).toBe('main');
-        expect(lastInvocation[headIdx + 1]).toBe('feature/parent');
+        expect(lastInvocation[baseIdx + 1]).toBe('feature/parent');
+        expect(lastInvocation[headIdx + 1]).toBe('eforge/test-set');
       } finally {
         process.env.PATH = origPath;
       }

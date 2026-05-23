@@ -5122,7 +5122,7 @@
                   "type": "string"
                 },
                 {
-                  "const": "feature-pr-after-local-merge",
+                  "const": "feature-pr",
                   "type": "string"
                 },
                 {
