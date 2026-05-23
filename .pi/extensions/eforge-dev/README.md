@@ -7,7 +7,7 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 ## Commands
 
 ```text
-/dev              Open the maintainer cockpit overlay
+/dev              Open the maintainer cockpit panel
 /dev branch       Create or switch to a short-lived feature branch
 /dev checks       Run build, type-check, test, docs:check, and docs:build
 /dev pr           Show PR-readiness summary
