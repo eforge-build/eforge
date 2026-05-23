@@ -8,7 +8,7 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 
 ```text
 /dev              Open the maintainer cockpit overlay
-/dev branch       Create or switch to a short-lived feature branch
+/dev branch       Describe the work; the model creates/switches to a short-lived branch
 /dev checks       Run build, type-check, test, docs:check, and docs:build
 /dev pr           Show PR-readiness summary
 /dev land         Auto-commit with /skill:commit, check, and open a PR, optionally enabling auto-merge after CI passes
@@ -20,14 +20,14 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 /dev refresh      Refresh footer/widget status
 ```
 
+`/dev branch` accepts either a backward-compatible explicit branch name like `fix/foo` or a natural-language work description like `fix the dev branch prompt`. When a description is provided, the command defers to the active LLM to choose the branch name and run the git switch/create command.
+
 ## Policy helpers
 
 - Shows current branch and dirty status in the Pi footer.
-- Shows a warning widget when working on `main`.
-- Injects a reminder into the agent context when on `main`.
-- Asks for confirmation before `edit`/`write` tool calls on `main` for tracked/project files.
-- Allows gitignored project-local eforge runtime/planning state under `.eforge/` (for example `.eforge/session-plans/`) to be updated on `main` without confirmation.
-- Asks for confirmation before guarded bash commands on `main`, including release/publish/tag/push commands.
+- Shows an informational widget when working on `main`.
+- Injects a non-blocking note into the agent context when on `main`.
+- Does not block or require confirmation for edits/commands solely because the current branch is `main`; local developers are assumed to know what they are doing.
 
 ## Release flow
 
@@ -35,4 +35,4 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 
 If Pi exits before the PR merges, run `/dev release-finalize vX.Y.Z` after the PR has merged to tag, push the tag, and create the GitHub Release.
 
-These are local UX guardrails only. GitHub branch/tag protections and CI remain the hard enforcement layer.
+These are local UX helpers only. GitHub branch/tag protections and CI remain the hard enforcement layer.
