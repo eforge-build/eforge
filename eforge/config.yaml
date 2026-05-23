@@ -18,6 +18,7 @@ agents:
       model: claude-opus-4-7
       effort: high
 build:
+  onSuccess: issue-pr
   postMergeCommands:
     - pnpm install
     - pnpm build
