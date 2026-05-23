@@ -18,12 +18,14 @@ eforge merges configuration from three tiers (highest precedence first):
 | `daemon` |  |
 | `extensions` | Native eforge extension configuration |
 | `hooks` |  |
+| `landing` |  |
 | `langfuse` |  |
 | `maxConcurrentBuilds` |  |
 | `monitor` |  |
 | `plan` |  |
 | `plugins` |  |
 | `prdQueue` |  |
+| `stacking` |  |
 | `tools` |  |
 
 ## Toolbelts

@@ -329,12 +329,22 @@ export type {
   BuildDecision,
   PlanningDecision,
   PlanningDecisionEvent,
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  StackProvider,
+  LandingPublicationAction,
+  StackLayerStatus,
+  StackArtifactRef,
+  StackLayerWire,
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema, PlanningDecisionSchema, safeParseEforgeEvent, parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseSessionStreamSnapshot,
   // --- eforge:region plan-01-dynamic-perspective-contracts ---
   ReviewPerspectiveKeySchema, isBuiltInReviewPerspective,
   // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  StackProviderSchema, LandingPublicationActionSchema, StackLayerStatusSchema, StackArtifactRefSchema, StackLayerWireSchema,
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 } from './events.js';
 
 export type {

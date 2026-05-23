@@ -1,0 +1,45 @@
+/**
+ * Stacking module — exports for use by later plans.
+ *
+ * Exports engine-owned stack domain types, state management utilities,
+ * provider interface and factory, and the git-spice adapter.
+ */
+
+export type {
+  StackProvider,
+  LandingPublicationAction,
+  StackLayerStatus,
+  StackArtifactRef,
+  StackLayer,
+  StackState,
+} from './types.js';
+
+export {
+  stackLayerSchema,
+  stackStateSchema,
+  stackStatePath,
+  loadStackState,
+  saveStackState,
+  upsertStackLayer,
+  lookupLayerByPrdId,
+  getParentArtifactBranch,
+  getRecordedArtifactRef,
+  isArtifactAvailable,
+} from './state.js';
+
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+export type { StackBaseContext } from './base-resolver.js';
+export { resolveStackBaseContext } from './base-resolver.js';
+export { recordSuccessfulBuildArtifact } from './artifacts.js';
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
+// --- eforge:region plan-02-git-spice-provider-and-git-primitives ---
+export type { StackProviderAdapter } from './provider.js';
+export { createProvider } from './provider.js';
+export {
+  GitSpiceAdapter,
+  GitSpiceNotAvailableError,
+  GitSpiceCommandError,
+  createGitSpiceAdapter,
+} from './git-spice.js';
+// --- eforge:endregion plan-02-git-spice-provider-and-git-primitives ---

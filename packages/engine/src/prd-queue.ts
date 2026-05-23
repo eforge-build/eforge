@@ -17,6 +17,9 @@ import { composeCommitMessage } from './model-tracker.js';
 import type { ModelTracker } from './model-tracker.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from './stacking/state.js';
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 const exec = promisify(execFile);
 
@@ -32,6 +35,12 @@ const prdFrontmatterSchema = z.object({
   skip_reason: z.string().optional(),
   profile: z.string().optional(),
   onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional(),
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  stack_id: z.string().optional(),
+  stack_parent: z.string().optional(),
+  stack_provider: z.literal('git-spice').optional(),
+  landing: z.enum(['pr', 'merge', 'leave']).optional(),
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -611,6 +620,14 @@ export interface EnqueuePrdOptions {
   profile?: string;
   /** Override the project-level on-success landing action for this build. */
   onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  /** Logical stack identifier to persist in PRD frontmatter. */
+  stack_id?: string;
+  /** Parent PRD id for this stack layer, if any. */
+  stack_parent?: string;
+  /** Stack provider override for this PRD. */
+  stack_provider?: 'git-spice';
+  /** New shorthand landing action to persist in PRD frontmatter. */
+  landing?: 'pr' | 'merge' | 'leave';
 }
 
 export interface EnqueuePrdResult {
@@ -646,7 +663,22 @@ function slugify(title: string): string {
  * - Optional `intoWaiting` flag to write to the waiting/ subdirectory
  */
 export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrdResult> {
-  const { body, title, queueDir, cwd, priority, depends_on, intoWaiting, postMerge, profile, onSuccess } = options;
+  const {
+    body,
+    title,
+    queueDir,
+    cwd,
+    priority,
+    depends_on,
+    intoWaiting,
+    postMerge,
+    profile,
+    onSuccess,
+    stack_id,
+    stack_parent,
+    stack_provider,
+    landing,
+  } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
   const targetSubdir = intoWaiting ? 'waiting' : undefined;
@@ -683,7 +715,17 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     created,
     ...(priority !== undefined && { priority }),
     ...(depends_on !== undefined && depends_on.length > 0 && { depends_on }),
+    ...(profile !== undefined && { profile }),
+    ...(onSuccess !== undefined && { onSuccess }),
+    ...(stack_id !== undefined && { stack_id }),
+    ...(stack_parent !== undefined && { stack_parent }),
+    ...(stack_provider !== undefined && { stack_provider }),
+    ...(landing !== undefined && { landing }),
   };
+  const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
+  if (!frontmatterResult.success) {
+    throw new Error(`Invalid PRD frontmatter: ${z.prettifyError(frontmatterResult.error)}`);
+  }
 
   // Serialize frontmatter
   const fmLines: string[] = [
@@ -705,6 +747,18 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (onSuccess !== undefined) {
     fmLines.push(`onSuccess: ${onSuccess}`);
   }
+  if (stack_id !== undefined) {
+    fmLines.push(`stack_id: ${stack_id}`);
+  }
+  if (stack_parent !== undefined) {
+    fmLines.push(`stack_parent: ${stack_parent}`);
+  }
+  if (stack_provider !== undefined) {
+    fmLines.push(`stack_provider: ${stack_provider}`);
+  }
+  if (landing !== undefined) {
+    fmLines.push(`landing: ${landing}`);
+  }
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;
   const filePath = resolve(absDir, `${slug}.md`);
@@ -713,7 +767,7 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   return {
     id: slug,
     filePath,
-    frontmatter,
+    frontmatter: frontmatterResult.data,
   };
 }
 
@@ -738,6 +792,19 @@ export async function setQueuedPrdProfile(
   profile: string,
   _cwd: string,
 ): Promise<QueuedPrd> {
+  const updated = await setQueuedPrdFrontmatterString(prd, 'profile', profile);
+  return {
+    ...updated,
+    frontmatter: { ...updated.frontmatter, profile },
+  };
+}
+
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+async function setQueuedPrdFrontmatterString(
+  prd: QueuedPrd,
+  field: string,
+  value: string,
+): Promise<QueuedPrd> {
   const content = prd.content;
 
   // Locate the frontmatter block
@@ -748,28 +815,35 @@ export async function setQueuedPrdProfile(
 
   const [, openDelim, fmBody, closeDelim, bodyPart] = fmMatch;
 
-  // Rewrite or insert the profile field
   let newFmBody: string;
-  const profileLineRegex = /^profile\s*:.*$/m;
-  if (profileLineRegex.test(fmBody)) {
-    newFmBody = fmBody.replace(profileLineRegex, `profile: ${profile}`);
+  const fieldLineRegex = new RegExp(`^${field}\\s*:.*$`, 'm');
+  if (fieldLineRegex.test(fmBody)) {
+    newFmBody = fmBody.replace(fieldLineRegex, `${field}: ${value}`);
   } else {
-    // Append before the closing delimiter
-    newFmBody = fmBody.trimEnd() + `\nprofile: ${profile}`;
+    newFmBody = fmBody.trimEnd() + `\n${field}: ${value}`;
   }
 
   const newContent = `${openDelim}${newFmBody}${closeDelim}${bodyPart}`;
-
-  // Write updated file (filesystem-only)
   await writeFile(prd.filePath, newContent, 'utf-8');
 
-  // Return updated QueuedPrd with new frontmatter and content
   return {
     ...prd,
     content: newContent,
-    frontmatter: { ...prd.frontmatter, profile },
   };
 }
+
+export async function setQueuedPrdStackParent(
+  prd: QueuedPrd,
+  stackParent: string,
+  _cwd: string,
+): Promise<QueuedPrd> {
+  const updated = await setQueuedPrdFrontmatterString(prd, 'stack_parent', stackParent);
+  return {
+    ...updated,
+    frontmatter: { ...updated.frontmatter, stack_parent: stackParent },
+  };
+}
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 // ---------------------------------------------------------------------------
 // Piggyback scheduling helpers
@@ -876,8 +950,9 @@ export async function propagateSkip(
  *
  * Moves qualifying PRDs from `waiting/` back to the queue root so the
  * normal dispatcher can pick them up. A waiting PRD is unblocked when
- * ALL of its `depends_on` entries are either the just-completed id or
- * no longer present in the active queue (pending/waiting).
+ * ALL of its `depends_on` entries are no longer present in the active queue
+ * (pending/waiting). When `requireArtifacts` is true, each dependency must
+ * also have a durable recorded artifact.
  *
  * Returns the ids of PRDs that were moved to pending.
  */
@@ -885,6 +960,7 @@ export async function unblockWaiting(
   queueDir: string,
   cwd: string,
   completedId: string,
+  options: { requireArtifacts?: boolean } = {},
 ): Promise<string[]> {
   let waitingPrds: QueuedPrd[];
   try {
@@ -904,14 +980,25 @@ export async function unblockWaiting(
   // The just-completed PRD is no longer active
   stillActiveIds.delete(completedId);
 
+  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+  const requireArtifacts = options.requireArtifacts ?? false;
+  const stackState = requireArtifacts ? await loadStackState(cwd) : undefined;
+  const hasRecordedArtifact = (dep: string): boolean => {
+    if (!requireArtifacts) return true;
+    if (stackState === undefined) return false;
+    const layer = lookupLayerByPrdId(stackState, dep);
+    return layer?.status !== 'failed' && getRecordedArtifactRef(stackState, dep) !== undefined;
+  };
+  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
   const queueRoot = resolve(cwd, queueDir);
   const unblocked: string[] = [];
 
   for (const prd of waitingPrds) {
     const deps: string[] = prd.frontmatter.depends_on ?? [];
-    // A dep is satisfied when it's the just-completed id or not in any active queue
+    // A dep is satisfied when it is inactive and, for artifact-aware queues, has a durable artifact record.
     const allSatisfied = deps.every(
-      (dep: string) => dep === completedId || !stillActiveIds.has(dep),
+      (dep: string) => !stillActiveIds.has(dep) && hasRecordedArtifact(dep),
     );
 
     if (allSatisfied) {

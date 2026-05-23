@@ -19,6 +19,7 @@ import {
   loadQueue,
   type QueuedPrd,
 } from '@eforge-build/engine/prd-queue';
+import { upsertStackLayer } from '@eforge-build/engine/stacking';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,34 @@ function writePrdToQueue(cwd: string, queueDir: string, id: string): string {
   execFileSync('git', ['add', filePath], { cwd });
   execFileSync('git', ['commit', '-m', `add queue PRD ${id}`, '--allow-empty-message'], { cwd });
   return filePath;
+}
+
+async function recordArtifact(cwd: string, id: string): Promise<void> {
+  const now = new Date().toISOString();
+  await upsertStackLayer(cwd, {
+    prdId: id,
+    stackId: 'stack',
+    provider: 'git-spice',
+    branch: `eforge/${id}`,
+    artifact: { branch: `eforge/${id}`, commitSha: 'abc123' },
+    status: 'built',
+    recordedAt: now,
+    updatedAt: now,
+  });
+}
+
+async function recordFailedArtifact(cwd: string, id: string): Promise<void> {
+  const now = new Date().toISOString();
+  await upsertStackLayer(cwd, {
+    prdId: id,
+    stackId: 'stack',
+    provider: 'git-spice',
+    branch: `eforge/${id}`,
+    artifact: { branch: `eforge/${id}`, commitSha: 'abc123' },
+    status: 'failed',
+    recordedAt: now,
+    updatedAt: now,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -222,12 +251,40 @@ describe('unblockWaiting', () => {
     const { cwd, queueDir } = setupGitQueue(dir);
 
     writePrdToWaiting(cwd, queueDir, 'feature', ['upstream']);
+    await recordArtifact(cwd, 'upstream');
 
     const unblocked = await unblockWaiting(queueDir, cwd, 'upstream');
 
     expect(unblocked).toContain('feature');
     expect(existsSync(join(cwd, queueDir, 'feature.md'))).toBe(true);
     expect(existsSync(join(cwd, queueDir, 'waiting', 'feature.md'))).toBe(false);
+  });
+
+  it('does not unblock when the completed upstream has no recorded artifact', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+
+    writePrdToWaiting(cwd, queueDir, 'feature', ['upstream']);
+
+    const unblocked = await unblockWaiting(queueDir, cwd, 'upstream', { requireArtifacts: true });
+
+    expect(unblocked).not.toContain('feature');
+    expect(existsSync(join(cwd, queueDir, 'waiting', 'feature.md'))).toBe(true);
+    expect(existsSync(join(cwd, queueDir, 'feature.md'))).toBe(false);
+  });
+
+  it('does not unblock a PRD when the dependency stack layer is failed even if an artifact ref exists', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+
+    writePrdToWaiting(cwd, queueDir, 'feature', ['upstream']);
+    await recordFailedArtifact(cwd, 'upstream');
+
+    const unblocked = await unblockWaiting(queueDir, cwd, 'upstream', { requireArtifacts: true });
+
+    expect(unblocked).not.toContain('feature');
+    expect(existsSync(join(cwd, queueDir, 'waiting', 'feature.md'))).toBe(true);
+    expect(existsSync(join(cwd, queueDir, 'feature.md'))).toBe(false);
   });
 
   it('does not unblock a PRD that still has unsatisfied deps', async () => {
@@ -238,6 +295,7 @@ describe('unblockWaiting', () => {
     writePrdToWaiting(cwd, queueDir, 'feature', ['upstream', 'other']);
     // 'other' is still pending in queue/
     writePrdToQueue(cwd, queueDir, 'other');
+    await recordArtifact(cwd, 'upstream');
 
     const unblocked = await unblockWaiting(queueDir, cwd, 'upstream');
 
@@ -250,9 +308,10 @@ describe('unblockWaiting', () => {
     const dir = makeTempDir();
     const { cwd, queueDir } = setupGitQueue(dir);
 
-    // feature depends on upstream-a and upstream-b; upstream-b already gone (completed)
+    // feature depends on upstream-a and upstream-b; both need durable artifacts
     writePrdToWaiting(cwd, queueDir, 'feature', ['upstream-a', 'upstream-b']);
-    // upstream-b is NOT in queue or waiting → treated as completed
+    await recordArtifact(cwd, 'upstream-a');
+    await recordArtifact(cwd, 'upstream-b');
 
     const unblocked = await unblockWaiting(queueDir, cwd, 'upstream-a');
 

@@ -9543,6 +9543,163 @@
               ]
             }
           }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "stackId",
+            "provider",
+            "branch",
+            "status"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:layer:recorded",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "stackId": {
+              "type": "string"
+            },
+            "parentPrdId": {
+              "type": "string"
+            },
+            "provider": {
+              "const": "git-spice",
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "building",
+                  "type": "string"
+                },
+                {
+                  "const": "built",
+                  "type": "string"
+                },
+                {
+                  "const": "merged",
+                  "type": "string"
+                },
+                {
+                  "const": "landed",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "provider",
+            "command",
+            "exitCode"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:provider:command",
+              "type": "string"
+            },
+            "provider": {
+              "const": "git-spice",
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            },
+            "exitCode": {
+              "type": "integer"
+            },
+            "branch": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "stackId",
+            "action",
+            "branch",
+            "status"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:landing:update",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "stackId": {
+              "type": "string"
+            },
+            "action": {
+              "anyOf": [
+                {
+                  "const": "pr",
+                  "type": "string"
+                },
+                {
+                  "const": "merge",
+                  "type": "string"
+                },
+                {
+                  "const": "leave",
+                  "type": "string"
+                }
+              ]
+            },
+            "branch": {
+              "type": "string"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "const": "started",
+                  "type": "string"
+                },
+                {
+                  "const": "complete",
+                  "type": "string"
+                },
+                {
+                  "const": "skipped",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                }
+              ]
+            },
+            "prUrl": {
+              "type": "string"
+            }
+          }
         }
       ]
     }

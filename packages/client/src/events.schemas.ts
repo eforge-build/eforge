@@ -95,6 +95,50 @@ export const LandingActionSchema = Type.Union([
 ]);
 // --- eforge:endregion plan-01-engine-config-and-landing ---
 
+// --- eforge:region plan-01-stack-contracts-config-state-events ---
+/** Wire schema for the supported stack providers. */
+export const StackProviderSchema = Type.Literal('git-spice');
+
+/** Wire schema for the shorthand landing publication actions for stacked builds. */
+export const LandingPublicationActionSchema = Type.Union([
+  Type.Literal('pr'),
+  Type.Literal('merge'),
+  Type.Literal('leave'),
+]);
+
+/** Wire schema for the lifecycle status of a single stack layer. */
+export const StackLayerStatusSchema = Type.Union([
+  Type.Literal('pending'),
+  Type.Literal('building'),
+  Type.Literal('built'),
+  Type.Literal('merged'),
+  Type.Literal('landed'),
+  Type.Literal('failed'),
+]);
+
+/** Wire schema for a build artifact reference (branch + optional commit/PR). */
+export const StackArtifactRefSchema = Type.Object({
+  branch: Type.String(),
+  commitSha: Type.Optional(Type.String()),
+  prUrl: Type.Optional(Type.String()),
+});
+
+/** Wire schema for a single stack layer record. */
+export const StackLayerWireSchema = Type.Object({
+  prdId: Type.String(),
+  stackId: Type.String(),
+  parentPrdId: Type.Optional(Type.String()),
+  provider: StackProviderSchema,
+  branch: Type.String(),
+  baseBranch: Type.Optional(Type.String()),
+  artifact: Type.Optional(StackArtifactRefSchema),
+  landingAction: Type.Optional(LandingPublicationActionSchema),
+  status: StackLayerStatusSchema,
+  recordedAt: Type.String(),
+  updatedAt: Type.String(),
+});
+// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+
 const StalenessVerdictSchema = Type.Union([
   Type.Literal('proceed'),
   Type.Literal('revise'),
@@ -1996,6 +2040,41 @@ const EforgeEventVariantsSchema = Type.Union([
 
   // Plan-phase (planner) decision events
   PlanningDecisionEventSchema,
+
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  // Stack layer lifecycle and provider command events
+  Type.Object({
+    type: Type.Literal('stack:layer:recorded'),
+    prdId: Type.String(),
+    stackId: Type.String(),
+    parentPrdId: Type.Optional(Type.String()),
+    provider: StackProviderSchema,
+    branch: Type.String(),
+    baseBranch: Type.Optional(Type.String()),
+    status: StackLayerStatusSchema,
+  }),
+  Type.Object({
+    type: Type.Literal('stack:provider:command'),
+    provider: StackProviderSchema,
+    command: Type.String(),
+    exitCode: Type.Integer(),
+    branch: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('stack:landing:update'),
+    prdId: Type.String(),
+    stackId: Type.String(),
+    action: LandingPublicationActionSchema,
+    branch: Type.String(),
+    status: Type.Union([
+      Type.Literal('started'),
+      Type.Literal('complete'),
+      Type.Literal('skipped'),
+      Type.Literal('failed'),
+    ]),
+    prUrl: Type.Optional(Type.String()),
+  }),
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 ]);
 
 // ---------------------------------------------------------------------------
@@ -2062,6 +2141,13 @@ export type AutoBuildTransitionDetail = Static<typeof AutoBuildTransitionDetailS
 // --- eforge:region plan-01-engine-config-and-landing ---
 export type LandingAction = Static<typeof LandingActionSchema>;
 // --- eforge:endregion plan-01-engine-config-and-landing ---
+// --- eforge:region plan-01-stack-contracts-config-state-events ---
+export type StackProvider = Static<typeof StackProviderSchema>;
+export type LandingPublicationAction = Static<typeof LandingPublicationActionSchema>;
+export type StackLayerStatus = Static<typeof StackLayerStatusSchema>;
+export type StackArtifactRef = Static<typeof StackArtifactRefSchema>;
+export type StackLayerWire = Static<typeof StackLayerWireSchema>;
+// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
 // ---------------------------------------------------------------------------
 // Re-export constants and utilities

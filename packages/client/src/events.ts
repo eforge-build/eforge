@@ -50,6 +50,13 @@ export type {
   AutoBuildSchedulerState,
   AutoBuildTransitionDetail,
   // --- eforge:endregion plan-01-supervisor-foundation ---
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  StackProvider,
+  LandingPublicationAction,
+  StackLayerStatus,
+  StackArtifactRef,
+  StackLayerWire,
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 } from './events.schemas.js';
 
 export {
@@ -67,6 +74,13 @@ export {
   ReviewPerspectiveKeySchema,
   isBuiltInReviewPerspective,
   // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  StackProviderSchema,
+  LandingPublicationActionSchema,
+  StackLayerStatusSchema,
+  StackArtifactRefSchema,
+  StackLayerWireSchema,
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 } from './events.schemas.js';
 
 export { EforgeEventSchema } from './events.schemas.js';

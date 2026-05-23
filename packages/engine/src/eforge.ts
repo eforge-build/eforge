@@ -41,7 +41,7 @@ import type { NativeExtensionDiagnostic, NativeExtensionRegistry } from './exten
 import type { AgentHarness } from './harness.js';
 import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
-import { loadConfig, DEFAULT_REVIEW, getConfigDir, getConventionalConfigDir } from './config.js';
+import { loadConfig, DEFAULT_REVIEW, getConfigDir, getConventionalConfigDir, landingActionToOnSuccess, onSuccessToLandingAction } from './config.js';
 import { loadNativeExtensions, withAgentContextHooks } from './extensions/index.js';
 import { setPromptDir } from './prompts.js';
 import { type AgentRuntimeRegistry, singletonRegistry, buildAgentRuntimeRegistry } from './agent-runtime-registry.js';
@@ -63,6 +63,11 @@ import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { withRunId } from './session.js';
 import { applyShardedPlanGuard } from './sharded-plan-guard.js';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+import { resolveStackBaseContext, type StackBaseContext } from './stacking/base-resolver.js';
+import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from './stacking/state.js';
+import type { StackState } from './stacking/types.js';
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 // --- eforge:region plan-02-runtime-and-integration ---
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
@@ -378,8 +383,9 @@ export class EforgeEngine {
       }
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
-      const { stdout: baseBranchRaw } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
-      const baseBranch = baseBranchRaw.trim();
+      // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+      const baseBranch = options.baseBranchOverride ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })).stdout.trim();
+      // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       const worktreeBase = computeWorktreeBase(cwd, planSetName);
       const mergeWorktreePath = await createMergeWorktree(cwd, worktreeBase, featureBranch, baseBranch);
 
@@ -538,6 +544,10 @@ export class EforgeEngine {
         depends_on: dependsOn,
         ...(options.profile !== undefined && { profile: options.profile }),
         ...(options.onSuccess !== undefined && { onSuccess: options.onSuccess }),
+        ...(options.stack_id !== undefined && { stack_id: options.stack_id }),
+        ...(options.stack_parent !== undefined && { stack_parent: options.stack_parent }),
+        ...(options.stack_provider !== undefined && { stack_provider: options.stack_provider }),
+        ...(options.landing !== undefined && { landing: options.landing }),
       });
 
       yield {
@@ -933,6 +943,11 @@ export class EforgeEngine {
         // --- eforge:region plan-03-branch-aware-landing ---
         engineConfig: config,
         // --- eforge:endregion plan-03-branch-aware-landing ---
+        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+        prdId: options.prdId,
+        stackContext: options.stackContext,
+        landingAction: onSuccessToLandingAction(effectiveOnSuccess),
+        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
@@ -962,6 +977,12 @@ export class EforgeEngine {
             summary = `PRD validation failed: ${event.gaps.length} gap(s) found`;
           }
         }
+        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+        if (event.type === 'daemon:error' && event.source === 'stack:artifact-recording') {
+          status = 'failed';
+          summary = event.message;
+        }
+        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       }
 
       // Drain any remaining merge resolution events after orchestrator completes
@@ -1114,6 +1135,20 @@ export class EforgeEngine {
       let planSkipped = false;
       let skipReason = '';
       const planSetName = options.name ?? prd.id;
+      // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+      let stackContext: StackBaseContext | undefined;
+      if (this.config.stacking.enabled) {
+        try {
+          stackContext = await resolveStackBaseContext({ cwd, config: this.config, prd, planSetName });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
+          prdResult = { status: 'failed', summary: message };
+          return;
+        }
+      }
+      // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
       for await (const event of withRunId(this.compile(prd.filePath, {
         name: planSetName,
@@ -1121,6 +1156,9 @@ export class EforgeEngine {
         verbose,
         cwd,
         abortController,
+        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+        ...(stackContext !== undefined && { baseBranchOverride: stackContext.baseBranch }),
+        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
@@ -1143,8 +1181,10 @@ export class EforgeEngine {
       }
 
       // Build the plan — PRD cleanup flows through build()
-      // Resolve onSuccess precedence: explicit options.onSuccess > PRD frontmatter.onSuccess
-      const resolvedOnSuccess = options.onSuccess ?? prd.frontmatter.onSuccess;
+      // Resolve landing precedence: explicit options.onSuccess > legacy PRD onSuccess > PRD landing shorthand.
+      const resolvedOnSuccess = options.onSuccess
+        ?? prd.frontmatter.onSuccess
+        ?? (prd.frontmatter.landing !== undefined ? landingActionToOnSuccess(prd.frontmatter.landing) : undefined);
       let buildFailed = false;
       for await (const event of withRunId(this.build(planSetName, {
         auto: options.auto,
@@ -1152,6 +1192,10 @@ export class EforgeEngine {
         cwd,
         abortController,
         prdFilePath: prd.filePath,
+        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+        prdId: prd.id,
+        ...(stackContext !== undefined && { stackContext }),
+        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
         ...(resolvedOnSuccess !== undefined && { onSuccess: resolvedOnSuccess }),
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
@@ -1261,8 +1305,11 @@ export class EforgeEngine {
           args.push('--profile', routedProfileOverride);
         }
         // --- eforge:endregion plan-02-runtime-and-integration ---
-        if (prd.frontmatter.onSuccess) {
-          args.push('--on-success', prd.frontmatter.onSuccess);
+        const childOnSuccess = options.onSuccess
+          ?? prd.frontmatter.onSuccess
+          ?? (prd.frontmatter.landing !== undefined ? landingActionToOnSuccess(prd.frontmatter.landing) : undefined);
+        if (childOnSuccess) {
+          args.push('--on-success', childOnSuccess);
         }
         doSpawn(args);
       };
@@ -1508,20 +1555,77 @@ export class EforgeEngine {
 
     const prdState = new Map<string, PrdRunState>();
     for (const prd of orderedPrds) {
-      const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
-        orderedPrds.some((p) => p.id === dep),
-      );
+      const deps = prd.frontmatter.depends_on ?? [];
       prdState.set(prd.id, { status: 'pending', dependsOn: deps });
     }
 
-    const isReady = (prdId: string): boolean => {
+    const artifactAwareDependencies = (): boolean => this.config.stacking.enabled;
+    const dependencyHasArtifact = (stackState: StackState | undefined, dep: string): boolean =>
+      stackState !== undefined && getRecordedArtifactRef(stackState, dep) !== undefined;
+    const isDependencySatisfied = (dep: string, stackState: StackState | undefined): boolean => {
+      const depState = prdState.get(dep);
+      if (artifactAwareDependencies()) {
+        if (depState) return depState.status === 'completed' && dependencyHasArtifact(stackState, dep);
+        return dependencyHasArtifact(stackState, dep);
+      }
+      if (!depState) return true;
+      return depState.status === 'completed';
+    };
+    const isDependencyBlocking = (dep: string, stackState: StackState | undefined): boolean => {
+      const depState = prdState.get(dep);
+      if (depState?.status === 'failed' || depState?.status === 'skipped' || depState?.status === 'blocked') {
+        return true;
+      }
+      if (!depState && stackState) {
+        return lookupLayerByPrdId(stackState, dep)?.status === 'failed';
+      }
+      return false;
+    };
+
+    const isReady = (prdId: string, stackState: StackState | undefined): boolean => {
       const state = prdState.get(prdId)!;
       if (state.status !== 'pending') return false;
-      return state.dependsOn.every((dep) => {
-        const depState = prdState.get(dep);
-        return depState && (depState.status === 'completed' || depState.status === 'skipped');
-      });
+      return state.dependsOn.every((dep) => isDependencySatisfied(dep, stackState));
     };
+
+    // --- eforge:region gap-close ---
+    const failDispatch = async (prd: import('./prd-queue.js').QueuedPrd, message: string): Promise<void> => {
+      const state = prdState.get(prd.id);
+      if (state) state.status = 'failed';
+      eventQueue.push({ timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent);
+      eventQueue.push({ timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent);
+      try { await movePrdToSubdir(prd.filePath, 'failed', cwd); } catch { /* best-effort */ }
+      eventQueue.push({ timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'failed' } as EforgeEvent);
+    };
+
+    const applyStackingDispatchValidation = async (prd: import('./prd-queue.js').QueuedPrd): Promise<import('./prd-queue.js').QueuedPrd | null> => {
+      if (!this.config.stacking.enabled) return prd;
+
+      const dependsOn = prd.frontmatter.depends_on ?? [];
+      if (prd.frontmatter.stack_parent) return prd;
+
+      if (dependsOn.length === 1) {
+        try {
+          const { setQueuedPrdStackParent } = await import('./prd-queue.js');
+          return await setQueuedPrdStackParent(prd, dependsOn[0], cwd);
+        } catch (err) {
+          const message = `Failed to persist inferred stack_parent '${dependsOn[0]}' for PRD '${prd.id}': ${err instanceof Error ? err.message : String(err)}`;
+          await failDispatch(prd, message);
+          return null;
+        }
+      }
+
+      if (dependsOn.length > 1) {
+        await failDispatch(
+          prd,
+          `Cannot dispatch stacked PRD '${prd.id}' with multiple depends_on entries without explicit stack_parent. Add stack_parent to disambiguate the parent layer.`,
+        );
+        return null;
+      }
+
+      return prd;
+    };
+    // --- eforge:endregion gap-close ---
 
     const propagateBlocked = (failedId: string): void => {
       // Mark all transitive dependents as blocked
@@ -1560,9 +1664,7 @@ export class EforgeEngine {
       const freshOrdered = resolveQueueOrder(freshPrds);
       for (const prd of freshOrdered) {
         if (!prdState.has(prd.id)) {
-          const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
-            prdState.has(dep) || freshOrdered.some((p) => p.id === dep),
-          );
+          const deps = prd.frontmatter.depends_on ?? [];
           prdState.set(prd.id, { status: 'pending', dependsOn: deps });
           orderedPrds.push(prd);
           eventQueue.push({
@@ -1575,12 +1677,27 @@ export class EforgeEngine {
       }
     };
 
-    const startReadyPrds = (): void => {
+    const startReadyPrds = async (): Promise<void> => {
+      const stackState = artifactAwareDependencies() ? await loadStackState(cwd) : undefined;
       for (const prd of orderedPrds) {
         if (abortController?.signal.aborted) break;
-        if (!isReady(prd.id)) continue;
+        const candidateState = prdState.get(prd.id);
+        if (candidateState?.status === 'pending') {
+          const blockingDeps = candidateState.dependsOn.filter((dep) => isDependencyBlocking(dep, stackState));
+          if (blockingDeps.length > 0) {
+            candidateState.status = 'blocked';
+            propagateBlocked(prd.id);
+          }
+        }
+        if (!isReady(prd.id, stackState)) continue;
 
-        const state = prdState.get(prd.id)!;
+        // --- eforge:region gap-close ---
+        const stackValidatedPrd = await applyStackingDispatchValidation(prd);
+        if (!stackValidatedPrd) continue;
+        const currentPrd = stackValidatedPrd;
+        // --- eforge:endregion gap-close ---
+
+        const state = prdState.get(currentPrd.id)!;
         state.status = 'running';
 
         // Parent owns the sessionId: generate it here and emit session:start
@@ -1618,7 +1735,9 @@ export class EforgeEngine {
             await semaphore.acquire();
             acquired = true;
 
-            status = await this.spawnPrdChild(prd, options, prdSessionId, (event) => eventQueue.push(event));
+            // --- eforge:region gap-close ---
+            status = await this.spawnPrdChild(currentPrd, options, prdSessionId, (event) => eventQueue.push(event));
+            // --- eforge:endregion gap-close ---
 
             // 'already-claimed' is non-terminal: do not emit a terminal completion
             // or mark dependencies satisfied. The PRD remains in queue for the
@@ -1647,7 +1766,7 @@ export class EforgeEngine {
               finalState.status = status;
             }
 
-            if (finalState.status === 'failed') {
+            if (finalState.status === 'failed' || finalState.status === 'skipped') {
               propagateBlocked(prd.id);
             }
 
@@ -1659,7 +1778,7 @@ export class EforgeEngine {
     };
 
     // Seed the scheduler
-    startReadyPrds();
+    await startReadyPrds();
 
     // If nothing was launched (empty queue or all blocked), add/remove a producer to close the queue
     const hasAnyRunning = [...prdState.values()].some((s) => s.status === 'running');
@@ -1692,7 +1811,7 @@ export class EforgeEngine {
         // This ensures discoverNewPrds() finds any newly unblocked PRDs.
         if (completionStatus === 'completed') {
           try {
-            await unblockWaiting(queueDir, cwd, completedPrdId);
+            await unblockWaiting(queueDir, cwd, completedPrdId, { requireArtifacts: this.config.stacking.enabled });
           } catch {
             // Non-fatal: filesystem unblock failure doesn't stop the scheduler
           }
@@ -1713,7 +1832,7 @@ export class EforgeEngine {
 
         // Discover any new PRDs enqueued mid-cycle, then launch newly-ready PRDs
         await discoverNewPrds();
-        startReadyPrds();
+        await startReadyPrds();
         eventQueue.removeProducer();
       }
     }
@@ -2216,11 +2335,20 @@ export class EforgeEngine {
  * Deep-merge config overrides onto base config.
  */
 function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): EforgeConfig {
+  const landing = overrides.landing ? { ...base.landing, ...overrides.landing } : { ...base.landing };
+  const build = overrides.build ? { ...base.build, ...overrides.build } : { ...base.build };
+
+  if (overrides.landing?.action !== undefined) {
+    build.onSuccess = landingActionToOnSuccess(overrides.landing.action);
+  } else if (overrides.build?.onSuccess !== undefined) {
+    landing.action = onSuccessToLandingAction(overrides.build.onSuccess);
+  }
+
   return {
     maxConcurrentBuilds: overrides.maxConcurrentBuilds ?? base.maxConcurrentBuilds,
     langfuse: overrides.langfuse ? { ...base.langfuse, ...overrides.langfuse } : base.langfuse,
     agents: overrides.agents ? { ...base.agents, ...overrides.agents } : base.agents,
-    build: overrides.build ? { ...base.build, ...overrides.build } : base.build,
+    build,
     plan: overrides.plan ? { ...base.plan, ...overrides.plan } : base.plan,
     plugins: overrides.plugins ? { ...base.plugins, ...overrides.plugins } : base.plugins,
     extensions: overrides.extensions ? { ...base.extensions, ...overrides.extensions } : base.extensions,
@@ -2229,6 +2357,8 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     monitor: overrides.monitor ? { ...base.monitor, ...overrides.monitor } : base.monitor,
     hooks: overrides.hooks ?? base.hooks,
     tools: overrides.tools ? { ...base.tools, ...overrides.tools, toolbelts: { ...base.tools.toolbelts, ...overrides.tools.toolbelts } } : base.tools,
+    stacking: overrides.stacking ? { ...base.stacking, ...overrides.stacking } : base.stacking,
+    landing,
   };
 }
 

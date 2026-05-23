@@ -839,6 +839,26 @@ const eventRegistry = {
   },
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  'stack:layer:recorded': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Stack layer recorded: ${e.prdId} (${e.status}) on ${e.branch}`,
+  },
+
+  'stack:provider:command': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Stack provider (${e.provider}) command: ${e.command} → exit ${e.exitCode}`,
+  },
+
+  'stack:landing:update': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Stack landing update: ${e.prdId} (${e.action}) ${e.status}`,
+  },
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+
   'merge:finalize:start': {
     scope: 'session',
     persist: false,

@@ -30,6 +30,10 @@ export type {
   AgentTerminalSubtype,
   ShardScope,
   PipelineComposition,
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  StackProvider,
+  LandingPublicationAction,
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 } from '@eforge-build/client';
 
 export {
@@ -41,12 +45,20 @@ export {
 
 // Engine-only types not part of the wire protocol:
 
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+import type { StackBaseContext } from './stacking/base-resolver.js';
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
 export interface CompileOptions {
   auto?: boolean;
   verbose?: boolean;
   name?: string;
   cwd?: string;
   abortController?: AbortController;
+  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+  /** Override the base ref used to create the compile/merge worktree. */
+  baseBranchOverride?: string;
+  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 }
 
 export interface BuildOptions {
@@ -57,6 +69,12 @@ export interface BuildOptions {
   cwd?: string;
   abortController?: AbortController;
   prdFilePath?: string;
+  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+  /** Queued PRD id for stack artifact recording. */
+  prdId?: string;
+  /** Resolved stack context for queued stacked builds. */
+  stackContext?: StackBaseContext;
+  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
   // --- eforge:region plan-01-engine-config-and-landing ---
   /** Override the configured onSuccess landing action for this build. */
   onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
@@ -73,5 +91,13 @@ export interface EnqueueOptions {
   // --- eforge:region plan-01-engine-config-and-landing ---
   /** Override the configured onSuccess landing action for this enqueued build. */
   onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  /** Logical stack identifier to persist in PRD frontmatter. */
+  stack_id?: string;
+  /** Parent PRD id for this stack layer, if any. */
+  stack_parent?: string;
+  /** Stack provider override for this PRD. */
+  stack_provider?: 'git-spice';
+  /** New shorthand landing action to persist in PRD frontmatter. */
+  landing?: 'pr' | 'merge' | 'leave';
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 }

@@ -20,7 +20,7 @@ import {
   type MergeResolver,
 } from './worktree-ops.js';
 import { WorktreeManager } from './worktree-manager.js';
-import { executePlans, validate, prdValidate, finalize, type PhaseContext } from './orchestrator/phases.js';
+import { executePlans, validate, prdValidate, recordArtifact, finalize, type PhaseContext } from './orchestrator/phases.js';
 import { ModelTracker } from './model-tracker.js';
 // --- eforge:region plan-02-policy-gate-engine-integration ---
 import type { NativeExtensionRegistry } from './extensions/types.js';
@@ -30,8 +30,11 @@ import type { PolicyGateFailurePolicy } from './extensions/policy-gate-runtime.j
 import type { LandingAction } from './landing.js';
 // --- eforge:endregion plan-01-engine-config-and-landing ---
 // --- eforge:region plan-03-branch-aware-landing ---
-import type { EforgeConfig } from './config.js';
+import type { EforgeConfig, LandingConfig } from './config.js';
 // --- eforge:endregion plan-03-branch-aware-landing ---
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+import type { StackBaseContext } from './stacking/base-resolver.js';
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -116,6 +119,14 @@ export interface OrchestratorOptions {
   /** EforgeConfig subset for trunk policy resolution. When omitted, trunk defaults to "main". */
   engineConfig?: Pick<EforgeConfig, 'build'>;
   // --- eforge:endregion plan-03-branch-aware-landing ---
+  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+  /** Queued PRD id for stack artifact recording. */
+  prdId?: string;
+  /** Resolved stack context for queued stacked builds. */
+  stackContext?: StackBaseContext;
+  /** Landing action vocabulary to persist on stack layers. */
+  landingAction?: LandingConfig['action'];
+  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 }
 
 /**
@@ -198,12 +209,20 @@ export class Orchestrator {
       // --- eforge:region plan-03-branch-aware-landing ---
       engineConfig: this.options.engineConfig,
       // --- eforge:endregion plan-03-branch-aware-landing ---
+      // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+      prdId: this.options.prdId,
+      stackContext: this.options.stackContext,
+      landingAction: this.options.landingAction,
+      // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
     };
     try {
       yield* executePlans(ctx);
       if ((state.status as string) !== 'failed') yield* validate(ctx);
       if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
       if ((state.status as string) !== 'failed' && ctx.gapClosePerformed) yield* validate(ctx);
+      // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+      if ((state.status as string) !== 'failed') yield* recordArtifact(ctx);
+      // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       if ((state.status as string) !== 'failed') yield* finalize(ctx);
     } finally {
       await wm.cleanupAll();

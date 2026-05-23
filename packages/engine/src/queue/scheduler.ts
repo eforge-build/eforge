@@ -15,12 +15,16 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile, movePrdToSubdir, readPrdLockStatus, releasePrd } from '../prd-queue.js';
+import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile, setQueuedPrdStackParent, movePrdToSubdir, readPrdLockStatus, releasePrd } from '../prd-queue.js';
 import { Semaphore, type AsyncEventQueue } from '../concurrency.js';
 import type { EforgeEvent } from '../events.js';
 import type { EforgeConfig } from '../config.js';
 import type { QueuedPrd } from '../prd-queue.js';
 import type { QueueOptions } from '../eforge.js';
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from '../stacking/state.js';
+import type { StackState } from '../stacking/types.js';
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 // --- eforge:region plan-02-runtime-and-integration ---
 import type { NativeExtensionRegistry } from '../extensions/types.js';
 import type { ProfileUsageProvider } from '../profile-usage.js';
@@ -171,9 +175,7 @@ export class QueueScheduler {
 
     // Initialise prdState from the pre-loaded initial PRD list.
     for (const prd of opts.initialPrds) {
-      const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
-        opts.initialPrds.some((p) => p.id === dep),
-      );
+      const deps = prd.frontmatter.depends_on ?? [];
       this.prdState.set(prd.id, { status: 'pending', dependsOn: deps });
     }
   }
@@ -271,7 +273,7 @@ export class QueueScheduler {
     // and remove phantom running entries whose files have left the root queue).
     await this.discoverNewPrds();
     // Launch any PRDs that are already ready.
-    this.startReadyPrds();
+    await this.startReadyPrds();
   }
 
   // ---------------------------------------------------------------------------
@@ -344,9 +346,7 @@ export class QueueScheduler {
     for (const [id, freshPrd] of freshPrdMap) {
       const state = this.prdState.get(id);
       if (state) {
-        state.dependsOn = (freshPrd.frontmatter.depends_on ?? []).filter((dep) =>
-          this.prdState.has(dep) || rootQueueIds.has(dep),
-        );
+        state.dependsOn = freshPrd.frontmatter.depends_on ?? [];
         const idx = this.orderedPrds.findIndex((p) => p.id === id);
         if (idx !== -1) {
           this.orderedPrds[idx] = freshPrd;
@@ -404,14 +404,44 @@ export class QueueScheduler {
     }
   }
 
-  private isReady(prdId: string): boolean {
+  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+  private artifactAwareDependencies(): boolean {
+    return this.config.stacking?.enabled === true;
+  }
+
+  private dependencyHasArtifact(stackState: StackState | undefined, dep: string): boolean {
+    return stackState !== undefined && getRecordedArtifactRef(stackState, dep) !== undefined;
+  }
+
+  private isDependencyBlocking(dep: string, stackState: StackState | undefined): boolean {
+    const depState = this.prdState.get(dep);
+    if (depState?.status === 'failed' || depState?.status === 'skipped' || depState?.status === 'blocked') {
+      return true;
+    }
+    if (!depState && stackState) {
+      return lookupLayerByPrdId(stackState, dep)?.status === 'failed';
+    }
+    return false;
+  }
+
+  private isDependencySatisfied(dep: string, stackState: StackState | undefined): boolean {
+    const depState = this.prdState.get(dep);
+    if (this.artifactAwareDependencies()) {
+      if (depState) {
+        return depState.status === 'completed' && this.dependencyHasArtifact(stackState, dep);
+      }
+      return this.dependencyHasArtifact(stackState, dep);
+    }
+    if (!depState) return true;
+    return depState.status === 'completed';
+  }
+
+  private isReady(prdId: string, stackState: StackState | undefined): boolean {
     const state = this.prdState.get(prdId);
     if (!state || state.status !== 'pending') return false;
-    return state.dependsOn.every((dep) => {
-      const depState = this.prdState.get(dep);
-      return depState && (depState.status === 'completed' || depState.status === 'skipped');
-    });
+    return state.dependsOn.every((dep) => this.isDependencySatisfied(dep, stackState));
   }
+  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
   private propagateBlocked(failedId: string): void {
     const queue = [failedId];
@@ -443,9 +473,7 @@ export class QueueScheduler {
     const freshOrdered = resolveQueueOrder(freshPrds);
     for (const prd of freshOrdered) {
       if (!this.prdState.has(prd.id)) {
-        const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
-          this.prdState.has(dep) || freshOrdered.some((p) => p.id === dep),
-        );
+        const deps = prd.frontmatter.depends_on ?? [];
         this.prdState.set(prd.id, { status: 'pending', dependsOn: deps });
         this.orderedPrds.push(prd);
         this.eventQueue.push({
@@ -458,9 +486,7 @@ export class QueueScheduler {
         const existing = this.prdState.get(prd.id)!;
         if (existing.status === 'failed' || existing.status === 'blocked') {
           // Re-queued PRD: reset state to pending.
-          const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
-            this.prdState.has(dep) || freshOrdered.some((p) => p.id === dep),
-          );
+          const deps = prd.frontmatter.depends_on ?? [];
           existing.status = 'pending';
           existing.dependsOn = deps;
           // Replace stale entry in orderedPrds with fresh PRD object.
@@ -485,6 +511,61 @@ export class QueueScheduler {
     await this.reconcileQueueState(freshOrdered);
   }
 
+  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+  private async failDispatch(prd: QueuedPrd, message: string): Promise<void> {
+    this.eventQueue.push({
+      timestamp: new Date().toISOString(),
+      type: 'plan:status:change',
+      planId: prd.id,
+      status: 'failed',
+    } as EforgeEvent);
+    this.eventQueue.push({
+      timestamp: new Date().toISOString(),
+      type: 'plan:error:set',
+      planId: prd.id,
+      error: message,
+    } as EforgeEvent);
+    try {
+      await movePrdToSubdir(prd.filePath, 'failed', this.cwd);
+    } catch {
+      // Best-effort queue file transition; scheduler completion propagation still runs.
+    }
+    this.eventQueue.push({
+      timestamp: new Date().toISOString(),
+      type: 'queue:prd:complete',
+      prdId: prd.id,
+      status: 'failed',
+    } as EforgeEvent);
+  }
+
+  private async applyStackingDispatchValidation(prd: QueuedPrd): Promise<QueuedPrd | null> {
+    if (this.config.stacking?.enabled !== true) return prd;
+
+    const dependsOn = prd.frontmatter.depends_on ?? [];
+    if (prd.frontmatter.stack_parent) return prd;
+
+    if (dependsOn.length === 1) {
+      try {
+        return await setQueuedPrdStackParent(prd, dependsOn[0], this.cwd);
+      } catch (err) {
+        const message = `Failed to persist inferred stack_parent '${dependsOn[0]}' for PRD '${prd.id}': ${err instanceof Error ? err.message : String(err)}`;
+        await this.failDispatch(prd, message);
+        return null;
+      }
+    }
+
+    if (dependsOn.length > 1) {
+      await this.failDispatch(
+        prd,
+        `Cannot dispatch stacked PRD '${prd.id}' with multiple depends_on entries without explicit stack_parent. Add stack_parent to disambiguate the parent layer.`,
+      );
+      return null;
+    }
+
+    return prd;
+  }
+  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
   /**
    * Iterate `orderedPrds` and spawn a child subprocess for every PRD whose
    * dependencies are satisfied. Short-circuits when the abort signal fires.
@@ -498,7 +579,7 @@ export class QueueScheduler {
    * The pump loop yields `queue:prd:complete` and re-emits it on the bus,
    * triggering `onComplete()` which updates state and re-triggers `tick()`.
    */
-  private startReadyPrds(): void {
+  private async startReadyPrds(): Promise<void> {
     // --- eforge:region plan-02-scheduler-emission ---
     // Per-tick dedup state: resets on every startReadyPrds() invocation.
     let runningCount = 0;
@@ -515,6 +596,10 @@ export class QueueScheduler {
     if (this.suspended) return;
     // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
+    // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+    const stackState = this.artifactAwareDependencies() ? await loadStackState(this.cwd) : undefined;
+    // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
     for (const prd of this.orderedPrds) {
       if (this.abortController.signal.aborted) break;
 
@@ -522,10 +607,14 @@ export class QueueScheduler {
       // Emit dependency-blocked once per (prdId, tick) for pending PRDs whose deps are unmet.
       const candidateState = this.prdState.get(prd.id);
       if (candidateState?.status === 'pending') {
-        const unmetDeps = candidateState.dependsOn.filter((dep) => {
-          const depState = this.prdState.get(dep);
-          return !depState || (depState.status !== 'completed' && depState.status !== 'skipped');
-        });
+        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+        const blockingDeps = candidateState.dependsOn.filter((dep) => this.isDependencyBlocking(dep, stackState));
+        if (blockingDeps.length > 0) {
+          candidateState.status = 'blocked';
+          this.propagateBlocked(prd.id);
+        }
+        const unmetDeps = candidateState.dependsOn.filter((dep) => !this.isDependencySatisfied(dep, stackState));
+        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
         if (unmetDeps.length > 0 && !dependencyBlockedEmitted.has(prd.id)) {
           dependencyBlockedEmitted.add(prd.id);
           this.eventQueue.push({
@@ -538,7 +627,7 @@ export class QueueScheduler {
       }
       // --- eforge:endregion plan-02-scheduler-emission ---
 
-      if (!this.isReady(prd.id)) continue;
+      if (!this.isReady(prd.id, stackState)) continue;
 
       // --- eforge:region plan-02-runtime-and-integration ---
       // Skip if already in routing/launch path (prevents duplicate launches
@@ -725,6 +814,15 @@ export class QueueScheduler {
           }
           // --- eforge:endregion plan-02-runtime-and-integration ---
 
+          // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+          const stackValidatedPrd = await this.applyStackingDispatchValidation(currentPrd);
+          if (!stackValidatedPrd) {
+            this.launching.delete(currentPrd.id);
+            return;
+          }
+          currentPrd = stackValidatedPrd;
+          // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
           // Emit session:start and session:profile now that the routed profile is known.
           // Use the persisted frontmatter.profile if set, else the in-memory override, else the config default.
           const selectedProfileName = currentPrd.frontmatter.profile ?? routedProfileOverride ?? this.configProfile.name;
@@ -783,7 +881,7 @@ export class QueueScheduler {
 
   private async tick(): Promise<void> {
     await this.discoverNewPrds();
-    this.startReadyPrds();
+    await this.startReadyPrds();
   }
 
   // ---------------------------------------------------------------------------
@@ -816,7 +914,7 @@ export class QueueScheduler {
     // Filesystem state transitions (preserving plan-05 semantics).
     // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
     if (status === 'completed') {
-      try { await unblockWaiting(this.queueDir, this.cwd, prdId); } catch { /* non-fatal */ }
+      try { await unblockWaiting(this.queueDir, this.cwd, prdId, { requireArtifacts: this.artifactAwareDependencies() }); } catch { /* non-fatal */ }
     } else if (status === 'failed') {
       try { await propagateSkip(this.queueDir, this.cwd, prdId, 'failed'); } catch { /* non-fatal */ }
     } else if (status === 'skipped') {
@@ -829,18 +927,18 @@ export class QueueScheduler {
     if (finalState && finalState.status === 'running') {
       finalState.status = status;
     }
-    if (finalState?.status === 'failed') {
+    if (finalState?.status === 'failed' || finalState?.status === 'skipped') {
       this.propagateBlocked(prdId);
     }
 
     // Re-scan and launch any newly-ready PRDs.
     await this.discoverNewPrds();
     // discoverNewPrds() resets re-queued blocked PRDs to pending; re-apply
-    // in-memory blocking for dependents of this failed completion before launch.
-    if (finalState?.status === 'failed') {
+    // in-memory blocking for dependents of failed/skipped completions before launch.
+    if (finalState?.status === 'failed' || finalState?.status === 'skipped') {
       this.propagateBlocked(prdId);
     }
-    this.startReadyPrds();
+    await this.startReadyPrds();
   }
 
   /** Handles `queue:mutation` injected by HTTP routes. */

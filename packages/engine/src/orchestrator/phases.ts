@@ -23,8 +23,12 @@ import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
 import { executeLandingAction, type LandingAction, type LandingResult } from '../landing.js';
 // --- eforge:endregion plan-01-engine-config-and-landing ---
 // --- eforge:region plan-03-branch-aware-landing ---
-import type { EforgeConfig } from '../config.js';
+import type { EforgeConfig, LandingConfig } from '../config.js';
 // --- eforge:endregion plan-03-branch-aware-landing ---
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
+import type { StackBaseContext } from '../stacking/base-resolver.js';
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 // --- eforge:region plan-02-policy-gate-engine-integration ---
 import {
   buildFinalMergePolicyGateContext,
@@ -91,6 +95,14 @@ export interface PhaseContext {
   /** EforgeConfig subset for trunk policy resolution in executeLandingAction. */
   engineConfig?: Pick<EforgeConfig, 'build'>;
   // --- eforge:endregion plan-03-branch-aware-landing ---
+  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+  /** Queued PRD id for stack artifact recording. */
+  prdId?: string;
+  /** Resolved stack context for queued stacked builds. */
+  stackContext?: StackBaseContext;
+  /** Landing action vocabulary to persist on stack layers. */
+  landingAction?: LandingConfig['action'];
+  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 }
 
 /**
@@ -675,6 +687,41 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     state.completedAt = new Date().toISOString();
   }
 }
+
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+/** Record a successful queued stack build artifact before landing starts. */
+export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
+  if (!ctx.stackContext) return;
+  if ((ctx.state.status as string) === 'failed') return;
+
+  try {
+    yield await recordSuccessfulBuildArtifact({
+      cwd: ctx.repoRoot,
+      mergeWorktreePath: ctx.mergeWorktreePath,
+      stackContext: ctx.stackContext,
+      landingAction: ctx.landingAction,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    ctx.state.status = 'failed';
+    ctx.state.completedAt = new Date().toISOString();
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'daemon:error',
+      source: 'stack:artifact-recording',
+      message: `Failed to record stack artifact for PRD '${ctx.prdId ?? ctx.stackContext.prdId}': ${message}`,
+    } as EforgeEvent;
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'landing:skipped',
+      action: ctx.onSuccess,
+      featureBranch: ctx.featureBranch,
+      baseBranch: ctx.config.baseBranch,
+      reason: 'Stack artifact recording failed',
+    } as EforgeEvent;
+  }
+}
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 /**
  * Final landing of the feature branch and status determination.

@@ -773,3 +773,8 @@ export interface ModelInfo {
 export interface ModelListResponse {
   models: ModelInfo[];
 }
+
+// --- eforge:region plan-01-stack-contracts-config-state-events ---
+// Stack layer wire shapes — canonical source of truth for API responses.
+export type { StackProvider, LandingPublicationAction, StackLayerStatus, StackArtifactRef, StackLayerWire } from './events.js';
+// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
