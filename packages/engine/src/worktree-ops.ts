@@ -270,6 +270,12 @@ export async function createMergeWorktree(
   const mergeWorktreePath = join(worktreeBase, '__merge__');
   await mkdir(worktreeBase, { recursive: true });
 
+  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+  if (!await refExists(repoRoot, baseBranch)) {
+    throw new Error(`Cannot create merge worktree for '${featureBranch}': base ref '${baseBranch}' does not resolve. Rebuild or repair the stack artifact/base ref before retrying.`);
+  }
+  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
   try {
     // Create a new feature branch from baseBranch in a worktree
     await exec('git', ['worktree', 'add', '-b', featureBranch, mergeWorktreePath, baseBranch], {

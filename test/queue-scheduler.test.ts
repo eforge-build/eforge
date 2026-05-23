@@ -403,11 +403,11 @@ describe('QueueScheduler — queue:prd:complete (completed)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 3: queue:prd:complete (skipped) unblocks dependent PRD
+// Test 3: queue:prd:complete (skipped) blocks dependent PRD
 // ---------------------------------------------------------------------------
 
 describe('QueueScheduler — queue:prd:complete (skipped)', () => {
-  it('spawns dependent PRD after upstream is terminally skipped', async () => {
+  it('does not spawn dependent PRD after upstream is terminally skipped', async () => {
     const { bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
     const foundation = makeQueuedPrd('foundation');
@@ -432,10 +432,10 @@ describe('QueueScheduler — queue:prd:complete (skipped)', () => {
 
     await new Promise((r) => setTimeout(r, 200));
 
-    expect(spawnPrdChild).toHaveBeenCalledTimes(2);
-    expect(spawnPrdChild.mock.calls[1][0].id).toBe('feature');
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
     expect(scheduler.processed).toBe(0);
-    expect(scheduler.skipped).toBe(1);
+    scheduler.finalizeBlockedAsSkipped();
+    expect(scheduler.skipped).toBe(2);
 
     eventQueue.removeProducer();
   });

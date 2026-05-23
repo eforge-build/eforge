@@ -23,8 +23,15 @@ export {
   upsertStackLayer,
   lookupLayerByPrdId,
   getParentArtifactBranch,
+  getRecordedArtifactRef,
   isArtifactAvailable,
 } from './state.js';
+
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+export type { StackBaseContext } from './base-resolver.js';
+export { resolveStackBaseContext } from './base-resolver.js';
+export { recordSuccessfulBuildArtifact } from './artifacts.js';
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 // --- eforge:region plan-02-git-spice-provider-and-git-primitives ---
 export type { StackProviderAdapter } from './provider.js';

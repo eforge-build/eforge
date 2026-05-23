@@ -17,6 +17,9 @@ import { composeCommitMessage } from './model-tracker.js';
 import type { ModelTracker } from './model-tracker.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+import { getRecordedArtifactRef, loadStackState } from './stacking/state.js';
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 const exec = promisify(execFile);
 
@@ -789,6 +792,19 @@ export async function setQueuedPrdProfile(
   profile: string,
   _cwd: string,
 ): Promise<QueuedPrd> {
+  const updated = await setQueuedPrdFrontmatterString(prd, 'profile', profile);
+  return {
+    ...updated,
+    frontmatter: { ...updated.frontmatter, profile },
+  };
+}
+
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+async function setQueuedPrdFrontmatterString(
+  prd: QueuedPrd,
+  field: string,
+  value: string,
+): Promise<QueuedPrd> {
   const content = prd.content;
 
   // Locate the frontmatter block
@@ -799,28 +815,35 @@ export async function setQueuedPrdProfile(
 
   const [, openDelim, fmBody, closeDelim, bodyPart] = fmMatch;
 
-  // Rewrite or insert the profile field
   let newFmBody: string;
-  const profileLineRegex = /^profile\s*:.*$/m;
-  if (profileLineRegex.test(fmBody)) {
-    newFmBody = fmBody.replace(profileLineRegex, `profile: ${profile}`);
+  const fieldLineRegex = new RegExp(`^${field}\\s*:.*$`, 'm');
+  if (fieldLineRegex.test(fmBody)) {
+    newFmBody = fmBody.replace(fieldLineRegex, `${field}: ${value}`);
   } else {
-    // Append before the closing delimiter
-    newFmBody = fmBody.trimEnd() + `\nprofile: ${profile}`;
+    newFmBody = fmBody.trimEnd() + `\n${field}: ${value}`;
   }
 
   const newContent = `${openDelim}${newFmBody}${closeDelim}${bodyPart}`;
-
-  // Write updated file (filesystem-only)
   await writeFile(prd.filePath, newContent, 'utf-8');
 
-  // Return updated QueuedPrd with new frontmatter and content
   return {
     ...prd,
     content: newContent,
-    frontmatter: { ...prd.frontmatter, profile },
   };
 }
+
+export async function setQueuedPrdStackParent(
+  prd: QueuedPrd,
+  stackParent: string,
+  _cwd: string,
+): Promise<QueuedPrd> {
+  const updated = await setQueuedPrdFrontmatterString(prd, 'stack_parent', stackParent);
+  return {
+    ...updated,
+    frontmatter: { ...updated.frontmatter, stack_parent: stackParent },
+  };
+}
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 // ---------------------------------------------------------------------------
 // Piggyback scheduling helpers
@@ -927,8 +950,9 @@ export async function propagateSkip(
  *
  * Moves qualifying PRDs from `waiting/` back to the queue root so the
  * normal dispatcher can pick them up. A waiting PRD is unblocked when
- * ALL of its `depends_on` entries are either the just-completed id or
- * no longer present in the active queue (pending/waiting).
+ * ALL of its `depends_on` entries are no longer present in the active queue
+ * (pending/waiting). When `requireArtifacts` is true, each dependency must
+ * also have a durable recorded artifact.
  *
  * Returns the ids of PRDs that were moved to pending.
  */
@@ -936,6 +960,7 @@ export async function unblockWaiting(
   queueDir: string,
   cwd: string,
   completedId: string,
+  options: { requireArtifacts?: boolean } = {},
 ): Promise<string[]> {
   let waitingPrds: QueuedPrd[];
   try {
@@ -955,14 +980,21 @@ export async function unblockWaiting(
   // The just-completed PRD is no longer active
   stillActiveIds.delete(completedId);
 
+  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+  const requireArtifacts = options.requireArtifacts ?? false;
+  const stackState = requireArtifacts ? await loadStackState(cwd) : undefined;
+  const hasRecordedArtifact = (dep: string): boolean =>
+    !requireArtifacts || (stackState !== undefined && getRecordedArtifactRef(stackState, dep) !== undefined);
+  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
   const queueRoot = resolve(cwd, queueDir);
   const unblocked: string[] = [];
 
   for (const prd of waitingPrds) {
     const deps: string[] = prd.frontmatter.depends_on ?? [];
-    // A dep is satisfied when it's the just-completed id or not in any active queue
+    // A dep is satisfied when it is inactive and, for artifact-aware queues, has a durable artifact record.
     const allSatisfied = deps.every(
-      (dep: string) => dep === completedId || !stillActiveIds.has(dep),
+      (dep: string) => !stillActiveIds.has(dep) && hasRecordedArtifact(dep),
     );
 
     if (allSatisfied) {

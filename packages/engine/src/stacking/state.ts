@@ -193,6 +193,16 @@ export function getParentArtifactBranch(state: StackState, childPrdId: string): 
   return parent.artifact?.branch ?? parent.branch;
 }
 
+// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
+/**
+ * Strictly return a recorded artifact branch/ref for `prdId`.
+ * Status alone is not sufficient for downstream readiness.
+ */
+export function getRecordedArtifactRef(state: StackState, prdId: string): string | undefined {
+  return lookupLayerByPrdId(state, prdId)?.artifact?.branch;
+}
+// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
 // ---------------------------------------------------------------------------
 // Artifact availability
 // ---------------------------------------------------------------------------
@@ -200,13 +210,8 @@ export function getParentArtifactBranch(state: StackState, childPrdId: string): 
 /**
  * Returns true when the artifact for `prdId` is available for downstream layers.
  *
- * An artifact is available when the layer has been built (i.e. the branch
- * exists and commits are present), which corresponds to status `built`,
- * `merged`, or `landed`, OR when an explicit `artifact` ref is present.
+ * An artifact is available only when an explicit artifact ref is present.
  */
 export function isArtifactAvailable(state: StackState, prdId: string): boolean {
-  const layer = lookupLayerByPrdId(state, prdId);
-  if (!layer) return false;
-  if (layer.artifact !== undefined) return true;
-  return layer.status === 'built' || layer.status === 'merged' || layer.status === 'landed';
+  return getRecordedArtifactRef(state, prdId) !== undefined;
 }

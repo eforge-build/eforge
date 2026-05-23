@@ -7,7 +7,7 @@
  *   3. lookupLayerByPrdId returns the correct layer.
  *   4. getParentArtifactBranch returns the parent's artifact branch for a child PRD.
  *   5. getParentArtifactBranch falls back to parent.branch when no artifact is set.
- *   6. isArtifactAvailable returns correct values based on status and artifact presence.
+ *   6. isArtifactAvailable returns correct values based on artifact presence.
  *   7. upsertStackLayer replaces an existing layer in-place (idempotent update).
  *   8. concurrent upserts of different PRDs do not lose layers.
  */
@@ -200,7 +200,7 @@ describe('isArtifactAvailable', () => {
     expect(isArtifactAvailable(state, 'pending-layer')).toBe(false);
   });
 
-  it('returns true for a built layer', async () => {
+  it('returns false for a built layer without an explicit artifact ref', async () => {
     const now = new Date().toISOString();
     await upsertStackLayer(cwd, {
       prdId: 'built-layer',
@@ -212,7 +212,7 @@ describe('isArtifactAvailable', () => {
       updatedAt: now,
     });
     const state = await loadStackState(cwd);
-    expect(isArtifactAvailable(state, 'built-layer')).toBe(true);
+    expect(isArtifactAvailable(state, 'built-layer')).toBe(false);
   });
 
   it('returns true for a pending layer that has an explicit artifact ref', async () => {
