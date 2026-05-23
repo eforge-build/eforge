@@ -25,7 +25,8 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 - Shows current branch and dirty status in the Pi footer.
 - Shows a warning widget when working on `main`.
 - Injects a reminder into the agent context when on `main`.
-- Asks for confirmation before `edit`/`write` tool calls on `main`.
+- Asks for confirmation before `edit`/`write` tool calls on `main` for tracked/project files.
+- Allows gitignored project-local eforge runtime/planning state under `.eforge/` (for example `.eforge/session-plans/`) to be updated on `main` without confirmation.
 - Asks for confirmation before guarded bash commands on `main`, including release/publish/tag/push commands.
 
 ## Release flow

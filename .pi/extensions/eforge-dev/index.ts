@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, type SelectItem, SelectList, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
@@ -89,6 +89,19 @@ function isPrLandMode(mode: string): boolean {
 
 function isAutoMergeLandMode(mode: string): boolean {
 	return mode === LAND_MODE.CREATE_AUTO_MERGE || mode === LAND_MODE.UPDATE_AUTO_MERGE;
+}
+
+function getMutationPath(input: unknown): string | undefined {
+	if (!input || typeof input !== "object") return undefined;
+	const maybePath = (input as { path?: unknown }).path;
+	return typeof maybePath === "string" ? maybePath : undefined;
+}
+
+function isProjectLocalEforgePath(cwd: string, filePath: string): boolean {
+	const absolute = resolve(cwd, filePath);
+	const rel = relative(cwd, absolute);
+	if (rel === "" || rel.startsWith("..") || rel.includes(`..${sep}`)) return false;
+	return rel === ".eforge" || rel.startsWith(`.eforge${sep}`);
 }
 
 const RELEASE_BUMP_TYPES = ["patch", "minor", "major"] as const;
@@ -1082,7 +1095,7 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 		if (!state?.isMain) return;
 
 		return {
-			systemPrompt: `${event.systemPrompt}\n\nProject-local eforge-dev policy: the current git branch is main. main should remain releasable. Before making non-release code changes or starting eforge implementation work, ask the user to create a short-lived feature branch with /dev branch.`,
+			systemPrompt: `${event.systemPrompt}\n\nProject-local eforge-dev policy: the current git branch is main. main should remain releasable. Before making tracked non-release code changes or starting eforge implementation work, ask the user to create a short-lived feature branch with /dev branch. Gitignored project-local eforge runtime/planning state under .eforge/ is exempt and may be updated on main.`,
 		};
 	});
 
@@ -1092,7 +1105,10 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 
 		const mutationTools = new Set(["edit", "write"]);
 		if (mutationTools.has(event.toolName)) {
-			if (!ctx.hasUI) return { block: true, reason: "eforge-dev blocks file mutation on main" };
+			const mutationPath = getMutationPath(event.input);
+			if (mutationPath && isProjectLocalEforgePath(ctx.cwd, mutationPath)) return;
+
+			if (!ctx.hasUI) return { block: true, reason: "eforge-dev blocks tracked file mutation on main" };
 			const ok = await ctx.ui.confirm("Mutation on main", `${event.toolName} would modify files while on main. Allow once?`);
 			if (!ok) return { block: true, reason: "Blocked by eforge-dev branch policy" };
 		}
