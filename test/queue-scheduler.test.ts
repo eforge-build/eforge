@@ -736,6 +736,55 @@ describe('QueueScheduler — already-claimed child result', () => {
     }
   });
 
+  it('deletes the root queue PRD when the child exits completed', async () => {
+    const { cwd, eventQueue } = await createTestEnv();
+    const prdPath = join(cwd, 'eforge', 'queue', 'a.md');
+    const lockPath = join(cwd, '.eforge', 'queue-locks', 'a.lock');
+    const cliPath = join(cwd, 'fake-eforge-cli.js');
+
+    await writeFile(prdPath, '---\ntitle: A\n---\n\n# A');
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writeFile(lockPath, String(process.pid));
+    await writeFile(cliPath, `process.exit(${QueueExecExitCode.Completed});\n`);
+
+    const previousCliPath = process.env.EFORGE_CLI_PATH;
+    process.env.EFORGE_CLI_PATH = cliPath;
+
+    try {
+      const engine = await EforgeEngine.create({
+        cwd,
+        agentRuntimes: new StubHarness([]),
+        config: { prdQueue: { dir: 'eforge/queue' }, plugins: { enabled: false } },
+      });
+      type SpawnPrdChildForTest = {
+        spawnPrdChild: (
+          prd: QueuedPrd,
+          options: { auto?: boolean; verbose?: boolean; noMonitor?: boolean },
+          prdSessionId: string,
+          pushEvent: (event: EforgeEvent) => void,
+        ) => Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>;
+      };
+
+      const result = await (engine as unknown as SpawnPrdChildForTest).spawnPrdChild(
+        makeQueuedPrd('a', [], prdPath),
+        { auto: true, noMonitor: true },
+        'session-a',
+        () => {},
+      );
+
+      expect(result).toBe('completed');
+      expect(existsSync(prdPath)).toBe(false);
+      expect(existsSync(lockPath)).toBe(false);
+    } finally {
+      if (previousCliPath === undefined) {
+        delete process.env.EFORGE_CLI_PATH;
+      } else {
+        process.env.EFORGE_CLI_PATH = previousCliPath;
+      }
+      eventQueue.removeProducer();
+    }
+  });
+
   it('leaves dependents blocked and counters unchanged when spawnPrdChild returns already-claimed', async () => {
     const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
