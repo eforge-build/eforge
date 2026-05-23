@@ -33,8 +33,7 @@ const CHECK_STEPS: Step[] = [
 	{ label: "Build workspace", command: "pnpm", args: ["build"], timeout: 120_000 },
 	{ label: "Type check", command: "pnpm", args: ["type-check"], timeout: 120_000 },
 	{ label: "Test", command: "pnpm", args: ["test"], timeout: 180_000 },
-	{ label: "Docs drift check", command: "pnpm", args: ["docs:check"], timeout: 120_000 },
-	{ label: "Docs site build", command: "pnpm", args: ["docs:build"], timeout: 180_000 },
+	{ label: "Docs drift/link check", command: "node", args: ["packages/docs-gen/dist/cli.js", "check"], timeout: 30_000 },
 ];
 
 const BRANCH_NAME_RE = /^(feat|fix|docs|refactor|test|chore|release)\/[a-z0-9][a-z0-9._-]*$/;
@@ -930,7 +929,7 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 	const items: SelectItem[] = [
 		{ value: DEV_ACTION.BRANCH, label: "Create/switch branch from work description", description: "Describe the work; the model names the branch" },
 		{ value: DEV_ACTION.PLAN, label: "Prefill /eforge:plan", description: "Start the published pi-eforge planning flow" },
-		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, docs:check, docs:build" },
+		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, docs drift/link check" },
 		{ value: DEV_ACTION.PR, label: "Show PR readiness", description: "Branch, diff, docs drift, and next steps" },
 		{ value: DEV_ACTION.LAND, label: "Land current branch", description: "Commit, check, and open a PR or fast-forward merge" },
 		{ value: DEV_ACTION.RESTART, label: "Rebuild + restart daemon", description: "Use after local engine/CLI changes" },
