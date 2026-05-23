@@ -266,10 +266,34 @@ Call `eforge_playbook { action: "show", name: "<name>" }` to get the full playbo
 
 **Branch on `mode`:**
 
-- **`mode: autonomous`** — proceed to Step 5.3 (queue check and enqueue).
-- **`mode: planning`** — proceed to Step 5.4 (investigation-first flow).
+- **`mode: autonomous`** — proceed to Step 5.3 (choose landing action).
+- **`mode: planning`** — proceed to Step 5.5 (investigation-first flow).
 
-### 5.3: Check for in-flight builds and enqueue (autonomous only)
+### 5.3: Choose a landing action (autonomous only)
+
+Before checking the queue, ask the user how the playbook's branch should land when the build completes:
+
+> "When this playbook finishes, what should happen to the branch?
+> 1. **issue-pr** — open a pull request
+> 2. **merge-to-base-branch** — merge directly to the base branch
+> 3. **leave-branch** — leave the branch as-is (no PR, no merge)"
+
+Await the user's selection. If the user cancels or dismisses, make no enqueue calls and exit.
+
+**If the user selects `merge-to-base-branch`, the current branch is the configured trunk branch, and direct trunk landing is not permitted** (`build.allowLocalMergeToTrunk` is not set to `true` in `eforge/config.yaml`), show the same remediation choices used by `eforge_build`:
+
+> "Direct merges to trunk are not enabled for this project. Would you like to:
+> 1. **Use `issue-pr` for this run** — open a PR instead
+> 2. **Enable direct merges** — update `eforge/config.yaml` with `build.allowLocalMergeToTrunk: true`, then proceed with `merge-to-base-branch`
+> 3. **Cancel**"
+
+- If the user picks option 1: set `onSuccess` to `"issue-pr"` and continue to Step 5.4.
+- If the user picks option 2: write `build.allowLocalMergeToTrunk: true` to `eforge/config.yaml`, reload the extension best-effort, set `onSuccess` to `"merge-to-base-branch"`, and continue to Step 5.4.
+- If the user picks option 3 (or cancels): make no enqueue calls and exit.
+
+Carry the resolved `onSuccess` value forward to all enqueue calls in Step 5.4.
+
+### 5.4: Check for in-flight builds and enqueue (autonomous only)
 
 Call `eforge_queue_list {}` to get current queue items.
 
@@ -305,8 +329,8 @@ Await user confirmation (y/n or just Enter). Only proceed if confirmed.
 
 **Enqueue:**
 
-- **Run now**: Call `eforge_playbook { action: "run", name: "<name>" }`.
-- **Wait for build**: Call `eforge_playbook { action: "run", name: "<name>", afterQueueId: "<resolved-id>" }`.
+- **Run now**: Call `eforge_playbook { action: "run", name: "<name>", onSuccess: "<landing-action>" }`.
+- **Wait for build**: Call `eforge_playbook { action: "run", name: "<name>", afterQueueId: "<resolved-id>", onSuccess: "<landing-action>" }`.
 
 The `afterQueueId` is the internal queue id resolved above — never the title and never typed by the user.
 
@@ -315,9 +339,9 @@ On **`kind: 'enqueued'`** response: Report the enqueue confirmation and point at
 
 If the enqueue fails because the upstream is no longer active (404 from daemon), tell the user:
 > "The build you selected has already finished. Running `{name}` now instead."
-Then call `eforge_playbook { action: "run", name: "<name>" }` without `afterQueueId`.
+Then call `eforge_playbook { action: "run", name: "<name>", onSuccess: "<landing-action>" }` without `afterQueueId`, reusing the same `onSuccess` resolved in Step 5.3.
 
-### 5.4: Investigation-first planning flow
+### 5.5: Investigation-first planning flow
 
 Do not call `eforge_playbook { action: "run" }` for planning playbooks — the daemon does not execute the investigation. Instead, perform the investigation in the current conversation:
 
@@ -336,7 +360,7 @@ Do not call `eforge_playbook { action: "run" }` for planning playbooks — the d
 7. **Continue planning**: Announce the session plan path and offer to continue into `/eforge:plan --resume` to work through the remaining dimensions before building.
    > "Investigation complete. Session plan created at `{path}`. Would you like to continue with `/eforge:plan --resume` to work through the remaining planning dimensions?"
 
-**Defensive fallback**: If `eforge_playbook { action: "run" }` is called for a planning playbook and returns `{ kind: "requires-agent", mode: "planning", name, message }`, apply the investigation-first flow above starting from step 1.
+**Defensive fallback**: If `eforge_playbook { action: "run" }` is called for a planning playbook and returns `{ kind: "requires-agent", mode: "planning", name, message }`, apply the investigation-first flow above starting from step 1. Do not prompt for a landing action in this fallback path.
 
 ---
 

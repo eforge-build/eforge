@@ -26,6 +26,8 @@ import {
   withLoader,
   type UIContext,
 } from "./ui-helpers";
+import { promptForPlaybookLandingGate } from "./landing-gate.js";
+import type { BuildOnSuccess } from "./trunk-landing.js";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -62,7 +64,7 @@ async function fetchRunningBuilds(
     if (result === null) return { items: [], runningItems: [] };
     const items = result.data;
     const runningItems = items.filter(
-      (item) => item.status === "running" || item.status === "queued",
+      (item) => item.status === "running" || item.status === "pending" || item.status === "queued",
     );
     return { items, runningItems };
   } catch {
@@ -292,6 +294,11 @@ async function handleRunBranch(
     return;
   }
 
+  // Step 3c: Prompt for landing action (autonomous playbooks only)
+  const landingResult = await promptForPlaybookLandingGate(pi, ctx);
+  if (landingResult.cancelled) return;
+  const landingOnSuccess: BuildOnSuccess | undefined = landingResult.onSuccess;
+
   // Step 3b: Check for in-flight builds (autonomous playbooks only)
   const { runningItems } = await withLoader(
     ctx,
@@ -355,12 +362,13 @@ async function handleRunBranch(
   // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
   let runResult: PlaybookRunResponse | null = null;
   try {
+    const enqueueBody = afterQueueId
+      ? { name: selectedName!, afterQueueId, ...(landingOnSuccess ? { onSuccess: landingOnSuccess } : {}) }
+      : { name: selectedName!, ...(landingOnSuccess ? { onSuccess: landingOnSuccess } : {}) };
     const enqueueR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
       apiPlaybookRunIfRunning({
         cwd: ctx.cwd,
-        body: afterQueueId
-          ? { name: selectedName!, afterQueueId }
-          : { name: selectedName! },
+        body: enqueueBody,
       }),
     );
     if (enqueueR === null) {
@@ -378,10 +386,11 @@ async function handleRunBranch(
         `The build you selected has already finished. Running **${selectedName}** now instead.`,
       );
       try {
+        const fallbackBody = { name: selectedName!, ...(landingOnSuccess ? { onSuccess: landingOnSuccess } : {}) };
         const fallbackR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
           apiPlaybookRunIfRunning({
             cwd: ctx.cwd,
-            body: { name: selectedName! },
+            body: fallbackBody,
           }),
         );
         if (fallbackR === null) {

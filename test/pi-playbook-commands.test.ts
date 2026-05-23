@@ -21,6 +21,14 @@ vi.mock('../packages/pi-eforge/extensions/eforge/ui-helpers.js', () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Mock landing gate — decouples command routing tests from Pi UI internals
+// ---------------------------------------------------------------------------
+
+vi.mock('../packages/pi-eforge/extensions/eforge/landing-gate.js', () => ({
+  promptForPlaybookLandingGate: vi.fn(),
+}));
+
+// ---------------------------------------------------------------------------
 // Mock daemon client calls — no live daemon needed
 // ---------------------------------------------------------------------------
 
@@ -37,7 +45,8 @@ vi.mock('@eforge-build/client', async (importOriginal) => {
 });
 
 import { handlePlaybookCommand } from '../packages/pi-eforge/extensions/eforge/playbook-commands.js';
-import { apiPlaybookListIfRunning } from '@eforge-build/client';
+import { promptForPlaybookLandingGate } from '../packages/pi-eforge/extensions/eforge/landing-gate.js';
+import { apiPlaybookListIfRunning, apiPlaybookRunIfRunning, apiGetQueueIfRunning } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -78,6 +87,24 @@ function mockPlaybookList(playbooks: PlaybookListEntry[]) {
   });
 }
 
+function mockLandingGate(result: { onSuccess?: string; cancelled?: boolean; configUpdated?: boolean }) {
+  (promptForPlaybookLandingGate as ReturnType<typeof vi.fn>).mockResolvedValue(result);
+}
+
+function mockQueueEmpty() {
+  (apiGetQueueIfRunning as ReturnType<typeof vi.fn>).mockResolvedValue({
+    status: 200,
+    data: [],
+  });
+}
+
+function mockPlaybookRun(id = 'run-1') {
+  (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mockResolvedValue({
+    status: 200,
+    data: { kind: 'enqueued', id },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -110,13 +137,85 @@ describe('Pi handlePlaybookCommand - planning-mode delegation', () => {
       makeEntry({ name: 'my-feature', mode: 'autonomous' }),
     ]);
 
-    const { apiGetQueueIfRunning } = await import('@eforge-build/client');
-
     await handlePlaybookCommand(pi as any, ctx as any, 'run my-planning');
 
     expect(pi.sendUserMessage).toHaveBeenCalledOnce();
     expect(pi.sendUserMessage).toHaveBeenCalledWith('/skill:eforge-playbook run my-planning');
     // Queue was never checked — planning-mode returned before step 3b
+    expect(apiGetQueueIfRunning).not.toHaveBeenCalled();
+  });
+
+  it('does not call the landing gate for a planning-mode playbook', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    mockPlaybookList([makeEntry({ name: 'my-planning', mode: 'planning' })]);
+
+    await handlePlaybookCommand(pi as any, ctx as any, 'run my-planning');
+
+    expect(promptForPlaybookLandingGate).not.toHaveBeenCalled();
+  });
+});
+
+describe('Pi handlePlaybookCommand - autonomous playbook landing gate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('prompts for landing action before enqueueing an autonomous playbook', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
+    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockQueueEmpty();
+    mockPlaybookRun();
+
+    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+
+    expect(promptForPlaybookLandingGate).toHaveBeenCalledOnce();
+  });
+
+  it('passes selected onSuccess to apiPlaybookRunIfRunning', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
+    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockQueueEmpty();
+    mockPlaybookRun();
+
+    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ name: 'my-feature', onSuccess: 'leave-branch' }),
+      }),
+    );
+  });
+
+  it('makes zero apiPlaybookRunIfRunning calls when landing gate is cancelled', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
+    mockLandingGate({ cancelled: true });
+
+    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+
+    expect(apiPlaybookRunIfRunning).not.toHaveBeenCalled();
+  });
+
+  it('makes zero queue checks when landing gate is cancelled', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
+    mockLandingGate({ cancelled: true });
+
+    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+
     expect(apiGetQueueIfRunning).not.toHaveBeenCalled();
   });
 });
