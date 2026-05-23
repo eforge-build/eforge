@@ -3,6 +3,7 @@ import {
   enableLocalMergeToTrunkInConfigYaml,
   getEffectiveOnSuccess,
   shouldPromptForTrunkLanding,
+  playbookChoiceNeedsTrunkRemediation,
 } from '../packages/pi-eforge/extensions/eforge/trunk-landing.js';
 import { parse as parseYaml } from 'yaml';
 
@@ -61,5 +62,55 @@ describe('Pi eforge trunk landing policy helpers', () => {
 
     expect(parsed.maxConcurrentBuilds).toBe(2);
     expect(parsed.build.allowLocalMergeToTrunk).toBe(true);
+  });
+});
+
+describe('playbookChoiceNeedsTrunkRemediation', () => {
+  const trunkInput = {
+    currentBranch: 'main',
+    trunkBranch: 'main',
+    build: { onSuccess: 'merge-to-base-branch' as const, allowLocalMergeToTrunk: false },
+  };
+
+  const nonTrunkInput = {
+    currentBranch: 'feature/x',
+    trunkBranch: 'main',
+    build: { onSuccess: 'merge-to-base-branch' as const, allowLocalMergeToTrunk: false },
+  };
+
+  it('returns false for issue-pr choice regardless of branch', () => {
+    expect(playbookChoiceNeedsTrunkRemediation('issue-pr', trunkInput)).toBe(false);
+    expect(playbookChoiceNeedsTrunkRemediation('issue-pr', nonTrunkInput)).toBe(false);
+  });
+
+  it('returns false for leave-branch choice regardless of branch', () => {
+    expect(playbookChoiceNeedsTrunkRemediation('leave-branch', trunkInput)).toBe(false);
+    expect(playbookChoiceNeedsTrunkRemediation('leave-branch', nonTrunkInput)).toBe(false);
+  });
+
+  it('returns false for merge-to-base-branch on a non-trunk branch', () => {
+    expect(playbookChoiceNeedsTrunkRemediation('merge-to-base-branch', nonTrunkInput)).toBe(false);
+  });
+
+  it('returns true for merge-to-base-branch on trunk without allowLocalMergeToTrunk', () => {
+    expect(playbookChoiceNeedsTrunkRemediation('merge-to-base-branch', trunkInput)).toBe(true);
+  });
+
+  it('treats an explicit merge-to-base-branch choice as overriding configured issue-pr', () => {
+    expect(
+      playbookChoiceNeedsTrunkRemediation('merge-to-base-branch', {
+        ...trunkInput,
+        build: { onSuccess: 'issue-pr' as const, allowLocalMergeToTrunk: false },
+      }),
+    ).toBe(true);
+  });
+
+  it('returns false for merge-to-base-branch on trunk when allowLocalMergeToTrunk is true', () => {
+    expect(
+      playbookChoiceNeedsTrunkRemediation('merge-to-base-branch', {
+        ...trunkInput,
+        build: { ...trunkInput.build, allowLocalMergeToTrunk: true },
+      }),
+    ).toBe(false);
   });
 });

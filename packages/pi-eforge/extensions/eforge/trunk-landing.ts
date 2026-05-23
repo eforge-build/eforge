@@ -40,6 +40,22 @@ export function shouldPromptForTrunkLanding(input: TrunkLandingPromptInput): boo
   );
 }
 
+/**
+ * For explicit playbook landing-gate mode: determine if trunk remediation is
+ * required for a given explicit onSuccess choice.
+ *
+ * Returns true only when the choice is merge-to-base-branch AND the user is
+ * on the trunk branch without having opted in via allowLocalMergeToTrunk.
+ * Returns false for issue-pr and leave-branch choices regardless of branch.
+ */
+export function playbookChoiceNeedsTrunkRemediation(
+  choice: BuildOnSuccess,
+  input: Omit<TrunkLandingPromptInput, "onSuccessOverride">,
+): boolean {
+  if (choice !== "merge-to-base-branch") return false;
+  return shouldPromptForTrunkLanding({ ...input, onSuccessOverride: "merge-to-base-branch" });
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
