@@ -26,6 +26,9 @@ import type { AgentHarness, AgentRunOptions, ThinkingConfig, EffortLevel, Harnes
 // --- eforge:region plan-01-transport-resilience ---
 import { AgentTerminalError, isTransientTransportError } from '../harness.js';
 // --- eforge:endregion plan-01-transport-resilience ---
+// --- eforge:region plan-01-pi-headless-isolation ---
+import { isPiToolInfrastructureError } from '../harness.js';
+// --- eforge:endregion plan-01-pi-headless-isolation ---
 import type { PiConfig } from '../config.js';
 import { AsyncEventQueue } from '../concurrency.js';
 import { PiMcpBridge } from './pi-mcp-bridge.js';
@@ -206,10 +209,124 @@ function extractMessageUpdateText(event: unknown): { fullText?: string; delta?: 
   return {};
 }
 
+// --- eforge:region plan-01-pi-headless-isolation ---
+
+/**
+ * Counter snapshot from a `buildResourceLoaderOverrides` result.
+ * Tracks how many resources were filtered by the `@eforge-build/pi-eforge` guard
+ * (anti-recursion) vs. the isolation step.
+ */
+export interface ResourceLoaderFilterCounters {
+  eforgeExtensionsFiltered: number;
+  eforgeSkillsFiltered: number;
+  eforgePromptsFiltered: number;
+  eforgeThemesFiltered: number;
+}
+
+/**
+ * Build `DefaultResourceLoader` override callbacks for the given isolation mode.
+ *
+ * In **isolated** mode (the deterministic default), the eforge anti-recursion filter
+ * still runs (incrementing the counters) but the result arrays are replaced with
+ * empty arrays — no ambient project/user/global Pi resources reach the session.
+ *
+ * In **ambient** mode, non-eforge resources are preserved. This matches the
+ * pre-isolation behavior; users who explicitly opt in can still bring their own
+ * Pi extensions into eforge agent sessions, but eforge's own resources are always
+ * excluded to prevent recursion.
+ *
+ * @param mode - 'isolated' (default) or 'ambient' (opt-in).
+ * @returns Override callbacks compatible with `DefaultResourceLoader` options, plus
+ *   a `getCounters()` snapshot accessor.
+ */
+function buildResourceLoaderOverrides(mode: 'isolated' | 'ambient'): {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  extensionsOverride: (base: any) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  skillsOverride: (base: any) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  promptsOverride: (base: any) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  themesOverride: (base: any) => any;
+  getCounters: () => ResourceLoaderFilterCounters;
+} {
+  let eforgeExtensionsFiltered = 0;
+  let eforgeSkillsFiltered = 0;
+  let eforgePromptsFiltered = 0;
+  let eforgeThemesFiltered = 0;
+
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    extensionsOverride: (base: any): any => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nonEforge = base.extensions.filter((ext: any) => {
+        const drop = isEforgePiResource({
+          resolvedPath: ext.resolvedPath,
+          sourceInfoSource: ext.sourceInfo?.source,
+        });
+        if (drop) eforgeExtensionsFiltered += 1;
+        return !drop;
+      });
+      return { ...base, extensions: mode === 'isolated' ? [] : nonEforge };
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    skillsOverride: (base: any): any => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nonEforge = base.skills.filter((skill: any) => {
+        const drop = isEforgePiResource({
+          resolvedPath: skill.filePath,
+          sourceInfoSource: skill.sourceInfo?.source,
+        });
+        if (drop) eforgeSkillsFiltered += 1;
+        return !drop;
+      });
+      return { ...base, skills: mode === 'isolated' ? [] : nonEforge };
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    promptsOverride: (base: any): any => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nonEforge = base.prompts.filter((prompt: any) => {
+        const drop = isEforgePiResource({
+          resolvedPath: prompt.filePath,
+          sourceInfoSource: prompt.sourceInfo?.source,
+        });
+        if (drop) eforgePromptsFiltered += 1;
+        return !drop;
+      });
+      return { ...base, prompts: mode === 'isolated' ? [] : nonEforge };
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    themesOverride: (base: any): any => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nonEforge = base.themes.filter((theme: any) => {
+        const resolvedPath = theme.sourceInfo?.path ?? '';
+        const drop = isEforgePiResource({
+          resolvedPath,
+          sourceInfoSource: theme.sourceInfo?.source,
+        });
+        if (drop) eforgeThemesFiltered += 1;
+        return !drop;
+      });
+      return { ...base, themes: mode === 'isolated' ? [] : nonEforge };
+    },
+    getCounters: () => ({
+      eforgeExtensionsFiltered,
+      eforgeSkillsFiltered,
+      eforgePromptsFiltered,
+      eforgeThemesFiltered,
+    }),
+  };
+}
+// --- eforge:endregion plan-01-pi-headless-isolation ---
+
 export const piHarnessInternalsForTest = {
   extractAssistantMessageText,
   extractLastAssistantMessageText,
   extractMessageUpdateText,
+  // --- eforge:region plan-01-pi-headless-isolation ---
+  buildResourceLoaderOverrides,
+  isPiToolInfrastructureError,
+  // --- eforge:endregion plan-01-pi-headless-isolation ---
 };
 
 /**
@@ -415,11 +532,22 @@ export class PiHarness implements AgentHarness {
     }
 
     let error: string | undefined;
+    // --- eforge:region plan-01-pi-headless-isolation ---
+    let infraError: AgentTerminalError | undefined;
+    // --- eforge:endregion plan-01-pi-headless-isolation ---
     const startTime = Date.now();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let session: any;
 
     try {
+      // --- eforge:region plan-01-pi-headless-isolation ---
+      // Resolve effective isolation mode. 'isolated' is the deterministic default; 'ambient'
+      // must be explicitly opted in via pi.resources: 'ambient' in config. When agents.bare
+      // is true the registry already coerces resources to 'isolated' before constructing this
+      // harness, but we defensively default here for any path that bypasses the registry.
+      const mode: 'isolated' | 'ambient' = this.piConfig?.resources ?? 'isolated';
+      // --- eforge:endregion plan-01-pi-headless-isolation ---
+
       // Build file-backed auth storage (reads ~/.pi/agent/auth.json, env vars, and OAuth tokens)
       const authStorage = AuthStorage.create();
 
@@ -479,11 +607,17 @@ export class PiHarness implements AgentHarness {
         bridgedMcpTools = await this.mcpBridge.getTools();
       }
 
-      // Collect extension tools (only for coding agents, skip in bare mode)
+      // Collect extension tools (only for coding agents, skip in bare or isolated mode).
+      // --- eforge:region plan-01-pi-headless-isolation ---
+      // In isolated mode (the default), discoverPiExtensions is skipped entirely —
+      // no ambient project/user/global Pi extensions are loaded. discoverAndLoadExtensions
+      // and session.bindExtensions() are similarly skipped below. See PiHarness architecture
+      // notes for the full isolation contract.
       let extensionPaths: string[] = [];
-      if (isCoding && !this.bare) {
+      if (isCoding && !this.bare && mode === 'ambient') {
         extensionPaths = await discoverPiExtensions(options.cwd, this.extensions);
       }
+      // --- eforge:endregion plan-01-pi-headless-isolation ---
 
       // Convert eforge CustomTools to Pi 0.68 ToolDefinition objects. The
       // execute callback matches Pi's arity-5 signature
@@ -539,68 +673,23 @@ export class PiHarness implements AgentHarness {
       // Create settings manager
       const settingsManager = SettingsManager.create(options.cwd);
 
-      // Build a resource loader with overrides that strip anything contributed
-      // by the `@eforge-build/pi-eforge` package (extension + skills + prompts
-      // + themes). Without this, Pi's DefaultPackageManager auto-discovers any
-      // user-installed pi-eforge package from ~/.pi/agent/settings.json and
-      // registers its `eforge_*` tools into every agent session — which would
-      // let eforge-run agents recursively invoke eforge itself. User-installed
-      // packages that are NOT pi-eforge are left untouched so users can still
-      // bring their own skills / extensions into eforge agent contexts.
-      let eforgeExtensionsFiltered = 0;
-      let eforgeSkillsFiltered = 0;
-      let eforgePromptsFiltered = 0;
-      let eforgeThemesFiltered = 0;
+      // Build a resource loader with overrides that strip anything contributed by the
+      // `@eforge-build/pi-eforge` package (anti-recursion) and — in isolated mode (the
+      // default) — all other ambient resources too. See buildResourceLoaderOverrides for
+      // the full isolation contract. User-installed packages that are NOT pi-eforge are
+      // preserved when mode === 'ambient', so users who explicitly opt in can still bring
+      // their own skills / extensions into eforge agent contexts.
+      // --- eforge:region plan-01-pi-headless-isolation ---
+      const overrideResult = buildResourceLoaderOverrides(mode);
+      // --- eforge:endregion plan-01-pi-headless-isolation ---
       const resourceLoader = new DefaultResourceLoader({
         cwd: options.cwd,
         agentDir: getAgentDir(),
         settingsManager,
-        extensionsOverride: (base) => ({
-          ...base,
-          extensions: base.extensions.filter((ext) => {
-            const drop = isEforgePiResource({
-              resolvedPath: ext.resolvedPath,
-              sourceInfoSource: ext.sourceInfo?.source,
-            });
-            if (drop) eforgeExtensionsFiltered += 1;
-            return !drop;
-          }),
-        }),
-        skillsOverride: (base) => ({
-          ...base,
-          skills: base.skills.filter((skill) => {
-            const drop = isEforgePiResource({
-              resolvedPath: skill.filePath,
-              sourceInfoSource: skill.sourceInfo?.source,
-            });
-            if (drop) eforgeSkillsFiltered += 1;
-            return !drop;
-          }),
-        }),
-        promptsOverride: (base) => ({
-          ...base,
-          prompts: base.prompts.filter((prompt) => {
-            const drop = isEforgePiResource({
-              resolvedPath: prompt.filePath,
-              sourceInfoSource: prompt.sourceInfo?.source,
-            });
-            if (drop) eforgePromptsFiltered += 1;
-            return !drop;
-          }),
-        }),
-        themesOverride: (base) => ({
-          ...base,
-          themes: base.themes.filter((theme) => {
-            // Themes carry their sourceInfo at the top level.
-            const resolvedPath = theme.sourceInfo?.path ?? '';
-            const drop = isEforgePiResource({
-              resolvedPath,
-              sourceInfoSource: theme.sourceInfo?.source,
-            });
-            if (drop) eforgeThemesFiltered += 1;
-            return !drop;
-          }),
-        }),
+        extensionsOverride: overrideResult.extensionsOverride,
+        skillsOverride: overrideResult.skillsOverride,
+        promptsOverride: overrideResult.promptsOverride,
+        themesOverride: overrideResult.themesOverride,
       });
       await resourceLoader.reload();
 
@@ -770,6 +859,24 @@ export class PiHarness implements AgentHarness {
           error = errMsg;
         }
 
+        // --- eforge:region plan-01-pi-headless-isolation ---
+        // Detect Pi tool-call infrastructure failures (e.g. global theme proxy accessed
+        // without initTheme() in a headless SDK session). Classify the *raw* result before
+        // truncation so the full message is available for pattern matching. When detected,
+        // abort the session and record the typed error for the throw path below.
+        if (event.type === 'tool_execution_end' && !infraError) {
+          const rawResult = typeof (event as { result?: unknown }).result === 'string'
+            ? (event as { result: string }).result
+            : JSON.stringify((event as { result?: unknown }).result);
+          if (isPiToolInfrastructureError(rawResult)) {
+            const infraMsg = `Pi tool-call infrastructure failure: ${rawResult}`;
+            error = infraMsg;
+            infraError = new AgentTerminalError('error_pi_tool_infrastructure', infraMsg);
+            try { session.abort(); } catch { /* ignore abort errors */ }
+          }
+        }
+        // --- eforge:endregion plan-01-pi-headless-isolation ---
+
         // Capture final result text from agent_end when Pi delivers it, but
         // do not rely on agent_end exclusively. Some provider/session paths can
         // resolve the prompt before the final lifecycle event is observed; the
@@ -815,6 +922,9 @@ export class PiHarness implements AgentHarness {
             toolsMode: options.tools,
             thinkingLevel,
             bare: this.bare,
+            // --- eforge:region plan-01-pi-headless-isolation ---
+            resourcesMode: mode,
+            // --- eforge:endregion plan-01-pi-headless-isolation ---
             projectMcpServerNames: Object.keys(this.mcpServers ?? {}).sort(),
             extensionPathCount: extensionPaths.length,
             baseToolCount: filteredBaseTools.length,
@@ -822,11 +932,8 @@ export class PiHarness implements AgentHarness {
             customToolCount: filteredEforgeCustomTools.length,
             systemPromptBytes: (sessionState.systemPrompt ?? '').length,
             eforgePackageName: EFORGE_PI_PACKAGE_NAME,
-            eforgeExtensionsFiltered,
-            eforgeSkillsFiltered,
-            eforgePromptsFiltered,
-            eforgeThemesFiltered,
-            note: 'systemPrompt reflects what pi-coding-agent constructed: the coding-assistant preamble + tool snippets + ancestor AGENTS.md/CLAUDE.md + skills + date/cwd. projectMcpServerNames lists project MCP servers filtered by the tier toolbelt (bridged to Pi via PiMcpBridge). Any resources contributed by @eforge-build/pi-eforge were filtered out via resourceLoader overrides to prevent eforge recursion.',
+            ...overrideResult.getCounters(),
+            note: 'systemPrompt reflects what pi-coding-agent constructed: the coding-assistant preamble + tool snippets + ancestor AGENTS.md/CLAUDE.md + skills + date/cwd. projectMcpServerNames lists project MCP servers filtered by the tier toolbelt (bridged to Pi via PiMcpBridge). Any resources contributed by @eforge-build/pi-eforge were filtered out via resourceLoader overrides to prevent eforge recursion. resourcesMode indicates whether ambient Pi resources were suppressed (isolated) or preserved (ambient).',
           },
         };
         await this.onDebugPayload(debugPayload);
@@ -843,7 +950,16 @@ export class PiHarness implements AgentHarness {
         totalCost = stats.cost;
       }).catch((err: unknown) => {
         if (!error) {
-          error = err instanceof Error ? err.message : String(err);
+          const msg = err instanceof Error ? err.message : String(err);
+          error = msg;
+          // --- eforge:region plan-01-pi-headless-isolation ---
+          // Also classify prompt-level infra failures (e.g. Theme not initialized thrown
+          // from session.prompt() itself rather than from a tool_execution_end event).
+          if (isPiToolInfrastructureError(msg) && !infraError) {
+            const infraMsg = `Pi tool-call infrastructure failure: ${msg}`;
+            infraError = new AgentTerminalError('error_pi_tool_infrastructure', infraMsg);
+          }
+          // --- eforge:endregion plan-01-pi-headless-isolation ---
         }
       }).finally(() => {
         unsubscribe();
@@ -926,6 +1042,11 @@ export class PiHarness implements AgentHarness {
       yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agentId, agent, result: resultData };
 
       if (error) {
+        // --- eforge:region plan-01-pi-headless-isolation ---
+        if (infraError) {
+          throw infraError;
+        }
+        // --- eforge:endregion plan-01-pi-headless-isolation ---
         // --- eforge:region plan-01-transport-resilience ---
         if (isTransientTransportError(error)) {
           throw new AgentTerminalError('error_transient_transport', error);
@@ -937,6 +1058,12 @@ export class PiHarness implements AgentHarness {
       // Handle fallback model retry
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
+
+      // --- eforge:region plan-01-pi-headless-isolation ---
+      if (err instanceof AgentTerminalError && err.subtype === 'error_pi_tool_infrastructure') {
+        throw err;
+      }
+      // --- eforge:endregion plan-01-pi-headless-isolation ---
 
       // --- eforge:region plan-01-transport-resilience ---
       if (isTransientTransportError(error)) {

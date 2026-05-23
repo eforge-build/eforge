@@ -104,6 +104,14 @@
                       "xhigh"
                     ]
                   },
+                  "resources": {
+                    "description": "Whether ambient Pi resources (project/user/global extensions, skills, prompts, themes) are loaded into eforge agent sessions. Default 'isolated' suppresses all ambient resources; 'ambient' opts in to loading them (use with care — project-local Pi extensions must guard TUI state access for headless SDK contexts).",
+                    "type": "string",
+                    "enum": [
+                      "isolated",
+                      "ambient"
+                    ]
+                  },
                   "extensions": {
                     "description": "Pi extension configuration",
                     "type": "object",

@@ -219,6 +219,11 @@ export const piConfigSchema = z.object({
   provider: z.string().optional().describe('Pi provider name (required when used in a pi tier)'),
   apiKey: z.string().optional().describe('API key for the Pi provider'),
   thinkingLevel: piThinkingLevelSchema.optional().describe('Thinking level for Pi agents'),
+  // --- eforge:region plan-01-pi-headless-isolation ---
+  resources: z.enum(['isolated', 'ambient']).optional().describe(
+    "Whether ambient Pi resources (project/user/global extensions, skills, prompts, themes) are loaded into eforge agent sessions. Default 'isolated' suppresses all ambient resources; 'ambient' opts in to loading them (use with care — project-local Pi extensions must guard TUI state access for headless SDK contexts).",
+  ),
+  // --- eforge:endregion plan-01-pi-headless-isolation ---
   extensions: z.object({
     autoDiscover: z.boolean().optional().describe('Automatically discover Pi extensions'),
     include: z.array(z.string()).optional().describe('Extension names to include'),
@@ -460,6 +465,15 @@ export interface PiConfig {
   /** Optional provider override. */
   provider?: string;
   thinkingLevel: 'off' | 'low' | 'medium' | 'high' | 'xhigh';
+  // --- eforge:region plan-01-pi-headless-isolation ---
+  /**
+   * Whether ambient Pi resources (project/user/global extensions, skills, prompts, themes)
+   * are loaded into eforge agent sessions. Required (defaulted to 'isolated' by buildPiConfig).
+   * 'isolated' suppresses all ambient resources (deterministic default).
+   * 'ambient' opts in — project-local Pi extensions must guard TUI state for headless contexts.
+   */
+  resources: 'isolated' | 'ambient';
+  // --- eforge:endregion plan-01-pi-headless-isolation ---
   extensions: { autoDiscover: boolean; include?: string[]; exclude?: string[]; paths?: string[] };
   compaction: { enabled: boolean; threshold: number };
   retry: { maxRetries: number; backoffMs: number };
