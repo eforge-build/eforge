@@ -146,6 +146,7 @@ async function buildBackendForDebug(
       apiKey: tier.pi?.apiKey,
       provider: tier.pi?.provider,
       thinkingLevel: tier.pi?.thinkingLevel ?? 'medium',
+      resources: tier.pi?.resources ?? 'isolated',
       extensions: {
         autoDiscover: tier.pi?.extensions?.autoDiscover ?? true,
         include: tier.pi?.extensions?.include,

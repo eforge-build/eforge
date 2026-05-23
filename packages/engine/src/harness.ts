@@ -249,6 +249,19 @@ export type AgentTerminalSubtype =
   | 'error_max_budget_usd'
   | 'error_max_structured_output_retries'
   | 'error_during_execution'
+  // --- eforge:region plan-01-pi-headless-isolation ---
+  /**
+   * A Pi tool-call hook handler (e.g. `session_start`, `tool_call`) threw before the model
+   * could receive the tool result. The most common cause is a project-local Pi extension
+   * accessing the global Pi theme proxy (`ctx.ui.theme`) without calling `initTheme()` first,
+   * which is only available in interactive/TUI Pi sessions.
+   *
+   * Remediation: Set `pi.resources: ambient` only if you intentionally want project/user/global
+   * Pi extensions inside eforge agent sessions, and ensure those extensions guard
+   * `ctx.ui.theme` access for headless SDK contexts.
+   */
+  | 'error_pi_tool_infrastructure'
+  // --- eforge:endregion plan-01-pi-headless-isolation ---
   // --- eforge:region plan-01-transport-resilience ---
   | 'error_transient_transport';
   // --- eforge:endregion plan-01-transport-resilience ---
@@ -292,9 +305,37 @@ export function classifyAgentTerminalSubtype(err: unknown): AgentTerminalSubtype
   if (err instanceof AgentTerminalError) return err.subtype;
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : undefined;
   if (message && isTransientTransportError(message)) return 'error_transient_transport';
+  // --- eforge:region plan-01-pi-headless-isolation ---
+  if (message && isPiToolInfrastructureError(message)) return 'error_pi_tool_infrastructure';
+  // --- eforge:endregion plan-01-pi-headless-isolation ---
   return undefined;
 }
 // --- eforge:endregion plan-01-transport-resilience ---
+
+// --- eforge:region plan-01-pi-headless-isolation ---
+/**
+ * Pattern that matches Pi tool-call infrastructure failures caused by the global theme
+ * proxy being accessed before `initTheme()` is called. These errors appear as tool-result
+ * text when a Pi extension hook (e.g. `tool_call`) throws during a headless agent session.
+ *
+ * Intentionally narrow — matches only the well-attested `Theme not initialized` family.
+ * Broader heuristics for other infra failures belong in a follow-up if they surface.
+ */
+const PI_TOOL_INFRA_RE = /theme\s+not\s+initialized/i;
+
+/**
+ * Returns true when a tool-result or prompt-rejection message indicates a Pi tool-call
+ * infrastructure failure (e.g. global theme proxy accessed before `initTheme()` in a
+ * headless SDK session). Matches leading/trailing whitespace and case variations.
+ *
+ * Used to classify `AgentTerminalError('error_pi_tool_infrastructure', ...)` so the engine
+ * surfaces it as a clear infrastructure failure with remediation hints rather than a
+ * generic no-submission compile failure.
+ */
+export function isPiToolInfrastructureError(message: string): boolean {
+  return PI_TOOL_INFRA_RE.test(message);
+}
+// --- eforge:endregion plan-01-pi-headless-isolation ---
 
 /**
  * Thrown by the planner agent runner when the agent stream ends without ever

@@ -1,3 +1,13 @@
+/**
+ * Tests for `discoverPiExtensions` — resolves extension paths from config and standard
+ * auto-discovery locations.
+ *
+ * NOTE: Under the isolated resource mode (the eforge default, set via `pi.resources`),
+ * `PiHarness` short-circuits this helper entirely and does not call it — extension loading
+ * is skipped and an empty list is passed to the Pi session. This helper only runs when
+ * mode === 'ambient' (explicit opt-in). The isolation behavior is tested separately in
+ * `test/pi-harness-resource-isolation.test.ts`.
+ */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -109,5 +119,25 @@ describe('discoverPiExtensions', () => {
     await mkdir(emptyDir, { recursive: true });
     const result = await discoverPiExtensions(emptyDir);
     expect(result).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression guard: discoverPiExtensions still works correctly when called directly
+// (PiHarness skips it under isolated mode; this confirms the helper itself is intact)
+// ---------------------------------------------------------------------------
+
+describe('discoverPiExtensions — regression guard (direct call)', () => {
+  const makeTempDir = useTempDir();
+
+  it('discovers project-local extensions when called directly with a valid cwd', async () => {
+    const dir = makeTempDir();
+    const extDir = join(dir, '.pi', 'extensions');
+    await mkdir(extDir, { recursive: true });
+    await mkdir(join(extDir, 'regression-guard'));
+
+    const result = await discoverPiExtensions(dir);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatch(/regression-guard$/);
   });
 });

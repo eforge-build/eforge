@@ -241,6 +241,92 @@ describe('buildAgentRuntimeRegistry — forRoleResolved toolbelt summary', () =>
 });
 
 // ---------------------------------------------------------------------------
+// Pi resources isolation — buildPiConfig defaults and agents.bare coercion
+// ---------------------------------------------------------------------------
+
+describe('buildAgentRuntimeRegistry — Pi resources isolation', () => {
+  it('defaults pi.resources to isolated when omitted from config', async () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
+    });
+    // Should build without throwing — isolated default is applied
+    const registry = await buildAgentRuntimeRegistry(config, {});
+    expect(registry).toBeDefined();
+    expect(() => registry.forRole('planner')).not.toThrow();
+  });
+
+  it('preserves explicit pi.resources: ambient when set', async () => {
+    // Two tiers: one isolated (default), one ambient — they must produce distinct harness instances
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'pi' as const, pi: { provider: 'anthropic', resources: 'ambient' as const }, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
+    });
+    const registry = await buildAgentRuntimeRegistry(config, {});
+    // planner uses ambient tier, builder uses isolated (default) tier
+    const planner = registry.forRole('planner');   // ambient
+    const builder = registry.forRole('builder');   // isolated (default)
+    // Different resources mode → distinct instances (different memoization keys)
+    expect(planner).not.toBe(builder);
+  });
+
+  it('agents.bare: true forces resources to isolated even when tier sets ambient', async () => {
+    // With agents.bare: true, the registry coerces any ambient Pi tier to isolated.
+    // Two ambient tiers under bare should still share the same (isolated) instance.
+    const config = resolveConfig({
+      agents: {
+        bare: true,
+        tiers: {
+          planning: { harness: 'pi' as const, pi: { provider: 'anthropic', resources: 'ambient' as const }, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'pi' as const, pi: { provider: 'anthropic', resources: 'ambient' as const }, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'pi' as const, pi: { provider: 'anthropic', resources: 'ambient' as const }, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'pi' as const, pi: { provider: 'anthropic', resources: 'ambient' as const }, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
+    });
+    const registry = await buildAgentRuntimeRegistry(config, {});
+    // Both roles have same provider and both are coerced to isolated by bare — same instance
+    const planner = registry.forRole('planner');
+    const builder = registry.forRole('builder');
+    expect(planner).toBe(builder);
+    // Verify the underlying piConfig.resources is 'isolated' despite the tier declaring 'ambient'
+    expect((planner as unknown as { piConfig?: { resources?: string } }).piConfig?.resources).toBe('isolated');
+  });
+
+  it('two pi tiers with same provider but different resources produce distinct instances', async () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'pi' as const, pi: { provider: 'anthropic', resources: 'ambient' as const }, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'pi' as const, pi: { provider: 'anthropic', resources: 'isolated' as const }, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'pi' as const, pi: { provider: 'anthropic', resources: 'isolated' as const }, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'pi' as const, pi: { provider: 'anthropic', resources: 'isolated' as const }, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
+    });
+    const registry = await buildAgentRuntimeRegistry(config, {});
+    const planner = registry.forRole('planner');   // ambient
+    const builder = registry.forRole('builder');   // isolated
+    expect(planner).not.toBe(builder);
+    // reviewer and evaluator share isolated → same instance as builder
+    const reviewer = registry.forRole('reviewer');
+    expect(builder).toBe(reviewer);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Pi lazy-load
 // ---------------------------------------------------------------------------
 

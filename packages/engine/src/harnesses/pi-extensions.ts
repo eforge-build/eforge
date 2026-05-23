@@ -1,5 +1,12 @@
 /**
  * Pi extension discovery — resolves extension paths from config and auto-discovery locations.
+ *
+ * NOTE: `PiHarness` calls this helper only when the resolved isolation mode is 'ambient'
+ * (`pi.resources: 'ambient'` in eforge/config.yaml). Under the deterministic default
+ * ('isolated'), the harness skips this helper entirely and passes an empty extension list to
+ * `createAgentSession`, so no project/user/global Pi extensions load into the agent session.
+ * The `eforge` basename filter within this helper remains as a safety guard for ambient mode.
+ * See `test/pi-harness-resource-isolation.test.ts` for isolation behavior tests.
  */
 
 import { existsSync } from 'node:fs';

@@ -56,6 +56,9 @@ const AgentTerminalSubtypeSchema = Type.Union([
   Type.Literal('error_max_budget_usd'),
   Type.Literal('error_max_structured_output_retries'),
   Type.Literal('error_during_execution'),
+  // --- eforge:region plan-01-pi-headless-isolation ---
+  Type.Literal('error_pi_tool_infrastructure'),
+  // --- eforge:endregion plan-01-pi-headless-isolation ---
   // --- eforge:region plan-01-transport-resilience ---
   Type.Literal('error_transient_transport'),
   // --- eforge:endregion plan-01-transport-resilience ---

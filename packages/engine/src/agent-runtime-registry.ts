@@ -123,6 +123,9 @@ function buildPiConfig(piBlock: TierConfig['pi'] | undefined): PiConfig {
     apiKey: piBlock?.apiKey,
     provider: piBlock?.provider,
     thinkingLevel: piBlock?.thinkingLevel ?? 'medium',
+    // --- eforge:region plan-01-pi-headless-isolation ---
+    resources: piBlock?.resources ?? 'isolated',
+    // --- eforge:endregion plan-01-pi-headless-isolation ---
     extensions: {
       autoDiscover: piBlock?.extensions?.autoDiscover ?? true,
       include: piBlock?.extensions?.include,
@@ -220,8 +223,10 @@ function resolveTierToolbelt(
  *  - harness type ('claude-sdk' or 'pi:<provider>')
  *  - sorted effective project MCP server names (toolbelt-filtered)
  *  - disableSubagents flag (claude-sdk only)
+ *  - resources mode for pi ('isolated' | 'ambient') — isolated and ambient Pi instances
+ *    have different resource-loader behavior and must not be shared
  *
- * Two tiers sharing all three dimensions reuse a single harness instance;
+ * Two tiers sharing all dimensions reuse a single harness instance;
  * differing on any dimension get distinct instances.
  */
 function makeKey(
@@ -229,13 +234,21 @@ function makeKey(
   provider?: string,
   sortedProjectMcpServerNames: string[] = [],
   disableSubagents: boolean = false,
+  // --- eforge:region plan-01-pi-headless-isolation ---
+  resources?: 'isolated' | 'ambient',
+  // --- eforge:endregion plan-01-pi-headless-isolation ---
 ): string {
   const serversKey = sortedProjectMcpServerNames.length > 0
     ? `:servers=${sortedProjectMcpServerNames.join(',')}`
     : '';
   const subagentsKey = disableSubagents ? ':nosubagents' : '';
   if (harness === 'pi') {
-    return `pi:${provider ?? ''}${serversKey}${subagentsKey}`;
+    // --- eforge:region plan-01-pi-headless-isolation ---
+    // Only append :ambient when explicitly opted in; isolated (the default) omits the
+    // suffix to preserve backward compatibility with existing memoization keys.
+    const resourcesKey = resources === 'ambient' ? ':ambient' : '';
+    // --- eforge:endregion plan-01-pi-headless-isolation ---
+    return `pi:${provider ?? ''}${serversKey}${subagentsKey}${resourcesKey}`;
   }
   return `claude-sdk${serversKey}${subagentsKey}`;
 }
@@ -297,7 +310,20 @@ export async function buildAgentRuntimeRegistry(
     const disableSubagents = tierRecipe.harness === 'claude-sdk'
       ? (tierRecipe.claudeSdk?.disableSubagents ?? false)
       : false;
-    const key = makeKey(tierRecipe.harness, provider, summary.projectMcpServerNames, disableSubagents);
+
+    // --- eforge:region plan-01-pi-headless-isolation ---
+    // Build piCfg before makeKey so the effective resources mode (after bare coercion)
+    // is included in the memoization key. agents.bare forces 'isolated' regardless of
+    // the per-tier pi.resources setting — bare is never weaker than the deterministic default.
+    let piCfg: PiConfig | undefined;
+    if (tierRecipe.harness === 'pi') {
+      piCfg = buildPiConfig(tierRecipe.pi);
+      if (config.agents.bare) {
+        piCfg.resources = 'isolated';
+      }
+    }
+    const key = makeKey(tierRecipe.harness, provider, summary.projectMcpServerNames, disableSubagents, piCfg?.resources);
+    // --- eforge:endregion plan-01-pi-headless-isolation ---
 
     const existingHarness = instances.get(key);
     if (existingHarness) return { harness: existingHarness, toolbeltSummary: summary };
@@ -305,16 +331,16 @@ export async function buildAgentRuntimeRegistry(
     let harness: AgentHarness;
     if (tierRecipe.harness === 'pi') {
       if (!PiHarnessCtor) throw new Error('Internal: Pi module not loaded despite pi tier');
-      const piCfg = buildPiConfig(tierRecipe.pi);
+      // piCfg already built and coerced above
       harness = new PiHarnessCtor({
         mcpServers: projectMcpServerMap,
-        piConfig: piCfg,
+        piConfig: piCfg!,
         bare: config.agents.bare,
         extensions: {
-          autoDiscover: piCfg.extensions.autoDiscover,
-          include: piCfg.extensions.include,
-          exclude: piCfg.extensions.exclude,
-          paths: piCfg.extensions.paths,
+          autoDiscover: piCfg!.extensions.autoDiscover,
+          include: piCfg!.extensions.include,
+          exclude: piCfg!.extensions.exclude,
+          paths: piCfg!.extensions.paths,
         },
       });
     } else {

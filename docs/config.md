@@ -206,6 +206,7 @@ agents:
       pi:                      # Optional: Pi-specific config (ignored unless harness: pi)
         provider: openrouter   # Provider name (openrouter, google, openai, etc.)
         # thinkingLevel: xhigh # Pi only: 'off', 'low', 'medium', 'high', 'xhigh'
+        # resources: isolated  # 'isolated' (default) or 'ambient' — see Headless resource isolation below
       claudeSdk:               # Optional: Claude SDK-specific config (ignored unless harness: claude-sdk)
         disableSubagents: false # Prevent agents in this tier from spawning subagents
 ```
@@ -255,6 +256,57 @@ The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which sup
 1. Run `pi auth login <provider>` to authenticate (writes tokens to `~/.pi/agent/auth.json`)
 2. Set the provider on the tier - e.g. `pi.provider: openai-codex` - and use a plain model id (e.g. `codex-mini`)
 3. No API key or environment variable is needed - tokens are read from the auth file automatically
+
+### Headless resource isolation
+
+By default, eforge Pi agent sessions run in **isolated mode**: ambient Pi resources - project-local, user-global, and globally-installed Pi extensions, skills, prompts, and themes - are suppressed. This is a deterministic default that prevents interactive or TUI-oriented Pi extensions from interfering with headless agent execution.
+
+**What is suppressed (isolated mode):**
+
+- Pi extensions discovered from `.pi/extensions/`, `~/.pi/extensions/`, and installed pi-packages
+- Pi skills, prompts, and themes from all ambient sources
+
+**What is always preserved (both modes):**
+
+- eforge custom tools (including `submit_plan_set` and other engine-internal tools)
+- Bridged MCP tools from `tools.toolbelts` or `.mcp.json` discovery
+- The `@eforge-build/pi-eforge` recursion filter - eforge's own Pi integration is always excluded to prevent recursive builds
+
+#### Opting in to ambient resources
+
+Set `pi.resources: 'ambient'` on a tier to restore full ambient Pi resource loading:
+
+```yaml
+agents:
+  tiers:
+    implementation:
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
+      effort: medium
+      pi:
+        provider: openrouter
+        resources: ambient   # Load ambient Pi extensions, skills, prompts, themes
+```
+
+> **Risk note:** Ambient mode allows project-local Pi extensions to load inside eforge agent sessions. Extensions that touch `ctx.ui.theme` or other TUI/interactive-only state will crash in headless SDK execution with `Theme not initialized. Call initTheme() first.` - the engine surfaces this as an `error_pi_tool_infrastructure` build failure (see below). Any extension loaded under ambient mode must guard TUI state access to function correctly in a non-interactive context.
+
+#### `agents.bare` invariant
+
+When `agents.bare: true` is set, the resolved resource mode is always `'isolated'`, regardless of the per-tier `pi.resources` setting. `bare` represents maximum isolation; it is never weaker than the default.
+
+```yaml
+agents:
+  bare: true   # Forces resources: isolated on all Pi tiers, even if pi.resources: ambient is declared
+```
+
+#### `error_pi_tool_infrastructure` failures
+
+When an ambient Pi extension throws a tool-call infrastructure error (such as `Theme not initialized. Call initTheme() first.`) during an agent run, eforge classifies the failure as a typed `AgentTerminalError` with subtype `error_pi_tool_infrastructure`. The build stops with a clear infrastructure failure message rather than silently producing a compile failure from the model having received error text in its tool results.
+
+**Remediation:** check which project-local Pi extensions are active in the failing session. Either:
+
+- Switch to the default `pi.resources: 'isolated'` (no ambient Pi extensions load)
+- Or update the offending extension to guard TUI state access before touching `ctx.ui.theme` and similar APIs that require interactive initialization
 
 ### Claude SDK Tiers
 
