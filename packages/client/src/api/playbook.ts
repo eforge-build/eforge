@@ -4,7 +4,7 @@
 
 import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
 import { API_ROUTES } from '../routes.js';
-import type { PlaybookRunResponse } from '../routes.js';
+import type { PlaybookRunRequest, PlaybookRunResponse } from '../routes.js';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -134,7 +134,7 @@ export function apiPlaybookSave(opts: { cwd: string; body: PlaybookSaveBody }) {
   return daemonRequest<PlaybookSaveResponse>(opts.cwd, 'POST', API_ROUTES.playbookSave, opts.body);
 }
 
-export function apiPlaybookRun(opts: { cwd: string; body: { name: string; afterQueueId?: string } }) {
+export function apiPlaybookRun(opts: { cwd: string; body: PlaybookRunRequest }) {
   return daemonRequest<PlaybookRunResponse>(opts.cwd, 'POST', API_ROUTES.playbookRun, opts.body);
 }
 
@@ -179,7 +179,7 @@ export function apiPlaybookSaveIfRunning(opts: { cwd: string; body: PlaybookSave
   return daemonRequestIfRunning<PlaybookSaveResponse>(opts.cwd, 'POST', API_ROUTES.playbookSave, opts.body);
 }
 
-export function apiPlaybookRunIfRunning(opts: { cwd: string; body: { name: string; afterQueueId?: string } }) {
+export function apiPlaybookRunIfRunning(opts: { cwd: string; body: PlaybookRunRequest }) {
   return daemonRequestIfRunning<PlaybookRunResponse>(opts.cwd, 'POST', API_ROUTES.playbookRun, opts.body);
 }
 

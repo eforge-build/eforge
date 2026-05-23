@@ -123,7 +123,11 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 36', () => {
+  it('is 37', () => {
+    // v37: optional `onSuccess` field added to `PlaybookRunRequest` (per-playbook-run landing
+    // action override: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch'); daemon
+    // `/api/playbook/run` validates and passes `onSuccess` to `enqueuePrd(...)` for autonomous
+    // playbooks; older daemons would silently ignore the field.
     // v36: optional `onSuccess` field added to `EnqueueRequest` (per-build landing action
     // override: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch'); `onSuccess` persisted
     // in PRD frontmatter so override survives queue scheduler child-process boundaries; new
@@ -135,7 +139,7 @@ describe('DAEMON_API_VERSION', () => {
     // PRD frontmatter; `/api/session-plan/create` and `/api/session-plan/create-from-playbook`
     // propagate `agent_profile`; `/api/enqueue` validates and propagates inherited session-plan
     // `agent_profile` to worker `--profile` arg.
-    expect(DAEMON_API_VERSION).toBe(36);
+    expect(DAEMON_API_VERSION).toBe(37);
   });
 });
 

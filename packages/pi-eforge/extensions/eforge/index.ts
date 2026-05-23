@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getMarkdownTheme, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, type SelectItem, SelectList, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -62,7 +62,6 @@ import {
 } from '@eforge-build/client';
 import { requireDaemon, piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
 import { deriveProfileName } from '@eforge-build/engine/config';
-import { resolveTrunkBranch } from '@eforge-build/engine/branch-policy';
 import type {
   EnqueueRequest,
   EnqueueResponse,
@@ -85,11 +84,9 @@ import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
 import { renderBorderedLines, type UIContext } from './ui-helpers';
 import {
-  enableLocalMergeToTrunkInConfigYaml,
-  shouldPromptForTrunkLanding,
   type BuildOnSuccess,
-  type BuildLandingConfig,
 } from './trunk-landing';
+import { promptForBuildLandingGate } from './landing-gate.js';
 export {
   formatSingleBuildFooter,
   formatAggregateFooter,
@@ -126,21 +123,6 @@ function withMonitorUrl(
   port: number,
 ): Record<string, unknown> {
   return { ...data, monitorUrl: `http://localhost:${port}` };
-}
-
-type ConfigShowVerboseResponse = {
-  resolved?: {
-    build?: BuildLandingConfig;
-  };
-  sources?: {
-    project?: { path: string | null; found: boolean };
-  };
-};
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
 }
 
 async function checkActiveBuilds(
@@ -317,92 +299,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     _latestCtx = null;
   }
 
-  async function getCurrentGitBranch(ctx: ExtensionContext, signal?: AbortSignal): Promise<string | null> {
-    try {
-      const result = await pi.exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-        cwd: ctx.cwd,
-        signal,
-        timeout: 5000,
-      });
-      if (result.code !== 0) return null;
-      const branch = result.stdout.trim();
-      return branch && branch !== "HEAD" ? branch : null;
-    } catch {
-      return null;
-    }
-  }
-
-  async function loadVerboseConfig(ctx: ExtensionContext): Promise<ConfigShowVerboseResponse> {
-    const { data } = await requireDaemon<ConfigShowVerboseResponse>(
-      ctx.cwd,
-      "GET",
-      `${API_ROUTES.configShow}?verbose=true`,
-    );
-    return data;
-  }
-
-  async function promptForTrunkLandingIfNeeded(
-    ctx: ExtensionContext,
-    onSuccessOverride: BuildOnSuccess | undefined,
-    signal?: AbortSignal,
-  ): Promise<{ onSuccess?: BuildOnSuccess; cancelled?: boolean; configUpdated?: boolean }> {
-    const verboseConfig = await loadVerboseConfig(ctx);
-    const resolved = asRecord(verboseConfig.resolved) ?? {};
-    const build = asRecord(resolved.build) as BuildLandingConfig | undefined;
-    const trunkBranch = await resolveTrunkBranch({ build: build ?? {} } as Parameters<typeof resolveTrunkBranch>[0], ctx.cwd);
-    const currentBranch = await getCurrentGitBranch(ctx, signal);
-
-    if (!shouldPromptForTrunkLanding({ currentBranch, trunkBranch, build, onSuccessOverride })) {
-      return {};
-    }
-
-    if (!ctx.hasUI) {
-      throw new Error(
-        `Building from trunk '${trunkBranch}' with merge-to-base-branch requires a choice: ` +
-        `pass onSuccess: "issue-pr" for this build, or set build.allowLocalMergeToTrunk: true in eforge/config.yaml.`,
-      );
-    }
-
-    const issuePrChoice = "Open a PR instead (issue-pr)";
-    const updateConfigChoice = "Update eforge/config.yaml to allow local trunk merges";
-    const cancelChoice = "Cancel this build";
-    const choice = await ctx.ui.select(
-      `eforge: building from trunk (${trunkBranch}) with merge-to-base-branch`,
-      [issuePrChoice, updateConfigChoice, cancelChoice],
-    );
-
-    if (!choice || choice === cancelChoice) {
-      return { cancelled: true };
-    }
-
-    if (choice === issuePrChoice) {
-      return { onSuccess: "issue-pr" };
-    }
-
-    const projectConfigPath = verboseConfig.sources?.project?.path;
-    if (!projectConfigPath) {
-      throw new Error("Cannot update config: eforge/config.yaml was not found for this project.");
-    }
-
-    await withFileMutationQueue(projectConfigPath, async () => {
-      const currentYaml = readFileSync(projectConfigPath, "utf-8");
-      const updatedYaml = enableLocalMergeToTrunkInConfigYaml(currentYaml);
-      writeFileSync(projectConfigPath, updatedYaml, "utf-8");
-    });
-    ctx.ui.notify("Updated eforge/config.yaml: build.allowLocalMergeToTrunk: true", "info");
-
-    // If auto-build is already running, restart the runtime watcher so it sees
-    // the updated config before processing the just-enqueued PRD.
-    try {
-      await piDaemonRequest(ctx.cwd, "POST", API_ROUTES.extensionReload);
-    } catch {
-      // Non-fatal: the enqueue worker also loads config fresh, and the daemon
-      // will surface any remaining runtime policy issue clearly.
-    }
-
-    return { configUpdated: true };
-  }
-
   // Register session lifecycle listeners for Pi footer status.
   pi.on('session_start', async (_ev: unknown, ctx: unknown) => {
     startStatusPolling(ctx as UIContext);
@@ -431,8 +327,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const policyChoice = await promptForTrunkLandingIfNeeded(
-        ctx,
+      const policyChoice = await promptForBuildLandingGate(
+        pi,
+        ctx as unknown as UIContext,
         params.onSuccess as BuildOnSuccess | undefined,
         signal,
       );
@@ -2077,6 +1974,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           description: 'Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].',
         }),
       ),
+      onSuccess: Type.Optional(
+        StringEnum(['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const, {
+          description: 'Override the project-level on-success landing action for this run (optional, "run" only for autonomous playbooks).',
+        }),
+      ),
       raw: Type.Optional(
         Type.String({
           description: 'Raw Markdown playbook string (required for "validate")',
@@ -2084,7 +1986,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, name, scope, playbook, afterQueueId, raw } = params;
+      const { action, name, scope, playbook, afterQueueId, onSuccess, raw } = params;
 
       if (action === "list") {
         const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.playbookList);
@@ -2112,6 +2014,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!name) throw new Error('"name" is required when action is "run"');
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
+        if (onSuccess !== undefined) body.onSuccess = onSuccess;
         const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookRun, body);
         return jsonResult(data);
       }

@@ -3364,7 +3364,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Working directory not configured');
         return;
       }
-      let body: { name?: unknown; afterQueueId?: unknown };
+      let body: { name?: unknown; afterQueueId?: unknown; onSuccess?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
@@ -3380,6 +3380,18 @@ export async function startServer(
         return;
       }
       const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
+      // --- eforge:region plan-01-playbook-onsuccess-api ---
+      const VALID_ON_SUCCESS = ['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const;
+      type BuildOnSuccessValue = (typeof VALID_ON_SUCCESS)[number];
+      let onSuccess: BuildOnSuccessValue | undefined;
+      if (body.onSuccess !== undefined) {
+        if (typeof body.onSuccess !== 'string' || !(VALID_ON_SUCCESS as readonly string[]).includes(body.onSuccess)) {
+          sendJsonError(res, 400, `Invalid onSuccess value: must be one of ${VALID_ON_SUCCESS.join(', ')}`);
+          return;
+        }
+        onSuccess = body.onSuccess as BuildOnSuccessValue;
+      }
+      // --- eforge:endregion plan-01-playbook-onsuccess-api ---
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
         const { loadPlaybook, playbookToBuildSource } = await import('@eforge-build/input');
@@ -3448,6 +3460,9 @@ export async function startServer(
             // --- eforge:region plan-01-core-profile-propagation ---
             profile: plan.profile,
             // --- eforge:endregion plan-01-core-profile-propagation ---
+            // --- eforge:region plan-01-playbook-onsuccess-api ---
+            onSuccess,
+            // --- eforge:endregion plan-01-playbook-onsuccess-api ---
           });
           // Enqueue is filesystem-only — queue state is runtime, not tracked in git.
           notifyQueueMutation(options.daemonState, 'playbook-enqueue');

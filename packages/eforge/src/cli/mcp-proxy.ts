@@ -979,9 +979,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }),
       }).optional().describe('Playbook content (required for "save")'),
       afterQueueId: z.string().optional().describe('Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].'),
+      onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional().describe('Override the project-level on-success landing action for this run (optional, "run" only for autonomous playbooks).'),
       raw: z.string().optional().describe('Raw Markdown playbook string (required for "validate")'),
     },
-    handler: async ({ action, name, scope, playbook, afterQueueId, raw }, { cwd: toolCwd }) => {
+    handler: async ({ action, name, scope, playbook, afterQueueId, onSuccess, raw }, { cwd: toolCwd }) => {
       if (action === 'list') {
         const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.playbookList);
         return data;
@@ -1004,6 +1005,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (!name) throw new Error('"name" is required when action is "run"');
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
+        if (onSuccess !== undefined) body.onSuccess = onSuccess;
         const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookRun, body);
         return data;
       }
