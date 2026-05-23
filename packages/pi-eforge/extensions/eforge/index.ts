@@ -6,8 +6,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
-import { Container, Markdown, type SelectItem, SelectList, Text } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { readFileSync, accessSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
@@ -82,7 +81,7 @@ import { handlePlaybookCommand } from './playbook-commands';
 import { handlePlanCommand } from './plan-command';
 import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
-import { renderBorderedLines, type UIContext } from './ui-helpers';
+import { showSelectPanel, type UIContext } from './ui-helpers';
 import {
   type BuildOnSuccess,
 } from './trunk-landing';
@@ -1740,7 +1739,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_confirm_build",
     label: "eforge confirm build",
     description:
-      "Present an interactive TUI overlay for the user to confirm, edit, or cancel a build source before enqueuing. Returns the user's choice.",
+      "Open an editor-first review flow so the user can revise, confirm, or cancel a build source before enqueuing. Returns the user's choice and confirmed source.",
     parameters: Type.Object({
       source: Type.String({
         description:
@@ -1749,60 +1748,31 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (!ctx.hasUI) {
-        return jsonResult({ choice: "confirm", note: "No UI available, auto-confirming" });
+        return jsonResult({ choice: "confirm", source: params.source, note: "No UI available, auto-confirming" });
       }
 
-      const items: SelectItem[] = [
-        { value: "confirm", label: "✓ Confirm", description: "Enqueue for building" },
-        { value: "edit", label: "✎ Edit", description: "Revise the source" },
+      const items = [
+        { value: "confirm", label: "✓ Confirm", description: "Enqueue this edited source" },
+        { value: "edit", label: "✎ Revise again", description: "Return to the editor" },
         { value: "cancel", label: "✗ Cancel", description: "Abort" },
       ];
 
-      const choice = await ctx.ui.custom<string>((tui, theme, _kb, done) => {
-        const container = new Container();
-        const mdTheme = getMarkdownTheme();
+      let source = params.source;
+      while (true) {
+        const editedSource = await ctx.ui.editor("eforge - Review Build Source", source);
+        if (editedSource === undefined) {
+          return jsonResult({ choice: "cancel" });
+        }
+        source = editedSource;
 
-        container.addChild(new Text(theme.fg("accent", theme.bold("eforge - Confirm Build")), 1, 0));
-        container.addChild(new Markdown(params.source, 1, 1, mdTheme));
-
-        const selectList = new SelectList(items, items.length, {
-          selectedPrefix: (text) => theme.fg("accent", text),
-          selectedText: (text) => theme.fg("accent", text),
-          description: (text) => theme.fg("muted", text),
-          scrollInfo: (text) => theme.fg("dim", text),
-          noMatch: (text) => theme.fg("warning", text),
-        });
-
-        selectList.onSelect = (item) => done(item.value);
-        selectList.onCancel = () => done("cancel");
-
-        container.addChild(selectList);
-        container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc cancel"), 1, 0));
-
-        return {
-          render: (width: number) => renderBorderedLines(
-            container.render(Math.max(1, width - 2)),
-            width,
-            (s: string) => theme.fg("accent", s),
-          ),
-          invalidate: () => container.invalidate(),
-          handleInput: (data: string) => {
-            selectList.handleInput(data);
-            tui.requestRender();
-          },
-        };
-      }, {
-        overlay: true,
-        overlayOptions: {
-          anchor: "center",
-          width: "80%",
-          minWidth: 40,
-          maxHeight: "85%",
-          margin: 1,
-        },
-      });
-
-      return jsonResult({ choice: choice ?? "cancel" });
+        const choice = await showSelectPanel(ctx, "eforge - Confirm Build", items);
+        if (choice === "confirm") {
+          return jsonResult({ choice: "confirm", source });
+        }
+        if (choice !== "edit") {
+          return jsonResult({ choice: "cancel" });
+        }
+      }
     },
 
     renderCall(args, theme) {

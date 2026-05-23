@@ -39,7 +39,7 @@ Present your suggested commands to the user briefly: "I'd suggest these postMerg
 <!-- parity-skip-start -->
 ### Step 1.3: On-success landing action
 
-Ask the user to choose what happens when a build completes successfully. Present the three options using `showSelectOverlay` (or equivalent native UI):
+Ask the user to choose what happens when a build completes successfully. Present the three options using the native select UI:
 
 | Option | Value | When to use |
 |--------|-------|-------------|
@@ -69,7 +69,7 @@ Store the chosen value for use in the `eforge_init` calls below (both the existi
 
 2. Ask the user to confirm the detected trunk using `showInput` with the detected branch as the default value: "Trunk branch detected as `<trunk>` — confirm or enter a different name." Accept a correction if provided.
 
-3. Ask using `showSelectOverlay`:
+3. Ask using the native select UI:
 
    > **Should builds be allowed to merge directly to `<trunk>` without opening a PR? (solo-dev opt-in)**
    >

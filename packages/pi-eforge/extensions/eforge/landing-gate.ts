@@ -83,7 +83,7 @@ async function getGitBranch(
 }
 
 /**
- * Show the trunk remediation overlay used by both build mode and playbook mode
+ * Show the trunk remediation selector used by both build mode and playbook mode
  * when merge-to-base-branch would land on trunk without allowLocalMergeToTrunk.
  */
 async function promptTrunkRemediation(
@@ -159,7 +159,7 @@ async function promptTrunkRemediation(
  * Build landing gate.
  *
  * Checks if the current branch is trunk and merge-to-base-branch would land
- * without opt-in. If so, shows the trunk remediation overlay. Otherwise
+ * without opt-in. If so, shows the trunk remediation selector. Otherwise
  * returns {} so the build can proceed unchanged.
  *
  * Throws when hasUI is false and remediation is required (non-interactive).
@@ -204,7 +204,7 @@ export async function promptForBuildLandingGate(
  * Always prompts the user to choose a landing action (issue-pr,
  * merge-to-base-branch, or leave-branch). If the user selects
  * merge-to-base-branch and the current branch is trunk without opt-in,
- * falls through to the trunk remediation overlay.
+ * falls through to the trunk remediation selector.
  *
  * Returns { cancelled: true } if the user cancels at either prompt.
  * Returns { onSuccess, configUpdated? } otherwise.

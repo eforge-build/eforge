@@ -11,8 +11,9 @@
 //   1. `<!-- parity-skip-start --> ... <!-- parity-skip-end -->` blocks are
 //      stripped on both sides. This is the escape hatch for genuine
 //      platform-affordance divergence — e.g., Pi's `eforge_confirm_build`
-//      TUI overlay vs the plugin's plain-text preview + confirm/edit/cancel
-//      prompt, or `/plugin update eforge@eforge` vs `pi update`. Wrap only
+//      editor-first TUI flow vs the plugin's plain-text preview +
+//      confirm/edit/cancel prompt, or `/plugin update eforge@eforge` vs
+//      `pi update`. Wrap only
 //      the minimum number of lines that legitimately cannot be unified;
 //      everything outside the markers must match post-normalization.
 //
@@ -29,7 +30,7 @@
 //
 //   2. A leading Pi-side `> **Note:** In Pi, ...` paragraph is stripped on
 //      the Pi side only. These notes explain that Pi additionally exposes
-//      a richer native interactive command (overlay-driven) and the SKILL
+//      a richer native interactive command (panel/editor-driven) and the SKILL
 //      file serves as a model-readable fallback. They don't apply to the
 //      Claude Code plugin, so the narrative beneath them must still match.
 
@@ -120,12 +121,18 @@ function normalizePluginBody(text) {
 }
 
 // Pi bodies: `/eforge:<name>` occasionally appears in prose; keep the same
-// normalization so both sides converge.
+// normalization so both sides converge. Pi's build skill also carries a
+// minimal editor-first reminder in the enqueue step; normalize that away here
+// because the full platform-specific review flow is already parity-skipped.
 function normalizePiBody(text) {
-  return stripPiNoteBlock(stripSkipBlocks(text)).replace(
-    /\/eforge:([a-zA-Z0-9_-]+)/g,
-    (_, name) => `eforge_${name.replace(/-/g, "_")}`,
-  );
+  return stripPiNoteBlock(stripSkipBlocks(text))
+    .replace(
+      /`, using the latest working source \(including the edited `source` returned by `eforge_confirm_build` on confirmation for non-file-path sources\)/g,
+      "`",
+    )
+    .replace(/\/eforge:([a-zA-Z0-9_-]+)/g, (_, name) =>
+      `eforge_${name.replace(/-/g, "_")}`,
+    );
 }
 
 // Minimal line-level diff. Good enough to point a human at the drift.

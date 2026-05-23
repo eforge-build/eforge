@@ -109,14 +109,14 @@ When the current branch is a **feature branch**:
 - `leave-branch` commits to the eforge work branch and exits without merging.
 
 <!-- parity-skip-start -->
-Call the `eforge_confirm_build` tool with `{ source: "<the complete working source text>" }`. This presents an interactive TUI overlay where the user can review the source (rendered as Markdown) and select confirm, edit, or cancel from a keyboard-navigable list.
+Call the `eforge_confirm_build` tool with `{ source: "<the complete working source text>" }`. This opens an editor-first review flow where the user can revise the source directly, then choose confirm, revise again, or cancel from a compact keyboard-navigable selector.
 
-For **file path sources** (Branch A from Step 1), pass a brief summary of the file contents as the source text (not the full file), and note the file path in the summary.
+For **file path sources** (Branch A from Step 1), pass a brief summary of the file contents as the source text (not the full file), and note the file path in the summary. Preserve the original file path as the working source unless the user explicitly asks to replace it with inline build text.
 
-The tool returns a JSON object with a `choice` field. Handle each value:
+The tool returns a JSON object with a `choice` field and, on confirmation, may include the edited `source`. Handle each value:
 
-- **`"confirm"`** - Proceed to **Step 5**
-- **`"edit"`** - Ask the user what they'd like to revise, incorporate their changes, then call `eforge_confirm_build` again with the updated source
+- **`"confirm"`** - If the result includes `source` and the working source is not a file path, replace the working source with that returned edited source. For file path sources, keep the original file path unless the user explicitly chose to replace it with inline build text. Then proceed to **Step 5**.
+- **`"edit"`** - Legacy resumed-session handling: ask the user what they'd like to revise, incorporate their changes, then call `eforge_confirm_build` again with the updated source
 - **`"cancel"`** - Acknowledge the cancellation and stop
 <!-- parity-skip-end -->
 
@@ -140,10 +140,10 @@ First, validate the project config by calling the `eforge_config` tool with `{ a
 
 - If `valid` is `true`, continue silently.
 
-Call the `eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If the user explicitly specified an `onSuccess` override for this build, include `onSuccess: "<value>"` in the call.
+Call the `eforge_build` tool with `{ source: "<source>" }`, using the latest working source (including the edited `source` returned by `eforge_confirm_build` on confirmation for non-file-path sources). If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If the user explicitly specified an `onSuccess` override for this build, include `onSuccess: "<value>"` in the call.
 
 <!-- parity-skip-start -->
-If the user asks to choose a per-build landing action, use `showSelectOverlay` with the three options (`merge-to-base-branch`, `issue-pr`, `leave-branch`) before calling the tool.
+If the user asks to choose a per-build landing action, use the native select UI with the three options (`merge-to-base-branch`, `issue-pr`, `leave-branch`) before calling the tool.
 <!-- parity-skip-end -->
 
 The tool returns a JSON response with a `sessionId` and `autoBuild` status.

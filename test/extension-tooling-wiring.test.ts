@@ -758,7 +758,7 @@ describe('MCP/Pi eforge_extension parity', () => {
     expectInOrder(piBlock, 'if (params.action === "demote")', 'apiDemoteExtensionIfRunning');
   });
 
-  it('/eforge:config Pi overlay includes the resolved extensions config block', () => {
+  it('/eforge:config Pi TUI panel includes the resolved extensions config block', () => {
     const source = readRepoFile('packages/pi-eforge/extensions/eforge/config-command.ts');
     expect(source).toContain('## Extensions');
     expect(source).toContain('trustProjectExtensions');

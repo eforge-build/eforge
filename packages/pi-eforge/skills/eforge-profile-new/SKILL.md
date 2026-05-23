@@ -4,7 +4,7 @@ description: Create a new agent runtime profile in eforge/profiles/
 disable-model-invocation: true
 ---
 
-> **Note:** In Pi, the native `/eforge:profile:new` command provides a richer interactive experience with a guided overlay-based creation wizard. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
+> **Note:** In Pi, the native `/eforge:profile:new` command provides a richer interactive experience with a guided TUI wizard and panel previews. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
 
 # /eforge:profile-new
 

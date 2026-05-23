@@ -3,7 +3,7 @@ name: eforge-playbook
 description: Create, edit, run, list, and promote eforge playbooks — reusable recurring-workflow templates
 ---
 
-> **Note:** In Pi, the native `/eforge:playbook` command provides an interactive overlay-based experience for Run, List, Promote, and Demote. For Create and Edit (which require conversational reasoning), the native command delegates to this skill. The skill also serves as fallback in non-interactive contexts.
+> **Note:** In Pi, the native `/eforge:playbook` command provides interactive TUI selectors and panels for Run, List, Promote, and Demote. For Create and Edit (which require conversational reasoning), the native command delegates to this skill. The skill also serves as fallback in non-interactive contexts.
 
 # /eforge:playbook
 
