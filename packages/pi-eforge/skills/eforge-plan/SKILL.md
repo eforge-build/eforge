@@ -19,9 +19,9 @@ Planning must distinguish **facts**, **evidence-backed conclusions**, and **assu
 ## Arguments
 
 - `topic` (optional) — What to plan. If omitted, ask the user.
-- `--resume` — Resume an active session. In Pi, `/eforge:plan --resume` opens a native selector first.
-- `--session <session-id>` — Resume this exact session plan. Used by the Pi native selector to avoid a follow-up numbered prompt.
-- `--playbook <name>` — Start from this exact planning-mode playbook. Used by the Pi native selector to avoid a follow-up numbered prompt.
+- `--resume` — Resume an active session.
+- `--session <session-id>` — Resume this exact session plan. Used by Pi's native `/eforge:plan` selector to avoid a follow-up numbered prompt.
+- `--playbook <name>` — Start from this exact planning-mode playbook. Used by Pi's native `/eforge:plan` selector to avoid a follow-up numbered prompt.
 
 ## Workflow
 

@@ -12,7 +12,7 @@ Enqueue a PRD file or description for the eforge daemon to build. Uses the eforg
 
 - `source` (optional) - PRD file path, session-plan path, or inline description of what to build
 - `--infer` (optional) - Skip session-plan discovery and infer the source from conversation context. Used by Pi's native `/eforge:build` source selector.
-- `--profile <name>` (optional) - Use this eforge agent runtime profile for the build instead of the active profile. Used by Pi's native profile selector.
+- `--profile <name>` (optional) - Use this eforge agent runtime profile for the build instead of the active profile.
 - `onSuccess` (optional) - Override the landing action for this build. One of `merge-to-base-branch`, `issue-pr`, or `leave-branch`. Precedence: this argument > PRD frontmatter > `build.onSuccess` in `eforge/config.yaml` > engine default (`merge-to-base-branch`). If omitted, the project config default applies. Note: `merge-to-base-branch` on the trunk branch requires `build.allowLocalMergeToTrunk: true` in `eforge/config.yaml`.
 
 ## Workflow
