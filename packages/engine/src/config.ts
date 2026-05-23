@@ -311,6 +311,22 @@ const roleOverrideSchema = z.object({
   shards: z.array(localShardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
 });
 
+// --- eforge:region plan-01-stack-contracts-config-state-events ---
+/** Zod schema for the stacking subsystem config. */
+const stackingConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  provider: z.literal('git-spice').optional(),
+  gitSpice: z.object({
+    command: z.string().optional(),
+  }).optional(),
+});
+
+/** Zod schema for the landing publication config. */
+const landingConfigSchema = z.object({
+  action: z.enum(['pr', 'merge', 'leave']).optional(),
+});
+// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+
 /** Base object schema without refinements — .partial() is derived from this. */
 const eforgeConfigBaseSchema = z.object({
   maxConcurrentBuilds: z.number().int().positive().optional(),
@@ -364,6 +380,10 @@ const eforgeConfigBaseSchema = z.object({
   }).optional(),
   hooks: z.array(hookConfigSchema).optional(),
   tools: toolsConfigSchema.optional(),
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  stacking: stackingConfigSchema.optional(),
+  landing: landingConfigSchema.optional(),
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 });
 
 /** Exported schema. Cross-field validation is performed in tierConfigSchema. */
@@ -401,6 +421,42 @@ export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {
 };
 // --- eforge:endregion plan-01-extension-runtime-foundation ---
 export type TierConfig = z.output<typeof tierConfigSchema>;
+
+// --- eforge:region plan-01-stack-contracts-config-state-events ---
+/** Resolved stacking subsystem config. */
+export interface StackingConfig {
+  enabled: boolean;
+  provider: 'git-spice';
+  gitSpice: { command?: string };
+}
+
+/** Resolved landing publication config. */
+export interface LandingConfig {
+  action: 'pr' | 'merge' | 'leave';
+}
+
+const ON_SUCCESS_BY_LANDING_ACTION = {
+  pr: 'issue-pr',
+  merge: 'merge-to-base-branch',
+  leave: 'leave-branch',
+} as const satisfies Record<LandingConfig['action'], EforgeConfig['build']['onSuccess']>;
+
+const LANDING_ACTION_BY_ON_SUCCESS = {
+  'issue-pr': 'pr',
+  'merge-to-base-branch': 'merge',
+  'leave-branch': 'leave',
+} as const satisfies Record<EforgeConfig['build']['onSuccess'], LandingConfig['action']>;
+
+/** Map new landing.action vocabulary to the legacy onSuccess action consumed by current runtime paths. */
+export function landingActionToOnSuccess(action: LandingConfig['action']): EforgeConfig['build']['onSuccess'] {
+  return ON_SUCCESS_BY_LANDING_ACTION[action];
+}
+
+/** Map legacy build.onSuccess vocabulary to the new landing.action vocabulary. */
+export function onSuccessToLandingAction(action: EforgeConfig['build']['onSuccess']): LandingConfig['action'] {
+  return LANDING_ACTION_BY_ON_SUCCESS[action];
+}
+// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
 /**
  * Resolved agent config for a specific role, combining tier recipe + role/plan
@@ -523,6 +579,10 @@ export interface EforgeConfig {
   tools: {
     toolbelts: Record<string, { description?: string; mcpServers: string[] }>;
   };
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  stacking: StackingConfig;
+  landing: LandingConfig;
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 }
 
 /** Deep-partial version of EforgeConfig used for parsing and merging — derived from the zod schema. */
@@ -731,6 +791,10 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   monitor: Object.freeze({ retentionCount: 20 }),
   hooks: Object.freeze([]),
   tools: Object.freeze({ toolbelts: {} }),
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  stacking: Object.freeze({ enabled: false, provider: 'git-spice' as const, gitSpice: Object.freeze({}) as { command?: string } }),
+  landing: Object.freeze({ action: 'merge' as const }),
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 });
 
 /**
@@ -773,6 +837,13 @@ export function resolveConfig(
   const langfuseEnabled = !!(langfusePublicKey && langfuseSecretKey);
 
   const tiers = (fileConfig.agents?.tiers as Partial<Record<AgentTier, TierConfig>> | undefined) ?? DEFAULT_CONFIG.agents.tiers;
+  const landingAction = fileConfig.landing?.action
+    ?? (fileConfig.build?.onSuccess !== undefined
+      ? onSuccessToLandingAction(fileConfig.build.onSuccess)
+      : DEFAULT_CONFIG.landing.action);
+  const onSuccess = fileConfig.landing?.action !== undefined
+    ? landingActionToOnSuccess(fileConfig.landing.action)
+    : fileConfig.build?.onSuccess ?? DEFAULT_CONFIG.build.onSuccess;
 
   return Object.freeze({
     maxConcurrentBuilds: fileConfig.maxConcurrentBuilds ?? DEFAULT_CONFIG.maxConcurrentBuilds,
@@ -799,7 +870,7 @@ export function resolveConfig(
       maxValidationRetries: fileConfig.build?.maxValidationRetries ?? DEFAULT_CONFIG.build.maxValidationRetries,
       cleanupPlanFiles: fileConfig.build?.cleanupPlanFiles ?? DEFAULT_CONFIG.build.cleanupPlanFiles,
       // --- eforge:region plan-01-engine-config-and-landing ---
-      onSuccess: fileConfig.build?.onSuccess ?? DEFAULT_CONFIG.build.onSuccess,
+      onSuccess,
       // --- eforge:region plan-01-config-and-trunk-resolution ---
       trunkBranch: fileConfig.build?.trunkBranch,
       allowLocalMergeToTrunk: fileConfig.build?.allowLocalMergeToTrunk ?? DEFAULT_CONFIG.build.allowLocalMergeToTrunk,
@@ -855,6 +926,18 @@ export function resolveConfig(
     tools: Object.freeze({
       toolbelts: fileConfig.tools?.toolbelts ?? DEFAULT_CONFIG.tools.toolbelts,
     }),
+    // --- eforge:region plan-01-stack-contracts-config-state-events ---
+    stacking: Object.freeze({
+      enabled: fileConfig.stacking?.enabled ?? DEFAULT_CONFIG.stacking.enabled,
+      provider: (fileConfig.stacking?.provider ?? DEFAULT_CONFIG.stacking.provider) as 'git-spice',
+      gitSpice: Object.freeze({
+        command: fileConfig.stacking?.gitSpice?.command,
+      }),
+    }),
+    landing: Object.freeze({
+      action: landingAction,
+    }),
+    // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
   });
 }
 
@@ -1090,6 +1173,36 @@ export function mergePartialConfigs(
     };
   }
 
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  if (global.stacking || project.stacking) {
+    const mergedGitSpice = (global.stacking?.gitSpice || project.stacking?.gitSpice)
+      ? { ...global.stacking?.gitSpice, ...project.stacking?.gitSpice }
+      : undefined;
+    result.stacking = {
+      ...global.stacking,
+      ...project.stacking,
+      ...(mergedGitSpice !== undefined ? { gitSpice: mergedGitSpice } : {}),
+    };
+  }
+  if (global.landing || project.landing) {
+    result.landing = { ...global.landing, ...project.landing };
+  }
+  // Preserve layer precedence while bridging between legacy build.onSuccess and
+  // the new landing.action vocabulary. The later `project` layer wins even when
+  // it uses the other spelling than an earlier `global` layer.
+  if (project.landing?.action !== undefined) {
+    result.build = {
+      ...result.build,
+      onSuccess: landingActionToOnSuccess(project.landing.action),
+    };
+  } else if (project.build?.onSuccess !== undefined) {
+    result.landing = {
+      ...result.landing,
+      action: onSuccessToLandingAction(project.build.onSuccess),
+    };
+  }
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+
   return result;
 }
 
@@ -1269,6 +1382,20 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
       );
     }
   }
+
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  const hasExplicitLegacyOnSuccess =
+    globalConfig.build?.onSuccess !== undefined ||
+    projectConfig.build?.onSuccess !== undefined ||
+    localConfig.build?.onSuccess !== undefined ||
+    profileConfig?.build?.onSuccess !== undefined;
+  if (hasExplicitLegacyOnSuccess) {
+    allWarnings.push(
+      '[eforge] "build.onSuccess" is deprecated — use "landing.action" instead. ' +
+      'Replace build.onSuccess with landing.action: <pr|merge|leave> in your eforge/config.yaml.',
+    );
+  }
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
   return {
     config: resolveConfig(merged),

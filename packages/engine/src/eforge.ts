@@ -41,7 +41,7 @@ import type { NativeExtensionDiagnostic, NativeExtensionRegistry } from './exten
 import type { AgentHarness } from './harness.js';
 import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
-import { loadConfig, DEFAULT_REVIEW, getConfigDir, getConventionalConfigDir } from './config.js';
+import { loadConfig, DEFAULT_REVIEW, getConfigDir, getConventionalConfigDir, landingActionToOnSuccess, onSuccessToLandingAction } from './config.js';
 import { loadNativeExtensions, withAgentContextHooks } from './extensions/index.js';
 import { setPromptDir } from './prompts.js';
 import { type AgentRuntimeRegistry, singletonRegistry, buildAgentRuntimeRegistry } from './agent-runtime-registry.js';
@@ -538,6 +538,10 @@ export class EforgeEngine {
         depends_on: dependsOn,
         ...(options.profile !== undefined && { profile: options.profile }),
         ...(options.onSuccess !== undefined && { onSuccess: options.onSuccess }),
+        ...(options.stack_id !== undefined && { stack_id: options.stack_id }),
+        ...(options.stack_parent !== undefined && { stack_parent: options.stack_parent }),
+        ...(options.stack_provider !== undefined && { stack_provider: options.stack_provider }),
+        ...(options.landing !== undefined && { landing: options.landing }),
       });
 
       yield {
@@ -1143,8 +1147,10 @@ export class EforgeEngine {
       }
 
       // Build the plan — PRD cleanup flows through build()
-      // Resolve onSuccess precedence: explicit options.onSuccess > PRD frontmatter.onSuccess
-      const resolvedOnSuccess = options.onSuccess ?? prd.frontmatter.onSuccess;
+      // Resolve landing precedence: explicit options.onSuccess > legacy PRD onSuccess > PRD landing shorthand.
+      const resolvedOnSuccess = options.onSuccess
+        ?? prd.frontmatter.onSuccess
+        ?? (prd.frontmatter.landing !== undefined ? landingActionToOnSuccess(prd.frontmatter.landing) : undefined);
       let buildFailed = false;
       for await (const event of withRunId(this.build(planSetName, {
         auto: options.auto,
@@ -1261,8 +1267,11 @@ export class EforgeEngine {
           args.push('--profile', routedProfileOverride);
         }
         // --- eforge:endregion plan-02-runtime-and-integration ---
-        if (prd.frontmatter.onSuccess) {
-          args.push('--on-success', prd.frontmatter.onSuccess);
+        const childOnSuccess = options.onSuccess
+          ?? prd.frontmatter.onSuccess
+          ?? (prd.frontmatter.landing !== undefined ? landingActionToOnSuccess(prd.frontmatter.landing) : undefined);
+        if (childOnSuccess) {
+          args.push('--on-success', childOnSuccess);
         }
         doSpawn(args);
       };
@@ -2216,11 +2225,20 @@ export class EforgeEngine {
  * Deep-merge config overrides onto base config.
  */
 function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): EforgeConfig {
+  const landing = overrides.landing ? { ...base.landing, ...overrides.landing } : { ...base.landing };
+  const build = overrides.build ? { ...base.build, ...overrides.build } : { ...base.build };
+
+  if (overrides.landing?.action !== undefined) {
+    build.onSuccess = landingActionToOnSuccess(overrides.landing.action);
+  } else if (overrides.build?.onSuccess !== undefined) {
+    landing.action = onSuccessToLandingAction(overrides.build.onSuccess);
+  }
+
   return {
     maxConcurrentBuilds: overrides.maxConcurrentBuilds ?? base.maxConcurrentBuilds,
     langfuse: overrides.langfuse ? { ...base.langfuse, ...overrides.langfuse } : base.langfuse,
     agents: overrides.agents ? { ...base.agents, ...overrides.agents } : base.agents,
-    build: overrides.build ? { ...base.build, ...overrides.build } : base.build,
+    build,
     plan: overrides.plan ? { ...base.plan, ...overrides.plan } : base.plan,
     plugins: overrides.plugins ? { ...base.plugins, ...overrides.plugins } : base.plugins,
     extensions: overrides.extensions ? { ...base.extensions, ...overrides.extensions } : base.extensions,
@@ -2229,6 +2247,8 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     monitor: overrides.monitor ? { ...base.monitor, ...overrides.monitor } : base.monitor,
     hooks: overrides.hooks ?? base.hooks,
     tools: overrides.tools ? { ...base.tools, ...overrides.tools, toolbelts: { ...base.tools.toolbelts, ...overrides.tools.toolbelts } } : base.tools,
+    stacking: overrides.stacking ? { ...base.stacking, ...overrides.stacking } : base.stacking,
+    landing,
   };
 }
 

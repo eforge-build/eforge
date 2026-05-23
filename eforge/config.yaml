@@ -18,9 +18,15 @@ agents:
       model: claude-opus-4-7
       effort: high
 build:
-  onSuccess: issue-pr
   postMergeCommands:
     - pnpm install
     - pnpm build
     - pnpm type-check
     - pnpm test
+# --- eforge:region plan-01-stack-contracts-config-state-events ---
+stacking:
+  enabled: false
+  provider: git-spice
+landing:
+  action: pr
+# --- eforge:endregion plan-01-stack-contracts-config-state-events ---

@@ -24,6 +24,10 @@ export type { BuildStageSpec, ReviewProfileConfig };
 // local declaration was missing.
 export type { QueueItem, RunInfo, SessionMetadata } from '@eforge-build/client/browser';
 
+// --- eforge:region plan-01-stack-contracts-config-state-events ---
+export type { StackProvider, LandingPublicationAction, StackLayerStatus, StackArtifactRef, StackLayerWire } from '@eforge-build/client/browser';
+// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
 export type PipelineStage = 'plan' | 'implement' | 'doc-author' | 'doc-sync' | 'test' | 'review' | 'evaluate' | 'complete' | 'failed';

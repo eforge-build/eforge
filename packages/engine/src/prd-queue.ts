@@ -32,6 +32,12 @@ const prdFrontmatterSchema = z.object({
   skip_reason: z.string().optional(),
   profile: z.string().optional(),
   onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional(),
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  stack_id: z.string().optional(),
+  stack_parent: z.string().optional(),
+  stack_provider: z.literal('git-spice').optional(),
+  landing: z.enum(['pr', 'merge', 'leave']).optional(),
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -611,6 +617,14 @@ export interface EnqueuePrdOptions {
   profile?: string;
   /** Override the project-level on-success landing action for this build. */
   onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  /** Logical stack identifier to persist in PRD frontmatter. */
+  stack_id?: string;
+  /** Parent PRD id for this stack layer, if any. */
+  stack_parent?: string;
+  /** Stack provider override for this PRD. */
+  stack_provider?: 'git-spice';
+  /** New shorthand landing action to persist in PRD frontmatter. */
+  landing?: 'pr' | 'merge' | 'leave';
 }
 
 export interface EnqueuePrdResult {
@@ -646,7 +660,22 @@ function slugify(title: string): string {
  * - Optional `intoWaiting` flag to write to the waiting/ subdirectory
  */
 export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrdResult> {
-  const { body, title, queueDir, cwd, priority, depends_on, intoWaiting, postMerge, profile, onSuccess } = options;
+  const {
+    body,
+    title,
+    queueDir,
+    cwd,
+    priority,
+    depends_on,
+    intoWaiting,
+    postMerge,
+    profile,
+    onSuccess,
+    stack_id,
+    stack_parent,
+    stack_provider,
+    landing,
+  } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
   const targetSubdir = intoWaiting ? 'waiting' : undefined;
@@ -683,7 +712,17 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     created,
     ...(priority !== undefined && { priority }),
     ...(depends_on !== undefined && depends_on.length > 0 && { depends_on }),
+    ...(profile !== undefined && { profile }),
+    ...(onSuccess !== undefined && { onSuccess }),
+    ...(stack_id !== undefined && { stack_id }),
+    ...(stack_parent !== undefined && { stack_parent }),
+    ...(stack_provider !== undefined && { stack_provider }),
+    ...(landing !== undefined && { landing }),
   };
+  const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
+  if (!frontmatterResult.success) {
+    throw new Error(`Invalid PRD frontmatter: ${z.prettifyError(frontmatterResult.error)}`);
+  }
 
   // Serialize frontmatter
   const fmLines: string[] = [
@@ -705,6 +744,18 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (onSuccess !== undefined) {
     fmLines.push(`onSuccess: ${onSuccess}`);
   }
+  if (stack_id !== undefined) {
+    fmLines.push(`stack_id: ${stack_id}`);
+  }
+  if (stack_parent !== undefined) {
+    fmLines.push(`stack_parent: ${stack_parent}`);
+  }
+  if (stack_provider !== undefined) {
+    fmLines.push(`stack_provider: ${stack_provider}`);
+  }
+  if (landing !== undefined) {
+    fmLines.push(`landing: ${landing}`);
+  }
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;
   const filePath = resolve(absDir, `${slug}.md`);
@@ -713,7 +764,7 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   return {
     id: slug,
     filePath,
-    frontmatter,
+    frontmatter: frontmatterResult.data,
   };
 }
 

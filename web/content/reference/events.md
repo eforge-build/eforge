@@ -11,7 +11,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 193
+Total variants: 196
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -208,6 +208,9 @@ Total variants: 193
 | `queue:complete` | `processed`, `skipped` |
 | `plan:build:decision` | `decision`, `planId` |
 | `planning:decision` | `decision`, `planId` |
+| `stack:layer:recorded` | `baseBranch`, `branch`, `parentPrdId`, `prdId`, `provider`, `stackId`, `status` |
+| `stack:provider:command` | `branch`, `command`, `exitCode`, `provider` |
+| `stack:landing:update` | `action`, `branch`, `prUrl`, `prdId`, `stackId`, `status` |
 
 ## JSON Schema
 

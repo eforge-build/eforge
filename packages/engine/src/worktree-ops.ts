@@ -514,3 +514,44 @@ export async function getExistingPullRequestUrl(
 }
 
 // --- eforge:endregion plan-01-engine-config-and-landing ---
+
+// --- eforge:region plan-02-git-spice-provider-and-git-primitives ---
+
+/**
+ * Check whether a local branch exists in the given repository.
+ *
+ * Returns `true` when the branch ref resolves successfully, `false` otherwise.
+ */
+export async function branchExists(cwd: string, branch: string): Promise<boolean> {
+  try {
+    await exec('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check whether any ref (branch, tag, SHA, or symbolic ref) resolves in the repo.
+ *
+ * Returns `true` when the ref resolves, `false` otherwise.
+ */
+export async function refExists(cwd: string, ref: string): Promise<boolean> {
+  try {
+    await exec('git', ['rev-parse', '--verify', '--end-of-options', ref], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Return the full commit SHA for a ref.
+ * Throws if the ref does not exist or cannot be resolved.
+ */
+export async function getRefSha(cwd: string, ref: string): Promise<string> {
+  const { stdout } = await exec('git', ['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`], { cwd });
+  return stdout.trim();
+}
+
+// --- eforge:endregion plan-02-git-spice-provider-and-git-primitives ---

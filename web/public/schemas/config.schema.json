@@ -656,6 +656,42 @@
         }
       },
       "additionalProperties": false
+    },
+    "stacking": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "provider": {
+          "type": "string",
+          "const": "git-spice"
+        },
+        "gitSpice": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "landing": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "pr",
+            "merge",
+            "leave"
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

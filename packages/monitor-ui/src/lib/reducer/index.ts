@@ -345,6 +345,13 @@ export const IGNORED_EVENT_TYPES = [
   'landing:complete',
   'landing:skipped',
   // --- eforge:endregion plan-01-engine-config-and-landing ---
+  // --- eforge:region plan-01-stack-contracts-config-state-events ---
+  // Stack layer and provider command events — monitor UI rendering is a future plan's responsibility.
+  // Listed here so the exhaustive check passes without requiring that plan to land first.
+  'stack:layer:recorded',
+  'stack:provider:command',
+  'stack:landing:update',
+  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 ] as const;
 
 // ---------------------------------------------------------------------------
