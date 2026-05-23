@@ -1,0 +1,81 @@
+name: improve-pi-eforge-ux-by-avoiding-overlays-for-variable-length-content-and-small-terminals
+description: Improve Pi eforge UX by replacing clipped floating overlays for
+  variable-length content with viewport-bounded panels/editor flows, then
+  migrate the project-local eforge-dev maintainer extension to the same pattern.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-published-pi-safe-panels
+    name: Published Pi eforge safe panels and build review
+    depends_on: []
+    branch: improve-pi-eforge-ux-by-avoiding-overlays-for-variable-length-content-and-small-terminals/plan-01-published-pi-safe-panels
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Shared Pi TUI helpers, a custom tool contract, skills, docs, and
+          static guardrails must be coordinated in one change.
+      reviewer:
+        effort: high
+        rationale: Review must verify no published Pi variable-length content remains in
+          floating overlays and that the confirm-build tool/skill contract is
+          coherent.
+  - id: plan-02-eforge-dev-safe-panels
+    name: Project-local eforge-dev safe panels
+    depends_on:
+      - plan-01-published-pi-safe-panels
+    branch: improve-pi-eforge-ux-by-avoiding-overlays-for-variable-length-content-and-small-terminals/plan-02-eforge-dev-safe-panels
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - docs
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive Pi integration UX hardening change across shared
+    helpers, command modules, project-local extension code, docs/skills, and
+    tests, but it remains one subsystem that a single planner can cover, so
+    excursion is appropriate. A plan review gate is useful because sequencing,
+    follow-on constraints, and helper migration choices matter. The build runs
+    docs authoring alongside implementation, then syncs existing docs, adds
+    tests/guardrails, executes test validation, and finishes with an iterative
+    code/docs review cycle. Standard strictness with code and docs perspectives
+    matches the user-facing UX risk without treating it as security-sensitive
+    work.
