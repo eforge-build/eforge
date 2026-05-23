@@ -53,11 +53,17 @@ export async function resolveStackBaseContext(options: {
     );
   }
 
+  let baseBranch = artifactRef;
   if (!await refExists(cwd, artifactRef)) {
-    throw new Error(
-      `Cannot resolve stack base for PRD '${prdId}': parent PRD '${parentPrdId}' recorded artifact ref '${artifactRef}' does not resolve. ` +
-      `Rebuild or repair the parent artifact before dispatching the child.`,
-    );
+    const commitSha = parentLayer.artifact?.commitSha;
+    if (commitSha && await refExists(cwd, commitSha)) {
+      baseBranch = commitSha;
+    } else {
+      throw new Error(
+        `Cannot resolve stack base for PRD '${prdId}': parent PRD '${parentPrdId}' recorded artifact ref '${artifactRef}' does not resolve. ` +
+        `Rebuild or repair the parent artifact before dispatching the child.`,
+      );
+    }
   }
 
   return {
@@ -66,6 +72,6 @@ export async function resolveStackBaseContext(options: {
     parentPrdId,
     provider,
     branch,
-    baseBranch: artifactRef,
+    baseBranch,
   };
 }

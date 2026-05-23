@@ -18,7 +18,7 @@ import type { ModelTracker } from './model-tracker.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-import { getRecordedArtifactRef, loadStackState } from './stacking/state.js';
+import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from './stacking/state.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 const exec = promisify(execFile);
@@ -983,8 +983,12 @@ export async function unblockWaiting(
   // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
   const requireArtifacts = options.requireArtifacts ?? false;
   const stackState = requireArtifacts ? await loadStackState(cwd) : undefined;
-  const hasRecordedArtifact = (dep: string): boolean =>
-    !requireArtifacts || (stackState !== undefined && getRecordedArtifactRef(stackState, dep) !== undefined);
+  const hasRecordedArtifact = (dep: string): boolean => {
+    if (!requireArtifacts) return true;
+    if (stackState === undefined) return false;
+    const layer = lookupLayerByPrdId(stackState, dep);
+    return layer?.status !== 'failed' && getRecordedArtifactRef(stackState, dep) !== undefined;
+  };
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
   const queueRoot = resolve(cwd, queueDir);

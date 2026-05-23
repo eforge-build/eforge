@@ -1588,6 +1588,45 @@ export class EforgeEngine {
       return state.dependsOn.every((dep) => isDependencySatisfied(dep, stackState));
     };
 
+    // --- eforge:region gap-close ---
+    const failDispatch = async (prd: import('./prd-queue.js').QueuedPrd, message: string): Promise<void> => {
+      const state = prdState.get(prd.id);
+      if (state) state.status = 'failed';
+      eventQueue.push({ timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent);
+      eventQueue.push({ timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent);
+      try { await movePrdToSubdir(prd.filePath, 'failed', cwd); } catch { /* best-effort */ }
+      eventQueue.push({ timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'failed' } as EforgeEvent);
+    };
+
+    const applyStackingDispatchValidation = async (prd: import('./prd-queue.js').QueuedPrd): Promise<import('./prd-queue.js').QueuedPrd | null> => {
+      if (!this.config.stacking.enabled) return prd;
+
+      const dependsOn = prd.frontmatter.depends_on ?? [];
+      if (prd.frontmatter.stack_parent) return prd;
+
+      if (dependsOn.length === 1) {
+        try {
+          const { setQueuedPrdStackParent } = await import('./prd-queue.js');
+          return await setQueuedPrdStackParent(prd, dependsOn[0], cwd);
+        } catch (err) {
+          const message = `Failed to persist inferred stack_parent '${dependsOn[0]}' for PRD '${prd.id}': ${err instanceof Error ? err.message : String(err)}`;
+          await failDispatch(prd, message);
+          return null;
+        }
+      }
+
+      if (dependsOn.length > 1) {
+        await failDispatch(
+          prd,
+          `Cannot dispatch stacked PRD '${prd.id}' with multiple depends_on entries without explicit stack_parent. Add stack_parent to disambiguate the parent layer.`,
+        );
+        return null;
+      }
+
+      return prd;
+    };
+    // --- eforge:endregion gap-close ---
+
     const propagateBlocked = (failedId: string): void => {
       // Mark all transitive dependents as blocked
       const queue = [failedId];
@@ -1652,7 +1691,13 @@ export class EforgeEngine {
         }
         if (!isReady(prd.id, stackState)) continue;
 
-        const state = prdState.get(prd.id)!;
+        // --- eforge:region gap-close ---
+        const stackValidatedPrd = await applyStackingDispatchValidation(prd);
+        if (!stackValidatedPrd) continue;
+        const currentPrd = stackValidatedPrd;
+        // --- eforge:endregion gap-close ---
+
+        const state = prdState.get(currentPrd.id)!;
         state.status = 'running';
 
         // Parent owns the sessionId: generate it here and emit session:start
@@ -1690,7 +1735,9 @@ export class EforgeEngine {
             await semaphore.acquire();
             acquired = true;
 
-            status = await this.spawnPrdChild(prd, options, prdSessionId, (event) => eventQueue.push(event));
+            // --- eforge:region gap-close ---
+            status = await this.spawnPrdChild(currentPrd, options, prdSessionId, (event) => eventQueue.push(event));
+            // --- eforge:endregion gap-close ---
 
             // 'already-claimed' is non-terminal: do not emit a terminal completion
             // or mark dependencies satisfied. The PRD remains in queue for the

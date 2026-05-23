@@ -113,6 +113,33 @@ describe('resolveStackBaseContext', () => {
     })).rejects.toThrow(/child-prd.*parent-prd.*no recorded artifact ref.*Rebuild or repair/);
   });
 
+  it('falls back to recorded commitSha when the artifact branch was removed after landing', async () => {
+    const cwd = await repo();
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
+    const commitSha = stdout.trim();
+    const now = new Date().toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'parent-prd',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/parent-prd',
+      baseBranch: 'main',
+      artifact: { branch: 'eforge/deleted-parent-prd', commitSha },
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    const result = await resolveStackBaseContext({
+      cwd,
+      config,
+      prd: queuedPrd('child-prd', { stack_parent: 'parent-prd' }),
+      planSetName: 'child-prd',
+    });
+
+    expect(result.baseBranch).toBe(commitSha);
+  });
+
   it('throws an actionable error when the recorded parent artifact ref does not resolve', async () => {
     const cwd = await repo();
     await parentLayer(cwd, 'eforge/missing-parent-artifact');

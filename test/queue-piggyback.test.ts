@@ -103,6 +103,20 @@ async function recordArtifact(cwd: string, id: string): Promise<void> {
   });
 }
 
+async function recordFailedArtifact(cwd: string, id: string): Promise<void> {
+  const now = new Date().toISOString();
+  await upsertStackLayer(cwd, {
+    prdId: id,
+    stackId: 'stack',
+    provider: 'git-spice',
+    branch: `eforge/${id}`,
+    artifact: { branch: `eforge/${id}`, commitSha: 'abc123' },
+    status: 'failed',
+    recordedAt: now,
+    updatedAt: now,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // findDependents (pure, no filesystem)
 // ---------------------------------------------------------------------------
@@ -251,6 +265,20 @@ describe('unblockWaiting', () => {
     const { cwd, queueDir } = setupGitQueue(dir);
 
     writePrdToWaiting(cwd, queueDir, 'feature', ['upstream']);
+
+    const unblocked = await unblockWaiting(queueDir, cwd, 'upstream', { requireArtifacts: true });
+
+    expect(unblocked).not.toContain('feature');
+    expect(existsSync(join(cwd, queueDir, 'waiting', 'feature.md'))).toBe(true);
+    expect(existsSync(join(cwd, queueDir, 'feature.md'))).toBe(false);
+  });
+
+  it('does not unblock a PRD when the dependency stack layer is failed even if an artifact ref exists', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+
+    writePrdToWaiting(cwd, queueDir, 'feature', ['upstream']);
+    await recordFailedArtifact(cwd, 'upstream');
 
     const unblocked = await unblockWaiting(queueDir, cwd, 'upstream', { requireArtifacts: true });
 
