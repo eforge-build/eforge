@@ -1037,6 +1037,26 @@ export async function startServer(
     }
   }
 
+  function isSubstantiveGapClosePlanBody(planBody: unknown): planBody is string {
+    return typeof planBody === 'string' && planBody.trim().length > 1;
+  }
+
+  function getLatestGapCloserResultText(sessionId: string): string | undefined {
+    const resultEvents = db.getEventsByTypeForSession(sessionId, 'agent:result');
+    for (let i = resultEvents.length - 1; i >= 0; i--) {
+      const event = resultEvents[i];
+      if (event.agent !== 'gap-closer') continue;
+      try {
+        const data = JSON.parse(event.data) as { result?: { resultText?: unknown } };
+        const resultText = data.result?.resultText;
+        if (isSubstantiveGapClosePlanBody(resultText)) return resultText;
+      } catch {
+        // ignore parse errors
+      }
+    }
+    return undefined;
+  }
+
   async function servePlans(_req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
     const sessionId = resolveSessionId(id);
 
@@ -1108,10 +1128,13 @@ export async function startServer(
     if (gapCloseEvents.length > 0) {
       try {
         const data = JSON.parse(gapCloseEvents[gapCloseEvents.length - 1].data);
+        const planBody = isSubstantiveGapClosePlanBody(data.planBody)
+          ? data.planBody
+          : (getLatestGapCloserResultText(sessionId) ?? data.planBody);
         gapClosePlans = [{
           id: 'gap-close',
           name: 'PRD Gap Close',
-          body: data.planBody,
+          body: planBody,
           dependsOn: [],
           type: 'plan' as const,
         }];
