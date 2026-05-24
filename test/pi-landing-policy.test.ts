@@ -84,6 +84,16 @@ describe('buildLandingMenuModel - feature branch', () => {
     expect(`${mergeChoice!.label} ${mergeChoice!.description}`).toMatch(/\bmerge\b/i);
     expect(`${leaveChoice!.label} ${leaveChoice!.description}`).toMatch(/\bleave\b/i);
   });
+
+  it('normalChoices descriptions do not contain old active labels (issue-pr, merge-to-base-branch, leave-branch)', () => {
+    const model = buildLandingMenuModel({ ...baseInput, offerProjectDefault: false });
+    for (const choice of model.normalChoices) {
+      const text = `${choice.label} ${choice.description}`;
+      expect(text).not.toContain('issue-pr');
+      expect(text).not.toContain('merge-to-base-branch');
+      expect(text).not.toContain('leave-branch');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@
  * These are sent directly as landingAction in request bodies.
  */
 
-import type { BuildOnSuccess } from './trunk-landing.js';
+import type { LandingAction } from './trunk-landing.js';
 
 // ---------------------------------------------------------------------------
 // Output types
@@ -29,9 +29,9 @@ export interface LandingMenuModel {
   /**
    * Choices to display in the primary landing selector.
    *
-   * On a protected trunk (merge-to-base-branch would land without opt-in),
-   * unsafe choices (merge-to-base-branch and project-default-as-merge) are
-   * excluded. On a feature branch, all applicable choices are present.
+   * On a protected trunk (landing.action: merge would land without opt-in),
+   * unsafe choices (explicit merge and project-default-as-merge) are excluded.
+   * On a feature branch, all applicable choices are present.
    */
   normalChoices: LandingMenuChoice[];
 
@@ -64,7 +64,7 @@ export interface LandingMenuModel {
 
 export interface LandingMenuModelInput {
   /** The effective configured/default landing action (resolved from project config). */
-  effectiveLanding: BuildOnSuccess;
+  effectiveLanding: LandingAction;
   /** Current git branch, null or undefined when not in a git repo or detached HEAD. */
   currentBranch: string | null | undefined;
   /** Resolved trunk branch name (e.g. "main" or "master"). */
@@ -88,19 +88,19 @@ export interface LandingMenuModelInput {
 const PR_CHOICE: LandingMenuChoice = {
   value: 'pr',
   label: 'Open a pull request (pr)',
-  description: 'Create a GitHub PR for review instead of merging directly (issue-pr)',
+  description: 'Create a GitHub PR for review instead of merging directly',
 };
 
 const MERGE_CHOICE: LandingMenuChoice = {
   value: 'merge',
   label: 'Merge to base branch (merge)',
-  description: 'Merge the worktree branch back when the build succeeds (merge-to-base-branch)',
+  description: 'Merge the worktree branch back when the build succeeds',
 };
 
 const LEAVE_CHOICE: LandingMenuChoice = {
   value: 'leave',
   label: 'Leave branch (leave)',
-  description: 'Commit to the worktree branch and exit without merging or opening a PR (leave-branch)',
+  description: 'Commit to the worktree branch and exit without merging or opening a PR',
 };
 
 const CANCEL_CHOICE: LandingMenuChoice = {
@@ -115,7 +115,7 @@ const UPDATE_CONFIG_CHOICE: LandingMenuChoice = {
   description: 'Sets build.allowLocalMergeToTrunk: true (applies to all future builds)',
 };
 
-function projectDefaultChoice(effectiveLanding: BuildOnSuccess): LandingMenuChoice {
+function projectDefaultChoice(effectiveLanding: LandingAction): LandingMenuChoice {
   return {
     value: 'project-default',
     label: 'Use project default',
@@ -130,14 +130,14 @@ function projectDefaultChoice(effectiveLanding: BuildOnSuccess): LandingMenuChoi
 /**
  * Compute a branch-aware landing selection model.
  *
- * Protected trunk behavior (effectiveLanding === merge-to-base-branch,
+ * Protected trunk behavior (effectiveLanding === merge,
  * currentBranch === trunkBranch, allowLocalMergeToTrunk === false):
- *   - normalChoices: excludes merge-to-base-branch and project-default (when
+ *   - normalChoices: excludes merge and project-default (when
  *     project-default would resolve to merge).
  *   - warning: set to a human-readable string referencing the trunk branch.
  *   - remediationChoices: PR, leave, update-config (when projectConfigPath is
  *     provided), cancel.
- *   - omittedUnsafeChoices: records merge-to-base-branch with reason.
+ *   - omittedUnsafeChoices: records merge with reason.
  *
  * Normal behavior (not on protected trunk):
  *   - normalChoices: project-default (when offerProjectDefault), PR, merge,

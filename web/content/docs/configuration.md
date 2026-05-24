@@ -362,7 +362,7 @@ landing:
 
 **`pr` prerequisite**: ensure `gh` is installed (`gh --version`) and authenticated (`gh auth status`). Builds configured with `landing.action: pr` will fail at the landing step if `gh` is unavailable.
 
-**Migrating from `build.onSuccess`**: if you have the old `build.onSuccess` key in your config, replace it with `landing.action`. The values map as follows: `issue-pr` → `pr`, `merge-to-base-branch` → `merge`, `leave-branch` → `leave`. New builds reject the old key with migration guidance.
+**Migrating from `build.onSuccess`**: if you have the old `build.onSuccess` key in your config, replace it with `landing.action`. The values map as follows: `issue-pr` → `pr`, `merge-to-base-branch` → `merge`, `leave-branch` → `leave`. New builds reject both the old `build.onSuccess` key and the legacy full-string values (`issue-pr`, `merge-to-base-branch`, `leave-branch`) with migration guidance - only `pr`, `merge`, and `leave` are valid for `landing.action`.
 
 ## Stacked PRs
 

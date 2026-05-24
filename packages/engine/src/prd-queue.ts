@@ -20,6 +20,9 @@ import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+// --- eforge:region plan-01-runtime-artifact-diagnostics ---
+import { loadCompletionRegistry, lookupCompletion } from './artifacts/completions.js';
+// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
 const exec = promisify(execFile);
 
@@ -927,10 +930,15 @@ export async function validateDependsOnExists(
     ...skippedPrds.map((p) => p.id),
   ]);
   // --- eforge:endregion plan-02-artifact-registry-dependency-readiness ---
+  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+  const completionRegistry = await loadCompletionRegistry(cwd);
+  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
   for (const dep of depends_on) {
+    // 1. Active root/waiting queue item: accept.
     if (existingIds.has(dep)) continue;
     // --- eforge:region plan-02-artifact-registry-dependency-readiness ---
+    // 2. Failed/skipped queue directory item: error containing "artifact".
     // Failed/skipped queue items never satisfy dependencies, even if an old
     // artifact record is still present from an earlier successful attempt.
     if (terminalIds.has(dep)) {
@@ -940,9 +948,41 @@ export async function validateDependsOnExists(
         `Re-run the dependency to produce a usable artifact before adding dependents.`,
       );
     }
-    // Accept completed dependencies that have a durable usable artifact.
+    // --- eforge:endregion plan-02-artifact-registry-dependency-readiness ---
+    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+    const completionRecord = lookupCompletion(completionRegistry, dep);
+    // 3. Completion index status failed/skipped: error containing "artifact".
+    if (completionRecord?.status === 'failed' || completionRecord?.status === 'skipped') {
+      throw new Error(
+        `depends_on references a failed or skipped dependency: "${dep}" has no usable artifact. ` +
+        `The dependency reached a terminal failed or skipped state. ` +
+        `Re-run the dependency to produce a usable artifact before adding dependents.`,
+      );
+    }
+    // 4. Completion index status completed with artifactAvailable: false: error containing "artifact".
+    if (completionRecord?.status === 'completed' && !completionRecord.artifactAvailable) {
+      throw new Error(
+        `depends_on references a completed dependency without a usable artifact: "${dep}". ` +
+        `The dependency completed but did not produce a durable artifact record. ` +
+        `Re-run the dependency to produce a usable artifact before adding dependents.`,
+      );
+    }
+    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
+    // 5. Usable artifact registry record: accept.
+    // --- eforge:region plan-02-artifact-registry-dependency-readiness ---
     if (hasUsableArtifact(registry, dep)) continue;
     // --- eforge:endregion plan-02-artifact-registry-dependency-readiness ---
+    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+    // 6. Completion index status completed (no usable artifact in registry): error containing "artifact".
+    if (completionRecord?.status === 'completed') {
+      throw new Error(
+        `depends_on references a completed dependency: "${dep}" has no durable artifact in the registry. ` +
+        `The dependency completed but the artifact was not durably recorded. ` +
+        `Re-run the dependency to produce a usable artifact before adding dependents.`,
+      );
+    }
+    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
+    // 7. Otherwise: unknown queue item.
     throw new Error(
       `depends_on references unknown queue item: "${dep}". ` +
       `Only pending, running, or waiting queue items, or completed items with a durable artifact, can be used as upstream dependencies.`,

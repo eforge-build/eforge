@@ -37,6 +37,21 @@ describe('docs-gen drift check', () => {
       expect(content, `${key} should not include release-version comments`).not.toContain('<!-- eforge version');
     }
   });
+
+  it('generated config reference describes build.onSuccess as removed/rejected, not backward-compatible', async () => {
+    const repoRoot = findRepoRoot();
+    const paths = getOutputPaths(repoRoot);
+
+    const content = await readFile(paths.contentConfig, 'utf-8');
+    // Must not claim backward compatibility or emit deprecation warnings for build.onSuccess
+    expect(content).not.toContain('kept for backward compatibility');
+    expect(content).not.toContain('deprecation warning');
+    // Must include migration guidance with the rejected values
+    expect(content).toContain('build.onSuccess');
+    expect(content).toContain('issue-pr');
+    expect(content).toContain('merge-to-base-branch');
+    expect(content).toContain('leave-branch');
+  });
 });
 
 describe('docs-gen determinism', () => {

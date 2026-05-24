@@ -11,7 +11,10 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
  * these canonical values. Legacy wire values (issue-pr, merge-to-base-branch,
  * leave-branch) are rejected with a migration error by the daemon.
  */
-export type BuildOnSuccess = "pr" | "merge" | "leave";
+export type LandingAction = "pr" | "merge" | "leave";
+
+/** @deprecated Use LandingAction instead. */
+export type BuildOnSuccess = LandingAction;
 
 export interface BuildLandingConfig {
   allowLocalMergeToTrunk?: boolean;
@@ -22,14 +25,14 @@ export interface TrunkLandingPromptInput {
   currentBranch: string | null | undefined;
   trunkBranch: string;
   build: BuildLandingConfig | undefined;
-  configuredLandingAction?: BuildOnSuccess;
-  landingActionOverride?: BuildOnSuccess;
+  configuredLandingAction?: LandingAction;
+  landingActionOverride?: LandingAction;
 }
 
 export function getEffectiveLandingAction(
-  configuredAction: BuildOnSuccess | undefined,
-  override?: BuildOnSuccess,
-): BuildOnSuccess {
+  configuredAction: LandingAction | undefined,
+  override?: LandingAction,
+): LandingAction {
   return override ?? configuredAction ?? "merge";
 }
 
@@ -52,7 +55,7 @@ export function shouldPromptForTrunkLanding(input: TrunkLandingPromptInput): boo
  * Returns false for pr and leave choices regardless of branch.
  */
 export function playbookChoiceNeedsTrunkRemediation(
-  choice: BuildOnSuccess,
+  choice: LandingAction,
   input: Omit<TrunkLandingPromptInput, "landingActionOverride">,
 ): boolean {
   if (choice !== "merge") return false;

@@ -48,6 +48,9 @@ const ZOD_IMPORT_ALLOWLIST: readonly string[] = [
   // engine — artifact registry uses Zod for runtime validation of
   // builds.json (intentional: engine-owned runtime state, not wire protocol)
   'packages/engine/src/artifacts/registry.ts',
+  // engine — completion registry uses Zod for runtime validation of
+  // completions.json (intentional: engine-owned runtime state, not wire protocol)
+  'packages/engine/src/artifacts/completions.ts',
   // engine — stacking state management uses Zod for runtime validation of the
   // layers.json state file (intentional: engine-owned runtime state, not wire protocol)
   'packages/engine/src/stacking/state.ts',

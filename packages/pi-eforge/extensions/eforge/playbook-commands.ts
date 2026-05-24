@@ -27,7 +27,7 @@ import {
   type UIContext,
 } from "./ui-helpers";
 import { promptForPlaybookLandingGate } from "./landing-gate.js";
-import type { BuildOnSuccess } from "./trunk-landing.js";
+import type { LandingAction } from "./trunk-landing.js";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -297,7 +297,7 @@ async function handleRunBranch(
   // Step 3c: Prompt for landing action (autonomous playbooks only)
   const landingResult = await promptForPlaybookLandingGate(pi, ctx);
   if (landingResult.cancelled) return;
-  const landingAction: BuildOnSuccess | undefined = landingResult.landingAction;
+  const landingAction: LandingAction | undefined = landingResult.landingAction;
 
   // Step 3b: Check for in-flight builds (autonomous playbooks only)
   const { runningItems } = await withLoader(
