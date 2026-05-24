@@ -1,5 +1,6 @@
 import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
+import { mergeMutationDisallowedTools } from '../harnesses/tool-safety.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
@@ -114,8 +115,8 @@ export async function* runArchitectureReview(
       tools: 'coding',
       abortSignal: abortController?.signal,
       customTools,
-      disallowedTools: ['Write', 'Edit', 'NotebookEdit'],
       ...pickSdkOptions(options),
+      disallowedTools: mergeMutationDisallowedTools(options.disallowedTools),
     },
     'architecture-reviewer',
   )) {

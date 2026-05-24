@@ -2,7 +2,7 @@ import type { EforgeEvent, AgentRole } from './events.js';
 import type { ModelRef } from './config.js';
 import type { TObject } from '@sinclair/typebox';
 
-export type ToolPreset = 'coding' | 'none';
+export type ToolPreset = 'coding' | 'read-only' | 'none';
 
 // ---------------------------------------------------------------------------
 // SDK Passthrough Types

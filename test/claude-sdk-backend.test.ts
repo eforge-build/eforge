@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mapSDKMessages, resolveDisallowedTools, SUBAGENT_TOOL_NAME } from '@eforge-build/engine/harnesses/claude-sdk';
 import { EFORGE_DISALLOWED_TOOL_PATTERNS } from '@eforge-build/engine/harnesses/eforge-resource-filter';
+import { MUTATION_TOOL_DENYLIST_CLAUDE, MUTATION_TOOL_DENYLIST_PI } from '@eforge-build/engine/harnesses/tool-safety';
 import { AgentTerminalError } from '@eforge-build/engine/harness';
 
 async function* iter<T>(items: T[]): AsyncGenerator<T> {
@@ -129,3 +130,38 @@ describe('resolveDisallowedTools', () => {
     expect(EFORGE_DISALLOWED_TOOL_PATTERNS).toContain('mcp__eforge__*');
   });
 });
+
+// --- eforge:region plan-01-reviewer-isolation ---
+describe('read-only mode denylist constants', () => {
+  it('MUTATION_TOOL_DENYLIST_CLAUDE covers expected PascalCase tools', () => {
+    expect(MUTATION_TOOL_DENYLIST_CLAUDE).toContain('Write');
+    expect(MUTATION_TOOL_DENYLIST_CLAUDE).toContain('Edit');
+    expect(MUTATION_TOOL_DENYLIST_CLAUDE).toContain('MultiEdit');
+    expect(MUTATION_TOOL_DENYLIST_CLAUDE).toContain('NotebookEdit');
+    expect(MUTATION_TOOL_DENYLIST_CLAUDE).toContain('Bash');
+    expect(MUTATION_TOOL_DENYLIST_CLAUDE).not.toContain('Task');
+  });
+
+  it('MUTATION_TOOL_DENYLIST_PI covers expected lowercase tools', () => {
+    expect(MUTATION_TOOL_DENYLIST_PI).toContain('write');
+    expect(MUTATION_TOOL_DENYLIST_PI).toContain('edit');
+    expect(MUTATION_TOOL_DENYLIST_PI).toContain('bash');
+  });
+
+  it('resolveDisallowedTools for read-only mode includes Task and mutation tools', () => {
+    // Simulate what the Claude SDK harness does for read-only mode:
+    // mutation tools + Task + eforge patterns
+    const readOnlyDenylist = resolveDisallowedTools(
+      [...MUTATION_TOOL_DENYLIST_CLAUDE, SUBAGENT_TOOL_NAME],
+      false,
+    );
+    expect(readOnlyDenylist).toEqual(expect.arrayContaining([
+      'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'Task',
+    ]));
+    // eforge patterns must also be present
+    for (const pattern of EFORGE_DISALLOWED_TOOL_PATTERNS) {
+      expect(readOnlyDenylist).toContain(pattern);
+    }
+  });
+});
+// --- eforge:endregion plan-01-reviewer-isolation ---
