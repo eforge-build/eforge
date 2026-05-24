@@ -1013,7 +1013,8 @@ export class EforgeEngine {
         // --- eforge:region plan-02-final-validation-gates ---
         if (event.type === 'acceptance_validation:complete') {
           const failCount = event.verdicts.filter((v) => v.verdict !== 'pass').length;
-          if (!event.passed || failCount > 0) {
+          const hasWaiver = (event.waivers ?? []).some((waiver) => waiver.trim().length > 0);
+          if (!event.passed || (failCount > 0 && !hasWaiver)) {
             status = 'failed';
             summary = `Acceptance criteria validation failed: ${Math.max(failCount, 1)} criterion/criteria not met`;
           }

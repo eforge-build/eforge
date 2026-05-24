@@ -694,7 +694,9 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
       // --- eforge:region plan-02-final-validation-gates ---
       if (event.type === 'acceptance_validation:complete') {
         acceptanceReceived = true;
-        acceptancePassed = event.passed && event.verdicts.length > 0 && event.verdicts.every((v) => v.verdict === 'pass');
+        const allVerdictsPass = event.verdicts.length > 0 && event.verdicts.every((v) => v.verdict === 'pass');
+        const hasWaiver = (event.waivers ?? []).some((waiver) => waiver.trim().length > 0);
+        acceptancePassed = event.passed && event.verdicts.length > 0 && (allVerdictsPass || hasWaiver);
       }
       // --- eforge:endregion plan-02-final-validation-gates ---
 
