@@ -1,0 +1,48 @@
+name: conservatively-remove-high-confidence-low-value-automated-tests-to-reduce-execution-time
+description: Conservatively remove high-confidence duplicate and low-value
+  automated tests while preserving behavioral coverage.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-remove-duplicate-low-value-tests
+    name: Remove Duplicate Low-Value Tests
+    depends_on: []
+    branch: conservatively-remove-high-confidence-low-value-automated-tests-to-reduce-execution-time/plan-01-remove-duplicate-low-value-tests
+    build:
+      - implement
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: single
+      perspectives:
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - test
+      - code
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: This is an excursion because it may touch multiple test files and
+    requires careful judgment, but a single planner can identify conservative
+    removal candidates without delegated module planning. A plan review gate
+    helps prevent over-broad or risky test deletion before implementation. The
+    build runs implementation, then a strict review cycle focused on test value
+    and codebase impact, followed by a test cycle to satisfy the requirement to
+    run relevant tests after changes. Review uses test and code perspectives
+    with strict evaluation to favor preserving coverage when confidence is
+    uncertain.
