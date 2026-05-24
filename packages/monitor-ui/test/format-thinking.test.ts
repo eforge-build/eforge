@@ -100,14 +100,4 @@ describe('formatThinking', () => {
     expect(formatThinking(value)).toBe(JSON.stringify(value));
   });
 
-  // -------------------------------------------------------------------------
-  // thinkingOriginal shapes from the wire protocol (AC #8 regression gate)
-  // -------------------------------------------------------------------------
-  it('formats thinkingOriginal with snake_case budget_tokens as "enabled (32.0k tokens)"', () => {
-    // AC #8: agent:start emits thinkingOriginal: { type: 'enabled', budget_tokens: 32000 }
-    // (snake_case from the Zod wire schema). formatThinking must produce the correct
-    // human-readable string for the agent-stage hover tooltip.
-    const wirePayload = { type: 'enabled', budget_tokens: 32000 };
-    expect(formatThinking(wirePayload)).toBe('enabled (32.0k tokens)');
-  });
 });

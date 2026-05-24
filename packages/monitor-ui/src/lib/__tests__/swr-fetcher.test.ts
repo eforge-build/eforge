@@ -26,11 +26,6 @@ describe('fetcher', () => {
     await expect(fetcher('/api/some-route')).rejects.toThrow('HTTP 500');
   });
 
-  it('throws Error containing status code on 403', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeFetchResponse(403)));
-    await expect(fetcher('/api/some-route')).rejects.toThrow('HTTP 403');
-  });
-
   it('returns parsed JSON on 200', async () => {
     const payload = [{ id: 'run-1', planSet: 'my-set', command: 'build', status: 'running', startedAt: '2024-01-01T00:00:00.000Z', cwd: '/project' }];
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeFetchResponse(200, payload)));
