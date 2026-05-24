@@ -95,17 +95,17 @@ The preferred configuration is `landing.action` (values: `pr`, `merge`, `leave`)
 
 | `landing.action` | Behavior |
 |-----------------|----------|
-| `pr` | Opens a PR from the artifact branch targeting the resolved base branch. The resolved base is the trunk for non-stacked builds, or the parent artifact branch for stacked builds. |
+| `pr` | Opens a PR from the artifact branch targeting the resolved base branch. The resolved base is the build's current base branch for non-stacked builds (often trunk, but it may be a feature branch). For stacked builds, the root PR targets the resolved trunk branch and child PRs target their parent artifact branch. |
 | `merge` | Merges the artifact branch into the base branch directly. |
 | `leave` | Leaves the artifact branch in place for manual inspection or cherry-picking. |
 
-## Post-Merge Validation
+## Validation
 
-After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
+During each plan build, extensions may contribute validation providers that run in the per-plan `validate` stage after implementation and before review. After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On post-merge failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
 
 ## Stacked PRs
 
-When `stacking.enabled: true` in `eforge/config.yaml`, builds form a **branch-per-PR stack**. Each artifact branch targets the parent artifact branch instead of the trunk. git-spice is used to track branches and submit PRs into the stack.
+When `stacking.enabled: true` in `eforge/config.yaml`, builds form a **branch-per-PR stack**. The root artifact branch targets the resolved trunk branch, and each child artifact branch targets its parent artifact branch. git-spice is used to track branches and submit PRs into the stack.
 
 PRD frontmatter controls the stack topology: `stack_id` is a logical stack name shared by all PRDs in the stack; `stack_parent` is the parent PRD id. For single-dependency builds, `stack_parent` is inferred automatically from `depends_on`. See the [Stacked PRs](/docs/stacking) guide for setup instructions.
 
@@ -115,7 +115,7 @@ eforge publishes machine-readable reference artifacts for use by AI coding assis
 
 - `/llms.txt` - Structured index of available documentation, getting-started guides, reference docs, packages, schemas, and optional context
 - `/llms-full.txt` - Full reference documentation bundle in a single file
-- `/docs/getting-started.md`, `/docs/concepts.md`, `/docs/configuration.md`, `/docs/profiles.md`, `/docs/playbooks.md`, `/docs/extensions.md`, `/docs/extensions-api.md`, `/docs/integrations.md`, `/docs/troubleshooting.md`, `/docs/glossary.md` - Raw Markdown guide pages useful for onboarding, operations, and terminology
+- `/docs/getting-started.md`, `/docs/concepts.md`, `/docs/configuration.md`, `/docs/profiles.md`, `/docs/playbooks.md`, `/docs/stacking.md`, `/docs/extensions.md`, `/docs/extensions-api.md`, `/docs/integrations.md`, `/docs/troubleshooting.md`, `/docs/glossary.md` - Raw Markdown guide pages useful for onboarding, operations, and terminology
 - `/reference/cli.md`, `/reference/api.md`, `/reference/events.md`, `/reference/config.md`, `/reference/tools.md` - Raw Markdown reference docs
 - `/schemas/events.schema.json`, `/schemas/config.schema.json` - JSON Schemas for wire types and config
 

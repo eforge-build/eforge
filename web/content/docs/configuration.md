@@ -87,6 +87,8 @@ agents:
 
 Pi supports OpenAI, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, and local models. Authentication resolves from provider-specific environment variables or `~/.pi/agent/auth.json`. For OAuth providers (OpenAI Codex, GitHub Copilot), run `pi auth login <provider>` first.
 
+By default, eforge runs Pi harness sessions with `pi.resources: isolated` so ambient Pi resources (project/user/global extensions, skills, prompts, and themes) are not loaded into headless build agents. Set `pi.resources: ambient` on a tier only when you intentionally want those ambient Pi resources available during eforge agent runs. Pi-specific tier options also include `pi.thinkingLevel`, `pi.extensions`, `pi.compaction`, and `pi.retry`; keep provider selection in `pi.provider`.
+
 ## Optional Claude SDK Harness
 
 `claude-sdk` remains supported for Anthropic Claude Agent SDK users:
@@ -433,7 +435,7 @@ agents:
       effort: low
 ```
 
-Available per-role fields: `tier`, `effort`, `thinking`, `maxTurns`, `allowedTools`, `disallowedTools`, `promptAppend`, `shards` (builder-only).
+Available per-role fields: `tier`, `effort`, `thinking`, `maxTurns`, `allowedTools`, `disallowedTools`, `promptAppend`, `shards` (builder-only). Per-role overrides do not change the harness or model directly; move the role to a different tier with `tier` when one role should use a different tier recipe.
 
 ## Custom Prompts
 

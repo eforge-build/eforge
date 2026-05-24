@@ -5,19 +5,19 @@ description: Build and submit stacked pull requests with eforge and git-spice.
 
 # Stacked PRs with git-spice
 
-eforge supports stacked pull requests via git-spice. When `stacking.enabled: true`, each build's artifact branch targets the parent artifact branch instead of the trunk, forming a linear stack of pull requests that reviewers can merge in order.
+eforge supports stacked pull requests via git-spice. When `stacking.enabled: true`, the root artifact branch targets the resolved trunk branch, and each child artifact branch targets its parent artifact branch, forming a linear stack of pull requests that reviewers can merge in order.
 
 ## Artifact branches
 
 Every eforge build produces an **artifact branch** - a named Git branch (`eforge/<prd-id>`) that holds the committed output from that build. When `landing.action: pr`, eforge opens a pull request from this artifact branch targeting its resolved base.
 
-For non-stacked builds, the resolved base is always the project trunk (e.g. `main`). For stacked builds, the resolved base is the parent PRD's artifact branch:
+For non-stacked builds, the resolved base is the branch eforge builds from (often the project trunk, but it can be an active feature branch). For stacked builds, the root PRD targets the resolved trunk branch and child PRDs target the parent PRD's artifact branch:
 
 ```
 main
-  └── eforge/prd-a          (PR #1, targets main)
-        └── eforge/prd-b    (PR #2, targets eforge/prd-a)
-              └── eforge/prd-c   (PR #3, targets eforge/prd-b)
+  └── eforge/prd-a              (PR #1, targets main)
+        └── eforge/prd-b        (PR #2, targets eforge/prd-a)
+              └── eforge/prd-c  (PR #3, targets eforge/prd-b)
 ```
 
 ## stack_id and stack_parent
