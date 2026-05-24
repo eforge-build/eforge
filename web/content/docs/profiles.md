@@ -51,7 +51,7 @@ agents:
 
 **Required fields per tier:** `harness`, `model`, `effort`.
 
-**Optional per tier:** `pi.provider` (required when `harness: pi`), `thinking` (boolean, enables extended thinking), `toolbelt` (named MCP bundle or `none`).
+**Optional per tier:** `pi.provider` (required when `harness: pi`), `pi.resources` (`isolated` by default, or `ambient` to opt into ambient Pi resources), `pi.thinkingLevel`, `pi.extensions`, `pi.compaction`, `pi.retry`, `thinking` (boolean, enables extended thinking), `fallbackModel`, `maxTurns`, `allowedTools`, `disallowedTools`, `promptAppend`, and `toolbelt` (named MCP bundle or `none`).
 
 **Metadata fields** (`description`, `whenToUse`, `tags`) are descriptive only - they surface in list and show commands but do not affect runtime behavior.
 
@@ -132,7 +132,7 @@ When a profile router selects a profile, a `queue:profile:selected` event is emi
 
 Two harnesses ship with eforge:
 
-- **`pi`** - recommended for new profiles; provider-flexible execution across Anthropic, OpenAI, Google, Mistral, Groq, xAI, Bedrock, OpenRouter, and local models. Requires `pi.provider` per tier.
+- **`pi`** - recommended for new profiles; provider-flexible execution across Anthropic, OpenAI, Google, Mistral, Groq, xAI, Bedrock, OpenRouter, and local models. Requires `pi.provider` per tier. Defaults to `pi.resources: isolated` so ambient Pi extensions, skills, prompts, and themes are not loaded into headless eforge agents; set `ambient` only when you intentionally want those resources.
 - **`claude-sdk`** - supported secondary path for Anthropic Claude Agent SDK users. Does not use a `pi` block.
 
 You can mix harnesses across tiers within a single profile:

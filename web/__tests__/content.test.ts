@@ -25,6 +25,20 @@ function readGuide(slug: string): string {
   return readFileSync(join(docsContentDir, `${slug}.md`), 'utf-8');
 }
 
+function stripFencedCodeBlocks(markdown: string): string {
+  const lines = markdown.split('\n');
+  let inFence = false;
+  return lines
+    .filter((line) => {
+      if (/^```/.test(line.trim())) {
+        inFence = !inFence;
+        return false;
+      }
+      return !inFence;
+    })
+    .join('\n');
+}
+
 describe('loadDocPage', () => {
   it('returns non-empty HTML for known doc slugs', async () => {
     for (const slug of expectedDocSlugs) {
@@ -72,8 +86,45 @@ describe('loadDocPage', () => {
       const raw = readGuide(slug);
       expect(page.frontmatter.title, `Expected title frontmatter for ${slug}`).toEqual(expect.any(String));
       expect(page.frontmatter.description, `Expected description frontmatter for ${slug}`).toEqual(expect.any(String));
-      expect(raw, `Expected at least one level-two heading in ${slug}`).toMatch(/^##\s+/m);
+      expect(stripFencedCodeBlocks(raw), `Expected at least one level-two heading in ${slug}`).toMatch(/^##\s+/m);
       expect(existsSync(join(publicDocsDir, `${slug}.md`)), `Expected generated public docs mirror for ${slug}`).toBe(true);
+    }
+  });
+
+  it('keeps every public guide mirrored and structurally valid', async () => {
+    for (const slug of expectedDocSlugs) {
+      const source = readGuide(slug);
+      const mirrorPath = join(publicDocsDir, `${slug}.md`);
+      const page = await loadDocPage(slug);
+      const markdownOutsideCode = stripFencedCodeBlocks(source);
+
+      expect(page.frontmatter.title, `Expected title frontmatter for ${slug}`).toEqual(expect.any(String));
+      expect(page.frontmatter.description, `Expected description frontmatter for ${slug}`).toEqual(expect.any(String));
+      expect(markdownOutsideCode.match(/^#\s+/gm) ?? [], `Expected exactly one h1 heading in ${slug}`).toHaveLength(1);
+      expect(markdownOutsideCode.match(/^##\s+/gm) ?? [], `Expected at least one h2 heading in ${slug}`).not.toHaveLength(0);
+      expect(existsSync(mirrorPath), `Expected generated public docs mirror for ${slug}`).toBe(true);
+      expect(readFileSync(mirrorPath, 'utf-8'), `Expected ${mirrorPath} to mirror web/content/docs/${slug}.md`).toBe(source);
+    }
+  });
+
+  it('keeps the named public docs journeys covered by concrete user-facing content', () => {
+    const journeySnippets: Record<string, string[]> = {
+      'getting-started': ['Pi package', 'Claude Code plugin', 'npx @eforge-build/eforge build', '--profile <name>'],
+      concepts: ['build source', 'agent runtime profile', 'queue', 'artifact branch', '/reference/cli.md'],
+      configuration: ['~/.config/eforge/config.yaml', 'eforge/config.yaml', '.eforge/config.yaml', 'Guided Toolbelt Presets'],
+      profiles: ['.eforge/profiles/', 'eforge/profiles/', '~/.config/eforge/profiles/', 'eforge build --profile'],
+      playbooks: ['mode: autonomous', 'mode: planning', 'eforge playbook run', 'eforge playbook promote'],
+      extensions: ['eforge extension install', 'trust', 'onEvent', 'registerInputSource', 'not sandboxed'],
+      'extensions-api': ['defineExtension', 'EventPattern', 'defineExtensionTool', 'Runtime support status'],
+      integrations: ['Claude Code plugin', 'Pi extension', 'standalone CLI', 'daemon HTTP API', 'Langfuse'],
+      troubleshooting: ['eforge daemon status', 'pnpm docs:check', 'auto-build', 'recovery', 'extension:policy:decision'],
+    };
+
+    for (const [slug, snippets] of Object.entries(journeySnippets)) {
+      const raw = readGuide(slug).toLowerCase();
+      for (const snippet of snippets) {
+        expect(raw, `Expected ${slug} guide to cover ${snippet}`).toContain(snippet.toLowerCase());
+      }
     }
   });
 

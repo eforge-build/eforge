@@ -94,12 +94,12 @@ The recovery flow:
 1. Call `eforge_queue_list` to find failed PRDs.
 2. Read the recovery sidecar (`eforge_read_recovery_sidecar`) to get the recovery verdict.
 3. The verdict is one of:
-   - `requeue` - re-queue the original PRD for another attempt
-   - `enqueue-successor` - create a successor PRD for the remaining work
-   - `archive` - the PRD cannot be retried; archive it
-   - `manual` - manual intervention required; no automated action is available
+   - `retry` - move the failed PRD back to the queue root and remove recovery sidecars so auto-build can try it again
+   - `split` - enqueue a successor PRD from `suggestedSuccessorPrd` while keeping the failed PRD and sidecars as an audit trail
+   - `abandon` - remove the failed PRD and recovery sidecars from the queue because the work should not continue
+   - `manual` - make no queue changes; a human must inspect the recovery report and decide what to do
 4. Confirm the action with the user.
-5. Apply via `eforge_apply_recovery`.
+5. Apply via `eforge_apply_recovery` or the standalone CLI command `eforge apply-recovery <prdId>`.
 
 When you are present and the monitor UI is open, you can also click the retry button directly in the UI.
 

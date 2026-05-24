@@ -42,7 +42,7 @@ Run these three commands inside Claude Code:
 /eforge:init
 ```
 
-The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. It walks you through a Quick setup (one harness/provider with suggested tier models, including an optional separate implementation model) or a Mix-and-match flow (different harness, provider, or model per tier). Choose Pi for the recommended provider-flexible path; `claude-sdk` remains available as a supported Anthropic-specific secondary path. Starting June 15, 2026, Anthropic says Claude Agent SDK and `claude -p` usage no longer count toward Claude plan limits; eligible plans may receive a separate monthly Agent SDK credit, usage beyond that credit is billed at standard API rates when extra usage is enabled, otherwise requests stop, and API-key users remain pay-as-you-go. See https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan.
+The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds runtime-state entries such as `.eforge/` and `eforge/.active-profile` to your `.gitignore`. It walks you through a Quick setup (one harness/provider with suggested tier models, including an optional separate implementation model) or a Mix-and-match flow (different harness, provider, or model per tier). Choose Pi for the recommended provider-flexible path; `claude-sdk` remains available as a supported Anthropic-specific secondary path. Starting June 15, 2026, Anthropic says Claude Agent SDK and `claude -p` usage no longer count toward Claude plan limits; eligible plans may receive a separate monthly Agent SDK credit, usage beyond that credit is billed at standard API rates when extra usage is enabled, otherwise requests stop, and API-key users remain pay-as-you-go. See https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan.
 
 ### Standalone CLI
 
@@ -85,7 +85,10 @@ From the standalone CLI:
 ```bash
 eforge build "Add a dark mode toggle to the settings page"
 eforge build plans/my-feature-prd.md
+eforge build --landing-action pr plans/my-feature-prd.md
 ```
+
+Use `--profile <name>` for a one-off agent runtime profile override, and `--landing-action pr|merge|leave` when one build should use a different landing action from `eforge/config.yaml`.
 
 ## What Happens Next
 

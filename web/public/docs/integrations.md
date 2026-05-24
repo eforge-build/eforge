@@ -90,6 +90,8 @@ Daemon management, playbook commands, extension commands, and one-off build prof
 ```bash
 eforge build "Add dark mode toggle"
 eforge build --profile pi-anthropic plans/my-feature-prd.md
+eforge build --landing-action pr plans/my-feature-prd.md
+eforge queue run --all
 eforge play docs-sync
 eforge playbook list
 eforge daemon status
@@ -102,7 +104,7 @@ For standalone use, run `/eforge:init` in Claude Code or Pi first to create `efo
 
 ## Daemon HTTP API
 
-The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, the monitor UI, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
+The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, the monitor UI, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
 
 ## Shell hooks
 
