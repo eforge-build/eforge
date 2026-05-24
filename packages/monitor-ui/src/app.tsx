@@ -30,6 +30,16 @@ import { API_ROUTES } from '@eforge-build/client/browser';
 import type { PipelineStage, EforgeEvent } from '@/lib/types';
 import type { ProjectContext } from '@/components/layout/header';
 
+function isSubstantiveGapClosePlanBody(planBody: unknown): planBody is string {
+  return typeof planBody === 'string' && planBody.trim().length > 1;
+}
+
+function getGapCloserResultText(event: EforgeEvent): string | null {
+  if (event.type !== 'agent:result' || event.agent !== 'gap-closer') return null;
+  const resultText = (event as { result?: { resultText?: unknown } }).result?.resultText;
+  return isSubstantiveGapClosePlanBody(resultText) ? resultText : null;
+}
+
 function AppContent() {
   const [userSelectedSessionId, setUserSelectedSessionId] = useState<string | null>(null);
   const [lowerTab, setLowerTab] = useState<LowerTab>('log');
@@ -147,7 +157,12 @@ function AppContent() {
   const planArtifacts = useMemo(() => {
     const seen = new Set<string>();
     const plans: Array<{ id: string; name: string; body: string }> = [];
+    let latestGapCloserResultText: string | null = null;
     for (const { event } of runState.events) {
+      const gapCloserResultText = getGapCloserResultText(event);
+      if (gapCloserResultText) {
+        latestGapCloserResultText = gapCloserResultText;
+      }
       if (event.type === 'planning:complete') {
         for (const p of event.plans) {
           if (!seen.has(p.id)) {
@@ -158,7 +173,12 @@ function AppContent() {
       }
       if (event.type === 'gap_close:plan_ready' && !seen.has('gap-close')) {
         seen.add('gap-close');
-        plans.push({ id: 'gap-close', name: 'PRD Gap Close', body: (event as { planBody: string }).planBody });
+        const planBody = (event as { planBody: string }).planBody;
+        plans.push({
+          id: 'gap-close',
+          name: 'PRD Gap Close',
+          body: isSubstantiveGapClosePlanBody(planBody) ? planBody : (latestGapCloserResultText ?? planBody),
+        });
       }
     }
     return plans;

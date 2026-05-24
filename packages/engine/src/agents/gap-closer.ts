@@ -61,7 +61,8 @@ export async function* runGapCloser(
   let planMarkdown: string | undefined;
 
   try {
-    let lastMessage = '';
+    let streamedMessage = '';
+    let resultText: string | undefined;
     for await (const event of options.harness.run(
       {
         prompt,
@@ -76,15 +77,20 @@ export async function* runGapCloser(
       if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
       }
-      // Capture the last agent:message content as the plan output
       if (event.type === 'agent:message' && 'content' in event) {
-        lastMessage = (event as { content: string }).content;
+        streamedMessage += (event as { content: string }).content;
+      }
+      if (event.type === 'agent:result' && event.result.resultText !== undefined) {
+        resultText = event.result.resultText;
       }
     }
 
-    // Extract plan from agent output
-    if (lastMessage.trim()) {
-      planMarkdown = lastMessage;
+    // Prefer the authoritative final result text. Some harnesses stream
+    // agent:message as deltas, so using the last message chunk can reduce the
+    // generated plan to the final token (for example, just ".").
+    const candidate = resultText?.trim() ? resultText : streamedMessage;
+    if (candidate.trim()) {
+      planMarkdown = candidate;
     }
   } catch (err) {
     // Re-throw abort errors so the orchestrator can respect cancellation

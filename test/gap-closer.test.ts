@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { EforgeEvent } from '@eforge-build/engine/events';
+import type { EforgeEvent, AgentRole } from '@eforge-build/engine/events';
+import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { runGapCloser, type GapCloserContext } from '@eforge-build/engine/agents/gap-closer';
@@ -35,7 +36,38 @@ function makePipelineContext(agentRegistryOverride?: ReturnType<typeof singleton
   };
 }
 
-function makeOptions(backend: StubHarness, overrides?: Partial<GapCloserContext>): GapCloserContext {
+class StreamingDeltaHarness implements AgentHarness {
+  readonly calls: AgentRunOptions[] = [];
+
+  constructor(private readonly deltas: string[], private readonly resultText: string) {}
+
+  async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+    this.calls.push(options);
+    const agentId = crypto.randomUUID();
+    yield { type: 'agent:start', planId, agent, agentId, model: 'stub-model', harness: 'pi', harnessSource: 'tier', tier: 'stub', tierSource: 'tier', timestamp: new Date().toISOString() };
+    for (const delta of this.deltas) {
+      yield { type: 'agent:message', planId, agentId, agent, content: delta };
+    }
+    yield {
+      type: 'agent:result',
+      planId,
+      agentId,
+      agent,
+      result: {
+        durationMs: 100,
+        durationApiMs: 80,
+        numTurns: 1,
+        totalCostUsd: 0,
+        usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 },
+        modelUsage: {},
+        resultText: this.resultText,
+      },
+    };
+    yield { type: 'agent:stop', planId, agent, agentId, timestamp: new Date().toISOString() };
+  }
+}
+
+function makeOptions(backend: AgentHarness, overrides?: Partial<GapCloserContext>): GapCloserContext {
   return {
     harness: backend,
     cwd: '/tmp',
@@ -89,6 +121,16 @@ describe('runGapCloser two-stage flow', () => {
     expect(capturedCtx).toBeDefined();
     expect(capturedCtx!.planId).toBe('gap-close');
     expect(capturedCtx!.build).toEqual(['implement', 'review-cycle']);
+  });
+
+  it('uses final agent result text instead of the last streamed message delta', async () => {
+    const fullPlan = '## Overview\nFix dark mode\n\n## Files\n- src/theme.ts: Add dark classes.';
+    const backend = new StreamingDeltaHarness(['## Overview\n', 'Fix dark mode', '.'], fullPlan);
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend)));
+
+    const ready = findEvent(events, 'gap_close:plan_ready') as { planBody?: string } | undefined;
+    expect(ready?.planBody).toBe(fullPlan);
   });
 
   it('emits gap_close:complete with passed: true on success', async () => {
