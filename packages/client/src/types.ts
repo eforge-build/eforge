@@ -63,6 +63,38 @@ export interface ProjectContext {
 // GET /api/config/show - opaque, full EforgeConfig has engine deps
 export type ConfigShowResponse = unknown;
 
+// --- eforge:region plan-01-unified-pi-landing-ux ---
+/**
+ * Source provenance entry returned by GET /api/config/show?verbose=true.
+ *
+ * Describes where a config file was resolved from and whether it was found.
+ */
+export interface ConfigSourceInfo {
+  /** Absolute path to the config file, or null when not resolved. */
+  path: string | null;
+  /** Whether the config file was found at the resolved path. */
+  found: boolean;
+}
+
+/**
+ * Typed response for GET /api/config/show?verbose=true.
+ *
+ * The `resolved` field is opaque — it contains the full merged config object
+ * whose shape is engine-internal. The `sources` field exposes per-source
+ * provenance metadata useful for UI (e.g., offering to update a specific file).
+ */
+export interface ConfigShowVerboseResponse {
+  /** Merged resolved config. Opaque; engine-internal shape. */
+  resolved?: Record<string, unknown>;
+  /** Per-source provenance info keyed by config scope. */
+  sources?: {
+    local?: ConfigSourceInfo;
+    project?: ConfigSourceInfo;
+    user?: ConfigSourceInfo;
+  };
+}
+// --- eforge:endregion plan-01-unified-pi-landing-ux ---
+
 // GET /api/config/validate
 export interface ConfigValidateResponse {
   configFound: boolean;

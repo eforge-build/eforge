@@ -3,6 +3,15 @@
  *
  * Provides a source-first TUI flow before delegating to the build skill for
  * source completeness checks, confirmation, config validation, and enqueueing.
+ *
+ * Flow:
+ *   1. Headless/no-UI: delegate directly to /skill:eforge-build with original args.
+ *   2. Explicit landing in args: bypass the landing selector and delegate.
+ *   3. Source selection (when no args supplied).
+ *   4. Profile selection (when no --profile already in args).
+ *   5. Landing selection via promptForBuildLandingGate (full selector with
+ *      "Use project default").
+ *   6. Delegate to /skill:eforge-build with the resolved args.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -20,6 +29,7 @@ import {
   withLoader,
   type UIContext,
 } from "./ui-helpers";
+import { promptForBuildLandingGate } from "./landing-gate.js";
 
 interface BuildUIContext extends UIContext {
   ui: UIContext["ui"] & {
@@ -53,6 +63,14 @@ function formatProfileItem(profile: AgentRuntimeProfileInfo) {
 
 function hasProfileOverride(args: string): boolean {
   return /(?:^|\s)--profile(?:\s|=|$)/.test(args);
+}
+
+/**
+ * Returns true when args already contain an explicit landing override so the
+ * landing selector should be bypassed. Detects: --on-success, onSuccess, landingAction.
+ */
+function hasLandingOverride(args: string): boolean {
+  return /(?:^|\s)(--on-success|onSuccess|landingAction)(?:\s|=|:|$)/.test(args);
 }
 
 async function selectProfileArgs(ctx: UIContext, args: string): Promise<string | null> {
@@ -145,12 +163,13 @@ async function selectBuildSource(ctx: BuildUIContext): Promise<string | null> {
   return selectedPlanPath ? quoteSkillArg(selectedPlanPath) : null;
 }
 
-/** Handle /eforge:build with source and profile selectors when Pi UI exists. */
+/** Handle /eforge:build with source, profile, and landing selectors when Pi UI exists. */
 export async function handleBuildCommand(
   pi: ExtensionAPI,
   ctx: UIContext | null,
   args: string,
 ): Promise<void> {
+  // Headless path: delegate directly without any prompts
   if (!ctx || !ctx.hasUI) {
     sendBuildSkill(pi, args);
     return;
@@ -166,5 +185,20 @@ export async function handleBuildCommand(
   const argsWithProfile = await selectProfileArgs(ctx, sourceArgs);
   if (argsWithProfile === null) return;
 
-  sendBuildSkill(pi, argsWithProfile);
+  // If explicit landing override already in args, bypass the landing selector
+  if (hasLandingOverride(argsWithProfile)) {
+    sendBuildSkill(pi, argsWithProfile);
+    return;
+  }
+
+  // Landing selection: show the full selector with "Use project default"
+  const landingResult = await promptForBuildLandingGate(pi, ctx, undefined, undefined, { mode: "selector" });
+  if (landingResult.cancelled) return;
+
+  let finalArgs = argsWithProfile;
+  if (landingResult.onSuccess) {
+    finalArgs = `${argsWithProfile} --on-success ${landingResult.onSuccess}`;
+  }
+
+  sendBuildSkill(pi, finalArgs);
 }
