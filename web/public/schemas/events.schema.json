@@ -7442,7 +7442,8 @@
         {
           "type": "object",
           "required": [
-            "type"
+            "type",
+            "passed"
           ],
           "properties": {
             "type": {
@@ -7451,6 +7452,72 @@
             },
             "passed": {
               "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "passed",
+            "verdicts",
+            "source"
+          ],
+          "properties": {
+            "type": {
+              "const": "acceptance_validation:complete",
+              "type": "string"
+            },
+            "passed": {
+              "type": "boolean"
+            },
+            "verdicts": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "criterion",
+                  "verdict",
+                  "evidence"
+                ],
+                "properties": {
+                  "criterion": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "verdict": {
+                    "anyOf": [
+                      {
+                        "const": "pass",
+                        "type": "string"
+                      },
+                      {
+                        "const": "fail",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidence": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "waivers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "source": {
+              "minLength": 1,
+              "type": "string"
             }
           }
         },

@@ -330,6 +330,68 @@ describe('WorktreeManager', () => {
     expect(commitMsg).not.toContain('Models-Used:');
   });
 
+  // --- eforge:region plan-04-committed-work-artifact-safety ---
+  it('mergePlan throws when builtOnMerge plan has uncommitted tracked changes', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    await wm.acquireForPlan('plan-dirty-tracked', 'eforge/plan-dirty-tracked', false);
+
+    // Write a file and stage it but do NOT commit it
+    writeFileSync(join(mergeWorktreePath, 'dirty-tracked.ts'), 'uncommitted changes\n');
+    await exec('git', ['add', 'dirty-tracked.ts'], { cwd: mergeWorktreePath });
+
+    await expect(wm.mergePlan(
+      'plan-dirty-tracked',
+      { id: 'plan-dirty-tracked', name: 'Dirty Tracked Plan', branch: 'eforge/plan-dirty-tracked' },
+    )).rejects.toThrow('dirty-tracked.ts');
+  });
+
+  it('mergePlan throws when builtOnMerge plan has untracked implementation files', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    await wm.acquireForPlan('plan-untracked', 'eforge/plan-untracked', false);
+
+    // Write a file but do NOT add or commit it (untracked)
+    writeFileSync(join(mergeWorktreePath, 'untracked-impl.ts'), 'untracked content\n');
+
+    await expect(wm.mergePlan(
+      'plan-untracked',
+      { id: 'plan-untracked', name: 'Untracked Plan', branch: 'eforge/plan-untracked' },
+    )).rejects.toThrow('untracked-impl.ts');
+  });
+
+  it('mergePlan succeeds and returns HEAD SHA when builtOnMerge plan changes are committed', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    await wm.acquireForPlan('plan-committed', 'eforge/plan-committed', false);
+
+    // Commit changes properly
+    writeFileSync(join(mergeWorktreePath, 'committed.ts'), 'implementation\n');
+    await exec('git', ['add', 'committed.ts'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'implementation'], { cwd: mergeWorktreePath });
+
+    const { stdout: expectedShaRaw } = await exec('git', ['rev-parse', 'HEAD'], { cwd: mergeWorktreePath });
+    const expectedSha = expectedShaRaw.trim();
+
+    const sha = await wm.mergePlan(
+      'plan-committed',
+      { id: 'plan-committed', name: 'Committed Plan', branch: 'eforge/plan-committed' },
+    );
+
+    expect(sha).toBe(expectedSha);
+    expect(sha).toMatch(/^[0-9a-f]{40}$/);
+  });
+  // --- eforge:endregion plan-04-committed-work-artifact-safety ---
+
   it('mergePlan omits Models-Used: trailer when no modelTracker provided', async () => {
     const baseDir = makeTempDir();
     const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =

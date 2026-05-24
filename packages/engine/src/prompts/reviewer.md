@@ -63,6 +63,14 @@ The following YAML documents the fields and allowed values for each review issue
 {{review_issue_schema}}
 ```
 
+# Acceptance Criteria Consideration
+
+Before outputting the terminal `<review-issues>` block, write a brief prose section documenting which acceptance criteria from the plan you considered during your review and whether the implementation appears to address each one. This evidence is part of the review record.
+
+This is informational only — it does not constitute formal acceptance certification. The acceptance gate is evaluated separately.
+
+Omitting this prose section is a contract violation.
+
 # Output Format
 
 After completing your review, output your findings in this exact XML format:
@@ -84,6 +92,7 @@ Rules:
 - The `<fix>` element should be included for every issue, describing the recommended fix for the review-fixer agent
 - If you find no issues, output an empty block: `<review-issues></review-issues>`
 - Always output exactly one `<review-issues>` block at the end of your response
+- Before the `<review-issues>` block, include acceptance criteria consideration prose as described above
 
 # Constraints
 

@@ -11,7 +11,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 196
+Total variants: 197
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -157,6 +157,7 @@ Total variants: 196
 | `gap_close:start` | `completionPercent`, `gapCount` |
 | `gap_close:plan_ready` | `gaps`, `planBody` |
 | `gap_close:complete` | `passed` |
+| `acceptance_validation:complete` | `passed`, `source`, `verdicts`, `waivers` |
 | `reconciliation:start` | - |
 | `reconciliation:complete` | `report` |
 | `cleanup:start` | `planSet` |

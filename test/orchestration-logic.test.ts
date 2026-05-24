@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans, finalize } from '@eforge-build/engine/orchestrator/phases';
+import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans, finalize, validate, prdValidate, recordArtifact } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import { initializeState, Orchestrator } from '@eforge-build/engine/orchestrator';
@@ -12,6 +12,11 @@ import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
 import type { PolicyGateKind, PolicyGateMethod, PolicyGateRegistration } from '@eforge-build/engine/extensions/types';
 import { useTempDir } from './test-tmpdir.js';
+import { getBuildStage, type BuildStageContext } from '@eforge-build/engine/pipeline';
+import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
+import { createNoopTracingContext } from '@eforge-build/engine/tracing';
+import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { StubHarness } from './stub-harness.js';
 
 // --- Helpers ---
 
@@ -543,6 +548,74 @@ describe('executePlans - build:failed handling', () => {
   });
   // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
+  // --- eforge:region plan-04-committed-work-artifact-safety ---
+  it('dirty builtOnMerge merge failure emits plan:build:failed and does not emit validation:start', async () => {
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+    const state = initializeState(config, '/tmp/repo').state;
+
+    // PlanRunner that completes without build:failed (plan succeeds, dirty check happens at merge)
+    const planRunner: PlanRunner = async function* () {};
+
+    // WorktreeManager whose mergePlan throws to simulate dirty merge worktree
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      mergePlan: async () => {
+        throw new Error(
+          "builtOnMerge plan 'plan-a' has uncommitted changes in the merge worktree.\n" +
+          "Commit all implementation work before marking a plan complete.\n" +
+          "Dirty files:\n M dirty-file.ts",
+        );
+      },
+    } as unknown as WorktreeManager;
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: ['echo validation-should-not-run'],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false,
+      landingAction: 'merge' as const,
+      modelTracker: new ModelTracker(),
+      prdId: 'dirty-prd',
+      prdValidator: async function* () {
+        yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      },
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of executePlans(ctx)) events.push(event);
+    // Phase guards should skip validate, PRD validation, and artifact recording after the merge failure.
+    for await (const event of validate(ctx)) events.push(event);
+    for await (const event of prdValidate(ctx)) events.push(event);
+    for await (const event of recordArtifact(ctx)) events.push(event);
+
+    // merge failure must propagate as plan:build:failed
+    expect(events.some((e) => e.type === 'plan:build:failed' && e.planId === 'plan-a')).toBe(true);
+    // validation/prd/artifact phases must not emit after merge failure
+    expect(events.some((e) => e.type === 'validation:start')).toBe(false);
+    expect(events.some((e) => e.type === 'prd_validation:start')).toBe(false);
+    expect(events.some((e) => e.type === 'stack:layer:recorded' || e.type === 'daemon:error')).toBe(false);
+    // overall build status must be failed
+    expect(state.status).toBe('failed');
+  });
+  // --- eforge:endregion plan-04-committed-work-artifact-safety ---
+
   it('promotes plan failure to run-level state.status without requiring finalize', async () => {
     // Regression: after the throw->stream switch for build:failed, executePlans
     // must itself mark state.status='failed' so prdValidate/validate guards in
@@ -868,3 +941,322 @@ describe('initializeState — concurrent execution isolation', () => {
     expect(eventsB.some((e) => e.type === 'schedule:start')).toBe(true);
   });
 });
+
+// --- eforge:region plan-02-final-validation-gates ---
+describe('validation no-command policy', () => {
+  it('fails closed when all plans are merged and no validation commands or waiver are configured', async () => {
+    const state = makeState({});
+    const config = makeConfig({ plans: [] });
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner: async function* () {},
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: {} as unknown as WorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false,
+      landingAction: 'merge' as const,
+      modelTracker: new ModelTracker(),
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of validate(ctx)) events.push(event);
+
+    expect(ctx.state.status).toBe('failed');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'validation:start', commands: [] }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'validation:complete', passed: false }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'landing:skipped', reason: 'No validation commands configured and no waiver' }));
+  });
+
+  it('passes with an explicit no-command waiver and surfaces the waiver reason', async () => {
+    const state = makeState({});
+    const config = makeConfig({ plans: [] });
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner: async function* () {},
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: {} as unknown as WorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false,
+      landingAction: 'leave' as const,
+      modelTracker: new ModelTracker(),
+      validationPolicy: { allowNoCommands: true, noCommandsReason: 'CI handles validation', allowEmptyPrdDiff: false },
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of validate(ctx)) events.push(event);
+
+    expect(ctx.state.status).not.toBe('failed');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'planning:progress', message: 'Validation waiver (allowNoCommands): CI handles validation' }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'validation:complete', passed: true }));
+  });
+});
+
+describe('post-gap rerun sequencing', () => {
+  const makeTempDir = useTempDir();
+
+  it('reruns validate then prdValidate after gap_close:complete passed=true before artifact recording', async () => {
+    // Simulate the orchestrator sequencing manually:
+    // validate → prdValidate (gap close passes, sets gapClosePerformed) →
+    // validate rerun → prdValidate rerun (acceptance passes) → state.status not failed
+    let prdValidateCallCount = 0;
+
+    const state = makeState({});
+    const config = makeConfig({ plans: [] });
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner: async function* () {},
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: {} as unknown as WorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false,
+      landingAction: 'merge' as const,
+      modelTracker: new ModelTracker(),
+      // No-command waiver so validate() passes with empty validateCommands
+      validationPolicy: { allowNoCommands: true, noCommandsReason: 'CI handles this', allowEmptyPrdDiff: false },
+      gapCloser: async function* () {
+        yield { type: 'gap_close:start', timestamp: new Date().toISOString() } as EforgeEvent;
+        yield { type: 'gap_close:complete', timestamp: new Date().toISOString(), passed: true } as EforgeEvent;
+      },
+      prdValidator: async function* () {
+        prdValidateCallCount++;
+        if (prdValidateCallCount === 1) {
+          // First call: PRD fails with gaps → gap closer will run
+          yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: false, gaps: [{ requirement: 'Feature X', explanation: 'Not implemented', complexity: 'moderate' as const }], completionPercent: 80 } as EforgeEvent;
+        } else {
+          // Second call (post-gap rerun): PRD passes with acceptance evidence
+          yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+          yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: true, verdicts: [{ criterion: 'Feature X present', verdict: 'pass', evidence: 'Implementation found in src/feature.ts' }], source: 'prd' as const } as EforgeEvent;
+        }
+      },
+    };
+
+    const allEvents: EforgeEvent[] = [];
+
+    // Phase 1: initial validate — passes via allowNoCommands waiver
+    for await (const event of validate(ctx)) {
+      allEvents.push(event);
+    }
+    expect(ctx.state.status).not.toBe('failed');
+
+    // Phase 2: initial prdValidate — PRD fails, gap close runs and succeeds
+    for await (const event of prdValidate(ctx)) {
+      allEvents.push(event);
+    }
+    // gapClosePerformed is now true; orchestrator would rerun
+    expect(ctx.gapClosePerformed).toBe(true);
+    expect(ctx.state.status).not.toBe('failed');
+
+    // Phase 3: validate rerun — passes via allowNoCommands waiver again
+    for await (const event of validate(ctx)) {
+      allEvents.push(event);
+    }
+    expect(ctx.state.status).not.toBe('failed');
+
+    // Phase 4: prdValidate rerun — PRD passes with acceptance evidence
+    for await (const event of prdValidate(ctx)) {
+      allEvents.push(event);
+    }
+    expect(ctx.state.status).not.toBe('failed');
+    expect(prdValidateCallCount).toBe(2);
+
+    // Verify ordering: two validation:complete events (one per validate run)
+    const validationCompletes = allEvents.filter((e) => e.type === 'validation:complete');
+    expect(validationCompletes).toHaveLength(2);
+
+    // Verify two prd_validation:complete events (first fail, second pass)
+    const prdCompletes = allEvents.filter((e) => e.type === 'prd_validation:complete');
+    expect(prdCompletes).toHaveLength(2);
+    expect((prdCompletes[0] as Extract<EforgeEvent, { type: 'prd_validation:complete' }>).passed).toBe(false);
+    expect((prdCompletes[1] as Extract<EforgeEvent, { type: 'prd_validation:complete' }>).passed).toBe(true);
+
+    // Verify gap_close:complete emitted
+    const gapCloseComplete = allEvents.find((e) => e.type === 'gap_close:complete');
+    expect(gapCloseComplete).toBeDefined();
+    expect((gapCloseComplete as Extract<EforgeEvent, { type: 'gap_close:complete' }>).passed).toBe(true);
+  });
+
+  it('exercises the actual Orchestrator.execute ordering after a successful gap close', async () => {
+    const repoRoot = makeTempDir();
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: repoRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd: repoRoot });
+    execFileSync('git', ['branch', 'eforge/test-set'], { cwd: repoRoot });
+
+    let prdValidateCallCount = 0;
+    const orchestrator = new Orchestrator({
+      repoRoot,
+      mergeWorktreePath: repoRoot,
+      planRunner: async function* () {},
+      landingAction: 'leave',
+      validationPolicy: { allowNoCommands: true, noCommandsReason: 'CI handles this', allowEmptyPrdDiff: false },
+      gapCloser: async function* () {
+        yield { type: 'gap_close:start', timestamp: new Date().toISOString() } as EforgeEvent;
+        yield { type: 'gap_close:complete', timestamp: new Date().toISOString(), passed: true } as EforgeEvent;
+      },
+      prdValidator: async function* () {
+        prdValidateCallCount++;
+        if (prdValidateCallCount === 1) {
+          yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: false, gaps: [{ requirement: 'Feature X', explanation: 'Not implemented', complexity: 'moderate' as const }], completionPercent: 80 } as EforgeEvent;
+        } else {
+          yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+          yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: true, verdicts: [{ criterion: 'Feature X present', verdict: 'pass', evidence: 'Implementation found in src/feature.ts' }], source: 'prd' as const } as EforgeEvent;
+        }
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of orchestrator.execute(makeConfig({ plans: [] }))) events.push(event);
+
+    const orderedTypes = events
+      .filter((event) => ['validation:complete', 'prd_validation:complete', 'gap_close:complete', 'acceptance_validation:complete'].includes(event.type))
+      .map((event) => event.type);
+    expect(orderedTypes).toEqual([
+      'validation:complete',
+      'prd_validation:complete',
+      'gap_close:complete',
+      'validation:complete',
+      'prd_validation:complete',
+      'acceptance_validation:complete',
+    ]);
+    expect(prdValidateCallCount).toBe(2);
+  });
+});
+
+// --- eforge:region gap-close ---
+describe('gap-close: clean review does not bypass acceptance gate', () => {
+  const makeTempDir = useTempDir('eforge-gap-close-');
+
+  it('acceptance gate fails when prd passes with no acceptance_validation:complete, even after a clean review cycle', async () => {
+    const tempDir = makeTempDir();
+
+    // Phase 1: run review-cycle stage — stub harness returns no issues
+    const harness = new StubHarness([{ text: '<review-issues></review-issues>' }]);
+    const planId = 'plan-gap-close';
+    const review = { strategy: 'single' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
+    const orchConfig = makeConfig({
+      plans: [{ id: planId, name: 'Gap Close Plan', dependsOn: [], branch: 'feature/gap-close', build: ['review-cycle'], review }],
+    });
+    const planFile = {
+      id: planId,
+      name: 'Gap Close Plan',
+      dependsOn: [],
+      branch: 'feature/gap-close',
+      body: '# Plan\n\nTest plan.\n',
+      filePath: `${tempDir}/plan.md`,
+    };
+
+    const buildCtx: BuildStageContext = {
+      agentRuntimes: singletonRegistry(harness),
+      config: DEFAULT_CONFIG,
+      pipeline: TEST_PIPELINE,
+      tracing: createNoopTracingContext(),
+      cwd: tempDir,
+      planSetName: 'gap-close',
+      sourceContent: '',
+      modelTracker: new ModelTracker(),
+      plans: [planFile],
+      expeditionModules: [],
+      moduleBuildConfigs: new Map(),
+      planId,
+      worktreePath: tempDir,
+      planFile,
+      orchConfig,
+      planEntry: orchConfig.plans[0],
+      reviewIssues: [],
+      build: ['review-cycle'],
+      review,
+    };
+
+    const reviewEvents: EforgeEvent[] = [];
+    for await (const event of getBuildStage('review-cycle')(buildCtx)) {
+      reviewEvents.push(event);
+    }
+
+    // Review should complete with no issues — cycle terminated with 'no-issues'
+    expect(buildCtx.reviewIssues).toEqual([]);
+    const cycleTerminated = reviewEvents.find(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        e.type === 'plan:build:decision' &&
+        (e as Extract<EforgeEvent, { type: 'plan:build:decision' }>).decision.kind === 'cycle-terminated',
+    );
+    expect(cycleTerminated).toBeDefined();
+    expect((cycleTerminated!.decision as { reason: string }).reason).toBe('no-issues');
+
+    // Phase 2: run prdValidate with passing prd but no acceptance_validation:complete
+    const state = makeState({});
+    const config = makeConfig({ plans: [] });
+    const prdCtx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner: async function* () {},
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: {} as unknown as WorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false,
+      landingAction: 'leave' as const,
+      modelTracker: new ModelTracker(),
+      validationPolicy: { allowNoCommands: true, noCommandsReason: 'CI handles validation', allowEmptyPrdDiff: false },
+      prdValidator: async function* () {
+        yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+        yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+        // Intentionally no acceptance_validation:complete
+      },
+    };
+
+    const prdEvents: EforgeEvent[] = [];
+    for await (const event of prdValidate(prdCtx)) {
+      prdEvents.push(event);
+    }
+
+    // Acceptance gate must fail when acceptance_validation:complete is absent
+    expect(prdCtx.state.status).toBe('failed');
+    // A synthesized failing acceptance event must be emitted
+    expect(prdEvents).toContainEqual(expect.objectContaining({
+      type: 'acceptance_validation:complete',
+      passed: false,
+    }));
+  });
+});
+// --- eforge:endregion gap-close ---
+// --- eforge:endregion plan-02-final-validation-gates ---

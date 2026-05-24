@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseClarificationBlocks, parseSkipBlock, parseStalenessBlock } from '@eforge-build/engine/agents/common';
-import { parseReviewIssues } from '@eforge-build/engine/agents/reviewer';
+import { parseReviewIssues, parseReviewIssuesStrict } from '@eforge-build/engine/agents/reviewer';
 import { parseEvaluationBlock } from '@eforge-build/engine/agents/common';
 import { formatPriorClarifications } from '@eforge-build/engine/agents/planner';
 
@@ -233,6 +233,131 @@ describe('parseReviewIssues', () => {
     const result = parseReviewIssues(text);
     expect(result).toHaveLength(1);
     expect(result[0].line).toBeUndefined();
+  });
+});
+
+describe('parseReviewIssuesStrict', () => {
+  it('returns valid:false and a synthetic critical issue when no XML is present', () => {
+    const result = parseReviewIssuesStrict('no xml here');
+    expect(result.valid).toBe(false);
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0].severity).toBe('critical');
+    expect(result.issues[0].category).toBe('review-contract');
+    expect(result.issues[0].file).toBe('reviewer-output');
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('Missing');
+  });
+
+  it('returns valid:false when severity is invalid (bogus value)', () => {
+    const text = '<review-issues><issue severity="bogus" category="bugs" file="x.ts">bad</issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0].severity).toBe('critical');
+    expect(result.issues[0].category).toBe('review-contract');
+    expect(result.errors[0]).toContain('invalid severity');
+  });
+
+  it('returns valid:true and zero issues for a valid empty block', () => {
+    const result = parseReviewIssuesStrict('<review-issues></review-issues>');
+    expect(result.valid).toBe(true);
+    expect(result.issues).toHaveLength(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('returns valid:true and parses a well-formed issue', () => {
+    const text = `<review-issues>
+  <issue severity="warning" category="bugs" file="src/app.ts">Slow query<fix>Add index</fix></issue>
+</review-issues>`;
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(true);
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0].severity).toBe('warning');
+    expect(result.issues[0].category).toBe('bugs');
+    expect(result.issues[0].file).toBe('src/app.ts');
+    expect(result.issues[0].description).toBe('Slow query');
+    expect(result.issues[0].fix).toBe('Add index');
+  });
+
+  it('returns valid:false when issue is missing required category attribute', () => {
+    const text = '<review-issues><issue severity="critical" file="src/a.ts">Missing category</issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('category');
+  });
+
+  it('returns valid:false when issue is missing required file attribute', () => {
+    const text = '<review-issues><issue severity="critical" category="bugs">Missing file</issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('file');
+  });
+
+  it('returns valid:false when issue is missing required severity attribute', () => {
+    const text = '<review-issues><issue category="bugs" file="src/a.ts">Missing severity</issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('severity');
+  });
+
+  it('returns valid:false when issue has an empty description', () => {
+    const text = '<review-issues><issue severity="critical" category="bugs" file="x.ts">   </issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('empty description');
+  });
+
+  it('returns valid:false when an issue tag is malformed', () => {
+    const text = '<review-issues><issue severity="critical" category="bugs" file="x.ts">Missing close tag</review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('malformed');
+    expect(result.issues[0].category).toBe('review-contract');
+  });
+
+  it('returns valid:false when non-issue text appears inside the terminal block', () => {
+    const text = '<review-issues>Looks good</review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('unexpected text');
+  });
+
+  it('returns valid:false when multiple <review-issues> blocks are present', () => {
+    const text = '<review-issues></review-issues><review-issues></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('Multiple');
+  });
+
+  it('returns synthetic critical issues for each contract violation when multiple issues have problems', () => {
+    const text = `<review-issues>
+  <issue severity="bogus" category="bugs" file="a.ts">Issue 1</issue>
+  <issue severity="warning" file="b.ts">Missing category</issue>
+</review-issues>`;
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.issues.length).toBeGreaterThanOrEqual(2);
+    for (const issue of result.issues) {
+      expect(issue.severity).toBe('critical');
+      expect(issue.category).toBe('review-contract');
+    }
+  });
+
+  it('valid empty block followed by prose is still valid:true', () => {
+    const text = `I reviewed the code and found nothing wrong.
+
+<review-issues></review-issues>
+
+Some trailing text.`;
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(true);
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it('returns valid:false for plain text reviewer output with no XML block', () => {
+    const result = parseReviewIssuesStrict('Code looks good. No issues found.');
+    expect(result.valid).toBe(false);
+    expect(result.issues[0].severity).toBe('critical');
   });
 });
 

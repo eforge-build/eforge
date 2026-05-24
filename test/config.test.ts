@@ -730,3 +730,105 @@ describe('extensions.trustProjectExtensions stripping from project/team config',
     expect(merged.extensions?.trustProjectExtensions).toBe(true);
   });
 });
+
+// --- eforge:region plan-02-final-validation-gates ---
+describe('validation waiver config — schema validation and merge/defaults', () => {
+  it('rejects allowNoCommands: true without noCommandsReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowNoCommands: true } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const hasIssue = result.error.issues.some(
+        (i) => Array.isArray(i.path) && i.path.includes('noCommandsReason'),
+      );
+      expect(hasIssue).toBe(true);
+    }
+  });
+
+  it('accepts allowNoCommands: true with non-empty noCommandsReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowNoCommands: true, noCommandsReason: 'Shared monorepo; type checking happens in CI' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects allowNoCommands: true with a whitespace-only noCommandsReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowNoCommands: true, noCommandsReason: '   ' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects allowEmptyPrdDiff: true without emptyPrdDiffReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowEmptyPrdDiff: true } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const hasIssue = result.error.issues.some(
+        (i) => Array.isArray(i.path) && i.path.includes('emptyPrdDiffReason'),
+      );
+      expect(hasIssue).toBe(true);
+    }
+  });
+
+  it('accepts allowEmptyPrdDiff: true with non-empty emptyPrdDiffReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowEmptyPrdDiff: true, emptyPrdDiffReason: 'Config-only change; no source diff expected' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects allowEmptyPrdDiff: true with a whitespace-only emptyPrdDiffReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowEmptyPrdDiff: true, emptyPrdDiffReason: '\t  ' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('resolveConfig returns false defaults for validation waiver fields', () => {
+    const config = resolveConfig({}, {});
+    expect(config.build.validation.allowNoCommands).toBe(false);
+    expect(config.build.validation.allowEmptyPrdDiff).toBe(false);
+    expect(config.build.validation.noCommandsReason).toBeUndefined();
+    expect(config.build.validation.emptyPrdDiffReason).toBeUndefined();
+  });
+
+  it('resolveConfig propagates allowNoCommands and noCommandsReason from file config', () => {
+    const config = resolveConfig(
+      { build: { validation: { allowNoCommands: true, noCommandsReason: 'CI handles this' } } },
+      {},
+    );
+    expect(config.build.validation.allowNoCommands).toBe(true);
+    expect(config.build.validation.noCommandsReason).toBe('CI handles this');
+    // Other waiver fields default to false/undefined
+    expect(config.build.validation.allowEmptyPrdDiff).toBe(false);
+    expect(config.build.validation.emptyPrdDiffReason).toBeUndefined();
+  });
+
+  it('resolveConfig propagates allowEmptyPrdDiff and emptyPrdDiffReason from file config', () => {
+    const config = resolveConfig(
+      { build: { validation: { allowEmptyPrdDiff: true, emptyPrdDiffReason: 'Docs-only change' } } },
+      {},
+    );
+    expect(config.build.validation.allowEmptyPrdDiff).toBe(true);
+    expect(config.build.validation.emptyPrdDiffReason).toBe('Docs-only change');
+    expect(config.build.validation.allowNoCommands).toBe(false);
+  });
+
+  it('mergePartialConfigs preserves distinct build.validation waiver fields from both layers', () => {
+    const merged = mergePartialConfigs(
+      { build: { validation: { allowNoCommands: true, noCommandsReason: 'CI runs command validation' } } },
+      { build: { validation: { allowEmptyPrdDiff: true, emptyPrdDiffReason: 'Generated docs-only queue item' } } },
+    );
+
+    expect(merged.build?.validation).toEqual({
+      allowNoCommands: true,
+      noCommandsReason: 'CI runs command validation',
+      allowEmptyPrdDiff: true,
+      emptyPrdDiffReason: 'Generated docs-only queue item',
+    });
+  });
+});
+// --- eforge:endregion plan-02-final-validation-gates ---

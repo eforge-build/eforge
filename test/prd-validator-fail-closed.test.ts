@@ -77,3 +77,110 @@ describe('runPrdValidator fail-closed behavior', () => {
     expect(complete!.completionPercent).toBe(100);
   });
 });
+
+// --- eforge:region plan-01-validation-evidence-contract ---
+describe('runPrdValidator acceptance_validation:complete behavior', () => {
+  it('emits acceptance_validation:complete with passed=false and unknown verdict when agent JSON omits the verdict array', async () => {
+    const backend = new StubHarness([
+      { text: '```json\n{"completionPercent": 100, "gaps": []}\n```' },
+    ]);
+
+    const events = await collectEvents(runPrdValidator(makeOptions(backend)));
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(false);
+    expect(acceptance!.verdicts).toHaveLength(1);
+    expect(acceptance!.verdicts[0].verdict).toBe('unknown');
+    expect(acceptance!.verdicts[0].evidence).toBeTruthy();
+    expect(acceptance!.source).toBe('prd');
+  });
+
+  it('emits acceptance_validation:complete with passed=false when the verdict array is empty', async () => {
+    const backend = new StubHarness([
+      { text: '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": []}\n```' },
+    ]);
+
+    const events = await collectEvents(runPrdValidator(makeOptions(backend)));
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(false);
+    expect(acceptance!.verdicts).toHaveLength(1);
+    expect(acceptance!.verdicts[0]).toMatchObject({
+      criterion: 'Acceptance criteria',
+      verdict: 'unknown',
+    });
+  });
+
+  it('emits acceptance_validation:complete with passed=false when verdict array entries are malformed', async () => {
+    const backend = new StubHarness([
+      { text: '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [null, "not an object"]}\n```' },
+    ]);
+
+    const events = await collectEvents(runPrdValidator(makeOptions(backend)));
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(false);
+    expect(acceptance!.verdicts.length).toBeGreaterThan(0);
+    expect(acceptance!.verdicts.some((verdict) => verdict.verdict === 'unknown')).toBe(true);
+    expect(acceptance!.verdicts.every((verdict) => verdict.evidence.length > 0)).toBe(true);
+  });
+
+  it('emits acceptance_validation:complete with passed=true when all verdicts are pass', async () => {
+    const backend = new StubHarness([
+      {
+        text: '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [{"criterion": "Must support login", "verdict": "pass", "evidence": "Login component found at src/login.ts"}]}\n```',
+      },
+    ]);
+
+    const events = await collectEvents(runPrdValidator(makeOptions(backend)));
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(true);
+    expect(acceptance!.verdicts).toHaveLength(1);
+    expect(acceptance!.verdicts[0].verdict).toBe('pass');
+    expect(acceptance!.source).toBe('prd');
+  });
+
+  it('emits acceptance_validation:complete with passed=false and unknown verdict when criterion has no evidence', async () => {
+    const backend = new StubHarness([
+      {
+        text: '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [{"criterion": "Must support login", "verdict": "pass", "evidence": ""}]}\n```',
+      },
+    ]);
+
+    const events = await collectEvents(runPrdValidator(makeOptions(backend)));
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(false);
+    expect(acceptance!.verdicts[0].verdict).toBe('unknown');
+    expect(acceptance!.verdicts[0].evidence).toBe('No evidence provided for this criterion.');
+  });
+
+  it('emits acceptance_validation:complete with passed=false when any verdict is fail', async () => {
+    const backend = new StubHarness([
+      {
+        text: '```json\n{"completionPercent": 90, "gaps": [], "acceptanceVerdicts": [{"criterion": "Must support login", "verdict": "pass", "evidence": "Found"}, {"criterion": "Must support OAuth", "verdict": "fail", "evidence": "Not found"}]}\n```',
+      },
+    ]);
+
+    const events = await collectEvents(runPrdValidator(makeOptions(backend)));
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(false);
+    expect(acceptance!.verdicts).toHaveLength(2);
+  });
+
+  it('emits acceptance_validation:complete with passed=false for unparseable output', async () => {
+    const backend = new StubHarness([
+      { text: 'Here are my thoughts but no JSON block anywhere.' },
+    ]);
+
+    const events = await collectEvents(runPrdValidator(makeOptions(backend)));
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(false);
+    expect(acceptance!.verdicts).toHaveLength(1);
+    expect(acceptance!.verdicts[0].verdict).toBe('unknown');
+  });
+});
+// --- eforge:endregion plan-01-validation-evidence-contract ---

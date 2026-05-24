@@ -1199,8 +1199,21 @@ const eventRegistry = {
   'gap_close:complete': {
     scope: 'session',
     persist: false,
-    summary: 'Gap closing complete',
+    summary: (e) => e.passed ? 'Gap closing complete: all gaps resolved' : 'Gap closing complete: gaps remain',
   },
+
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  'acceptance_validation:complete': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => {
+      const failing = e.verdicts.filter((v) => v.verdict !== 'pass').length;
+      return e.passed
+        ? `Acceptance validation passed: ${e.verdicts.length} criterion/criteria verified`
+        : `Acceptance validation failed: ${failing} criterion/criteria not passed`;
+    },
+  },
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
   // -------------------------------------------------------------------------
   // Reconciliation

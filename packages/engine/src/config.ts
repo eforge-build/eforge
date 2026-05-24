@@ -354,6 +354,43 @@ const landingConfigSchema = z.object({
 );
 // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
+// --- eforge:region plan-02-final-validation-gates ---
+/**
+ * Explicit validation waiver config. Allows specific validation requirements to be
+ * waived for builds that cannot satisfy standard requirements. Every waiver must
+ * carry a non-empty reason string that is surfaced in events.
+ */
+const validationWaiverConfigSchema = z.object({
+  allowNoCommands: z.boolean().optional().describe(
+    'Allow builds with zero combined validation commands to pass instead of failing. Requires noCommandsReason.',
+  ),
+  noCommandsReason: z.string().optional().describe(
+    'Required human-readable reason when allowNoCommands is true.',
+  ),
+  allowEmptyPrdDiff: z.boolean().optional().describe(
+    'Allow PRD validation to pass when the diff is empty (no changes detected). Requires emptyPrdDiffReason.',
+  ),
+  emptyPrdDiffReason: z.string().optional().describe(
+    'Required human-readable reason when allowEmptyPrdDiff is true.',
+  ),
+}).superRefine((data, ctx) => {
+  if (data.allowNoCommands && !data.noCommandsReason?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '"noCommandsReason" must be a non-empty string when "allowNoCommands" is true',
+      path: ['noCommandsReason'],
+    });
+  }
+  if (data.allowEmptyPrdDiff && !data.emptyPrdDiffReason?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '"emptyPrdDiffReason" must be a non-empty string when "allowEmptyPrdDiff" is true',
+      path: ['emptyPrdDiffReason'],
+    });
+  }
+}).describe('Explicit validation waivers. Each waiver boolean requires a non-empty reason string.');
+// --- eforge:endregion plan-02-final-validation-gates ---
+
 /** Base object schema without refinements — .partial() is derived from this. */
 const eforgeConfigBaseSchema = z.object({
   maxConcurrentBuilds: z.number().int().positive().optional(),
@@ -386,6 +423,9 @@ const eforgeConfigBaseSchema = z.object({
     allowLocalMergeToTrunk: z.boolean().optional(),
     // --- eforge:endregion plan-01-config-and-trunk-resolution ---
     // --- eforge:endregion plan-01-engine-config-and-landing ---
+    // --- eforge:region plan-02-final-validation-gates ---
+    validation: validationWaiverConfigSchema.optional(),
+    // --- eforge:endregion plan-02-final-validation-gates ---
   }).optional(),
   plan: z.object({
     outputDir: z.string().optional(),
@@ -450,6 +490,16 @@ export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {
 export type TierConfig = z.output<typeof tierConfigSchema>;
 
 // --- eforge:region plan-01-stack-contracts-config-state-events ---
+// --- eforge:region plan-02-final-validation-gates ---
+/** Resolved validation waiver config. All fields have explicit defaults (false/undefined). */
+export interface ValidationConfig {
+  allowNoCommands: boolean;
+  noCommandsReason?: string;
+  allowEmptyPrdDiff: boolean;
+  emptyPrdDiffReason?: string;
+}
+// --- eforge:endregion plan-02-final-validation-gates ---
+
 /** Resolved stacking subsystem config. */
 export interface StackingConfig {
   enabled: boolean;
@@ -571,6 +621,9 @@ export interface EforgeConfig {
     trunkBranch?: string;
     allowLocalMergeToTrunk: boolean;
     // --- eforge:endregion plan-01-config-and-trunk-resolution ---
+    // --- eforge:region plan-02-final-validation-gates ---
+    validation: ValidationConfig;
+    // --- eforge:endregion plan-02-final-validation-gates ---
   };
   // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: { outputDir: string };
@@ -765,6 +818,9 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     trunkBranch: undefined as string | undefined,
     allowLocalMergeToTrunk: false,
     // --- eforge:endregion plan-01-config-and-trunk-resolution ---
+    // --- eforge:region plan-02-final-validation-gates ---
+    validation: Object.freeze({ allowNoCommands: false, allowEmptyPrdDiff: false } as ValidationConfig),
+    // --- eforge:endregion plan-02-final-validation-gates ---
   }),
   // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
@@ -874,6 +930,14 @@ export function resolveConfig(
       allowLocalMergeToTrunk: fileConfig.build?.allowLocalMergeToTrunk ?? DEFAULT_CONFIG.build.allowLocalMergeToTrunk,
       // --- eforge:endregion plan-01-config-and-trunk-resolution ---
       // --- eforge:endregion plan-01-engine-config-and-landing ---
+      // --- eforge:region plan-02-final-validation-gates ---
+      validation: Object.freeze({
+        allowNoCommands: fileConfig.build?.validation?.allowNoCommands ?? false,
+        noCommandsReason: fileConfig.build?.validation?.noCommandsReason,
+        allowEmptyPrdDiff: fileConfig.build?.validation?.allowEmptyPrdDiff ?? false,
+        emptyPrdDiffReason: fileConfig.build?.validation?.emptyPrdDiffReason,
+      } as ValidationConfig),
+      // --- eforge:endregion plan-02-final-validation-gates ---
     }),
     plan: Object.freeze({
       outputDir: fileConfig.plan?.outputDir ?? DEFAULT_CONFIG.plan.outputDir,
@@ -1145,7 +1209,14 @@ export function mergePartialConfigs(
     result.agents = mergedAgents as PartialEforgeConfig['agents'];
   }
   if (global.build || project.build) {
-    result.build = { ...global.build, ...project.build };
+    const mergedValidation = (global.build?.validation || project.build?.validation)
+      ? { ...global.build?.validation, ...project.build?.validation }
+      : undefined;
+    result.build = {
+      ...global.build,
+      ...project.build,
+      ...(mergedValidation !== undefined ? { validation: mergedValidation } : {}),
+    };
   }
   if (global.plan || project.plan) {
     result.plan = { ...global.plan, ...project.plan };

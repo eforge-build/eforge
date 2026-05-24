@@ -255,6 +255,10 @@ export const IGNORED_EVENT_TYPES = [
   'gap_close:start',
   'gap_close:plan_ready',
   'gap_close:complete',
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  // Acceptance validation event — monitor UI rendering is future work.
+  'acceptance_validation:complete',
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
   'reconciliation:start',
   'reconciliation:complete',
   'cleanup:start',

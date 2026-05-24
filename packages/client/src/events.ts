@@ -24,6 +24,9 @@ export type {
   EforgeState,
   ExpeditionModule,
   PrdValidationGap,
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  AcceptanceCriterionVerdict,
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
   TestIssue,
   BuildFailureSummary,
   LandedCommit,
@@ -66,6 +69,9 @@ export {
   REVIEW_PERSPECTIVES,
   BuildDecisionSchema,
   PlanningDecisionSchema,
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  AcceptanceCriterionVerdictSchema,
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
   safeParseEforgeEvent,
   parseEforgeEvent,
   safeParseDaemonStreamSnapshot,

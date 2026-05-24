@@ -185,6 +185,9 @@ export type {
   EforgeState,
   ExpeditionModule,
   PrdValidationGap,
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  AcceptanceCriterionVerdict,
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
   TestIssue,
   BuildFailureSummary,
   LandedCommit,
@@ -215,6 +218,9 @@ export type {
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES, PlanningDecisionSchema,
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  AcceptanceCriterionVerdictSchema,
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
   // --- eforge:region plan-01-dynamic-perspective-contracts ---
   ReviewPerspectiveKeySchema,
   isBuiltInReviewPerspective,

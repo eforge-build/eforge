@@ -470,6 +470,47 @@ describe('adaptive review-cycle perspective selection', () => {
   });
   // --- eforge:endregion plan-01-adaptive-review-policy ---
 
+  // --- eforge:region plan-03-reviewer-contract-hardening ---
+  it('does not terminate on no-issues when reviewer output lacks terminal XML block', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(repo, 'chore: initial');
+    const preImplementCommit = await head(repo);
+
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 2;\n');
+    await commitAll(repo, 'feat: implementation');
+
+    // Reviewer returns plain text with no <review-issues> block — strict parser
+    // converts this to a synthetic critical issue.
+    // Fixer runs (since reviewIssues.length > 0), makes no file changes.
+    // Evaluator does not run (no unstaged changes).
+    // With maxRounds=1, the cycle exhausts rounds and terminates with max-rounds,
+    // NOT no-issues.
+    const harness = new StubHarness([
+      { text: 'I reviewed the code and everything looks fine.' }, // reviewer: no XML
+      { text: 'Applied fix.' }, // fixer (runs but no file changes)
+    ]);
+
+    const ctx = makeContext(repo, harness, preImplementCommit);
+    const ctxSingle: BuildStageContext = {
+      ...ctx,
+      review: { ...ctx.review, strategy: 'single', maxRounds: 1 },
+    };
+
+    const events = await collectEvents(getBuildStage('review-cycle')(ctxSingle));
+
+    const terminated = events.filter(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        e.type === 'plan:build:decision' && e.decision.kind === 'cycle-terminated',
+    );
+    expect(terminated).toHaveLength(1);
+    const termDecision = terminated[0].decision as { kind: 'cycle-terminated'; reason: string };
+    // Must terminate with max-rounds, not no-issues, because the synthetic
+    // critical issue from the contract violation prevented no-issues termination.
+    expect(termDecision.reason).toBe('max-rounds');
+  });
+  // --- eforge:endregion plan-03-reviewer-contract-hardening ---
+
   // --- eforge:region plan-01-dynamic-perspective-contracts ---
   it('diagnoses and skips unregistered dynamic perspective keys in review-cycle', async () => {
     const repo = await initRepo(makeTempDir());

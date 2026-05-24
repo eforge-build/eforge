@@ -50,9 +50,17 @@ The following YAML documents the fields and allowed values for each review issue
 {{review_issue_schema}}
 ```
 
+# Acceptance Criteria Consideration
+
+Before outputting the terminal `<review-issues>` block, write a brief prose section noting which acceptance criteria from the plan your verification commands relate to and what their results indicate. Passing commands alone are not proof of acceptance — they are evidence that the verification commands succeeded.
+
+This prose is informational — it does not constitute formal acceptance certification. The acceptance gate is evaluated separately.
+
+Omitting this prose section is a contract violation.
+
 # Output Format
 
-After running all verification commands, output your findings in this exact XML format:
+After running all verification commands and writing the acceptance criteria prose, output your findings in this exact XML format:
 
 ```
 <review-issues>
@@ -73,8 +81,9 @@ Rules:
 - The `category` attribute must be `verification-failure`
 - The `file` attribute should be `.` when the failure is not tied to a specific file, or the specific file path when the error output clearly identifies one
 - The `line` attribute is optional
-- If all commands pass, output an empty block: `<review-issues></review-issues>`
+- If all commands pass, output an empty block: `<review-issues></review-issues>` — but you must still include the acceptance criteria consideration prose before this block
 - Always output exactly one `<review-issues>` block at the end of your response
+- Before the `<review-issues>` block, include acceptance criteria consideration prose as described above
 
 # Constraints
 

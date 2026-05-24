@@ -289,6 +289,22 @@ const PrdValidationGapSchema = Type.Object({
   ),
 });
 
+// --- eforge:region plan-01-validation-evidence-contract ---
+/**
+ * A per-criterion acceptance verdict produced by the PRD validator.
+ * Missing or unparseable evidence yields `verdict: 'unknown'` (fail-closed).
+ */
+export const AcceptanceCriterionVerdictSchema = Type.Object({
+  criterion: Type.String({ minLength: 1 }),
+  verdict: Type.Union([
+    Type.Literal('pass'),
+    Type.Literal('fail'),
+    Type.Literal('unknown'),
+  ]),
+  evidence: Type.String({ minLength: 1 }),
+});
+// --- eforge:endregion plan-01-validation-evidence-contract ---
+
 const ExpeditionModuleSchema = Type.Object({
   id: Type.String(),
   description: Type.String(),
@@ -1821,8 +1837,19 @@ const EforgeEventVariantsSchema = Type.Union([
   }),
   Type.Object({
     type: Type.Literal('gap_close:complete'),
-    passed: Type.Optional(Type.Boolean()),
+    passed: Type.Boolean(),
   }),
+
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  // Acceptance criteria validation verdict event — terminal evidence from the PRD validator.
+  Type.Object({
+    type: Type.Literal('acceptance_validation:complete'),
+    passed: Type.Boolean(),
+    verdicts: Type.Array(AcceptanceCriterionVerdictSchema, { minItems: 1 }),
+    waivers: Type.Optional(Type.Array(Type.String())),
+    source: Type.String({ minLength: 1 }),
+  }),
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
   // Reconciliation
   Type.Object({ type: Type.Literal('reconciliation:start') }),
@@ -2132,6 +2159,9 @@ export type RecoveryVerdict = Static<typeof RecoveryVerdictSchema>;
 export type ShardScope = Static<typeof ShardScopeSchema>;
 export type PipelineComposition = Static<typeof PipelineCompositionSchema>;
 export type PrdValidationGap = Static<typeof PrdValidationGapSchema>;
+// --- eforge:region plan-01-validation-evidence-contract ---
+export type AcceptanceCriterionVerdict = Static<typeof AcceptanceCriterionVerdictSchema>;
+// --- eforge:endregion plan-01-validation-evidence-contract ---
 export type ExpeditionModule = Static<typeof ExpeditionModuleSchema>;
 export type EforgeResult = Static<typeof EforgeResultSchema>;
 export type ClarificationQuestion = Static<typeof ClarificationQuestionSchema>;
@@ -2356,6 +2386,40 @@ export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEven
         errors: [{ path: '/reason', message: 'blocking policy decisions require a non-empty reason' }],
       },
     };
+  }
+
+  if (result.data.type === 'acceptance_validation:complete') {
+    const nonPassingCount = result.data.verdicts.filter((v) => v.verdict !== 'pass').length;
+    const waiverIssues = (result.data.waivers ?? [])
+      .map((waiver, index) => ({ waiver, index }))
+      .filter(({ waiver }) => waiver.trim().length === 0);
+    if (waiverIssues.length > 0) {
+      return {
+        success: false,
+        error: {
+          message: '/waivers: waiver entries must be non-empty reason strings',
+          errors: waiverIssues.map(({ index }) => ({ path: `/waivers/${index}`, message: 'waiver entries must be non-empty reason strings' })),
+        },
+      };
+    }
+    if (result.data.passed && nonPassingCount > 0 && (result.data.waivers ?? []).length === 0) {
+      return {
+        success: false,
+        error: {
+          message: '/passed: acceptance_validation passed=true requires all verdicts to pass or explicit waivers',
+          errors: [{ path: '/passed', message: 'passed=true requires all verdicts to pass or explicit waivers' }],
+        },
+      };
+    }
+    if (!result.data.passed && nonPassingCount === 0) {
+      return {
+        success: false,
+        error: {
+          message: '/passed: acceptance_validation passed=false requires at least one fail or unknown verdict',
+          errors: [{ path: '/passed', message: 'passed=false requires at least one fail or unknown verdict' }],
+        },
+      };
+    }
   }
 
   return result;

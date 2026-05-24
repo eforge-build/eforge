@@ -95,6 +95,11 @@ build:
   # postMergeCommands:        # Extra validation commands
   #   - "pnpm type-check"
   #   - "pnpm test"
+  # validation:               # Explicit validation waivers (each boolean requires a non-empty reason)
+  #   allowNoCommands: false  # Allow builds with zero combined validation commands to pass instead of failing
+  #   noCommandsReason: ""    # Required when allowNoCommands is true
+  #   allowEmptyPrdDiff: false # Allow PRD validation to pass when the implementation diff is empty
+  #   emptyPrdDiffReason: ""  # Required when allowEmptyPrdDiff is true
 
 # Landing action
 # landing:
@@ -149,6 +154,38 @@ Each command in `postMergeCommands` and the planner-generated validate commands 
 `build.allowLocalMergeToTrunk` controls whether `landing.action: merge` is permitted to land directly on trunk without opening a pull request. The default is `false`, which is appropriate for team projects with branch protection rules. Set to `true` only for solo projects or repositories where direct trunk commits are acceptable.
 
 When `allowLocalMergeToTrunk` is `false` and the current branch is trunk, the interactive CLI prompts before enqueue and offers four alternatives: switch to `pr`, cancel, create a feature branch, or enable the solo-dev opt-in. With `--auto`, the engine rejects the build at runtime with a clear error message rather than prompting.
+
+## Validation waivers
+
+By default, build success requires both command validation (type-check, tests, etc.) and acceptance validation evidence from the PRD validator. Either requirement can be explicitly waived via `build.validation` with a mandatory reason string.
+
+### `build.validation.allowNoCommands`
+
+When all plans merge and the combined set of planner-generated `validateCommands` plus `postMergeCommands` is empty, the build fails with `validation:complete passed:false`. Set `allowNoCommands: true` with a non-empty `noCommandsReason` to allow such builds to pass:
+
+```yaml
+build:
+  validation:
+    allowNoCommands: true
+    noCommandsReason: "Shared monorepo — type checking and tests run in CI, not per-PRD"
+```
+
+The waiver reason is surfaced as a `planning:progress` event and in the monitor UI before `validation:complete passed:true` is emitted.
+
+### `build.validation.allowEmptyPrdDiff`
+
+When the implementation diff computed for PRD validation is empty (no changes detected relative to the base branch), the build fails with `prd_validation:complete passed:false`. Set `allowEmptyPrdDiff: true` with a non-empty `emptyPrdDiffReason` to allow such builds to pass:
+
+```yaml
+build:
+  validation:
+    allowEmptyPrdDiff: true
+    emptyPrdDiffReason: "Config-only change — no source file diff is expected"
+```
+
+### Reason string requirement
+
+Both waiver booleans require a non-empty reason string. A config that sets `allowNoCommands: true` without `noCommandsReason` (or sets it to an empty string) is rejected by config validation at startup.
 
 ## PRD provenance
 
@@ -401,7 +438,7 @@ Every agent role has a built-in default tier. Most projects never need to change
 | `tester` | `implementation` | Test execution and analysis |
 | `recovery-analyst` | `implementation` | Build failure diagnosis |
 | `dependency-detector` | `implementation` | Dependency analysis |
-| `prd-validator` | `implementation` | PRD validation |
+| `prd-validator` | `implementation` | PRD validation and per-criterion acceptance verdicts |
 | `staleness-assessor` | `implementation` | Staleness detection |
 | `reviewer` | `review` | Code and design review |
 | `architecture-reviewer` | `review` | Architecture review |

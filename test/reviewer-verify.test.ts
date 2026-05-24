@@ -120,6 +120,8 @@ stderr: error TS2345: Argument of type 'string' is not assignable to parameter o
     expect(prompt).toContain('verification specialist');
     expect(prompt).toContain('verification-failure');
     expect(prompt).toContain('subprocess commands');
+    // The prompt must require acceptance criteria consideration evidence
+    expect(prompt).toContain('acceptance criteria');
 
     // The complete event should carry the parsed issue
     const complete = findEvent(events, 'plan:build:review:complete');

@@ -2740,3 +2740,250 @@ describe('eventRegistry — extension reviewer perspective events', () => {
 // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
 // --- eforge:endregion plan-01-durable-daemon-event-persistence ---
+
+// --- eforge:region plan-01-validation-evidence-contract ---
+describe('safeParseEforgeEvent — acceptance_validation:complete', () => {
+  it('accepts a valid acceptance_validation:complete event with passing verdicts', () => {
+    const event: EforgeEvent = {
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found at src/login.ts' },
+      ],
+      source: 'prd',
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts acceptance_validation:complete with fail and unknown verdicts', () => {
+    const event: EforgeEvent = {
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found' },
+        { criterion: 'Must support OAuth', verdict: 'fail', evidence: 'No OAuth integration found' },
+        { criterion: 'Must be accessible', verdict: 'unknown', evidence: 'Cannot verify from diff alone' },
+      ],
+      source: 'prd',
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts acceptance_validation:complete with optional waivers', () => {
+    const event: EforgeEvent = {
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found at src/login.ts' },
+      ],
+      waivers: ['Out of scope for this iteration'],
+      source: 'prd',
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects acceptance_validation:complete passed:true with non-passing verdicts unless waived', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+      verdicts: [
+        { criterion: 'Must support OAuth', verdict: 'fail', evidence: 'No OAuth integration found' },
+      ],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete passed:false with all-passing verdicts', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found' },
+      ],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete with blank waiver reason entries', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+      verdicts: [
+        { criterion: 'Must support OAuth', verdict: 'fail', evidence: 'No OAuth integration found' },
+      ],
+      waivers: ['   '],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete with empty criterion string', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: '', verdict: 'fail', evidence: 'Something is missing' },
+      ],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete with empty evidence string', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'fail', evidence: '' },
+      ],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete with invalid verdict literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'maybe', evidence: 'Some evidence' },
+      ],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete with empty verdicts array', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+      verdicts: [],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete with missing passed field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found' },
+      ],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete with missing verdicts field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete with missing source field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'fail', evidence: 'Login component missing' },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('safeParseEforgeEvent — gap_close:complete requires passed', () => {
+  it('accepts gap_close:complete with passed: true', () => {
+    const event: EforgeEvent = {
+      type: 'gap_close:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts gap_close:complete with passed: false', () => {
+    const event: EforgeEvent = {
+      type: 'gap_close:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects gap_close:complete without a passed field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'gap_close:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// --- eforge:region plan-01-validation-evidence-contract ---
+describe('eventRegistry — validation evidence summaries', () => {
+  it('summarizes gap_close:complete using the required passed verdict', () => {
+    expect(getEventSummary({
+      type: 'gap_close:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+    })).toBe('Gap closing complete: all gaps resolved');
+    expect(getEventSummary({
+      type: 'gap_close:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+    })).toBe('Gap closing complete: gaps remain');
+  });
+
+  it('registers and summarizes acceptance_validation:complete events', () => {
+    expect(eventRegistry['acceptance_validation:complete']).toMatchObject({
+      scope: 'session',
+      persist: false,
+    });
+    expect(getEventSummary({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found' },
+      ],
+      source: 'prd',
+    })).toBe('Acceptance validation passed: 1 criterion/criteria verified');
+    expect(getEventSummary({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found' },
+        { criterion: 'Must support OAuth', verdict: 'fail', evidence: 'OAuth not found' },
+        { criterion: 'Must be accessible', verdict: 'unknown', evidence: 'Cannot verify from diff' },
+      ],
+      source: 'prd',
+    })).toBe('Acceptance validation failed: 2 criterion/criteria not passed');
+  });
+});
+// --- eforge:endregion plan-01-validation-evidence-contract ---
+// --- eforge:endregion plan-01-validation-evidence-contract ---
