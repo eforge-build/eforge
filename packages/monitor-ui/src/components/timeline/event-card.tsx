@@ -106,10 +106,10 @@ function eventSummary(event: EforgeEvent): string {
     // --- eforge:region plan-02-api-queue-and-ui ---
     case 'landing:start': return `Landing (${event.action}): ${event.featureBranch} → ${event.baseBranch}`;
     case 'landing:complete': {
-      if (event.action === 'merge-to-base-branch') {
+      if (event.action === 'merge') {
         return `Merged: ${event.featureBranch} → ${event.baseBranch}${event.commitSha ? ` (${event.commitSha.slice(0, 8)})` : ''}`;
       }
-      if (event.action === 'issue-pr') {
+      if (event.action === 'pr') {
         return `PR opened: ${event.prUrl ?? event.featureBranch}`;
       }
       return `Branch ready: ${event.featureBranch}`;

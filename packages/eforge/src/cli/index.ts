@@ -426,10 +426,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--verbose', 'Stream agent output')
     .option('--no-plugins', 'Disable plugin loading')
     .option('--profile <name>', 'Override active profile for this enqueue + build')
-    .option('--on-success <action>', 'Override the project default on-success landing action (merge-to-base-branch|issue-pr|leave-branch)')
-    // --- eforge:region plan-04-consumer-surfaces ---
-    .option('--landing-action <action>', 'Landing action shorthand alias for --on-success (pr|merge|leave)')
-    // --- eforge:endregion plan-04-consumer-surfaces ---
+    .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
     .action(
       async (
         source: string,
@@ -438,16 +435,12 @@ export function createProgram(abortController?: AbortController, version?: strin
           verbose?: boolean;
           plugins?: boolean;
           profile?: string;
-          onSuccess?: string;
-          // --- eforge:region plan-04-consumer-surfaces ---
           landingAction?: string;
-          // --- eforge:endregion plan-04-consumer-surfaces ---
         },
       ) => {
-        // --- eforge:region plan-04-consumer-surfaces ---
-        let resolvedOnSuccess: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' | undefined;
+        let resolvedLandingAction: 'pr' | 'merge' | 'leave' | undefined;
         try {
-          resolvedOnSuccess = resolveAndValidateLandingFlags({ landingAction: options.landingAction, onSuccess: options.onSuccess });
+          resolvedLandingAction = resolveAndValidateLandingFlags({ landingAction: options.landingAction });
         } catch (err) {
           if (err instanceof CLILandingFlagError) {
             console.error(chalk.red(`Error: ${err.message}`));
@@ -455,7 +448,6 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
           throw err;
         }
-        // --- eforge:endregion plan-04-consumer-surfaces ---
         initDisplay({ verbose: options.verbose });
 
         const configOverrides = buildConfigOverrides(options);
@@ -516,9 +508,7 @@ export function createProgram(abortController?: AbortController, version?: strin
               verbose: options.verbose,
               abortController,
               ...(effectiveProfile && { profile: effectiveProfile }),
-              // --- eforge:region plan-04-consumer-surfaces ---
-              ...(resolvedOnSuccess && { onSuccess: resolvedOnSuccess }),
-              // --- eforge:endregion plan-04-consumer-surfaces ---
+              ...(resolvedLandingAction && { landingAction: resolvedLandingAction }),
             });
           }
           // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
@@ -554,10 +544,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--watch', 'Watch mode: continuously poll the queue for new PRDs')
     .option('--poll-interval <ms>', 'Poll interval in milliseconds for watch mode', parseInt)
     .option('--profile <name>', 'Override active profile for this build')
-    .option('--on-success <action>', 'Override the project default on-success landing action (merge-to-base-branch|issue-pr|leave-branch)')
-    // --- eforge:region plan-04-consumer-surfaces ---
-    .option('--landing-action <action>', 'Landing action shorthand alias for --on-success (pr|merge|leave)')
-    // --- eforge:endregion plan-04-consumer-surfaces ---
+    .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
     .action(
       async (
         source: string | undefined,
@@ -575,16 +562,12 @@ export function createProgram(abortController?: AbortController, version?: strin
           watch?: boolean;
           pollInterval?: number;
           profile?: string;
-          onSuccess?: string;
-          // --- eforge:region plan-04-consumer-surfaces ---
           landingAction?: string;
-          // --- eforge:endregion plan-04-consumer-surfaces ---
         },
       ) => {
-        // --- eforge:region plan-04-consumer-surfaces ---
-        let resolvedOnSuccessBuild: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' | undefined;
+        let resolvedLandingActionBuild: 'pr' | 'merge' | 'leave' | undefined;
         try {
-          resolvedOnSuccessBuild = resolveAndValidateLandingFlags({ landingAction: options.landingAction, onSuccess: options.onSuccess });
+          resolvedLandingActionBuild = resolveAndValidateLandingFlags({ landingAction: options.landingAction });
         } catch (err) {
           if (err instanceof CLILandingFlagError) {
             console.error(chalk.red(`Error: ${err.message}`));
@@ -592,10 +575,9 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
           throw err;
         }
-        if (resolvedOnSuccessBuild !== undefined) {
-          options.onSuccess = resolvedOnSuccessBuild;
+        if (resolvedLandingActionBuild !== undefined) {
+          options.landingAction = resolvedLandingActionBuild;
         }
-        // --- eforge:endregion plan-04-consumer-surfaces ---
         // --queue mode: delegate to engine.runQueue() or engine.watchQueue()
         if (options.queue) {
           if (options.watch) process.title = 'eforge-watcher';
@@ -618,7 +600,7 @@ export function createProgram(abortController?: AbortController, version?: strin
               verbose: options.verbose,
               abortController,
               ...(options.pollInterval !== undefined && { pollIntervalMs: options.pollInterval }),
-              ...(options.onSuccess && { onSuccess: options.onSuccess as 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' }),
+              ...(options.landingAction && { landingAction: options.landingAction as 'pr' | 'merge' | 'leave' }),
             };
 
             const queueEvents = options.watch
@@ -650,7 +632,25 @@ export function createProgram(abortController?: AbortController, version?: strin
         }
 
         try {
-          const result = await runOrDelegate({ mode: 'build', source, options: { ...options, profile: options.profile }, abortController, onMonitor: (m) => { activeMonitor = m; } });
+          const result = await runOrDelegate({
+            mode: 'build',
+            source,
+            options: {
+              auto: options.auto,
+              verbose: options.verbose,
+              name: options.name,
+              dryRun: options.dryRun,
+              foreground: options.foreground,
+              monitor: options.monitor,
+              plugins: options.plugins,
+              cleanup: options.cleanup,
+              maxConcurrentBuilds: options.maxConcurrentBuilds,
+              profile: options.profile,
+              landingAction: resolvedLandingActionBuild,
+            },
+            abortController,
+            onMonitor: (m) => { activeMonitor = m; },
+          });
           process.exit(result.code);
         } catch (err) {
           const { message, exitCode } = formatCliError(err);
@@ -794,10 +794,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--no-plugins', 'Disable plugin loading')
     .option('--session-id <uuid>', 'Session ID injected by parent scheduler (skips child session:start emission)')
     .option('--profile <name>', 'Override active profile for this build')
-    .option('--on-success <action>', 'Override the project default on-success landing action (merge-to-base-branch|issue-pr|leave-branch)')
-    // --- eforge:region plan-04-consumer-surfaces ---
-    .option('--landing-action <action>', 'Landing action shorthand alias for --on-success (pr|merge|leave)')
-    // --- eforge:endregion plan-04-consumer-surfaces ---
+    .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
     .action(
       async (
         prdId: string,
@@ -808,16 +805,12 @@ export function createProgram(abortController?: AbortController, version?: strin
           plugins?: boolean;
           sessionId?: string;
           profile?: string;
-          onSuccess?: string;
-          // --- eforge:region plan-04-consumer-surfaces ---
           landingAction?: string;
-          // --- eforge:endregion plan-04-consumer-surfaces ---
         },
       ) => {
-        // --- eforge:region plan-04-consumer-surfaces ---
-        let resolvedOnSuccessExec: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' | undefined;
+        let resolvedLandingActionExec: 'pr' | 'merge' | 'leave' | undefined;
         try {
-          resolvedOnSuccessExec = resolveAndValidateLandingFlags({ landingAction: options.landingAction, onSuccess: options.onSuccess });
+          resolvedLandingActionExec = resolveAndValidateLandingFlags({ landingAction: options.landingAction });
         } catch (err) {
           if (err instanceof CLILandingFlagError) {
             console.error(chalk.red(`Error: ${err.message}`));
@@ -825,10 +818,9 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
           throw err;
         }
-        if (resolvedOnSuccessExec !== undefined) {
-          options.onSuccess = resolvedOnSuccessExec;
+        if (resolvedLandingActionExec !== undefined) {
+          options.landingAction = resolvedLandingActionExec;
         }
-        // --- eforge:endregion plan-04-consumer-surfaces ---
         process.title = `eforge-build:${prdId}`;
         initDisplay({ verbose: options.verbose });
 
@@ -857,7 +849,7 @@ export function createProgram(abortController?: AbortController, version?: strin
             auto: options.auto,
             verbose: options.verbose,
             abortController,
-            ...(options.onSuccess && { onSuccess: options.onSuccess as 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' }),
+            ...(options.landingAction && { landingAction: options.landingAction as 'pr' | 'merge' | 'leave' }),
           }, options.sessionId);
 
           const wrapped = wrapEvents(buildEvents, {

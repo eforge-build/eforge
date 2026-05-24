@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveStackBaseContext } from '@eforge-build/engine/stacking';
 import { upsertStackLayer } from '@eforge-build/engine/stacking';
+import { upsertArtifact } from '@eforge-build/engine/artifacts';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 
@@ -150,5 +151,82 @@ describe('resolveStackBaseContext', () => {
       prd: queuedPrd('child-prd', { stack_parent: 'parent-prd' }),
       planSetName: 'child-prd',
     })).rejects.toThrow(/child-prd.*parent-prd.*eforge\/missing-parent-artifact.*Rebuild or repair/);
+  });
+
+  it('prefers artifact registry over stack layer when both have artifact refs', async () => {
+    const cwd = await repo();
+    // Create two different branches: one in the stack layer, one in the registry.
+    await exec('git', ['branch', 'eforge/parent-prd-registry'], { cwd });
+    await exec('git', ['branch', 'eforge/parent-prd-stale'], { cwd });
+
+    // Write stack layer with stale branch
+    await parentLayer(cwd, 'eforge/parent-prd-stale');
+
+    // Write registry with fresher branch (simulates a rebuild)
+    const now = new Date().toISOString();
+    await upsertArtifact(cwd, {
+      prdId: 'parent-prd',
+      artifactBranch: 'eforge/parent-prd-registry',
+      commitSha: 'abc123',
+      resolvedBase: 'main',
+      landingAction: 'leave',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    const result = await resolveStackBaseContext({
+      cwd,
+      config,
+      prd: queuedPrd('child-prd', { stack_parent: 'parent-prd' }),
+      planSetName: 'child-prd',
+    });
+
+    // Registry branch is preferred
+    expect(result.baseBranch).toBe('eforge/parent-prd-registry');
+  });
+
+  it('falls back to stack layer artifact when registry has no entry for parent', async () => {
+    const cwd = await repo();
+    await exec('git', ['branch', 'eforge/parent-prd'], { cwd });
+    // Only stack layer written — no registry entry (e.g., older build).
+    await parentLayer(cwd, 'eforge/parent-prd');
+
+    const result = await resolveStackBaseContext({
+      cwd,
+      config,
+      prd: queuedPrd('child-prd', { stack_parent: 'parent-prd' }),
+      planSetName: 'child-prd',
+    });
+
+    // Falls back to stack layer artifact ref
+    expect(result.baseBranch).toBe('eforge/parent-prd');
+  });
+
+  it('resolves a parent from the registry alone and falls back to its commit SHA when the branch is missing', async () => {
+    const cwd = await repo();
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
+    const commitSha = stdout.trim();
+    const now = new Date().toISOString();
+    await upsertArtifact(cwd, {
+      prdId: 'parent-prd',
+      artifactBranch: 'eforge/deleted-parent-prd',
+      commitSha,
+      resolvedBase: 'main',
+      landingAction: 'leave',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    const result = await resolveStackBaseContext({
+      cwd,
+      config,
+      prd: queuedPrd('child-prd', { stack_parent: 'parent-prd' }),
+      planSetName: 'child-prd',
+    });
+
+    expect(result.baseBranch).toBe(commitSha);
+    expect(result.stackId).toBe('parent-prd');
   });
 });

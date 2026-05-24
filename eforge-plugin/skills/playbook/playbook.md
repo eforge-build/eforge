@@ -272,27 +272,27 @@ Call `mcp__eforge__eforge_playbook { action: "show", name: "<name>" }` to get th
 Before checking the queue, present the unified landing selector to ask how the playbook's branch should land when the build completes:
 
 > "When this playbook finishes, what should happen to the branch?
-> 1. **Use project default** — inherit the configured `landing.action` from `eforge/config.yaml` (or legacy `build.onSuccess`, or the engine default `merge-to-base-branch` if unset). No `onSuccess` override is sent to the daemon.
-> 2. **pr** (`issue-pr`) — open a pull request
-> 3. **merge** (`merge-to-base-branch`) — merge directly to the base branch
-> 4. **leave** (`leave-branch`) — leave the branch as-is (no PR, no merge)"
+> 1. **Use project default** — inherit the configured `landing.action` from `eforge/config.yaml`, or the engine default (`merge`) if unset. No `landingAction` override is sent to the daemon.
+> 2. **pr** — open a pull request
+> 3. **merge** — merge directly to the base branch
+> 4. **leave** — leave the branch as-is (no PR, no merge)"
 
 Await the user's selection. If the user cancels or dismisses, make no enqueue calls and exit.
 
-Record the selection as `landingOnSuccess`:
-- **"Use project default" selected**: set `landingOnSuccess = undefined`. **Do not include `onSuccess` in any enqueue body.**
-- **Explicit selection** (pr/merge/leave): set `landingOnSuccess` to the chosen wire value. Include `onSuccess: landingOnSuccess` in all enqueue bodies.
+Record the selection as `landingActionOverride`:
+- **"Use project default" selected**: set `landingActionOverride = undefined`. **Do not include `landingAction` in any enqueue body.**
+- **Explicit selection** (pr/merge/leave): set `landingActionOverride` to the chosen value. Include `landingAction: landingActionOverride` in all enqueue bodies.
 
 **Protected trunk behavior**: When the current branch is the configured trunk branch and `build.allowLocalMergeToTrunk` is not `true` in `eforge/config.yaml`:
-- Exclude the **merge** option and the **project default** option (when the effective project default is `merge-to-base-branch`) from the normal selector.
+- Exclude the **merge** option and the **project default** option (when the effective project default is `merge`) from the normal selector.
 - Display a warning that direct trunk merges are not permitted for this project.
 - Offer remediation choices instead:
-  1. **pr** for this run — set `landingOnSuccess = "issue-pr"` and continue to Step 5.4
-  2. **leave branch** — set `landingOnSuccess = "leave-branch"` and continue to Step 5.4
-  3. **Enable direct merges** — update `eforge/config.yaml` with `build.allowLocalMergeToTrunk: true`, reload best-effort, set `landingOnSuccess = "merge-to-base-branch"`, and continue to Step 5.4 (shown only when a project config path is known)
+  1. **pr** for this run — set `landingActionOverride = "pr"` and continue to Step 5.4
+  2. **leave branch** — set `landingActionOverride = "leave"` and continue to Step 5.4
+  3. **Enable direct merges** — update `eforge/config.yaml` with `build.allowLocalMergeToTrunk: true`, reload best-effort, set `landingActionOverride = "merge"`, and continue to Step 5.4 (shown only when a project config path is known)
   4. **Cancel** — make no enqueue calls and exit
 
-Carry `landingOnSuccess` forward to all enqueue calls in Step 5.4.
+Carry `landingActionOverride` forward to all enqueue calls in Step 5.4.
 
 ### 5.4: Check for in-flight builds and enqueue (autonomous only)
 
@@ -330,13 +330,13 @@ Await user confirmation (y/n or just Enter). Only proceed if confirmed.
 
 **Enqueue:**
 
-For **project default** (`landingOnSuccess = undefined`), omit `onSuccess` from the call body:
+For **project default** (`landingActionOverride = undefined`), omit `landingAction` from the call body:
 - **Run now**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>" }`.
 - **Wait for build**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>", afterQueueId: "<resolved-id>" }`.
 
-For **explicit selections** (`landingOnSuccess` is set), include `onSuccess`:
-- **Run now**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>", onSuccess: "<landingOnSuccess>" }`.
-- **Wait for build**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>", afterQueueId: "<resolved-id>", onSuccess: "<landingOnSuccess>" }`.
+For **explicit selections** (`landingActionOverride` is set), include `landingAction`:
+- **Run now**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>", landingAction: "<landingActionOverride>" }`.
+- **Wait for build**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>", afterQueueId: "<resolved-id>", landingAction: "<landingActionOverride>" }`.
 
 The `afterQueueId` is the internal queue id resolved above — never the title and never typed by the user.
 
@@ -345,7 +345,7 @@ On **`kind: 'enqueued'`** response: Report the enqueue confirmation and point at
 
 If the enqueue fails because the upstream is no longer active (404 from daemon), tell the user:
 > "The build you selected has already finished. Running `{name}` now instead."
-Then re-enqueue without `afterQueueId`, preserving `landingOnSuccess` from Step 5.3: include `onSuccess: "<landingOnSuccess>"` for explicit selections, or omit `onSuccess` for project default.
+Then re-enqueue without `afterQueueId`, preserving `landingActionOverride` from Step 5.3: include `landingAction: "<landingActionOverride>"` for explicit selections, or omit `landingAction` for project default.
 
 ### 5.5: Investigation-first planning flow
 

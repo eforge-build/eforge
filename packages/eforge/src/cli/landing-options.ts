@@ -1,89 +1,55 @@
-// --- eforge:region plan-04-consumer-surfaces ---
 /**
- * Shared landing-action vocabulary mapper for CLI commands.
+ * Shared landing-action vocabulary for CLI commands.
  *
- * The user-facing shorthands (`pr`, `merge`, `leave`) map to the wire-protocol
- * values used by the engine and daemon (`issue-pr`, `merge-to-base-branch`,
- * `leave-branch`).  Both vocabularies are accepted so users can choose whichever
- * form is more readable for their context.
+ * The canonical landing-action values (`pr`, `merge`, `leave`) are used across
+ * the engine, daemon request bodies, and CLI flags. The old `--on-success` flag
+ * with full-string values (`issue-pr`, `merge-to-base-branch`, `leave-branch`) has
+ * been removed. Use `--landing-action pr|merge|leave` instead.
  */
 
-export type LandingActionShorthand = 'pr' | 'merge' | 'leave';
-export type LandingActionFull = 'issue-pr' | 'merge-to-base-branch' | 'leave-branch';
+export type LandingAction = 'pr' | 'merge' | 'leave';
 
-/** All accepted values for `--landing-action` (shorthands only). */
-export const LANDING_ACTION_SHORTHANDS: readonly LandingActionShorthand[] = ['pr', 'merge', 'leave'];
-
-/** All accepted wire-protocol values for `--on-success`. */
-export const ON_SUCCESS_VALUES: readonly LandingActionFull[] = [
-  'merge-to-base-branch',
-  'issue-pr',
-  'leave-branch',
-];
-
-const SHORTHAND_MAP: Record<LandingActionShorthand, LandingActionFull> = {
-  pr: 'issue-pr',
-  merge: 'merge-to-base-branch',
-  leave: 'leave-branch',
-};
+/** All accepted values for `--landing-action`. */
+export const LANDING_ACTION_VALUES: readonly LandingAction[] = ['pr', 'merge', 'leave'];
 
 /**
- * Convert a landing-action shorthand to the full wire-protocol value.
- * Returns `undefined` if `value` is not a recognised shorthand.
+ * Resolve a string to a `LandingAction` if it is a recognised canonical value,
+ * or `undefined` otherwise. Does not throw — unknown and old wire values both
+ * return `undefined`.
  */
-export function resolveLandingAction(value: string): LandingActionFull | undefined {
-  return SHORTHAND_MAP[value as LandingActionShorthand];
+export function resolveLandingAction(value: string): LandingAction | undefined {
+  if (LANDING_ACTION_VALUES.includes(value as LandingAction)) {
+    return value as LandingAction;
+  }
+  return undefined;
 }
 
 /**
- * Validate and resolve CLI landing-action flags for a single command invocation.
+ * Validate a `--landing-action` CLI flag value.
  *
- * Accepts the two flag values (`--landing-action` and `--on-success`) and:
- *   1. Maps `landingAction` shorthand to the full wire value.
- *   2. Validates `onSuccess` against the allowed set.
- *   3. Rejects conflicting values (both provided and they disagree).
- *
- * Returns the resolved `LandingActionFull` value, or `undefined` when neither
- * flag was supplied.  Throws a `CLILandingFlagError` on validation/conflict.
+ * Returns the validated `LandingAction`, or `undefined` when no value was supplied.
+ * Throws a `CLILandingFlagError` when the value is not a recognised action.
  */
 export function resolveAndValidateLandingFlags(opts: {
   landingAction?: string;
-  onSuccess?: string;
-}): LandingActionFull | undefined {
-  const { landingAction, onSuccess } = opts;
+}): LandingAction | undefined {
+  const { landingAction } = opts;
 
-  let resolvedLanding: LandingActionFull | undefined;
-  if (landingAction !== undefined) {
-    resolvedLanding = resolveLandingAction(landingAction);
-    if (resolvedLanding === undefined) {
-      throw new CLILandingFlagError(
-        `--landing-action must be one of: ${LANDING_ACTION_SHORTHANDS.join(', ')}`,
-      );
-    }
-  }
+  if (landingAction === undefined) return undefined;
 
-  if (onSuccess !== undefined && !ON_SUCCESS_VALUES.includes(onSuccess as LandingActionFull)) {
+  if (!LANDING_ACTION_VALUES.includes(landingAction as LandingAction)) {
     throw new CLILandingFlagError(
-      `--on-success must be one of: ${ON_SUCCESS_VALUES.join(', ')}`,
+      `--landing-action must be one of: ${LANDING_ACTION_VALUES.join(', ')}`,
     );
   }
 
-  // Conflict check: both provided and they disagree
-  if (resolvedLanding !== undefined && onSuccess !== undefined && resolvedLanding !== onSuccess) {
-    throw new CLILandingFlagError(
-      `--landing-action ${landingAction} (resolves to ${resolvedLanding}) conflicts with --on-success ${onSuccess}`,
-    );
-  }
-
-  // Prefer --landing-action mapping; fall back to --on-success
-  return resolvedLanding ?? (onSuccess as LandingActionFull | undefined);
+  return landingAction as LandingAction;
 }
 
-/** Thrown when landing flag validation or conflict detection fails. */
+/** Thrown when landing flag validation fails. */
 export class CLILandingFlagError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'CLILandingFlagError';
   }
 }
-// --- eforge:endregion plan-04-consumer-surfaces ---

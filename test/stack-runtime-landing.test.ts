@@ -328,6 +328,10 @@ describe('executeStackLanding — PR URL discovery and persistence', () => {
     expect(layer?.landing?.prUrl).toBe(prUrl);
     expect(layer?.landing?.startedAt).toBeTruthy();
     expect(layer?.landing?.completedAt).toBeTruthy();
+    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+    // Layer status must transition to 'landed' on successful PR submission
+    expect(layer?.status).toBe('landed');
+    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
   });
 
   it('persists landing state without prUrl when submit output has no URL', async () => {
@@ -422,6 +426,50 @@ describe('executeStackLanding — non-pr actions', () => {
       action: 'leave',
     });
   });
+
+  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+  it('persists layer status as merged when landingAction is merge', async () => {
+    const provider = makeStubProvider();
+    await seedLayer(cwd);
+
+    const opts: StackLandingOptions = {
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext: makeStackContext(),
+      landingAction: 'merge',
+      provider,
+    };
+
+    await collectEvents(executeStackLanding(opts));
+
+    const state = await loadStackState(cwd);
+    const layer = state.layers.find((l) => l.prdId === 'test-prd');
+    expect(layer?.status).toBe('merged');
+    expect(layer?.landing?.action).toBe('merge');
+    expect(layer?.landing?.status).toBe('skipped');
+  });
+
+  it('persists layer status as landed when landingAction is leave', async () => {
+    const provider = makeStubProvider();
+    await seedLayer(cwd);
+
+    const opts: StackLandingOptions = {
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext: makeStackContext(),
+      landingAction: 'leave',
+      provider,
+    };
+
+    await collectEvents(executeStackLanding(opts));
+
+    const state = await loadStackState(cwd);
+    const layer = state.layers.find((l) => l.prdId === 'test-prd');
+    expect(layer?.status).toBe('landed');
+    expect(layer?.landing?.action).toBe('leave');
+    expect(layer?.landing?.status).toBe('skipped');
+  });
+  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 });
 
 // ---------------------------------------------------------------------------
@@ -565,6 +613,10 @@ describe('executeStackLanding — failure handling', () => {
     expect(layer?.landing?.status).toBe('failed');
     expect(layer?.landing?.reason).toContain('track error');
     expect(layer?.landing?.completedAt).toBeTruthy();
+    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+    // Layer status must transition to 'failed' when landing fails
+    expect(layer?.status).toBe('failed');
+    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
   });
 });
 

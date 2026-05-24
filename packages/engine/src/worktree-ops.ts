@@ -459,7 +459,7 @@ export async function ensureGhAvailable(cwd: string): Promise<void> {
     await exec('gh', ['--version'], { cwd });
   } catch {
     throw new Error(
-      'The `gh` CLI is required for the `issue-pr` landing action but was not found in PATH. ' +
+      'The `gh` CLI is required for the `pr` landing action but was not found in PATH. ' +
       'Install it from https://cli.github.com/ and authenticate with `gh auth login`.',
     );
   }

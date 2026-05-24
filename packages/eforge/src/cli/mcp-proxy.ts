@@ -205,31 +205,23 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         .string()
         .optional()
         .describe('Run this build on the named profile instead of the active profile'),
-      onSuccess: z
-        .enum(['merge-to-base-branch', 'issue-pr', 'leave-branch'])
-        .optional()
-        .describe("Override the project-level landing action for this build. 'merge-to-base-branch' auto-merges the artifact branch into the base branch. 'issue-pr' opens a PR from the artifact branch targeting the resolved base branch (requires gh CLI). 'leave-branch' commits to the artifact branch and exits without merging or opening a PR."),
-      // --- eforge:region plan-04-consumer-surfaces ---
       landingAction: z
         .enum(['pr', 'merge', 'leave'])
         .optional()
-        .describe("Shorthand alias for onSuccess. 'pr' → issue-pr, 'merge' → merge-to-base-branch, 'leave' → leave-branch. Use instead of onSuccess for brevity."),
-      // --- eforge:endregion plan-04-consumer-surfaces ---
+        .describe("Landing action for this build. 'pr' opens a PR from the artifact branch. 'merge' auto-merges into the base branch. 'leave' commits to the artifact branch without merging or opening a PR."),
     },
-    handler: async ({ source, profile, onSuccess, landingAction }, { cwd: toolCwd }) => {
-      // --- eforge:region plan-04-consumer-surfaces ---
+    handler: async ({ source, profile, landingAction }, { cwd: toolCwd }) => {
       const { resolveAndValidateLandingFlags: resolveFlags, CLILandingFlagError: LandingFlagError } = await import('./landing-options.js');
-      let resolvedOnSuccess: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' | undefined;
+      let resolvedLandingAction: 'pr' | 'merge' | 'leave' | undefined;
       try {
-        resolvedOnSuccess = resolveFlags({ landingAction, onSuccess });
+        resolvedLandingAction = resolveFlags({ landingAction });
       } catch (err) {
         if (err instanceof LandingFlagError) throw new Error(err.message);
         throw err;
       }
-      // --- eforge:endregion plan-04-consumer-surfaces ---
       const body: EnqueueRequest = { source };
       if (profile) body.profile = profile;
-      if (resolvedOnSuccess) body.onSuccess = resolvedOnSuccess;
+      if (resolvedLandingAction) body.landingAction = resolvedLandingAction;
       const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, body);
       return { ...data, monitorUrl: `http://localhost:${port}` };
     },
@@ -698,16 +690,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     schema: {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands. Only applied when creating a new config.'),
-      onSuccess: z
-        .enum(['merge-to-base-branch', 'issue-pr', 'leave-branch'])
-        .optional()
-        .describe("On-success landing action to persist in eforge/config.yaml. 'merge-to-base-branch' auto-merges the artifact branch into the base branch. 'issue-pr' opens a PR from the artifact branch targeting the resolved base branch (requires gh CLI). 'leave-branch' commits to the artifact branch and exits without merging or opening a PR."),
-      // --- eforge:region plan-04-consumer-surfaces ---
       landingAction: z
         .enum(['pr', 'merge', 'leave'])
         .optional()
-        .describe("Shorthand alias for onSuccess to persist in eforge/config.yaml. 'pr' → issue-pr, 'merge' → merge-to-base-branch, 'leave' → leave-branch."),
-      // --- eforge:endregion plan-04-consumer-surfaces ---
+        .describe("Landing action to persist as landing.action in eforge/config.yaml. 'pr' → issue-pr, 'merge' → merge-to-base-branch, 'leave' → leave-branch.")  ,
       // --- eforge:region plan-04-ux-init-build-and-docs ---
       trunkBranch: z.string().optional().describe("The trunk branch name (e.g. 'main', 'master'). Stored as build.trunkBranch in eforge/config.yaml. When omitted, eforge resolves trunk via git symbolic-ref at runtime."),
       allowLocalMergeToTrunk: z.boolean().optional().describe("When true, merge-to-base-branch is allowed to land directly on the trunk branch without a PR. Default: false (trunk is protected). Enable only for solo developers on unprotected branches."),
@@ -733,24 +719,21 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         ).describe('Self-contained tier recipes — each tier carries harness + model + effort + tuning'),
       }).optional().describe('Multi-tier profile spec. When omitted, falls back to a minimal claude-sdk default and emits a deprecation note.'),
     },
-    handler: async ({ force, postMergeCommands, onSuccess, landingAction, trunkBranch, allowLocalMergeToTrunk, stackingEnabled, gitSpiceCommand, existingProfile, profile }, { cwd: toolCwd }) => {
+    handler: async ({ force, postMergeCommands, landingAction, trunkBranch, allowLocalMergeToTrunk, stackingEnabled, gitSpiceCommand, existingProfile, profile }, { cwd: toolCwd }) => {
       const configDir = join(toolCwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
 
       // Ensure .gitignore has daemon state (.eforge/) and the per-developer active-profile marker.
       await ensureGitignoreEntries(toolCwd, ['.eforge/', 'eforge/.active-profile']);
 
-      // --- eforge:region plan-04-consumer-surfaces ---
       const { resolveAndValidateLandingFlags: resolveInitFlags, CLILandingFlagError: InitLandingFlagError } = await import('./landing-options.js');
-      let resolvedInitOnSuccess: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' | undefined;
+      let resolvedInitLandingAction: 'pr' | 'merge' | 'leave' | undefined;
       try {
-        resolvedInitOnSuccess = resolveInitFlags({ landingAction, onSuccess });
+        resolvedInitLandingAction = resolveInitFlags({ landingAction });
       } catch (err) {
         if (err instanceof InitLandingFlagError) throw new McpUserError({ error: err.message });
         throw err;
       }
-      const effectiveInitOnSuccess = resolvedInitOnSuccess ?? onSuccess;
-      // --- eforge:endregion plan-04-consumer-surfaces ---
 
       // --- Conflict validation ---
       if (existingProfile) {
@@ -803,13 +786,12 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const existingProfileConfigData: Record<string, unknown> = {};
         const existingProfileBuildBlock: Record<string, unknown> = {};
         if (postMergeCommands && postMergeCommands.length > 0) existingProfileBuildBlock.postMergeCommands = postMergeCommands;
-        if (onSuccess) existingProfileBuildBlock.onSuccess = effectiveInitOnSuccess;
         // --- eforge:region plan-04-ux-init-build-and-docs ---
         if (trunkBranch) existingProfileBuildBlock.trunkBranch = trunkBranch;
         if (allowLocalMergeToTrunk !== undefined) existingProfileBuildBlock.allowLocalMergeToTrunk = allowLocalMergeToTrunk;
         // --- eforge:endregion plan-04-ux-init-build-and-docs ---
         if (Object.keys(existingProfileBuildBlock).length > 0) existingProfileConfigData.build = existingProfileBuildBlock;
-        if (landingAction) existingProfileConfigData.landing = { action: landingAction };
+        if (resolvedInitLandingAction) existingProfileConfigData.landing = { action: resolvedInitLandingAction };
         if (stackingEnabled !== undefined || gitSpiceCommand !== undefined) {
           existingProfileConfigData.stacking = {
             ...(stackingEnabled !== undefined && { enabled: stackingEnabled }),
@@ -909,13 +891,12 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const configData: Record<string, unknown> = {};
       const buildBlock: Record<string, unknown> = {};
       if (postMergeCommands && postMergeCommands.length > 0) buildBlock.postMergeCommands = postMergeCommands;
-      if (onSuccess) buildBlock.onSuccess = effectiveInitOnSuccess;
       // --- eforge:region plan-04-ux-init-build-and-docs ---
       if (trunkBranch) buildBlock.trunkBranch = trunkBranch;
       if (allowLocalMergeToTrunk !== undefined) buildBlock.allowLocalMergeToTrunk = allowLocalMergeToTrunk;
       // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       if (Object.keys(buildBlock).length > 0) configData.build = buildBlock;
-      if (landingAction) configData.landing = { action: landingAction };
+      if (resolvedInitLandingAction) configData.landing = { action: resolvedInitLandingAction };
       if (stackingEnabled !== undefined || gitSpiceCommand !== undefined) {
         configData.stacking = {
           ...(stackingEnabled !== undefined && { enabled: stackingEnabled }),
@@ -1029,23 +1010,18 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }),
       }).optional().describe('Playbook content (required for "save")'),
       afterQueueId: z.string().optional().describe('Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].'),
-      onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional().describe("Override the project-level landing action for this run (optional, 'run' only for autonomous playbooks). 'issue-pr' opens a PR from the artifact branch targeting the resolved base branch."),
-      // --- eforge:region plan-04-consumer-surfaces ---
-      landingAction: z.enum(['pr', 'merge', 'leave']).optional().describe("Shorthand alias for onSuccess (optional, 'run' only). 'pr' → issue-pr, 'merge' → merge-to-base-branch, 'leave' → leave-branch."),
-      // --- eforge:endregion plan-04-consumer-surfaces ---
+      landingAction: z.enum(['pr', 'merge', 'leave']).optional().describe("Landing action for this run (optional, 'run' only for autonomous playbooks). 'pr' opens a PR, 'merge' auto-merges, 'leave' commits without merging.")  ,
       raw: z.string().optional().describe('Raw Markdown playbook string (required for "validate")'),
     },
-    handler: async ({ action, name, scope, playbook, afterQueueId, onSuccess, landingAction, raw }, { cwd: toolCwd }) => {
-      // --- eforge:region plan-04-consumer-surfaces ---
+    handler: async ({ action, name, scope, playbook, afterQueueId, landingAction, raw }, { cwd: toolCwd }) => {
       const { resolveAndValidateLandingFlags: resolvePlaybookFlags, CLILandingFlagError: PlaybookLandingFlagError } = await import('./landing-options.js');
-      let resolvedPlaybookOnSuccess: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' | undefined;
+      let resolvedPlaybookLandingAction: 'pr' | 'merge' | 'leave' | undefined;
       try {
-        resolvedPlaybookOnSuccess = resolvePlaybookFlags({ landingAction, onSuccess });
+        resolvedPlaybookLandingAction = resolvePlaybookFlags({ landingAction });
       } catch (err) {
         if (err instanceof PlaybookLandingFlagError) throw new McpUserError({ error: err.message });
         throw err;
       }
-      // --- eforge:endregion plan-04-consumer-surfaces ---
       if (action === 'list') {
         const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.playbookList);
         return data;
@@ -1068,7 +1044,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (!name) throw new Error('"name" is required when action is "run"');
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
-        if (resolvedPlaybookOnSuccess !== undefined) body.onSuccess = resolvedPlaybookOnSuccess;
+        if (resolvedPlaybookLandingAction !== undefined) body.landingAction = resolvedPlaybookLandingAction;
         const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookRun, body);
         return data;
       }

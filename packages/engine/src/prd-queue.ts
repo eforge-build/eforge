@@ -18,7 +18,7 @@ import type { ModelTracker } from './model-tracker.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from './stacking/state.js';
+import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 const exec = promisify(execFile);
@@ -34,7 +34,6 @@ const prdFrontmatterSchema = z.object({
   depends_on: z.array(z.string()).optional(),
   skip_reason: z.string().optional(),
   profile: z.string().optional(),
-  onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional(),
   // --- eforge:region plan-01-stack-contracts-config-state-events ---
   stack_id: z.string().optional(),
   stack_parent: z.string().optional(),
@@ -111,8 +110,23 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
 /**
  * Validate PRD frontmatter against the Zod schema.
  * Returns success/error result from safeParse.
+ * Rejects the legacy `onSuccess` field with a migration error.
  */
 export function validatePrdFrontmatter(data: unknown): z.ZodSafeParseResult<PrdFrontmatter> {
+  if (data && typeof data === 'object' && 'onSuccess' in (data as object)) {
+    return {
+      success: false as const,
+      error: new z.ZodError([{
+        code: z.ZodIssueCode.custom,
+        path: ['onSuccess'],
+        message:
+          'PRD frontmatter "onSuccess" is removed. Use "landing: pr|merge|leave" instead. ' +
+          'Replace onSuccess: merge-to-base-branch → landing: merge, ' +
+          'onSuccess: issue-pr → landing: pr, ' +
+          'onSuccess: leave-branch → landing: leave.',
+      }]),
+    } as z.ZodSafeParseResult<PrdFrontmatter>;
+  }
   return prdFrontmatterSchema.safeParse(data);
 }
 
@@ -142,8 +156,14 @@ export async function loadQueue(dir: string, cwd: string): Promise<QueuedPrd[]> 
     const rawFrontmatter = parseFrontmatter(content);
     if (!rawFrontmatter) continue; // Skip files without frontmatter
 
-    const parseResult = prdFrontmatterSchema.safeParse(rawFrontmatter);
-    if (!parseResult.success) continue; // Skip files with invalid frontmatter
+    const parseResult = validatePrdFrontmatter(rawFrontmatter);
+    if (!parseResult.success) {
+      const hasLegacyOnSuccess = parseResult.error.issues.some((issue) => issue.path[0] === 'onSuccess');
+      if (hasLegacyOnSuccess) {
+        throw new Error(`Invalid PRD frontmatter in ${file}: ${z.prettifyError(parseResult.error)}`);
+      }
+      continue; // Skip files with invalid frontmatter
+    }
 
     const frontmatter = parseResult.data;
     const id = basename(file, '.md');
@@ -618,16 +638,14 @@ export interface EnqueuePrdOptions {
   postMerge?: string[];
   /** Override profile name to persist in frontmatter for per-build profile binding. */
   profile?: string;
-  /** Override the project-level on-success landing action for this build. */
-  onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  /** Landing action to persist in PRD frontmatter (canonical: pr | merge | leave). */
+  landingAction?: 'pr' | 'merge' | 'leave';
   /** Logical stack identifier to persist in PRD frontmatter. */
   stack_id?: string;
   /** Parent PRD id for this stack layer, if any. */
   stack_parent?: string;
   /** Stack provider override for this PRD. */
   stack_provider?: 'git-spice';
-  /** New shorthand landing action to persist in PRD frontmatter. */
-  landing?: 'pr' | 'merge' | 'leave';
 }
 
 export interface EnqueuePrdResult {
@@ -673,11 +691,10 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     intoWaiting,
     postMerge,
     profile,
-    onSuccess,
+    landingAction,
     stack_id,
     stack_parent,
     stack_provider,
-    landing,
   } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
@@ -716,11 +733,10 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     ...(priority !== undefined && { priority }),
     ...(depends_on !== undefined && depends_on.length > 0 && { depends_on }),
     ...(profile !== undefined && { profile }),
-    ...(onSuccess !== undefined && { onSuccess }),
     ...(stack_id !== undefined && { stack_id }),
     ...(stack_parent !== undefined && { stack_parent }),
     ...(stack_provider !== undefined && { stack_provider }),
-    ...(landing !== undefined && { landing }),
+    ...(landingAction !== undefined && { landing: landingAction }),
   };
   const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
   if (!frontmatterResult.success) {
@@ -744,9 +760,6 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (profile !== undefined) {
     fmLines.push(`profile: ${profile}`);
   }
-  if (onSuccess !== undefined) {
-    fmLines.push(`onSuccess: ${onSuccess}`);
-  }
   if (stack_id !== undefined) {
     fmLines.push(`stack_id: ${stack_id}`);
   }
@@ -756,8 +769,8 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (stack_provider !== undefined) {
     fmLines.push(`stack_provider: ${stack_provider}`);
   }
-  if (landing !== undefined) {
-    fmLines.push(`landing: ${landing}`);
+  if (landingAction !== undefined) {
+    fmLines.push(`landing: ${landingAction}`);
   }
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;
@@ -872,12 +885,17 @@ async function movePrdFromWaiting(
 }
 
 /**
- * Validate that all `depends_on` ids currently exist in the queue
- * (pending/running or waiting). Throws with a descriptive error if any
- * upstream is not found, so enqueue callers can surface the error to users.
+ * Validate that all `depends_on` ids currently exist in the queue or have
+ * a durable artifact in the artifact registry (completed with a usable build).
+ * Throws with a descriptive error if any upstream is not found or is a known
+ * terminal dependency without a usable artifact record.
  *
- * Does NOT check the `failed/` or `skipped/` directories — those are
- * terminal states and cannot serve as live upstream dependencies.
+ * Error semantics:
+ * - Active queue (pending/running/waiting): accepted as a live upstream.
+ * - Artifact registry with `status: 'built'`: accepted as a completed upstream.
+ * - Known terminal (in failed/ or skipped/) without a usable artifact: error
+ *   containing "artifact" so callers can distinguish from unknown ids.
+ * - Not found anywhere: error containing "unknown queue item".
  */
 export async function validateDependsOnExists(
   depends_on: string[],
@@ -896,13 +914,39 @@ export async function validateDependsOnExists(
     ...waitingPrds.map((p) => p.id),
   ]);
 
+  // --- eforge:region plan-02-artifact-registry-dependency-readiness ---
+  const registry = await loadArtifactRegistry(cwd);
+
+  // Collect known terminal ids (failed/ or skipped/) for richer error messages.
+  const [failedPrds, skippedPrds] = await Promise.all([
+    loadQueue(`${queueDir}/failed`, cwd).catch((): QueuedPrd[] => []),
+    loadQueue(`${queueDir}/skipped`, cwd).catch((): QueuedPrd[] => []),
+  ]);
+  const terminalIds = new Set([
+    ...failedPrds.map((p) => p.id),
+    ...skippedPrds.map((p) => p.id),
+  ]);
+  // --- eforge:endregion plan-02-artifact-registry-dependency-readiness ---
+
   for (const dep of depends_on) {
-    if (!existingIds.has(dep)) {
+    if (existingIds.has(dep)) continue;
+    // --- eforge:region plan-02-artifact-registry-dependency-readiness ---
+    // Failed/skipped queue items never satisfy dependencies, even if an old
+    // artifact record is still present from an earlier successful attempt.
+    if (terminalIds.has(dep)) {
       throw new Error(
-        `depends_on references unknown queue item: "${dep}". ` +
-        `Only pending, running, or waiting queue items can be used as upstream dependencies.`,
+        `depends_on references a terminal queue item: "${dep}" has no usable artifact. ` +
+        `The dependency completed in a terminal state without a durable artifact record. ` +
+        `Re-run the dependency to produce a usable artifact before adding dependents.`,
       );
     }
+    // Accept completed dependencies that have a durable usable artifact.
+    if (hasUsableArtifact(registry, dep)) continue;
+    // --- eforge:endregion plan-02-artifact-registry-dependency-readiness ---
+    throw new Error(
+      `depends_on references unknown queue item: "${dep}". ` +
+      `Only pending, running, or waiting queue items, or completed items with a durable artifact, can be used as upstream dependencies.`,
+    );
   }
 }
 
@@ -951,8 +995,12 @@ export async function propagateSkip(
  * Moves qualifying PRDs from `waiting/` back to the queue root so the
  * normal dispatcher can pick them up. A waiting PRD is unblocked when
  * ALL of its `depends_on` entries are no longer present in the active queue
- * (pending/waiting). When `requireArtifacts` is true, each dependency must
- * also have a durable recorded artifact.
+ * (pending/waiting) AND each dependency has a durable usable artifact in
+ * the artifact registry.
+ *
+ * `requireArtifacts` defaults to `true` — the artifact registry is the
+ * source of truth for dependency readiness. Pass `false` only for callers
+ * that intentionally bypass artifact checks (legacy/migration paths).
  *
  * Returns the ids of PRDs that were moved to pending.
  */
@@ -981,13 +1029,20 @@ export async function unblockWaiting(
   stillActiveIds.delete(completedId);
 
   // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-  const requireArtifacts = options.requireArtifacts ?? false;
-  const stackState = requireArtifacts ? await loadStackState(cwd) : undefined;
-  const hasRecordedArtifact = (dep: string): boolean => {
+  // Default requireArtifacts to true: artifact registry is the source of truth.
+  const requireArtifacts = options.requireArtifacts ?? true;
+  const registry = requireArtifacts ? await loadArtifactRegistry(cwd) : undefined;
+  const terminalIds = requireArtifacts
+    ? new Set<string>([
+        ...(await loadQueue(`${queueDir}/failed`, cwd).catch((): QueuedPrd[] => [])).map((p) => p.id),
+        ...(await loadQueue(`${queueDir}/skipped`, cwd).catch((): QueuedPrd[] => [])).map((p) => p.id),
+      ])
+    : undefined;
+  const depHasUsableArtifact = (dep: string): boolean => {
     if (!requireArtifacts) return true;
-    if (stackState === undefined) return false;
-    const layer = lookupLayerByPrdId(stackState, dep);
-    return layer?.status !== 'failed' && getRecordedArtifactRef(stackState, dep) !== undefined;
+    if (registry === undefined) return false;
+    if (terminalIds?.has(dep)) return false;
+    return hasUsableArtifact(registry, dep);
   };
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
@@ -996,9 +1051,9 @@ export async function unblockWaiting(
 
   for (const prd of waitingPrds) {
     const deps: string[] = prd.frontmatter.depends_on ?? [];
-    // A dep is satisfied when it is inactive and, for artifact-aware queues, has a durable artifact record.
+    // A dep is satisfied when it is inactive and has a durable usable artifact record.
     const allSatisfied = deps.every(
-      (dep: string) => !stillActiveIds.has(dep) && hasRecordedArtifact(dep),
+      (dep: string) => !stillActiveIds.has(dep) && depHasUsableArtifact(dep),
     );
 
     if (allSatisfied) {

@@ -1948,20 +1948,26 @@ export async function startServer(
         return;
       }
       try {
-        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; onSuccess?: string };
+        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; landingAction?: string; onSuccess?: unknown };
         if (!body.source || typeof body.source !== 'string') {
           sendJsonError(res, 400, 'Missing required field: source');
           return;
         }
-        // Validate onSuccess override before any other work.
-        const VALID_ON_SUCCESS = ['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const;
-        let explicitOnSuccess: typeof VALID_ON_SUCCESS[number] | undefined;
+        // Reject legacy onSuccess with a migration pointer.
         if (body.onSuccess !== undefined) {
-          if (typeof body.onSuccess !== 'string' || !VALID_ON_SUCCESS.includes(body.onSuccess as typeof VALID_ON_SUCCESS[number])) {
-            sendJsonError(res, 400, `Invalid field: onSuccess must be one of: ${VALID_ON_SUCCESS.join(', ')}`);
+          sendJsonError(res, 400, 'Field "onSuccess" is no longer supported. Use "landingAction: pr|merge|leave" instead.');
+          return;
+        }
+        // Validate landingAction override before any other work.
+        const VALID_LANDING_ACTIONS = ['pr', 'merge', 'leave'] as const;
+        type LandingActionValue = (typeof VALID_LANDING_ACTIONS)[number];
+        let explicitLandingAction: LandingActionValue | undefined;
+        if (body.landingAction !== undefined) {
+          if (typeof body.landingAction !== 'string' || !(VALID_LANDING_ACTIONS as readonly string[]).includes(body.landingAction)) {
+            sendJsonError(res, 400, `Invalid field: landingAction must be one of: ${VALID_LANDING_ACTIONS.join(', ')}`);
             return;
           }
-          explicitOnSuccess = body.onSuccess as typeof VALID_ON_SUCCESS[number];
+          explicitLandingAction = body.landingAction as LandingActionValue;
         }
         // --- eforge:region plan-01-per-build-profile-override ---
         // Validate explicit profile override before spawning any worker.
@@ -2040,8 +2046,8 @@ export async function startServer(
           args.push('--profile', effectiveEnqueueProfile);
         }
         // --- eforge:endregion plan-01-core-profile-propagation ---
-        if (explicitOnSuccess) {
-          args.push('--on-success', explicitOnSuccess);
+        if (explicitLandingAction) {
+          args.push('--landing-action', explicitLandingAction);
         }
         // --- eforge:region plan-01-semantic-enqueue-wake ---
         // Wake is now driven by the persisted enqueue:complete DB event via the
@@ -3438,7 +3444,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Working directory not configured');
         return;
       }
-      let body: { name?: unknown; afterQueueId?: unknown; onSuccess?: unknown };
+      let body: { name?: unknown; afterQueueId?: unknown; landingAction?: unknown; onSuccess?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
@@ -3454,18 +3460,21 @@ export async function startServer(
         return;
       }
       const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
-      // --- eforge:region plan-01-playbook-onsuccess-api ---
-      const VALID_ON_SUCCESS = ['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const;
-      type BuildOnSuccessValue = (typeof VALID_ON_SUCCESS)[number];
-      let onSuccess: BuildOnSuccessValue | undefined;
+      // Reject legacy onSuccess with a migration pointer.
       if (body.onSuccess !== undefined) {
-        if (typeof body.onSuccess !== 'string' || !(VALID_ON_SUCCESS as readonly string[]).includes(body.onSuccess)) {
-          sendJsonError(res, 400, `Invalid onSuccess value: must be one of ${VALID_ON_SUCCESS.join(', ')}`);
+        sendJsonError(res, 400, 'Field "onSuccess" is no longer supported. Use "landingAction: pr|merge|leave" instead.');
+        return;
+      }
+      const VALID_PLAYBOOK_LANDING_ACTIONS = ['pr', 'merge', 'leave'] as const;
+      type PlaybookLandingActionValue = (typeof VALID_PLAYBOOK_LANDING_ACTIONS)[number];
+      let playbookLandingAction: PlaybookLandingActionValue | undefined;
+      if (body.landingAction !== undefined) {
+        if (typeof body.landingAction !== 'string' || !(VALID_PLAYBOOK_LANDING_ACTIONS as readonly string[]).includes(body.landingAction)) {
+          sendJsonError(res, 400, `Invalid landingAction value: must be one of ${VALID_PLAYBOOK_LANDING_ACTIONS.join(', ')}`);
           return;
         }
-        onSuccess = body.onSuccess as BuildOnSuccessValue;
+        playbookLandingAction = body.landingAction as PlaybookLandingActionValue;
       }
-      // --- eforge:endregion plan-01-playbook-onsuccess-api ---
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
         const { loadPlaybook, playbookToBuildSource } = await import('@eforge-build/input');
@@ -3534,9 +3543,7 @@ export async function startServer(
             // --- eforge:region plan-01-core-profile-propagation ---
             profile: plan.profile,
             // --- eforge:endregion plan-01-core-profile-propagation ---
-            // --- eforge:region plan-01-playbook-onsuccess-api ---
-            onSuccess,
-            // --- eforge:endregion plan-01-playbook-onsuccess-api ---
+            ...(playbookLandingAction !== undefined && { landingAction: playbookLandingAction }),
           });
           // Enqueue is filesystem-only — queue state is runtime, not tracked in git.
           notifyQueueMutation(options.daemonState, 'playbook-enqueue');

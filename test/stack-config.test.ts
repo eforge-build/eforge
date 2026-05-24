@@ -20,6 +20,7 @@ import {
   resolveConfig,
   DEFAULT_CONFIG,
   loadConfig,
+  ConfigMigrationError,
 } from '@eforge-build/engine/config';
 import { validatePrdFrontmatter } from '@eforge-build/engine/prd-queue';
 
@@ -170,15 +171,14 @@ describe('loadConfig — build.onSuccess deprecation warning', () => {
     await mkdir(join(cwd, 'eforge'), { recursive: true });
   });
 
-  it('emits a warning when build.onSuccess is set', async () => {
+  it('throws a migration error when build.onSuccess is set', async () => {
     await writeFile(
       join(cwd, 'eforge', 'config.yaml'),
       'build:\n  onSuccess: issue-pr\n',
       'utf-8',
     );
-    const { warnings } = await loadConfig(cwd);
-    const hasWarning = warnings.some((w) => w.includes('build.onSuccess') && w.includes('landing.action'));
-    expect(hasWarning).toBe(true);
+    await expect(loadConfig(cwd)).rejects.toThrow(ConfigMigrationError);
+    await expect(loadConfig(cwd)).rejects.toThrow('landing.action');
   });
 
   it('emits no onSuccess warning when landing.action is used instead', async () => {

@@ -4,20 +4,20 @@
  * `executeLandingAction` is an async generator that:
  *   - Emits `landing:start`, then performs the chosen action, then emits
  *     `landing:complete` or `landing:skipped`.
- *   - For `merge-to-base-branch`: additionally emits `merge:finalize:*`
- *     events for backward compatibility with existing consumers.
- *   - For `issue-pr`: pushes the feature branch and creates a PR via `gh`.
- *   - For `leave-branch`: a no-op — the branch is preserved as-is.
+ *   - For `merge`: additionally emits `merge:finalize:*` events for backward
+ *     compatibility with existing consumers.
+ *   - For `pr`: pushes the feature branch and creates a PR via `gh`.
+ *   - For `leave`: a no-op — the branch is preserved as-is.
  *
  * The generator returns a `LandingResult` capturing whether landing
  * succeeded and optional metadata (PR URL, commit SHA).
  *
  * --- eforge:region plan-03-branch-aware-landing ---
  * Branch-aware workflow classification:
- *   - `trunk-pr`: issue-pr when baseBranch is trunk
- *   - `trunk-local-merge`: merge-to-base-branch when baseBranch is trunk + opt-in
- *   - `feature-pr`: issue-pr when baseBranch is non-trunk feature branch (direct PR: featureBranch → baseBranch)
- *   - `feature-local-merge`: merge-to-base-branch when baseBranch is non-trunk feature branch
+ *   - `trunk-pr`: pr when baseBranch is trunk
+ *   - `trunk-local-merge`: merge when baseBranch is trunk + opt-in
+ *   - `feature-pr`: pr when baseBranch is non-trunk feature branch (direct PR: featureBranch → baseBranch)
+ *   - `feature-local-merge`: merge when baseBranch is non-trunk feature branch
  *   - `leave-branch`: no landing action
  * --- eforge:endregion plan-03-branch-aware-landing ---
  */
@@ -41,7 +41,7 @@ const exec = promisify(execFile);
 // Public types
 // ---------------------------------------------------------------------------
 
-export type LandingAction = 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+export type LandingAction = 'pr' | 'merge' | 'leave';
 
 // --- eforge:region plan-03-branch-aware-landing ---
 /**
@@ -64,7 +64,7 @@ export interface LandingActionOptions {
   worktreeManager: WorktreeManager;
   mergeResolver?: MergeResolver;
   modelTracker: ModelTracker;
-  /** Commit message used for merge-to-base-branch action. */
+  /** Commit message used for merge action. */
   commitMessage: string;
   signal?: AbortSignal;
   shouldCleanup?: boolean;
@@ -93,8 +93,11 @@ export interface LandingResult {
 /**
  * Run cleanup on the feature branch in the merge worktree.
  * Non-fatal: emits a progress event on failure and continues.
+ *
+ * Exported for reuse by stacked PR landing (plan-03-stack-landing-lifecycle-cleanup).
  */
-async function* runCleanup(
+// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+export async function* runCleanup(
   mergeWorktreePath: string,
   featureBranch: string,
   cleanupPlanSet: string,
@@ -120,6 +123,7 @@ async function* runCleanup(
     } as EforgeEvent;
   }
 }
+// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
 /**
  * Dirty-tree detection and auto-recovery on repoRoot.
@@ -208,12 +212,12 @@ export async function* executeLandingAction(
   const allowLocalMergeToTrunk = opts.engineConfig?.build?.allowLocalMergeToTrunk ?? false;
 
   let workflow: LandingWorkflow;
-  if (action === 'leave-branch') {
+  if (action === 'leave') {
     workflow = 'leave-branch';
-  } else if (action === 'merge-to-base-branch') {
+  } else if (action === 'merge') {
     workflow = baseBranchIsTrunk ? 'trunk-local-merge' : 'feature-local-merge';
   } else {
-    // issue-pr
+    // pr
     workflow = baseBranchIsTrunk ? 'trunk-pr' : 'feature-pr';
   }
   // --- eforge:endregion plan-03-branch-aware-landing ---
@@ -231,8 +235,8 @@ export async function* executeLandingAction(
   } as EforgeEvent;
 
   // --- eforge:region plan-03-branch-aware-landing ---
-  // Reject merge-to-base-branch when baseBranch is trunk and opt-in is absent.
-  if (action === 'merge-to-base-branch' && baseBranchIsTrunk && !allowLocalMergeToTrunk) {
+  // Reject merge when baseBranch is trunk and opt-in is absent.
+  if (action === 'merge' && baseBranchIsTrunk && !allowLocalMergeToTrunk) {
     const reason = `Local merge to trunk '${trunk}' is not permitted (set allowLocalMergeToTrunk: true to opt in)`;
     yield {
       type: 'merge:finalize:skipped' as const,
@@ -254,10 +258,10 @@ export async function* executeLandingAction(
   // --- eforge:endregion plan-03-branch-aware-landing ---
 
   // ---------------------------------------------------------------------------
-  // merge-to-base-branch
+  // merge
   // ---------------------------------------------------------------------------
 
-  if (action === 'merge-to-base-branch') {
+  if (action === 'merge') {
     yield {
       type: 'merge:finalize:start' as const,
       featureBranch,
@@ -331,10 +335,10 @@ export async function* executeLandingAction(
   }
 
   // ---------------------------------------------------------------------------
-  // issue-pr
+  // pr
   // ---------------------------------------------------------------------------
 
-  if (action === 'issue-pr') {
+  if (action === 'pr') {
     // --- eforge:region plan-03-branch-aware-landing ---
     // Run cleanup BEFORE issuing the PR for both trunk-pr and feature-pr.
     if (shouldCleanup && cleanupPlanSet && cleanupOutputDir) {
@@ -380,7 +384,7 @@ export async function* executeLandingAction(
   }
 
   // ---------------------------------------------------------------------------
-  // leave-branch (no-op)
+  // leave (no-op)
   // ---------------------------------------------------------------------------
 
   await worktreeManager.leaveBranch();

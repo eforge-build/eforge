@@ -297,7 +297,7 @@ async function handleRunBranch(
   // Step 3c: Prompt for landing action (autonomous playbooks only)
   const landingResult = await promptForPlaybookLandingGate(pi, ctx);
   if (landingResult.cancelled) return;
-  const landingOnSuccess: BuildOnSuccess | undefined = landingResult.onSuccess;
+  const landingAction: BuildOnSuccess | undefined = landingResult.landingAction;
 
   // Step 3b: Check for in-flight builds (autonomous playbooks only)
   const { runningItems } = await withLoader(
@@ -363,8 +363,8 @@ async function handleRunBranch(
   let runResult: PlaybookRunResponse | null = null;
   try {
     const enqueueBody = afterQueueId
-      ? { name: selectedName!, afterQueueId, ...(landingOnSuccess ? { onSuccess: landingOnSuccess } : {}) }
-      : { name: selectedName!, ...(landingOnSuccess ? { onSuccess: landingOnSuccess } : {}) };
+      ? { name: selectedName!, afterQueueId, ...(landingAction ? { landingAction } : {}) }
+      : { name: selectedName!, ...(landingAction ? { landingAction } : {}) };
     const enqueueR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
       apiPlaybookRunIfRunning({
         cwd: ctx.cwd,
@@ -386,7 +386,7 @@ async function handleRunBranch(
         `The build you selected has already finished. Running **${selectedName}** now instead.`,
       );
       try {
-        const fallbackBody = { name: selectedName!, ...(landingOnSuccess ? { onSuccess: landingOnSuccess } : {}) };
+        const fallbackBody = { name: selectedName!, ...(landingAction ? { landingAction } : {}) };
         const fallbackR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
           apiPlaybookRunIfRunning({
             cwd: ctx.cwd,

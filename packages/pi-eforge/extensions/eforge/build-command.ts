@@ -67,10 +67,10 @@ function hasProfileOverride(args: string): boolean {
 
 /**
  * Returns true when args already contain an explicit landing override so the
- * landing selector should be bypassed. Detects: --on-success, onSuccess, landingAction.
+ * landing selector should be bypassed. Detects: landingAction, --landing-action.
  */
 function hasLandingOverride(args: string): boolean {
-  return /(?:^|\s)(--on-success|onSuccess|landingAction)(?:\s|=|:|$)/.test(args);
+  return /(?:^|\s)(--landing-action|landingAction)(?:\s|=|:|$)/.test(args);
 }
 
 async function selectProfileArgs(ctx: UIContext, args: string): Promise<string | null> {
@@ -196,8 +196,8 @@ export async function handleBuildCommand(
   if (landingResult.cancelled) return;
 
   let finalArgs = argsWithProfile;
-  if (landingResult.onSuccess) {
-    finalArgs = `${argsWithProfile} --on-success ${landingResult.onSuccess}`;
+  if (landingResult.landingAction) {
+    finalArgs = `${argsWithProfile} --landing-action ${landingResult.landingAction}`;
   }
 
   sendBuildSkill(pi, finalArgs);

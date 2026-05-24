@@ -13,11 +13,11 @@ Every eforge build produces an **artifact branch** - a named Git branch (`eforge
 
 For non-stacked builds, the resolved base is the branch eforge builds from (often the project trunk, but it can be an active feature branch). For stacked builds, the root PRD targets the resolved trunk branch and child PRDs target the parent PRD's artifact branch:
 
-```
-main
-  └── eforge/prd-a              (PR #1, targets main)
-        └── eforge/prd-b        (PR #2, targets eforge/prd-a)
-              └── eforge/prd-c  (PR #3, targets eforge/prd-b)
+```mermaid
+graph TD
+    main --> A["eforge/prd-a<br/>(PR #1, targets main)"]
+    A --> B["eforge/prd-b<br/>(PR #2, targets eforge/prd-a)"]
+    B --> C["eforge/prd-c<br/>(PR #3, targets eforge/prd-b)"]
 ```
 
 ## stack_id and stack_parent
@@ -69,30 +69,30 @@ stacking:
 Install git-spice from [https://abhinav.github.io/git-spice/](https://abhinav.github.io/git-spice/), then initialize it in your repository once:
 
 ```bash
-gs repo init
+git-spice repo init
 ```
 
 This writes a local tracking file that git-spice uses to maintain branch relationships. If git-spice is not available, eforge fails the build with a clear error message.
 
 ## Restack after upstream merges
 
-When an upstream PR merges, GitHub updates the base of the downstream PR automatically. Local branches do not update automatically - run `gs stack rebase` or `gs branch sync` after upstream PRs merge to keep local branches current. eforge does not run restack or sync automatically.
+When an upstream PR merges, GitHub updates the base of the downstream PR automatically. Local branches do not update automatically - run `git-spice stack restack` (or `git-spice branch sync`) after upstream PRs merge to keep local branches current. eforge does not run restack or sync automatically. Automated post-merge restack is tracked as future roadmap work.
 
 ## Note on GitHub inline comments
 
 When a PR's base branch changes after an upstream PR merges, GitHub marks existing inline review comments as "outdated". This is a known GitHub limitation. The comment content remains accessible in the PR timeline.
 
-## Compatibility: landing.action vs build.onSuccess
+## Migration: build.onSuccess to landing.action
 
-`landing.action` is the preferred configuration key. The legacy `build.onSuccess` still works but emits a deprecation warning. They map as follows:
+`landing.action` is the current canonical config key. If your config uses the old `build.onSuccess` key, migrate by replacing it with `landing.action` under the `landing:` block:
 
-| `landing.action` | Legacy `build.onSuccess` |
-|-----------------|------------------------|
-| `pr` | `issue-pr` |
-| `merge` | `merge-to-base-branch` |
-| `leave` | `leave-branch` |
+| Old `build.onSuccess` | New `landing.action` |
+|----------------------|---------------------|
+| `issue-pr` | `pr` |
+| `merge-to-base-branch` | `merge` |
+| `leave-branch` | `leave` |
 
-If both keys are present, `landing.action` takes precedence.
+Configs using `build.onSuccess` now fail validation with migration guidance. Replace the old key with `landing.action` before running new builds.
 
 ## Where to look next
 

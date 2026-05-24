@@ -329,13 +329,28 @@ const stackingConfigSchema = z.object({
   'Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology.',
 );
 
+const LEGACY_BUILD_ON_SUCCESS_MIGRATION_MESSAGE =
+  `"build.onSuccess" is no longer supported. Use "landing.action: pr|merge|leave" instead. ` +
+  `Replace build.onSuccess: merge-to-base-branch → landing.action: merge, ` +
+  `build.onSuccess: issue-pr → landing.action: pr, ` +
+  `build.onSuccess: leave-branch → landing.action: leave.`;
+
+function hasLegacyBuildOnSuccess(data: Record<string, unknown>): boolean {
+  const buildField = data.build;
+  return !!(
+    buildField &&
+    typeof buildField === 'object' &&
+    'onSuccess' in (buildField as Record<string, unknown>)
+  );
+}
+
 /** Zod schema for the landing publication config. */
 const landingConfigSchema = z.object({
   action: z.enum(['pr', 'merge', 'leave']).optional().describe(
-    'Landing action after a successful build. "pr" opens a GitHub pull request from the artifact branch targeting the resolved base branch (trunk for non-stacked builds, parent artifact branch for stacked builds). "merge" merges the artifact branch into the base branch directly. "leave" commits to the artifact branch and exits without merging or opening a PR. Default: "merge". Preferred over the legacy build.onSuccess field.',
+    'Landing action after a successful build. "pr" opens a GitHub pull request from the artifact branch targeting the resolved base branch (current base branch for non-stacked builds, parent artifact branch for stacked builds). "merge" merges the artifact branch into the base branch directly. "leave" commits to the artifact branch and exits without merging or opening a PR. Default: "merge".',
   ),
 }).describe(
-  'Publication action taken after all plans complete and validation passes. The preferred configuration key; supersedes the legacy build.onSuccess field, which is kept for backward compatibility and emits a deprecation warning when used.',
+  'Publication action taken after all plans complete and validation passes.',
 );
 // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
@@ -365,7 +380,7 @@ const eforgeConfigBaseSchema = z.object({
     maxValidationRetries: z.number().int().nonnegative().optional(),
     cleanupPlanFiles: z.boolean().optional(),
     // --- eforge:region plan-01-engine-config-and-landing ---
-    onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional(),
+    onSuccess: z.never({ error: LEGACY_BUILD_ON_SUCCESS_MIGRATION_MESSAGE }).optional(),
     // --- eforge:region plan-01-config-and-trunk-resolution ---
     trunkBranch: z.string().optional(),
     allowLocalMergeToTrunk: z.boolean().optional(),
@@ -447,27 +462,6 @@ export interface LandingConfig {
   action: 'pr' | 'merge' | 'leave';
 }
 
-const ON_SUCCESS_BY_LANDING_ACTION = {
-  pr: 'issue-pr',
-  merge: 'merge-to-base-branch',
-  leave: 'leave-branch',
-} as const satisfies Record<LandingConfig['action'], EforgeConfig['build']['onSuccess']>;
-
-const LANDING_ACTION_BY_ON_SUCCESS = {
-  'issue-pr': 'pr',
-  'merge-to-base-branch': 'merge',
-  'leave-branch': 'leave',
-} as const satisfies Record<EforgeConfig['build']['onSuccess'], LandingConfig['action']>;
-
-/** Map new landing.action vocabulary to the legacy onSuccess action consumed by current runtime paths. */
-export function landingActionToOnSuccess(action: LandingConfig['action']): EforgeConfig['build']['onSuccess'] {
-  return ON_SUCCESS_BY_LANDING_ACTION[action];
-}
-
-/** Map legacy build.onSuccess vocabulary to the new landing.action vocabulary. */
-export function onSuccessToLandingAction(action: EforgeConfig['build']['onSuccess']): LandingConfig['action'] {
-  return LANDING_ACTION_BY_ON_SUCCESS[action];
-}
 // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
 /**
@@ -573,7 +567,6 @@ export interface EforgeConfig {
     postMergeCommandTimeoutMs?: number;
     maxValidationRetries: number;
     cleanupPlanFiles: boolean;
-    onSuccess: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
     // --- eforge:region plan-01-config-and-trunk-resolution ---
     trunkBranch?: string;
     allowLocalMergeToTrunk: boolean;
@@ -768,7 +761,6 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     postMergeCommandTimeoutMs: 300_000,
     maxValidationRetries: 2,
     cleanupPlanFiles: true,
-    onSuccess: 'merge-to-base-branch' as const,
     // --- eforge:region plan-01-config-and-trunk-resolution ---
     trunkBranch: undefined as string | undefined,
     allowLocalMergeToTrunk: false,
@@ -850,13 +842,7 @@ export function resolveConfig(
   const langfuseEnabled = !!(langfusePublicKey && langfuseSecretKey);
 
   const tiers = (fileConfig.agents?.tiers as Partial<Record<AgentTier, TierConfig>> | undefined) ?? DEFAULT_CONFIG.agents.tiers;
-  const landingAction = fileConfig.landing?.action
-    ?? (fileConfig.build?.onSuccess !== undefined
-      ? onSuccessToLandingAction(fileConfig.build.onSuccess)
-      : DEFAULT_CONFIG.landing.action);
-  const onSuccess = fileConfig.landing?.action !== undefined
-    ? landingActionToOnSuccess(fileConfig.landing.action)
-    : fileConfig.build?.onSuccess ?? DEFAULT_CONFIG.build.onSuccess;
+  const landingAction = fileConfig.landing?.action ?? DEFAULT_CONFIG.landing.action;
 
   return Object.freeze({
     maxConcurrentBuilds: fileConfig.maxConcurrentBuilds ?? DEFAULT_CONFIG.maxConcurrentBuilds,
@@ -883,7 +869,6 @@ export function resolveConfig(
       maxValidationRetries: fileConfig.build?.maxValidationRetries ?? DEFAULT_CONFIG.build.maxValidationRetries,
       cleanupPlanFiles: fileConfig.build?.cleanupPlanFiles ?? DEFAULT_CONFIG.build.cleanupPlanFiles,
       // --- eforge:region plan-01-engine-config-and-landing ---
-      onSuccess,
       // --- eforge:region plan-01-config-and-trunk-resolution ---
       trunkBranch: fileConfig.build?.trunkBranch,
       allowLocalMergeToTrunk: fileConfig.build?.allowLocalMergeToTrunk ?? DEFAULT_CONFIG.build.allowLocalMergeToTrunk,
@@ -1017,6 +1002,17 @@ export function parseRawConfig(data: Record<string, unknown>, context: 'config' 
       `"agents.models" is no longer supported. Each tier under agents.tiers carries its own model. ` +
       `Move per-class model ids onto the corresponding tier(s). ` +
       `See docs/config-migration.md for before/after examples.`,
+    );
+  }
+
+  // Reject legacy build.onSuccess with a migration pointer.
+  const buildField = data.build as Record<string, unknown> | undefined;
+  if (buildField && typeof buildField === 'object' && 'onSuccess' in buildField) {
+    throw new ConfigMigrationError(
+      `"build.onSuccess" is no longer supported. Use "landing.action: pr|merge|leave" instead. ` +
+      `Replace build.onSuccess: merge-to-base-branch → landing.action: merge, ` +
+      `build.onSuccess: issue-pr → landing.action: pr, ` +
+      `build.onSuccess: leave-branch → landing.action: leave.`,
     );
   }
 
@@ -1200,20 +1196,6 @@ export function mergePartialConfigs(
   if (global.landing || project.landing) {
     result.landing = { ...global.landing, ...project.landing };
   }
-  // Preserve layer precedence while bridging between legacy build.onSuccess and
-  // the new landing.action vocabulary. The later `project` layer wins even when
-  // it uses the other spelling than an earlier `global` layer.
-  if (project.landing?.action !== undefined) {
-    result.build = {
-      ...result.build,
-      onSuccess: landingActionToOnSuccess(project.landing.action),
-    };
-  } else if (project.build?.onSuccess !== undefined) {
-    result.landing = {
-      ...result.landing,
-      action: onSuccessToLandingAction(project.build.onSuccess),
-    };
-  }
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
   return result;
@@ -1396,19 +1378,6 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
     }
   }
 
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
-  const hasExplicitLegacyOnSuccess =
-    globalConfig.build?.onSuccess !== undefined ||
-    projectConfig.build?.onSuccess !== undefined ||
-    localConfig.build?.onSuccess !== undefined ||
-    profileConfig?.build?.onSuccess !== undefined;
-  if (hasExplicitLegacyOnSuccess) {
-    allWarnings.push(
-      '[eforge] "build.onSuccess" is deprecated — use "landing.action" instead. ' +
-      'Replace build.onSuccess with landing.action: <pr|merge|leave> in your eforge/config.yaml.',
-    );
-  }
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
   return {
     config: resolveConfig(merged),
@@ -1771,6 +1740,13 @@ async function loadProfileFromPath(path: string): Promise<{ profile: PartialEfor
       `"agents.models" is no longer supported. Each tier under agents.tiers carries its own model. ` +
       `See docs/config-migration.md for before/after examples.`,
     );
+  }
+
+  // Reject legacy build.onSuccess in profiles with the same migration guidance
+  // as config.yaml. The profile schema would otherwise strip unknown nested
+  // build keys before validation completes.
+  if (hasLegacyBuildOnSuccess(rawData)) {
+    throw new ConfigMigrationError(LEGACY_BUILD_ON_SUCCESS_MIGRATION_MESSAGE);
   }
 
   // Parse with profile-aware schema that accepts metadata fields.

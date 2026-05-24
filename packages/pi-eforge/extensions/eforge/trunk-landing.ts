@@ -1,20 +1,19 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 /**
- * Wire-protocol values for the landing action.
+ * Canonical landing action values accepted by the engine and daemon.
  *
- * User-facing shorthands (`pr`, `merge`, `leave`) map to these values:
- *   pr    → issue-pr
- *   merge → merge-to-base-branch
- *   leave → leave-branch
+ *   pr    → open a pull request
+ *   merge → merge to base branch
+ *   leave → leave branch as-is
  *
- * These wire values are what the daemon and engine accept via `onSuccess`.
- * The `landing.action` config key also accepts these values.
+ * The landing.action config key and landingAction request field both accept
+ * these canonical values. Legacy wire values (issue-pr, merge-to-base-branch,
+ * leave-branch) are rejected with a migration error by the daemon.
  */
-export type BuildOnSuccess = "merge-to-base-branch" | "issue-pr" | "leave-branch";
+export type BuildOnSuccess = "pr" | "merge" | "leave";
 
 export interface BuildLandingConfig {
-  onSuccess?: BuildOnSuccess | string;
   allowLocalMergeToTrunk?: boolean;
   trunkBranch?: string;
 }
@@ -23,28 +22,21 @@ export interface TrunkLandingPromptInput {
   currentBranch: string | null | undefined;
   trunkBranch: string;
   build: BuildLandingConfig | undefined;
-  onSuccessOverride?: BuildOnSuccess;
+  configuredLandingAction?: BuildOnSuccess;
+  landingActionOverride?: BuildOnSuccess;
 }
 
-export function getEffectiveOnSuccess(
-  build: BuildLandingConfig | undefined,
-  onSuccessOverride?: BuildOnSuccess,
+export function getEffectiveLandingAction(
+  configuredAction: BuildOnSuccess | undefined,
+  override?: BuildOnSuccess,
 ): BuildOnSuccess {
-  if (onSuccessOverride) return onSuccessOverride;
-  if (
-    build?.onSuccess === "merge-to-base-branch" ||
-    build?.onSuccess === "issue-pr" ||
-    build?.onSuccess === "leave-branch"
-  ) {
-    return build.onSuccess;
-  }
-  return "merge-to-base-branch";
+  return override ?? configuredAction ?? "merge";
 }
 
 export function shouldPromptForTrunkLanding(input: TrunkLandingPromptInput): boolean {
-  const effectiveOnSuccess = getEffectiveOnSuccess(input.build, input.onSuccessOverride);
+  const effectiveAction = getEffectiveLandingAction(input.configuredLandingAction, input.landingActionOverride);
   return (
-    effectiveOnSuccess === "merge-to-base-branch" &&
+    effectiveAction === "merge" &&
     input.build?.allowLocalMergeToTrunk !== true &&
     Boolean(input.currentBranch) &&
     input.currentBranch === input.trunkBranch
@@ -53,18 +45,18 @@ export function shouldPromptForTrunkLanding(input: TrunkLandingPromptInput): boo
 
 /**
  * For explicit playbook landing-gate mode: determine if trunk remediation is
- * required for a given explicit onSuccess choice.
+ * required for a given explicit landing action choice.
  *
- * Returns true only when the choice is merge-to-base-branch AND the user is
- * on the trunk branch without having opted in via allowLocalMergeToTrunk.
- * Returns false for issue-pr and leave-branch choices regardless of branch.
+ * Returns true only when the choice is merge AND the user is on the trunk
+ * branch without having opted in via allowLocalMergeToTrunk.
+ * Returns false for pr and leave choices regardless of branch.
  */
 export function playbookChoiceNeedsTrunkRemediation(
   choice: BuildOnSuccess,
-  input: Omit<TrunkLandingPromptInput, "onSuccessOverride">,
+  input: Omit<TrunkLandingPromptInput, "landingActionOverride">,
 ): boolean {
-  if (choice !== "merge-to-base-branch") return false;
-  return shouldPromptForTrunkLanding({ ...input, onSuccessOverride: "merge-to-base-branch" });
+  if (choice !== "merge") return false;
+  return shouldPromptForTrunkLanding({ ...input, landingActionOverride: "merge" });
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

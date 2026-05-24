@@ -5,10 +5,10 @@
  *   1. Headless (no UI context): delegates directly to /skill:eforge-build with
  *      original args — no source, profile, or landing prompts.
  *   2. Explicit landing bypass: when args already contain an explicit landing override
- *      (--on-success / onSuccess), the landing selector is not invoked.
- *   3. Project-default selection: when the landing gate returns no onSuccess,
- *      the skill is called without any --on-success argument.
- *   4. Explicit landing forwarding: explicit onSuccess is appended to the skill call.
+ *      (--landing-action), the landing selector is not invoked.
+ *   3. Project-default selection: when the landing gate returns no landingAction,
+ *      the skill is called without any --landing-action argument.
+ *   4. Explicit landing forwarding: explicit landingAction is appended to the skill call.
  *   5. Profile override preservation: --profile argument survives the landing step.
  *   6. Cancelled landing gate: skill is not called when the user cancels.
  *
@@ -88,7 +88,7 @@ function captureSkillCall(pi: ReturnType<typeof makePi>): string | undefined {
   return calls.length > 0 ? (calls[0][0] as string) : undefined;
 }
 
-function mockLandingGate(result: { onSuccess?: string; cancelled?: boolean; configUpdated?: boolean }) {
+function mockLandingGate(result: { landingAction?: string; cancelled?: boolean; configUpdated?: boolean }) {
   (promptForBuildLandingGate as ReturnType<typeof vi.fn>).mockResolvedValue(result);
 }
 
@@ -145,12 +145,11 @@ describe('handleBuildCommand - explicit landing argument bypass', () => {
     vi.clearAllMocks();
   });
 
-  it('does not call landing gate when args already contain --on-success', async () => {
+  it('does not call landing gate when args already contain --landing-action', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
-    // --profile "fast" skips profile UI; --on-success is the existing explicit override
-    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" --on-success issue-pr');
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" --landing-action pr');
 
     expect(promptForBuildLandingGate).not.toHaveBeenCalled();
   });
@@ -159,37 +158,28 @@ describe('handleBuildCommand - explicit landing argument bypass', () => {
     const pi = makePi();
     const ctx = makeCtx();
 
-    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" --on-success leave-branch');
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" --landing-action leave');
 
     expect(pi.sendUserMessage).toHaveBeenCalledOnce();
     const call = captureSkillCall(pi)!;
-    expect(call).toContain('--on-success leave-branch');
+    expect(call).toContain('--landing-action leave');
     // explicit override must not be duplicated
-    expect(call.match(/--on-success/g)).toHaveLength(1);
-  });
-
-  it('does not call landing gate when args already contain onSuccess keyword', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
-
-    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" onSuccess=issue-pr');
-
-    expect(promptForBuildLandingGate).not.toHaveBeenCalled();
+    expect(call.match(/--landing-action/g)).toHaveLength(1);
   });
 
   it('does not call landing gate when args already contain landingAction keyword', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
-    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" landingAction=leave-branch');
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" landingAction=leave');
 
     expect(promptForBuildLandingGate).not.toHaveBeenCalled();
-    expect(captureSkillCall(pi)).toContain('landingAction=leave-branch');
+    expect(captureSkillCall(pi)).toContain('landingAction=leave');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Tests: project-default selection (no onSuccess in enqueue body)
+// Tests: project-default selection (no landingAction in enqueue body)
 // ---------------------------------------------------------------------------
 
 describe('handleBuildCommand - project-default selection', () => {
@@ -208,7 +198,7 @@ describe('handleBuildCommand - project-default selection', () => {
     expect(promptForBuildLandingGate).toHaveBeenCalledOnce();
   });
 
-  it('calls the skill without --on-success when project-default is selected', async () => {
+  it('calls the skill without --landing-action when project-default is selected', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
@@ -217,7 +207,7 @@ describe('handleBuildCommand - project-default selection', () => {
     expect(pi.sendUserMessage).toHaveBeenCalledOnce();
     const call = captureSkillCall(pi)!;
     expect(call).toContain('/skill:eforge-build');
-    expect(call).not.toContain('--on-success');
+    expect(call).not.toContain('--landing-action');
   });
 
   it('calls the skill exactly once for project-default selection', async () => {
@@ -239,37 +229,37 @@ describe('handleBuildCommand - explicit landing selection forwarding', () => {
     vi.clearAllMocks();
   });
 
-  it('appends leave-branch override to skill call when explicitly selected', async () => {
+  it('appends leave override to skill call when explicitly selected', async () => {
     const pi = makePi();
     const ctx = makeCtx();
-    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockLandingGate({ landingAction: 'leave' });
 
     await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
 
     const call = captureSkillCall(pi)!;
-    expect(call).toContain('--on-success leave-branch');
+    expect(call).toContain('--landing-action leave');
   });
 
-  it('appends issue-pr override to skill call when explicitly selected', async () => {
+  it('appends pr override to skill call when explicitly selected', async () => {
     const pi = makePi();
     const ctx = makeCtx();
-    mockLandingGate({ onSuccess: 'issue-pr' });
+    mockLandingGate({ landingAction: 'pr' });
 
     await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
 
     const call = captureSkillCall(pi)!;
-    expect(call).toContain('--on-success issue-pr');
+    expect(call).toContain('--landing-action pr');
   });
 
-  it('appends merge-to-base-branch override to skill call when explicitly selected', async () => {
+  it('appends merge override to skill call when explicitly selected', async () => {
     const pi = makePi();
     const ctx = makeCtx();
-    mockLandingGate({ onSuccess: 'merge-to-base-branch' });
+    mockLandingGate({ landingAction: 'merge' });
 
     await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
 
     const call = captureSkillCall(pi)!;
-    expect(call).toContain('--on-success merge-to-base-branch');
+    expect(call).toContain('--landing-action merge');
   });
 
   it('does not call skill when landing gate returns cancelled', async () => {
@@ -285,13 +275,13 @@ describe('handleBuildCommand - explicit landing selection forwarding', () => {
   it('appends the explicit override only once to the skill call', async () => {
     const pi = makePi();
     const ctx = makeCtx();
-    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockLandingGate({ landingAction: 'leave' });
 
     await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
 
     const call = captureSkillCall(pi)!;
-    // landing wire value must appear exactly once
-    expect((call.match(/leave-branch/g) ?? []).length).toBe(1);
+    // canonical value must appear exactly once
+    expect((call.match(/\bleave\b/g) ?? []).length).toBe(1);
   });
 });
 
@@ -307,17 +297,17 @@ describe('handleBuildCommand - profile override preservation', () => {
   it('profile arg survives an explicit landing selection', async () => {
     const pi = makePi();
     const ctx = makeCtx();
-    mockLandingGate({ onSuccess: 'issue-pr' });
+    mockLandingGate({ landingAction: 'pr' });
 
     await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
 
     const call = captureSkillCall(pi)!;
     expect(call).toContain('--profile');
     expect(call).toContain('"fast"');
-    expect(call).toContain('issue-pr');
+    expect(call).toContain('pr');
   });
 
-  it('profile arg survives a project-default landing selection (no --on-success added)', async () => {
+  it('profile arg survives a project-default landing selection (no --landing-action added)', async () => {
     const pi = makePi();
     const ctx = makeCtx();
     mockLandingGate({});
@@ -327,13 +317,13 @@ describe('handleBuildCommand - profile override preservation', () => {
     const call = captureSkillCall(pi)!;
     expect(call).toContain('--profile');
     expect(call).toContain('"fast"');
-    expect(call).not.toContain('--on-success');
+    expect(call).not.toContain('--landing-action');
   });
 
   it('source arg survives landing selection alongside the profile', async () => {
     const pi = makePi();
     const ctx = makeCtx();
-    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockLandingGate({ landingAction: 'leave' });
 
     await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
 

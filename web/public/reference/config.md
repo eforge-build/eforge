@@ -18,7 +18,7 @@ eforge merges configuration from three tiers (highest precedence first):
 | `daemon` |  |
 | `extensions` | Native eforge extension configuration |
 | `hooks` |  |
-| `landing` | Publication action taken after all plans complete and validation passes. The preferred configuration key; supersedes the legacy build.onSuccess field, which is kept for backward compatibility and emits a deprecation warning when used. |
+| `landing` | Publication action taken after all plans complete and validation passes. |
 | `langfuse` |  |
 | `maxConcurrentBuilds` |  |
 | `monitor` |  |

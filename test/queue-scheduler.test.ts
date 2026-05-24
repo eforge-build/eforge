@@ -24,6 +24,7 @@ import { AsyncEventQueue } from '@eforge-build/engine/concurrency';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { QueueExecExitCode, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 import type { PolicyGateRegistration, ProfileRouterRegistration } from '@eforge-build/engine/extensions/types';
+import { upsertArtifact } from '@eforge-build/engine/artifacts';
 import { StubHarness } from './stub-harness';
 
 const exec = promisify(execFile);
@@ -225,6 +226,9 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
     await writeFile(prdPath, '---\ntitle: Profiled PRD\npriority: 7\nprofile: careful\ndepends_on: [base-prd]\n---\n\n# Profiled PRD');
     await exec('git', ['add', '.'], { cwd });
     await exec('git', ['commit', '-m', 'queue files'], { cwd });
+    // base-prd completed in a prior run — write a registry artifact so profiled-prd is ready.
+    const now = new Date().toISOString();
+    await upsertArtifact(cwd, { prdId: 'base-prd', artifactBranch: 'eforge/base-prd', commitSha: 'abc123', resolvedBase: 'main', landingAction: 'pr', status: 'built', recordedAt: now, updatedAt: now });
 
     let seenContext: { gateKind?: string; prdId?: string; prdTitle?: string; priority?: number; profile?: string; dependsOn?: string[] } | undefined;
     const scheduler = makeScheduler(
@@ -361,7 +365,7 @@ describe('QueueScheduler — queue:mutation event', () => {
 
 describe('QueueScheduler — queue:prd:complete (completed)', () => {
   it('spawns dependent PRD after upstream completes', async () => {
-    const { bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
     // Two PRDs: 'foundation' (no deps) and 'feature' (depends_on: ['foundation'])
     const foundation = makeQueuedPrd('foundation');
@@ -377,6 +381,11 @@ describe('QueueScheduler — queue:prd:complete (completed)', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(spawnPrdChild).toHaveBeenCalledTimes(1);
     expect(spawnPrdChild.mock.calls[0][0].id).toBe('foundation');
+
+    // Write a registry artifact for foundation before emitting completion so
+    // the artifact-aware scheduler can satisfy feature's dependency.
+    const now = new Date().toISOString();
+    await upsertArtifact(cwd, { prdId: 'foundation', artifactBranch: 'eforge/foundation', commitSha: 'abc123', resolvedBase: 'main', landingAction: 'pr', status: 'built', recordedAt: now, updatedAt: now });
 
     // Simulate foundation completing: the pump would emit this on the bus
     const completeEvent: SchedulerInputEvent = {
@@ -840,6 +849,10 @@ describe('QueueScheduler — already-claimed child result', () => {
 
     // Still only one call (for a); c remains blocked by a's running state (live lock).
     expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+
+    // Write a registry artifact for a so c's dependency can be satisfied once a completes.
+    const nowAlreadyClaimed = new Date().toISOString();
+    await upsertArtifact(cwd, { prdId: 'a', artifactBranch: 'eforge/a', commitSha: 'abc123', resolvedBase: 'main', landingAction: 'pr', status: 'built', recordedAt: nowAlreadyClaimed, updatedAt: nowAlreadyClaimed });
 
     // Once the original worker emits a real terminal completion, the dependent
     // PRD can proceed and the completion is counted normally.
@@ -1308,6 +1321,10 @@ describe('QueueScheduler — runtime lock reconciliation', () => {
     const events = eventQueue.drainAvailable();
     const completions = events.filter((e) => e.type === 'queue:prd:complete');
     expect(completions.every((e) => e.prdId !== 'c')).toBe(true);
+
+    // Write a registry artifact for a so c's dependency can be satisfied once a completes.
+    const nowNoLock = new Date().toISOString();
+    await upsertArtifact(cwd, { prdId: 'a', artifactBranch: 'eforge/a', commitSha: 'abc123', resolvedBase: 'main', landingAction: 'pr', status: 'built', recordedAt: nowNoLock, updatedAt: nowNoLock });
 
     // Original worker emits terminal completion for a → c is now ready
     bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'a', status: 'completed', timestamp: new Date().toISOString() } as SchedulerInputEvent);

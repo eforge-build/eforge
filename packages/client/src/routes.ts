@@ -7,17 +7,14 @@
 import type { StackLayerWire } from './events.js';
 // --- eforge:endregion plan-03-stack-daemon-ui ---
 
-/** The set of valid on-success landing actions for a per-build override. */
-export type BuildOnSuccess = 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
-
 /** POST /api/enqueue */
 export interface EnqueueRequest {
   source: string;
   flags?: string[];
   /** Override the active profile for this build (profile name, validated at enqueue time). */
   profile?: string;
-  /** Override the project-level on-success landing action for this build. */
-  onSuccess?: BuildOnSuccess;
+  /** Override the project-level landing action for this build. */
+  landingAction?: 'pr' | 'merge' | 'leave';
 }
 
 /** POST /api/auto-build */
@@ -375,8 +372,8 @@ export interface SessionPlanMigrateLegacyRequest {
 export interface PlaybookRunRequest {
   name: string;
   afterQueueId?: string;
-  /** Override the project-level on-success landing action for this autonomous playbook run. */
-  onSuccess?: BuildOnSuccess;
+  /** Override the project-level landing action for this autonomous playbook run. */
+  landingAction?: 'pr' | 'merge' | 'leave';
 }
 
 /** Response for POST /api/playbook/run when the playbook is autonomous */

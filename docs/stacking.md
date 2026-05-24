@@ -8,13 +8,13 @@ eforge supports stacked pull requests via git-spice. When `stacking.enabled: tru
 
 Every eforge build produces an **artifact branch** - a named Git branch (`eforge/<prd-id>`) that holds the committed output from that build. When `landing.action: pr`, eforge opens a pull request from this artifact branch targeting its resolved base.
 
-For non-stacked builds, the resolved base is always the project trunk (e.g. `main`). For stacked builds, the resolved base is the parent PRD's artifact branch, creating a branch-per-PR topology:
+For non-stacked builds, the resolved base is the branch eforge builds from (often the project trunk, but it can be an active feature branch). For stacked builds, the root PRD targets the resolved trunk branch and child PRDs target the parent PRD's artifact branch, creating a branch-per-PR topology:
 
-```
-main
-  └── eforge/prd-a          (PR #1, targets main)
-        └── eforge/prd-b    (PR #2, targets eforge/prd-a)
-              └── eforge/prd-c   (PR #3, targets eforge/prd-b)
+```mermaid
+graph TD
+    main --> A["eforge/prd-a<br/>(PR #1, targets main)"]
+    A --> B["eforge/prd-b<br/>(PR #2, targets eforge/prd-a)"]
+    B --> C["eforge/prd-c<br/>(PR #3, targets eforge/prd-b)"]
 ```
 
 ### stack_id and stack_parent
@@ -70,16 +70,16 @@ landing:
 
 ### git-spice command
 
-eforge uses the `git-spice` executable by default. If it is installed to a non-standard location or you use a wrapper, set the path explicitly:
+eforge uses the `git-spice` executable by default. If it is installed to a non-standard location or you prefer the short `gs` alias, set the path explicitly:
 
 ```yaml
 stacking:
   enabled: true
   gitSpice:
-    command: /usr/local/bin/git-spice   # or 'gs' if you have the alias on PATH
+    command: /usr/local/bin/git-spice   # full path; or 'gs' to use the optional short alias
 ```
 
-The `gs` shorthand alias is a common convention, but eforge defaults to `git-spice` to avoid ambiguity with other `gs` programs.
+eforge defaults to `git-spice` to avoid ambiguity with other programs named `gs`. If you have configured the `gs` alias and prefer it, set `command: gs`.
 
 ## git-spice setup
 
@@ -88,7 +88,7 @@ git-spice must be installed and initialized in the repository before eforge can 
 Initialize git-spice in the repository (one time, per developer):
 
 ```bash
-gs repo init
+git-spice repo init
 ```
 
 This writes a `.git/spice/state.json` tracking file that git-spice uses to maintain branch relationships. The file is local to your clone and not committed.
@@ -108,7 +108,15 @@ The stack state (artifact branch refs and PR URLs) is persisted to `.eforge/stac
 
 ## Restack and sync expectations
 
-When an upstream PR merges, GitHub updates the base branch of the downstream PR automatically. git-spice users can run `gs stack rebase` or `gs branch sync` to update local branches after upstream merges. eforge does not run restack or sync automatically after a PR merges - that step remains a developer action.
+When an upstream PR merges, GitHub updates the base branch of the downstream PR automatically. To update local branches after upstream merges, run:
+
+```bash
+git-spice stack restack
+# or, if you have the optional gs alias configured:
+# gs stack restack
+```
+
+eforge does not run restack or sync automatically after a PR merges - that step remains a developer action. Automated post-merge restack is tracked as future roadmap work.
 
 After upstream merges, subsequent eforge builds that reference updated parent artifact branches will pick up the new commit shas from the persisted stack state.
 
@@ -118,16 +126,16 @@ When a PR's base branch changes (because an upstream PR merged), GitHub marks al
 
 ## Stack state visibility
 
-The monitor UI shows per-build stacking metadata - stack id, parent PRD id, and PR URL - in the build detail panel when stacking is active. The `gs stack status` command in git-spice shows the full local stack state.
+The monitor UI shows per-build stacking metadata - stack id, parent PRD id, and PR URL - in the build detail panel when stacking is active. The `git-spice stack status` command (or `gs stack status` if you have the optional alias) shows the full local stack state.
 
-## Compatibility bridge
+## Migration: landing.action vs build.onSuccess
 
-`build.onSuccess` (the legacy config key) remains supported but emits a deprecation warning. The preferred vocabulary is `landing.action`. The two map as follows:
+`landing.action` is the current canonical config key. If you have a config using the old `build.onSuccess` key, migrate to `landing.action`:
 
-| `landing.action` | `build.onSuccess` (legacy) |
-|-----------------|--------------------------|
-| `pr` | `issue-pr` |
-| `merge` | `merge-to-base-branch` |
-| `leave` | `leave-branch` |
+| Old `build.onSuccess` | New `landing.action` |
+|----------------------|---------------------|
+| `issue-pr` | `pr` |
+| `merge-to-base-branch` | `merge` |
+| `leave-branch` | `leave` |
 
-If both keys are present, `landing.action` takes precedence and the legacy value is ignored.
+Configs using `build.onSuccess` now fail validation with migration guidance. Replace the old key with `landing.action` before running new builds.

@@ -15,9 +15,12 @@ import { promisify } from 'node:util';
 import type { EforgeEvent } from '../events.js';
 import type { ProviderCommandResult, StackProviderAdapter } from './provider.js';
 import type { StackBaseContext } from './base-resolver.js';
-import type { LandingPublicationAction } from './types.js';
-import { updateStackLayerLanding } from './state.js';
+import type { LandingPublicationAction, StackLayer } from './types.js';
+import { updateStackLayerLanding, updateStackLayerStatusAndLanding } from './state.js';
 import { isGitHubPullRequestUrl, parseGitSpicePrUrl, redactProviderMessage } from './git-spice.js';
+// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+import { runCleanup } from '../landing.js';
+// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
 const execFileAsync = promisify(execFile);
 
@@ -83,6 +86,16 @@ export interface StackLandingOptions {
   landingAction: LandingPublicationAction;
   /** Instantiated provider adapter. */
   provider: StackProviderAdapter;
+  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+  /** Whether to run cleanup on the feature branch before provider.submitBranch. */
+  shouldCleanup?: boolean;
+  /** Plan set name for cleanup commit message. */
+  cleanupPlanSet?: string;
+  /** Output directory containing plan files. */
+  cleanupOutputDir?: string;
+  /** Path to the PRD file to remove during cleanup. */
+  cleanupPrdFilePath?: string;
+  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +140,10 @@ async function discoverPrUrlViaGh(cwd: string, branch: string): Promise<string |
  * applicable, emits `stack:landing:update` skipped and returns.
  */
 export async function* executeStackLanding(opts: StackLandingOptions): AsyncGenerator<EforgeEvent> {
-  const { cwd, mergeWorktreePath, stackContext, landingAction, provider } = opts;
+  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+  const { cwd, mergeWorktreePath, stackContext, landingAction, provider,
+    shouldCleanup, cleanupPlanSet, cleanupOutputDir, cleanupPrdFilePath } = opts;
+  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
   const { prdId, stackId, branch, baseBranch, provider: providerName } = stackContext;
 
   const ts = (): string => new Date().toISOString();
@@ -136,7 +152,11 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   if (landingAction !== 'pr') {
     // Non-PR landing action: skip git-spice submission and persist the outcome.
     const completedAt = ts();
-    await updateStackLayerLanding(cwd, prdId, {
+    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+    // Non-PR actions produce terminal layer statuses: merge→'merged', leave→'landed'.
+    const layerStatusForSkip: StackLayer['status'] = landingAction === 'merge' ? 'merged' : 'landed';
+    await updateStackLayerStatusAndLanding(cwd, prdId, layerStatusForSkip, {
+    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       action: landingAction,
       status: 'skipped',
       reason: `Landing action is '${landingAction}', not 'pr'`,
@@ -184,7 +204,9 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     if (commandEvent) yield commandEvent;
     const reason = redactProviderMessage(err instanceof Error ? err.message : String(err));
     const failedAt = ts();
-    await updateStackLayerLanding(cwd, prdId, {
+    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+    await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
+    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       action: landingAction,
       status: 'failed',
       reason,
@@ -204,7 +226,23 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     return;
   }
 
-  // Step 2: Submit the branch as a PR
+  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+  // Step 2 (pre-submit): Run cleanup before submitting the PR, if configured.
+  if (shouldCleanup && cleanupPlanSet && cleanupOutputDir) {
+    for await (const event of runCleanup(
+      mergeWorktreePath,
+      branch,
+      cleanupPlanSet,
+      cleanupOutputDir,
+      cleanupPrdFilePath,
+      ts,
+    )) {
+      yield event;
+    }
+  }
+  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
+
+  // Step 3: Submit the branch as a PR
   let submitResult: ProviderCommandResult;
   try {
     submitResult = await provider.submitBranch(mergeWorktreePath);
@@ -214,7 +252,9 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     if (commandEvent) yield commandEvent;
     const reason = redactProviderMessage(err instanceof Error ? err.message : String(err));
     const failedAt = ts();
-    await updateStackLayerLanding(cwd, prdId, {
+    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+    await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
+    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       action: landingAction,
       status: 'failed',
       reason,
@@ -234,14 +274,16 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     return;
   }
 
-  // Step 3: Discover PR URL — parse from submit output, then gh fallback
+  // Step 4: Discover PR URL — parse from submit output, then gh fallback
   const prUrl =
     parseGitSpicePrUrl(submitResult.stdout) ??
     (await discoverPrUrlViaGh(mergeWorktreePath, branch));
 
-  // Step 4: Persist complete landing state
+  // Step 5: Persist complete landing state with layer status transition to 'landed'
   const completedAt = ts();
-  await updateStackLayerLanding(cwd, prdId, {
+  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+  await updateStackLayerStatusAndLanding(cwd, prdId, 'landed', {
+  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
     action: landingAction,
     status: 'complete',
     ...(prUrl !== undefined && { prUrl }),

@@ -1349,6 +1349,135 @@ describe('ADD_EVENT: stack:landing:update — live projection', () => {
     // Activity still appended
     expect(next.daemonActivity).toHaveLength(1);
   });
+
+  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+  it('complete: transitions layer status to landed and preserves prUrl', () => {
+    const existing = makeStackLayer({ prdId: 'prd-complete', status: 'built' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:landing:update', {
+      prdId: 'prd-complete',
+      stackId: 'stack-abc',
+      action: 'pr',
+      branch: 'feat/prd-complete',
+      status: 'complete',
+      prUrl: 'https://github.com/org/repo/pull/42',
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.stackLayers[0]?.status).toBe('landed');
+    expect(next.stackLayers[0]?.landing?.prUrl).toBe('https://github.com/org/repo/pull/42');
+  });
+
+  it('complete + merge: transitions layer status to merged', () => {
+    const existing = makeStackLayer({ prdId: 'prd-merge-complete', status: 'built' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:landing:update', {
+      prdId: 'prd-merge-complete',
+      stackId: 'stack-abc',
+      action: 'merge',
+      branch: 'feat/prd-merge-complete',
+      status: 'complete',
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.stackLayers[0]?.status).toBe('merged');
+  });
+
+  it('failed: transitions layer status to failed', () => {
+    const existing = makeStackLayer({ prdId: 'prd-fail', status: 'built' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:landing:update', {
+      prdId: 'prd-fail',
+      stackId: 'stack-abc',
+      action: 'pr',
+      branch: 'feat/prd-fail',
+      status: 'failed',
+      reason: 'git-spice submit failed',
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.stackLayers[0]?.status).toBe('failed');
+    expect(next.stackLayers[0]?.landing?.reason).toBe('git-spice submit failed');
+  });
+
+  it('skipped + merge: transitions layer status to merged', () => {
+    const existing = makeStackLayer({ prdId: 'prd-merge', status: 'built' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:landing:update', {
+      prdId: 'prd-merge',
+      stackId: 'stack-abc',
+      action: 'merge',
+      branch: 'feat/prd-merge',
+      status: 'skipped',
+      reason: "Landing action is 'merge', not 'pr'",
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.stackLayers[0]?.status).toBe('merged');
+  });
+
+  it('skipped + leave: transitions layer status to landed', () => {
+    const existing = makeStackLayer({ prdId: 'prd-leave', status: 'built' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:landing:update', {
+      prdId: 'prd-leave',
+      stackId: 'stack-abc',
+      action: 'leave',
+      branch: 'feat/prd-leave',
+      status: 'skipped',
+      reason: "Landing action is 'leave', not 'pr'",
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.stackLayers[0]?.status).toBe('landed');
+  });
+
+  it('skipped + pr: transitions layer status to failed (pre-landing skip)', () => {
+    const existing = makeStackLayer({ prdId: 'prd-preabort', status: 'built' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:landing:update', {
+      prdId: 'prd-preabort',
+      stackId: 'stack-abc',
+      action: 'pr',
+      branch: 'feat/prd-preabort',
+      status: 'skipped',
+      reason: 'Build failed before landing',
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.stackLayers[0]?.status).toBe('failed');
+  });
+
+  it('started: does not change layer status', () => {
+    const existing = makeStackLayer({ prdId: 'prd-start', status: 'built' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:landing:update', {
+      prdId: 'prd-start',
+      stackId: 'stack-abc',
+      action: 'pr',
+      branch: 'feat/prd-start',
+      status: 'started',
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.stackLayers[0]?.status).toBe('built');
+    expect(next.stackLayers[0]?.landing?.status).toBe('started');
+  });
+  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 });
 
 // --- eforge:endregion plan-03-stack-daemon-ui ---

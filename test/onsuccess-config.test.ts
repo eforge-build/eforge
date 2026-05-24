@@ -7,53 +7,60 @@ import { resolveConfig, DEFAULT_CONFIG, eforgeConfigSchema } from '@eforge-build
 
 // --- eforge:region plan-01-engine-config-and-landing ---
 
-describe('build.onSuccess config', () => {
-  it('DEFAULT_CONFIG.build.onSuccess is merge-to-base-branch', () => {
-    expect(DEFAULT_CONFIG.build.onSuccess).toBe('merge-to-base-branch');
+describe('landing.action config', () => {
+  it('DEFAULT_CONFIG.landing.action is merge', () => {
+    expect(DEFAULT_CONFIG.landing.action).toBe('merge');
   });
 
-  it('resolveConfig({}) returns build.onSuccess === merge-to-base-branch', () => {
+  it('resolveConfig({}) returns landing.action === merge', () => {
     const config = resolveConfig({}, {});
-    expect(config.build.onSuccess).toBe('merge-to-base-branch');
+    expect(config.landing.action).toBe('merge');
   });
 
-  it('resolveConfig with build.onSuccess issue-pr returns issue-pr', () => {
-    const config = resolveConfig({ build: { onSuccess: 'issue-pr' } }, {});
-    expect(config.build.onSuccess).toBe('issue-pr');
+  it('resolveConfig with landing.action pr returns pr', () => {
+    const config = resolveConfig({ landing: { action: 'pr' } }, {});
+    expect(config.landing.action).toBe('pr');
   });
 
-  it('resolveConfig with build.onSuccess leave-branch returns leave-branch', () => {
-    const config = resolveConfig({ build: { onSuccess: 'leave-branch' } }, {});
-    expect(config.build.onSuccess).toBe('leave-branch');
+  it('resolveConfig with landing.action leave returns leave', () => {
+    const config = resolveConfig({ landing: { action: 'leave' } }, {});
+    expect(config.landing.action).toBe('leave');
   });
 
-  it('resolveConfig with build.onSuccess merge-to-base-branch returns merge-to-base-branch', () => {
-    const config = resolveConfig({ build: { onSuccess: 'merge-to-base-branch' } }, {});
-    expect(config.build.onSuccess).toBe('merge-to-base-branch');
+  it('resolveConfig with landing.action merge returns merge', () => {
+    const config = resolveConfig({ landing: { action: 'merge' } }, {});
+    expect(config.landing.action).toBe('merge');
   });
 
-  it('resolveConfig without build.onSuccess falls back to default', () => {
+  it('resolveConfig without landing.action falls back to default', () => {
     const config = resolveConfig({ build: { cleanupPlanFiles: false } }, {});
-    expect(config.build.onSuccess).toBe('merge-to-base-branch');
+    expect(config.landing.action).toBe('merge');
   });
 
-  it('eforgeConfigSchema rejects invalid onSuccess string', () => {
+  it('eforgeConfigSchema rejects invalid landing.action string', () => {
     const result = eforgeConfigSchema.safeParse({
-      build: { onSuccess: 'publish-to-npm' },
+      landing: { action: 'publish-to-npm' },
     });
     expect(result.success).toBe(false);
   });
 
-  it('eforgeConfigSchema accepts all three valid onSuccess values', () => {
-    for (const value of ['merge-to-base-branch', 'issue-pr', 'leave-branch']) {
-      const result = eforgeConfigSchema.safeParse({ build: { onSuccess: value } });
+  it('eforgeConfigSchema accepts all three valid landing.action values', () => {
+    for (const value of ['pr', 'merge', 'leave']) {
+      const result = eforgeConfigSchema.safeParse({ landing: { action: value } });
       expect(result.success, `${value} should be valid`).toBe(true);
     }
   });
 
-  it('eforgeConfigSchema accepts missing onSuccess (optional field)', () => {
-    const result = eforgeConfigSchema.safeParse({ build: {} });
+  it('eforgeConfigSchema accepts missing landing.action (optional field)', () => {
+    const result = eforgeConfigSchema.safeParse({ landing: {} });
     expect(result.success).toBe(true);
+  });
+
+  it('eforgeConfigSchema rejects build.onSuccess (removed field)', () => {
+    // build.onSuccess was removed in v39 — supplying it must throw a ConfigMigrationError
+    // at load time and be rejected by the schema
+    const result = eforgeConfigSchema.safeParse({ build: { onSuccess: 'merge-to-base-branch' } });
+    expect(result.success).toBe(false);
   });
 });
 

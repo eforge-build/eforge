@@ -22,8 +22,8 @@ import type { EforgeConfig } from '../config.js';
 import type { QueuedPrd } from '../prd-queue.js';
 import type { QueueOptions } from '../eforge.js';
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from '../stacking/state.js';
-import type { StackState } from '../stacking/types.js';
+import { loadArtifactRegistry, hasUsableArtifact } from '../artifacts/registry.js';
+import type { ArtifactRegistry } from '../artifacts/registry.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 // --- eforge:region plan-02-runtime-and-integration ---
 import type { NativeExtensionRegistry } from '../extensions/types.js';
@@ -405,41 +405,28 @@ export class QueueScheduler {
   }
 
   // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-  private artifactAwareDependencies(): boolean {
-    return this.config.stacking?.enabled === true;
-  }
-
-  private dependencyHasArtifact(stackState: StackState | undefined, dep: string): boolean {
-    return stackState !== undefined && getRecordedArtifactRef(stackState, dep) !== undefined;
-  }
-
-  private isDependencyBlocking(dep: string, stackState: StackState | undefined): boolean {
+  private isDependencyBlocking(dep: string, terminalIds: Set<string>): boolean {
     const depState = this.prdState.get(dep);
-    if (depState?.status === 'failed' || depState?.status === 'skipped' || depState?.status === 'blocked') {
-      return true;
-    }
-    if (!depState && stackState) {
-      return lookupLayerByPrdId(stackState, dep)?.status === 'failed';
-    }
-    return false;
+    return terminalIds.has(dep) || depState?.status === 'failed' || depState?.status === 'skipped' || depState?.status === 'blocked';
   }
 
-  private isDependencySatisfied(dep: string, stackState: StackState | undefined): boolean {
+  private isDependencySatisfied(dep: string, artifactRegistry: ArtifactRegistry, terminalIds: Set<string>): boolean {
+    if (terminalIds.has(dep)) return false;
     const depState = this.prdState.get(dep);
-    if (this.artifactAwareDependencies()) {
-      if (depState) {
-        return depState.status === 'completed' && this.dependencyHasArtifact(stackState, dep);
-      }
-      return this.dependencyHasArtifact(stackState, dep);
+    if (depState) {
+      // Completion is necessary but not sufficient: the durable registry record
+      // remains the source of truth for dependency readiness.
+      return depState.status === 'completed' && hasUsableArtifact(artifactRegistry, dep);
     }
-    if (!depState) return true;
-    return depState.status === 'completed';
+    // Out-of-session dep (completed in a prior run or enqueued into a
+    // separate queue instance): require a durable artifact registry entry.
+    return hasUsableArtifact(artifactRegistry, dep);
   }
 
-  private isReady(prdId: string, stackState: StackState | undefined): boolean {
+  private isReady(prdId: string, artifactRegistry: ArtifactRegistry, terminalIds: Set<string>): boolean {
     const state = this.prdState.get(prdId);
     if (!state || state.status !== 'pending') return false;
-    return state.dependsOn.every((dep) => this.isDependencySatisfied(dep, stackState));
+    return state.dependsOn.every((dep) => this.isDependencySatisfied(dep, artifactRegistry, terminalIds));
   }
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
@@ -538,6 +525,14 @@ export class QueueScheduler {
     } as EforgeEvent);
   }
 
+  /**
+   * Returns true unconditionally: artifact-aware dependency checking is always
+   * enabled for queued builds. Called by the plan-05 onComplete region.
+   */
+  private artifactAwareDependencies(): boolean {
+    return true;
+  }
+
   private async applyStackingDispatchValidation(prd: QueuedPrd): Promise<QueuedPrd | null> {
     if (this.config.stacking?.enabled !== true) return prd;
 
@@ -597,7 +592,11 @@ export class QueueScheduler {
     // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
     // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-    const stackState = this.artifactAwareDependencies() ? await loadStackState(this.cwd) : undefined;
+    const artifactRegistry = await loadArtifactRegistry(this.cwd);
+    const terminalIds = new Set<string>([
+      ...(await loadQueue(`${this.queueDir}/failed`, this.cwd).catch((): QueuedPrd[] => [])).map((p) => p.id),
+      ...(await loadQueue(`${this.queueDir}/skipped`, this.cwd).catch((): QueuedPrd[] => [])).map((p) => p.id),
+    ]);
     // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
     for (const prd of this.orderedPrds) {
@@ -608,12 +607,12 @@ export class QueueScheduler {
       const candidateState = this.prdState.get(prd.id);
       if (candidateState?.status === 'pending') {
         // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-        const blockingDeps = candidateState.dependsOn.filter((dep) => this.isDependencyBlocking(dep, stackState));
+        const blockingDeps = candidateState.dependsOn.filter((dep) => this.isDependencyBlocking(dep, terminalIds));
         if (blockingDeps.length > 0) {
           candidateState.status = 'blocked';
           this.propagateBlocked(prd.id);
         }
-        const unmetDeps = candidateState.dependsOn.filter((dep) => !this.isDependencySatisfied(dep, stackState));
+        const unmetDeps = candidateState.dependsOn.filter((dep) => !this.isDependencySatisfied(dep, artifactRegistry, terminalIds));
         // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
         if (unmetDeps.length > 0 && !dependencyBlockedEmitted.has(prd.id)) {
           dependencyBlockedEmitted.add(prd.id);
@@ -627,7 +626,7 @@ export class QueueScheduler {
       }
       // --- eforge:endregion plan-02-scheduler-emission ---
 
-      if (!this.isReady(prd.id, stackState)) continue;
+      if (!this.isReady(prd.id, artifactRegistry, terminalIds)) continue;
 
       // --- eforge:region plan-02-runtime-and-integration ---
       // Skip if already in routing/launch path (prevents duplicate launches

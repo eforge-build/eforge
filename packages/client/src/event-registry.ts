@@ -825,13 +825,13 @@ const eventRegistry = {
     scope: 'session',
     persist: false,
     summary: (e) => {
-      if (e.action === 'issue-pr') {
+      if (e.action === 'pr') {
         return e.prUrl
           ? `Landing (${e.action}): PR ${e.prUrl}`
           : `Landing (${e.action}): PR created for ${e.featureBranch}`;
       }
-      if (e.action === 'merge-to-base-branch') return `Landing (${e.action}): merged ${e.featureBranch} into ${e.baseBranch}`;
-      if (e.action === 'leave-branch') return `Landing (${e.action}): ${e.featureBranch} left for manual workflow`;
+      if (e.action === 'merge') return `Landing (${e.action}): merged ${e.featureBranch} into ${e.baseBranch}`;
+      if (e.action === 'leave') return `Landing (${e.action}): ${e.featureBranch} left for manual workflow`;
       return `Landing (${e.action}): completed`;
     },
   },
@@ -915,11 +915,39 @@ const eventRegistry = {
     project: (e, state) => {
       const existing = state.stackLayers.find((l) => l.prdId === e.prdId);
       if (!existing) return undefined;
+      // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+      // Map landing event to layer status:
+      //   complete + pr/leave   → 'landed'
+      //   complete + merge      → 'merged'
+      //   failed                → 'failed'
+      //   skipped + merge       → 'merged'
+      //   skipped + leave       → 'landed'
+      //   skipped + pr          → 'failed' (pre-landing skip)
+      //   started               → no change (preserve existing layer status)
+      let layerStatus = existing.status;
+      if (e.status === 'complete') {
+        layerStatus = e.action === 'merge' ? 'merged' : 'landed';
+      } else if (e.status === 'failed') {
+        layerStatus = 'failed';
+      } else if (e.status === 'skipped') {
+        if (e.action === 'merge') {
+          layerStatus = 'merged';
+        } else if (e.action === 'leave') {
+          layerStatus = 'landed';
+        } else {
+          // pr action skipped = pre-landing failure
+          layerStatus = 'failed';
+        }
+      }
+      // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       return {
         stackLayers: state.stackLayers.map((l) =>
           l.prdId === e.prdId
             ? {
                 ...l,
+                // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+                status: layerStatus,
+                // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
                 landing: {
                   action: e.action,
                   status: e.status,

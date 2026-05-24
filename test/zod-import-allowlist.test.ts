@@ -45,6 +45,9 @@ const ZOD_IMPORT_ALLOWLIST: readonly string[] = [
   // engine — config and prd-queue (deferred to a follow-up PRD)
   'packages/engine/src/config.ts',
   'packages/engine/src/prd-queue.ts',
+  // engine — artifact registry uses Zod for runtime validation of
+  // builds.json (intentional: engine-owned runtime state, not wire protocol)
+  'packages/engine/src/artifacts/registry.ts',
   // engine — stacking state management uses Zod for runtime validation of the
   // layers.json state file (intentional: engine-owned runtime state, not wire protocol)
   'packages/engine/src/stacking/state.ts',

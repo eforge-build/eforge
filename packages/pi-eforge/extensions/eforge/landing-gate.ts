@@ -1,12 +1,11 @@
 /**
  * Shared Pi landing-gate helper for eforge_build and /eforge:playbook run.
  *
- * User-facing vocabulary uses `landing.action` shorthands: `pr`, `merge`, `leave`.
- * These map to the wire-protocol values: `issue-pr`, `merge-to-base-branch`, `leave-branch`.
+ * Canonical landing action values: pr, merge, leave.
+ * These are sent directly as landingAction in request bodies.
  *
- * Build mode (tool path with explicit onSuccessOverride): prompts the user for
- * trunk remediation only when `merge` (`merge-to-base-branch`) would land on
- * trunk without opt-in.
+ * Build mode (tool path with explicit landingActionOverride): prompts the user for
+ * trunk remediation only when `merge` would land on trunk without opt-in.
  *
  * Build mode (command path, no explicit override): always shows the full
  * landing selector with "Use project default" so the user can choose explicitly.
@@ -26,7 +25,7 @@ import { showSelectOverlay, type UIContext } from "./ui-helpers.js";
 import {
   enableLocalMergeToTrunkInConfigYaml,
   shouldPromptForTrunkLanding,
-  getEffectiveOnSuccess,
+  getEffectiveLandingAction,
   type BuildOnSuccess,
   type BuildLandingConfig,
 } from "./trunk-landing.js";
@@ -74,7 +73,7 @@ async function getGitBranch(
 // ---------------------------------------------------------------------------
 
 export interface LandingGateResult {
-  onSuccess?: BuildOnSuccess;
+  landingAction?: BuildOnSuccess;
   cancelled?: boolean;
   configUpdated?: boolean;
 }
@@ -115,8 +114,8 @@ async function applyConfigUpdate(
  * Full landing selector — loads verbose config, builds the policy model,
  * renders the choice menu, and returns the user's selection.
  *
- * Returns `{}` for "Use project default" (no onSuccess → daemon inherits
- * project-level config). Returns `{ onSuccess }` for explicit selections.
+ * Returns `{}` for "Use project default" (no landingAction → daemon inherits
+ * project-level config). Returns `{ landingAction }` for explicit selections.
  * Returns `{ cancelled: true }` when the user cancels.
  *
  * Exported for direct use where neither the build nor playbook gate-specific
@@ -130,12 +129,14 @@ export async function promptForLandingSelection(
   const verboseConfig = await loadLandingConfig(ctx.cwd);
   const resolved = asRecord(verboseConfig.resolved) ?? {};
   const build = asRecord(resolved.build) as BuildLandingConfig | undefined;
+  const landing = asRecord(resolved.landing) as { action?: BuildOnSuccess } | undefined;
+  const configuredLandingAction = landing?.action;
   const trunkBranch = await resolveTrunkBranch(
     { build: build ?? {} } as Parameters<typeof resolveTrunkBranch>[0],
     ctx.cwd,
   );
   const currentBranch = await getGitBranch(pi, ctx.cwd, signal);
-  const effectiveLanding = getEffectiveOnSuccess(build);
+  const effectiveLanding = getEffectiveLandingAction(configuredLandingAction);
   const projectConfigPath = verboseConfig.sources?.project?.path ?? null;
 
   const model = buildLandingMenuModel({
@@ -170,10 +171,10 @@ export async function promptForLandingSelection(
         "Cannot update config: eforge/config.yaml was not found for this project.",
       );
     }
-    return { ...(await applyConfigUpdate(ctx.cwd, projectConfigPath)), onSuccess: "merge-to-base-branch" };
+    return { ...(await applyConfigUpdate(ctx.cwd, projectConfigPath)), landingAction: "merge" };
   }
 
-  return { onSuccess: choice as BuildOnSuccess };
+  return { landingAction: choice as BuildOnSuccess };
 }
 
 // ---------------------------------------------------------------------------
@@ -183,24 +184,24 @@ export async function promptForLandingSelection(
 /**
  * Build landing gate.
  *
- * **Tool/override path** (onSuccessOverride provided):
+ * **Tool/override path** (landingActionOverride provided):
  *   Checks whether trunk remediation is needed. If the override is already safe
- *   (not merge-to-base-branch, or not on trunk, or local-trunk opt-in is
- *   active), returns `{}` immediately. Otherwise shows the remediation selector.
+ *   (not merge, or not on trunk, or local-trunk opt-in is active), returns `{}`
+ *   immediately. Otherwise shows the remediation selector.
  *   Throws when hasUI is false and remediation is required (non-interactive).
  *
- * **Command path** (onSuccessOverride === undefined):
+ * **Command path** (landingActionOverride === undefined):
  *   Shows the full landing selector via `promptForLandingSelection` so the
  *   user can choose an explicit action or accept the project default.
  */
 export async function promptForBuildLandingGate(
   pi: ExtensionAPI,
   ctx: UIContext,
-  onSuccessOverride: BuildOnSuccess | undefined,
+  landingActionOverride: BuildOnSuccess | undefined,
   signal?: AbortSignal,
   options: BuildLandingGateOptions = {},
 ): Promise<LandingGateResult> {
-  if (onSuccessOverride === undefined && options.mode === "selector") {
+  if (landingActionOverride === undefined && options.mode === "selector") {
     // Native /eforge:build command path: full landing selector with "Use project default".
     return promptForLandingSelection(pi, ctx, signal);
   }
@@ -210,25 +211,27 @@ export async function promptForBuildLandingGate(
   const verboseConfig = await loadLandingConfig(ctx.cwd);
   const resolved = asRecord(verboseConfig.resolved) ?? {};
   const build = asRecord(resolved.build) as BuildLandingConfig | undefined;
+  const landing = asRecord(resolved.landing) as { action?: BuildOnSuccess } | undefined;
+  const configuredLandingAction = landing?.action;
   const trunkBranch = await resolveTrunkBranch(
     { build: build ?? {} } as Parameters<typeof resolveTrunkBranch>[0],
     ctx.cwd,
   );
   const currentBranch = await getGitBranch(pi, ctx.cwd, signal);
 
-  if (!shouldPromptForTrunkLanding({ currentBranch, trunkBranch, build, onSuccessOverride })) {
+  if (!shouldPromptForTrunkLanding({ currentBranch, trunkBranch, build, configuredLandingAction, landingActionOverride })) {
     return {};
   }
 
   if (!ctx.hasUI) {
     throw new Error(
-      `Building from trunk '${trunkBranch}' with merge-to-base-branch requires a choice: ` +
-        `pass onSuccess: "issue-pr" for this build, or set build.allowLocalMergeToTrunk: true in eforge/config.yaml.`,
+      `Building from trunk '${trunkBranch}' with merge landing requires a choice: ` +
+        `pass landingAction: "pr" for this build, or set build.allowLocalMergeToTrunk: true in eforge/config.yaml.`,
     );
   }
 
   const projectConfigPath = verboseConfig.sources?.project?.path ?? null;
-  const effectiveLanding = getEffectiveOnSuccess(build, onSuccessOverride);
+  const effectiveLanding = getEffectiveLandingAction(configuredLandingAction, landingActionOverride);
   const model = buildLandingMenuModel({
     effectiveLanding,
     currentBranch,
@@ -240,7 +243,7 @@ export async function promptForBuildLandingGate(
 
   const choice = await showSelectOverlay(
     ctx,
-    `eforge: on trunk (${trunkBranch}) with merge-to-base-branch`,
+    `eforge: on trunk (${trunkBranch}) with merge landing`,
     model.remediationChoices,
   );
 
@@ -254,10 +257,10 @@ export async function promptForBuildLandingGate(
         "Cannot update config: eforge/config.yaml was not found for this project.",
       );
     }
-    return { ...(await applyConfigUpdate(ctx.cwd, projectConfigPath)), onSuccess: "merge-to-base-branch" };
+    return { ...(await applyConfigUpdate(ctx.cwd, projectConfigPath)), landingAction: "merge" };
   }
 
-  return { onSuccess: choice as BuildOnSuccess };
+  return { landingAction: choice as BuildOnSuccess };
 }
 
 // ---------------------------------------------------------------------------
@@ -271,7 +274,7 @@ export async function promptForBuildLandingGate(
  * Delegates to `promptForLandingSelection` for consistent policy rendering.
  *
  * Returns `{}` for "Use project default" (daemon inherits project config).
- * Returns `{ onSuccess }` for explicit selections.
+ * Returns `{ landingAction }` for explicit selections.
  * Returns `{ cancelled: true }` when the user cancels.
  */
 export async function promptForPlaybookLandingGate(

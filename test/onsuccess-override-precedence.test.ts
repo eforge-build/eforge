@@ -1,11 +1,11 @@
 /**
- * Tests for onSuccess override precedence.
+ * Tests for landing action override precedence.
  *
  * Precedence chain (highest to lowest):
- *   1. explicit BuildOptions.onSuccess (via --on-success CLI or direct API)
- *   2. PRD frontmatter.onSuccess (persisted at enqueue time)
- *   3. config.build.onSuccess (project-level default)
- *   4. Orchestrator default (merge-to-base-branch)
+ *   1. explicit BuildOptions.landing (via --landing-action CLI or direct API)
+ *   2. PRD frontmatter.landing (persisted at enqueue time)
+ *   3. config.build.landing (project-level default)
+ *   4. Orchestrator default (merge)
  *
  * These tests verify the engine resolves the correct value at each level
  * by inspecting the `build()` method's effective resolution without
@@ -23,7 +23,7 @@ import { enqueuePrd, loadQueue } from '@eforge-build/engine/prd-queue';
 const exec = promisify(execFile);
 
 async function createGitRepo(): Promise<string> {
-  const cwd = await mkdtemp(join(tmpdir(), 'eforge-onsuccess-prec-'));
+  const cwd = await mkdtemp(join(tmpdir(), 'eforge-landing-prec-'));
   await exec('git', ['init'], { cwd });
   await exec('git', ['config', 'user.email', 'test@test.com'], { cwd });
   await exec('git', ['config', 'user.name', 'Test'], { cwd });
@@ -31,49 +31,49 @@ async function createGitRepo(): Promise<string> {
 }
 
 /**
- * Resolves the effective onSuccess value using the same precedence logic as
+ * Resolves the effective landing action using the same precedence logic as
  * `buildSinglePrd` in eforge.ts:
  *   - explicit option wins over frontmatter
  */
-function resolveOnSuccess(
-  optionsOnSuccess: string | undefined,
-  frontmatterOnSuccess: string | undefined,
-  configOnSuccess: string | undefined,
+function resolveLanding(
+  optionsLanding: string | undefined,
+  frontmatterLanding: string | undefined,
+  configLanding: string | undefined,
 ): string {
-  // Mirrors: options.onSuccess ?? prd.frontmatter.onSuccess (in buildSinglePrd)
-  // Then: options.onSuccess ?? this.config.build.onSuccess (in build())
-  return optionsOnSuccess ?? frontmatterOnSuccess ?? configOnSuccess ?? 'merge-to-base-branch';
+  // Mirrors: options.landing ?? prd.frontmatter.landing (in buildSinglePrd)
+  // Then: options.landing ?? this.config.build.landing (in build())
+  return optionsLanding ?? frontmatterLanding ?? configLanding ?? 'merge';
 }
 
-describe('onSuccess override precedence', () => {
+describe('landing action override precedence', () => {
   it('explicit option wins over frontmatter', () => {
-    const result = resolveOnSuccess('issue-pr', 'leave-branch', 'merge-to-base-branch');
-    expect(result).toBe('issue-pr');
+    const result = resolveLanding('pr', 'leave', 'merge');
+    expect(result).toBe('pr');
   });
 
   it('frontmatter wins over config when no explicit option', () => {
-    const result = resolveOnSuccess(undefined, 'leave-branch', 'issue-pr');
-    expect(result).toBe('leave-branch');
+    const result = resolveLanding(undefined, 'leave', 'pr');
+    expect(result).toBe('leave');
   });
 
   it('config wins over default when frontmatter is absent', () => {
-    const result = resolveOnSuccess(undefined, undefined, 'issue-pr');
-    expect(result).toBe('issue-pr');
+    const result = resolveLanding(undefined, undefined, 'pr');
+    expect(result).toBe('pr');
   });
 
-  it('default merge-to-base-branch when all are absent', () => {
-    const result = resolveOnSuccess(undefined, undefined, undefined);
-    expect(result).toBe('merge-to-base-branch');
+  it('default merge when all are absent', () => {
+    const result = resolveLanding(undefined, undefined, undefined);
+    expect(result).toBe('merge');
   });
 
   it('explicit option wins over all levels', () => {
-    const result = resolveOnSuccess('leave-branch', 'issue-pr', 'merge-to-base-branch');
-    expect(result).toBe('leave-branch');
+    const result = resolveLanding('leave', 'pr', 'merge');
+    expect(result).toBe('leave');
   });
 });
 
-describe('onSuccess frontmatter persistence and loadQueue roundtrip', () => {
-  it('enqueuePrd with onSuccess persists value loadable by loadQueue', async () => {
+describe('landing frontmatter persistence and loadQueue roundtrip', () => {
+  it('enqueuePrd with landing persists value loadable by loadQueue', async () => {
     const cwd = await createGitRepo();
     const queueDir = 'eforge/queue';
     await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
@@ -83,17 +83,17 @@ describe('onSuccess frontmatter persistence and loadQueue roundtrip', () => {
       title: 'Test PRD',
       queueDir,
       cwd,
-      onSuccess: 'issue-pr',
+      landingAction: 'pr',
     });
 
     const prds = await loadQueue(queueDir, cwd);
     expect(prds).toHaveLength(1);
-    expect(prds[0].frontmatter.onSuccess).toBe('issue-pr');
+    expect(prds[0].frontmatter.landing).toBe('pr');
   });
 
   it('buildSinglePrd precedence: explicit option wins over persisted frontmatter', async () => {
     // Simulates the precedence resolution that buildSinglePrd performs:
-    // options.onSuccess ?? prd.frontmatter.onSuccess
+    // options.landing ?? prd.frontmatter.landing
     const cwd = await createGitRepo();
     const queueDir = 'eforge/queue';
     await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
@@ -103,7 +103,7 @@ describe('onSuccess frontmatter persistence and loadQueue roundtrip', () => {
       title: 'Conflict PRD',
       queueDir,
       cwd,
-      onSuccess: 'leave-branch',
+      landingAction: 'leave',
     });
 
     const prds = await loadQueue(queueDir, cwd);
@@ -111,11 +111,11 @@ describe('onSuccess frontmatter persistence and loadQueue roundtrip', () => {
 
     const prd = prds[0];
     // Explicit option overrides the frontmatter value
-    const explicitOption: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' = 'issue-pr';
-    const resolved = explicitOption ?? prd.frontmatter.onSuccess;
-    expect(resolved).toBe('issue-pr');
+    const explicitOption: 'pr' | 'merge' | 'leave' = 'pr';
+    const resolved = explicitOption ?? prd.frontmatter.landing;
+    expect(resolved).toBe('pr');
     // Without explicit option, frontmatter wins
-    const resolvedFromFrontmatter = undefined ?? prd.frontmatter.onSuccess;
-    expect(resolvedFromFrontmatter).toBe('leave-branch');
+    const resolvedFromFrontmatter = undefined ?? prd.frontmatter.landing;
+    expect(resolvedFromFrontmatter).toBe('leave');
   });
 });

@@ -13,7 +13,7 @@ Enqueue a PRD file or description for the eforge daemon to build. Uses the eforg
 - `source` (optional) - PRD file path, session-plan path, or inline description of what to build
 - `--infer` (optional) - Skip session-plan discovery and infer the source from conversation context. Used by Pi's native `/eforge:build` source selector.
 - `--profile <name>` (optional) - Use this eforge agent runtime profile for the build instead of the active profile.
-- `onSuccess` / `--on-success <action>` (optional) - Override the landing action for this build. One of `merge-to-base-branch`, `issue-pr`, or `leave-branch`. Precedence: this argument > PRD frontmatter > `landing.action` in `eforge/config.yaml` (or legacy `build.onSuccess`) > engine default (`merge-to-base-branch`). If omitted, the project config default applies. Note: `merge-to-base-branch` on the trunk branch requires `build.allowLocalMergeToTrunk: true` in `eforge/config.yaml`.
+- `--landing-action <action>` (optional) - Override the landing action for this build. One of `pr`, `merge`, or `leave`. Precedence: this argument > PRD frontmatter > `landing.action` in `eforge/config.yaml` > engine default (`merge`). If omitted, the project config default applies. Note: `merge` on the trunk branch requires `build.allowLocalMergeToTrunk: true` in `eforge/config.yaml`.
 
 ## Workflow
 
@@ -99,23 +99,23 @@ After the user responds, incorporate their answers into the working source and p
 
 The build skill uses a **unified landing selector** to determine what happens to the artifact branch when the build finishes. The selector offers these choices:
 
-- **Use project default** — Inherits `landing.action` from `eforge/config.yaml` (or legacy `build.onSuccess`), or the engine default (`merge-to-base-branch`) if unset. **No `onSuccess` key is sent in the enqueue body** — the engine resolves the default at build time.
-- **pr** (`issue-pr`) — Open a pull request from the artifact branch.
-- **merge** (`merge-to-base-branch`) — Merge the artifact branch into the base branch directly.
-- **leave** (`leave-branch`) — Commit to the artifact branch and exit without merging or opening a PR.
+- **Use project default** — Inherits `landing.action` from `eforge/config.yaml`, or the engine default (`merge`) if unset. **No `landingAction` key is sent in the enqueue body** — the engine resolves the default at build time.
+- **pr** — Open a pull request from the artifact branch.
+- **merge** — Merge the artifact branch into the base branch directly.
+- **leave** — Commit to the artifact branch and exit without merging or opening a PR.
 
-**If `$ARGUMENTS` already contains an explicit landing override** (e.g. `onSuccess: <value>` or `--on-success <value>`), skip the selector and use the provided value at enqueue time.
+**If `$ARGUMENTS` already contains an explicit landing override** (e.g. `--landing-action <value>`), skip the selector and use the provided value at enqueue time.
 
 **Protected trunk behavior**: When the current branch is the configured trunk branch (e.g. `main`) and `build.allowLocalMergeToTrunk` is not `true` in `eforge/config.yaml`:
-- The **merge** option and the **project default** option (when the effective project default is `merge-to-base-branch`) are **excluded** from the normal selector menu.
+- The **merge** option and the **project default** option (when the effective project default is `merge`) are **excluded** from the normal selector menu.
 - A warning is displayed explaining that direct trunk merges are not permitted for this project.
 - Remediation choices are offered instead: **pr** for this build, **leave branch**, **update config** to enable local trunk merges (shown only when a project config path is known), or **cancel**.
 - Do **not** ask the user to create a feature branch in this flow.
 
 When the current branch is a **feature branch**, all choices are available:
-- `merge-to-base-branch` merges the artifact branch into the feature branch locally (no PR required).
-- `issue-pr` opens a PR from the artifact branch targeting the feature branch.
-- `leave-branch` commits to the artifact branch and exits.
+- `merge` merges the artifact branch into the feature branch locally (no PR required).
+- `pr` opens a PR from the artifact branch targeting the feature branch.
+- `leave` commits to the artifact branch and exits.
 
 <!-- parity-skip-start -->
 Call the `eforge_confirm_build` tool with `{ source: "<the complete working source text>" }`. This opens an editor-first review flow where the user can revise the source directly, then choose confirm, revise again, or cancel from a compact keyboard-navigable selector.
@@ -149,7 +149,7 @@ First, validate the project config by calling the `eforge_config` tool with `{ a
 
 - If `valid` is `true`, continue silently.
 
-Call the `eforge_build` tool with `{ source: "<source>" }`, using the latest working source (including the edited `source` returned by `eforge_confirm_build` on confirmation for non-file-path sources). If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If an explicit landing action was selected (anything other than "Use project default"), include `onSuccess: "<value>"` in the call. **Do not include `onSuccess` when the user selected "Use project default" or when no landing override is present in `$ARGUMENTS` — omitting the key lets the engine inherit the configured default.**
+Call the `eforge_build` tool with `{ source: "<source>" }`, using the latest working source (including the edited `source` returned by `eforge_confirm_build` on confirmation for non-file-path sources). If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If an explicit landing action was selected (anything other than "Use project default"), include `landingAction: "<value>"` in the call. **Do not include `landingAction` when the user selected "Use project default" or when no landing override is present in `$ARGUMENTS` — omitting the key lets the engine inherit the configured default.**
 
 <!-- parity-skip-start -->
 The Pi native `/eforge:build` command presents the landing selector before invoking this skill. By the time the skill reaches the enqueue step in UI mode, the landing decision is already encoded in `$ARGUMENTS`: either an explicit override was appended, or no override was appended (meaning project default applies). Do not show the landing selector again if an explicit override is already present in `$ARGUMENTS`.
@@ -173,7 +173,7 @@ If the monitor is running, also include the monitor URL.
 
 ## Direct Tool Backstop
 
-When `eforge_build` is called directly (for example, by a tool call rather than through the native `/eforge:build` command flow) with an effective `merge-to-base-branch` landing on a protected trunk branch:
+When `eforge_build` is called directly (for example, by a tool call rather than through the native `/eforge:build` command flow) with an effective `merge` landing on a protected trunk branch:
 
 <!-- parity-skip-start -->
 - **UI context**: The landing gate activates and presents the remediation selector (pr, leave, config opt-in when applicable, cancel) before enqueue proceeds.

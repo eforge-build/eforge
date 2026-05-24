@@ -860,7 +860,7 @@ describe('safeParseEforgeEvent — landing workflow literals', () => {
     const result = safeParseEforgeEvent({
       type: 'landing:start',
       timestamp: '2025-01-01T00:00:00.000Z',
-      action: 'issue-pr',
+      action: 'pr',
       featureBranch: 'eforge/my-set',
       baseBranch: 'feature/parent',
       trunkBranch: 'main',
@@ -873,7 +873,7 @@ describe('safeParseEforgeEvent — landing workflow literals', () => {
     const result = safeParseEforgeEvent({
       type: 'landing:start',
       timestamp: '2025-01-01T00:00:00.000Z',
-      action: 'issue-pr',
+      action: 'pr',
       featureBranch: 'eforge/my-set',
       baseBranch: 'feature/parent',
       trunkBranch: 'main',
@@ -888,7 +888,7 @@ describe('safeParseEforgeEvent — landing workflow literals', () => {
       const result = safeParseEforgeEvent({
         type: 'landing:start',
         timestamp: '2025-01-01T00:00:00.000Z',
-        action: 'issue-pr',
+        action: 'pr',
         featureBranch: 'eforge/my-set',
         baseBranch: 'main',
         workflow,

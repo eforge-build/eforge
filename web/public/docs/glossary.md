@@ -111,7 +111,7 @@ A named declarative bundle of project MCP servers (from `.mcp.json`) that a tier
 
 ## Trunk branch policy
 
-The pair of config fields (`build.trunkBranch` and `build.allowLocalMergeToTrunk`) that control how eforge handles landing when the current branch is the project trunk. By default, `landing.action: merge` (legacy `build.onSuccess: merge-to-base-branch`) is rejected on trunk to prevent accidental direct commits to a protected branch; the policy must be explicitly opted into for solo or unprotected projects. See [Configuration - Trunk Branch Policy](/docs/configuration#trunk-branch-policy).
+The pair of config fields (`build.trunkBranch` and `build.allowLocalMergeToTrunk`) that control how eforge handles landing when the current branch is the project trunk. By default, `landing.action: merge` is rejected on trunk to prevent accidental direct commits to a protected branch; the policy must be explicitly opted into for solo or unprotected projects. See [Configuration - Trunk Branch Policy](/docs/configuration#trunk-branch-policy).
 
 ## Worktree
 
