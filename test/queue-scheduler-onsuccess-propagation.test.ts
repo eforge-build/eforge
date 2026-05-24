@@ -1,16 +1,16 @@
 /**
- * Tests for onSuccess propagation from PRD frontmatter through the scheduler
- * to the child process via the --on-success CLI flag.
+ * Tests for landing action propagation from PRD frontmatter through the scheduler
+ * to the child process via the --landing-action CLI flag.
  *
  * Uses the existing spawnPrdChild stub pattern from queue-scheduler.test.ts.
  * Verifies:
- *   1. When frontmatter.onSuccess is set, the scheduler passes it to spawnPrdChild.
- *   2. When frontmatter.onSuccess is absent, the flag is omitted (spawnPrdChild
+ *   1. When frontmatter.landing is set, the scheduler passes it to spawnPrdChild.
+ *   2. When frontmatter.landing is absent, the flag is omitted (spawnPrdChild
  *      is called without it).
  *
  * Note: the scheduler itself doesn't modify CLI args — that is `spawnPrdChild`'s
  * responsibility (in eforge.ts). The scheduler only forwards the QueuedPrd object.
- * These tests verify that prd.frontmatter.onSuccess flows through correctly to
+ * These tests verify that prd.frontmatter.landing flows through correctly to
  * the spawn call site by intercepting at the spawnPrdChild boundary.
  */
 
@@ -28,15 +28,15 @@ import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 
 const exec = promisify(execFile);
 
-function makeQueuedPrd(id: string, onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch', filePath?: string): QueuedPrd {
+function makeQueuedPrd(id: string, landing?: 'pr' | 'merge' | 'leave', filePath?: string): QueuedPrd {
   return {
     id,
     filePath: filePath ?? `/tmp/${id}.md`,
     frontmatter: {
       title: id,
-      ...(onSuccess !== undefined && { onSuccess }),
+      ...(landing !== undefined && { landing }),
     },
-    content: `---\ntitle: ${id}\n${onSuccess ? `onSuccess: ${onSuccess}\n` : ''}---\n\n# ${id}`,
+    content: `---\ntitle: ${id}\n${landing ? `landing: ${landing}\n` : ''}---\n\n# ${id}`,
     lastCommitHash: '',
     lastCommitDate: '',
   };
@@ -49,7 +49,7 @@ async function createTestEnv(): Promise<{
   spawnPrdChild: ReturnType<typeof vi.fn>;
   makeScheduler: (initialPrds: QueuedPrd[]) => QueueScheduler;
 }> {
-  const cwd = await mkdtemp(join(tmpdir(), 'eforge-onsuccess-sched-'));
+  const cwd = await mkdtemp(join(tmpdir(), 'eforge-landing-sched-'));
   await exec('git', ['init'], { cwd });
   await exec('git', ['config', 'user.email', 'test@test.com'], { cwd });
   await exec('git', ['config', 'user.name', 'Test'], { cwd });
@@ -88,26 +88,26 @@ async function createTestEnv(): Promise<{
   return { cwd, queueDir, eventQueue, spawnPrdChild, makeScheduler };
 }
 
-describe('QueueScheduler — onSuccess propagation via QueuedPrd', () => {
-  it('spawnPrdChild receives a PRD with frontmatter.onSuccess set when configured', async () => {
+describe('QueueScheduler — landing action propagation via QueuedPrd', () => {
+  it('spawnPrdChild receives a PRD with frontmatter.landing set when configured', async () => {
     const { cwd, queueDir, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
     const prdPath = join(cwd, queueDir, 'feature-prd.md');
-    await writeFile(prdPath, '---\ntitle: Feature PRD\nonSuccess: leave-branch\n---\n\n# Feature PRD');
+    await writeFile(prdPath, '---\ntitle: Feature PRD\nlanding: leave\n---\n\n# Feature PRD');
 
-    const prd = makeQueuedPrd('feature-prd', 'leave-branch', prdPath);
+    const prd = makeQueuedPrd('feature-prd', 'leave', prdPath);
     const scheduler = makeScheduler([prd]);
     await scheduler.start();
     await new Promise((r) => setTimeout(r, 200));
 
     expect(spawnPrdChild).toHaveBeenCalledTimes(1);
     const calledWithPrd = spawnPrdChild.mock.calls[0][0] as QueuedPrd;
-    expect(calledWithPrd.frontmatter.onSuccess).toBe('leave-branch');
+    expect(calledWithPrd.frontmatter.landing).toBe('leave');
 
     eventQueue.removeProducer();
   });
 
-  it('spawnPrdChild receives a PRD without onSuccess when not set in frontmatter', async () => {
+  it('spawnPrdChild receives a PRD without landing when not set in frontmatter', async () => {
     const { cwd, queueDir, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
     const prdPath = join(cwd, queueDir, 'plain-prd.md');
@@ -120,25 +120,25 @@ describe('QueueScheduler — onSuccess propagation via QueuedPrd', () => {
 
     expect(spawnPrdChild).toHaveBeenCalledTimes(1);
     const calledWithPrd = spawnPrdChild.mock.calls[0][0] as QueuedPrd;
-    expect(calledWithPrd.frontmatter.onSuccess).toBeUndefined();
+    expect(calledWithPrd.frontmatter.landing).toBeUndefined();
 
     eventQueue.removeProducer();
   });
 
-  it('passes issue-pr onSuccess through to spawnPrdChild', async () => {
+  it('passes pr landing action through to spawnPrdChild', async () => {
     const { cwd, queueDir, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
     const prdPath = join(cwd, queueDir, 'pr-prd.md');
-    await writeFile(prdPath, '---\ntitle: PR PRD\nonSuccess: issue-pr\n---\n\n# PR PRD');
+    await writeFile(prdPath, '---\ntitle: PR PRD\nlanding: pr\n---\n\n# PR PRD');
 
-    const prd = makeQueuedPrd('pr-prd', 'issue-pr', prdPath);
+    const prd = makeQueuedPrd('pr-prd', 'pr', prdPath);
     const scheduler = makeScheduler([prd]);
     await scheduler.start();
     await new Promise((r) => setTimeout(r, 200));
 
     expect(spawnPrdChild).toHaveBeenCalledTimes(1);
     const calledWithPrd = spawnPrdChild.mock.calls[0][0] as QueuedPrd;
-    expect(calledWithPrd.frontmatter.onSuccess).toBe('issue-pr');
+    expect(calledWithPrd.frontmatter.landing).toBe('pr');
 
     eventQueue.removeProducer();
   });

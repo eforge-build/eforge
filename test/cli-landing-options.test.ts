@@ -1,16 +1,14 @@
 /**
- * Tests for CLI landing-action vocabulary mapper (plan-04-consumer-surfaces).
+ * Tests for CLI landing-action vocabulary (plan-01-landing-vocabulary-clean-break).
  *
  * Covers:
- *  1. resolveLandingAction maps shorthands (pr|merge|leave) to wire values.
+ *  1. resolveLandingAction validates canonical shorthands (pr|merge|leave) and
+ *     returns the value directly — no wire-value mapping.
  *  2. resolveAndValidateLandingFlags:
- *     a. Returns the mapped wire value when only --landing-action is provided.
- *     b. Returns the wire value when only --on-success is provided.
- *     c. Returns the agreed-upon value when both flags resolve to the same wire value.
- *     d. Throws CLILandingFlagError when --landing-action is unrecognised.
- *     e. Throws CLILandingFlagError when --on-success is invalid.
- *     f. Throws CLILandingFlagError when both flags conflict.
- *     g. Returns undefined when neither flag is supplied.
+ *     a. Returns the canonical value when --landing-action is provided.
+ *     b. Returns undefined when no flag is supplied.
+ *     c. Throws CLILandingFlagError when --landing-action is unrecognised.
+ *     d. Throws CLILandingFlagError for old wire values (migration: use pr|merge|leave).
  *
  * Follows AGENTS.md conventions: no mocks, real code, inline data.
  */
@@ -25,80 +23,56 @@ import {
 } from '../packages/eforge/src/cli/landing-options.js';
 
 describe('resolveLandingAction', () => {
-  it('maps "pr" to "issue-pr"', () => {
-    expect(resolveLandingAction('pr')).toBe('issue-pr');
+  it('accepts "pr" and returns "pr"', () => {
+    expect(resolveLandingAction('pr')).toBe('pr');
   });
 
-  it('maps "merge" to "merge-to-base-branch"', () => {
-    expect(resolveLandingAction('merge')).toBe('merge-to-base-branch');
+  it('accepts "merge" and returns "merge"', () => {
+    expect(resolveLandingAction('merge')).toBe('merge');
   });
 
-  it('maps "leave" to "leave-branch"', () => {
-    expect(resolveLandingAction('leave')).toBe('leave-branch');
+  it('accepts "leave" and returns "leave"', () => {
+    expect(resolveLandingAction('leave')).toBe('leave');
   });
 
   it('returns undefined for unknown values', () => {
     expect(resolveLandingAction('unknown')).toBeUndefined();
-    expect(resolveLandingAction('issue-pr')).toBeUndefined();
     expect(resolveLandingAction('')).toBeUndefined();
+  });
+
+  it('returns undefined for old wire values (migration: use pr|merge|leave)', () => {
+    expect(resolveLandingAction('issue-pr')).toBeUndefined();
+    expect(resolveLandingAction('merge-to-base-branch')).toBeUndefined();
+    expect(resolveLandingAction('leave-branch')).toBeUndefined();
   });
 });
 
 describe('resolveAndValidateLandingFlags', () => {
-  it('returns undefined when neither flag is supplied', () => {
+  it('returns undefined when no flag is supplied', () => {
     expect(resolveAndValidateLandingFlags({})).toBeUndefined();
   });
 
-  it('maps --landing-action "pr" to wire value "issue-pr"', () => {
-    expect(resolveAndValidateLandingFlags({ landingAction: 'pr' })).toBe('issue-pr');
+  it('returns "pr" for --landing-action "pr"', () => {
+    expect(resolveAndValidateLandingFlags({ landingAction: 'pr' })).toBe('pr');
   });
 
-  it('maps --landing-action "merge" to wire value "merge-to-base-branch"', () => {
-    expect(resolveAndValidateLandingFlags({ landingAction: 'merge' })).toBe('merge-to-base-branch');
+  it('returns "merge" for --landing-action "merge"', () => {
+    expect(resolveAndValidateLandingFlags({ landingAction: 'merge' })).toBe('merge');
   });
 
-  it('maps --landing-action "leave" to wire value "leave-branch"', () => {
-    expect(resolveAndValidateLandingFlags({ landingAction: 'leave' })).toBe('leave-branch');
-  });
-
-  it('accepts valid --on-success wire values directly', () => {
-    expect(resolveAndValidateLandingFlags({ onSuccess: 'issue-pr' })).toBe('issue-pr');
-    expect(resolveAndValidateLandingFlags({ onSuccess: 'merge-to-base-branch' })).toBe('merge-to-base-branch');
-    expect(resolveAndValidateLandingFlags({ onSuccess: 'leave-branch' })).toBe('leave-branch');
-  });
-
-  it('accepts non-conflicting combination: --landing-action pr + --on-success issue-pr', () => {
-    expect(
-      resolveAndValidateLandingFlags({ landingAction: 'pr', onSuccess: 'issue-pr' }),
-    ).toBe('issue-pr');
+  it('returns "leave" for --landing-action "leave"', () => {
+    expect(resolveAndValidateLandingFlags({ landingAction: 'leave' })).toBe('leave');
   });
 
   it('throws CLILandingFlagError for unrecognised --landing-action value', () => {
     expect(() => resolveAndValidateLandingFlags({ landingAction: 'bad' })).toThrow(CLILandingFlagError);
+    expect(() => resolveAndValidateLandingFlags({ landingAction: '' })).toThrow(CLILandingFlagError);
+  });
+
+  it('throws CLILandingFlagError for old wire values (migration: use pr|merge|leave)', () => {
     expect(() => resolveAndValidateLandingFlags({ landingAction: 'issue-pr' })).toThrow(CLILandingFlagError);
-  });
-
-  it('throws CLILandingFlagError for invalid --on-success value', () => {
-    expect(() => resolveAndValidateLandingFlags({ onSuccess: 'bad' })).toThrow(CLILandingFlagError);
-    expect(() => resolveAndValidateLandingFlags({ onSuccess: 'pr' })).toThrow(CLILandingFlagError);
-  });
-
-  it('throws CLILandingFlagError when --landing-action pr conflicts with --on-success merge-to-base-branch', () => {
-    expect(() =>
-      resolveAndValidateLandingFlags({ landingAction: 'pr', onSuccess: 'merge-to-base-branch' }),
-    ).toThrow(CLILandingFlagError);
-  });
-
-  it('throws CLILandingFlagError when --landing-action merge conflicts with --on-success issue-pr', () => {
-    expect(() =>
-      resolveAndValidateLandingFlags({ landingAction: 'merge', onSuccess: 'issue-pr' }),
-    ).toThrow(CLILandingFlagError);
-  });
-
-  it('throws CLILandingFlagError when --landing-action leave conflicts with --on-success merge-to-base-branch', () => {
-    expect(() =>
-      resolveAndValidateLandingFlags({ landingAction: 'leave', onSuccess: 'merge-to-base-branch' }),
-    ).toThrow(CLILandingFlagError);
+    expect(() => resolveAndValidateLandingFlags({ landingAction: 'merge-to-base-branch' })).toThrow(CLILandingFlagError);
+    expect(() => resolveAndValidateLandingFlags({ landingAction: 'leave-branch' })).toThrow(CLILandingFlagError);
   });
 });
 

@@ -20,7 +20,7 @@ import { execWithTimeout } from '../exec-with-timeout.js';
 import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS } from '../config.js';
 import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
 // --- eforge:region plan-01-engine-config-and-landing ---
-import { executeLandingAction, type LandingAction, type LandingResult } from '../landing.js';
+import { executeLandingAction, type LandingResult } from '../landing.js';
 // --- eforge:endregion plan-01-engine-config-and-landing ---
 // --- eforge:region plan-03-branch-aware-landing ---
 import type { EforgeConfig, LandingConfig } from '../config.js';
@@ -75,8 +75,6 @@ export interface PhaseContext {
   // --- eforge:region plan-01-engine-config-and-landing ---
   /** Whether the landing action completed successfully (replaces featureBranchMerged). */
   landingSucceeded: boolean;
-  /** Which post-build landing action to execute. */
-  onSuccess: LandingAction;
   // --- eforge:endregion plan-01-engine-config-and-landing ---
   /** Accumulates model IDs from agent:start events across all phases. Used for the final merge commit's Models-Used: trailer. */
   modelTracker: ModelTracker;
@@ -105,8 +103,8 @@ export interface PhaseContext {
   prdId?: string;
   /** Resolved stack context for queued stacked builds. */
   stackContext?: StackBaseContext;
-  /** Landing action vocabulary to persist on stack layers. */
-  landingAction?: LandingConfig['action'];
+  /** Which post-build landing action to execute (canonical: pr | merge | leave). */
+  landingAction: LandingConfig['action'];
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
   // --- eforge:region plan-02-stack-provider-runtime ---
   /** Instantiated stack provider adapter for git-spice landing (stacked builds only). */
@@ -620,8 +618,8 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
   if (!passed) {
     // --- eforge:region plan-01-engine-config-and-landing ---
-    yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action: ctx.onSuccess, featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'Validation failed' };
-    if (ctx.onSuccess === 'merge-to-base-branch') {
+    yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action: ctx.landingAction, featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'Validation failed' };
+    if (ctx.landingAction === 'merge') {
       yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'Validation failed' };
     }
     // --- eforge:endregion plan-01-engine-config-and-landing ---
@@ -726,7 +724,7 @@ export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeE
     yield {
       timestamp: new Date().toISOString(),
       type: 'landing:skipped',
-      action: ctx.onSuccess,
+      action: ctx.landingAction,
       featureBranch: ctx.featureBranch,
       baseBranch: ctx.config.baseBranch,
       reason: 'Stack artifact recording failed',
@@ -753,7 +751,7 @@ export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeE
 export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   if (!ctx.stackContext || !ctx.stackProvider) return;
 
-  const effectiveLandingAction = ctx.landingAction ?? 'leave';
+  const effectiveLandingAction = ctx.landingAction;
   const { prdId, stackId, branch } = ctx.stackContext;
 
   // If the build failed or was aborted before landing, persist the skipped outcome.
@@ -839,18 +837,18 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
 
 /**
  * Final landing of the feature branch and status determination.
- * Dispatches on ctx.onSuccess to run merge-to-base-branch, issue-pr, or leave-branch.
- * Yields landing:* events (and merge:finalize:* for the merge-to-base action).
+ * Dispatches on ctx.landingAction to run pr, merge, or leave.
+ * Yields landing:* events (and merge:finalize:* for the merge action).
  */
 export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   const { state, config, signal, featureBranch } = ctx;
   const allMerged = Object.values(state.plans).every((p) => p.status === 'merged');
   // --- eforge:region plan-01-engine-config-and-landing ---
-  const action = ctx.onSuccess;
+  const action = ctx.landingAction;
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 
   if (allMerged && !signal?.aborted) {
-    // Build the merge commit message (used by merge-to-base-branch only; passed through for completeness)
+    // Build the merge commit message (used by merge action only; passed through for completeness)
     const prefix = config.mode === 'errand' ? 'fix' : 'feat';
     let commitMessage: string;
     if (config.plans.length === 1) {
@@ -861,8 +859,8 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     }
 
     // --- eforge:region plan-02-policy-gate-engine-integration ---
-    // Policy gate applies only to merge-to-base-branch; stays here per plan spec.
-    if (action === 'merge-to-base-branch' && hasPolicyGates(ctx, 'final-merge')) {
+    // Policy gate applies only to merge; stays here per plan spec.
+    if (action === 'merge' && hasPolicyGates(ctx, 'final-merge')) {
       const diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch);
       const policyResult = await executePolicyGate({
         registry: ctx.extensionRegistry,
@@ -897,10 +895,10 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
     // --- eforge:region plan-01-engine-config-and-landing ---
     // --- eforge:region plan-02-stack-provider-runtime ---
-    // For stacked builds with issue-pr, git-spice already submitted the PR in the
-    // stackLanding phase (which set ctx.landingSucceeded = true). Skip the legacy
+    // For stacked builds with pr, git-spice already submitted the PR in the
+    // stackLanding phase (which set ctx.landingSucceeded = true). Skip the
     // executeLandingAction PR publication to avoid a duplicate gh pr create call.
-    if (action === 'issue-pr' && ctx.stackContext && ctx.landingSucceeded) {
+    if (action === 'pr' && ctx.stackContext && ctx.landingSucceeded) {
       // Stack landing already completed; finalize considers this a success.
       // No additional events — stack:landing:update already covers the outcome.
     } else {
@@ -947,7 +945,7 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     // Not all plans merged — skip landing, leave feature branch for inspection.
     // --- eforge:region plan-01-engine-config-and-landing ---
     yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
-    if (action === 'merge-to-base-branch') {
+    if (action === 'merge') {
       yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
     }
     // --- eforge:endregion plan-01-engine-config-and-landing ---
@@ -955,7 +953,7 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     // Aborted before finalize — leave feature branch for inspection.
     // --- eforge:region plan-01-engine-config-and-landing ---
     yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
-    if (action === 'merge-to-base-branch') {
+    if (action === 'merge') {
       yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
     }
     // --- eforge:endregion plan-01-engine-config-and-landing ---

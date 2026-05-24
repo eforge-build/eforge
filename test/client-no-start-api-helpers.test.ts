@@ -102,7 +102,7 @@ function startTestServer(): Promise<TestServer> {
       if (url === `${API_ROUTES.configShow}?verbose=true`) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-          resolved: { build: { onSuccess: 'issue-pr' } },
+          resolved: { build: { maxValidationRetries: 2 } },
           sources: { project: { path: '/project/eforge/config.yaml', found: true } },
         }));
         return;
@@ -420,7 +420,7 @@ describe('helper import discipline', () => {
 
     expect(result).toEqual({
       data: {
-        resolved: { build: { onSuccess: 'issue-pr' } },
+        resolved: { build: { maxValidationRetries: 2 } },
         sources: { project: { path: '/project/eforge/config.yaml', found: true } },
       },
       port: testServer.port,

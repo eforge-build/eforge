@@ -41,7 +41,7 @@ import type { NativeExtensionDiagnostic, NativeExtensionRegistry } from './exten
 import type { AgentHarness } from './harness.js';
 import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
-import { loadConfig, DEFAULT_REVIEW, getConfigDir, getConventionalConfigDir, landingActionToOnSuccess, onSuccessToLandingAction } from './config.js';
+import { loadConfig, DEFAULT_REVIEW, getConfigDir, getConventionalConfigDir } from './config.js';
 import { loadNativeExtensions, withAgentContextHooks } from './extensions/index.js';
 import { setPromptDir } from './prompts.js';
 import { type AgentRuntimeRegistry, singletonRegistry, buildAgentRuntimeRegistry } from './agent-runtime-registry.js';
@@ -133,8 +133,8 @@ export interface QueueOptions {
    */
   onInjectEventRegister?: (inject: (event: SchedulerInputEvent) => void) => void;
   // --- eforge:region plan-02-api-queue-and-ui ---
-  /** Override the project-level on-success landing action for this build. */
-  onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  /** Override the project-level landing action for this build. */
+  landingAction?: 'pr' | 'merge' | 'leave';
   // --- eforge:endregion plan-02-api-queue-and-ui ---
   // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
   /**
@@ -547,11 +547,10 @@ export class EforgeEngine {
         cwd,
         depends_on: dependsOn,
         ...(options.profile !== undefined && { profile: options.profile }),
-        ...(options.onSuccess !== undefined && { onSuccess: options.onSuccess }),
+        ...(options.landingAction !== undefined && { landingAction: options.landingAction }),
         ...(options.stack_id !== undefined && { stack_id: options.stack_id }),
         ...(options.stack_parent !== undefined && { stack_parent: options.stack_parent }),
         ...(options.stack_provider !== undefined && { stack_provider: options.stack_provider }),
-        ...(options.landing !== undefined && { landing: options.landing }),
       });
 
       yield {
@@ -917,7 +916,7 @@ export class EforgeEngine {
       const signal = abortController?.signal;
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
       // --- eforge:region plan-01-engine-config-and-landing ---
-      const effectiveOnSuccess = options.onSuccess ?? this.config.build.onSuccess;
+      const effectiveLandingAction = options.landingAction ?? this.config.landing.action;
       // --- eforge:endregion plan-01-engine-config-and-landing ---
       const orchestrator = new Orchestrator({
         repoRoot: cwd,
@@ -941,16 +940,13 @@ export class EforgeEngine {
         policyGateTimeoutMs: this.config.extensions.policyGateTimeoutMs,
         policyGateFailurePolicy: this.config.extensions.policyGateFailurePolicy,
         // --- eforge:endregion plan-02-policy-gate-engine-integration ---
-        // --- eforge:region plan-01-engine-config-and-landing ---
-        onSuccess: effectiveOnSuccess,
-        // --- eforge:endregion plan-01-engine-config-and-landing ---
         // --- eforge:region plan-03-branch-aware-landing ---
         engineConfig: config,
         // --- eforge:endregion plan-03-branch-aware-landing ---
         // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
         prdId: options.prdId,
         stackContext: options.stackContext,
-        landingAction: onSuccessToLandingAction(effectiveOnSuccess),
+        landingAction: effectiveLandingAction,
         // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
         // --- eforge:region plan-02-stack-provider-runtime ---
         ...(options.stackProvider !== undefined && { stackProvider: options.stackProvider }),
@@ -1209,10 +1205,8 @@ export class EforgeEngine {
       }
 
       // Build the plan — PRD cleanup flows through build()
-      // Resolve landing precedence: explicit options.onSuccess > legacy PRD onSuccess > PRD landing shorthand.
-      const resolvedOnSuccess = options.onSuccess
-        ?? prd.frontmatter.onSuccess
-        ?? (prd.frontmatter.landing !== undefined ? landingActionToOnSuccess(prd.frontmatter.landing) : undefined);
+      // Resolve landing precedence: explicit options.landingAction > PRD landing frontmatter.
+      const resolvedLandingAction = options.landingAction ?? prd.frontmatter.landing;
       let buildFailed = false;
       for await (const event of withRunId(this.build(planSetName, {
         auto: options.auto,
@@ -1227,7 +1221,7 @@ export class EforgeEngine {
         // --- eforge:region plan-02-stack-provider-runtime ---
         ...(stackProvider !== undefined && { stackProvider }),
         // --- eforge:endregion plan-02-stack-provider-runtime ---
-        ...(resolvedOnSuccess !== undefined && { onSuccess: resolvedOnSuccess }),
+        ...(resolvedLandingAction !== undefined && { landingAction: resolvedLandingAction }),
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
@@ -1336,11 +1330,9 @@ export class EforgeEngine {
           args.push('--profile', routedProfileOverride);
         }
         // --- eforge:endregion plan-02-runtime-and-integration ---
-        const childOnSuccess = options.onSuccess
-          ?? prd.frontmatter.onSuccess
-          ?? (prd.frontmatter.landing !== undefined ? landingActionToOnSuccess(prd.frontmatter.landing) : undefined);
-        if (childOnSuccess) {
-          args.push('--on-success', childOnSuccess);
+        const childLandingAction = options.landingAction ?? prd.frontmatter.landing;
+        if (childLandingAction) {
+          args.push('--landing-action', childLandingAction);
         }
         doSpawn(args);
       };
@@ -2368,12 +2360,6 @@ export class EforgeEngine {
 function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): EforgeConfig {
   const landing = overrides.landing ? { ...base.landing, ...overrides.landing } : { ...base.landing };
   const build = overrides.build ? { ...base.build, ...overrides.build } : { ...base.build };
-
-  if (overrides.landing?.action !== undefined) {
-    build.onSuccess = landingActionToOnSuccess(overrides.landing.action);
-  } else if (overrides.build?.onSuccess !== undefined) {
-    landing.action = onSuccessToLandingAction(overrides.build.onSuccess);
-  }
 
   return {
     maxConcurrentBuilds: overrides.maxConcurrentBuilds ?? base.maxConcurrentBuilds,

@@ -61,7 +61,6 @@ describe('recordSuccessfulBuildArtifact', () => {
       repoRoot: cwd,
       mergeWorktreePath: cwd,
       planRunner,
-      onSuccess: 'leave-branch',
       stackContext,
       landingAction: 'leave',
     });
@@ -269,7 +268,6 @@ describe('recordSuccessfulBuildArtifact', () => {
       stackContext,
       prdId: 'queued-prd',
       landingAction: 'leave',
-      onSuccess: 'leave-branch',
       featureBranch: 'eforge/queued-prd',
       config: { baseBranch: 'main' } as OrchestrationConfig,
     } as unknown as PhaseContext;

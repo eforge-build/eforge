@@ -77,12 +77,8 @@ export interface BuildRunOpts {
     maxConcurrentBuilds?: number;
     /** Explicit profile override for this build. Takes precedence over any inherited session-plan agent_profile. */
     profile?: string;
-    /** Override the project-level on-success landing action for this build. */
-    onSuccess?: string;
-    // --- eforge:region plan-04-consumer-surfaces ---
-    /** Landing action shorthand alias for onSuccess (pr|merge|leave). Resolved before use. */
-    landingAction?: string;
-    // --- eforge:endregion plan-04-consumer-surfaces ---
+    /** Landing action for this build (pr|merge|leave). */
+    landingAction?: 'pr' | 'merge' | 'leave';
   };
   abortController?: AbortController;
   /** Called with the active monitor on start and undefined on teardown. */
@@ -299,12 +295,10 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
   const { source, options, abortController, onMonitor } = opts;
   const cwd = process.cwd();
 
-  // --- eforge:region plan-04-consumer-surfaces ---
-  // Resolve --landing-action shorthand into the wire-protocol onSuccess value.
-  // This is a no-op when only --on-success was provided, and throws on conflict.
+  // Validate --landing-action and normalise into the canonical value.
   try {
-    const resolved = resolveAndValidateLandingFlags({ landingAction: options.landingAction, onSuccess: options.onSuccess });
-    if (resolved !== undefined) options.onSuccess = resolved;
+    const resolved = resolveAndValidateLandingFlags({ landingAction: options.landingAction });
+    if (resolved !== undefined) options.landingAction = resolved;
   } catch (err) {
     if (err instanceof CLILandingFlagError) {
       console.error(chalk.red(`Error: ${err.message}`));
@@ -312,7 +306,6 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
     }
     throw err;
   }
-  // --- eforge:endregion plan-04-consumer-surfaces ---
 
   // Path 1: Delegate to daemon when it is already running
   if (!options.foreground && !options.dryRun) {
@@ -325,7 +318,7 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
             source,
             // Pass explicit profile to daemon; daemon handles inherited agent_profile detection
             ...(options.profile && { profile: options.profile }),
-            ...(options.onSuccess && { onSuccess: options.onSuccess as 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' }),
+            ...(options.landingAction && { landingAction: options.landingAction }),
           },
         });
         const result = data as EnqueueResponse;
@@ -384,8 +377,8 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
   // When `--auto` is set or the daemon handled the request (Path 1), the engine's
   // runtime rejection handles the trunk policy violation instead.
   if (!options.auto) {
-    const effectiveOnSuccess = options.onSuccess ?? engine.resolvedConfig.build.onSuccess;
-    if (effectiveOnSuccess === 'merge-to-base-branch' && !engine.resolvedConfig.build.allowLocalMergeToTrunk) {
+    const effectiveLandingAction = options.landingAction ?? engine.resolvedConfig.landing.action;
+    if (effectiveLandingAction === 'merge' && !engine.resolvedConfig.build.allowLocalMergeToTrunk) {
       const trunk = await resolveTrunkBranch(engine.resolvedConfig, cwd);
       const execFileAsync = promisify(execFile);
       let currentBranch = '';
@@ -398,7 +391,7 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
       if (currentBranch && isTrunkBranch(currentBranch, trunk)) {
         const choice: TrunkLandingChoice = await confirmTrunkLanding(trunk);
         if (choice === 'switch-to-pr') {
-          options.onSuccess = 'issue-pr';
+          options.landingAction = 'pr';
         } else if (choice === 'cancel') {
           return { code: 0 };
         } else if (choice === 'feature-branch') {
@@ -458,7 +451,7 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
         verbose: options.verbose,
         abortController,
         ...(effectiveProfile && { profile: effectiveProfile }),
-        ...(options.onSuccess && { onSuccess: options.onSuccess as 'merge-to-base-branch' | 'issue-pr' | 'leave-branch' }),
+        ...(options.landingAction && { landingAction: options.landingAction }),
       });
     }
 

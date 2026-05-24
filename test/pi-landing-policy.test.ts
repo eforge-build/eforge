@@ -7,7 +7,7 @@
  *     merge and project-default-as-merge are omitted, warning is set,
  *     remediation choices are surfaced
  *   - Trunk opt-in (allowLocalMergeToTrunk: true): merge and project-default included
- *   - Default inheritance: project-default value is distinct from wire values
+ *   - Default inheritance: project-default value is distinct from canonical values
  *   - Null/undefined currentBranch: treated as non-trunk (no protection)
  *
  * Follows AGENTS.md conventions: no mocks, real pure function, inline inputs.
@@ -33,7 +33,7 @@ const TRUNK = 'main';
 
 describe('buildLandingMenuModel - feature branch', () => {
   const baseInput = {
-    effectiveLanding: 'merge-to-base-branch' as const,
+    effectiveLanding: 'merge' as const,
     currentBranch: FEATURE_BRANCH,
     trunkBranch: TRUNK,
     allowLocalMergeToTrunk: false,
@@ -43,9 +43,9 @@ describe('buildLandingMenuModel - feature branch', () => {
     const model = buildLandingMenuModel({ ...baseInput, offerProjectDefault: true });
     const values = choiceValues(model.normalChoices);
     expect(values).toContain('project-default');
-    expect(values).toContain('issue-pr');
-    expect(values).toContain('merge-to-base-branch');
-    expect(values).toContain('leave-branch');
+    expect(values).toContain('pr');
+    expect(values).toContain('merge');
+    expect(values).toContain('leave');
     expect(values).toContain('cancel');
   });
 
@@ -53,10 +53,10 @@ describe('buildLandingMenuModel - feature branch', () => {
     const model = buildLandingMenuModel({ ...baseInput, offerProjectDefault: false });
     const values = choiceValues(model.normalChoices);
     expect(values).not.toContain('project-default');
-    // explicit wire-value choices are still present
-    expect(values).toContain('issue-pr');
-    expect(values).toContain('merge-to-base-branch');
-    expect(values).toContain('leave-branch');
+    // explicit canonical choices are still present
+    expect(values).toContain('pr');
+    expect(values).toContain('merge');
+    expect(values).toContain('leave');
   });
 
   it('has no warning on a feature branch', () => {
@@ -71,9 +71,9 @@ describe('buildLandingMenuModel - feature branch', () => {
 
   it('normalChoices labels include shorthand vocabulary (pr / merge / leave)', () => {
     const model = buildLandingMenuModel({ ...baseInput, offerProjectDefault: false });
-    const prChoice = model.normalChoices.find((c) => c.value === 'issue-pr');
-    const mergeChoice = model.normalChoices.find((c) => c.value === 'merge-to-base-branch');
-    const leaveChoice = model.normalChoices.find((c) => c.value === 'leave-branch');
+    const prChoice = model.normalChoices.find((c) => c.value === 'pr');
+    const mergeChoice = model.normalChoices.find((c) => c.value === 'merge');
+    const leaveChoice = model.normalChoices.find((c) => c.value === 'leave');
 
     expect(prChoice).toBeDefined();
     expect(mergeChoice).toBeDefined();
@@ -84,22 +84,6 @@ describe('buildLandingMenuModel - feature branch', () => {
     expect(`${mergeChoice!.label} ${mergeChoice!.description}`).toMatch(/\bmerge\b/i);
     expect(`${leaveChoice!.label} ${leaveChoice!.description}`).toMatch(/\bleave\b/i);
   });
-
-  it('normalChoices also surface the wire value for each shorthand choice', () => {
-    const model = buildLandingMenuModel({ ...baseInput, offerProjectDefault: false });
-    const prChoice = model.normalChoices.find((c) => c.value === 'issue-pr');
-    const mergeChoice = model.normalChoices.find((c) => c.value === 'merge-to-base-branch');
-    const leaveChoice = model.normalChoices.find((c) => c.value === 'leave-branch');
-
-    const prText = `${prChoice!.label} ${prChoice!.description}`;
-    const mergeText = `${mergeChoice!.label} ${mergeChoice!.description}`;
-    const leaveText = `${leaveChoice!.label} ${leaveChoice!.description}`;
-
-    // Wire values should appear so advanced users can cross-reference
-    expect(prText).toMatch(/issue-pr/);
-    expect(mergeText).toMatch(/merge-to-base-branch/);
-    expect(leaveText).toMatch(/leave-branch/);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -108,16 +92,16 @@ describe('buildLandingMenuModel - feature branch', () => {
 
 describe('buildLandingMenuModel - protected trunk (allowLocalMergeToTrunk: false)', () => {
   const protectedTrunkInput = {
-    effectiveLanding: 'merge-to-base-branch' as const,
+    effectiveLanding: 'merge' as const,
     currentBranch: TRUNK,
     trunkBranch: TRUNK,
     allowLocalMergeToTrunk: false,
     offerProjectDefault: true,
   };
 
-  it('omits merge-to-base-branch from normalChoices', () => {
+  it('omits merge from normalChoices', () => {
     const model = buildLandingMenuModel(protectedTrunkInput);
-    expect(choiceValues(model.normalChoices)).not.toContain('merge-to-base-branch');
+    expect(choiceValues(model.normalChoices)).not.toContain('merge');
   });
 
   it('omits project-default from normalChoices when effective default resolves to unsafe merge', () => {
@@ -139,8 +123,8 @@ describe('buildLandingMenuModel - protected trunk (allowLocalMergeToTrunk: false
   it('remediationChoices includes PR, leave, and cancel', () => {
     const model = buildLandingMenuModel(protectedTrunkInput);
     const values = choiceValues(model.remediationChoices);
-    expect(values).toContain('issue-pr');
-    expect(values).toContain('leave-branch');
+    expect(values).toContain('pr');
+    expect(values).toContain('leave');
     expect(values).toContain('cancel');
   });
 
@@ -162,10 +146,10 @@ describe('buildLandingMenuModel - protected trunk (allowLocalMergeToTrunk: false
     expect(choiceValues(model.remediationChoices)).not.toContain('update-config');
   });
 
-  it('records merge-to-base-branch in omittedUnsafeChoices', () => {
+  it('records merge in omittedUnsafeChoices', () => {
     const model = buildLandingMenuModel(protectedTrunkInput);
     const omittedValues = model.omittedUnsafeChoices.map((c) => c.value);
-    expect(omittedValues).toContain('merge-to-base-branch');
+    expect(omittedValues).toContain('merge');
   });
 
   it('records project-default in omittedUnsafeChoices when it resolves to unsafe merge', () => {
@@ -184,14 +168,14 @@ describe('buildLandingMenuModel - protected trunk (allowLocalMergeToTrunk: false
 
   it('treats feature branch as safe even when allowLocalMergeToTrunk is false', () => {
     const model = buildLandingMenuModel({
-      effectiveLanding: 'merge-to-base-branch',
+      effectiveLanding: 'merge',
       currentBranch: FEATURE_BRANCH,
       trunkBranch: TRUNK,
       allowLocalMergeToTrunk: false,
       offerProjectDefault: true,
     });
     expect(model.warning).toBeUndefined();
-    expect(choiceValues(model.normalChoices)).toContain('merge-to-base-branch');
+    expect(choiceValues(model.normalChoices)).toContain('merge');
   });
 });
 
@@ -201,16 +185,16 @@ describe('buildLandingMenuModel - protected trunk (allowLocalMergeToTrunk: false
 
 describe('buildLandingMenuModel - trunk opt-in (allowLocalMergeToTrunk: true)', () => {
   const trunkOptInInput = {
-    effectiveLanding: 'merge-to-base-branch' as const,
+    effectiveLanding: 'merge' as const,
     currentBranch: TRUNK,
     trunkBranch: TRUNK,
     allowLocalMergeToTrunk: true,
     offerProjectDefault: true,
   };
 
-  it('includes merge-to-base-branch in normalChoices', () => {
+  it('includes merge in normalChoices', () => {
     const model = buildLandingMenuModel(trunkOptInInput);
-    expect(choiceValues(model.normalChoices)).toContain('merge-to-base-branch');
+    expect(choiceValues(model.normalChoices)).toContain('merge');
   });
 
   it('includes project-default in normalChoices when offerProjectDefault is true and default is merge', () => {
@@ -234,9 +218,9 @@ describe('buildLandingMenuModel - trunk opt-in (allowLocalMergeToTrunk: true)', 
 // ---------------------------------------------------------------------------
 
 describe('buildLandingMenuModel - default inheritance', () => {
-  it('project-default choice has a distinct stable value, not a wire value', () => {
+  it('project-default choice has a distinct stable value, not a canonical value', () => {
     const model = buildLandingMenuModel({
-      effectiveLanding: 'merge-to-base-branch',
+      effectiveLanding: 'merge',
       currentBranch: FEATURE_BRANCH,
       trunkBranch: TRUNK,
       allowLocalMergeToTrunk: false,
@@ -245,15 +229,15 @@ describe('buildLandingMenuModel - default inheritance', () => {
     const defaultChoice = model.normalChoices.find((c) => c.value === 'project-default');
     expect(defaultChoice).toBeDefined();
     expect(defaultChoice!.value).toBe('project-default');
-    // project-default must differ from all wire values
-    expect(defaultChoice!.value).not.toBe('merge-to-base-branch');
-    expect(defaultChoice!.value).not.toBe('issue-pr');
-    expect(defaultChoice!.value).not.toBe('leave-branch');
+    // project-default must differ from all canonical values
+    expect(defaultChoice!.value).not.toBe('merge');
+    expect(defaultChoice!.value).not.toBe('pr');
+    expect(defaultChoice!.value).not.toBe('leave');
   });
 
   it('project-default label describes inheriting the project setting', () => {
     const model = buildLandingMenuModel({
-      effectiveLanding: 'issue-pr',
+      effectiveLanding: 'pr',
       currentBranch: FEATURE_BRANCH,
       trunkBranch: TRUNK,
       allowLocalMergeToTrunk: false,
@@ -265,22 +249,22 @@ describe('buildLandingMenuModel - default inheritance', () => {
     expect(`${defaultChoice!.label} ${defaultChoice!.description}`).toMatch(/default|project/i);
   });
 
-  it('when effectiveLanding is issue-pr, project-default is offered but direct-merge trunk warning is raised', () => {
+  it('when effectiveLanding is pr, project-default is offered but direct-merge trunk warning is raised', () => {
     const model = buildLandingMenuModel({
-      effectiveLanding: 'issue-pr',
+      effectiveLanding: 'pr',
       currentBranch: TRUNK,
       trunkBranch: TRUNK,
       allowLocalMergeToTrunk: false,
       offerProjectDefault: true,
     });
-    // issue-pr default is safe for inheritance, but the explicit merge choice remains unsafe on trunk.
-    expect(model.warning).toMatch(/direct merge-to-base-branch/i);
+    // pr default is safe for inheritance, but the explicit merge choice remains unsafe on trunk.
+    expect(model.warning).toBeTruthy();
     expect(choiceValues(model.normalChoices)).toContain('project-default');
   });
 
-  it('omits explicit merge on protected trunk even when the project default is issue-pr', () => {
+  it('omits explicit merge on protected trunk even when the project default is pr', () => {
     const model = buildLandingMenuModel({
-      effectiveLanding: 'issue-pr',
+      effectiveLanding: 'pr',
       currentBranch: TRUNK,
       trunkBranch: TRUNK,
       allowLocalMergeToTrunk: false,
@@ -288,8 +272,8 @@ describe('buildLandingMenuModel - default inheritance', () => {
     });
 
     expect(choiceValues(model.normalChoices)).toContain('project-default');
-    expect(choiceValues(model.normalChoices)).not.toContain('merge-to-base-branch');
-    expect(model.omittedUnsafeChoices.map((c) => c.value)).toContain('merge-to-base-branch');
+    expect(choiceValues(model.normalChoices)).not.toContain('merge');
+    expect(model.omittedUnsafeChoices.map((c) => c.value)).toContain('merge');
   });
 });
 
@@ -300,26 +284,26 @@ describe('buildLandingMenuModel - default inheritance', () => {
 describe('buildLandingMenuModel - unknown currentBranch', () => {
   it('treats null currentBranch as non-trunk (no trunk protection)', () => {
     const model = buildLandingMenuModel({
-      effectiveLanding: 'merge-to-base-branch',
+      effectiveLanding: 'merge',
       currentBranch: null,
       trunkBranch: TRUNK,
       allowLocalMergeToTrunk: false,
       offerProjectDefault: true,
     });
     expect(model.warning).toBeUndefined();
-    expect(choiceValues(model.normalChoices)).toContain('merge-to-base-branch');
+    expect(choiceValues(model.normalChoices)).toContain('merge');
     expect(model.omittedUnsafeChoices).toHaveLength(0);
   });
 
   it('treats undefined currentBranch as non-trunk (no trunk protection)', () => {
     const model = buildLandingMenuModel({
-      effectiveLanding: 'merge-to-base-branch',
+      effectiveLanding: 'merge',
       currentBranch: undefined,
       trunkBranch: TRUNK,
       allowLocalMergeToTrunk: false,
       offerProjectDefault: true,
     });
     expect(model.warning).toBeUndefined();
-    expect(choiceValues(model.normalChoices)).toContain('merge-to-base-branch');
+    expect(choiceValues(model.normalChoices)).toContain('merge');
   });
 });

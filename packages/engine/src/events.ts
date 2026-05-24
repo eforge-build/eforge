@@ -83,8 +83,8 @@ export interface BuildOptions {
   stackProvider?: StackProviderAdapter;
   // --- eforge:endregion plan-02-stack-provider-runtime ---
   // --- eforge:region plan-01-engine-config-and-landing ---
-  /** Override the configured onSuccess landing action for this build. */
-  onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  /** Override the configured landing action for this build. */
+  landingAction?: 'pr' | 'merge' | 'leave';
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 }
 
@@ -96,15 +96,13 @@ export interface EnqueueOptions {
   /** Override profile name to persist in PRD frontmatter for per-build profile binding. */
   profile?: string;
   // --- eforge:region plan-01-engine-config-and-landing ---
-  /** Override the configured onSuccess landing action for this enqueued build. */
-  onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  /** Override the configured landing action for this enqueued build. */
+  landingAction?: 'pr' | 'merge' | 'leave';
   /** Logical stack identifier to persist in PRD frontmatter. */
   stack_id?: string;
   /** Parent PRD id for this stack layer, if any. */
   stack_parent?: string;
   /** Stack provider override for this PRD. */
   stack_provider?: 'git-spice';
-  /** New shorthand landing action to persist in PRD frontmatter. */
-  landing?: 'pr' | 'merge' | 'leave';
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 }

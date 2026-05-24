@@ -825,13 +825,13 @@ const eventRegistry = {
     scope: 'session',
     persist: false,
     summary: (e) => {
-      if (e.action === 'issue-pr') {
+      if (e.action === 'pr') {
         return e.prUrl
           ? `Landing (${e.action}): PR ${e.prUrl}`
           : `Landing (${e.action}): PR created for ${e.featureBranch}`;
       }
-      if (e.action === 'merge-to-base-branch') return `Landing (${e.action}): merged ${e.featureBranch} into ${e.baseBranch}`;
-      if (e.action === 'leave-branch') return `Landing (${e.action}): ${e.featureBranch} left for manual workflow`;
+      if (e.action === 'merge') return `Landing (${e.action}): merged ${e.featureBranch} into ${e.baseBranch}`;
+      if (e.action === 'leave') return `Landing (${e.action}): ${e.featureBranch} left for manual workflow`;
       return `Landing (${e.action}): completed`;
     },
   },

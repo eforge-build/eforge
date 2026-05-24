@@ -3,8 +3,8 @@
  *
  * Verifies:
  *   - Planning-mode playbooks delegate to /skill:eforge-playbook run before landing/queue prompts.
- *   - Autonomous playbooks prompt for landing action and pass onSuccess to enqueue body.
- *   - Project-default selection (no onSuccess in gate result) omits onSuccess from enqueue body.
+ *   - Autonomous playbooks prompt for landing action and pass landingAction to enqueue body.
+ *   - Project-default selection (no landingAction in gate result) omits landingAction from enqueue body.
  *   - Explicit landing selection propagates to immediate, delayed, and fallback enqueue bodies.
  *
  * Pi framework peer deps are avoided by mocking ui-helpers entirely.
@@ -95,7 +95,7 @@ function mockPlaybookList(playbooks: PlaybookListEntry[]) {
   });
 }
 
-function mockLandingGate(result: { onSuccess?: string; cancelled?: boolean; configUpdated?: boolean }) {
+function mockLandingGate(result: { landingAction?: string; cancelled?: boolean; configUpdated?: boolean }) {
   (promptForPlaybookLandingGate as ReturnType<typeof vi.fn>).mockResolvedValue(result);
 }
 
@@ -194,7 +194,7 @@ describe('Pi handlePlaybookCommand - autonomous playbook landing gate', () => {
     const ctx = makeCtx();
 
     mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockLandingGate({ landingAction: 'leave' });
     mockQueueEmpty();
     mockPlaybookRun();
 
@@ -208,7 +208,7 @@ describe('Pi handlePlaybookCommand - autonomous playbook landing gate', () => {
     const ctx = makeCtx();
 
     mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockLandingGate({ landingAction: 'leave' });
     mockQueueEmpty();
     mockPlaybookRun();
 
@@ -221,12 +221,12 @@ describe('Pi handlePlaybookCommand - autonomous playbook landing gate', () => {
     ).toBeLessThan((apiGetQueueIfRunning as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]);
   });
 
-  it('passes selected onSuccess to apiPlaybookRunIfRunning', async () => {
+  it('passes selected landingAction to apiPlaybookRunIfRunning', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
     mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockLandingGate({ landingAction: 'leave' });
     mockQueueEmpty();
     mockPlaybookRun();
 
@@ -235,7 +235,7 @@ describe('Pi handlePlaybookCommand - autonomous playbook landing gate', () => {
     expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
     expect(apiPlaybookRunIfRunning).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: expect.objectContaining({ name: 'my-feature', onSuccess: 'leave-branch' }),
+        body: expect.objectContaining({ name: 'my-feature', landingAction: 'leave' }),
       }),
     );
   });
@@ -266,20 +266,20 @@ describe('Pi handlePlaybookCommand - autonomous playbook landing gate', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests: project-default selection (no onSuccess key)
+// Tests: project-default selection (no landingAction key)
 // ---------------------------------------------------------------------------
 
-describe('Pi handlePlaybookCommand - project-default selection omits onSuccess', () => {
+describe('Pi handlePlaybookCommand - project-default selection omits landingAction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('enqueue body has no onSuccess key when landing gate returns no onSuccess', async () => {
+  it('enqueue body has no landingAction key when landing gate returns no landingAction', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
     mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    // No onSuccess returned = project default
+    // No landingAction returned = project default
     mockLandingGate({});
     mockQueueEmpty();
     mockPlaybookRun();
@@ -291,10 +291,10 @@ describe('Pi handlePlaybookCommand - project-default selection omits onSuccess',
       body: Record<string, unknown>;
     };
     expect(call.body).toHaveProperty('name', 'my-feature');
-    expect(call.body).not.toHaveProperty('onSuccess');
+    expect(call.body).not.toHaveProperty('landingAction');
   });
 
-  it('enqueue body has no onSuccess key for project-default when afterQueueId is set', async () => {
+  it('enqueue body has no landingAction key for project-default when afterQueueId is set', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
@@ -316,10 +316,10 @@ describe('Pi handlePlaybookCommand - project-default selection omits onSuccess',
     };
     expect(call.body).toHaveProperty('name', 'my-feature');
     expect(call.body).toHaveProperty('afterQueueId', 'build-1');
-    expect(call.body).not.toHaveProperty('onSuccess');
+    expect(call.body).not.toHaveProperty('landingAction');
   });
 
-  it('fallback enqueue body has no onSuccess key for project-default when upstream build already finished', async () => {
+  it('fallback enqueue body has no landingAction key for project-default when upstream build already finished', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
@@ -340,25 +340,25 @@ describe('Pi handlePlaybookCommand - project-default selection omits onSuccess',
     };
     expect(fallbackCall.body).toHaveProperty('name', 'my-feature');
     expect(fallbackCall.body).not.toHaveProperty('afterQueueId');
-    expect(fallbackCall.body).not.toHaveProperty('onSuccess');
+    expect(fallbackCall.body).not.toHaveProperty('landingAction');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Tests: explicit leave-branch propagation — immediate, delayed, fallback
+// Tests: explicit leave propagation — immediate, delayed, fallback
 // ---------------------------------------------------------------------------
 
-describe('Pi handlePlaybookCommand - explicit leave-branch propagation', () => {
+describe('Pi handlePlaybookCommand - explicit leave propagation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('propagates leave-branch to immediate enqueue body (no afterQueueId)', async () => {
+  it('propagates leave to immediate enqueue body (no afterQueueId)', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
     mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockLandingGate({ landingAction: 'leave' });
     mockQueueEmpty();
     mockPlaybookRun();
 
@@ -368,16 +368,16 @@ describe('Pi handlePlaybookCommand - explicit leave-branch propagation', () => {
       body: Record<string, unknown>;
     };
     expect(call.body).toHaveProperty('name', 'my-feature');
-    expect(call.body).toHaveProperty('onSuccess', 'leave-branch');
+    expect(call.body).toHaveProperty('landingAction', 'leave');
     expect(call.body).not.toHaveProperty('afterQueueId');
   });
 
-  it('propagates leave-branch to delayed enqueue body (with afterQueueId)', async () => {
+  it('propagates leave to delayed enqueue body (with afterQueueId)', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
     mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockLandingGate({ landingAction: 'leave' });
     mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
     mockPlaybookRun();
 
@@ -393,15 +393,15 @@ describe('Pi handlePlaybookCommand - explicit leave-branch propagation', () => {
     };
     expect(call.body).toHaveProperty('name', 'my-feature');
     expect(call.body).toHaveProperty('afterQueueId', 'build-1');
-    expect(call.body).toHaveProperty('onSuccess', 'leave-branch');
+    expect(call.body).toHaveProperty('landingAction', 'leave');
   });
 
-  it('propagates leave-branch to fallback enqueue body when upstream build is already finished', async () => {
+  it('propagates leave to fallback enqueue body when upstream build is already finished', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
     mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ onSuccess: 'leave-branch' });
+    mockLandingGate({ landingAction: 'leave' });
     mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
     // First call (with afterQueueId) fails with 404; second (fallback) succeeds
     mockPlaybookRunFailThenSucceed('not found');
@@ -412,13 +412,13 @@ describe('Pi handlePlaybookCommand - explicit leave-branch propagation', () => {
 
     await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
 
-    // Two calls were made: the first failed, the second (fallback) should carry leave-branch
+    // Two calls were made: the first failed, the second (fallback) should carry leave
     expect(apiPlaybookRunIfRunning).toHaveBeenCalledTimes(2);
     const fallbackCall = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[1][0] as {
       body: Record<string, unknown>;
     };
     expect(fallbackCall.body).toHaveProperty('name', 'my-feature');
-    expect(fallbackCall.body).toHaveProperty('onSuccess', 'leave-branch');
+    expect(fallbackCall.body).toHaveProperty('landingAction', 'leave');
     // Fallback is an immediate enqueue — no afterQueueId
     expect(fallbackCall.body).not.toHaveProperty('afterQueueId');
   });

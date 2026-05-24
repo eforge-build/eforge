@@ -89,9 +89,9 @@ export const ReviewPerspectiveKeySchema = Type.String({
 
 // --- eforge:region plan-01-engine-config-and-landing ---
 export const LandingActionSchema = Type.Union([
-  Type.Literal('merge-to-base-branch'),
-  Type.Literal('issue-pr'),
-  Type.Literal('leave-branch'),
+  Type.Literal('pr'),
+  Type.Literal('merge'),
+  Type.Literal('leave'),
 ]);
 // --- eforge:endregion plan-01-engine-config-and-landing ---
 
@@ -1609,8 +1609,8 @@ const EforgeEventVariantsSchema = Type.Union([
   }),
 
   // --- eforge:region plan-01-engine-config-and-landing ---
-  // Landing action lifecycle events — uniform family for all three onSuccess actions.
-  // merge:finalize:* is additionally emitted for the merge-to-base-branch action (backward compat).
+  // Landing action lifecycle events — uniform family for all three landing actions.
+  // merge:finalize:* is additionally emitted for the merge action (backward compat).
   Type.Object({
     type: Type.Literal('landing:start'),
     action: LandingActionSchema,

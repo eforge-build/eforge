@@ -1,15 +1,16 @@
 /**
- * Tests for onSuccess frontmatter round-trip in PRD queue.
+ * Tests for landing frontmatter round-trip in PRD queue.
  *
  * Verifies:
- *   1. enqueuePrd with onSuccess writes the field to frontmatter.
+ *   1. enqueuePrd with landing writes the field to frontmatter.
  *   2. parseFrontmatter / loadQueue reads it back correctly.
- *   3. The Zod schema rejects an invalid onSuccess string.
- *   4. The Zod schema accepts all three valid values.
+ *   3. The Zod schema rejects an invalid landing string.
+ *   4. The Zod schema accepts all three canonical values.
+ *   5. The Zod schema rejects old wire values (migration: use pr|merge|leave).
  */
 
 import { describe, it, expect } from 'vitest';
-import { mkdtemp, readFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -19,46 +20,61 @@ import { enqueuePrd, loadQueue, validatePrdFrontmatter } from '@eforge-build/eng
 const exec = promisify(execFile);
 
 async function createGitRepo(): Promise<string> {
-  const cwd = await mkdtemp(join(tmpdir(), 'eforge-fm-onsuccess-'));
+  const cwd = await mkdtemp(join(tmpdir(), 'eforge-fm-landing-'));
   await exec('git', ['init'], { cwd });
   await exec('git', ['config', 'user.email', 'test@test.com'], { cwd });
   await exec('git', ['config', 'user.name', 'Test'], { cwd });
   return cwd;
 }
 
-describe('prdFrontmatterSchema — onSuccess validation', () => {
-  it('accepts merge-to-base-branch', () => {
-    const result = validatePrdFrontmatter({ title: 'T', onSuccess: 'merge-to-base-branch' });
+describe('prdFrontmatterSchema — landing validation', () => {
+  it('accepts merge', () => {
+    const result = validatePrdFrontmatter({ title: 'T', landing: 'merge' });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.onSuccess).toBe('merge-to-base-branch');
+    if (result.success) expect(result.data.landing).toBe('merge');
   });
 
-  it('accepts issue-pr', () => {
-    const result = validatePrdFrontmatter({ title: 'T', onSuccess: 'issue-pr' });
+  it('accepts pr', () => {
+    const result = validatePrdFrontmatter({ title: 'T', landing: 'pr' });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.onSuccess).toBe('issue-pr');
+    if (result.success) expect(result.data.landing).toBe('pr');
   });
 
-  it('accepts leave-branch', () => {
-    const result = validatePrdFrontmatter({ title: 'T', onSuccess: 'leave-branch' });
+  it('accepts leave', () => {
+    const result = validatePrdFrontmatter({ title: 'T', landing: 'leave' });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.onSuccess).toBe('leave-branch');
+    if (result.success) expect(result.data.landing).toBe('leave');
   });
 
-  it('rejects an unknown onSuccess string', () => {
-    const result = validatePrdFrontmatter({ title: 'T', onSuccess: 'deploy-to-prod' });
+  it('rejects an unknown landing string', () => {
+    const result = validatePrdFrontmatter({ title: 'T', landing: 'deploy-to-prod' });
     expect(result.success).toBe(false);
   });
 
-  it('accepts absent onSuccess (optional)', () => {
+  it('accepts absent landing (optional)', () => {
     const result = validatePrdFrontmatter({ title: 'T' });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.onSuccess).toBeUndefined();
+    if (result.success) expect(result.data.landing).toBeUndefined();
+  });
+
+  it('rejects old wire value merge-to-base-branch (migration: use merge)', () => {
+    const result = validatePrdFrontmatter({ title: 'T', landing: 'merge-to-base-branch' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects old wire value issue-pr (migration: use pr)', () => {
+    const result = validatePrdFrontmatter({ title: 'T', landing: 'issue-pr' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects old wire value leave-branch (migration: use leave)', () => {
+    const result = validatePrdFrontmatter({ title: 'T', landing: 'leave-branch' });
+    expect(result.success).toBe(false);
   });
 });
 
-describe('enqueuePrd — onSuccess frontmatter write', () => {
-  it('writes onSuccess field when provided', async () => {
+describe('enqueuePrd — landing frontmatter write', () => {
+  it('writes landing field when provided', async () => {
     const cwd = await createGitRepo();
     const queueDir = 'eforge/queue';
     await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
@@ -68,14 +84,14 @@ describe('enqueuePrd — onSuccess frontmatter write', () => {
       title: 'My Feature',
       queueDir,
       cwd,
-      onSuccess: 'leave-branch',
+      landingAction: 'leave',
     });
 
     const content = await readFile(result.filePath, 'utf-8');
-    expect(content).toContain('onSuccess: leave-branch');
+    expect(content).toContain('landing: leave');
   });
 
-  it('does not write onSuccess field when absent', async () => {
+  it('does not write landing field when absent', async () => {
     const cwd = await createGitRepo();
     const queueDir = 'eforge/queue';
     await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
@@ -88,10 +104,10 @@ describe('enqueuePrd — onSuccess frontmatter write', () => {
     });
 
     const content = await readFile(result.filePath, 'utf-8');
-    expect(content).not.toContain('onSuccess');
+    expect(content).not.toContain('landing');
   });
 
-  it('roundtrips onSuccess through loadQueue', async () => {
+  it('roundtrips landing through loadQueue', async () => {
     const cwd = await createGitRepo();
     const queueDir = 'eforge/queue';
     await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
@@ -101,15 +117,15 @@ describe('enqueuePrd — onSuccess frontmatter write', () => {
       title: 'PR Feature',
       queueDir,
       cwd,
-      onSuccess: 'issue-pr',
+      landingAction: 'pr',
     });
 
     const prds = await loadQueue(queueDir, cwd);
     expect(prds).toHaveLength(1);
-    expect(prds[0].frontmatter.onSuccess).toBe('issue-pr');
+    expect(prds[0].frontmatter.landing).toBe('pr');
   });
 
-  it('roundtrips merge-to-base-branch through loadQueue', async () => {
+  it('roundtrips merge through loadQueue', async () => {
     const cwd = await createGitRepo();
     const queueDir = 'eforge/queue';
     await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
@@ -119,11 +135,24 @@ describe('enqueuePrd — onSuccess frontmatter write', () => {
       title: 'Merge Feature',
       queueDir,
       cwd,
-      onSuccess: 'merge-to-base-branch',
+      landingAction: 'merge',
     });
 
     const prds = await loadQueue(queueDir, cwd);
     expect(prds).toHaveLength(1);
-    expect(prds[0].frontmatter.onSuccess).toBe('merge-to-base-branch');
+    expect(prds[0].frontmatter.landing).toBe('merge');
+  });
+
+  it('rejects legacy onSuccess frontmatter instead of silently ignoring it', async () => {
+    const cwd = await createGitRepo();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
+    await writeFile(
+      join(cwd, queueDir, 'legacy.md'),
+      '---\ntitle: Legacy\nonSuccess: issue-pr\n---\n\n# Legacy\n',
+      'utf-8',
+    );
+
+    await expect(loadQueue(queueDir, cwd)).rejects.toThrow(/onSuccess.*landing/s);
   });
 });

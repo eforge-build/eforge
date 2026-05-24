@@ -204,7 +204,7 @@ describe('executePlans — lifecycle event emission', () => {
       worktreeManager: stubWM,
       failedMerges: new Set(),
       recentlyMergedIds: [],
-      landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
+      landingSucceeded: false, landingAction: 'merge' as const,
       modelTracker: new ModelTracker(),
     };
 
@@ -256,7 +256,7 @@ describe('executePlans — lifecycle event emission', () => {
       worktreeManager: stubWM,
       failedMerges: new Set(),
       recentlyMergedIds: [],
-      landingSucceeded: false, onSuccess: 'merge-to-base-branch' as const,
+      landingSucceeded: false, landingAction: 'merge' as const,
       modelTracker: new ModelTracker(),
     };
 

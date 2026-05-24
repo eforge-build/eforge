@@ -34,7 +34,6 @@ const prdFrontmatterSchema = z.object({
   depends_on: z.array(z.string()).optional(),
   skip_reason: z.string().optional(),
   profile: z.string().optional(),
-  onSuccess: z.enum(['merge-to-base-branch', 'issue-pr', 'leave-branch']).optional(),
   // --- eforge:region plan-01-stack-contracts-config-state-events ---
   stack_id: z.string().optional(),
   stack_parent: z.string().optional(),
@@ -111,8 +110,23 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
 /**
  * Validate PRD frontmatter against the Zod schema.
  * Returns success/error result from safeParse.
+ * Rejects the legacy `onSuccess` field with a migration error.
  */
 export function validatePrdFrontmatter(data: unknown): z.ZodSafeParseResult<PrdFrontmatter> {
+  if (data && typeof data === 'object' && 'onSuccess' in (data as object)) {
+    return {
+      success: false as const,
+      error: new z.ZodError([{
+        code: z.ZodIssueCode.custom,
+        path: ['onSuccess'],
+        message:
+          'PRD frontmatter "onSuccess" is removed. Use "landing: pr|merge|leave" instead. ' +
+          'Replace onSuccess: merge-to-base-branch → landing: merge, ' +
+          'onSuccess: issue-pr → landing: pr, ' +
+          'onSuccess: leave-branch → landing: leave.',
+      }]),
+    } as z.ZodSafeParseResult<PrdFrontmatter>;
+  }
   return prdFrontmatterSchema.safeParse(data);
 }
 
@@ -142,8 +156,14 @@ export async function loadQueue(dir: string, cwd: string): Promise<QueuedPrd[]> 
     const rawFrontmatter = parseFrontmatter(content);
     if (!rawFrontmatter) continue; // Skip files without frontmatter
 
-    const parseResult = prdFrontmatterSchema.safeParse(rawFrontmatter);
-    if (!parseResult.success) continue; // Skip files with invalid frontmatter
+    const parseResult = validatePrdFrontmatter(rawFrontmatter);
+    if (!parseResult.success) {
+      const hasLegacyOnSuccess = parseResult.error.issues.some((issue) => issue.path[0] === 'onSuccess');
+      if (hasLegacyOnSuccess) {
+        throw new Error(`Invalid PRD frontmatter in ${file}: ${z.prettifyError(parseResult.error)}`);
+      }
+      continue; // Skip files with invalid frontmatter
+    }
 
     const frontmatter = parseResult.data;
     const id = basename(file, '.md');
@@ -618,16 +638,14 @@ export interface EnqueuePrdOptions {
   postMerge?: string[];
   /** Override profile name to persist in frontmatter for per-build profile binding. */
   profile?: string;
-  /** Override the project-level on-success landing action for this build. */
-  onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
+  /** Landing action to persist in PRD frontmatter (canonical: pr | merge | leave). */
+  landingAction?: 'pr' | 'merge' | 'leave';
   /** Logical stack identifier to persist in PRD frontmatter. */
   stack_id?: string;
   /** Parent PRD id for this stack layer, if any. */
   stack_parent?: string;
   /** Stack provider override for this PRD. */
   stack_provider?: 'git-spice';
-  /** New shorthand landing action to persist in PRD frontmatter. */
-  landing?: 'pr' | 'merge' | 'leave';
 }
 
 export interface EnqueuePrdResult {
@@ -673,11 +691,10 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     intoWaiting,
     postMerge,
     profile,
-    onSuccess,
+    landingAction,
     stack_id,
     stack_parent,
     stack_provider,
-    landing,
   } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
@@ -716,11 +733,10 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     ...(priority !== undefined && { priority }),
     ...(depends_on !== undefined && depends_on.length > 0 && { depends_on }),
     ...(profile !== undefined && { profile }),
-    ...(onSuccess !== undefined && { onSuccess }),
     ...(stack_id !== undefined && { stack_id }),
     ...(stack_parent !== undefined && { stack_parent }),
     ...(stack_provider !== undefined && { stack_provider }),
-    ...(landing !== undefined && { landing }),
+    ...(landingAction !== undefined && { landing: landingAction }),
   };
   const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
   if (!frontmatterResult.success) {
@@ -744,9 +760,6 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (profile !== undefined) {
     fmLines.push(`profile: ${profile}`);
   }
-  if (onSuccess !== undefined) {
-    fmLines.push(`onSuccess: ${onSuccess}`);
-  }
   if (stack_id !== undefined) {
     fmLines.push(`stack_id: ${stack_id}`);
   }
@@ -756,8 +769,8 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (stack_provider !== undefined) {
     fmLines.push(`stack_provider: ${stack_provider}`);
   }
-  if (landing !== undefined) {
-    fmLines.push(`landing: ${landing}`);
+  if (landingAction !== undefined) {
+    fmLines.push(`landing: ${landingAction}`);
   }
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;

@@ -4,12 +4,8 @@
  * Computes branch-aware choice menus for both /eforge:build and autonomous
  * /eforge:playbook run. No side effects — callers own all UI rendering.
  *
- * User-facing vocabulary uses `landing.action` shorthands:
- *   pr    → issue-pr
- *   merge → merge-to-base-branch
- *   leave → leave-branch
- *
- * These wire values are what the daemon and engine accept via `onSuccess`.
+ * Canonical landing action values: pr, merge, leave.
+ * These are sent directly as landingAction in request bodies.
  */
 
 import type { BuildOnSuccess } from './trunk-landing.js';
@@ -90,19 +86,19 @@ export interface LandingMenuModelInput {
 // ---------------------------------------------------------------------------
 
 const PR_CHOICE: LandingMenuChoice = {
-  value: 'issue-pr',
+  value: 'pr',
   label: 'Open a pull request (pr)',
   description: 'Create a GitHub PR for review instead of merging directly (issue-pr)',
 };
 
 const MERGE_CHOICE: LandingMenuChoice = {
-  value: 'merge-to-base-branch',
+  value: 'merge',
   label: 'Merge to base branch (merge)',
   description: 'Merge the worktree branch back when the build succeeds (merge-to-base-branch)',
 };
 
 const LEAVE_CHOICE: LandingMenuChoice = {
-  value: 'leave-branch',
+  value: 'leave',
   label: 'Leave branch (leave)',
   description: 'Commit to the worktree branch and exit without merging or opening a PR (leave-branch)',
 };
@@ -171,14 +167,14 @@ export function buildLandingMenuModel(input: LandingMenuModelInput): LandingMenu
     currentBranch === trunkBranch;
 
   if (isProtectedTrunk) {
-    const defaultWouldMerge = effectiveLanding === 'merge-to-base-branch';
+    const defaultWouldMerge = effectiveLanding === 'merge';
     const warning = defaultWouldMerge
-      ? `On trunk (${trunkBranch}) with merge-to-base-branch landing — allowLocalMergeToTrunk is disabled`
-      : `On trunk (${trunkBranch}); direct merge-to-base-branch landing is disabled without allowLocalMergeToTrunk`;
+      ? `On trunk (${trunkBranch}) with merge landing — allowLocalMergeToTrunk is disabled`
+      : `On trunk (${trunkBranch}); direct merge landing is disabled without allowLocalMergeToTrunk`;
 
     const omittedUnsafeChoices: OmittedUnsafeChoice[] = [
       {
-        value: 'merge-to-base-branch',
+        value: 'merge',
         reason:
           `Direct local merge to ${trunkBranch} is not allowed without ` +
           `build.allowLocalMergeToTrunk: true in eforge/config.yaml`,
@@ -187,7 +183,7 @@ export function buildLandingMenuModel(input: LandingMenuModelInput): LandingMenu
         ? [
             {
               value: 'project-default',
-              reason: 'Project default resolves to the unsafe merge-to-base-branch landing action on trunk',
+              reason: 'Project default resolves to the unsafe merge landing action on trunk',
             },
           ]
         : []),

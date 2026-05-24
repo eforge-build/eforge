@@ -26,9 +26,6 @@ import { ModelTracker } from './model-tracker.js';
 import type { NativeExtensionRegistry } from './extensions/types.js';
 import type { PolicyGateFailurePolicy } from './extensions/policy-gate-runtime.js';
 // --- eforge:endregion plan-02-policy-gate-engine-integration ---
-// --- eforge:region plan-01-engine-config-and-landing ---
-import type { LandingAction } from './landing.js';
-// --- eforge:endregion plan-01-engine-config-and-landing ---
 // --- eforge:region plan-03-branch-aware-landing ---
 import type { EforgeConfig, LandingConfig } from './config.js';
 // --- eforge:endregion plan-03-branch-aware-landing ---
@@ -114,10 +111,6 @@ export interface OrchestratorOptions {
   /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
   policyGateFailurePolicy?: PolicyGateFailurePolicy;
   // --- eforge:endregion plan-02-policy-gate-engine-integration ---
-  // --- eforge:region plan-01-engine-config-and-landing ---
-  /** What to do with the feature branch after a successful build. Defaults to 'merge-to-base-branch'. */
-  onSuccess?: LandingAction;
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
   // --- eforge:region plan-03-branch-aware-landing ---
   /** EforgeConfig subset for trunk policy resolution. When omitted, trunk defaults to "main". */
   engineConfig?: Pick<EforgeConfig, 'build'>;
@@ -127,7 +120,7 @@ export interface OrchestratorOptions {
   prdId?: string;
   /** Resolved stack context for queued stacked builds. */
   stackContext?: StackBaseContext;
-  /** Landing action vocabulary to persist on stack layers. */
+  /** Landing action for this build (canonical: pr | merge | leave). */
   landingAction?: LandingConfig['action'];
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
   // --- eforge:region plan-02-stack-provider-runtime ---
@@ -201,9 +194,7 @@ export class Orchestrator {
       mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, gapCloser: this.options.gapCloser,
       minCompletionPercent: this.options.minCompletionPercent ?? 75, worktreeManager: wm,
       failedMerges: new Set<string>(), recentlyMergedIds: [],
-      // --- eforge:region plan-01-engine-config-and-landing ---
-      landingSucceeded: false, onSuccess: this.options.onSuccess ?? 'merge-to-base-branch',
-      // --- eforge:endregion plan-01-engine-config-and-landing ---
+      landingSucceeded: false,
       gapClosePerformed: false,
       modelTracker: new ModelTracker(),
       shouldCleanup: this.options.shouldCleanup, cleanupPlanSet: this.options.cleanupPlanSet,
@@ -219,7 +210,7 @@ export class Orchestrator {
       // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
       prdId: this.options.prdId,
       stackContext: this.options.stackContext,
-      landingAction: this.options.landingAction,
+      landingAction: this.options.landingAction ?? 'merge',
       // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       // --- eforge:region plan-02-stack-provider-runtime ---
       stackProvider: this.options.stackProvider,
@@ -243,9 +234,9 @@ export class Orchestrator {
       await wm.cleanupAll();
       for (const [, plan] of planMap) { try { await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot }); } catch { /* best-effort */ } }
       // --- eforge:region plan-01-engine-config-and-landing ---
-      // Only delete the feature branch when it was merged into base — for issue-pr and leave-branch
+      // Only delete the feature branch when it was merged into base — for pr and leave
       // the branch must be preserved so the PR or manual workflow can reference it.
-      if (ctx.landingSucceeded && ctx.onSuccess === 'merge-to-base-branch') { try { await exec('git', ['branch', '-D', featureBranch], { cwd: repoRoot }); } catch { /* best-effort */ } }
+      if (ctx.landingSucceeded && ctx.landingAction === 'merge') { try { await exec('git', ['branch', '-D', featureBranch], { cwd: repoRoot }); } catch { /* best-effort */ } }
       // --- eforge:endregion plan-01-engine-config-and-landing ---
     }
   }

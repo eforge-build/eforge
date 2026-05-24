@@ -513,12 +513,12 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     case 'landing:complete':
-      if (event.action === 'issue-pr' && event.prUrl) {
+      if (event.action === 'pr' && event.prUrl) {
         succeedSpinner('landing', `PR opened: ${chalk.cyan(event.featureBranch)}`);
         console.log(chalk.green(`  ✓ Pull request: ${event.prUrl}`));
-      } else if (event.action === 'merge-to-base-branch') {
+      } else if (event.action === 'merge') {
         succeedSpinner('landing', `Merged ${chalk.cyan(event.featureBranch)} into ${chalk.cyan(event.baseBranch)}`);
-      } else if (event.action === 'leave-branch') {
+      } else if (event.action === 'leave') {
         succeedSpinner('landing', `Branch ${chalk.cyan(event.featureBranch)} left for manual workflow`);
       } else {
         succeedSpinner('landing', `Landing complete (${event.action})`);

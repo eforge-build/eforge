@@ -818,7 +818,90 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  it('persists onSuccess in PRD frontmatter when valid onSuccess value is provided for autonomous playbook', async () => {
+  it('persists landingAction in PRD frontmatter when valid landingAction value is provided for autonomous playbook', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-feature',
+      landingAction: 'leave',
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { kind: string; id: string };
+    expect(data.kind).toBe('enqueued');
+    expect(typeof data.id).toBe('string');
+
+    // Verify the queued PRD contains landing: leave in frontmatter
+    const queueFile = resolve(tmpDir, '.eforge', 'queue', `${data.id}.md`);
+    const content = await readFile(queueFile, 'utf-8');
+    const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
+    expect(frontmatter).toBeDefined();
+    expect(frontmatter).toContain('landing: leave');
+  });
+
+  it('returns 400 and does not enqueue when landingAction value is invalid for autonomous playbook', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-feature',
+      landingAction: 'bad',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('landingAction');
+
+    // No PRD should have been created in queue or waiting
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    await expect(readdir(queueDir)).rejects.toThrow();
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('returns requires-agent for a planning-mode playbook even when valid landingAction is provided', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-planning',
+      landingAction: 'pr',
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { kind: string; mode: string; name: string };
+    expect(data.kind).toBe('requires-agent');
+    expect(data.mode).toBe('planning');
+    expect(data.name).toBe('my-planning');
+
+    // No PRD should have been enqueued
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    await expect(readdir(queueDir)).rejects.toThrow();
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('returns 400 with migration error when old onSuccess wire value is sent in request body', async () => {
     const tmpDir = makeTempDir();
     const { configDir } = await setupProject(tmpDir);
 
@@ -833,69 +916,12 @@ describe('POST /api/playbook/run — profile field', () => {
       name: 'my-feature',
       onSuccess: 'leave-branch',
     });
-    expect(res.status).toBe(200);
-
-    const data = await res.json() as { kind: string; id: string };
-    expect(data.kind).toBe('enqueued');
-    expect(typeof data.id).toBe('string');
-
-    // Verify the queued PRD contains onSuccess: leave-branch in frontmatter
-    const queueFile = resolve(tmpDir, '.eforge', 'queue', `${data.id}.md`);
-    const content = await readFile(queueFile, 'utf-8');
-    const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
-    expect(frontmatter).toBeDefined();
-    expect(frontmatter).toContain('onSuccess: leave-branch');
-  });
-
-  it('returns 400 and does not enqueue when onSuccess value is invalid for autonomous playbook', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
-
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
-      name: 'my-feature',
-      onSuccess: 'deploy',
-    });
     expect(res.status).toBe(400);
 
     const data = await res.json() as { error: string };
-    expect(data.error).toContain('onSuccess');
+    // Migration guidance: old onSuccess field rejected
+    expect(data.error).toMatch(/onSuccess|landingAction/i);
 
-    // No PRD should have been created in queue or waiting
-    const queueDir = resolve(tmpDir, '.eforge', 'queue');
-    await expect(readdir(queueDir)).rejects.toThrow();
-    expect(autoBuildWakeReasons).toEqual([]);
-  });
-
-  it('returns requires-agent for a planning-mode playbook even when valid onSuccess is provided', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
-
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
-      name: 'my-planning',
-      onSuccess: 'issue-pr',
-    });
-    expect(res.status).toBe(200);
-
-    const data = await res.json() as { kind: string; mode: string; name: string };
-    expect(data.kind).toBe('requires-agent');
-    expect(data.mode).toBe('planning');
-    expect(data.name).toBe('my-planning');
-
-    // No PRD should have been enqueued
     const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
