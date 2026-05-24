@@ -1,0 +1,65 @@
+name: generate-public-web-docs-and-audit-for-user-facing-gaps
+description: Audit and refresh the public web documentation artifacts for
+  eforge, using current implementation behavior as the source of truth.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm --filter @eforge-build/web type-check
+  - pnpm test -- web/__tests__/content.test.ts test/docs-gen-determinism.test.ts
+    test/docs-link-check.test.ts test/extension-docs-content.test.ts
+    test/reference-content.test.ts test/skills-docs-wiring.test.ts
+  - pnpm docs:check
+plans:
+  - id: plan-01-public-web-docs-audit-refresh
+    name: Audit and Refresh Public Web Docs
+    depends_on: []
+    branch: generate-public-web-docs-and-audit-for-user-facing-gaps/plan-01-public-web-docs-audit-refresh
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - docs
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The task is documentation-only, but it requires cross-checking public
+          guides against CLI, daemon API, config, extension, profile, playbook,
+          and integration implementation surfaces.
+      reviewer:
+        effort: high
+        rationale: Docs review must catch stale user-facing claims, broken journey
+          coverage, and generated-artifact drift across multiple public
+          documentation surfaces.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - docs
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a docs-heavy public documentation audit spanning multiple
+    web/content pages and generated reference artifacts, but it can be planned
+    coherently in one planner session, so excursion is appropriate. A plan
+    review gate helps catch coverage gaps before build. Implementation and
+    doc-authoring can run in parallel because the task is primarily
+    documentation creation/update, followed by doc-sync to reconcile existing
+    docs with the final diff. Review-cycle with a docs perspective ensures
+    accuracy, navigation, terminology, and user-facing coverage are checked, and
+    test-cycle is included to run the docs generation/check workflow such as
+    pnpm docs:check.
