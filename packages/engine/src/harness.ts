@@ -321,19 +321,31 @@ export function classifyAgentTerminalSubtype(err: unknown): AgentTerminalSubtype
  * Intentionally narrow — matches only the well-attested `Theme not initialized` family.
  * Broader heuristics for other infra failures belong in a follow-up if they surface.
  */
-const PI_TOOL_INFRA_RE = /theme\s+not\s+initialized/i;
+const PI_TOOL_INFRA_THEME_RE = /theme\s+not\s+initialized/i;
+
+/**
+ * Matches explicit Pi tool-call infrastructure failure wrapper messages of the form:
+ *   [optional whitespace][optional "Error:"] "Pi tool-call infrastructure failure: ..."
+ *
+ * Anchored at the start of the message so mid-message occurrences are not matched.
+ * Conservative: does not match generic error text that merely contains similar words.
+ */
+const PI_TOOL_INFRA_WRAPPER_RE = /^\s*(?:error:\s*)?pi\s+tool-call\s+infrastructure\s+failure\s*:/i;
 
 /**
  * Returns true when a tool-result or prompt-rejection message indicates a Pi tool-call
- * infrastructure failure (e.g. global theme proxy accessed before `initTheme()` in a
- * headless SDK session). Matches leading/trailing whitespace and case variations.
+ * infrastructure failure. Matches:
+ *
+ * 1. The `Theme not initialized` family (original narrow match).
+ * 2. Explicit wrapper messages that start with `Pi tool-call infrastructure failure:`,
+ *    optionally preceded by whitespace or `Error:`.
  *
  * Used to classify `AgentTerminalError('error_pi_tool_infrastructure', ...)` so the engine
  * surfaces it as a clear infrastructure failure with remediation hints rather than a
  * generic no-submission compile failure.
  */
 export function isPiToolInfrastructureError(message: string): boolean {
-  return PI_TOOL_INFRA_RE.test(message);
+  return PI_TOOL_INFRA_THEME_RE.test(message) || PI_TOOL_INFRA_WRAPPER_RE.test(message);
 }
 // --- eforge:endregion plan-01-pi-headless-isolation ---
 

@@ -22,7 +22,7 @@ import { runPlanEvaluate, runCohesionEvaluate, runArchitectureEvaluate } from '.
 import { runCohesionReview } from '../../agents/cohesion-reviewer.js';
 import { runArchitectureReview } from '../../agents/architecture-reviewer.js';
 import { parseBuildConfigBlock } from '../../agents/common.js';
-import { composePipeline } from '../../agents/pipeline-composer.js';
+import { composePipeline, type PipelineComposerOptions } from '../../agents/pipeline-composer.js';
 import { compileExpedition } from '../../compiler.js';
 import { resolveDependencyGraph, injectPipelineIntoOrchestrationYaml, parseOrchestrationConfig } from '../../plan.js';
 import { runParallel, type ParallelTask } from '../../concurrency.js';
@@ -225,7 +225,8 @@ registerCompileStage({
   // Run pipeline composition first (fast LLM call to determine scope and stages)
   const { harness: composerHarness, toolbeltSummary: composerTb } = ctx.agentRuntimes.forRoleResolved('pipeline-composer');
   const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb);
-  for await (const event of composePipeline({
+  // --- eforge:region plan-01-stage-local-retry-recovery ---
+  const composerOptions: PipelineComposerOptions = {
     source: ctx.sourceContent,
     cwd: ctx.cwd,
     verbose: ctx.verbose,
@@ -237,19 +238,28 @@ registerCompileStage({
     // --- eforge:region plan-01-validation-provider-runtime ---
     validationProviders: ctx.extensionValidationProviders,
     // --- eforge:endregion plan-01-validation-provider-runtime ---
-  })) {
-    if (event.type === 'planning:pipeline') {
-      // Update the context pipeline from the composer result
-      ctx.pipeline = {
-        scope: event.scope as 'errand' | 'excursion' | 'expedition',
-        compile: event.compile,
-        defaultBuild: event.defaultBuild,
-        defaultReview: event.defaultReview,
-        rationale: event.rationale,
-      };
-    }
-    yield event;
-  }
+  };
+  const composerRetryPolicy = DEFAULT_RETRY_POLICIES['pipeline-composer'] as RetryPolicy<PipelineComposerOptions>;
+  yield* withRetry(
+    async function* (input: PipelineComposerOptions) {
+      for await (const event of composePipeline(input)) {
+        if (event.type === 'planning:pipeline') {
+          // Update the context pipeline from the composer result
+          ctx.pipeline = {
+            scope: event.scope as 'errand' | 'excursion' | 'expedition',
+            compile: event.compile,
+            defaultBuild: event.defaultBuild,
+            defaultReview: event.defaultReview,
+            rationale: event.rationale,
+          };
+        }
+        yield event;
+      }
+    },
+    composerRetryPolicy,
+    composerOptions,
+  );
+  // --- eforge:endregion plan-01-stage-local-retry-recovery ---
 
   // Guard: if the composer replaced the compile pipeline without 'planner', delegate.
   if (!ctx.pipeline.compile.includes('planner')) {

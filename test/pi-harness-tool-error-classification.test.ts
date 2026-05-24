@@ -52,6 +52,23 @@ describe('isPiToolInfrastructureError — should match', () => {
     // The regex matches on "theme\s+not\s+initialized", so a partial match is sufficient
     expect(isPiToolInfrastructureError('Theme not initialized')).toBe(true);
   });
+
+  // Wrapper-prefix cases (PI_TOOL_INFRA_WRAPPER_RE)
+  it('matches the "Pi tool-call infrastructure failure:" wrapper prefix', () => {
+    expect(isPiToolInfrastructureError('Pi tool-call infrastructure failure: something went wrong')).toBe(true);
+  });
+
+  it('matches wrapper prefix with "Error: " preamble', () => {
+    expect(isPiToolInfrastructureError('Error: Pi tool-call infrastructure failure: foo bar')).toBe(true);
+  });
+
+  it('matches wrapper prefix with leading whitespace', () => {
+    expect(isPiToolInfrastructureError('  Pi tool-call infrastructure failure: leading whitespace')).toBe(true);
+  });
+
+  it('matches wrapper prefix case-insensitively', () => {
+    expect(isPiToolInfrastructureError('PI TOOL-CALL INFRASTRUCTURE FAILURE: CAPS')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -99,6 +116,23 @@ describe('isPiToolInfrastructureError — should not match', () => {
     expect(isPiToolInfrastructureError('Setting theme to dark mode')).toBe(false);
     expect(isPiToolInfrastructureError('Applied theme successfully')).toBe(false);
   });
+
+  // Wrapper-prefix negative cases: must start at (or near) the beginning of the string
+  it('does not match "Pi tool-call infrastructure failure:" when not at the start of the string', () => {
+    expect(isPiToolInfrastructureError('Some prefix Pi tool-call infrastructure failure: mid-message')).toBe(false);
+  });
+
+  it('does not match an ordinary successful tool-result JSON payload', () => {
+    expect(isPiToolInfrastructureError('{"result":"success","data":{"count":42}}')).toBe(false);
+  });
+
+  it('does not match wrapper-like text inside a JSON tool payload', () => {
+    expect(isPiToolInfrastructureError('{"stderr":"Pi tool-call infrastructure failure: command output only"}')).toBe(false);
+  });
+
+  it('does not match an application-level TypeError without theme or infrastructure context', () => {
+    expect(isPiToolInfrastructureError('TypeError: Cannot read properties of undefined')).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -122,6 +156,11 @@ describe('classifyAgentTerminalSubtype — error_pi_tool_infrastructure', () => 
 
   it('returns error_pi_tool_infrastructure for embedded theme-init message in Error', () => {
     const err = new Error('Pi tool-call infrastructure failure: Theme not initialized. Call initTheme() first.');
+    expect(classifyAgentTerminalSubtype(err)).toBe('error_pi_tool_infrastructure');
+  });
+
+  it('returns error_pi_tool_infrastructure for the explicit wrapper prefix in Error', () => {
+    const err = new Error('Pi tool-call infrastructure failure: hook failed before tool result');
     expect(classifyAgentTerminalSubtype(err)).toBe('error_pi_tool_infrastructure');
   });
 });

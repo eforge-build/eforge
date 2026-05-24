@@ -106,11 +106,79 @@ export interface RetryPolicy<Input> {
   planIdFromInput?: (input: Input) => string | undefined;
   /** Optional shardId extraction for the `agent:retry` event. */
   shardIdFromInput?: (input: Input) => string | undefined;
+  // --- eforge:region plan-01-stage-local-retry-recovery ---
+  /**
+   * Optional hook called after classifying a terminal subtype.
+   * If it returns true, the terminal error is downgraded to a warning (terminal success):
+   * no new attempt is started, `onTerminalSuccess` events are emitted (if any),
+   * the held-back terminal event is dropped, and the last successful result is returned.
+   */
+  terminalSuccessWhen?: (info: RetryAttemptInfo<Input>) => boolean | Promise<boolean>;
+  /**
+   * Emit domain events when `terminalSuccessWhen` triggers terminal success.
+   * Typically used to emit an `agent:warning` event with a stable code.
+   */
+  onTerminalSuccess?: (info: RetryAttemptInfo<Input>) => EforgeEvent[];
+  // --- eforge:endregion plan-01-stage-local-retry-recovery ---
 }
 
 // ---------------------------------------------------------------------------
 // Predicates
 // ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-stage-local-retry-recovery ---
+/**
+ * Returns true when attempt events contain an authoritative planner completion:
+ * `planning:complete`, `planning:skip`, or `expedition:architecture:complete`.
+ * Used to decide whether a late retryable infrastructure/transport error can be
+ * downgraded to a warning instead of propagated.
+ */
+export function hasAuthoritativePlannerCheckpoint(events: readonly EforgeEvent[]): boolean {
+  return events.some(
+    (ev) =>
+      ev.type === 'planning:complete' ||
+      ev.type === 'planning:skip' ||
+      ev.type === 'expedition:architecture:complete',
+  );
+}
+
+/**
+ * Returns true only when none of the planner boundary events have appeared:
+ * `planning:submission`, `planning:skip`, `planning:complete`, or
+ * `expedition:architecture:complete`. When all four are absent, the planner
+ * has not yet produced any authoritative side-effect (file write or submission)
+ * so rerunning is safe.
+ */
+export function isBeforePlannerSubmissionBoundary(events: readonly EforgeEvent[]): boolean {
+  return !events.some(
+    (ev) =>
+      ev.type === 'planning:submission' ||
+      ev.type === 'planning:skip' ||
+      ev.type === 'planning:complete' ||
+      ev.type === 'expedition:architecture:complete',
+  );
+}
+
+/**
+ * Returns true for terminal subtypes that indicate retryable infrastructure
+ * or transport failures: `error_transient_transport` and
+ * `error_pi_tool_infrastructure`.
+ */
+export function isRetryableInfrastructureSubtype(subtype: AgentTerminalSubtype): boolean {
+  return subtype === 'error_transient_transport' || subtype === 'error_pi_tool_infrastructure';
+}
+
+/** Extract an agent ID from attempt events, with a deterministic fallback. */
+function extractAgentId(events: readonly EforgeEvent[], fallback: string): string {
+  for (const ev of events) {
+    if (ev.type === 'agent:start' && 'agentId' in ev && ev.agentId) return ev.agentId as string;
+    if (ev.type === 'agent:result' && 'agentId' in ev && (ev as { agentId?: string }).agentId) {
+      return (ev as { agentId: string }).agentId;
+    }
+  }
+  return fallback;
+}
+// --- eforge:endregion plan-01-stage-local-retry-recovery ---
 
 /**
  * True when the events collected during a failed planner attempt indicate a
@@ -534,6 +602,9 @@ export function buildShardPolicy(
       // --- eforge:region plan-01-transport-resilience ---
       'error_transient_transport',
       // --- eforge:endregion plan-01-transport-resilience ---
+      // --- eforge:region plan-01-stage-local-retry-recovery ---
+      'error_pi_tool_infrastructure',
+      // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     ]) as ReadonlySet<AgentTerminalSubtype>,
     buildContinuationInput: (info) =>
       buildShardedBuilderContinuationInput(info as RetryAttemptInfo<BuilderShardContinuationInput>) as Promise<ContinuationDecision<BuilderShardContinuationInput>>,
@@ -619,16 +690,22 @@ export async function buildEvaluatorContinuationInput(
 // ---------------------------------------------------------------------------
 
 const RETRYABLE_MAX_TURNS: ReadonlySet<AgentTerminalSubtype> = new Set(['error_max_turns']);
-// --- eforge:region plan-01-transport-resilience ---
-const RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT: ReadonlySet<AgentTerminalSubtype> = new Set([
-  'error_max_turns',
+// --- eforge:region plan-01-stage-local-retry-recovery ---
+/**
+ * Retryable subtypes for infrastructure and transport failures.
+ * Exported for use in local retry policies (e.g. compile reviewer retry in runners.ts).
+ */
+export const RETRYABLE_INFRASTRUCTURE_SUBTYPES: ReadonlySet<AgentTerminalSubtype> = new Set([
   'error_transient_transport',
+  'error_pi_tool_infrastructure',
 ]);
 
-function isBeforePlannerSubmission(events: readonly EforgeEvent[]): boolean {
-  return !events.some((ev) => ev.type === 'planning:submission' || ev.type === 'planning:skip');
-}
-// --- eforge:endregion plan-01-transport-resilience ---
+const RETRYABLE_MAX_TURNS_TRANSPORT_AND_INFRA: ReadonlySet<AgentTerminalSubtype> = new Set([
+  'error_max_turns',
+  'error_transient_transport',
+  'error_pi_tool_infrastructure',
+]);
+// --- eforge:endregion plan-01-stage-local-retry-recovery ---
 const EMPTY_SUBTYPES: ReadonlySet<AgentTerminalSubtype> = new Set();
 
 /**
@@ -652,13 +729,14 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     // `PlannerSubmissionError`. Inspecting events alone would also match
     // unrelated `AgentTerminalError` subtypes (e.g. `error_during_execution`,
     // `error_max_budget_usd`) that happen to have no submission tool call,
-    // which the prior ad-hoc loop explicitly did not retry. Transient transport
-    // closes use the same continuation prompt only when the stream failed before
-    // a terminal planner submission/skip event; otherwise the submitted plans
-    // are already authoritative and rerunning would duplicate side effects.
+    // which the prior ad-hoc loop explicitly did not retry. Retryable
+    // infrastructure/transport failures use the same continuation prompt only
+    // when the stream failed before any planner boundary event; otherwise the
+    // submitted or completed plans are already authoritative and rerunning
+    // would duplicate side effects.
     shouldRetry: (info) =>
       (isPlannerSubmissionError(info.error) && isDroppedSubmission(info.events)) ||
-      (info.subtype === 'error_transient_transport' && isBeforePlannerSubmission(info.events)),
+      (isRetryableInfrastructureSubtype(info.subtype) && isBeforePlannerSubmissionBoundary(info.events)),
     buildContinuationInput: (info) => buildPlannerContinuationInput(info as RetryAttemptInfo<PlannerContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const reason: 'max_turns' | 'dropped_submission' =
@@ -672,11 +750,32 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
       }];
     },
     label: 'planner-continuation',
+    // --- eforge:region plan-01-stage-local-retry-recovery ---
+    // After an authoritative planner completion event, a late retryable
+    // infrastructure/transport error is downgraded to a warning rather than
+    // propagated. No second attempt is started — the plans are already written.
+    terminalSuccessWhen: (info) =>
+      isRetryableInfrastructureSubtype(info.subtype) && hasAuthoritativePlannerCheckpoint(info.events),
+    onTerminalSuccess: (info) => {
+      const agentId = extractAgentId(info.events, `planner-unknown`);
+      const message = info.error instanceof Error ? info.error.message : String(info.error);
+      return [{
+        timestamp: new Date().toISOString(),
+        type: 'agent:warning',
+        agent: 'planner',
+        agentId,
+        code: 'infrastructure-error-post-checkpoint-downgraded',
+        message: `Retryable infrastructure error after planner checkpoint was downgraded: ${message}`,
+      }];
+    },
+    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
   },
   builder: {
     agent: 'builder',
     maxAttempts: 4,
-    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
+    // --- eforge:region plan-01-stage-local-retry-recovery ---
+    retryableSubtypes: RETRYABLE_MAX_TURNS_TRANSPORT_AND_INFRA,
+    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     buildContinuationInput: (info) => buildBuilderContinuationInput(info as RetryAttemptInfo<BuilderContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const planId = (info.prevInput as BuilderContinuationInput).planId;
@@ -694,7 +793,9 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   evaluator: {
     agent: 'evaluator',
     maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
+    // --- eforge:region plan-01-stage-local-retry-recovery ---
+    retryableSubtypes: RETRYABLE_MAX_TURNS_TRANSPORT_AND_INFRA,
+    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const planId = (info.prevInput as EvaluatorContinuationInput).planId ?? '';
@@ -712,7 +813,9 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   'plan-evaluator': {
     agent: 'plan-evaluator',
     maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
+    // --- eforge:region plan-01-stage-local-retry-recovery ---
+    retryableSubtypes: RETRYABLE_MAX_TURNS_TRANSPORT_AND_INFRA,
+    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => [{
       timestamp: new Date().toISOString(),
@@ -725,7 +828,9 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   'cohesion-evaluator': {
     agent: 'cohesion-evaluator',
     maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
+    // --- eforge:region plan-01-stage-local-retry-recovery ---
+    retryableSubtypes: RETRYABLE_MAX_TURNS_TRANSPORT_AND_INFRA,
+    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => [{
       timestamp: new Date().toISOString(),
@@ -738,7 +843,9 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   'architecture-evaluator': {
     agent: 'architecture-evaluator',
     maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
+    // --- eforge:region plan-01-stage-local-retry-recovery ---
+    retryableSubtypes: RETRYABLE_MAX_TURNS_TRANSPORT_AND_INFRA,
+    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => [{
       timestamp: new Date().toISOString(),
@@ -748,6 +855,32 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     }],
     label: 'architecture-evaluator-continuation',
   },
+  // --- eforge:region plan-01-stage-local-retry-recovery ---
+  'pipeline-composer': {
+    agent: 'pipeline-composer',
+    maxAttempts: 2,
+    retryableSubtypes: RETRYABLE_INFRASTRUCTURE_SUBTYPES,
+    label: 'pipeline-composer-infrastructure-retry',
+    // After `planning:pipeline` is emitted, a late retryable infrastructure or
+    // transport error is downgraded to a warning — the composition result is
+    // already available so no retry is needed.
+    terminalSuccessWhen: (info: RetryAttemptInfo<unknown>) =>
+      info.events.some((ev) => ev.type === 'planning:pipeline') &&
+      isRetryableInfrastructureSubtype(info.subtype),
+    onTerminalSuccess: (info: RetryAttemptInfo<unknown>) => {
+      const agentId = extractAgentId(info.events, 'pipeline-composer-unknown');
+      const message = info.error instanceof Error ? info.error.message : String(info.error);
+      return [{
+        timestamp: new Date().toISOString(),
+        type: 'agent:warning',
+        agent: 'pipeline-composer',
+        agentId,
+        code: 'infrastructure-error-post-checkpoint-downgraded',
+        message: `Retryable infrastructure error after pipeline-composer checkpoint was downgraded: ${message}`,
+      }];
+    },
+  },
+  // --- eforge:endregion plan-01-stage-local-retry-recovery ---
 };
 
 /**
@@ -851,6 +984,24 @@ export async function* withRetry<Input, Result = void>(
       prevInput: currentInput,
       error: caughtError,
     };
+
+    // --- eforge:region plan-01-stage-local-retry-recovery ---
+    // Check terminal-success hook before retry/propagate decision. When the
+    // hook returns true, the terminal error is downgraded to a warning: no new
+    // attempt is started, onTerminalSuccess events are emitted, the held-back
+    // terminal event is dropped, and the last successful result is returned.
+    if (policy.terminalSuccessWhen) {
+      const isTerminalSuccess = await policy.terminalSuccessWhen(info);
+      if (isTerminalSuccess) {
+        if (policy.onTerminalSuccess) {
+          for (const ev of policy.onTerminalSuccess(info)) {
+            yield ev;
+          }
+        }
+        return lastResult;
+      }
+    }
+    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
 
     const inSet = policy.retryableSubtypes.has(subtype);
     const customMatch = policy.shouldRetry?.(info) ?? false;
