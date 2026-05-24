@@ -9628,6 +9628,12 @@
             "command": {
               "type": "string"
             },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "exitCode": {
               "type": "integer"
             },
@@ -9697,6 +9703,9 @@
               ]
             },
             "prUrl": {
+              "type": "string"
+            },
+            "reason": {
               "type": "string"
             }
           }

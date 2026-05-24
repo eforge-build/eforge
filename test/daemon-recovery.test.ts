@@ -123,7 +123,10 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 37', () => {
+  it('is 38', () => {
+    // v38: `landing:start` wire event removes `feature-pr-after-local-merge` workflow literal
+    // and replaces it with `feature-pr`; older clients that validated the event against the
+    // previous schema union will reject events emitted by the new daemon.
     // v37: optional `onSuccess` field added to `PlaybookRunRequest` (per-playbook-run landing
     // action override: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch'); daemon
     // `/api/playbook/run` validates and passes `onSuccess` to `enqueuePrd(...)` for autonomous
@@ -139,7 +142,7 @@ describe('DAEMON_API_VERSION', () => {
     // PRD frontmatter; `/api/session-plan/create` and `/api/session-plan/create-from-playbook`
     // propagate `agent_profile`; `/api/enqueue` validates and propagates inherited session-plan
     // `agent_profile` to worker `--profile` arg.
-    expect(DAEMON_API_VERSION).toBe(37);
+    expect(DAEMON_API_VERSION).toBe(38);
   });
 });
 

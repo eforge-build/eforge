@@ -29,6 +29,11 @@ import type { EforgeConfig, LandingConfig } from '../config.js';
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+// --- eforge:region plan-02-stack-provider-runtime ---
+import { executeStackLanding } from '../stacking/landing.js';
+import { updateStackLayerLanding } from '../stacking/state.js';
+import type { StackProviderAdapter } from '../stacking/provider.js';
+// --- eforge:endregion plan-02-stack-provider-runtime ---
 // --- eforge:region plan-02-policy-gate-engine-integration ---
 import {
   buildFinalMergePolicyGateContext,
@@ -103,6 +108,10 @@ export interface PhaseContext {
   /** Landing action vocabulary to persist on stack layers. */
   landingAction?: LandingConfig['action'];
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+  // --- eforge:region plan-02-stack-provider-runtime ---
+  /** Instantiated stack provider adapter for git-spice landing (stacked builds only). */
+  stackProvider?: StackProviderAdapter;
+  // --- eforge:endregion plan-02-stack-provider-runtime ---
 }
 
 /**
@@ -693,6 +702,9 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
 export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   if (!ctx.stackContext) return;
   if ((ctx.state.status as string) === 'failed') return;
+  if (ctx.signal?.aborted) return;
+  const allMerged = Object.values(ctx.state.plans).every((p) => p.status === 'merged');
+  if (!allMerged) return;
 
   try {
     yield await recordSuccessfulBuildArtifact({
@@ -722,6 +734,108 @@ export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeE
   }
 }
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+
+// --- eforge:region plan-02-stack-provider-runtime ---
+/**
+ * Run git-spice stack landing for stacked PR builds.
+ *
+ * Always called (not guarded by state.status check) so it can persist a
+ * 'skipped' landing outcome when an earlier phase failed and landing cannot
+ * be attempted. When no stack context or no provider is configured this is
+ * a no-op, preserving existing behavior for non-stacked builds.
+ *
+ * For stacked builds with `landingAction === 'pr'` and a running build state,
+ * delegates to `executeStackLanding` which tracks, submits, and persists.
+ *
+ * For stacked builds where the build failed before landing, persists a
+ * 'skipped' outcome and emits the corresponding `stack:landing:update` event.
+ */
+export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
+  if (!ctx.stackContext || !ctx.stackProvider) return;
+
+  const effectiveLandingAction = ctx.landingAction ?? 'leave';
+  const { prdId, stackId, branch } = ctx.stackContext;
+
+  // If the build failed or was aborted before landing, persist the skipped outcome.
+  const preLandingSkipReason = (ctx.state.status as string) === 'failed'
+    ? 'Build failed before landing could be attempted'
+    : ctx.signal?.aborted === true
+      ? 'Build aborted before landing could be attempted'
+      : undefined;
+  if (preLandingSkipReason !== undefined) {
+    const now = new Date().toISOString();
+    await updateStackLayerLanding(ctx.repoRoot, prdId, {
+      action: effectiveLandingAction,
+      status: 'skipped',
+      reason: preLandingSkipReason,
+      startedAt: now,
+      completedAt: now,
+    });
+    yield {
+      timestamp: now,
+      type: 'stack:landing:update',
+      prdId,
+      stackId,
+      action: effectiveLandingAction,
+      branch,
+      status: 'skipped',
+      reason: preLandingSkipReason,
+    } as EforgeEvent;
+    return;
+  }
+
+  // Delegate full landing to the stacking/landing helper, but observe the
+  // terminal stack landing status so a provider failure cannot be mistaken for
+  // a successful PR landing.
+  let stackPrLandingCompleted = false;
+  let stackPrLandingFailure: string | undefined;
+  for await (const event of executeStackLanding({
+    cwd: ctx.repoRoot,
+    mergeWorktreePath: ctx.mergeWorktreePath,
+    stackContext: ctx.stackContext,
+    landingAction: effectiveLandingAction,
+    provider: ctx.stackProvider,
+  })) {
+    if (event.type === 'stack:landing:update' && effectiveLandingAction === 'pr') {
+      if (event.status === 'complete') stackPrLandingCompleted = true;
+      if (event.status === 'failed') stackPrLandingFailure = event.reason ?? 'Stack landing failed';
+    }
+    yield event;
+  }
+
+  // Mark ctx so finalize skips the legacy issue-pr path only when git-spice
+  // actually completed the stacked PR landing.
+  if (effectiveLandingAction === 'pr') {
+    if (stackPrLandingCompleted) {
+      ctx.landingSucceeded = true;
+    } else {
+      const reason = stackPrLandingFailure ?? 'Stack landing did not complete';
+      if (stackPrLandingFailure === undefined) {
+        const now = new Date().toISOString();
+        await updateStackLayerLanding(ctx.repoRoot, prdId, {
+          action: effectiveLandingAction,
+          status: 'failed',
+          reason,
+          startedAt: now,
+          completedAt: now,
+        });
+        yield {
+          timestamp: now,
+          type: 'stack:landing:update',
+          prdId,
+          stackId,
+          action: effectiveLandingAction,
+          branch,
+          status: 'failed',
+          reason,
+        } as EforgeEvent;
+      }
+      ctx.state.status = 'failed';
+      ctx.state.completedAt = new Date().toISOString();
+    }
+  }
+}
+// --- eforge:endregion plan-02-stack-provider-runtime ---
 
 /**
  * Final landing of the feature branch and status determination.
@@ -782,6 +896,15 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
     // --- eforge:region plan-01-engine-config-and-landing ---
+    // --- eforge:region plan-02-stack-provider-runtime ---
+    // For stacked builds with issue-pr, git-spice already submitted the PR in the
+    // stackLanding phase (which set ctx.landingSucceeded = true). Skip the legacy
+    // executeLandingAction PR publication to avoid a duplicate gh pr create call.
+    if (action === 'issue-pr' && ctx.stackContext && ctx.landingSucceeded) {
+      // Stack landing already completed; finalize considers this a success.
+      // No additional events — stack:landing:update already covers the outcome.
+    } else {
+    // --- eforge:endregion plan-02-stack-provider-runtime ---
     // Delegate to executeLandingAction for dirty-tree check, cleanup, and the chosen action.
     const landingGen = executeLandingAction({
       action,
@@ -816,6 +939,9 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       yield next.value;
     }
     ctx.landingSucceeded = landingResult.landingSucceeded;
+    // --- eforge:region plan-02-stack-provider-runtime ---
+    } // end stacked PR gate
+    // --- eforge:endregion plan-02-stack-provider-runtime ---
     // --- eforge:endregion plan-01-engine-config-and-landing ---
   } else if (!allMerged) {
     // Not all plans merged — skip landing, leave feature branch for inspection.

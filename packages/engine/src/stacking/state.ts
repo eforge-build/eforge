@@ -13,7 +13,7 @@ import { resolve, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod/v4';
-import type { StackLayer, StackState } from './types.js';
+import type { StackLayer, StackLayerLanding, StackState } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Zod schemas for runtime validation
@@ -23,6 +23,15 @@ const stackArtifactRefSchema = z.object({
   branch: z.string(),
   commitSha: z.string().optional(),
   prUrl: z.string().optional(),
+});
+
+const stackLayerLandingSchema = z.object({
+  action: z.enum(['pr', 'merge', 'leave']),
+  status: z.enum(['started', 'complete', 'skipped', 'failed']),
+  prUrl: z.string().optional(),
+  reason: z.string().optional(),
+  startedAt: z.string().min(1),
+  completedAt: z.string().optional(),
 });
 
 /** Zod schema for a single stack layer record. */
@@ -35,6 +44,7 @@ export const stackLayerSchema = z.object({
   baseBranch: z.string().optional(),
   artifact: stackArtifactRefSchema.optional(),
   landingAction: z.enum(['pr', 'merge', 'leave']).optional(),
+  landing: stackLayerLandingSchema.optional(),
   status: z.enum(['pending', 'building', 'built', 'merged', 'landed', 'failed']),
   recordedAt: z.string().min(1),
   updatedAt: z.string().min(1),
@@ -214,4 +224,84 @@ export function getRecordedArtifactRef(state: StackState, prdId: string): string
  */
 export function isArtifactAvailable(state: StackState, prdId: string): boolean {
   return getRecordedArtifactRef(state, prdId) !== undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Landing state helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Update the durable landing record for the layer identified by `prdId`.
+ *
+ * The update preserves `recordedAt` and existing artifact refs — only the
+ * `landing` field and `updatedAt` are modified. When the layer does not exist
+ * in the state file (e.g., artifact recording was skipped due to earlier
+ * failure), this is a no-op and the current state is returned unchanged.
+ */
+export async function updateStackLayerLanding(
+  cwd: string,
+  prdId: string,
+  landing: StackLayerLanding,
+): Promise<StackState> {
+  return withStackStateLock(cwd, async () => {
+    const state = await loadStackState(cwd);
+    const idx = state.layers.findIndex((l) => l.prdId === prdId);
+    if (idx === -1) {
+      // No layer recorded yet — cannot update, return state unchanged.
+      return state;
+    }
+    const existing = state.layers[idx];
+    const now = new Date().toISOString();
+    const updated: StackLayer = {
+      ...existing,
+      landing,
+      updatedAt: now,
+    };
+    const updatedLayers = state.layers.map((l, i) => (i === idx ? updated : l));
+    const updatedState: StackState = { version: 1, layers: updatedLayers };
+    await saveStackState(cwd, updatedState);
+    return updatedState;
+  });
+}
+
+/**
+ * Mark the layer for `prdId` as failed and persist the failure reason.
+ *
+ * Preserves `recordedAt`, `artifact`, and all other existing fields. When the
+ * layer does not exist the call is a no-op.
+ */
+export async function markStackLayerFailed(
+  cwd: string,
+  prdId: string,
+  reason: string,
+): Promise<StackState> {
+  return withStackStateLock(cwd, async () => {
+    const state = await loadStackState(cwd);
+    const idx = state.layers.findIndex((l) => l.prdId === prdId);
+    if (idx === -1) {
+      return state;
+    }
+    const existing = state.layers[idx];
+    const now = new Date().toISOString();
+    const updated: StackLayer = {
+      ...existing,
+      status: 'failed',
+      updatedAt: now,
+      // Preserve a completed landing (the failure happened after landing); otherwise
+      // make the landing record reflect the failed terminal state and reason.
+      landing: existing.landing?.status === 'complete'
+        ? existing.landing
+        : {
+            action: existing.landing?.action ?? existing.landingAction ?? 'leave',
+            status: 'failed',
+            reason,
+            startedAt: existing.landing?.startedAt ?? now,
+            completedAt: now,
+          },
+    };
+    const updatedLayers = state.layers.map((l, i) => (i === idx ? updated : l));
+    const updatedState: StackState = { version: 1, layers: updatedLayers };
+    await saveStackState(cwd, updatedState);
+    return updatedState;
+  });
 }

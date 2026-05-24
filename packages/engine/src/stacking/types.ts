@@ -53,6 +53,35 @@ export interface StackArtifactRef {
 }
 
 // ---------------------------------------------------------------------------
+// Landing record
+// ---------------------------------------------------------------------------
+
+/** Lifecycle status of a stack layer's landing attempt. */
+export type StackLandingStatus = 'started' | 'complete' | 'skipped' | 'failed';
+
+/**
+ * Durable landing record attached to a stack layer.
+ *
+ * Set when landing is attempted (started/complete) or intentionally bypassed
+ * (skipped). Persisted to `.eforge/stacks/layers.json` for retry and
+ * observability purposes.
+ */
+export interface StackLayerLanding {
+  /** The landing action that was (or was intended to be) applied. */
+  action: LandingPublicationAction;
+  /** Current landing lifecycle status. */
+  status: StackLandingStatus;
+  /** PR URL when a PR has been issued via git-spice. */
+  prUrl?: string;
+  /** Failure or skip reason when status is 'failed' or 'skipped'. */
+  reason?: string;
+  /** ISO-8601 timestamp when landing was started. */
+  startedAt: string;
+  /** ISO-8601 timestamp when landing completed (success, failure, or skip). */
+  completedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Stack layer
 // ---------------------------------------------------------------------------
 
@@ -79,6 +108,8 @@ export interface StackLayer {
   artifact?: StackArtifactRef;
   /** Override landing action for this layer (inherits from config when absent). */
   landingAction?: LandingPublicationAction;
+  /** Durable landing record, available after landing is attempted or skipped. */
+  landing?: StackLayerLanding;
   /** Current lifecycle status. */
   status: StackLayerStatus;
   /** ISO-8601 timestamp when this layer was first recorded. */

@@ -9,7 +9,9 @@ export type {
   StackProvider,
   LandingPublicationAction,
   StackLayerStatus,
+  StackLandingStatus,
   StackArtifactRef,
+  StackLayerLanding,
   StackLayer,
   StackState,
 } from './types.js';
@@ -25,6 +27,8 @@ export {
   getParentArtifactBranch,
   getRecordedArtifactRef,
   isArtifactAvailable,
+  updateStackLayerLanding,
+  markStackLayerFailed,
 } from './state.js';
 
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
@@ -34,12 +38,18 @@ export { recordSuccessfulBuildArtifact } from './artifacts.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 // --- eforge:region plan-02-git-spice-provider-and-git-primitives ---
-export type { StackProviderAdapter } from './provider.js';
+export type { StackProviderAdapter, ProviderCommandResult } from './provider.js';
 export { createProvider } from './provider.js';
 export {
   GitSpiceAdapter,
   GitSpiceNotAvailableError,
   GitSpiceCommandError,
   createGitSpiceAdapter,
+  parseGitSpicePrUrl,
 } from './git-spice.js';
 // --- eforge:endregion plan-02-git-spice-provider-and-git-primitives ---
+
+// --- eforge:region plan-02-stack-provider-runtime ---
+export { executeStackLanding } from './landing.js';
+export type { StackLandingOptions } from './landing.js';
+// --- eforge:endregion plan-02-stack-provider-runtime ---

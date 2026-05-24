@@ -14,9 +14,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isAlwaysYieldedAgentEvent, safeParseDaemonStreamSnapshot, safeParseEforgeEvent } from '../events.schemas.js';
+import { isAlwaysYieldedAgentEvent, safeParseDaemonStreamSnapshot, safeParseEforgeEvent, StackLayerWireSchema } from '../events.schemas.js';
 import { DAEMON_EVENT_TYPES, eventRegistry, getEventSummary, isPersistedDaemonEventType } from '../event-registry.js';
 import type { EforgeEvent } from '../events.schemas.js';
+import { Value } from '@sinclair/typebox/value';
 
 // ---------------------------------------------------------------------------
 // Fixtures — the 5 new plan lifecycle + merge worktree variants
@@ -2163,6 +2164,129 @@ describe('safeParseEforgeEvent — dynamic perspective keys', () => {
     });
     expect(result.success).toBe(false);
   });
+});
+
+// --- eforge:region plan-02-stack-provider-runtime ---
+describe('StackLayerWireSchema — extended landing field', () => {
+  it('accepts a layer without a landing field', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+    });
+    expect(result).toBe(true);
+  });
+
+  it('accepts a layer with a complete landing record including prUrl', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'landed',
+      recordedAt: now,
+      updatedAt: now,
+      artifact: { branch: 'eforge/feat-a', commitSha: 'abc123' },
+      landingAction: 'pr',
+      landing: {
+        action: 'pr',
+        status: 'complete',
+        prUrl: 'https://github.com/owner/repo/pull/42',
+        startedAt: now,
+        completedAt: now,
+      },
+    });
+    expect(result).toBe(true);
+  });
+
+  it('accepts a layer with a failed landing record including reason', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'failed',
+      recordedAt: now,
+      updatedAt: now,
+      landingAction: 'pr',
+      landing: {
+        action: 'pr',
+        status: 'failed',
+        reason: 'git-spice command failed',
+        startedAt: now,
+        completedAt: now,
+      },
+    });
+    expect(result).toBe(true);
+  });
+
+  it('accepts a layer with a skipped landing record (no prUrl, no reason)', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+      landing: {
+        action: 'leave',
+        status: 'skipped',
+        startedAt: now,
+      },
+    });
+    expect(result).toBe(true);
+  });
+
+  it('rejects a landing record with an invalid status', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+      landing: {
+        action: 'pr',
+        status: 'in-progress',
+        startedAt: now,
+      },
+    });
+    expect(result).toBe(false);
+  });
+
+  it('rejects a landing record with an invalid action', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+      landing: {
+        action: 'push',
+        status: 'complete',
+        startedAt: now,
+      },
+    });
+    expect(result).toBe(false);
+  });
+});
+// --- eforge:endregion plan-02-stack-provider-runtime ---
+
+describe('safeParseEforgeEvent — dynamic perspective keys', () => {
 
   it('accepts all six built-in perspectives in parallel:start', () => {
     const result = safeParseEforgeEvent({

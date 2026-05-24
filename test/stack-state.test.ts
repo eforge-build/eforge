@@ -23,8 +23,10 @@ import {
   getParentArtifactBranch,
   isArtifactAvailable,
   stackStateSchema,
+  updateStackLayerLanding,
+  markStackLayerFailed,
 } from '@eforge-build/engine/stacking';
-import type { StackLayer } from '@eforge-build/engine/stacking';
+import type { StackLayer, StackLayerLanding } from '@eforge-build/engine/stacking';
 
 let cwd: string;
 
@@ -361,5 +363,198 @@ describe('stackStateSchema', () => {
       ],
     });
     expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateStackLayerLanding
+// ---------------------------------------------------------------------------
+
+describe('updateStackLayerLanding', () => {
+  it('updates the landing record for an existing layer', async () => {
+    const now = new Date().toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'landing-prd',
+      stackId: 'stack-landing',
+      provider: 'git-spice',
+      branch: 'feat/landing-prd',
+      status: 'built',
+      artifact: { branch: 'feat/landing-prd', commitSha: 'abc123' },
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    const landing: StackLayerLanding = {
+      action: 'pr',
+      status: 'complete',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+      startedAt: now,
+      completedAt: now,
+    };
+    await updateStackLayerLanding(cwd, 'landing-prd', landing);
+
+    const state = await loadStackState(cwd);
+    const layer = lookupLayerByPrdId(state, 'landing-prd');
+    expect(layer?.landing).toEqual(landing);
+    // Preserves artifact and recordedAt
+    expect(layer?.artifact?.commitSha).toBe('abc123');
+    expect(layer?.recordedAt).toBe(now);
+  });
+
+  it('is a no-op when the layer does not exist', async () => {
+    const now = new Date().toISOString();
+    const landing: StackLayerLanding = {
+      action: 'pr',
+      status: 'complete',
+      startedAt: now,
+      completedAt: now,
+    };
+    await updateStackLayerLanding(cwd, 'nonexistent-prd', landing);
+    const state = await loadStackState(cwd);
+    expect(state.layers).toHaveLength(0);
+  });
+
+  it('preserves recordedAt when updating landing', async () => {
+    const originalTime = new Date(Date.now() - 5000).toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'preserve-prd',
+      stackId: 's',
+      provider: 'git-spice',
+      branch: 'feat/preserve',
+      status: 'built',
+      recordedAt: originalTime,
+      updatedAt: originalTime,
+    });
+
+    const now = new Date().toISOString();
+    await updateStackLayerLanding(cwd, 'preserve-prd', {
+      action: 'pr',
+      status: 'started',
+      startedAt: now,
+    });
+
+    const state = await loadStackState(cwd);
+    const layer = lookupLayerByPrdId(state, 'preserve-prd');
+    expect(layer?.recordedAt).toBe(originalTime);
+  });
+
+  it('preserves existing artifact when updating landing', async () => {
+    const now = new Date().toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'artifact-prd',
+      stackId: 's',
+      provider: 'git-spice',
+      branch: 'feat/artifact',
+      status: 'built',
+      artifact: { branch: 'feat/artifact', commitSha: 'deadbeef' },
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    await updateStackLayerLanding(cwd, 'artifact-prd', {
+      action: 'pr',
+      status: 'complete',
+      startedAt: now,
+      completedAt: now,
+    });
+
+    const state = await loadStackState(cwd);
+    const layer = lookupLayerByPrdId(state, 'artifact-prd');
+    expect(layer?.artifact?.commitSha).toBe('deadbeef');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// markStackLayerFailed
+// ---------------------------------------------------------------------------
+
+describe('markStackLayerFailed', () => {
+  it('marks the layer as failed with a reason', async () => {
+    const now = new Date().toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'fail-prd',
+      stackId: 's',
+      provider: 'git-spice',
+      branch: 'feat/fail',
+      landingAction: 'pr',
+      status: 'built',
+      artifact: { branch: 'feat/fail', commitSha: 'deadbeef' },
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    await markStackLayerFailed(cwd, 'fail-prd', 'git-spice command failed');
+
+    const state = await loadStackState(cwd);
+    const layer = lookupLayerByPrdId(state, 'fail-prd');
+    expect(layer?.status).toBe('failed');
+    expect(layer?.landing?.status).toBe('failed');
+    expect(layer?.landing?.reason).toBe('git-spice command failed');
+    // Artifact and recordedAt are preserved
+    expect(layer?.artifact?.commitSha).toBe('deadbeef');
+    expect(layer?.recordedAt).toBe(now);
+  });
+
+  it('is a no-op when the layer does not exist', async () => {
+    await markStackLayerFailed(cwd, 'nonexistent', 'some reason');
+    const state = await loadStackState(cwd);
+    expect(state.layers).toHaveLength(0);
+  });
+
+  it('converts an in-progress landing record to failed when marking as failed', async () => {
+    const now = new Date().toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'started-landing',
+      stackId: 's',
+      provider: 'git-spice',
+      branch: 'feat/started-landing',
+      status: 'built',
+      landing: {
+        action: 'pr',
+        status: 'started',
+        startedAt: now,
+      },
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    await markStackLayerFailed(cwd, 'started-landing', 'submit failed');
+
+    const state = await loadStackState(cwd);
+    const layer = lookupLayerByPrdId(state, 'started-landing');
+    expect(layer?.status).toBe('failed');
+    expect(layer?.landing?.status).toBe('failed');
+    expect(layer?.landing?.reason).toBe('submit failed');
+    expect(layer?.landing?.startedAt).toBe(now);
+    expect(layer?.landing?.completedAt).toBeTruthy();
+  });
+
+  it('preserves a completed landing record when marking as failed', async () => {
+    const now = new Date().toISOString();
+    const existingLanding: StackLayerLanding = {
+      action: 'pr',
+      status: 'complete',
+      prUrl: 'https://github.com/owner/repo/pull/99',
+      startedAt: now,
+      completedAt: now,
+    };
+    await upsertStackLayer(cwd, {
+      prdId: 'with-landing',
+      stackId: 's',
+      provider: 'git-spice',
+      branch: 'feat/with-landing',
+      status: 'built',
+      landing: existingLanding,
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    await markStackLayerFailed(cwd, 'with-landing', 'post-landing failure');
+
+    const state = await loadStackState(cwd);
+    const layer = lookupLayerByPrdId(state, 'with-landing');
+    // Existing landing should be preserved (not overwritten)
+    expect(layer?.landing).toEqual(existingLanding);
+    expect(layer?.status).toBe('failed');
   });
 });

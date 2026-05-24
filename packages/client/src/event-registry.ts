@@ -842,20 +842,28 @@ const eventRegistry = {
   // --- eforge:region plan-01-stack-contracts-config-state-events ---
   'stack:layer:recorded': {
     scope: 'session',
-    persist: false,
+    persist: true,
     summary: (e) => `Stack layer recorded: ${e.prdId} (${e.status}) on ${e.branch}`,
   },
 
   'stack:provider:command': {
     scope: 'session',
-    persist: false,
-    summary: (e) => `Stack provider (${e.provider}) command: ${e.command} → exit ${e.exitCode}`,
+    persist: true,
+    summary: (e) => {
+      const argv = e.args ? [e.command, ...e.args].join(' ') : e.command;
+      return `Stack provider (${e.provider}): ${argv} → exit ${e.exitCode}`;
+    },
   },
 
   'stack:landing:update': {
     scope: 'session',
-    persist: false,
-    summary: (e) => `Stack landing update: ${e.prdId} (${e.action}) ${e.status}`,
+    persist: true,
+    summary: (e) => {
+      const base = `Stack landing: ${e.prdId} (${e.action}) ${e.status}`;
+      if (e.prUrl) return `${base} — ${e.prUrl}`;
+      if (e.reason) return `${base} — ${e.reason}`;
+      return base;
+    },
   },
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 

@@ -123,6 +123,24 @@ export const StackArtifactRefSchema = Type.Object({
   prUrl: Type.Optional(Type.String()),
 });
 
+/** Wire schema for the lifecycle status of a stack layer's landing attempt. */
+export const StackLandingStatusSchema = Type.Union([
+  Type.Literal('started'),
+  Type.Literal('complete'),
+  Type.Literal('skipped'),
+  Type.Literal('failed'),
+]);
+
+/** Wire schema for the durable landing record attached to a stack layer. */
+export const StackLayerLandingWireSchema = Type.Object({
+  action: LandingPublicationActionSchema,
+  status: StackLandingStatusSchema,
+  prUrl: Type.Optional(Type.String()),
+  reason: Type.Optional(Type.String()),
+  startedAt: Type.String(),
+  completedAt: Type.Optional(Type.String()),
+});
+
 /** Wire schema for a single stack layer record. */
 export const StackLayerWireSchema = Type.Object({
   prdId: Type.String(),
@@ -133,6 +151,7 @@ export const StackLayerWireSchema = Type.Object({
   baseBranch: Type.Optional(Type.String()),
   artifact: Type.Optional(StackArtifactRefSchema),
   landingAction: Type.Optional(LandingPublicationActionSchema),
+  landing: Type.Optional(StackLayerLandingWireSchema),
   status: StackLayerStatusSchema,
   recordedAt: Type.String(),
   updatedAt: Type.String(),
@@ -2057,6 +2076,7 @@ const EforgeEventVariantsSchema = Type.Union([
     type: Type.Literal('stack:provider:command'),
     provider: StackProviderSchema,
     command: Type.String(),
+    args: Type.Optional(Type.Array(Type.String())),
     exitCode: Type.Integer(),
     branch: Type.Optional(Type.String()),
   }),
@@ -2066,13 +2086,9 @@ const EforgeEventVariantsSchema = Type.Union([
     stackId: Type.String(),
     action: LandingPublicationActionSchema,
     branch: Type.String(),
-    status: Type.Union([
-      Type.Literal('started'),
-      Type.Literal('complete'),
-      Type.Literal('skipped'),
-      Type.Literal('failed'),
-    ]),
+    status: StackLandingStatusSchema,
     prUrl: Type.Optional(Type.String()),
+    reason: Type.Optional(Type.String()),
   }),
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 ]);
