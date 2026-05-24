@@ -96,22 +96,14 @@ build:
   #   - "pnpm type-check"
   #   - "pnpm test"
 
-# Landing action (preferred over build.onSuccess)
+# Landing action
 # landing:
 #   action: pr                # pr | merge | leave (default: merge)
 #                             #   pr: open a PR from the artifact branch targeting the resolved base branch
-#                             #       (trunk for non-stacked builds; parent artifact branch for stacked builds)
+#                             #       (current base branch for non-stacked builds; parent artifact branch for stacked builds)
 #                             #       requires gh CLI
 #                             #   merge: auto-merge the artifact branch into the base branch
 #                             #   leave: commit to artifact branch and exit without merging or opening a PR
-#   # Note: legacy build.onSuccess (merge-to-base-branch | issue-pr | leave-branch) still works
-#   #       but emits a deprecation warning. Prefer landing.action for new configs.
-#   #
-#   # Precedence: landing.action takes precedence when both keys are present.
-#   # Compatibility mapping:
-#   #   landing.action: pr     <-> build.onSuccess: issue-pr
-#   #   landing.action: merge  <-> build.onSuccess: merge-to-base-branch
-#   #   landing.action: leave  <-> build.onSuccess: leave-branch
 
 # Stacking (git-spice backed stacked PRs)
 # stacking:
@@ -154,9 +146,9 @@ Each command in `postMergeCommands` and the planner-generated validate commands 
 
 `build.trunkBranch` names the project's trunk. eforge detects it automatically from `origin/HEAD` during `eforge init` and writes the result to `eforge/config.yaml`. Override it here if detection is wrong or the repository uses a non-standard default branch name.
 
-`build.allowLocalMergeToTrunk` controls whether `landing.action: merge` (or legacy `onSuccess: merge-to-base-branch`) is permitted to land directly on trunk without opening a pull request. The default is `false`, which is appropriate for team projects with branch protection rules. Set to `true` only for solo projects or repositories where direct trunk commits are acceptable.
+`build.allowLocalMergeToTrunk` controls whether `landing.action: merge` is permitted to land directly on trunk without opening a pull request. The default is `false`, which is appropriate for team projects with branch protection rules. Set to `true` only for solo projects or repositories where direct trunk commits are acceptable.
 
-When `allowLocalMergeToTrunk` is `false` and the current branch is trunk, the interactive CLI prompts before enqueue and offers four alternatives: switch to `pr` (`issue-pr`), cancel, create a feature branch, or enable the solo-dev opt-in. With `--auto`, the engine rejects the build at runtime with a clear error message rather than prompting.
+When `allowLocalMergeToTrunk` is `false` and the current branch is trunk, the interactive CLI prompts before enqueue and offers four alternatives: switch to `pr`, cancel, create a feature branch, or enable the solo-dev opt-in. With `--auto`, the engine rejects the build at runtime with a clear error message rather than prompting.
 
 ## PRD provenance
 

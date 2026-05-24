@@ -347,7 +347,7 @@ function hasLegacyBuildOnSuccess(data: Record<string, unknown>): boolean {
 /** Zod schema for the landing publication config. */
 const landingConfigSchema = z.object({
   action: z.enum(['pr', 'merge', 'leave']).optional().describe(
-    'Landing action after a successful build. "pr" opens a GitHub pull request from the artifact branch targeting the resolved base branch (trunk for non-stacked builds, parent artifact branch for stacked builds). "merge" merges the artifact branch into the base branch directly. "leave" commits to the artifact branch and exits without merging or opening a PR. Default: "merge".',
+    'Landing action after a successful build. "pr" opens a GitHub pull request from the artifact branch targeting the resolved base branch (current base branch for non-stacked builds, parent artifact branch for stacked builds). "merge" merges the artifact branch into the base branch directly. "leave" commits to the artifact branch and exits without merging or opening a PR. Default: "merge".',
   ),
 }).describe(
   'Publication action taken after all plans complete and validation passes.',

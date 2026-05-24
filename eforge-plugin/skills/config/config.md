@@ -52,7 +52,7 @@ Agent settings resolve through three layers of granularity: **global** (applies 
 
 **Sections to cover:**
 
-1. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`, landing action: prefer the new `landing.action` key (`pr` opens a PR from the artifact branch to the resolved base branch, `merge` auto-merges the artifact/worktree branch into the base branch, `leave` exits without merging or opening a PR; default is `merge`; `pr` requires `gh` CLI). Legacy `build.onSuccess` with full values (`merge-to-base-branch`, `issue-pr`, `leave-branch`) still works but emits a deprecation notice — write `landing.action` for new configs. `trunkBranch` (trunk branch name; detected from `origin/HEAD` at init time; fallback `main`), `allowLocalMergeToTrunk` (default `false`; set to `true` only for solo/unprotected projects to allow direct merge to trunk without a PR)
+1. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`, landing action: use `landing.action` (`pr` opens a PR from the artifact branch to the resolved base branch, `merge` auto-merges the artifact/worktree branch into the base branch, `leave` exits without merging or opening a PR; default is `merge`; `pr` requires `gh` CLI). `trunkBranch` (trunk branch name; detected from `origin/HEAD` at init time; fallback `main`), `allowLocalMergeToTrunk` (default `false`; set to `true` only for solo/unprotected projects to allow direct merge to trunk without a PR)
 2. **Global agent defaults** (opt-in - "Would you like to customize thinking or effort settings? Most users keep defaults.") - Global `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`xhigh`/`max`). Resolution order (highest → lowest): plan override → per-role config → per-tier config → global config → built-in per-role default → built-in per-tier default. Harness and model selection live in the active profile's tier entries — do not configure them here. Whenever you need to suggest a specific model ID (for per-role `model` overrides), **call `mcp__eforge__eforge_models` first** with `{ action: "list", harness: "<resolved-harness>" }` (and `provider: "<profile-provider>"` for Pi) and pick from the returned list (newest-first). Never propose a model ID from memory.
 3. **Tier tuning** (opt-in - "Would you like to tune agents by group? eforge organises agents into four groups by what they do: **planning**, **implementation**, **review**, and **evaluation**. You can give each group its own effort level without touching individual roles.") - Group membership: **planning** — `planner`, `module-planner`, `formatter`, `pipeline-composer`, `merge-conflict-resolver`, `gap-closer`; **implementation** — `builder`, `review-fixer`, `validation-fixer`, `doc-author`, `doc-syncer`, `test-writer`, `tester`, `recovery-analyst`, `dependency-detector`, `prd-validator`, `staleness-assessor`; **review** — `reviewer`, `architecture-reviewer`, `cohesion-reviewer`, `plan-reviewer`; **evaluation** — `evaluator`, `architecture-evaluator`, `cohesion-evaluator`, `plan-evaluator`. Built-in defaults: `implementation` defaults to `effort=medium`; `planning`, `review`, and `evaluation` default to `effort=high`. Harness and model selection come from the active profile's tier entries. Available per-tier knobs in config.yaml: `effort`, `model`, `thinking`, `maxTurns`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`. Set them under `agents.tiers.<tier>`.
 4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false)
@@ -63,7 +63,7 @@ Agent settings resolve through three layers of granularity: **global** (applies 
 9. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
 10. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue)
 11. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
-12. **Stacking** (opt-in - "Does this project use stacked PRs with git-spice?") - `stacking.enabled` (default `false`; set to `true` to enable git-spice-backed stacking where artifact branch PRs target the parent artifact branch rather than the feature/trunk branch), `stacking.gitSpice.command` (optional path to the `gs` binary when it is not on `$PATH`, e.g. `/usr/local/bin/gs`). The `stacking.provider` is always `git-spice` and need not be set.
+12. **Stacking** (opt-in - "Does this project use stacked PRs with git-spice?") - `stacking.enabled` (default `false`; set to `true` to enable git-spice-backed stacking where artifact branch PRs target the parent artifact branch rather than the feature/trunk branch), `stacking.gitSpice.command` (optional path to the `git-spice` binary when it is not on `$PATH`, e.g. `/usr/local/bin/git-spice`; set to `gs` only if you use the optional short alias). The `stacking.provider` is always `git-spice` and need not be set.
 
 For each section, explain what it controls and suggest values based on the project context gathered in Step 3. Skip sections the user isn't interested in.
 
@@ -134,21 +134,20 @@ build:
   # allowLocalMergeToTrunk: false      # Allow merge-to-base-branch to land directly on trunk without a PR
                                        #   Default false; set to true only for solo/unprotected projects
 
-# Landing action (preferred over build.onSuccess)
+# Landing action
 landing:
   action: pr                           # pr | merge | leave (default: merge)
                                        # pr: open a PR from the artifact branch targeting the resolved base branch (requires gh CLI)
                                        # merge: auto-merge the artifact branch into the base branch
                                        # leave: commit to artifact branch and exit without merging or opening a PR
-  # Note: legacy build.onSuccess (merge-to-base-branch | issue-pr | leave-branch) still works
-  #       but emits a deprecation warning. Prefer landing.action for new configs.
 
 # Stacking (git-spice backed stacked PRs)
 # stacking:
 #   enabled: false                     # Default false. Set to true to enable git-spice stacking.
 #                                      # When enabled, artifact branch PRs target the parent artifact branch.
+#                                      # Run 'git-spice repo init' in the repo before enabling.
 #   gitSpice:
-#     command: gs                      # Optional path to gs binary (default: searches $PATH)
+#     command: git-spice               # Default. Set to 'gs' only if you use the optional short alias.
 
 # Agent settings
 agents:

@@ -1,6 +1,6 @@
 ---
 description: Enqueue a source for the eforge daemon to build via MCP tool
-argument-hint: "[source] [--infer] [--profile <name>] [--on-success <action>]"
+argument-hint: "[source] [--infer] [--profile <name>] [--landing-action <action>]"
 disable-model-invocation: true
 ---
 
@@ -13,7 +13,7 @@ Enqueue a PRD file or description for the eforge daemon to build. Uses the eforg
 - `source` (optional) - PRD file path, session-plan path, or inline description of what to build
 - `--infer` (optional) - Skip session-plan discovery and infer the source from conversation context. Used by Pi's native `/eforge:build` source selector.
 - `--profile <name>` (optional) - Use this eforge agent runtime profile for the build instead of the active profile.
-- `onSuccess` / `--on-success <action>` (optional) - Override the landing action for this build. One of `merge-to-base-branch`, `issue-pr`, or `leave-branch`. Precedence: this argument > PRD frontmatter > `landing.action` in `eforge/config.yaml` (or legacy `build.onSuccess`) > engine default (`merge-to-base-branch`). If omitted, the project config default applies. Note: `merge-to-base-branch` on the trunk branch requires `build.allowLocalMergeToTrunk: true` in `eforge/config.yaml`.
+- `--landing-action <action>` (optional) - Override the landing action for this build. One of `pr`, `merge`, or `leave`. Precedence: this argument > PRD frontmatter > `landing.action` in `eforge/config.yaml` > engine default (`merge`). If omitted, the project config default applies. Note: `merge` on the trunk branch requires `build.allowLocalMergeToTrunk: true` in `eforge/config.yaml`.
 
 ## Workflow
 
@@ -99,23 +99,23 @@ After the user responds, incorporate their answers into the working source and p
 
 The build skill uses a **unified landing selector** to determine what happens to the artifact branch when the build finishes. The selector offers these choices:
 
-- **Use project default** — Inherits `landing.action` from `eforge/config.yaml` (or legacy `build.onSuccess`), or the engine default (`merge-to-base-branch`) if unset. **No `onSuccess` key is sent in the enqueue body** — the engine resolves the default at build time.
-- **pr** (`issue-pr`) — Open a pull request from the artifact branch.
-- **merge** (`merge-to-base-branch`) — Merge the artifact branch into the base branch directly.
-- **leave** (`leave-branch`) — Commit to the artifact branch and exit without merging or opening a PR.
+- **Use project default** — Inherits `landing.action` from `eforge/config.yaml`, or the engine default (`merge`) if unset. **No `landingAction` key is sent in the enqueue body** — the engine resolves the default at build time.
+- **pr** — Open a pull request from the artifact branch.
+- **merge** — Merge the artifact branch into the base branch directly.
+- **leave** — Commit to the artifact branch and exit without merging or opening a PR.
 
-**If `$ARGUMENTS` already contains an explicit landing override** (e.g. `onSuccess: <value>` or `--on-success <value>`), skip the selector and use the provided value at enqueue time.
+**If `$ARGUMENTS` already contains an explicit landing override** (e.g. `--landing-action <value>`), skip the selector and use the provided value at enqueue time.
 
 **Protected trunk behavior**: When the current branch is the configured trunk branch (e.g. `main`) and `build.allowLocalMergeToTrunk` is not `true` in `eforge/config.yaml`:
-- The **merge** option and the **project default** option (when the effective project default is `merge-to-base-branch`) are **excluded** from the normal selector menu.
+- The **merge** option and the **project default** option (when the effective project default is `merge`) are **excluded** from the normal selector menu.
 - A warning is displayed explaining that direct trunk merges are not permitted for this project.
 - Remediation choices are offered instead: **pr** for this build, **leave branch**, **update config** to enable local trunk merges (shown only when a project config path is known), or **cancel**.
 - Do **not** ask the user to create a feature branch in this flow.
 
 When the current branch is a **feature branch**, all choices are available:
-- `merge-to-base-branch` merges the artifact branch into the feature branch locally (no PR required).
-- `issue-pr` opens a PR from the artifact branch targeting the feature branch.
-- `leave-branch` commits to the artifact branch and exits.
+- `merge` merges the artifact branch into the feature branch locally (no PR required).
+- `pr` opens a PR from the artifact branch targeting the feature branch.
+- `leave` commits to the artifact branch and exits.
 
 <!-- parity-skip-start -->
 Present the assembled source for confirmation:
@@ -153,7 +153,7 @@ First, validate the project config by calling the `mcp__eforge__eforge_config` t
 
 - If `valid` is `true`, continue silently.
 
-Call the `mcp__eforge__eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If an explicit landing action was selected (anything other than "Use project default"), include `onSuccess: "<value>"` in the call. **Do not include `onSuccess` when the user selected "Use project default" or when no landing override is present in `$ARGUMENTS` — omitting the key lets the engine inherit the configured default.**
+Call the `mcp__eforge__eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If an explicit landing action was selected (anything other than "Use project default"), include `landingAction: "<value>"` in the call. **Do not include `landingAction` when the user selected "Use project default" or when no landing override is present in `$ARGUMENTS` — omitting the key lets the engine inherit the configured default.**
 
 <!-- parity-skip-start -->
 Present the landing selector conversationally with the four choices (Use project default, pr, merge, leave) before calling the tool, unless an explicit override is already in `$ARGUMENTS`. On protected trunk with unsafe effective default, exclude merge and project-default-as-merge from the normal options and offer the remediation choices instead (pr, leave, update config if applicable, cancel).
@@ -177,10 +177,10 @@ If the monitor is running, also include the monitor URL.
 
 ## Direct Tool Backstop
 
-When `mcp__eforge__eforge_build` is called directly (for example, by a tool call rather than through the native `/eforge:build` command flow) with an effective `merge-to-base-branch` landing on a protected trunk branch:
+When `mcp__eforge__eforge_build` is called directly (for example, by a tool call rather than through the native `/eforge:build` command flow) with an effective `merge` landing on a protected trunk branch:
 
 <!-- parity-skip-start -->
-Claude Code direct MCP tool calls are non-interactive, so no remediation selector is available on this path. Prefer calling the tool with `onSuccess: "issue-pr"` or `onSuccess: "leave-branch"`, or update `eforge/config.yaml` before enqueueing if the project intentionally allows local trunk merges.
+Claude Code direct MCP tool calls are non-interactive, so no remediation selector is available on this path. Prefer calling the tool with `landingAction: "pr"` or `landingAction: "leave"`, or update `eforge/config.yaml` before enqueueing if the project intentionally allows local trunk merges.
 <!-- parity-skip-end -->
 
 The engine guard in `packages/engine/src/landing.ts` remains unchanged and acts as a final backstop independent of this check.

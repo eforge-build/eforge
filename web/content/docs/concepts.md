@@ -91,7 +91,7 @@ The **web monitor** (`http://localhost:<port>`) tracks cost, token usage, and pi
 
 Every eforge build produces an **artifact branch** - a named Git branch (`eforge/<prd-id>`) that holds the committed output. After all plans merge into the artifact branch and post-merge validation passes, the **landing action** determines what happens next.
 
-The preferred configuration is `landing.action` (values: `pr`, `merge`, `leave`). The legacy `build.onSuccess` field is kept for compatibility and maps to the same actions, but emits a deprecation warning.
+Configure the landing action via `landing.action` (values: `pr`, `merge`, `leave`).
 
 | `landing.action` | Behavior |
 |-----------------|----------|

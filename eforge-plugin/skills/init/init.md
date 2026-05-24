@@ -84,8 +84,8 @@ Store the shorthand value (`pr`, `merge`, or `leave`) for use in the `mcp__eforg
 Ask: "Does this project use stacked PRs with git-spice?"
 
 If **yes**:
-- Confirm the `gs` binary location. Ask: "Is `gs` on your `$PATH`, or is there a custom path?" Default: on `$PATH` (no override needed).
-- When calling `mcp__eforge__eforge_init` in Steps 1.5 and 5, the tool does not persist stacking config — stacking is set separately via `/eforge:config`. After init completes, remind the user: "To enable stacking, add `stacking.enabled: true` (and optionally `stacking.gitSpice.command: <path>`) to `eforge/config.yaml` with `/eforge:config --edit`."
+- Confirm the `git-spice` binary location. Ask: "Is `git-spice` on your `$PATH`, or is there a custom path? (You can also set `command: gs` in the config if you use the optional short alias.)" Default: on `$PATH` as `git-spice` (no override needed).
+- When calling `mcp__eforge__eforge_init` in Steps 1.5 and 5, the tool does not persist stacking config — stacking is set separately via `/eforge:config`. After init completes, remind the user: "To enable stacking, add `stacking.enabled: true` (and optionally `stacking.gitSpice.command: <path>`) to `eforge/config.yaml` with `/eforge:config --edit`. Run `git-spice repo init` in the repository if you haven't already."
 
 If **no**: proceed to Step 1.5.
 
@@ -123,9 +123,9 @@ Include `force: true` if `$ARGUMENTS` contains `--force` or `force`.
 Skip Steps 2–6. Proceed directly to the result message.
 
 - For a **local**-scope pick:
-  > eforge initialized with local-scope profile `<name>` activated. The profile lives at `.eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands and on-success landing action.
+  > eforge initialized with local-scope profile `<name>` activated. The profile lives at `.eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands and `landing.action` setting.
 - For a **user**-scope pick:
-  > eforge initialized with user-scope profile `<name>` activated. The profile lives at `~/.config/eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands and on-success landing action.
+  > eforge initialized with user-scope profile `<name>` activated. The profile lives at `~/.config/eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands and `landing.action` setting.
 
 **On "create new project profile":** Fall through to Step 2.
 
@@ -278,7 +278,7 @@ Call `mcp__eforge__eforge_init` with:
     }
   },
   "postMergeCommands": [...],
-  "onSuccess": "<selectedOption>",
+  "landingAction": "<pr|merge|leave>",
   "trunkBranch": "<confirmedTrunk>",
   "allowLocalMergeToTrunk": <true|false>,
   "force": true

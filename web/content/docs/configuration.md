@@ -347,7 +347,7 @@ Within a single build, plans run in parallel automatically as their dependencies
 
 ## Landing Action
 
-`landing.action` controls what happens when a build completes successfully. It is the preferred configuration key; the legacy `build.onSuccess` still works but emits a deprecation warning.
+`landing.action` controls what happens when a build completes successfully.
 
 | `landing.action` | Behavior |
 |-------|----------|
@@ -360,15 +360,9 @@ landing:
   action: pr    # pr | merge (default) | leave
 ```
 
-**Compatibility bridge**: if you have `build.onSuccess` in your config, it still works and maps to `landing.action` values. When both keys are present, `landing.action` takes precedence. Prefer `landing.action` for new configs.
-
-| `landing.action` | Legacy `build.onSuccess` |
-|-----------------|------------------------|
-| `pr` | `issue-pr` |
-| `merge` | `merge-to-base-branch` |
-| `leave` | `leave-branch` |
-
 **`pr` prerequisite**: ensure `gh` is installed (`gh --version`) and authenticated (`gh auth status`). Builds configured with `landing.action: pr` will fail at the landing step if `gh` is unavailable.
+
+**Migrating from `build.onSuccess`**: if you have the old `build.onSuccess` key in your config, replace it with `landing.action`. The values map as follows: `issue-pr` → `pr`, `merge-to-base-branch` → `merge`, `leave-branch` → `leave`. New builds reject the old key with migration guidance.
 
 ## Stacked PRs
 
@@ -400,8 +394,9 @@ See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup a
 eforge detects the trunk automatically from `origin/HEAD` during `/eforge:init` and writes the result to `eforge/config.yaml`. Override `build.trunkBranch` if the detected value is wrong or the repository uses a non-standard default branch name.
 
 ```yaml
+landing:
+  action: merge                   # or 'pr' to open a pull request; 'leave' to skip both
 build:
-  onSuccess: merge-to-base-branch
   trunkBranch: main               # detected from origin/HEAD; fallback: main
   allowLocalMergeToTrunk: false   # default: false; set to true for solo/unprotected projects
 ```

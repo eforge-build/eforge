@@ -286,7 +286,7 @@ When a build fails, the queue parent's finalize handler runs the recovery-analys
 
 ## Landing and Direct PR Publication
 
-After all plans merge into the artifact branch, eforge executes the landing action. The preferred configuration key is `landing.action` (`pr` | `merge` | `leave`); the legacy `build.onSuccess` key (`issue-pr` | `merge-to-base-branch` | `leave-branch`) still works but emits a deprecation warning. When both keys are present, `landing.action` takes precedence.
+After all plans merge into the artifact branch, eforge executes the landing action configured via `landing.action` (`pr` | `merge` | `leave`).
 
 `build.trunkBranch` names the trunk (detected from `origin/HEAD` at init time; defaults to `main`). `build.allowLocalMergeToTrunk` controls whether a direct local merge to trunk is permitted when `landing.action: merge`.
 
@@ -307,7 +307,7 @@ No local merge into the feature branch is performed. The artifact branch is the 
 | **Trunk** | Requires `allowLocalMergeToTrunk: true`; rejected with a remediation message otherwise | PR from artifact branch to trunk |
 | **Non-trunk branch** | Merges artifact branch into base branch locally | PR from artifact branch to base branch directly |
 
-When `allowLocalMergeToTrunk` is `false` and the CLI is running interactively on trunk, it prompts before enqueue and offers four resolutions: switch to `pr` (`issue-pr`), cancel, create or switch to a feature branch, or enable the solo-dev opt-in. When `--auto` is set, the CLI defers to the engine, which rejects the build at runtime via `landing:skipped` with a reason of the form `Local merge to trunk '<trunk>' is not permitted (set allowLocalMergeToTrunk: true to opt in)`.
+When `allowLocalMergeToTrunk` is `false` and the CLI is running interactively on trunk, it prompts before enqueue and offers four resolutions: switch to `pr`, cancel, create or switch to a feature branch, or enable the solo-dev opt-in. When `--auto` is set, the CLI defers to the engine, which rejects the build at runtime via `landing:skipped` with a reason of the form `Local merge to trunk '<trunk>' is not permitted (set allowLocalMergeToTrunk: true to opt in)`.
 
 ### Stacked PR topology
 
