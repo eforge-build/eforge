@@ -13,6 +13,18 @@ export type LandingAction = 'pr' | 'merge' | 'leave';
 export const LANDING_ACTION_VALUES: readonly LandingAction[] = ['pr', 'merge', 'leave'];
 
 /**
+ * Resolve a string to a `LandingAction` if it is a recognised canonical value,
+ * or `undefined` otherwise. Does not throw — unknown and old wire values both
+ * return `undefined`.
+ */
+export function resolveLandingAction(value: string): LandingAction | undefined {
+  if (LANDING_ACTION_VALUES.includes(value as LandingAction)) {
+    return value as LandingAction;
+  }
+  return undefined;
+}
+
+/**
  * Validate a `--landing-action` CLI flag value.
  *
  * Returns the validated `LandingAction`, or `undefined` when no value was supplied.

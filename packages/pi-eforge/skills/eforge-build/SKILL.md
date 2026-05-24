@@ -173,7 +173,7 @@ If the monitor is running, also include the monitor URL.
 
 ## Direct Tool Backstop
 
-When `eforge_build` is called directly (for example, by a tool call rather than through the native `/eforge:build` command flow) with an effective `merge-to-base-branch` landing on a protected trunk branch:
+When `eforge_build` is called directly (for example, by a tool call rather than through the native `/eforge:build` command flow) with an effective `merge` landing on a protected trunk branch:
 
 <!-- parity-skip-start -->
 - **UI context**: The landing gate activates and presents the remediation selector (pr, leave, config opt-in when applicable, cancel) before enqueue proceeds.

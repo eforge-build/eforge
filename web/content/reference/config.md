@@ -90,9 +90,15 @@ Hook commands run asynchronously from the pipeline path. Use them for best-effor
 
 ## Landing Action
 
-`landing.action` controls what happens after a successful build. Values: `pr` (open a GitHub pull request), `merge` (merge the artifact branch into the base branch), `leave` (leave the artifact branch in place). Default: `merge`.
+`landing.action` is the preferred key for controlling what happens after a successful build. Values: `pr` (open a GitHub pull request), `merge` (merge the artifact branch into the base branch), `leave` (leave the artifact branch in place). Default: `merge`.
 
-Configs using the legacy `build.onSuccess` field now fail validation with migration guidance. Replace `issue-pr` with `landing.action: pr`, `merge-to-base-branch` with `landing.action: merge`, and `leave-branch` with `landing.action: leave`.
+The legacy `build.onSuccess` field (`issue-pr` | `merge-to-base-branch` | `leave-branch`) is kept for backward compatibility and emits a deprecation warning when used. When both keys are present, `landing.action` takes precedence.
+
+| `landing.action` | Legacy `build.onSuccess` |
+|-----------------|------------------------|
+| `pr` | `issue-pr` |
+| `merge` | `merge-to-base-branch` |
+| `leave` | `leave-branch` |
 
 ```yaml
 landing:
