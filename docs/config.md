@@ -88,7 +88,7 @@ build:
   maxValidationRetries: 2     # Fix attempts on validation failure (0 = no retries)
   cleanupPlanFiles: true      # Remove plan files after successful build
   # trunkBranch: main         # Trunk branch name (default: detected from origin/HEAD, fallback: main)
-  # allowLocalMergeToTrunk: false # Allow merge-to-base-branch to land directly on trunk without a PR
+  # allowLocalMergeToTrunk: false # Allow landing.action: merge to land directly on trunk without a PR
   #                           #   Default false; set to true only for solo/unprotected projects
   # worktreeDir: /custom/path # Override worktree base directory
   # postMergeCommandTimeoutMs: 300000  # Per-command timeout (ms) for postMerge/validate commands (default: 300000, floor: 10000)
@@ -109,6 +109,12 @@ build:
 #                             #       requires gh CLI
 #                             #   merge: auto-merge the artifact branch into the base branch
 #                             #   leave: commit to artifact branch and exit without merging or opening a PR
+#
+# Migration from build.onSuccess:
+#   The old 'build.onSuccess' key and the legacy full-string values
+#   ('issue-pr', 'merge-to-base-branch', 'leave-branch') are both rejected
+#   at config validation with migration guidance. Use 'landing.action' with
+#   the short values: 'pr', 'merge', or 'leave'.
 
 # Stacking (git-spice backed stacked PRs)
 # stacking:

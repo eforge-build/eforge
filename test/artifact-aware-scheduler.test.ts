@@ -6,11 +6,13 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { QueueScheduler, type SchedulerInputEvent } from '@eforge-build/engine/queue/scheduler';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { AsyncEventQueue } from '@eforge-build/engine/concurrency';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
-import { upsertArtifact } from '@eforge-build/engine/artifacts';
+import { upsertArtifact, loadCompletionRegistry } from '@eforge-build/engine/artifacts';
+import { StubHarness } from './stub-harness.js';
 
 const exec = promisify(execFile);
 
@@ -42,6 +44,18 @@ async function recordArtifact(cwd: string, id: string): Promise<void> {
     recordedAt: now,
     updatedAt: now,
   });
+}
+
+async function waitForCompletionRecord(cwd: string, prdId: string) {
+  const deadline = Date.now() + 2_000;
+  let lastRegistry = await loadCompletionRegistry(cwd);
+  while (Date.now() < deadline) {
+    const record = lastRegistry.completions[prdId];
+    if (record !== undefined) return record;
+    await new Promise((r) => setTimeout(r, 20));
+    lastRegistry = await loadCompletionRegistry(cwd);
+  }
+  throw new Error(`Timed out waiting for completion record '${prdId}' in ${JSON.stringify(lastRegistry)}`);
 }
 
 async function env(stackingEnabled = true) {
@@ -260,3 +274,209 @@ describe('QueueScheduler artifact-aware readiness', () => {
     eventQueue.removeProducer();
   });
 });
+
+// --- eforge:region plan-01-runtime-artifact-diagnostics ---
+
+describe('QueueScheduler — completion index recording', () => {
+  it('records a completed entry in the completion index when upstream completes with artifact', async () => {
+    const { cwd, bus, eventQueue, makeScheduler } = await env();
+    const foundation = prd('ci-foundation-complete', cwd);
+    await writePrdFile(foundation);
+
+    const scheduler = makeScheduler([foundation]);
+    await scheduler.start();
+
+    await recordArtifact(cwd, 'ci-foundation-complete');
+    bus.emit('queue:prd:complete', {
+      type: 'queue:prd:complete',
+      prdId: 'ci-foundation-complete',
+      status: 'completed',
+      timestamp: new Date().toISOString(),
+    } satisfies SchedulerInputEvent);
+
+    const record = await waitForCompletionRecord(cwd, 'ci-foundation-complete');
+    expect(record).toBeDefined();
+    expect(record?.status).toBe('completed');
+    expect(record?.artifactAvailable).toBe(true);
+    expect(record?.artifactBranch).toBe('eforge/ci-foundation-complete');
+    eventQueue.removeProducer();
+  });
+
+  it('records a failed entry with artifactAvailable: false when upstream fails', async () => {
+    const { cwd, bus, eventQueue, makeScheduler } = await env();
+    const foundation = prd('ci-foundation-fail', cwd);
+    await writePrdFile(foundation);
+
+    const scheduler = makeScheduler([foundation]);
+    await scheduler.start();
+
+    // Remove the PRD file to simulate cleanup before event, then emit failed
+    await rm(foundation.filePath, { force: true });
+    bus.emit('queue:prd:complete', {
+      type: 'queue:prd:complete',
+      prdId: 'ci-foundation-fail',
+      status: 'failed',
+      timestamp: new Date().toISOString(),
+    } satisfies SchedulerInputEvent);
+
+    const record = await waitForCompletionRecord(cwd, 'ci-foundation-fail');
+    expect(record).toBeDefined();
+    expect(record?.status).toBe('failed');
+    expect(record?.artifactAvailable).toBe(false);
+    eventQueue.removeProducer();
+  });
+
+  it('records a skipped entry with artifactAvailable: false when upstream is skipped', async () => {
+    const { cwd, bus, eventQueue, makeScheduler } = await env();
+    const foundation = prd('ci-foundation-skip', cwd);
+    await writePrdFile(foundation);
+
+    const scheduler = makeScheduler([foundation]);
+    await scheduler.start();
+
+    await rm(foundation.filePath, { force: true });
+    bus.emit('queue:prd:complete', {
+      type: 'queue:prd:complete',
+      prdId: 'ci-foundation-skip',
+      status: 'skipped',
+      timestamp: new Date().toISOString(),
+    } satisfies SchedulerInputEvent);
+
+    const record = await waitForCompletionRecord(cwd, 'ci-foundation-skip');
+    expect(record).toBeDefined();
+    expect(record?.status).toBe('skipped');
+    expect(record?.artifactAvailable).toBe(false);
+    eventQueue.removeProducer();
+  });
+
+  it('blocks a dependent when completion index says upstream failed (even with stale artifact)', async () => {
+    const { cwd, eventQueue, spawnPrdChild, makeScheduler } = await env();
+    // Stale artifact exists from a prior run
+    await recordArtifact(cwd, 'ci-stale-failed');
+    // Completion index supersedes stale artifact — upstream failed this run
+    const now = new Date().toISOString();
+    const { upsertCompletion } = await import('@eforge-build/engine/artifacts');
+    await upsertCompletion(cwd, {
+      prdId: 'ci-stale-failed',
+      status: 'failed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    const feature = prd('ci-feature-blocked', cwd, ['ci-stale-failed']);
+    await writePrdFile(feature);
+
+    const scheduler = makeScheduler([feature]);
+    await scheduler.start();
+    await new Promise((r) => setTimeout(r, 150));
+
+    // Dependent must not be spawned — completion index blocked it.
+    expect(spawnPrdChild).not.toHaveBeenCalled();
+    expect(eventQueue.drainAvailable()).toContainEqual(expect.objectContaining({
+      type: 'daemon:scheduler:dependency-blocked',
+      prdId: 'ci-feature-blocked',
+      blockedBy: ['ci-stale-failed'],
+    }));
+    scheduler.finalizeBlockedAsSkipped();
+    expect(scheduler.skipped).toBe(1);
+    eventQueue.removeProducer();
+  });
+
+  it('blocks a dependent when completion index says upstream skipped (even with stale artifact)', async () => {
+    const { cwd, eventQueue, spawnPrdChild, makeScheduler } = await env();
+    await recordArtifact(cwd, 'ci-stale-skipped');
+    const now = new Date().toISOString();
+    const { upsertCompletion } = await import('@eforge-build/engine/artifacts');
+    await upsertCompletion(cwd, {
+      prdId: 'ci-stale-skipped',
+      status: 'skipped',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    const feature = prd('ci-feature-blocked-skip', cwd, ['ci-stale-skipped']);
+    await writePrdFile(feature);
+
+    const scheduler = makeScheduler([feature]);
+    await scheduler.start();
+    await new Promise((r) => setTimeout(r, 150));
+
+    expect(spawnPrdChild).not.toHaveBeenCalled();
+    scheduler.finalizeBlockedAsSkipped();
+    expect(scheduler.skipped).toBe(1);
+    eventQueue.removeProducer();
+  });
+});
+
+describe('EforgeEngine.runQueue — completion index recording', () => {
+  it('records a failed completion entry from the legacy runQueue event path', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-runqueue-completion-'));
+    await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
+    await writeFile(
+      join(cwd, 'eforge', 'queue', 'legacy-failure.md'),
+      '---\ntitle: Legacy Failure\n---\n\n# Legacy Failure\n',
+      'utf-8',
+    );
+    const engine = await EforgeEngine.create({
+      cwd,
+      agentRuntimes: new StubHarness([]),
+      config: {
+        maxConcurrentBuilds: 1,
+        prdQueue: { dir: 'eforge/queue', watchPollIntervalMs: 0 },
+        plugins: { enabled: false },
+      },
+    });
+
+    for await (const _event of engine.runQueue()) {
+      // Exhaust the generator so the parent-side queue:prd:complete handler runs.
+    }
+
+    const registry = await loadCompletionRegistry(cwd);
+    expect(registry.completions['legacy-failure']).toEqual(expect.objectContaining({
+      prdId: 'legacy-failure',
+      status: 'failed',
+      artifactAvailable: false,
+    }));
+  });
+
+  it('records a failed completion entry when legacy runQueue dispatch validation fails before spawning', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-runqueue-direct-failure-'));
+    await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
+    await recordArtifact(cwd, 'parent-a');
+    await recordArtifact(cwd, 'parent-b');
+    await writeFile(
+      join(cwd, 'eforge', 'queue', 'ambiguous-child.md'),
+      '---\ntitle: Ambiguous Child\ndepends_on: [parent-a, parent-b]\n---\n\n# Ambiguous Child\n',
+      'utf-8',
+    );
+    const engine = await EforgeEngine.create({
+      cwd,
+      agentRuntimes: new StubHarness([]),
+      config: {
+        maxConcurrentBuilds: 1,
+        prdQueue: { dir: 'eforge/queue', watchPollIntervalMs: 0 },
+        plugins: { enabled: false },
+        stacking: { enabled: true, provider: 'git-spice', gitSpice: {} },
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.runQueue()) events.push(event);
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'plan:error:set',
+      planId: 'ambiguous-child',
+      error: expect.stringContaining('multiple depends_on'),
+    }));
+    const registry = await loadCompletionRegistry(cwd);
+    expect(registry.completions['ambiguous-child']).toEqual(expect.objectContaining({
+      prdId: 'ambiguous-child',
+      status: 'failed',
+      artifactAvailable: false,
+    }));
+  });
+});
+
+// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---

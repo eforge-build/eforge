@@ -144,12 +144,12 @@ export async function generateConfig(opts: {
   // --- eforge:endregion plan-01-reference-and-mirror-content ---
   lines.push('## Landing Action');
   lines.push('');
-  lines.push('`landing.action` is the preferred key for controlling what happens after a successful build. Values: `pr` (open a GitHub pull request), `merge` (merge the artifact branch into the base branch), `leave` (leave the artifact branch in place). Default: `merge`.');
+  lines.push('`landing.action` controls what happens after a successful build. Values: `pr` (open a GitHub pull request), `merge` (merge the artifact branch into the base branch), `leave` (leave the artifact branch in place). Default: `merge`.');
   lines.push('');
-  lines.push('The legacy `build.onSuccess` field (`issue-pr` | `merge-to-base-branch` | `leave-branch`) is kept for backward compatibility and emits a deprecation warning when used. When both keys are present, `landing.action` takes precedence.');
+  lines.push('**Migration:** The old `build.onSuccess` field and its values (`issue-pr`, `merge-to-base-branch`, `leave-branch`) have been removed. Configs using `build.onSuccess` are rejected with a migration error. Replace it with `landing.action` using the mapping below:');
   lines.push('');
-  lines.push('| `landing.action` | Legacy `build.onSuccess` |');
-  lines.push('|-----------------|------------------------|');
+  lines.push('| `landing.action` | Old `build.onSuccess` (rejected) |');
+  lines.push('|-----------------|----------------------------------|');
   lines.push('| `pr` | `issue-pr` |');
   lines.push('| `merge` | `merge-to-base-branch` |');
   lines.push('| `leave` | `leave-branch` |');
