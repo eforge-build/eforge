@@ -6,6 +6,7 @@ import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness
 import { isTransientTransportError } from '@eforge-build/engine/harness';
 import type { EforgeEvent, AgentRole, AgentResultData, PlanFile } from '@eforge-build/engine/events';
 import { builderImplement } from '@eforge-build/engine/agents/builder';
+import { AgentTerminalError, isPiToolInfrastructureError } from '@eforge-build/engine/harness';
 import { withRetry, DEFAULT_RETRY_POLICIES, type BuilderContinuationInput, type PlannerContinuationInput, type RetryPolicy } from '@eforge-build/engine/retry';
 import { buildFailureSummary } from '@eforge-build/engine/recovery/failure-summary';
 import { openDatabase } from '@eforge-build/monitor/db';
@@ -213,6 +214,59 @@ describe('builderImplement transient transport downgrade', () => {
   });
 });
 
+describe('builderImplement pi-infrastructure downgrade', () => {
+  const makeTempDir = useTempDir('eforge-pi-infra-builder-');
+
+  it('downgrades post-result pi-infrastructure error when HEAD advanced', async () => {
+    const cwd = makeTempDir();
+    initGitRepo(cwd);
+    const harness = new BuilderScriptHarness(async function* (options, agentId, agent, planId) {
+      commitFile(options.cwd, 'done.txt', 'done\n');
+      yield resultEvent(agentId, agent, planId);
+      throw new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.');
+    });
+
+    const events = await collectEvents(builderImplement(makePlan(), { harness, cwd }));
+
+    const warnings = filterEvents(events, 'agent:warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('pi-infrastructure-downgraded');
+    expect(findEvent(events, 'plan:build:implement:complete')).toBeDefined();
+    expect(filterEvents(events, 'plan:build:failed')).toHaveLength(0);
+  });
+
+  it('does not downgrade pi-infrastructure error when HEAD did not advance', async () => {
+    const cwd = makeTempDir();
+    initGitRepo(cwd);
+    const harness = new BuilderScriptHarness(async function* (_options, agentId, agent, planId) {
+      yield resultEvent(agentId, agent, planId);
+      throw new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.');
+    });
+
+    const events = await collectEvents(builderImplement(makePlan(), { harness, cwd }));
+
+    const failures = filterEvents(events, 'plan:build:failed');
+    expect(failures).toHaveLength(1);
+    expect(failures[0].terminalSubtype).toBe('error_pi_tool_infrastructure');
+    expect(filterEvents(events, 'agent:warning')).toHaveLength(0);
+  });
+
+  it('classifies pre-result pi-infrastructure error as a build failure', async () => {
+    const cwd = makeTempDir();
+    initGitRepo(cwd);
+    const harness = new BuilderScriptHarness(async function* () {
+      throw new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.');
+    });
+
+    const events = await collectEvents(builderImplement(makePlan(), { harness, cwd }));
+
+    const failures = filterEvents(events, 'plan:build:failed');
+    expect(failures).toHaveLength(1);
+    expect(failures[0].terminalSubtype).toBe('error_pi_tool_infrastructure');
+    expect(filterEvents(events, 'plan:build:implement:complete')).toHaveLength(0);
+  });
+});
+
 describe('builder withRetry transient transport continuation', () => {
   const makeTempDir = useTempDir('eforge-pi-transport-builder-retry-');
 
@@ -368,7 +422,7 @@ describe('planner withRetry transient transport continuation', () => {
     expect(filterEvents(events, 'agent:retry')).toHaveLength(0);
   });
 
-  it('does not retry close-code 1000 after planning:skip already emitted', async () => {
+  it('downgrades close-code 1000 after planning:skip to warning (no retry, no error)', async () => {
     const cwd = makeTempDir();
     const initialInput: PlannerContinuationInput = {
       sideEffects: { cwd, planSetName: 'set-1', outputDir: 'eforge/plans' },
@@ -382,16 +436,104 @@ describe('planner withRetry transient transport continuation', () => {
     };
 
     const policy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
+    const events = await collectEvents(withRetry(runPlannerAttempt, policy, initialInput));
+
+    expect(attempts).toBe(1);
+    expect(filterEvents(events, 'planning:skip')).toHaveLength(1);
+    expect(filterEvents(events, 'agent:retry')).toHaveLength(0);
+    const warnings = filterEvents(events, 'agent:warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('infrastructure-error-post-checkpoint-downgraded');
+  });
+
+  it('downgrades planning:complete + transient close to warning (no retry, no error)', async () => {
+    const cwd = makeTempDir();
+    const initialInput: PlannerContinuationInput = {
+      sideEffects: { cwd, planSetName: 'set-1', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+    let attempts = 0;
+    const runPlannerAttempt = async function* (): AsyncGenerator<EforgeEvent> {
+      attempts++;
+      yield { type: 'planning:complete', timestamp: new Date().toISOString(), plans: [] };
+      throw new Error(TRANSIENT_CLOSE_1000);
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
+    const events = await collectEvents(withRetry(runPlannerAttempt, policy, initialInput));
+
+    expect(attempts).toBe(1);
+    expect(findEvent(events, 'planning:complete')).toBeDefined();
+    expect(filterEvents(events, 'agent:retry')).toHaveLength(0);
+    const warnings = filterEvents(events, 'agent:warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('infrastructure-error-post-checkpoint-downgraded');
+    expect(warnings[0].message).toContain(TRANSIENT_CLOSE_1000);
+  });
+
+  it('retries error_pi_tool_infrastructure before planning:submission using dropped-submission context', async () => {
+    const cwd = makeTempDir();
+    const initialInput: PlannerContinuationInput = {
+      sideEffects: { cwd, planSetName: 'set-1', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+    let attempts = 0;
+    const seenInputs: PlannerContinuationInput[] = [];
+    const runPlannerAttempt = async function* (input: PlannerContinuationInput): AsyncGenerator<EforgeEvent> {
+      attempts++;
+      seenInputs.push(input);
+      if (attempts === 1) {
+        throw new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.');
+      }
+      yield { type: 'planning:submission', timestamp: new Date().toISOString(), planCount: 1, totalBodySize: 10, hasMigrations: false };
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
+    const events = await collectEvents(withRetry(runPlannerAttempt, policy, initialInput));
+
+    expect(attempts).toBe(2);
+    expect(seenInputs[1]?.plannerOptions.continuationContext).toMatchObject({
+      reason: 'dropped_submission',
+    });
+    const retries = filterEvents(events, 'agent:retry');
+    expect(retries).toHaveLength(1);
+    expect(retries[0]).toMatchObject({
+      agent: 'planner',
+      subtype: 'error_pi_tool_infrastructure',
+      attempt: 1,
+      maxAttempts: 3,
+      label: 'planner-continuation',
+    });
+    const continuations = filterEvents(events, 'planning:continuation');
+    expect(continuations).toHaveLength(1);
+    expect(continuations[0].reason).toBe('dropped_submission');
+    expect(findEvent(events, 'planning:submission')).toBeDefined();
+  });
+
+  it('does not retry error_pi_tool_infrastructure after planning:submission (ambiguous, propagates error)', async () => {
+    const cwd = makeTempDir();
+    const initialInput: PlannerContinuationInput = {
+      sideEffects: { cwd, planSetName: 'set-1', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+    let attempts = 0;
+    const runPlannerAttempt = async function* (): AsyncGenerator<EforgeEvent> {
+      attempts++;
+      yield { type: 'planning:submission', timestamp: new Date().toISOString(), planCount: 1, totalBodySize: 10, hasMigrations: false };
+      throw new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.');
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
     const events: EforgeEvent[] = [];
     await expect(async () => {
       for await (const event of withRetry(runPlannerAttempt, policy, initialInput)) {
         events.push(event);
       }
-    }).rejects.toThrow(TRANSIENT_CLOSE_1000);
+    }).rejects.toBeInstanceOf(AgentTerminalError);
 
     expect(attempts).toBe(1);
-    expect(filterEvents(events, 'planning:skip')).toHaveLength(1);
     expect(filterEvents(events, 'agent:retry')).toHaveLength(0);
+    expect(filterEvents(events, 'agent:warning')).toHaveLength(0);
   });
 });
 

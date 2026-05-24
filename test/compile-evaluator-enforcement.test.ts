@@ -276,6 +276,101 @@ describe('compile evaluator enforcement', () => {
     expect(events.find(e => e.type === 'planning:evaluate:continuation')).toMatchObject({ attempt: 1, maxContinuations: 1 });
   });
 
+  for (const reviewerRole of ['plan-reviewer', 'architecture-reviewer', 'cohesion-reviewer'] as const) {
+    for (const scenario of [
+      {
+        name: 'pi-infrastructure',
+        error: new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.'),
+        subtype: 'error_pi_tool_infrastructure',
+      },
+      {
+        name: 'transient transport',
+        error: new AgentTerminalError('error_transient_transport', 'Backend error: WebSocket closed 1000'),
+        subtype: 'error_transient_transport',
+      },
+    ] as const) {
+      it(`${reviewerRole} ${scenario.name} failure is non-fatal after retry exhaustion — evaluator never runs`, async () => {
+        // A compile reviewer that throws a retryable infrastructure/transport error on every attempt
+        // exhausts its 2-attempt retry budget. The runReviewCycle catch block
+        // swallows the error so the whole cycle completes without throwing, and
+        // the evaluator is never invoked.
+        const repo = await initRepo(makeTempDir());
+        let evaluatorRan = false;
+        let reviewerAttempts = 0;
+
+        const events = await collect(runReviewCycle({
+          tracing: createNoopTracingContext(),
+          cwd: repo,
+          reviewer: {
+            role: reviewerRole,
+            metadata: { planSet: 'demo' },
+            run: async function* () {
+              reviewerAttempts += 1;
+              throw scenario.error;
+              // eslint-disable-next-line no-unreachable
+              yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'never' };
+            },
+          },
+          evaluator: {
+            role: 'plan-evaluator',
+            metadata: { planSet: 'demo' },
+            run: async function* (_input) {
+              evaluatorRan = true;
+              yield { timestamp: new Date().toISOString(), type: 'planning:evaluate:complete', accepted: 0, rejected: 0, verdicts: [] };
+            },
+          },
+        }));
+
+        // Evaluator must not have run — reviewer failure is non-fatal.
+        expect(evaluatorRan).toBe(false);
+        // One retry is attempted before the reviewer failure is swallowed.
+        expect(reviewerAttempts).toBe(2);
+        const retries = events.filter(e => e.type === 'agent:retry') as Array<Extract<EforgeEvent, { type: 'agent:retry' }>>;
+        expect(retries).toHaveLength(1);
+        expect(retries[0]).toMatchObject({
+          agent: reviewerRole,
+          subtype: scenario.subtype,
+          attempt: 1,
+          maxAttempts: 2,
+          label: `${reviewerRole}-infrastructure-retry`,
+        });
+      });
+    }
+  }
+
+  it('does not retry build reviewers through runReviewCycle', async () => {
+    const repo = await initRepo(makeTempDir());
+    let reviewerAttempts = 0;
+    let evaluatorRan = false;
+
+    const events = await collect(runReviewCycle({
+      tracing: createNoopTracingContext(),
+      cwd: repo,
+      reviewer: {
+        role: 'reviewer',
+        metadata: { planId: 'plan-01' },
+        run: async function* () {
+          reviewerAttempts += 1;
+          throw new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.');
+          // eslint-disable-next-line no-unreachable
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:progress', planId: 'plan-01', message: 'never' };
+        },
+      },
+      evaluator: {
+        role: 'evaluator',
+        metadata: { planId: 'plan-01' },
+        run: async function* (_input) {
+          evaluatorRan = true;
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:evaluate:complete', planId: 'plan-01', accepted: 0, rejected: 0 };
+        },
+      },
+    }));
+
+    expect(reviewerAttempts).toBe(1);
+    expect(evaluatorRan).toBe(false);
+    expect(events.filter(e => e.type === 'agent:retry')).toHaveLength(0);
+  });
+
   it('emits planning:error and creates no evaluation commit when XML fallback references an unknown hunk', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'eforge/plans/demo/plan.md', 'line 1\nline 2\n');

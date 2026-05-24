@@ -15,6 +15,9 @@ import {
   DEFAULT_RETRY_POLICIES,
   getPolicy,
   isDroppedSubmission,
+  hasAuthoritativePlannerCheckpoint,
+  isBeforePlannerSubmissionBoundary,
+  isRetryableInfrastructureSubtype,
   buildEvaluatorContinuationInput,
   type RetryPolicy,
   type RetryAttemptInfo,
@@ -161,11 +164,15 @@ describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
   });
 
   it('retryableSubtypes does NOT include error_transient_transport — transient transport planner retry is governed by shouldRetry', () => {
-    // Planner transport retry is safety-gated by the pre-submission/pre-skip event
-    // boundary in shouldRetry. Adding error_transient_transport to retryableSubtypes
-    // would bypass that guard and allow retries after planning:submission.
+    // Planner transport retry is safety-gated by the pre-submission boundary in
+    // shouldRetry. Adding error_transient_transport to retryableSubtypes would
+    // bypass that guard and allow retries after planning:submission.
     expect(planner.retryableSubtypes.has('error_transient_transport')).toBe(false);
     expect(planner.retryableSubtypes).toEqual(new Set(['error_max_turns']));
+  });
+
+  it('retryableSubtypes does NOT include error_pi_tool_infrastructure — pi infra planner retry is governed by shouldRetry', () => {
+    expect(planner.retryableSubtypes.has('error_pi_tool_infrastructure')).toBe(false);
   });
 
   it('shouldRetry returns true for error_transient_transport when no submission or skip events have been emitted', () => {
@@ -177,6 +184,19 @@ describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
       subtype: 'error_transient_transport',
       events,
       error: new Error('Backend error: WebSocket closed 1000'),
+    });
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(true);
+  });
+
+  it('shouldRetry returns true for error_pi_tool_infrastructure when no boundary events have been emitted', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'planner', content: 'thinking...' },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_pi_tool_infrastructure',
+      events,
+      error: new Error('Theme not initialized. Call initTheme() first.'),
     });
     expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(true);
   });
@@ -194,6 +214,19 @@ describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
     expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
   });
 
+  it('shouldRetry returns false for error_pi_tool_infrastructure when planning:submission was already emitted', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:submission', planCount: 1, totalBodySize: 100, hasMigrations: false },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_pi_tool_infrastructure',
+      events,
+      error: new Error('Theme not initialized. Call initTheme() first.'),
+    });
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
+  });
+
   it('shouldRetry returns false for error_transient_transport when planning:skip was already emitted', () => {
     const events: EforgeEvent[] = [
       { timestamp: ts(), type: 'planning:skip', reason: 'already implemented' },
@@ -206,6 +239,73 @@ describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
     });
     expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
   });
+
+  it('shouldRetry returns false for error_transient_transport when planning:complete was already emitted', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:complete', plans: [] },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_transient_transport',
+      events,
+      error: new Error('Backend error: WebSocket closed 1000'),
+    });
+    // planning:complete is an authoritative checkpoint — terminalSuccessWhen handles it,
+    // so shouldRetry returns false (isBeforePlannerSubmissionBoundary is false)
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
+  });
+
+  it('terminalSuccessWhen returns true after planning:complete + retryable error', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:complete', plans: [] },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_transient_transport',
+      events,
+      error: new Error('Backend error: WebSocket closed 1000'),
+    });
+    expect(planner.terminalSuccessWhen!(info as RetryAttemptInfo<unknown>)).toBe(true);
+  });
+
+  it('terminalSuccessWhen returns true after planning:skip + retryable error', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:skip', reason: 'already implemented' },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_pi_tool_infrastructure',
+      events,
+      error: new Error('Pi tool-call infrastructure failure: connection reset'),
+    });
+    expect(planner.terminalSuccessWhen!(info as RetryAttemptInfo<unknown>)).toBe(true);
+  });
+
+  it('terminalSuccessWhen returns false after planning:submission only (ambiguous boundary)', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:submission', planCount: 1, totalBodySize: 100, hasMigrations: false },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_transient_transport',
+      events,
+      error: new Error('Backend error: WebSocket closed 1000'),
+    });
+    expect(planner.terminalSuccessWhen!(info as RetryAttemptInfo<unknown>)).toBe(false);
+  });
+
+  it('terminalSuccessWhen returns false for non-retryable subtypes even after checkpoint', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:complete', plans: [] },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_max_budget_usd',
+      events,
+      error: new AgentTerminalError('error_max_budget_usd', 'budget exceeded'),
+    });
+    expect(planner.terminalSuccessWhen!(info as RetryAttemptInfo<unknown>)).toBe(false);
+  });
 });
 
 describe('DEFAULT_RETRY_POLICIES — builder policy', () => {
@@ -213,6 +313,14 @@ describe('DEFAULT_RETRY_POLICIES — builder policy', () => {
 
   it('retryableSubtypes includes error_max_turns', () => {
     expect(builder.retryableSubtypes.has('error_max_turns')).toBe(true);
+  });
+
+  it('retryableSubtypes includes error_transient_transport', () => {
+    expect(builder.retryableSubtypes.has('error_transient_transport')).toBe(true);
+  });
+
+  it('retryableSubtypes includes error_pi_tool_infrastructure', () => {
+    expect(builder.retryableSubtypes.has('error_pi_tool_infrastructure')).toBe(true);
   });
 
   it('retryableSubtypes does not include error_during_execution', () => {
@@ -228,8 +336,8 @@ describe('DEFAULT_RETRY_POLICIES — builder policy', () => {
 describe('DEFAULT_RETRY_POLICIES — evaluator policy', () => {
   const evaluator = DEFAULT_RETRY_POLICIES.evaluator!;
 
-  it('retryableSubtypes contains only error_max_turns and error_transient_transport', () => {
-    expect(evaluator.retryableSubtypes).toEqual(new Set(['error_max_turns', 'error_transient_transport']));
+  it('retryableSubtypes contains error_max_turns, error_transient_transport, and error_pi_tool_infrastructure', () => {
+    expect(evaluator.retryableSubtypes).toEqual(new Set(['error_max_turns', 'error_transient_transport', 'error_pi_tool_infrastructure']));
   });
 
   it('has maxAttempts = 2 (matches prior maxContinuations: 1 + initial attempt)', () => {
@@ -243,22 +351,70 @@ describe('DEFAULT_RETRY_POLICIES — evaluator policy', () => {
 
 describe('DEFAULT_RETRY_POLICIES — plan-evaluator / cohesion-evaluator / architecture-evaluator', () => {
   for (const role of ['plan-evaluator', 'cohesion-evaluator', 'architecture-evaluator'] as const) {
-    it(`${role} policy retries only on error_max_turns and error_transient_transport`, () => {
+    it(`${role} policy retries on error_max_turns, error_transient_transport, and error_pi_tool_infrastructure`, () => {
       const policy = DEFAULT_RETRY_POLICIES[role]!;
-      expect(policy.retryableSubtypes).toEqual(new Set(['error_max_turns', 'error_transient_transport']));
+      expect(policy.retryableSubtypes).toEqual(new Set(['error_max_turns', 'error_transient_transport', 'error_pi_tool_infrastructure']));
       expect(policy.maxAttempts).toBe(2);
     });
   }
+});
+
+describe('DEFAULT_RETRY_POLICIES — pipeline-composer policy', () => {
+  const composer = DEFAULT_RETRY_POLICIES['pipeline-composer']!;
+
+  it('has maxAttempts = 2', () => {
+    expect(composer.maxAttempts).toBe(2);
+  });
+
+  it('retryableSubtypes contains error_transient_transport and error_pi_tool_infrastructure', () => {
+    expect(composer.retryableSubtypes).toEqual(new Set(['error_transient_transport', 'error_pi_tool_infrastructure']));
+  });
+
+  it('does not include error_max_turns (composer uses its own internal retry for parse failures)', () => {
+    expect(composer.retryableSubtypes.has('error_max_turns')).toBe(false);
+  });
+
+  it('has a terminalSuccessWhen hook', () => {
+    expect(composer.terminalSuccessWhen).toBeDefined();
+  });
+
+  it('terminalSuccessWhen returns true when planning:pipeline was emitted + retryable subtype', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:pipeline', scope: 'errand', compile: ['planner'], defaultBuild: ['implement'], defaultReview: { strategy: 'single', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'lenient' }, rationale: 'test' },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_pi_tool_infrastructure',
+      events,
+      error: new Error('Pi tool-call infrastructure failure: something'),
+    });
+    expect(composer.terminalSuccessWhen!(info as RetryAttemptInfo<unknown>)).toBe(true);
+  });
+
+  it('terminalSuccessWhen returns false when planning:pipeline was NOT emitted', () => {
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_transient_transport',
+      events: [],
+      error: new Error('Backend error: WebSocket closed 1000'),
+    });
+    expect(composer.terminalSuccessWhen!(info as RetryAttemptInfo<unknown>)).toBe(false);
+  });
+
+  it('label is "pipeline-composer-infrastructure-retry"', () => {
+    expect(composer.label).toBe('pipeline-composer-infrastructure-retry');
+  });
 });
 
 describe('getPolicy — unregistered roles default to no-retry', () => {
   // Unregistered roles default to maxAttempts: 1 (no retries) because they lack
   // safe continuation/checkpoint contracts. A retry policy is only safe when the
   // agent can resume meaningful work from a well-defined intermediate state. Roles
-  // like 'reviewer', 'pipeline-composer', and 'merge-conflict-resolver' have no
-  // such checkpointing semantics, so a retry would duplicate side effects or
-  // produce inconsistent state. They must be explicitly registered in
-  // DEFAULT_RETRY_POLICIES before any retry behavior is allowed.
+  // like 'reviewer' and 'merge-conflict-resolver' have no such checkpointing
+  // semantics, so a retry would duplicate side effects or produce inconsistent
+  // state. They must be explicitly registered in DEFAULT_RETRY_POLICIES before
+  // any retry behavior is allowed.
+  // Note: 'pipeline-composer' has an explicit policy registered (infrastructure retry).
   const unregisteredRoles: AgentRole[] = [
     'reviewer',
     'review-fixer',
@@ -273,7 +429,6 @@ describe('getPolicy — unregistered roles default to no-retry', () => {
     'staleness-assessor',
     'prd-validator',
     'dependency-detector',
-    'pipeline-composer',
     'gap-closer',
   ];
 
@@ -343,6 +498,108 @@ describe('isDroppedSubmission', () => {
 
   it('returns true for empty event list', () => {
     expect(isDroppedSubmission([])).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasAuthoritativePlannerCheckpoint
+// ---------------------------------------------------------------------------
+
+describe('hasAuthoritativePlannerCheckpoint', () => {
+  it('returns true when planning:complete is present', () => {
+    const events: EforgeEvent[] = [{ timestamp: ts(), type: 'planning:complete', plans: [] }];
+    expect(hasAuthoritativePlannerCheckpoint(events)).toBe(true);
+  });
+
+  it('returns true when planning:skip is present', () => {
+    const events: EforgeEvent[] = [{ timestamp: ts(), type: 'planning:skip', reason: 'done' }];
+    expect(hasAuthoritativePlannerCheckpoint(events)).toBe(true);
+  });
+
+  it('returns true when expedition:architecture:complete is present', () => {
+    const events: EforgeEvent[] = [{ timestamp: ts(), type: 'expedition:architecture:complete', modules: [] }];
+    expect(hasAuthoritativePlannerCheckpoint(events)).toBe(true);
+  });
+
+  it('returns false for empty events', () => {
+    expect(hasAuthoritativePlannerCheckpoint([])).toBe(false);
+  });
+
+  it('returns false when only planning:submission is present', () => {
+    const events: EforgeEvent[] = [{ timestamp: ts(), type: 'planning:submission', planCount: 1, totalBodySize: 100, hasMigrations: false }];
+    expect(hasAuthoritativePlannerCheckpoint(events)).toBe(false);
+  });
+
+  it('returns false for unrelated events', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'planner', content: 'thinking' },
+    ];
+    expect(hasAuthoritativePlannerCheckpoint(events)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isBeforePlannerSubmissionBoundary
+// ---------------------------------------------------------------------------
+
+describe('isBeforePlannerSubmissionBoundary', () => {
+  it('returns true for empty events', () => {
+    expect(isBeforePlannerSubmissionBoundary([])).toBe(true);
+  });
+
+  it('returns true when only unrelated events are present', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'planner', content: 'thinking' },
+    ];
+    expect(isBeforePlannerSubmissionBoundary(events)).toBe(true);
+  });
+
+  it('returns false when planning:submission is present', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:submission', planCount: 1, totalBodySize: 10, hasMigrations: false },
+    ];
+    expect(isBeforePlannerSubmissionBoundary(events)).toBe(false);
+  });
+
+  it('returns false when planning:skip is present', () => {
+    const events: EforgeEvent[] = [{ timestamp: ts(), type: 'planning:skip', reason: 'done' }];
+    expect(isBeforePlannerSubmissionBoundary(events)).toBe(false);
+  });
+
+  it('returns false when planning:complete is present', () => {
+    const events: EforgeEvent[] = [{ timestamp: ts(), type: 'planning:complete', plans: [] }];
+    expect(isBeforePlannerSubmissionBoundary(events)).toBe(false);
+  });
+
+  it('returns false when expedition:architecture:complete is present', () => {
+    const events: EforgeEvent[] = [{ timestamp: ts(), type: 'expedition:architecture:complete', modules: [] }];
+    expect(isBeforePlannerSubmissionBoundary(events)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isRetryableInfrastructureSubtype
+// ---------------------------------------------------------------------------
+
+describe('isRetryableInfrastructureSubtype', () => {
+  it('returns true for error_transient_transport', () => {
+    expect(isRetryableInfrastructureSubtype('error_transient_transport')).toBe(true);
+  });
+
+  it('returns true for error_pi_tool_infrastructure', () => {
+    expect(isRetryableInfrastructureSubtype('error_pi_tool_infrastructure')).toBe(true);
+  });
+
+  it('returns false for error_max_turns', () => {
+    expect(isRetryableInfrastructureSubtype('error_max_turns')).toBe(false);
+  });
+
+  it('returns false for error_during_execution', () => {
+    expect(isRetryableInfrastructureSubtype('error_during_execution')).toBe(false);
+  });
+
+  it('returns false for error_max_budget_usd', () => {
+    expect(isRetryableInfrastructureSubtype('error_max_budget_usd')).toBe(false);
   });
 });
 
@@ -515,6 +772,271 @@ describe('withRetry — evaluator abort-success on clean worktree', () => {
     expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
     // First-attempt events came through.
     expect(out.filter((e) => e.type === 'plan:build:evaluate:start')).toHaveLength(1);
+  });
+});
+
+describe('withRetry — terminal-success via terminalSuccessWhen', () => {
+  it('emits onTerminalSuccess events, drops held-back terminal, and returns success when hook returns true', async () => {
+    let callCount = 0;
+    const warningCode = 'infra-downgraded-test';
+
+    const agent = async function* (_input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+      callCount++;
+      yield { timestamp: ts(), type: 'plan:build:evaluate:start', planId: 'p1' };
+      yield { timestamp: ts(), type: 'plan:build:failed', planId: 'p1', error: 'Backend error: WebSocket closed 1000', terminalSubtype: 'error_transient_transport' };
+    };
+
+    const policy = makeEvaluatorPolicy({
+      terminalSuccessWhen: () => true,
+      onTerminalSuccess: () => [{
+        timestamp: ts(),
+        type: 'agent:warning',
+        agent: 'evaluator',
+        agentId: 'eval-1',
+        code: warningCode,
+        message: 'downgraded',
+      }],
+    });
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp/noop',
+      planId: 'p1',
+      evaluatorOptions: {},
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(agent, policy, initial)) {
+      out.push(ev);
+    }
+
+    // Only one attempt ran.
+    expect(callCount).toBe(1);
+    // onTerminalSuccess warning was emitted.
+    const warnings = out.filter((e) => e.type === 'agent:warning') as Array<Extract<EforgeEvent, { type: 'agent:warning' }>>;
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe(warningCode);
+    // No agent:retry was emitted.
+    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
+    // The stream terminal event was held back and dropped by terminal success.
+    expect(out.find((e) => e.type === 'plan:build:failed')).toBeUndefined();
+  });
+
+  it('does NOT trigger terminal-success when hook returns false — normal retry path proceeds', async () => {
+    let callCount = 0;
+
+    const attempts = [
+      makeThrowingAgent([], new AgentTerminalError('error_max_turns', 'turns exhausted')),
+      makeSuccessfulAgent([{ timestamp: ts(), type: 'plan:build:evaluate:complete', planId: 'p1', accepted: 1, rejected: 0 }]),
+    ];
+    const agent = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+      callCount++;
+      yield* attempts[callCount - 1](input);
+    };
+
+    const policy = makeEvaluatorPolicy({
+      terminalSuccessWhen: () => false,
+      buildContinuationInput: (info) => ({ kind: 'retry', input: info.prevInput }),
+    });
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp/noop',
+      planId: 'p1',
+      evaluatorOptions: {},
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(agent, policy, initial)) {
+      out.push(ev);
+    }
+
+    // Two attempts ran (normal retry).
+    expect(callCount).toBe(2);
+    expect(out.find((e) => e.type === 'agent:retry')).toBeDefined();
+    expect(out.find((e) => e.type === 'plan:build:evaluate:complete')).toBeDefined();
+  });
+
+  it('terminal-success applies even on the last attempt (maxAttempts reached)', async () => {
+    let callCount = 0;
+    const agent = async function* (_input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+      callCount++;
+      throw new AgentTerminalError('error_transient_transport', 'ws closed');
+    };
+
+    const policy = makeEvaluatorPolicy({
+      maxAttempts: 1, // no retries allowed
+      terminalSuccessWhen: () => true,
+      onTerminalSuccess: () => [],
+    });
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp/noop',
+      evaluatorOptions: {},
+    };
+
+    // Must not throw despite exhausting attempts.
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(agent, policy, initial)) {
+      out.push(ev);
+    }
+
+    expect(callCount).toBe(1);
+    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
+  });
+});
+
+describe('withRetry — planner post-checkpoint terminal-success integration', () => {
+  it('after planning:complete + transient transport error, emits warning, no second attempt, no error', async () => {
+    let callCount = 0;
+    const plannerPolicy = DEFAULT_RETRY_POLICIES.planner!;
+
+    const plannerAgent = async function* (_input: PlannerContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+      callCount++;
+      yield { timestamp: ts(), type: 'planning:complete', plans: [] };
+      throw new AgentTerminalError('error_transient_transport', 'Backend error: WebSocket closed 1000');
+    };
+
+    const initial: PlannerContinuationInput = {
+      sideEffects: { cwd: '/tmp/noop', planSetName: 'test', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(plannerAgent, plannerPolicy as RetryPolicy<PlannerContinuationInput>, initial)) {
+      out.push(ev);
+    }
+
+    expect(callCount).toBe(1);
+    // planning:complete was yielded through
+    expect(out.find((e) => e.type === 'planning:complete')).toBeDefined();
+    // agent:warning was emitted by onTerminalSuccess
+    const warnings = out.filter((e) => e.type === 'agent:warning') as Array<Extract<EforgeEvent, { type: 'agent:warning' }>>;
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('infrastructure-error-post-checkpoint-downgraded');
+    // No retry
+    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
+  });
+
+  it('after planning:skip + pi-infra error, emits warning, no second attempt, no error', async () => {
+    let callCount = 0;
+    const plannerPolicy = DEFAULT_RETRY_POLICIES.planner!;
+
+    const plannerAgent = async function* (_input: PlannerContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+      callCount++;
+      yield { timestamp: ts(), type: 'planning:skip', reason: 'already implemented' };
+      throw new AgentTerminalError('error_pi_tool_infrastructure', 'Pi tool-call infrastructure failure: hook error');
+    };
+
+    const initial: PlannerContinuationInput = {
+      sideEffects: { cwd: '/tmp/noop', planSetName: 'test', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(plannerAgent, plannerPolicy as RetryPolicy<PlannerContinuationInput>, initial)) {
+      out.push(ev);
+    }
+
+    expect(callCount).toBe(1);
+    const warnings = out.filter((e) => e.type === 'agent:warning') as Array<Extract<EforgeEvent, { type: 'agent:warning' }>>;
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('infrastructure-error-post-checkpoint-downgraded');
+    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
+  });
+
+  it('after expedition:architecture:complete + pi-infra error, emits warning, no second attempt, no error', async () => {
+    let callCount = 0;
+    const plannerPolicy = DEFAULT_RETRY_POLICIES.planner!;
+
+    const plannerAgent = async function* (_input: PlannerContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+      callCount++;
+      yield { timestamp: ts(), type: 'expedition:architecture:complete', modules: [] };
+      throw new AgentTerminalError('error_pi_tool_infrastructure', 'Pi tool-call infrastructure failure: hook error');
+    };
+
+    const initial: PlannerContinuationInput = {
+      sideEffects: { cwd: '/tmp/noop', planSetName: 'test', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(plannerAgent, plannerPolicy as RetryPolicy<PlannerContinuationInput>, initial)) {
+      out.push(ev);
+    }
+
+    expect(callCount).toBe(1);
+    expect(out.find((e) => e.type === 'expedition:architecture:complete')).toBeDefined();
+    const warnings = out.filter((e) => e.type === 'agent:warning') as Array<Extract<EforgeEvent, { type: 'agent:warning' }>>;
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      agent: 'planner',
+      code: 'infrastructure-error-post-checkpoint-downgraded',
+    });
+    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
+  });
+
+  it('after planning:submission (no completion) + transient error, propagates error without retry', async () => {
+    let callCount = 0;
+    const plannerPolicy = DEFAULT_RETRY_POLICIES.planner!;
+
+    const plannerAgent = async function* (_input: PlannerContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+      callCount++;
+      yield { timestamp: ts(), type: 'planning:submission', planCount: 1, totalBodySize: 10, hasMigrations: false };
+      throw new Error('Backend error: WebSocket closed 1000');
+    };
+
+    const initial: PlannerContinuationInput = {
+      sideEffects: { cwd: '/tmp/noop', planSetName: 'test', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+
+    let thrown: unknown;
+    const out: EforgeEvent[] = [];
+    try {
+      for await (const ev of withRetry(plannerAgent, plannerPolicy as RetryPolicy<PlannerContinuationInput>, initial)) {
+        out.push(ev);
+      }
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(callCount).toBe(1);
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain('WebSocket closed 1000');
+    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
+    expect(out.find((e) => e.type === 'agent:warning')).toBeUndefined();
+  });
+});
+
+describe('withRetry — pipeline-composer post-checkpoint terminal-success integration', () => {
+  it('after planning:pipeline + pi-infra error, emits warning, no second attempt, no error', async () => {
+    let callCount = 0;
+    const composerPolicy = DEFAULT_RETRY_POLICIES['pipeline-composer']!;
+
+    const composerAgent = async function* (_input: unknown): AsyncGenerator<EforgeEvent, undefined> {
+      callCount++;
+      yield {
+        timestamp: ts(),
+        type: 'planning:pipeline',
+        scope: 'errand',
+        compile: ['planner'],
+        defaultBuild: ['implement'],
+        defaultReview: { strategy: 'single', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'lenient' },
+        rationale: 'test',
+      };
+      throw new AgentTerminalError('error_pi_tool_infrastructure', 'Pi tool-call infrastructure failure: hook error');
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(composerAgent, composerPolicy as RetryPolicy<unknown>, {})) {
+      out.push(ev);
+    }
+
+    expect(callCount).toBe(1);
+    expect(out.find((e) => e.type === 'planning:pipeline')).toBeDefined();
+    const warnings = out.filter((e) => e.type === 'agent:warning') as Array<Extract<EforgeEvent, { type: 'agent:warning' }>>;
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      agent: 'pipeline-composer',
+      code: 'infrastructure-error-post-checkpoint-downgraded',
+    });
+    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
   });
 });
 
