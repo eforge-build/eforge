@@ -1660,6 +1660,27 @@ const EforgeEventVariantsSchema = Type.Union([
   }),
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  // PR auto-merge lifecycle events — emitted after `landing:complete` (action=pr) when
+  // auto-merge is attempted. Non-fatal: `landingSucceeded` remains true even on failure.
+  Type.Object({
+    type: Type.Literal('landing:auto-merge:start'),
+    featureBranch: Type.String(),
+    prUrl: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('landing:auto-merge:complete'),
+    featureBranch: Type.String(),
+    prUrl: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('landing:auto-merge:skipped'),
+    featureBranch: Type.String(),
+    prUrl: Type.Optional(Type.String()),
+    reason: Type.String(),
+  }),
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
+
   // Merge worktree lifecycle events
   Type.Object({
     type: Type.Literal('merge:worktree:set'),

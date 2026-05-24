@@ -126,6 +126,12 @@ export interface OrchestratorOptions {
   /** Landing action for this build (canonical: pr | merge | leave). */
   landingAction?: LandingConfig['action'];
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  /** Configured PR auto-merge policy (from landing.pr.autoMerge). */
+  prAutoMergePolicy?: 'ask' | 'always' | 'never';
+  /** Per-run PR auto-merge intent (from landingAutoMerge option/frontmatter). */
+  landingAutoMerge?: boolean;
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
   // --- eforge:region plan-02-stack-provider-runtime ---
   /** Instantiated stack provider adapter for git-spice landing (stacked builds only). */
   stackProvider?: StackProviderAdapter;
@@ -219,6 +225,10 @@ export class Orchestrator {
       stackContext: this.options.stackContext,
       landingAction: this.options.landingAction ?? 'merge',
       // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+      // --- eforge:region plan-01-core-engine-auto-merge ---
+      prAutoMergePolicy: this.options.prAutoMergePolicy,
+      landingAutoMerge: this.options.landingAutoMerge,
+      // --- eforge:endregion plan-01-core-engine-auto-merge ---
       // --- eforge:region plan-02-stack-provider-runtime ---
       stackProvider: this.options.stackProvider,
       // --- eforge:endregion plan-02-stack-provider-runtime ---

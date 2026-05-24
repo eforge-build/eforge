@@ -5225,6 +5225,69 @@
           "type": "object",
           "required": [
             "type",
+            "featureBranch",
+            "prUrl"
+          ],
+          "properties": {
+            "type": {
+              "const": "landing:auto-merge:start",
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "prUrl": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "featureBranch",
+            "prUrl"
+          ],
+          "properties": {
+            "type": {
+              "const": "landing:auto-merge:complete",
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "prUrl": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "featureBranch",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "landing:auto-merge:skipped",
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "prUrl": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "path"
           ],
           "properties": {

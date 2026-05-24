@@ -110,6 +110,7 @@ Build a single PRD directly (subprocess entry point for the queue scheduler)
 | `--session-id <uuid>` | Session ID injected by parent scheduler (skips child session:start emission) |
 | `--profile <name>` | Override active profile for this build |
 | `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
+| `--landing-auto-merge <bool>` | Enable PR auto-merge for this build (true\|false) |
 
 ### `extension`
 

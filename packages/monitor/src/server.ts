@@ -3444,7 +3444,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Working directory not configured');
         return;
       }
-      let body: { name?: unknown; afterQueueId?: unknown; landingAction?: unknown; onSuccess?: unknown };
+      let body: { name?: unknown; afterQueueId?: unknown; landingAction?: unknown; onSuccess?: unknown; landingAutoMerge?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
@@ -3475,6 +3475,16 @@ export async function startServer(
         }
         playbookLandingAction = body.landingAction as PlaybookLandingActionValue;
       }
+      // --- eforge:region plan-01-core-engine-auto-merge ---
+      let playbookLandingAutoMerge: boolean | undefined;
+      if (body.landingAutoMerge !== undefined) {
+        if (typeof body.landingAutoMerge !== 'boolean') {
+          sendJsonError(res, 400, 'Invalid field: landingAutoMerge must be a boolean');
+          return;
+        }
+        playbookLandingAutoMerge = body.landingAutoMerge;
+      }
+      // --- eforge:endregion plan-01-core-engine-auto-merge ---
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
         const { loadPlaybook, playbookToBuildSource } = await import('@eforge-build/input');
@@ -3544,6 +3554,9 @@ export async function startServer(
             profile: plan.profile,
             // --- eforge:endregion plan-01-core-profile-propagation ---
             ...(playbookLandingAction !== undefined && { landingAction: playbookLandingAction }),
+            // --- eforge:region plan-01-core-engine-auto-merge ---
+            ...(playbookLandingAutoMerge !== undefined && { landingAutoMerge: playbookLandingAutoMerge }),
+            // --- eforge:endregion plan-01-core-engine-auto-merge ---
           });
           // Enqueue is filesystem-only — queue state is runtime, not tracked in git.
           notifyQueueMutation(options.daemonState, 'playbook-enqueue');

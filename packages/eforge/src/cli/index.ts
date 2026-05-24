@@ -795,6 +795,9 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--session-id <uuid>', 'Session ID injected by parent scheduler (skips child session:start emission)')
     .option('--profile <name>', 'Override active profile for this build')
     .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
+    // --- eforge:region plan-01-core-engine-auto-merge ---
+    .option('--landing-auto-merge <bool>', 'Enable PR auto-merge for this build (true|false)')
+    // --- eforge:endregion plan-01-core-engine-auto-merge ---
     .action(
       async (
         prdId: string,
@@ -806,6 +809,9 @@ export function createProgram(abortController?: AbortController, version?: strin
           sessionId?: string;
           profile?: string;
           landingAction?: string;
+          // --- eforge:region plan-01-core-engine-auto-merge ---
+          landingAutoMerge?: string;
+          // --- eforge:endregion plan-01-core-engine-auto-merge ---
         },
       ) => {
         let resolvedLandingActionExec: 'pr' | 'merge' | 'leave' | undefined;
@@ -821,6 +827,11 @@ export function createProgram(abortController?: AbortController, version?: strin
         if (resolvedLandingActionExec !== undefined) {
           options.landingAction = resolvedLandingActionExec;
         }
+        // --- eforge:region plan-01-core-engine-auto-merge ---
+        let resolvedLandingAutoMerge: boolean | undefined;
+        if (options.landingAutoMerge === 'true') resolvedLandingAutoMerge = true;
+        else if (options.landingAutoMerge === 'false') resolvedLandingAutoMerge = false;
+        // --- eforge:endregion plan-01-core-engine-auto-merge ---
         process.title = `eforge-build:${prdId}`;
         initDisplay({ verbose: options.verbose });
 
@@ -850,6 +861,9 @@ export function createProgram(abortController?: AbortController, version?: strin
             verbose: options.verbose,
             abortController,
             ...(options.landingAction && { landingAction: options.landingAction as 'pr' | 'merge' | 'leave' }),
+            // --- eforge:region plan-01-core-engine-auto-merge ---
+            ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
+            // --- eforge:endregion plan-01-core-engine-auto-merge ---
           }, options.sessionId);
 
           const wrapped = wrapEvents(buildEvents, {

@@ -43,6 +43,9 @@ const prdFrontmatterSchema = z.object({
   stack_provider: z.literal('git-spice').optional(),
   landing: z.enum(['pr', 'merge', 'leave']).optional(),
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  landing_auto_merge: z.boolean().optional(),
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -643,6 +646,10 @@ export interface EnqueuePrdOptions {
   profile?: string;
   /** Landing action to persist in PRD frontmatter (canonical: pr | merge | leave). */
   landingAction?: 'pr' | 'merge' | 'leave';
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  /** Per-run PR auto-merge intent to persist in PRD frontmatter. */
+  landingAutoMerge?: boolean;
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
   /** Logical stack identifier to persist in PRD frontmatter. */
   stack_id?: string;
   /** Parent PRD id for this stack layer, if any. */
@@ -695,6 +702,9 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     postMerge,
     profile,
     landingAction,
+    // --- eforge:region plan-01-core-engine-auto-merge ---
+    landingAutoMerge,
+    // --- eforge:endregion plan-01-core-engine-auto-merge ---
     stack_id,
     stack_parent,
     stack_provider,
@@ -740,6 +750,9 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     ...(stack_parent !== undefined && { stack_parent }),
     ...(stack_provider !== undefined && { stack_provider }),
     ...(landingAction !== undefined && { landing: landingAction }),
+    // --- eforge:region plan-01-core-engine-auto-merge ---
+    ...(landingAutoMerge !== undefined && { landing_auto_merge: landingAutoMerge }),
+    // --- eforge:endregion plan-01-core-engine-auto-merge ---
   };
   const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
   if (!frontmatterResult.success) {
@@ -775,6 +788,11 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (landingAction !== undefined) {
     fmLines.push(`landing: ${landingAction}`);
   }
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  if (landingAutoMerge !== undefined) {
+    fmLines.push(`landing_auto_merge: ${landingAutoMerge}`);
+  }
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;
   const filePath = resolve(absDir, `${slug}.md`);

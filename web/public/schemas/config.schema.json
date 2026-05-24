@@ -713,6 +713,21 @@
             "merge",
             "leave"
           ]
+        },
+        "pr": {
+          "type": "object",
+          "properties": {
+            "autoMerge": {
+              "description": "GitHub PR auto-merge policy. \"always\": enable auto-merge on every PR unless the per-run landingAutoMerge flag is explicitly false. \"ask\": enable auto-merge only when the per-run landingAutoMerge flag is explicitly true. \"never\": never enable auto-merge and emit a skipped event. Default: \"ask\".",
+              "type": "string",
+              "enum": [
+                "ask",
+                "always",
+                "never"
+              ]
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false,

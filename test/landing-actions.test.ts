@@ -851,6 +851,297 @@ describe('executeLandingAction', () => {
         process.env.PATH = origPath;
       }
     });
+
+    // --- eforge:region plan-01-core-engine-auto-merge ---
+
+    it('pr with policy=always emits landing:auto-merge:start and landing:auto-merge:complete when gh pr merge succeeds', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const remotePath = setupRemote(dir);
+      addRemote(repoRoot, remotePath);
+      execFileSync('git', ['-C', repoRoot, 'push', 'origin', 'main']);
+
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+      const mergeWorktreePath = await setupFeatureBranch(repoRoot, worktreeBase, featureBranch);
+
+      // Fake gh that handles both pr create and pr merge
+      const binDir = join(dir, 'bin-auto-merge-ok');
+      execFileSync('mkdir', ['-p', binDir]);
+      const scriptPath = join(binDir, 'gh');
+      writeFileSync(scriptPath, `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === '--version') { process.stdout.write('gh version test\\n'); process.exit(0); }
+if (args[0] === 'pr' && args[1] === 'create') { process.stdout.write('https://github.com/test/repo/pull/1\\n'); process.exit(0); }
+if (args[0] === 'pr' && args[1] === 'merge') { process.stdout.write('Auto-merge enabled\\n'); process.exit(0); }
+process.exit(0);
+`, { mode: 0o755 });
+      try { chmodSync(scriptPath, 0o755); } catch { /* best-effort */ }
+
+      const origPath = process.env.PATH;
+      process.env.PATH = `${binDir}:${origPath}`;
+
+      try {
+        const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+        const state = makeMinimalState(featureBranch);
+        const config = makeMinimalConfig(featureBranch);
+        const engineConfig = makeEngineConfig('main');
+
+        const { events, result } = await drainLanding(executeLandingAction({
+          action: 'pr',
+          featureBranch,
+          baseBranch: 'main',
+          repoRoot,
+          mergeWorktreePath,
+          worktreeManager: wm,
+          modelTracker: new ModelTracker(),
+          commitMessage: '',
+          state,
+          config,
+          engineConfig,
+          prAutoMergePolicy: 'always',
+        }));
+
+        const eventTypes = events.map((e) => e.type);
+        expect(eventTypes).toContain('landing:complete');
+        expect(eventTypes).toContain('landing:auto-merge:start');
+        expect(eventTypes).toContain('landing:auto-merge:complete');
+        expect(eventTypes).not.toContain('landing:auto-merge:skipped');
+        expect(result.landingSucceeded).toBe(true);
+      } finally {
+        process.env.PATH = origPath;
+      }
+    });
+
+    it('pr with policy=ask and landingAutoMerge=false emits landing:auto-merge:skipped', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const remotePath = setupRemote(dir);
+      addRemote(repoRoot, remotePath);
+      execFileSync('git', ['-C', repoRoot, 'push', 'origin', 'main']);
+
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+      const mergeWorktreePath = await setupFeatureBranch(repoRoot, worktreeBase, featureBranch);
+
+      const ghBinDir = createFakeGhBin(dir, 'create-new');
+      const origPath = process.env.PATH;
+      process.env.PATH = `${ghBinDir}:${origPath}`;
+
+      try {
+        const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+        const state = makeMinimalState(featureBranch);
+        const config = makeMinimalConfig(featureBranch);
+        const engineConfig = makeEngineConfig('main');
+
+        const { events, result } = await drainLanding(executeLandingAction({
+          action: 'pr',
+          featureBranch,
+          baseBranch: 'main',
+          repoRoot,
+          mergeWorktreePath,
+          worktreeManager: wm,
+          modelTracker: new ModelTracker(),
+          commitMessage: '',
+          state,
+          config,
+          engineConfig,
+          prAutoMergePolicy: 'ask',
+          landingAutoMerge: false,
+        }));
+
+        const eventTypes = events.map((e) => e.type);
+        expect(eventTypes).toContain('landing:complete');
+        expect(eventTypes).toContain('landing:auto-merge:skipped');
+        expect(eventTypes).not.toContain('landing:auto-merge:start');
+        expect(result.landingSucceeded).toBe(true);
+      } finally {
+        process.env.PATH = origPath;
+      }
+    });
+
+    it('pr with policy=never emits landing:auto-merge:skipped even when landingAutoMerge=true', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const remotePath = setupRemote(dir);
+      addRemote(repoRoot, remotePath);
+      execFileSync('git', ['-C', repoRoot, 'push', 'origin', 'main']);
+
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+      const mergeWorktreePath = await setupFeatureBranch(repoRoot, worktreeBase, featureBranch);
+
+      const ghBinDir = createFakeGhBin(dir, 'create-new');
+      const origPath = process.env.PATH;
+      process.env.PATH = `${ghBinDir}:${origPath}`;
+
+      try {
+        const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+        const state = makeMinimalState(featureBranch);
+        const config = makeMinimalConfig(featureBranch);
+        const engineConfig = makeEngineConfig('main');
+
+        const { events, result } = await drainLanding(executeLandingAction({
+          action: 'pr',
+          featureBranch,
+          baseBranch: 'main',
+          repoRoot,
+          mergeWorktreePath,
+          worktreeManager: wm,
+          modelTracker: new ModelTracker(),
+          commitMessage: '',
+          state,
+          config,
+          engineConfig,
+          prAutoMergePolicy: 'never',
+          landingAutoMerge: true,
+        }));
+
+        const eventTypes = events.map((e) => e.type);
+        expect(eventTypes).toContain('landing:complete');
+        expect(eventTypes).toContain('landing:auto-merge:skipped');
+        expect(eventTypes).not.toContain('landing:auto-merge:start');
+        expect(result.landingSucceeded).toBe(true);
+
+        const skippedEvent = events.find((e) => e.type === 'landing:auto-merge:skipped') as Extract<EforgeEvent, { type: 'landing:auto-merge:skipped' }>;
+        expect(skippedEvent.reason).toMatch(/[Nn]ever/i);
+      } finally {
+        process.env.PATH = origPath;
+      }
+    });
+
+    it('non-fatal: gh pr merge failure emits landing:auto-merge:skipped and landingSucceeded is true', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const remotePath = setupRemote(dir);
+      addRemote(repoRoot, remotePath);
+      execFileSync('git', ['-C', repoRoot, 'push', 'origin', 'main']);
+
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+      const mergeWorktreePath = await setupFeatureBranch(repoRoot, worktreeBase, featureBranch);
+
+      // Fake gh: pr create succeeds, pr merge fails
+      const binDir = join(dir, 'bin-merge-fail');
+      execFileSync('mkdir', ['-p', binDir]);
+      const scriptPath = join(binDir, 'gh');
+      writeFileSync(scriptPath, `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === '--version') { process.stdout.write('gh version test\\n'); process.exit(0); }
+if (args[0] === 'pr' && args[1] === 'create') { process.stdout.write('https://github.com/test/repo/pull/1\\n'); process.exit(0); }
+if (args[0] === 'pr' && args[1] === 'merge') { process.stderr.write('auto-merge not allowed by branch protection\\n'); process.exit(1); }
+process.exit(0);
+`, { mode: 0o755 });
+      try { chmodSync(scriptPath, 0o755); } catch { /* best-effort */ }
+
+      const origPath = process.env.PATH;
+      process.env.PATH = `${binDir}:${origPath}`;
+
+      try {
+        const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+        const state = makeMinimalState(featureBranch);
+        const config = makeMinimalConfig(featureBranch);
+        const engineConfig = makeEngineConfig('main');
+
+        const { events, result } = await drainLanding(executeLandingAction({
+          action: 'pr',
+          featureBranch,
+          baseBranch: 'main',
+          repoRoot,
+          mergeWorktreePath,
+          worktreeManager: wm,
+          modelTracker: new ModelTracker(),
+          commitMessage: '',
+          state,
+          config,
+          engineConfig,
+          prAutoMergePolicy: 'always',
+        }));
+
+        const eventTypes = events.map((e) => e.type);
+        // PR landing must succeed even though auto-merge failed
+        expect(eventTypes).toContain('landing:complete');
+        expect(eventTypes).toContain('landing:auto-merge:start');
+        expect(eventTypes).toContain('landing:auto-merge:skipped');
+        expect(eventTypes).not.toContain('landing:auto-merge:complete');
+        expect(result.landingSucceeded).toBe(true);
+        expect(result.prUrl).toBe('https://github.com/test/repo/pull/1');
+      } finally {
+        process.env.PATH = origPath;
+      }
+    });
+
+    it('pr with policy=always and existing PR emits landing:auto-merge events with existing PR URL', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const remotePath = setupRemote(dir);
+      addRemote(repoRoot, remotePath);
+      execFileSync('git', ['-C', repoRoot, 'push', 'origin', 'main']);
+
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+      const mergeWorktreePath = await setupFeatureBranch(repoRoot, worktreeBase, featureBranch);
+
+      // Fake gh: pr create fails (existing), pr view succeeds, pr merge succeeds
+      const binDir = join(dir, 'bin-existing-automerge');
+      execFileSync('mkdir', ['-p', binDir]);
+      const scriptPath = join(binDir, 'gh');
+      writeFileSync(scriptPath, `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === '--version') { process.stdout.write('gh version test\\n'); process.exit(0); }
+if (args[0] === 'pr' && args[1] === 'create') {
+  process.stderr.write('a pull request for branch "eforge/test-set" already exists:\\nhttps://github.com/test/repo/pull/42\\n');
+  process.exit(1);
+}
+if (args[0] === 'pr' && args[1] === 'view') {
+  if (args.includes('url,baseRefName')) {
+    process.stdout.write(JSON.stringify({ url: 'https://github.com/test/repo/pull/42', baseRefName: 'main' }) + '\\n');
+  } else {
+    process.stdout.write('https://github.com/test/repo/pull/42\\n');
+  }
+  process.exit(0);
+}
+if (args[0] === 'pr' && args[1] === 'merge') { process.stdout.write('Auto-merge enabled\\n'); process.exit(0); }
+process.exit(1);
+`, { mode: 0o755 });
+      try { chmodSync(scriptPath, 0o755); } catch { /* best-effort */ }
+
+      const origPath = process.env.PATH;
+      process.env.PATH = `${binDir}:${origPath}`;
+
+      try {
+        const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+        const state = makeMinimalState(featureBranch);
+        const config = makeMinimalConfig(featureBranch);
+        const engineConfig = makeEngineConfig('main');
+
+        const { events, result } = await drainLanding(executeLandingAction({
+          action: 'pr',
+          featureBranch,
+          baseBranch: 'main',
+          repoRoot,
+          mergeWorktreePath,
+          worktreeManager: wm,
+          modelTracker: new ModelTracker(),
+          commitMessage: '',
+          state,
+          config,
+          engineConfig,
+          prAutoMergePolicy: 'always',
+        }));
+
+        const eventTypes = events.map((e) => e.type);
+        expect(eventTypes).toContain('landing:complete');
+        expect(eventTypes).toContain('landing:auto-merge:start');
+        expect(eventTypes).toContain('landing:auto-merge:complete');
+        expect(result.landingSucceeded).toBe(true);
+        expect(result.prUrl).toBe('https://github.com/test/repo/pull/42');
+      } finally {
+        process.env.PATH = origPath;
+      }
+    });
+
+    // --- eforge:endregion plan-01-core-engine-auto-merge ---
   });
 });
 
