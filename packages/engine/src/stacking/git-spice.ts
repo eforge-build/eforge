@@ -153,18 +153,24 @@ export class GitSpiceAdapter {
 
   /**
    * Submit the current branch as a pull request.
-   * Runs: git-spice branch submit
+   * Runs: git-spice branch submit --fill --no-web --no-prompt
+   *
+   * eforge runs in a non-interactive daemon context, so submission must provide
+   * PR metadata from commits and explicitly disable browser/prompt behavior.
    */
   async submitBranch(cwd: string): Promise<ProviderCommandResult> {
-    return this.run(cwd, ['branch', 'submit']);
+    return this.run(cwd, ['branch', 'submit', '--fill', '--no-web', '--no-prompt']);
   }
 
   /**
    * Submit the entire stack as pull requests.
-   * Runs: git-spice stack submit
+   * Runs: git-spice stack submit --fill --no-web --no-prompt
+   *
+   * eforge runs in a non-interactive daemon context, so submission must provide
+   * PR metadata from commits and explicitly disable browser/prompt behavior.
    */
   async submitStack(cwd: string): Promise<ProviderCommandResult> {
-    return this.run(cwd, ['stack', 'submit']);
+    return this.run(cwd, ['stack', 'submit', '--fill', '--no-web', '--no-prompt']);
   }
 
   /**

@@ -131,14 +131,14 @@ describe('GitSpiceAdapter', () => {
   // Argv construction — submit and sync
   // ---------------------------------------------------------------------------
 
-  it('submitBranch invokes branch submit', async () => {
+  it('submitBranch invokes branch submit non-interactively', async () => {
     const dir = makeTempDir();
     const argsFile = join(dir, 'args.txt');
     const stub = makeStub(dir, 'git-spice', `echo "$@" >> "${argsFile}"`);
     const adapter = createGitSpiceAdapter({ gitSpice: { command: stub } });
     await adapter.submitBranch(dir);
     const args = readFileSync(argsFile, 'utf8').trim();
-    expect(args).toBe('branch submit');
+    expect(args).toBe('branch submit --fill --no-web --no-prompt');
   });
 
   it('submitBranch returns command metadata with stdout captured', async () => {
@@ -147,19 +147,19 @@ describe('GitSpiceAdapter', () => {
     const adapter = createGitSpiceAdapter({ gitSpice: { command: stub } });
     const result = await adapter.submitBranch(dir);
     expect(result.command).toBe(stub);
-    expect(result.args).toEqual(['branch', 'submit']);
+    expect(result.args).toEqual(['branch', 'submit', '--fill', '--no-web', '--no-prompt']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('github.com');
   });
 
-  it('submitStack invokes stack submit', async () => {
+  it('submitStack invokes stack submit non-interactively', async () => {
     const dir = makeTempDir();
     const argsFile = join(dir, 'args.txt');
     const stub = makeStub(dir, 'git-spice', `echo "$@" >> "${argsFile}"`);
     const adapter = createGitSpiceAdapter({ gitSpice: { command: stub } });
     await adapter.submitStack(dir);
     const args = readFileSync(argsFile, 'utf8').trim();
-    expect(args).toBe('stack submit');
+    expect(args).toBe('stack submit --fill --no-web --no-prompt');
   });
 
   it('syncRepo invokes repo sync', async () => {
