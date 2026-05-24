@@ -14,7 +14,7 @@ import { selectInitialReviewPerspectives, shouldParallelizeReview, isBuiltInRevi
 import { emitBuildDecisionForPlan } from '../decisions.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { loadPrompt } from '../prompts.js';
-import { runReview, parseReviewIssuesStrict } from './reviewer.js';
+import { runReview, parseReviewIssuesStrict, computeReviewContext } from './reviewer.js';
 import {
   getReviewIssueSchemaYaml,
   getCodeReviewIssueSchemaYaml,
@@ -179,6 +179,11 @@ export async function* runParallelReview(
     return;
   }
 
+  // Compute string-format review context once for injection into all perspective prompts.
+  // This avoids repeating git invocations per-perspective and ensures reviewers with
+  // read-only tools (no bash/Bash) still see the changed files and diff excerpt.
+  const reviewContext = await computeReviewContext(cwd, baseBranch);
+
   // Above threshold (or forced parallel) - run parallel specialist reviewers
   // Use perspectives override if provided, otherwise determine from file categories
   let perspectives: string[];
@@ -306,13 +311,15 @@ export async function* runParallelReview(
           const prompt = await loadPrompt('reviewer', {
             plan_content: planContent,
             base_branch: baseBranch,
+            changed_files: reviewContext.changedFiles,
+            diff_context: reviewContext.diffContext,
             review_issue_schema: getReviewIssueSchemaYaml(),
           }, combinedPromptAppend);
 
           let fullText = '';
 
           for await (const event of harness.run(
-            { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
+            { prompt, cwd, maxTurns: 30, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
             'reviewer',
             planId,
           )) {
@@ -346,13 +353,15 @@ export async function* runParallelReview(
         const prompt = await loadPrompt(PERSPECTIVE_PROMPTS[perspective], {
           plan_content: planContent,
           base_branch: baseBranch,
+          changed_files: reviewContext.changedFiles,
+          diff_context: reviewContext.diffContext,
           review_issue_schema: PERSPECTIVE_SCHEMA_YAML[perspective](),
         }, options.promptAppend);
 
         let fullText = '';
 
         for await (const event of harness.run(
-          { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
+          { prompt, cwd, maxTurns: 30, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
           'reviewer',
           planId,
         )) {

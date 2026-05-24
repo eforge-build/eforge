@@ -119,7 +119,8 @@ stderr: error TS2345: Argument of type 'string' is not assignable to parameter o
     const prompt = backend.prompts[0];
     expect(prompt).toContain('verification specialist');
     expect(prompt).toContain('verification-failure');
-    expect(prompt).toContain('subprocess commands');
+    // The new prompt explicitly prohibits running commands
+    expect(prompt).toContain('Do not run commands or execute code');
     // The prompt must require acceptance criteria consideration evidence
     expect(prompt).toContain('acceptance criteria');
 
@@ -157,8 +158,9 @@ stderr: error TS2345: Argument of type 'string' is not assignable to parameter o
     expect(prompt).toContain('My Plan');
     expect(prompt).toContain('pnpm build');
 
-    // {{base_branch}} should be substituted
-    expect(prompt).toContain('feature-branch');
+    // Engine-provided review context vars should be substituted (empty in test since cwd=/tmp is not a git repo)
+    expect(prompt).not.toContain('{{changed_files}}');
+    expect(prompt).not.toContain('{{diff_context}}');
 
     // {{review_issue_schema}} should be substituted with YAML (verification-failure appears in schema)
     expect(prompt).toContain('verification-failure');

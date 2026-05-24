@@ -10,12 +10,20 @@ You are reviewing code changes for the following plan:
 
 {{plan_content}}
 
-The changes were made on a branch derived from `{{base_branch}}`. Use `git diff {{base_branch}}...HEAD` to scope your review to only the changed files.
+The engine has provided the changed files and diff context below. Use these to scope your review.
+
+**Changed files:**
+
+{{changed_files}}
+
+**Diff context:**
+
+{{diff_context}}
 
 # Scope
 
-1. Run `git diff {{base_branch}}...HEAD --name-only` to identify changed files.
-2. Read each changed file in full to understand the implementation.
+1. Review the changed files listed above in the engine-provided context.
+2. Read each changed file in full using Read/Grep/Glob to understand the implementation.
 3. Review the changes for API design issues.
 4. Focus only on the diff - do not review unchanged code.
 
@@ -47,16 +55,11 @@ Focus exclusively on API design concerns:
 - **warning** - Should fix. Inconsistent patterns, missing error handling for edge cases.
 - **suggestion** - Nice to have. Naming improvements, documentation gaps, convention alignment.
 
-# Fix Instructions
+# Fix Descriptions
 
-When you identify an issue that has a clear, unambiguous fix:
+Do NOT write fixes to files - describe them in the `<fix>` element only. Your role is to identify and describe issues; the review-fixer agent handles the actual code changes.
 
-1. Write the fix directly to the file using your editing tools.
-2. **Do NOT stage the fix.** Do not run `git add` on any file.
-3. **Do NOT commit.** Do not run `git commit`.
-4. For issues where a fix would fundamentally change the architecture, describe the problem in the issue description instead.
-
-**Always attempt a fix for every issue you report**, regardless of severity. Pick the simplest, most minimal approach. Skip the fix only when it would require understanding builder intent or fundamentally change the architectural approach.
+When you identify an issue, describe the recommended fix action in the `<fix>` element. The review-fixer agent will apply fixes based on your descriptions.
 
 # Review Issue Schema
 
@@ -80,7 +83,7 @@ After completing your review, output your findings in this exact XML format:
 <review-issues>
   <issue severity="critical|warning|suggestion" category="rest-conventions|contracts|input-validation|breaking-changes|error-responses|versioning" file="path/to/file.ts" line="42">
     Description of the issue.
-    <fix>Description of the fix applied, if any.</fix>
+    <fix>Description of the recommended fix for the review-fixer agent to apply.</fix>
   </issue>
 </review-issues>
 ```
@@ -95,7 +98,6 @@ Rules:
 
 # Constraints
 
-- Do NOT run `git add` - fixes must remain unstaged
-- Do NOT run `git commit`
-- Do NOT modify files outside the scope of `git diff {{base_branch}}...HEAD`
-- Review ONLY the changed files
+- Do NOT modify any files - describe fixes in the `<fix>` element only
+- Do NOT run `git add` or `git commit`
+- Review ONLY the changed files listed in the context above

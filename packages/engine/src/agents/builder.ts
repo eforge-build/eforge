@@ -10,6 +10,7 @@ import type { EvaluationSubmission, EvaluationVerdict, ShardScope } from '../sch
 import { ATTRIBUTION } from '../git.js';
 import { parseEvaluationBlock } from './common.js';
 import { createEvaluationTools, type EvaluationSnapshot } from '../evaluation/index.js';
+import { mergeMutationDisallowedTools } from '../harnesses/tool-safety.js';
 export type { EvaluationVerdict, EvaluationEvidence } from './common.js';
 
 /**
@@ -308,10 +309,8 @@ export interface BuilderEvaluationResult {
   error?: string;
 }
 
-const EVALUATOR_MUTATION_TOOL_DENYLIST = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash'] as const;
-
 function mergeDisallowedTools(existing: string[] | undefined): string[] {
-  return Array.from(new Set([...(existing ?? []), ...EVALUATOR_MUTATION_TOOL_DENYLIST]));
+  return mergeMutationDisallowedTools(existing);
 }
 
 /**
