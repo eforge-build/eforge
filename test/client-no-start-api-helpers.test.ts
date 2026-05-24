@@ -31,6 +31,7 @@ import {
   apiCancelIfRunning,
   apiEnqueueIfRunning,
   apiGetQueueIfRunning,
+  apiShowConfigVerboseIfRunning,
 } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,15 @@ function startTestServer(): Promise<TestServer> {
         return;
       }
 
+      if (url === `${API_ROUTES.configShow}?verbose=true`) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          resolved: { build: { onSuccess: 'issue-pr' } },
+          sources: { project: { path: '/project/eforge/config.yaml', found: true } },
+        }));
+        return;
+      }
+
       if (url === API_ROUTES.enqueue) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
@@ -158,6 +168,7 @@ const noStartRouteHelperCases: RouteHelperCase[] = [
   { name: 'apiGetDiffIfRunning', opts: (cwd) => ({ cwd, sessionId: 'session-1', planId: 'plan-1', file: 'src/a.ts' }) },
   { name: 'apiGetSessionMetadataIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiShowConfigIfRunning', opts: (cwd) => ({ cwd }) },
+  { name: 'apiShowConfigVerboseIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiValidateConfigIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiListProfilesIfRunning', opts: (cwd) => ({ cwd, query: { scope: 'project-local' } }) },
   { name: 'apiShowProfileIfRunning', opts: (cwd) => ({ cwd }) },
@@ -394,6 +405,29 @@ describe('helper import discipline', () => {
     expect(testServer.requests.at(-1)).toEqual({
       method: 'POST',
       url: '/api/cancel/session-1',
+      bodyText: '',
+    });
+  });
+
+  it('(6d) apiShowConfigVerboseIfRunning requests the config show route with verbose=true', async () => {
+    writeLockfile(tmpDir, {
+      pid: process.pid,
+      port: testServer.port,
+      startedAt: new Date().toISOString(),
+    });
+
+    const result = await apiShowConfigVerboseIfRunning({ cwd: tmpDir });
+
+    expect(result).toEqual({
+      data: {
+        resolved: { build: { onSuccess: 'issue-pr' } },
+        sources: { project: { path: '/project/eforge/config.yaml', found: true } },
+      },
+      port: testServer.port,
+    });
+    expect(testServer.requests.at(-1)).toEqual({
+      method: 'GET',
+      url: `${API_ROUTES.configShow}?verbose=true`,
       bodyText: '',
     });
   });

@@ -80,6 +80,10 @@ export {
   apiShowConfigIfRunning,
   apiValidateConfig,
   apiValidateConfigIfRunning,
+  // --- eforge:region plan-01-unified-pi-landing-ux ---
+  apiShowConfigVerbose,
+  apiShowConfigVerboseIfRunning,
+  // --- eforge:endregion plan-01-unified-pi-landing-ux ---
 } from './api/config.js';
 
 // --- eforge:region plan-02-extension-tooling-surfaces ---
@@ -364,6 +368,10 @@ export type {
   ProjectContext,
   ConfigShowResponse,
   ConfigValidateResponse,
+  // --- eforge:region plan-01-unified-pi-landing-ux ---
+  ConfigSourceInfo,
+  ConfigShowVerboseResponse,
+  // --- eforge:endregion plan-01-unified-pi-landing-ux ---
   ExtensionScope,
   ExtensionSource,
   ExtensionStatus,
