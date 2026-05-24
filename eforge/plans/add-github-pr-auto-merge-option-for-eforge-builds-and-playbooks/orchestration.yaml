@@ -1,0 +1,102 @@
+name: add-github-pr-auto-merge-option-for-eforge-builds-and-playbooks
+description: Add a distinct GitHub PR auto-merge option for eforge PR landings,
+  including config policy, engine execution, API/CLI/Pi propagation, typed
+  events, tests, and user-facing docs.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm docs:check
+  - pnpm test
+plans:
+  - id: plan-01-core-engine-auto-merge
+    name: Core Config, Wire Events, and Engine PR Auto-Merge
+    depends_on: []
+    branch: add-github-pr-auto-merge-option-for-eforge-builds-and-playbooks/plan-01-core-engine-auto-merge
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan changes cross-package TypeScript contracts, engine landing
+          behavior, GitHub CLI command invocation, and stacked PR integration.
+      reviewer:
+        effort: high
+        rationale: Review needs extra attention to API compatibility, subprocess command
+          construction, non-fatal error handling, and event schema
+          exhaustiveness.
+  - id: plan-02-request-surfaces-and-pi-ux
+    name: Daemon, CLI, MCP, and Pi Auto-Merge Selection
+    depends_on:
+      - plan-01-core-engine-auto-merge
+    branch: add-github-pr-auto-merge-option-for-eforge-builds-and-playbooks/plan-02-request-surfaces-and-pi-ux
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: This plan updates multiple consumer-facing request paths and must
+          preserve explicit true, explicit false, and omitted override
+          semantics.
+  - id: plan-03-docs-and-generated-reference
+    name: Docs, Skills, Generated Config Reference, and Plugin Parity
+    depends_on:
+      - plan-02-request-surfaces-and-pi-ux
+    branch: add-github-pr-auto-merge-option-for-eforge-builds-and-playbooks/plan-03-docs-and-generated-reference
+    build:
+      - implement
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - review-cycle
+    - doc-sync
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - security
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive cross-package feature touching config, API/request
+    plumbing, engine landing behavior, CLI/MCP, Pi/plugin UX, docs, and tests,
+    but a single planner can enumerate the dependency chain, so excursion is
+    appropriate. Plan review is included because interface and propagation
+    mistakes would be costly. The build runs implementation with documentation
+    authoring in parallel, adds tests, performs iterative review, syncs docs
+    after code changes, and finishes with a test cycle. API review covers new
+    config/request/event surfaces; security review is warranted because the
+    feature adds GitHub CLI subprocess behavior.
