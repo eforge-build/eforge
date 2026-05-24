@@ -209,6 +209,20 @@ function extractMessageUpdateText(event: unknown): { fullText?: string; delta?: 
   return {};
 }
 
+function stringifyToolResult(result: unknown): string {
+  return typeof result === 'string' ? result : JSON.stringify(result);
+}
+
+function isPiToolExecutionInfrastructureError(event: unknown): boolean {
+  const record = asRecord(event);
+  if (record?.type !== 'tool_execution_end') return false;
+  // A successful tool can legitimately return source/test text containing the
+  // phrase used by the infra classifier. Only failed Pi tool executions are
+  // candidates for session-aborting infrastructure errors.
+  if (record.isError !== true) return false;
+  return isPiToolInfrastructureError(stringifyToolResult(record.result));
+}
+
 // --- eforge:region plan-01-pi-headless-isolation ---
 
 /**
@@ -326,6 +340,7 @@ export const piHarnessInternalsForTest = {
   // --- eforge:region plan-01-pi-headless-isolation ---
   buildResourceLoaderOverrides,
   isPiToolInfrastructureError,
+  isPiToolExecutionInfrastructureError,
   // --- eforge:endregion plan-01-pi-headless-isolation ---
 };
 
@@ -864,16 +879,12 @@ export class PiHarness implements AgentHarness {
         // without initTheme() in a headless SDK session). Classify the *raw* result before
         // truncation so the full message is available for pattern matching. When detected,
         // abort the session and record the typed error for the throw path below.
-        if (event.type === 'tool_execution_end' && !infraError) {
-          const rawResult = typeof (event as { result?: unknown }).result === 'string'
-            ? (event as { result: string }).result
-            : JSON.stringify((event as { result?: unknown }).result);
-          if (isPiToolInfrastructureError(rawResult)) {
-            const infraMsg = `Pi tool-call infrastructure failure: ${rawResult}`;
-            error = infraMsg;
-            infraError = new AgentTerminalError('error_pi_tool_infrastructure', infraMsg);
-            try { session.abort(); } catch { /* ignore abort errors */ }
-          }
+        if (event.type === 'tool_execution_end' && !infraError && isPiToolExecutionInfrastructureError(event)) {
+          const rawResult = stringifyToolResult((event as { result?: unknown }).result);
+          const infraMsg = `Pi tool-call infrastructure failure: ${rawResult}`;
+          error = infraMsg;
+          infraError = new AgentTerminalError('error_pi_tool_infrastructure', infraMsg);
+          try { session.abort(); } catch { /* ignore abort errors */ }
         }
         // --- eforge:endregion plan-01-pi-headless-isolation ---
 
