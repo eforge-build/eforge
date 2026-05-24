@@ -400,6 +400,25 @@ describe('runReview wiring', () => {
     expect(complete!.issues[0].severity).toBe('critical');
     expect(complete!.issues[0].category).toBe('review-contract');
   });
+
+  // --- eforge:region plan-01-reviewer-isolation ---
+  it('dispatches the reviewer with read-only tools', async () => {
+    const backend = new StubHarness([{
+      text: '<review-issues></review-issues>',
+    }]);
+
+    await collectEvents(runReview({
+      harness: backend,
+      planContent: 'test plan',
+      baseBranch: 'main',
+      planId: 'plan-1',
+      cwd: '/tmp',
+    }));
+
+    expect(backend.calls).toHaveLength(1);
+    expect(backend.calls[0].tools).toBe('read-only');
+  });
+  // --- eforge:endregion plan-01-reviewer-isolation ---
 });
 
 // --- Builder ---
@@ -611,7 +630,10 @@ describe('builderEvaluate wiring', () => {
       'list_evaluation_files',
       'submit_evaluation_verdicts',
     ]);
-    expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash']));
+    // --- eforge:region plan-01-reviewer-isolation ---
+    // Denylist must include both Claude-cased and Pi-lowercase mutation tool names.
+    expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'write', 'edit', 'bash']));
+    // --- eforge:endregion plan-01-reviewer-isolation ---
     expect(result?.source).toBe('structured');
     expect(result?.verdicts).toEqual([{ file: 'a.ts', hunk: 1, action: 'accept', reason: 'Correct' }]);
   });
@@ -680,6 +702,25 @@ describe('runPlanReview wiring', () => {
     expect(complete!.issues).toHaveLength(1);
     expect(complete!.issues[0].category).toBe('scope');
   });
+
+  // --- eforge:region plan-01-reviewer-isolation ---
+  it('includes both Claude-cased and Pi-lowercase mutation tools in denylist', async () => {
+    const backend = new StubHarness([{
+      text: '<review-issues></review-issues>',
+    }]);
+
+    await collectEvents(runPlanReview({
+      harness: backend,
+      sourceContent: 'PRD content',
+      planSetName: 'my-plan',
+      cwd: '/tmp',
+    }));
+
+    expect(backend.calls[0].disallowedTools).toEqual(
+      expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'write', 'edit', 'bash']),
+    );
+  });
+  // --- eforge:endregion plan-01-reviewer-isolation ---
 });
 
 // --- Plan Evaluator ---
@@ -759,7 +800,10 @@ describe('runPlanEvaluate wiring', () => {
       'list_evaluation_files',
       'submit_evaluation_verdicts',
     ]);
-    expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash']));
+    // --- eforge:region plan-01-reviewer-isolation ---
+    // Denylist must include both Claude-cased and Pi-lowercase mutation tool names.
+    expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'write', 'edit', 'bash']));
+    // --- eforge:endregion plan-01-reviewer-isolation ---
     expect(events.find(e => e.type === 'planning:error')).toBeDefined();
   });
 

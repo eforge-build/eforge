@@ -18,6 +18,7 @@ import {
 } from '../evaluation/index.js';
 import type { ModelTracker } from '../model-tracker.js';
 import { parseEvaluationBlock } from './common.js';
+import { mergeMutationDisallowedTools } from '../harnesses/tool-safety.js';
 
 const exec = promisify(execFile);
 
@@ -160,10 +161,8 @@ const MODE_CONFIG = {
   },
 } as const;
 
-const EVALUATOR_MUTATION_TOOL_DENYLIST = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash'] as const;
-
 function mergeDisallowedTools(existing: string[] | undefined): string[] {
-  return Array.from(new Set([...(existing ?? []), ...EVALUATOR_MUTATION_TOOL_DENYLIST]));
+  return mergeMutationDisallowedTools(existing);
 }
 
 function summarizeEvaluationVerdicts(verdicts: EvaluationVerdict[]) {

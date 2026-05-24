@@ -1,8 +1,56 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getReviewIssueSchemaYaml } from '../schemas.js';
+
+const exec = promisify(execFile);
+
+/** Max byte length for diff context injected into reviewer prompts. */
+const DIFF_CONTEXT_MAX_BYTES = 80_000;
+
+/**
+ * Compute the changed-files list and a bounded diff for injection into reviewer prompts.
+ * Both values are injected as read-only context so agents with `tools: 'read-only'`
+ * (which cannot run Bash/bash) still know which files changed and can use
+ * Read/Grep/Glob to inspect them.
+ *
+ * Errors from git commands are silently swallowed — both values default to an
+ * empty string so the prompt is still valid when the cwd is not a git repo
+ * (e.g. in unit tests).
+ */
+export async function computeReviewContext(
+  cwd: string,
+  baseBranch: string,
+): Promise<{ changedFiles: string; diffContext: string }> {
+  let changedFiles = '';
+  let diffContext = '';
+
+  try {
+    const { stdout } = await exec('git', ['diff', '--no-ext-diff', '--no-textconv', '--name-only', '--end-of-options', `${baseBranch}...HEAD`], { cwd });
+    changedFiles = stdout.trim();
+  } catch {
+    // Not a git repo or git unavailable — leave empty
+  }
+
+  try {
+    const { stdout } = await exec(
+      'git',
+      ['diff', '--no-ext-diff', '--no-textconv', '--unified=3', '--stat', '--end-of-options', `${baseBranch}...HEAD`],
+      { cwd },
+    );
+    diffContext = stdout.length > DIFF_CONTEXT_MAX_BYTES
+      ? stdout.slice(0, DIFF_CONTEXT_MAX_BYTES) + '\n... [diff truncated]'
+      : stdout;
+  } catch {
+    // Not a git repo or git unavailable — leave empty
+  }
+
+  return { changedFiles, diffContext };
+}
 
 /**
  * Options for the reviewer agent.
@@ -26,15 +74,21 @@ export interface ReviewerOptions extends SdkPassthroughConfig {
 
 /**
  * Compose the reviewer prompt by loading the template and substituting variables.
+ * Computes changed-files and diff context from the working directory so the
+ * read-only reviewer agent can use Read/Grep/Glob without needing Bash.
  */
 export async function composeReviewPrompt(
   planContent: string,
   baseBranch: string,
+  cwd: string,
   append?: string,
 ): Promise<string> {
+  const { changedFiles, diffContext } = await computeReviewContext(cwd, baseBranch);
   return loadPrompt('reviewer', {
     plan_content: planContent,
     base_branch: baseBranch,
+    changed_files: changedFiles,
+    diff_context: diffContext,
     review_issue_schema: getReviewIssueSchemaYaml(),
   }, append);
 }
@@ -321,12 +375,12 @@ export async function* runReview(
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId };
 
-  const prompt = await composeReviewPrompt(planContent, baseBranch, options.promptAppend);
+  const prompt = await composeReviewPrompt(planContent, baseBranch, cwd, options.promptAppend);
 
   let fullText = '';
 
   for await (const event of harness.run(
-    { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
+    { prompt, cwd, maxTurns: 30, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'reviewer',
     planId,
   )) {

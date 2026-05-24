@@ -91,7 +91,8 @@ describe('prompt resolution', () => {
 
       const prompt = await loadPrompt('reviewer', {
         plan_content: 'plan',
-        base_branch: 'main',
+        changed_files: '',
+        diff_context: '',
         review_issue_schema: 'schema',
       });
 
@@ -105,7 +106,8 @@ describe('prompt resolution', () => {
 
       const prompt = await loadPrompt('reviewer', {
         plan_content: 'plan',
-        base_branch: 'main',
+        changed_files: '',
+        diff_context: '',
         review_issue_schema: 'schema',
       });
 
