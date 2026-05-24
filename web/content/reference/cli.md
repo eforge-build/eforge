@@ -22,8 +22,7 @@ Normalize input and add it to the PRD queue
 | `--verbose` | Stream agent output |
 | `--no-plugins` | Disable plugin loading |
 | `--profile <name>` | Override active profile for this enqueue + build |
-| `--on-success <action>` | Override the project default on-success landing action (merge-to-base-branch\|issue-pr\|leave-branch) |
-| `--landing-action <action>` | Landing action shorthand alias for --on-success (pr\|merge\|leave) |
+| `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
 
 ### `build`
 
@@ -49,8 +48,7 @@ Compile + build + validate in one step
 | `--watch` | Watch mode: continuously poll the queue for new PRDs |
 | `--poll-interval <ms>` | Poll interval in milliseconds for watch mode |
 | `--profile <name>` | Override active profile for this build |
-| `--on-success <action>` | Override the project default on-success landing action (merge-to-base-branch\|issue-pr\|leave-branch) |
-| `--landing-action <action>` | Landing action shorthand alias for --on-success (pr\|merge\|leave) |
+| `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
 
 ### `monitor`
 
@@ -111,8 +109,7 @@ Build a single PRD directly (subprocess entry point for the queue scheduler)
 | `--no-plugins` | Disable plugin loading |
 | `--session-id <uuid>` | Session ID injected by parent scheduler (skips child session:start emission) |
 | `--profile <name>` | Override active profile for this build |
-| `--on-success <action>` | Override the project default on-success landing action (merge-to-base-branch\|issue-pr\|leave-branch) |
-| `--landing-action <action>` | Landing action shorthand alias for --on-success (pr\|merge\|leave) |
+| `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
 
 ### `extension`
 

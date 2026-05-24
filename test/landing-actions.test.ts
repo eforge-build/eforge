@@ -176,7 +176,6 @@ function makeEngineConfig(trunkBranch: string, allowLocalMergeToTrunk = false): 
       postMergeCommandTimeoutMs: undefined,
       maxValidationRetries: 2,
       cleanupPlanFiles: false,
-      onSuccess: 'merge-to-base-branch',
       trunkBranch,
       allowLocalMergeToTrunk,
     },
@@ -219,7 +218,7 @@ describe('executeLandingAction', () => {
       const engineConfig = makeEngineConfig('main', true);
 
       const opts: LandingActionOptions = {
-        action: 'merge-to-base-branch',
+        action: 'merge',
         featureBranch,
         baseBranch: 'main',
         repoRoot,
@@ -244,12 +243,12 @@ describe('executeLandingAction', () => {
 
       // Events contain action field
       const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
-      expect(landingStart.action).toBe('merge-to-base-branch');
+      expect(landingStart.action).toBe('merge');
       expect(landingStart.trunkBranch).toBe('main');
       expect(landingStart.workflow).toBe('trunk-local-merge');
 
       const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
-      expect(landingComplete.action).toBe('merge-to-base-branch');
+      expect(landingComplete.action).toBe('merge');
       expect(landingComplete.commitSha).toBeTruthy();
 
       expect(result.landingSucceeded).toBe(true);
@@ -269,7 +268,7 @@ describe('executeLandingAction', () => {
       const engineConfig = makeEngineConfig('main', true);
 
       await drainLanding(executeLandingAction({
-        action: 'merge-to-base-branch',
+        action: 'merge',
         featureBranch,
         baseBranch: 'main',
         repoRoot,
@@ -308,7 +307,7 @@ describe('executeLandingAction', () => {
       const engineConfig = makeEngineConfig('main', true);
 
       const { events, result } = await drainLanding(executeLandingAction({
-        action: 'merge-to-base-branch',
+        action: 'merge',
         featureBranch,
         baseBranch: 'main',
         repoRoot,
@@ -347,7 +346,7 @@ describe('executeLandingAction', () => {
       const engineConfig = makeEngineConfig('main', false);
 
       const { events, result } = await drainLanding(executeLandingAction({
-        action: 'merge-to-base-branch',
+        action: 'merge',
         featureBranch,
         baseBranch: 'main',
         repoRoot,
@@ -409,7 +408,7 @@ describe('executeLandingAction', () => {
       const engineConfig = makeEngineConfig('main', true);
 
       const { events, result } = await drainLanding(executeLandingAction({
-        action: 'merge-to-base-branch',
+        action: 'merge',
         featureBranch,
         baseBranch: 'main',
         repoRoot,
@@ -474,7 +473,7 @@ describe('executeLandingAction', () => {
       const engineConfig = makeEngineConfig('main', false);
 
       const { events, result } = await drainLanding(executeLandingAction({
-        action: 'merge-to-base-branch',
+        action: 'merge',
         featureBranch,
         baseBranch: 'feature/parent',
         repoRoot,
@@ -526,7 +525,7 @@ describe('executeLandingAction', () => {
       const config = makeMinimalConfig(featureBranch);
 
       const { events, result } = await drainLanding(executeLandingAction({
-        action: 'leave-branch',
+        action: 'leave',
         featureBranch,
         baseBranch: 'main',
         repoRoot,
@@ -547,7 +546,7 @@ describe('executeLandingAction', () => {
       expect(eventTypes).not.toContain('landing:skipped');
 
       const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
-      expect(landingComplete.action).toBe('leave-branch');
+      expect(landingComplete.action).toBe('leave');
 
       // --- eforge:region plan-03-branch-aware-landing ---
       const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
@@ -569,7 +568,7 @@ describe('executeLandingAction', () => {
       const config = makeMinimalConfig(featureBranch);
 
       await drainLanding(executeLandingAction({
-        action: 'leave-branch',
+        action: 'leave',
         featureBranch,
         baseBranch: 'main',
         repoRoot,
@@ -618,7 +617,7 @@ describe('executeLandingAction', () => {
         const engineConfig = makeEngineConfig('main');
 
         const { events, result } = await drainLanding(executeLandingAction({
-          action: 'issue-pr',
+          action: 'pr',
           featureBranch,
           baseBranch: 'main',
           repoRoot,
@@ -645,7 +644,7 @@ describe('executeLandingAction', () => {
         // --- eforge:endregion plan-03-branch-aware-landing ---
 
         const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
-        expect(landingComplete.action).toBe('issue-pr');
+        expect(landingComplete.action).toBe('pr');
         expect(landingComplete.prUrl).toBe('https://github.com/test/repo/pull/1');
 
         expect(result.landingSucceeded).toBe(true);
@@ -676,7 +675,7 @@ describe('executeLandingAction', () => {
         const config = makeMinimalConfig(featureBranch);
 
         await drainLanding(executeLandingAction({
-          action: 'issue-pr',
+          action: 'pr',
           featureBranch,
           baseBranch: 'main',
           repoRoot,
@@ -745,7 +744,7 @@ describe('executeLandingAction', () => {
         const engineConfig = makeEngineConfig('main', false);
 
         const { events, result } = await drainLanding(executeLandingAction({
-          action: 'issue-pr',
+          action: 'pr',
           featureBranch,
           baseBranch: 'feature/parent',
           repoRoot,
@@ -772,7 +771,7 @@ describe('executeLandingAction', () => {
         expect(landingStart.trunkBranch).toBe('main');
 
         const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
-        expect(landingComplete.action).toBe('issue-pr');
+        expect(landingComplete.action).toBe('pr');
         expect(landingComplete.prUrl).toBe('https://github.com/test/repo/pull/1');
 
         expect(result.landingSucceeded).toBe(true);
@@ -830,7 +829,7 @@ describe('executeLandingAction', () => {
         const config = makeMinimalConfig(featureBranch);
 
         const { events, result } = await drainLanding(executeLandingAction({
-          action: 'issue-pr',
+          action: 'pr',
           featureBranch,
           baseBranch: 'main',
           repoRoot,

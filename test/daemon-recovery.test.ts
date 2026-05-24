@@ -123,26 +123,15 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 38', () => {
+  it('is 39', () => {
+    // v39: landing action vocabulary changed from full strings (merge-to-base-branch|issue-pr|leave-branch)
+    // to canonical shorthands (pr|merge|leave) in EnqueueRequest.landingAction and
+    // PlaybookRunRequest.landingAction (replacing onSuccess); daemon rejects onSuccess in request
+    // bodies with a migration error; CLI workers spawned with --landing-action instead of --on-success.
     // v38: `landing:start` wire event removes `feature-pr-after-local-merge` workflow literal
     // and replaces it with `feature-pr`; older clients that validated the event against the
     // previous schema union will reject events emitted by the new daemon.
-    // v37: optional `onSuccess` field added to `PlaybookRunRequest` (per-playbook-run landing
-    // action override: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch'); daemon
-    // `/api/playbook/run` validates and passes `onSuccess` to `enqueuePrd(...)` for autonomous
-    // playbooks; older daemons would silently ignore the field.
-    // v36: optional `onSuccess` field added to `EnqueueRequest` (per-build landing action
-    // override: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch'); `onSuccess` persisted
-    // in PRD frontmatter so override survives queue scheduler child-process boundaries; new
-    // `landing:start`, `landing:complete`, `landing:skipped` event variants added in plan-01.
-    // v35: optional `profile` field added to playbook frontmatter wire shapes
-    // (`PlaybookListEntry`, `PlaybookData`, `PlaybookFrontmatterFields`); optional
-    // `agent_profile` field added to `SessionPlanDataWire` and `SessionPlanCreateRequest`;
-    // `/api/playbook/run` for autonomous playbooks with `profile` persists profile in queued
-    // PRD frontmatter; `/api/session-plan/create` and `/api/session-plan/create-from-playbook`
-    // propagate `agent_profile`; `/api/enqueue` validates and propagates inherited session-plan
-    // `agent_profile` to worker `--profile` arg.
-    expect(DAEMON_API_VERSION).toBe(38);
+    expect(DAEMON_API_VERSION).toBe(39);
   });
 });
 

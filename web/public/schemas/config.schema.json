@@ -435,12 +435,7 @@
           "type": "boolean"
         },
         "onSuccess": {
-          "type": "string",
-          "enum": [
-            "merge-to-base-branch",
-            "issue-pr",
-            "leave-branch"
-          ]
+          "not": {}
         },
         "trunkBranch": {
           "type": "string"
@@ -688,7 +683,7 @@
       "type": "object",
       "properties": {
         "action": {
-          "description": "Landing action after a successful build. \"pr\" opens a GitHub pull request from the artifact branch targeting the resolved base branch (trunk for non-stacked builds, parent artifact branch for stacked builds). \"merge\" merges the artifact branch into the base branch directly. \"leave\" commits to the artifact branch and exits without merging or opening a PR. Default: \"merge\". Preferred over the legacy build.onSuccess field.",
+          "description": "Landing action after a successful build. \"pr\" opens a GitHub pull request from the artifact branch targeting the resolved base branch (trunk for non-stacked builds, parent artifact branch for stacked builds). \"merge\" merges the artifact branch into the base branch directly. \"leave\" commits to the artifact branch and exits without merging or opening a PR. Default: \"merge\".",
           "type": "string",
           "enum": [
             "pr",
@@ -698,7 +693,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Publication action taken after all plans complete and validation passes. The preferred configuration key; supersedes the legacy build.onSuccess field, which is kept for backward compatibility and emits a deprecation warning when used."
+      "description": "Publication action taken after all plans complete and validation passes."
     }
   },
   "additionalProperties": false

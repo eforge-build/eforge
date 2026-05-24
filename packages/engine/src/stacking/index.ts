@@ -29,6 +29,9 @@ export {
   isArtifactAvailable,
   updateStackLayerLanding,
   markStackLayerFailed,
+  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+  updateStackLayerStatusAndLanding,
+  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 } from './state.js';
 
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---

@@ -93,8 +93,11 @@ export interface LandingResult {
 /**
  * Run cleanup on the feature branch in the merge worktree.
  * Non-fatal: emits a progress event on failure and continues.
+ *
+ * Exported for reuse by stacked PR landing (plan-03-stack-landing-lifecycle-cleanup).
  */
-async function* runCleanup(
+// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+export async function* runCleanup(
   mergeWorktreePath: string,
   featureBranch: string,
   cleanupPlanSet: string,
@@ -120,6 +123,7 @@ async function* runCleanup(
     } as EforgeEvent;
   }
 }
+// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
 /**
  * Dirty-tree detection and auto-recovery on repoRoot.

@@ -265,6 +265,47 @@ export function isArtifactAvailable(state: StackState, prdId: string): boolean {
 // Landing state helpers
 // ---------------------------------------------------------------------------
 
+// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+/**
+ * Atomically update the `status`, `landing`, and `updatedAt` fields for the
+ * layer identified by `prdId`.
+ *
+ * Preserves `recordedAt` and existing artifact refs. When the layer does not
+ * exist in the state file (e.g., artifact recording was skipped due to earlier
+ * failure), this is a no-op and the current state is returned unchanged.
+ *
+ * Use this helper instead of `updateStackLayerLanding` when the layer status
+ * must change atomically with the landing record (e.g. complete→landed,
+ * failure→failed, skip→merged/landed).
+ */
+export async function updateStackLayerStatusAndLanding(
+  cwd: string,
+  prdId: string,
+  status: StackLayer['status'],
+  landing: StackLayerLanding,
+): Promise<StackState> {
+  return withStackStateLock(cwd, async () => {
+    const state = await loadStackState(cwd);
+    const idx = state.layers.findIndex((l) => l.prdId === prdId);
+    if (idx === -1) {
+      return state;
+    }
+    const existing = state.layers[idx];
+    const now = new Date().toISOString();
+    const updated: StackLayer = {
+      ...existing,
+      status,
+      landing,
+      updatedAt: now,
+    };
+    const updatedLayers = state.layers.map((l, i) => (i === idx ? updated : l));
+    const updatedState: StackState = { version: 1, layers: updatedLayers };
+    await saveStackState(cwd, updatedState);
+    return updatedState;
+  });
+}
+// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
+
 /**
  * Update the durable landing record for the layer identified by `prdId`.
  *

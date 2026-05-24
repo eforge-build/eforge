@@ -25,6 +25,9 @@ import {
   stackStateSchema,
   updateStackLayerLanding,
   markStackLayerFailed,
+  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+  updateStackLayerStatusAndLanding,
+  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 } from '@eforge-build/engine/stacking';
 import type { StackLayer, StackLayerLanding } from '@eforge-build/engine/stacking';
 
@@ -482,6 +485,110 @@ describe('updateStackLayerLanding', () => {
     expect(layer?.artifact?.commitSha).toBe('deadbeef');
   });
 });
+
+// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+// ---------------------------------------------------------------------------
+// updateStackLayerStatusAndLanding
+// ---------------------------------------------------------------------------
+
+describe('updateStackLayerStatusAndLanding', () => {
+  it('atomically updates status and landing for an existing layer', async () => {
+    const now = new Date().toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'atomic-prd',
+      stackId: 'stack-atomic',
+      provider: 'git-spice',
+      branch: 'feat/atomic-prd',
+      status: 'built',
+      artifact: { branch: 'feat/atomic-prd', commitSha: 'abc123' },
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    const landing: StackLayerLanding = {
+      action: 'pr',
+      status: 'complete',
+      prUrl: 'https://github.com/owner/repo/pull/7',
+      startedAt: now,
+      completedAt: now,
+    };
+    await updateStackLayerStatusAndLanding(cwd, 'atomic-prd', 'landed', landing);
+
+    const state = await loadStackState(cwd);
+    const layer = lookupLayerByPrdId(state, 'atomic-prd');
+    expect(layer?.status).toBe('landed');
+    expect(layer?.landing).toEqual(landing);
+    // Preserves artifact and recordedAt
+    expect(layer?.artifact?.commitSha).toBe('abc123');
+    expect(layer?.recordedAt).toBe(now);
+  });
+
+  it('sets status to failed when landing failed', async () => {
+    const now = new Date().toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'failed-atomic',
+      stackId: 's',
+      provider: 'git-spice',
+      branch: 'feat/failed-atomic',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    await updateStackLayerStatusAndLanding(cwd, 'failed-atomic', 'failed', {
+      action: 'pr',
+      status: 'failed',
+      reason: 'submit error',
+      startedAt: now,
+      completedAt: now,
+    });
+
+    const state = await loadStackState(cwd);
+    const layer = lookupLayerByPrdId(state, 'failed-atomic');
+    expect(layer?.status).toBe('failed');
+    expect(layer?.landing?.status).toBe('failed');
+    expect(layer?.landing?.reason).toBe('submit error');
+  });
+
+  it('sets status to merged when non-pr merge action skips', async () => {
+    const now = new Date().toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'merge-skip',
+      stackId: 's',
+      provider: 'git-spice',
+      branch: 'feat/merge-skip',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    await updateStackLayerStatusAndLanding(cwd, 'merge-skip', 'merged', {
+      action: 'merge',
+      status: 'skipped',
+      reason: "Landing action is 'merge', not 'pr'",
+      startedAt: now,
+      completedAt: now,
+    });
+
+    const state = await loadStackState(cwd);
+    const layer = lookupLayerByPrdId(state, 'merge-skip');
+    expect(layer?.status).toBe('merged');
+    expect(layer?.landing?.action).toBe('merge');
+  });
+
+  it('is a no-op when the layer does not exist', async () => {
+    const now = new Date().toISOString();
+    await updateStackLayerStatusAndLanding(cwd, 'nonexistent', 'landed', {
+      action: 'pr',
+      status: 'complete',
+      startedAt: now,
+      completedAt: now,
+    });
+    const state = await loadStackState(cwd);
+    expect(state.layers).toHaveLength(0);
+  });
+});
+// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
 // ---------------------------------------------------------------------------
 // markStackLayerFailed

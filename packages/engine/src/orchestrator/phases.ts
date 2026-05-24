@@ -36,6 +36,9 @@ import { executeStackLanding } from '../stacking/landing.js';
 import { updateStackLayerLanding } from '../stacking/state.js';
 import type { StackProviderAdapter } from '../stacking/provider.js';
 // --- eforge:endregion plan-02-stack-provider-runtime ---
+// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+import { updateStackLayerStatusAndLanding } from '../stacking/state.js';
+// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 // --- eforge:region plan-02-policy-gate-engine-integration ---
 import {
   buildFinalMergePolicyGateContext,
@@ -791,7 +794,11 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
       : undefined;
   if (preLandingSkipReason !== undefined) {
     const now = new Date().toISOString();
-    await updateStackLayerLanding(ctx.repoRoot, prdId, {
+    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+    // Pre-landing skip (build failed or aborted): update layer status to 'failed'
+    // atomically with the skipped landing record.
+    await updateStackLayerStatusAndLanding(ctx.repoRoot, prdId, 'failed', {
+    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       action: effectiveLandingAction,
       status: 'skipped',
       reason: preLandingSkipReason,
@@ -811,6 +818,11 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     return;
   }
 
+  // Non-PR stack builds land through the generic finalize phase. Do not mark
+  // the stack layer terminal here: merge can still be blocked or fail during
+  // finalize, so finalize must persist the actual outcome.
+  if (effectiveLandingAction !== 'pr') return;
+
   // Delegate full landing to the stacking/landing helper, but observe the
   // terminal stack landing status so a provider failure cannot be mistaken for
   // a successful PR landing.
@@ -822,6 +834,12 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     stackContext: ctx.stackContext,
     landingAction: effectiveLandingAction,
     provider: ctx.stackProvider,
+    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+    shouldCleanup: ctx.shouldCleanup,
+    cleanupPlanSet: ctx.cleanupPlanSet,
+    cleanupOutputDir: ctx.cleanupOutputDir,
+    cleanupPrdFilePath: ctx.cleanupPrdFilePath,
+    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
   })) {
     if (event.type === 'stack:landing:update' && effectiveLandingAction === 'pr') {
       if (event.status === 'complete') stackPrLandingCompleted = true;
@@ -839,7 +857,9 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
       const reason = stackPrLandingFailure ?? 'Stack landing did not complete';
       if (stackPrLandingFailure === undefined) {
         const now = new Date().toISOString();
-        await updateStackLayerLanding(ctx.repoRoot, prdId, {
+        // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
+        await updateStackLayerStatusAndLanding(ctx.repoRoot, prdId, 'failed', {
+        // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
           action: effectiveLandingAction,
           status: 'failed',
           reason,
@@ -917,6 +937,26 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         // --- eforge:endregion plan-01-engine-config-and-landing ---
         state.status = 'failed';
         state.completedAt = new Date().toISOString();
+        if (ctx.stackContext) {
+          const now = new Date().toISOString();
+          await updateStackLayerStatusAndLanding(ctx.repoRoot, ctx.stackContext.prdId, 'failed', {
+            action,
+            status: 'failed',
+            reason,
+            startedAt: now,
+            completedAt: now,
+          });
+          yield {
+            timestamp: now,
+            type: 'stack:landing:update',
+            prdId: ctx.stackContext.prdId,
+            stackId: ctx.stackContext.stackId,
+            action,
+            branch: ctx.stackContext.branch,
+            status: 'failed',
+            reason,
+          } as EforgeEvent;
+        }
         return;
       }
     }
@@ -957,15 +997,44 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
     // Manually iterate to capture the generator return value (LandingResult).
     let landingResult: LandingResult = { landingSucceeded: false };
+    let landingStartedAt: string | undefined;
+    let landingTerminalReason: string | undefined;
     while (true) {
       const next = await landingGen.next();
       if (next.done) {
         landingResult = next.value;
         break;
       }
+      if (next.value.type === 'landing:start') landingStartedAt = next.value.timestamp;
+      if (next.value.type === 'landing:skipped') landingTerminalReason = next.value.reason;
       yield next.value;
     }
     ctx.landingSucceeded = landingResult.landingSucceeded;
+
+    if (ctx.stackContext && action !== 'pr') {
+      const completedAt = new Date().toISOString();
+      const layerStatus = landingResult.landingSucceeded
+        ? (action === 'merge' ? 'merged' : 'landed')
+        : 'failed';
+      const stackLandingStatus = landingResult.landingSucceeded ? 'complete' : 'failed';
+      await updateStackLayerStatusAndLanding(ctx.repoRoot, ctx.stackContext.prdId, layerStatus, {
+        action,
+        status: stackLandingStatus,
+        ...(landingTerminalReason !== undefined && { reason: landingTerminalReason }),
+        startedAt: landingStartedAt ?? completedAt,
+        completedAt,
+      });
+      yield {
+        timestamp: completedAt,
+        type: 'stack:landing:update',
+        prdId: ctx.stackContext.prdId,
+        stackId: ctx.stackContext.stackId,
+        action,
+        branch: ctx.stackContext.branch,
+        status: stackLandingStatus,
+        ...(landingTerminalReason !== undefined && { reason: landingTerminalReason }),
+      } as EforgeEvent;
+    }
     // --- eforge:region plan-02-stack-provider-runtime ---
     } // end stacked PR gate
     // --- eforge:endregion plan-02-stack-provider-runtime ---

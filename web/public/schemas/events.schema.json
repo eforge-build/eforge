@@ -5089,15 +5089,15 @@
             "action": {
               "anyOf": [
                 {
-                  "const": "merge-to-base-branch",
+                  "const": "pr",
                   "type": "string"
                 },
                 {
-                  "const": "issue-pr",
+                  "const": "merge",
                   "type": "string"
                 },
                 {
-                  "const": "leave-branch",
+                  "const": "leave",
                   "type": "string"
                 }
               ]
@@ -5153,15 +5153,15 @@
             "action": {
               "anyOf": [
                 {
-                  "const": "merge-to-base-branch",
+                  "const": "pr",
                   "type": "string"
                 },
                 {
-                  "const": "issue-pr",
+                  "const": "merge",
                   "type": "string"
                 },
                 {
-                  "const": "leave-branch",
+                  "const": "leave",
                   "type": "string"
                 }
               ]
@@ -5197,15 +5197,15 @@
             "action": {
               "anyOf": [
                 {
-                  "const": "merge-to-base-branch",
+                  "const": "pr",
                   "type": "string"
                 },
                 {
-                  "const": "issue-pr",
+                  "const": "merge",
                   "type": "string"
                 },
                 {
-                  "const": "leave-branch",
+                  "const": "leave",
                   "type": "string"
                 }
               ]
