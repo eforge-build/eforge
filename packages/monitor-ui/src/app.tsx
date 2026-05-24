@@ -24,6 +24,7 @@ import { getSummaryStats } from '@/lib/reducer';
 import { selectLatestSessionId } from '@/lib/daemon-reducer';
 // --- eforge:region plan-03-stack-daemon-ui ---
 import { StackLayersCard } from '@/components/stack/stack-layers-card';
+import { selectStackLayersForRun } from '@/lib/stack-layers';
 // --- eforge:endregion plan-03-stack-daemon-ui ---
 import { fetcher } from '@/lib/swr-fetcher';
 import { API_ROUTES } from '@eforge-build/client/browser';
@@ -207,6 +208,10 @@ function AppContent() {
   }, [runState.events]);
 
   const planEnabled = effectiveOrchestration !== null;
+  const currentStackLayers = useMemo(
+    () => selectStackLayersForRun(daemonState.stackLayers, runState),
+    [daemonState.stackLayers, runState],
+  );
 
   // Reset lower tab if graph or plan becomes unavailable
   useEffect(() => {
@@ -286,7 +291,7 @@ function AppContent() {
               <>
                 <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} profile={runState.profile} />
                 {/* --- eforge:region plan-03-stack-daemon-ui --- */}
-                <StackLayersCard layers={daemonState.stackLayers} />
+                <StackLayersCard layers={currentStackLayers} />
                 {/* --- eforge:endregion plan-03-stack-daemon-ui --- */}
                 <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} events={runState.events} orchestration={effectiveOrchestration} prdSource={prdSource} planArtifacts={planArtifacts} validationCommands={runState.validationCommands} perspectiveErrors={runState.perspectiveErrors} reviewIssuesByPerspective={runState.reviewIssuesByPerspective} decisions={runState.decisions} />
                 <FailureBanner failures={buildFailures} phaseSummary={phaseSummary} />
