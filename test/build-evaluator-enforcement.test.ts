@@ -368,6 +368,123 @@ describe('build evaluator enforcement stage', () => {
     expect(ctx.reviewIssues).toHaveLength(0);
   });
 
+  // --- eforge:region plan-03-reviewer-contract-hardening ---
+  it('review-cycle does not terminate on no-issues when reviewer omits the terminal XML block', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+
+    // Reviewer returns plain text with no <review-issues> block — a contract violation.
+    // The strict parser converts this to a synthetic critical issue.
+    // With maxRounds=1, the cycle exhausts without finding no-issues and terminates
+    // with max-rounds.
+    const harness = new StubHarness([
+      { text: 'Code looks good, no issues here.' },  // reviewer: no XML
+      { text: 'Applied fix.' },                       // fixer
+    ]);
+
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.build = ['review-cycle'];
+    ctx.review = { ...DEFAULT_REVIEW, strategy: 'single', maxRounds: 1 };
+
+    const events = await collect(getBuildStage('review-cycle')(ctx));
+
+    const termination = events.find(
+      (event): event is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        event.type === 'plan:build:decision' &&
+        event.decision.kind === 'cycle-terminated',
+    );
+
+    expect(termination).toBeDefined();
+    // Synthetic issue from contract violation must prevent no-issues termination.
+    expect((termination!.decision as { reason: string }).reason).toBe('max-rounds');
+    // No spurious no-issues termination event
+    expect(events.some(
+      (e) => e.type === 'plan:build:decision' &&
+        (e as Extract<EforgeEvent, { type: 'plan:build:decision' }>).decision.kind === 'cycle-terminated' &&
+        (e as Extract<EforgeEvent, { type: 'plan:build:decision' }>).decision.reason === 'no-issues',
+    )).toBe(false);
+  });
+
+  it('review-cycle records a synthetic critical issue when the reviewer harness throws', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+
+    const harness = new StubHarness([
+      { error: new Error('review backend unavailable') },
+      { text: 'No fix applied.' },
+    ]);
+
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.build = ['review-cycle'];
+    ctx.review = { ...DEFAULT_REVIEW, strategy: 'single', maxRounds: 1 };
+
+    const events = await collect(getBuildStage('review-cycle')(ctx));
+
+    expect(ctx.reviewIssues).toHaveLength(1);
+    expect(ctx.reviewIssues[0]).toMatchObject({
+      severity: 'critical',
+      category: 'review-contract',
+      file: 'reviewer-output',
+    });
+    expect(ctx.reviewIssues[0].description).toContain('review backend unavailable');
+
+    const termination = events.find(
+      (event): event is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        event.type === 'plan:build:decision' && event.decision.kind === 'cycle-terminated',
+    );
+    expect(termination).toBeDefined();
+    expect((termination!.decision as { reason: string }).reason).toBe('max-rounds');
+  });
+
+  it('review-cycle does not terminate on no-issues when a parallel perspective violates the XML contract', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+
+    class RoutedHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        const text = options.perspective === 'docs'
+          ? 'Documentation perspective found no issues.'
+          : '<review-issues></review-issues>';
+        for await (const event of new StubHarness([{ text }]).run(options, agent, planId)) {
+          yield event;
+        }
+      }
+    }
+
+    const ctx = makeCtx(repo, new RoutedHarness([]), resetTarget);
+    ctx.build = ['review-cycle'];
+    ctx.review = { ...DEFAULT_REVIEW, strategy: 'parallel', perspectives: ['code', 'docs'], maxRounds: 1 };
+
+    const events = await collect(getBuildStage('review-cycle')(ctx));
+
+    expect(ctx.reviewIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: 'critical',
+        category: 'review-contract',
+        file: 'reviewer-output',
+      }),
+    ]));
+    const termination = events.find(
+      (event): event is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        event.type === 'plan:build:decision' && event.decision.kind === 'cycle-terminated',
+    );
+    expect(termination).toBeDefined();
+    expect((termination!.decision as { reason: string }).reason).toBe('max-rounds');
+  });
+  // --- eforge:endregion plan-03-reviewer-contract-hardening ---
+
   it('creates build-stage evaluation commits with forged attribution and model trailers', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src.txt', 'base\n');

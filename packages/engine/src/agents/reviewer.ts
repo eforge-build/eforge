@@ -131,6 +131,182 @@ function mapSeverity(raw: string): ReviewIssue['severity'] | undefined {
 }
 
 /**
+ * Build a synthetic critical ReviewIssue representing a reviewer contract violation.
+ * Used when the reviewer output is missing or malformed, so the review cycle
+ * cannot silently treat an invalid review as "no issues found".
+ */
+function syntheticContractIssue(description: string): ReviewIssue {
+  return {
+    severity: 'critical',
+    category: 'review-contract',
+    file: 'reviewer-output',
+    description,
+  };
+}
+
+/**
+ * Result type returned by the strict reviewer output parser.
+ */
+export interface ParseReviewIssuesResult {
+  /** Whether the reviewer output satisfied the terminal-block contract. */
+  valid: boolean;
+  /**
+   * Parsed issues on success, or synthetic critical issues describing the
+   * contract violation on failure.
+   */
+  issues: ReviewIssue[];
+  /** Human-readable error messages when valid is false. */
+  errors: string[];
+}
+
+/**
+ * Strict parser for `<review-issues>` XML output.
+ *
+ * Distinguishes valid empty output from invalid/missing contract output:
+ * - `<review-issues></review-issues>` → valid: true, issues: []
+ * - No block present → valid: false, synthetic critical issue
+ * - Multiple blocks → valid: false, synthetic critical issue
+ * - Any issue with invalid severity, missing required attributes, or empty
+ *   description → valid: false, synthetic critical issue(s)
+ *
+ * Never throws. Returns valid: false with at least one synthetic critical issue
+ * on any contract violation.
+ */
+export function parseReviewIssuesStrict(text: string): ParseReviewIssuesResult {
+  const blockRegex = /<review-issues>([\s\S]*?)<\/review-issues>/g;
+  const blocks: string[] = [];
+  let blockMatch: RegExpExecArray | null;
+
+  try {
+    while ((blockMatch = blockRegex.exec(text)) !== null) {
+      blocks.push(blockMatch[1]);
+    }
+  } catch {
+    return {
+      valid: false,
+      issues: [syntheticContractIssue('Reviewer output contains malformed XML that could not be parsed.')],
+      errors: ['Malformed XML in reviewer output'],
+    };
+  }
+
+  if (blocks.length === 0) {
+    return {
+      valid: false,
+      issues: [syntheticContractIssue('Reviewer output is missing the required <review-issues> terminal block.')],
+      errors: ['Missing <review-issues> block'],
+    };
+  }
+
+  if (blocks.length > 1) {
+    return {
+      valid: false,
+      issues: [syntheticContractIssue(
+        `Reviewer output contains ${blocks.length} <review-issues> blocks; exactly one is required.`,
+      )],
+      errors: [`Multiple <review-issues> blocks: expected 1, found ${blocks.length}`],
+    };
+  }
+
+  // Exactly one block — validate each issue inside it
+  const blockContent = blocks[0];
+  const issues: ReviewIssue[] = [];
+  const errors: string[] = [];
+
+  try {
+    const issueRegex = /<issue\s+([^>]*)>([\s\S]*?)<\/issue>/g;
+    const consumedRanges: Array<[number, number]> = [];
+    let issueMatch: RegExpExecArray | null;
+
+    while ((issueMatch = issueRegex.exec(blockContent)) !== null) {
+      consumedRanges.push([issueMatch.index, issueRegex.lastIndex]);
+      const attrs = issueMatch[1];
+      const inner = issueMatch[2];
+
+      const severityMatch = attrs.match(/severity="([^"]+)"/);
+      const categoryMatch = attrs.match(/category="([^"]+)"/);
+      const fileMatch = attrs.match(/file="([^"]+)"/);
+      const lineMatch = attrs.match(/line="([^"]+)"/);
+
+      if (!severityMatch) {
+        errors.push('Issue is missing required severity attribute');
+        continue;
+      }
+      if (!categoryMatch) {
+        errors.push('Issue is missing required category attribute');
+        continue;
+      }
+      if (!fileMatch) {
+        errors.push('Issue is missing required file attribute');
+        continue;
+      }
+
+      const rawSeverity = severityMatch[1];
+      const severity = mapSeverity(rawSeverity);
+      if (!severity) {
+        errors.push(`Issue has invalid severity value: "${rawSeverity}" (must be critical, warning, or suggestion)`);
+        continue;
+      }
+
+      const fixMatch = inner.match(/<fix>([\s\S]*?)<\/fix>/);
+      const fix = fixMatch ? fixMatch[1].trim() : undefined;
+      const description = inner.replace(/<fix>[\s\S]*?<\/fix>/g, '').trim();
+
+      if (!description) {
+        errors.push(`Issue with category "${categoryMatch[1]}" in file "${fileMatch[1]}" has an empty description`);
+        continue;
+      }
+
+      const issue: ReviewIssue = {
+        severity,
+        category: categoryMatch[1],
+        file: fileMatch[1],
+        description,
+      };
+
+      if (lineMatch) {
+        const lineNum = parseInt(lineMatch[1], 10);
+        if (!isNaN(lineNum)) {
+          issue.line = lineNum;
+        }
+      }
+
+      if (fix) {
+        issue.fix = fix;
+      }
+
+      issues.push(issue);
+    }
+
+    let unmatchedContent = '';
+    let cursor = 0;
+    for (const [start, end] of consumedRanges) {
+      unmatchedContent += blockContent.slice(cursor, start);
+      cursor = end;
+    }
+    unmatchedContent += blockContent.slice(cursor);
+    if (unmatchedContent.trim().length > 0) {
+      errors.push('The <review-issues> block contains malformed <issue> XML or unexpected text outside <issue> elements');
+    }
+  } catch {
+    return {
+      valid: false,
+      issues: [syntheticContractIssue('Reviewer output contains malformed XML inside the <review-issues> block.')],
+      errors: ['Malformed XML inside <review-issues> block'],
+    };
+  }
+
+  if (errors.length > 0) {
+    return {
+      valid: false,
+      issues: errors.map((msg) => syntheticContractIssue(msg)),
+      errors,
+    };
+  }
+
+  return { valid: true, issues, errors: [] };
+}
+
+/**
  * Run the reviewer agent as a one-shot query.
  *
  * Yields:
@@ -162,7 +338,7 @@ export async function* runReview(
     }
   }
 
-  const issues = parseReviewIssues(fullText);
+  const parseResult = parseReviewIssuesStrict(fullText);
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: parseResult.issues };
 }

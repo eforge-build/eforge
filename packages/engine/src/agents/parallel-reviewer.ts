@@ -14,7 +14,7 @@ import { selectInitialReviewPerspectives, shouldParallelizeReview, isBuiltInRevi
 import { emitBuildDecisionForPlan } from '../decisions.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { loadPrompt } from '../prompts.js';
-import { runReview, parseReviewIssues } from './reviewer.js';
+import { runReview, parseReviewIssuesStrict } from './reviewer.js';
 import {
   getReviewIssueSchemaYaml,
   getCodeReviewIssueSchemaYaml,
@@ -31,6 +31,15 @@ import {
 } from '../extensions/reviewer-perspective-runtime.js';
 
 const exec = promisify(execFile);
+
+function syntheticPerspectiveErrorIssue(perspective: string, err: unknown): ReviewIssue {
+  return {
+    severity: 'critical',
+    category: 'review-contract',
+    file: 'reviewer-output',
+    description: `Reviewer perspective "${perspective}" failed: ${err instanceof Error ? err.message : String(err)}`,
+  };
+}
 
 /**
  * Compute the changeset metrics used by the auto-threshold parallelization
@@ -315,11 +324,12 @@ export async function* runParallelReview(
             }
           }
 
-          const issues = parseReviewIssues(fullText);
-          allIssues.push({ perspective, issues });
+          const parseResult = parseReviewIssuesStrict(fullText);
+          allIssues.push({ perspective, issues: parseResult.issues });
 
-          yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues };
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
         } catch (err) {
+          allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
           yield {
             timestamp: new Date().toISOString(),
             type: 'plan:build:review:parallel:perspective:error',
@@ -354,11 +364,12 @@ export async function* runParallelReview(
           }
         }
 
-        const issues = parseReviewIssues(fullText);
-        allIssues.push({ perspective, issues });
+        const parseResult = parseReviewIssuesStrict(fullText);
+        allIssues.push({ perspective, issues: parseResult.issues });
 
-        yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues };
+        yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
       } catch (err) {
+        allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
         yield {
           timestamp: new Date().toISOString(),
           type: 'plan:build:review:parallel:perspective:error',

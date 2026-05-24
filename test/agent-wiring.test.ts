@@ -381,7 +381,7 @@ describe('runReview wiring', () => {
     expect(complete!.issues[1].fix).toBe('Add index');
   });
 
-  it('yields empty issues for plain text output', async () => {
+  it('emits a synthetic critical issue when reviewer output lacks the terminal XML block', async () => {
     const backend = new StubHarness([{ text: 'Code looks good. No issues found.' }]);
 
     const events = await collectEvents(runReview({
@@ -394,7 +394,11 @@ describe('runReview wiring', () => {
 
     const complete = findEvent(events, 'plan:build:review:complete');
     expect(complete).toBeDefined();
-    expect(complete!.issues).toHaveLength(0);
+    // Plain text with no <review-issues> block is a contract violation — strict parser
+    // emits one synthetic critical issue rather than empty issues.
+    expect(complete!.issues).toHaveLength(1);
+    expect(complete!.issues[0].severity).toBe('critical');
+    expect(complete!.issues[0].category).toBe('review-contract');
   });
 });
 

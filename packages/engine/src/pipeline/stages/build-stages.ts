@@ -347,6 +347,16 @@ async function* reviewStageInner(
   } catch (err) {
     reviewTracker.cleanup();
     reviewSpan.error(err as Error);
+    // Reviewer agent failed without emitting plan:build:review:complete — inject a
+    // synthetic critical issue so the current review cannot be mistaken for stale
+    // issues from an earlier stage or for a clean no-issues result.
+    ctx.reviewIssues = [{
+      severity: 'critical',
+      category: 'review-contract',
+      file: 'reviewer-output',
+      description: `Reviewer agent failed: ${err instanceof Error ? err.message : String(err)}`,
+    }];
+    metadata.completeIssueCount = 1;
   }
   // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
   return metadata;
