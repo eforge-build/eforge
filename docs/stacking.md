@@ -138,4 +138,4 @@ The monitor UI shows per-build stacking metadata - stack id, parent PRD id, and 
 | `merge-to-base-branch` | `merge` |
 | `leave-branch` | `leave` |
 
-Configs using `build.onSuccess` now fail validation with migration guidance. Replace the old key with `landing.action` before running new builds.
+The old `build.onSuccess` key and the legacy full-string values (`issue-pr`, `merge-to-base-branch`, `leave-branch`) are both rejected at validation with migration guidance. Replace `build.onSuccess` with `landing.action` and update the values to `pr`, `merge`, or `leave` before running new builds.

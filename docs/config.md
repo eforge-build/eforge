@@ -109,6 +109,12 @@ build:
 #                             #       requires gh CLI
 #                             #   merge: auto-merge the artifact branch into the base branch
 #                             #   leave: commit to artifact branch and exit without merging or opening a PR
+#
+# Migration from build.onSuccess:
+#   The old 'build.onSuccess' key and the legacy full-string values
+#   ('issue-pr', 'merge-to-base-branch', 'leave-branch') are both rejected
+#   at config validation with migration guidance. Use 'landing.action' with
+#   the short values: 'pr', 'merge', or 'leave'.
 
 # Stacking (git-spice backed stacked PRs)
 # stacking:
