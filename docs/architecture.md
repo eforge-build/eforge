@@ -284,18 +284,34 @@ The **daemon** (`eforge daemon start`) is a long-running process that watches th
 
 When a build fails, the queue parent's finalize handler runs the recovery-analyst agent inline (synchronously, before the PRD is moved) against the still-present `state.json`. The PRD is moved to `failed/` and both sidecar files (`<prdId>.recovery.md`, `<prdId>.recovery.json`) are written via filesystem-only operations - there is no window where `failed/` has a PRD without sidecars. Queue state lives under `.eforge/queue/` which is gitignored; no git commits are produced for queue mutations. The recovery-analyst operates with `tools: 'none'` and runs under a 90-second timeout; on any error or timeout, a `manual` verdict sidecar is written anyway. The sidecar schema is v2, which adds optional `partial` and `recoveryError` fields to the verdict for degraded-context cases. Recovery can also be triggered manually via the `eforge_recover` MCP tool (Claude Code plugin), the `recover` Pi tool, or `eforge recover` CLI - useful for backfilling sidecars on PRDs already in `failed/` before this architecture was in place. When `state.json` is missing (manual backfill scenario), `buildFailureSummary` synthesizes a partial summary from monitor.db events and git history, setting `partial: true` on the result. The resulting sidecar can be read back through `eforge_read_recovery_sidecar` / `readRecoverySidecar`. Once a verdict has been reviewed, `applyRecovery(prdId)` on `EforgeEngine` enacts it: `retry` moves the PRD back to the queue root and removes both sidecars (filesystem-only); `split` routes the agent's successor PRD body through `enqueuePrd` with `depends_on: []` — stripping any agent-emitted frontmatter before writing so the successor always starts with clean, dependency-free frontmatter — leaving the failed PRD and sidecars in place; `abandon` removes all three paths under `.eforge/queue/failed/`; `manual` is a no-op that returns `noAction: true`. The apply path is exposed as `POST /api/recover/apply` on the daemon, the `eforge_apply_recovery` MCP tool (Claude Code plugin and Pi), and the `eforge apply-recovery <prdId>` CLI subcommand. The `/api/queue` endpoint post-filters `dependsOn` before responding: terminal items (`failed`, `skipped`) never expose a `dependsOn` field, and live items (`pending`, `running`) expose only `dependsOn` IDs that match other live items in the same response - mirroring `resolveQueueOrder`'s runtime semantics so the UI's view of dependencies is always consistent with what the scheduler actually acts on.
 
-## Branch-Aware Landing
+## Landing and Direct PR Publication
 
-After all plans merge into the feature branch, eforge executes the `onSuccess` landing action. The action permitted depends on whether the current branch is the project trunk.
+After all plans merge into the artifact branch, eforge executes the landing action. The preferred configuration key is `landing.action` (`pr` | `merge` | `leave`); the legacy `build.onSuccess` key (`issue-pr` | `merge-to-base-branch` | `leave-branch`) still works but emits a deprecation warning. When both keys are present, `landing.action` takes precedence.
 
-`build.trunkBranch` names the trunk (detected from `origin/HEAD` at init time; defaults to `main`). `build.allowLocalMergeToTrunk` controls whether a direct local merge to trunk is permitted when `onSuccess: merge-to-base-branch`.
+`build.trunkBranch` names the trunk (detected from `origin/HEAD` at init time; defaults to `main`). `build.allowLocalMergeToTrunk` controls whether a direct local merge to trunk is permitted when `landing.action: merge`.
 
-| Current branch | `onSuccess: merge-to-base-branch` | `onSuccess: issue-pr` |
+### Direct PR publication
+
+For `landing.action: pr`, eforge opens a pull request directly from the artifact branch targeting the resolved base branch. The resolved base depends on the current branch and stacking state:
+
+| Scenario | PR base |
+|---|---|
+| On trunk, no stacking | PR from artifact branch to trunk |
+| On feature branch, no stacking | PR from artifact branch to feature branch |
+| Stacked PRD with `stack_parent` | PR from artifact branch to parent artifact branch |
+
+No local merge into the feature branch is performed. The artifact branch is the PR head and the resolved base is the PR target, giving reviewers a clean diff that reflects only the changes from this build.
+
+| Current branch | `landing.action: merge` | `landing.action: pr` |
 |---|---|---|
-| **Trunk** | Requires `allowLocalMergeToTrunk: true`; rejected with a remediation message otherwise | PR from build branch to trunk |
-| **Feature branch** | Merges build branch into feature branch locally | Merges build branch into feature branch locally, then opens PR from feature branch to trunk |
+| **Trunk** | Requires `allowLocalMergeToTrunk: true`; rejected with a remediation message otherwise | PR from artifact branch to trunk |
+| **Non-trunk branch** | Merges artifact branch into base branch locally | PR from artifact branch to base branch directly |
 
-When `allowLocalMergeToTrunk` is `false` and the CLI is running interactively on trunk, it prompts before enqueue and offers four resolutions: switch to `issue-pr`, cancel, create or switch to a feature branch, or enable the solo-dev opt-in. When `--auto` is set, the CLI defers to the engine, which rejects the build at runtime via `landing:skipped` with a reason of the form `Local merge to trunk '<trunk>' is not permitted (set allowLocalMergeToTrunk: true to opt in)`.
+When `allowLocalMergeToTrunk` is `false` and the CLI is running interactively on trunk, it prompts before enqueue and offers four resolutions: switch to `pr` (`issue-pr`), cancel, create or switch to a feature branch, or enable the solo-dev opt-in. When `--auto` is set, the CLI defers to the engine, which rejects the build at runtime via `landing:skipped` with a reason of the form `Local merge to trunk '<trunk>' is not permitted (set allowLocalMergeToTrunk: true to opt in)`.
+
+### Stacked PR topology
+
+When `stacking.enabled: true`, the artifact branches form a linear chain. Each artifact branch targets the parent artifact branch (`stack_parent`'s artifact branch) as its PR base. git-spice is the only supported stack provider in v1. See [docs/stacking.md](stacking.md) for setup and operation details.
 
 ## Monitor
 

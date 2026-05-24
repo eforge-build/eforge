@@ -37,27 +37,27 @@ If `eforge/config.yaml` already exists, also read its current `build.postMergeCo
 Present your suggested commands to the user briefly: "I'd suggest these postMergeCommands based on your project: ..." and ask if they look right. Accept corrections.
 
 <!-- parity-skip-start -->
-### Step 1.3: On-success landing action
+### Step 1.3: Landing action
 
 Ask the user to choose what happens when a build completes successfully. Present the three options using the native select UI:
 
-| Option | Value | When to use |
-|--------|-------|-------------|
-| Open a PR _(Recommended)_ | `issue-pr` | Creates a GitHub pull request from the build branch instead of merging automatically. Requires the `gh` CLI. Best for team code review workflows. |
-| Merge to base branch | `merge-to-base-branch` | Merges the worktree back to the base branch automatically. Fast path with no manual review step. |
-| Leave branch | `leave-branch` | Leaves the worktree branch in place without merging or creating a PR. Use when you want to inspect, cherry-pick, or handle the branch manually. |
+| Option | Shorthand | When to use |
+|--------|-----------|-------------|
+| Open a PR _(Recommended)_ | `pr` | Opens a GitHub pull request from the artifact branch targeting the resolved base branch. Requires the `gh` CLI. Best for team code review workflows. |
+| Merge to base branch | `merge` | Auto-merges the artifact branch into the base branch. Fast path with no manual review step. |
+| Leave branch | `leave` | Commits to the artifact branch and exits without merging or opening a PR. Use when you want to inspect or handle the branch manually. |
 
-Default/recommended selection: `issue-pr`.
+Default/recommended selection: `pr`.
 
-After the user picks `issue-pr`, run a shell check to verify `gh` is available:
+After the user picks `pr`, run a shell check to verify `gh` is available:
 
 ```
 gh --version
 ```
 
-If the command is not found or returns non-zero: warn the user that `issue-pr` requires the `gh` CLI and that builds configured with `issue-pr` will fail until it is installed. Proceed with the selection anyway — the user may install `gh` later. Do **not** block or ask them to rechoose.
+If the command is not found or returns non-zero: warn the user that `pr` requires the `gh` CLI and that builds configured with `pr` will fail until it is installed. Proceed with the selection anyway — the user may install `gh` later. Do **not** block or ask them to rechoose.
 
-Store the chosen value for use in the `eforge_init` calls below (both the existingProfile and fresh-init paths).
+Store the shorthand value (`pr`, `merge`, or `leave`) for use in the `eforge_init` calls below (both the existingProfile and fresh-init paths) as `landingAction`.
 
 ### Step 1.4: Confirm trunk branch and protection policy
 
@@ -79,6 +79,17 @@ Store the chosen value for use in the `eforge_init` calls below (both the existi
    Default: **No**.
 
 4. Store the confirmed `trunkBranch` and whether `allowLocalMergeToTrunk` is `true` (Yes) or `false` (No). Pass both when calling `eforge_init` in the next steps (both the existingProfile and fresh-init paths).
+
+### Step 1.45: Stacking (optional)
+
+Ask: "Does this project use stacked PRs with git-spice?"
+
+If **yes**:
+- Confirm the `gs` binary location. Ask: "Is `gs` on your `$PATH`, or is there a custom path?" Default: on `$PATH` (no override needed).
+- Store `stackingEnabled: true` and, if a custom path was provided, `stackingGsCommand: "<path>"`.
+- When calling `eforge_init` in Steps 1.5 and 5, the tool does not persist stacking config — stacking is set separately via `/eforge:config`. After init completes, remind the user: "To enable stacking, add `stacking.enabled: true` (and optionally `stacking.gitSpice.command: <path>`) to `eforge/config.yaml` with `/eforge:config --edit`."
+
+If **no**: proceed to Step 1.5.
 
 ### Step 1.5: Existing local- and user-scope profiles
 
@@ -103,7 +114,7 @@ Call `eforge_init` with:
 {
   "existingProfile": { "name": "<chosen>", "scope": "<local|user>" },
   "postMergeCommands": [...],
-  "onSuccess": "<selectedOption>",
+  "landingAction": "<pr|merge|leave>",
   "trunkBranch": "<confirmedTrunk>",
   "allowLocalMergeToTrunk": <true|false>
 }
@@ -236,7 +247,7 @@ Call `eforge_init` with:
     }
   },
   "postMergeCommands": [...],
-  "onSuccess": "<selectedOption>",
+  "landingAction": "<pr|merge|leave>",
   "trunkBranch": "<confirmedTrunk>",
   "allowLocalMergeToTrunk": <true|false>,
   "force": true

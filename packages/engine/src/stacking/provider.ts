@@ -14,11 +14,33 @@ import { createGitSpiceAdapter } from './git-spice.js';
 // ---------------------------------------------------------------------------
 
 /**
+ * Metadata returned by a successful provider command invocation.
+ *
+ * Consumers emit this as a `stack:provider:command` event so the monitor and
+ * session log capture the full argv and outcome of every git-spice call.
+ */
+export interface ProviderCommandResult {
+  /** The resolved executable path (never 'gs'). */
+  command: string;
+  /** The argv passed to the command (without the executable). */
+  args: string[];
+  /** Captured stdout from the command (may be empty). */
+  stdout: string;
+  /** Captured stderr from the command (may be empty). */
+  stderr: string;
+  /** Exit code — always 0 on success (non-zero causes a throw). */
+  exitCode: number;
+}
+
+/**
  * Provider adapter interface for stack management operations.
  *
  * All operations accept a `cwd` (working directory) where the target branch
  * is already checked out. The implementation uses the configured command
  * without requiring shell aliases like `gs`.
+ *
+ * Methods return `ProviderCommandResult` so callers can emit
+ * `stack:provider:command` events from actual invocations.
  */
 export interface StackProviderAdapter {
   /**
@@ -31,37 +53,37 @@ export interface StackProviderAdapter {
    * Track the current branch against a base branch.
    * Must be run in a worktree with the target branch checked out.
    */
-  trackBranch(cwd: string, base: string): Promise<void>;
+  trackBranch(cwd: string, base: string): Promise<ProviderCommandResult>;
 
   /**
    * Submit the current branch as a pull request.
    */
-  submitBranch(cwd: string): Promise<void>;
+  submitBranch(cwd: string): Promise<ProviderCommandResult>;
 
   /**
    * Submit the entire stack as pull requests.
    */
-  submitStack(cwd: string): Promise<void>;
+  submitStack(cwd: string): Promise<ProviderCommandResult>;
 
   /**
    * Sync the repo with the remote.
    */
-  syncRepo(cwd: string): Promise<void>;
+  syncRepo(cwd: string): Promise<ProviderCommandResult>;
 
   /**
    * Restack the current branch onto its updated base.
    */
-  restackBranch(cwd: string): Promise<void>;
+  restackBranch(cwd: string): Promise<ProviderCommandResult>;
 
   /**
    * Restack the entire stack onto updated bases.
    */
-  restackStack(cwd: string): Promise<void>;
+  restackStack(cwd: string): Promise<ProviderCommandResult>;
 
   /**
    * Rebase the current branch's upstack onto a new target.
    */
-  upstackOnto(cwd: string, target: string): Promise<void>;
+  upstackOnto(cwd: string, target: string): Promise<ProviderCommandResult>;
 }
 
 // ---------------------------------------------------------------------------

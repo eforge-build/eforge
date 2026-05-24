@@ -5,7 +5,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { recordSuccessfulBuildArtifact } from '@eforge-build/engine/stacking';
-import { loadStackState } from '@eforge-build/engine/stacking';
+import { loadStackState, updateStackLayerLanding } from '@eforge-build/engine/stacking';
 import { Orchestrator, type PlanRunner } from '@eforge-build/engine/orchestrator';
 import { recordArtifact } from '@eforge-build/engine/orchestrator/phases';
 import type { EforgeEvent, EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
@@ -123,6 +123,124 @@ describe('recordSuccessfulBuildArtifact', () => {
     expect(raw).toContain(commitSha);
   });
 
+  it('preserves existing landing record when re-recording the artifact on retry', async () => {
+    const cwd = await repo();
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
+    const commitSha = stdout.trim();
+    const stackContext: StackBaseContext = {
+      prdId: 'retry-prd',
+      stackId: 'stack-retry',
+      provider: 'git-spice',
+      branch: 'eforge/retry-prd',
+      baseBranch: 'main',
+    };
+
+    // First recording
+    await recordSuccessfulBuildArtifact({
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext,
+      landingAction: 'pr',
+    });
+
+    // Simulate a landing that completed
+    const now = new Date().toISOString();
+    await updateStackLayerLanding(cwd, 'retry-prd', {
+      action: 'pr',
+      status: 'complete',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+      startedAt: now,
+      completedAt: now,
+    });
+
+    // Retry artifact recording (e.g., after a partial failure and re-run)
+    await recordSuccessfulBuildArtifact({
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext,
+      landingAction: 'pr',
+    });
+
+    const state = await loadStackState(cwd);
+    const layer = state.layers.find((l) => l.prdId === 'retry-prd');
+    // Landing persisted from the first run must survive the artifact re-record
+    expect(layer?.landing?.status).toBe('complete');
+    expect(layer?.landing?.prUrl).toBe('https://github.com/owner/repo/pull/42');
+    // Artifact is updated with the current HEAD
+    expect(layer?.artifact?.commitSha).toBe(commitSha);
+  });
+
+  it('does not record a stack artifact when the build was aborted before artifact recording', async () => {
+    const cwd = await repo();
+    const stackContext: StackBaseContext = {
+      prdId: 'queued-prd',
+      stackId: 'stack-queued',
+      provider: 'git-spice',
+      branch: 'eforge/queued-prd',
+      baseBranch: 'main',
+    };
+    const controller = new AbortController();
+    controller.abort();
+    const state = {
+      setName: 'queued-prd',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      baseBranch: 'main',
+      featureBranch: 'eforge/queued-prd',
+      worktreeBase: cwd,
+      plans: {
+        plan1: { status: 'merged', branch: 'plan1', dependsOn: [], merged: true },
+      },
+      completedPlans: [],
+    } as EforgeState;
+    const ctx = {
+      state,
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      stackContext,
+      signal: controller.signal,
+    } as unknown as PhaseContext;
+
+    const events = await collectRecordArtifactEvents(ctx);
+
+    expect(events).toHaveLength(0);
+    expect((await loadStackState(cwd)).layers).toHaveLength(0);
+  });
+
+  it('does not record a stack artifact until all plans are merged', async () => {
+    const cwd = await repo();
+    const stackContext: StackBaseContext = {
+      prdId: 'queued-prd',
+      stackId: 'stack-queued',
+      provider: 'git-spice',
+      branch: 'eforge/queued-prd',
+      baseBranch: 'main',
+    };
+    const state = {
+      setName: 'queued-prd',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      baseBranch: 'main',
+      featureBranch: 'eforge/queued-prd',
+      worktreeBase: cwd,
+      plans: {
+        plan1: { status: 'completed', branch: 'plan1', dependsOn: [], merged: false },
+      },
+      completedPlans: [],
+    } as EforgeState;
+    const ctx = {
+      state,
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      stackContext,
+    } as unknown as PhaseContext;
+
+    const events = await collectRecordArtifactEvents(ctx);
+
+    expect(events).toHaveLength(0);
+    expect((await loadStackState(cwd)).layers).toHaveLength(0);
+  });
+
   it('marks the phase failed and skips landing when artifact recording fails', async () => {
     const cwd = await repo();
     const stackContext: StackBaseContext = {
@@ -139,7 +257,9 @@ describe('recordSuccessfulBuildArtifact', () => {
       baseBranch: 'main',
       featureBranch: 'eforge/queued-prd',
       worktreeBase: cwd,
-      plans: {},
+      plans: {
+        plan1: { status: 'merged', branch: 'plan1', dependsOn: [], merged: true },
+      },
       completedPlans: [],
     } as EforgeState;
     const ctx = {

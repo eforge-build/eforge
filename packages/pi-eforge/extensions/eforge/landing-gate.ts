@@ -1,13 +1,16 @@
 /**
  * Shared Pi landing-gate helper for eforge_build and /eforge:playbook run.
  *
- * Build mode: prompts the user for trunk remediation only when
- * merge-to-base-branch would land on trunk without opt-in.
+ * User-facing vocabulary uses `landing.action` shorthands: `pr`, `merge`, `leave`.
+ * These map to the wire-protocol values: `issue-pr`, `merge-to-base-branch`, `leave-branch`.
  *
- * Playbook mode: always prompts the user to choose issue-pr,
- * merge-to-base-branch, or leave-branch before enqueueing. If the user
- * selects merge-to-base-branch on an unsafe trunk, falls through to the
- * same trunk remediation choices used by build mode.
+ * Build mode: prompts the user for trunk remediation only when
+ * `merge` (`merge-to-base-branch`) would land on trunk without opt-in.
+ *
+ * Playbook mode: always prompts the user to choose a landing action
+ * (`pr`, `merge`, or `leave`) before enqueueing. If the user selects
+ * `merge` on an unsafe trunk, falls through to the same trunk remediation
+ * choices used by build mode.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -94,8 +97,8 @@ async function promptTrunkRemediation(
   const items = [
     {
       value: "issue-pr",
-      label: "Open a PR instead (issue-pr)",
-      description: "Use issue-pr landing action for this run",
+      label: "Open a PR instead (pr)",
+      description: "Use pr (issue-pr) landing action for this run",
     },
     ...(projectConfigPath
       ? [
@@ -217,17 +220,17 @@ export async function promptForPlaybookLandingGate(
   const landingItems = [
     {
       value: "issue-pr",
-      label: "Open a pull request (issue-pr)",
+      label: "Open a pull request (pr)",
       description: "Create a GitHub PR for review instead of merging directly",
     },
     {
       value: "merge-to-base-branch",
-      label: "Merge to base branch (merge-to-base-branch)",
+      label: "Merge to base branch (merge)",
       description: "Merge the worktree branch back when the build succeeds",
     },
     {
       value: "leave-branch",
-      label: "Leave branch (leave-branch)",
+      label: "Leave branch (leave)",
       description: "Commit to the worktree branch and exit without merging or opening a PR",
     },
     {
@@ -237,7 +240,7 @@ export async function promptForPlaybookLandingGate(
     },
   ];
 
-  const choice = await showSelectOverlay(ctx, "eforge - Choose Landing Action", landingItems);
+  const choice = await showSelectOverlay(ctx, "eforge - Choose Landing Action (pr / merge / leave)", landingItems);
   if (!choice || choice === "cancel") {
     return { cancelled: true };
   }

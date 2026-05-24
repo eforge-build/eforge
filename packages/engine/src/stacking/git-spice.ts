@@ -10,8 +10,12 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import type { ProviderCommandResult } from './provider.js';
 
 const execFileAsync = promisify(execFile);
+const GITHUB_PR_URL_PATTERN = 'https:\\/\\/github\\.com\\/[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+\\/pull\\/\\d+';
+const GITHUB_PR_URL_REGEX = new RegExp(GITHUB_PR_URL_PATTERN);
+const GITHUB_PR_URL_EXACT_REGEX = new RegExp(`^${GITHUB_PR_URL_PATTERN}$`);
 
 // ---------------------------------------------------------------------------
 // Error types
@@ -29,7 +33,7 @@ export class GitSpiceNotAvailableError extends Error {
     const configKey = 'stacking.gitSpice.command';
     const commandHint =
       command !== 'git-spice'
-        ? ` Configured command: ${command}.`
+        ? ` Configured command: ${redactProviderMessage(command)}.`
         : '';
     super(
       `git-spice is not available.${commandHint} ` +
@@ -46,14 +50,41 @@ export class GitSpiceNotAvailableError extends Error {
  * Thrown when a git-spice command exits with a non-zero status.
  */
 export class GitSpiceCommandError extends Error {
-  constructor(command: string, args: string[], exitCode: number | null, stderr: string) {
+  readonly command: string;
+  readonly args: string[];
+  readonly exitCode: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+
+  constructor(command: string, args: string[], exitCode: number | null, stderr: string, stdout = '') {
+    const safeCommand = redactProviderMessage(command);
+    const safeArgs = args.map((arg) => redactProviderMessage(arg));
+    const safeStderr = redactProviderMessage(stderr);
+    const safeStdout = redactProviderMessage(stdout);
     super(
-      `git-spice command failed: ${[command, ...args].join(' ')}\n` +
+      `git-spice command failed: ${[safeCommand, ...safeArgs].join(' ')}\n` +
         `Exit code: ${exitCode ?? 'unknown'}` +
-        (stderr ? `\nStderr: ${stderr}` : ''),
+        (safeStderr ? `\nStderr: ${safeStderr}` : ''),
     );
     this.name = 'GitSpiceCommandError';
+    this.command = command;
+    this.args = args;
+    this.exitCode = exitCode;
+    this.stdout = safeStdout;
+    this.stderr = safeStderr;
   }
+}
+
+/**
+ * Redact common secret shapes before provider failures are persisted or shown.
+ */
+export function redactProviderMessage(message: string): string {
+  return message
+    .replace(/https:\/\/[^\s/@]+@/g, 'https://[redacted]@')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+    .replace(/\bgh[oprsu]_[A-Za-z0-9_]+\b/g, '[redacted]')
+    .replace(/\bsk-[A-Za-z0-9]{20,}\b/g, '[redacted]')
+    .replace(/\b(token|password|secret|api[_-]?key|authorization)\s*[:=]\s*[^\s]+/gi, '$1=[redacted]');
 }
 
 // ---------------------------------------------------------------------------
@@ -81,20 +112,20 @@ export class GitSpiceAdapter {
 
   /**
    * Run git-spice with the given argv in cwd.
-   * Returns stdout on success; throws on non-zero exit or missing executable.
+   * Returns command metadata on success; throws on non-zero exit or missing executable.
    */
-  private async run(cwd: string, args: string[]): Promise<string> {
+  private async run(cwd: string, args: string[]): Promise<ProviderCommandResult> {
     try {
-      const { stdout } = await execFileAsync(this.command, args, { cwd });
-      return stdout;
+      const { stdout, stderr } = await execFileAsync(this.command, args, { cwd });
+      return { command: this.command, args, stdout, stderr, exitCode: 0 };
     } catch (err) {
       // ENOENT means the command was not found in PATH or at the given path
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new GitSpiceNotAvailableError(this.command, err);
       }
-      const execErr = err as { code?: number | string; stderr?: string };
+      const execErr = err as { code?: number | string; stdout?: string; stderr?: string };
       const exitCode = typeof execErr.code === 'number' ? execErr.code : null;
-      throw new GitSpiceCommandError(this.command, args, exitCode, execErr.stderr ?? '');
+      throw new GitSpiceCommandError(this.command, args, exitCode, execErr.stderr ?? '', execErr.stdout ?? '');
     }
   }
 
@@ -116,57 +147,78 @@ export class GitSpiceAdapter {
    * Track the current branch against a base branch.
    * Runs: git-spice branch track --base <base>
    */
-  async trackBranch(cwd: string, base: string): Promise<void> {
-    await this.run(cwd, ['branch', 'track', '--base', base]);
+  async trackBranch(cwd: string, base: string): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['branch', 'track', '--base', base]);
   }
 
   /**
    * Submit the current branch as a pull request.
    * Runs: git-spice branch submit
    */
-  async submitBranch(cwd: string): Promise<void> {
-    await this.run(cwd, ['branch', 'submit']);
+  async submitBranch(cwd: string): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['branch', 'submit']);
   }
 
   /**
    * Submit the entire stack as pull requests.
    * Runs: git-spice stack submit
    */
-  async submitStack(cwd: string): Promise<void> {
-    await this.run(cwd, ['stack', 'submit']);
+  async submitStack(cwd: string): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['stack', 'submit']);
   }
 
   /**
    * Sync the repo with the remote.
    * Runs: git-spice repo sync
    */
-  async syncRepo(cwd: string): Promise<void> {
-    await this.run(cwd, ['repo', 'sync']);
+  async syncRepo(cwd: string): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['repo', 'sync']);
   }
 
   /**
    * Restack the current branch onto its updated base.
    * Runs: git-spice branch restack
    */
-  async restackBranch(cwd: string): Promise<void> {
-    await this.run(cwd, ['branch', 'restack']);
+  async restackBranch(cwd: string): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['branch', 'restack']);
   }
 
   /**
    * Restack the entire stack onto updated bases.
    * Runs: git-spice stack restack
    */
-  async restackStack(cwd: string): Promise<void> {
-    await this.run(cwd, ['stack', 'restack']);
+  async restackStack(cwd: string): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['stack', 'restack']);
   }
 
   /**
    * Rebase the current branch's upstack onto a new target.
    * Runs: git-spice upstack onto <target>
    */
-  async upstackOnto(cwd: string, target: string): Promise<void> {
-    await this.run(cwd, ['upstack', 'onto', target]);
+  async upstackOnto(cwd: string, target: string): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['upstack', 'onto', target]);
   }
+}
+
+// ---------------------------------------------------------------------------
+// PR URL parsing helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract a GitHub PR URL from git-spice stdout output.
+ *
+ * git-spice prints the PR URL when a branch is submitted for the first time
+ * or when updating an existing PR. Returns the first URL found, or undefined
+ * when the output does not contain a recognizable PR URL.
+ */
+export function parseGitSpicePrUrl(stdout: string): string | undefined {
+  const match = stdout.match(GITHUB_PR_URL_REGEX);
+  return match?.[0];
+}
+
+/** Returns true when the string is an exact GitHub pull-request URL. */
+export function isGitHubPullRequestUrl(url: string): boolean {
+  return GITHUB_PR_URL_EXACT_REGEX.test(url);
 }
 
 // ---------------------------------------------------------------------------

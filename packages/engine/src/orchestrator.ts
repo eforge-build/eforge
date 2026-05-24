@@ -20,7 +20,7 @@ import {
   type MergeResolver,
 } from './worktree-ops.js';
 import { WorktreeManager } from './worktree-manager.js';
-import { executePlans, validate, prdValidate, recordArtifact, finalize, type PhaseContext } from './orchestrator/phases.js';
+import { executePlans, validate, prdValidate, recordArtifact, stackLanding, finalize, type PhaseContext } from './orchestrator/phases.js';
 import { ModelTracker } from './model-tracker.js';
 // --- eforge:region plan-02-policy-gate-engine-integration ---
 import type { NativeExtensionRegistry } from './extensions/types.js';
@@ -35,6 +35,9 @@ import type { EforgeConfig, LandingConfig } from './config.js';
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import type { StackBaseContext } from './stacking/base-resolver.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+// --- eforge:region plan-02-stack-provider-runtime ---
+import type { StackProviderAdapter } from './stacking/provider.js';
+// --- eforge:endregion plan-02-stack-provider-runtime ---
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -127,6 +130,10 @@ export interface OrchestratorOptions {
   /** Landing action vocabulary to persist on stack layers. */
   landingAction?: LandingConfig['action'];
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+  // --- eforge:region plan-02-stack-provider-runtime ---
+  /** Instantiated stack provider adapter for git-spice landing (stacked builds only). */
+  stackProvider?: StackProviderAdapter;
+  // --- eforge:endregion plan-02-stack-provider-runtime ---
 }
 
 /**
@@ -214,6 +221,9 @@ export class Orchestrator {
       stackContext: this.options.stackContext,
       landingAction: this.options.landingAction,
       // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+      // --- eforge:region plan-02-stack-provider-runtime ---
+      stackProvider: this.options.stackProvider,
+      // --- eforge:endregion plan-02-stack-provider-runtime ---
     };
     try {
       yield* executePlans(ctx);
@@ -223,6 +233,11 @@ export class Orchestrator {
       // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
       if ((state.status as string) !== 'failed') yield* recordArtifact(ctx);
       // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+      // --- eforge:region plan-02-stack-provider-runtime ---
+      // Stack landing runs unconditionally so it can persist skipped outcomes
+      // when the build failed before landing could be attempted.
+      yield* stackLanding(ctx);
+      // --- eforge:endregion plan-02-stack-provider-runtime ---
       if ((state.status as string) !== 'failed') yield* finalize(ctx);
     } finally {
       await wm.cleanupAll();

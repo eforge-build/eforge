@@ -68,6 +68,10 @@ import { resolveStackBaseContext, type StackBaseContext } from './stacking/base-
 import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from './stacking/state.js';
 import type { StackState } from './stacking/types.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+// --- eforge:region plan-02-stack-provider-runtime ---
+import { createProvider } from './stacking/provider.js';
+import type { StackProviderAdapter } from './stacking/provider.js';
+// --- eforge:endregion plan-02-stack-provider-runtime ---
 // --- eforge:region plan-02-runtime-and-integration ---
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
@@ -948,6 +952,9 @@ export class EforgeEngine {
         stackContext: options.stackContext,
         landingAction: onSuccessToLandingAction(effectiveOnSuccess),
         // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+        // --- eforge:region plan-02-stack-provider-runtime ---
+        ...(options.stackProvider !== undefined && { stackProvider: options.stackProvider }),
+        // --- eforge:endregion plan-02-stack-provider-runtime ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
@@ -981,6 +988,10 @@ export class EforgeEngine {
         if (event.type === 'daemon:error' && event.source === 'stack:artifact-recording') {
           status = 'failed';
           summary = event.message;
+        }
+        if (event.type === 'stack:landing:update' && event.status === 'failed') {
+          status = 'failed';
+          summary = event.reason ? `Stack landing failed: ${event.reason}` : 'Stack landing failed';
         }
         // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       }
@@ -1149,6 +1160,23 @@ export class EforgeEngine {
         }
       }
       // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+      // --- eforge:region plan-02-stack-provider-runtime ---
+      // For stacked PRDs, instantiate the provider and gate on availability
+      // before compile so the error surfaces early (before planning:start).
+      let stackProvider: StackProviderAdapter | undefined;
+      if (stackContext !== undefined) {
+        try {
+          stackProvider = createProvider(this.config.stacking);
+          await stackProvider.requireAvailable(cwd);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
+          prdResult = { status: 'failed', summary: message };
+          return;
+        }
+      }
+      // --- eforge:endregion plan-02-stack-provider-runtime ---
 
       for await (const event of withRunId(this.compile(prd.filePath, {
         name: planSetName,
@@ -1196,6 +1224,9 @@ export class EforgeEngine {
         prdId: prd.id,
         ...(stackContext !== undefined && { stackContext }),
         // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+        // --- eforge:region plan-02-stack-provider-runtime ---
+        ...(stackProvider !== undefined && { stackProvider }),
+        // --- eforge:endregion plan-02-stack-provider-runtime ---
         ...(resolvedOnSuccess !== undefined && { onSuccess: resolvedOnSuccess }),
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;

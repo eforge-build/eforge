@@ -603,7 +603,7 @@ describe('stream:hello queue parity with live queue:prd:discovered projection', 
 
     // Apply the persisted payload (from DB, not the in-memory object) through the registry projector
     // to an empty initial state, simulating what the daemonReducer does on live SSE
-    const projectableState = { runs: [], queue: [], autoBuild: null, latestHeartbeat: null };
+    const projectableState = { runs: [], queue: [], autoBuild: null, latestHeartbeat: null, stackLayers: [] };
     const project = eventRegistry['queue:prd:discovered'].project;
     expect(project, 'queue:prd:discovered must have a project function').toBeDefined();
     const delta = project!(persistedPayload, projectableState);

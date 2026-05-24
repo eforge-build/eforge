@@ -478,21 +478,17 @@ export async function pushFeatureBranch(
 
 /**
  * Create a pull request via `gh pr create`.
+ * Opens a direct PR: `--head featureBranch --base baseBranch`.
  * Returns `{ url: string }` with the PR URL on success.
  * Throws when creation fails for any reason (callers handle existing-PR detection).
- *
- * @param headBranch - The branch to use as the PR head. Defaults to `featureBranch`
- *                     when absent (existing trunk-PR behavior). For non-trunk
- *                     feature-PR-after-local-merge, pass the base branch here.
  */
 export async function createPullRequest(
   cwd: string,
-  opts: { baseBranch: string; featureBranch: string; headBranch?: string },
+  opts: { baseBranch: string; featureBranch: string },
 ): Promise<{ url: string }> {
-  const headBranch = opts.headBranch ?? opts.featureBranch;
   const { stdout } = await exec(
     'gh',
-    ['pr', 'create', '--base', opts.baseBranch, '--head', headBranch, '--fill'],
+    ['pr', 'create', '--base', opts.baseBranch, '--head', opts.featureBranch, '--fill'],
     { cwd },
   );
   return { url: stdout.trim() };
@@ -500,13 +496,26 @@ export async function createPullRequest(
 
 /**
  * Retrieve the URL of an existing PR for the given branch.
+ * When opts.baseBranch is provided, only returns a PR whose base matches.
  * Returns the URL string when a PR exists, or null when none is found.
  */
 export async function getExistingPullRequestUrl(
   cwd: string,
   featureBranch: string,
+  opts: { baseBranch?: string } = {},
 ): Promise<string | null> {
   try {
+    if (opts.baseBranch) {
+      const { stdout } = await exec(
+        'gh',
+        ['pr', 'view', featureBranch, '--json', 'url,baseRefName'],
+        { cwd },
+      );
+      const data = JSON.parse(stdout.trim()) as { url?: unknown; baseRefName?: unknown };
+      if (typeof data.url !== 'string' || typeof data.baseRefName !== 'string') return null;
+      return data.baseRefName === opts.baseBranch ? data.url : null;
+    }
+
     const { stdout } = await exec(
       'gh',
       ['pr', 'view', featureBranch, '--json', 'url', '-q', '.url'],

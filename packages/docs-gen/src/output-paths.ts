@@ -66,6 +66,9 @@ export function getOutputPaths(repoRoot: string) {
     publicDocsIntegrations: join(webPublicDocs, 'integrations.md'),
     publicDocsTroubleshooting: join(webPublicDocs, 'troubleshooting.md'),
     // --- eforge:endregion plan-01-public-docs-audit-and-fill-gaps ---
+    // --- eforge:region plan-05-docs-and-dogfood-config ---
+    publicDocsStacking: join(webPublicDocs, 'stacking.md'),
+    // --- eforge:endregion plan-05-docs-and-dogfood-config ---
 
     // JSON Schemas
     schemaEvents: join(webPublicSchemas, 'events.schema.json'),

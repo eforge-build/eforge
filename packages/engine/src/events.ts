@@ -48,6 +48,9 @@ export {
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import type { StackBaseContext } from './stacking/base-resolver.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+// --- eforge:region plan-02-stack-provider-runtime ---
+import type { StackProviderAdapter } from './stacking/provider.js';
+// --- eforge:endregion plan-02-stack-provider-runtime ---
 
 export interface CompileOptions {
   auto?: boolean;
@@ -75,6 +78,10 @@ export interface BuildOptions {
   /** Resolved stack context for queued stacked builds. */
   stackContext?: StackBaseContext;
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+  // --- eforge:region plan-02-stack-provider-runtime ---
+  /** Instantiated stack provider adapter for git-spice submission (stacked builds only). */
+  stackProvider?: StackProviderAdapter;
+  // --- eforge:endregion plan-02-stack-provider-runtime ---
   // --- eforge:region plan-01-engine-config-and-landing ---
   /** Override the configured onSuccess landing action for this build. */
   onSuccess?: 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';

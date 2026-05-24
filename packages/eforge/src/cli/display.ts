@@ -506,6 +506,55 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.dim(`    Branch ${chalk.cyan(event.featureBranch)} left for inspection`));
       break;
 
+    // --- eforge:region plan-04-consumer-surfaces ---
+    // Landing lifecycle events — show PR URLs prominently
+    case 'landing:start':
+      startSpinner('landing', `Landing (${event.action}): ${chalk.cyan(event.featureBranch)} → ${chalk.cyan(event.baseBranch)}...`);
+      break;
+
+    case 'landing:complete':
+      if (event.action === 'issue-pr' && event.prUrl) {
+        succeedSpinner('landing', `PR opened: ${chalk.cyan(event.featureBranch)}`);
+        console.log(chalk.green(`  ✓ Pull request: ${event.prUrl}`));
+      } else if (event.action === 'merge-to-base-branch') {
+        succeedSpinner('landing', `Merged ${chalk.cyan(event.featureBranch)} into ${chalk.cyan(event.baseBranch)}`);
+      } else if (event.action === 'leave-branch') {
+        succeedSpinner('landing', `Branch ${chalk.cyan(event.featureBranch)} left for manual workflow`);
+      } else {
+        succeedSpinner('landing', `Landing complete (${event.action})`);
+      }
+      break;
+
+    case 'landing:skipped':
+      console.log(chalk.dim(`  ⏭ Landing (${event.action}) skipped: ${event.reason}`));
+      break;
+
+    // Stack lifecycle events — verbose-only for layer/command traces; PR URLs always shown
+    case 'stack:layer:recorded':
+      if (verbose) {
+        console.log(chalk.dim(`  ↪ Stack layer: ${chalk.cyan(event.prdId)} (${event.status}) on ${chalk.cyan(event.branch)}`));
+      }
+      break;
+
+    case 'stack:provider:command': {
+      if (verbose) {
+        const argv = event.args ? [event.command, ...event.args].join(' ') : event.command;
+        console.log(chalk.dim(`  ⚙ Stack (${event.provider}): ${argv} → exit ${event.exitCode}`));
+      }
+      break;
+    }
+
+    case 'stack:landing:update': {
+      if (event.prUrl) {
+        console.log(chalk.green(`  ↗ PR [${chalk.cyan(event.prdId)}]: ${event.prUrl}`));
+      } else if (verbose) {
+        const note = event.reason ? ` — ${event.reason}` : '';
+        console.log(chalk.dim(`  ↪ Stack landing: ${chalk.cyan(event.prdId)} (${event.action}) ${event.status}${note}`));
+      }
+      break;
+    }
+    // --- eforge:endregion plan-04-consumer-surfaces ---
+
     // Expedition planning phases
     case 'expedition:architecture:complete':
       succeedSpinner('plan', `Architecture complete \u2014 ${event.modules.length} modules defined`);

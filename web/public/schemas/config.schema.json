@@ -661,28 +661,34 @@
       "type": "object",
       "properties": {
         "enabled": {
+          "description": "Enable git-spice stacked PR support. When true, each build's artifact branch targets the parent artifact branch instead of the trunk, forming a linear stack of pull requests. Requires git-spice to be installed. Default: false.",
           "type": "boolean"
         },
         "provider": {
+          "description": "Stack provider. Only \"git-spice\" is supported in v1.",
           "type": "string",
           "const": "git-spice"
         },
         "gitSpice": {
+          "description": "git-spice provider settings.",
           "type": "object",
           "properties": {
             "command": {
+              "description": "Path or name of the git-spice executable. Defaults to \"git-spice\" on PATH. Set this if git-spice is installed to a non-standard location or you use a wrapper script.",
               "type": "string"
             }
           },
           "additionalProperties": false
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology."
     },
     "landing": {
       "type": "object",
       "properties": {
         "action": {
+          "description": "Landing action after a successful build. \"pr\" opens a GitHub pull request from the artifact branch targeting the resolved base branch (trunk for non-stacked builds, parent artifact branch for stacked builds). \"merge\" merges the artifact branch into the base branch directly. \"leave\" commits to the artifact branch and exits without merging or opening a PR. Default: \"merge\". Preferred over the legacy build.onSuccess field.",
           "type": "string",
           "enum": [
             "pr",
@@ -691,7 +697,8 @@
           ]
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "Publication action taken after all plans complete and validation passes. The preferred configuration key; supersedes the legacy build.onSuccess field, which is kept for backward compatibility and emits a deprecation warning when used."
     }
   },
   "additionalProperties": false

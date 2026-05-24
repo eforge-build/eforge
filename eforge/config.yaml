@@ -25,6 +25,11 @@ build:
     - pnpm test
 # --- eforge:region plan-01-stack-contracts-config-state-events ---
 stacking:
+  # Stacking is disabled for this repo's own builds. git-spice must be installed
+  # and initialized (gs repo init) for stacking to work. Since stacking is an
+  # opt-in feature for projects that explicitly need it, and the eforge repo
+  # itself uses direct PRs without a stack topology, we leave it disabled here.
+  # Set to true only if you want git-spice stacked PRs for eforge's own builds.
   enabled: false
   provider: git-spice
 landing:

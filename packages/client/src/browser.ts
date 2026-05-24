@@ -47,6 +47,9 @@ export type {
   SessionPlanReadinessResponse,
   SessionPlanMigrateLegacyRequest,
   SessionPlanMigrateLegacyResponse,
+  // --- eforge:region plan-03-stack-daemon-ui ---
+  StackLayersResponse,
+  // --- eforge:endregion plan-03-stack-daemon-ui ---
 } from './routes.js';
 
 export type {

@@ -5,6 +5,8 @@ import { useTempDir } from './test-tmpdir.js';
 import {
   createGitSpiceAdapter,
   GitSpiceNotAvailableError,
+  parseGitSpicePrUrl,
+  redactProviderMessage,
 } from '@eforge-build/engine/stacking/git-spice';
 import { createProvider } from '@eforge-build/engine/stacking/provider';
 
@@ -115,6 +117,16 @@ describe('GitSpiceAdapter', () => {
     expect(args).toBe('branch track --base feature/upstream-a');
   });
 
+  it('trackBranch returns command metadata with correct args array', async () => {
+    const dir = makeTempDir();
+    const stub = makeStub(dir, 'git-spice', 'echo "ok"');
+    const adapter = createGitSpiceAdapter({ gitSpice: { command: stub } });
+    const result = await adapter.trackBranch(dir, 'main');
+    expect(result.command).toBe(stub);
+    expect(result.args).toEqual(['branch', 'track', '--base', 'main']);
+    expect(result.exitCode).toBe(0);
+  });
+
   // ---------------------------------------------------------------------------
   // Argv construction — submit and sync
   // ---------------------------------------------------------------------------
@@ -127,6 +139,17 @@ describe('GitSpiceAdapter', () => {
     await adapter.submitBranch(dir);
     const args = readFileSync(argsFile, 'utf8').trim();
     expect(args).toBe('branch submit');
+  });
+
+  it('submitBranch returns command metadata with stdout captured', async () => {
+    const dir = makeTempDir();
+    const stub = makeStub(dir, 'git-spice', 'echo "PR created: https://github.com/owner/repo/pull/7"');
+    const adapter = createGitSpiceAdapter({ gitSpice: { command: stub } });
+    const result = await adapter.submitBranch(dir);
+    expect(result.command).toBe(stub);
+    expect(result.args).toEqual(['branch', 'submit']);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('github.com');
   });
 
   it('submitStack invokes stack submit', async () => {
@@ -181,6 +204,50 @@ describe('GitSpiceAdapter', () => {
     await adapter.upstackOnto(dir, 'feature-a');
     const args = readFileSync(argsFile, 'utf8').trim();
     expect(args).toBe('upstack onto feature-a');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseGitSpicePrUrl
+// ---------------------------------------------------------------------------
+
+describe('parseGitSpicePrUrl', () => {
+  it('extracts a GitHub PR URL from git-spice output', () => {
+    const stdout = 'Created pull request https://github.com/owner/repo/pull/42\n';
+    expect(parseGitSpicePrUrl(stdout)).toBe('https://github.com/owner/repo/pull/42');
+  });
+
+  it('returns undefined when stdout contains no PR URL', () => {
+    expect(parseGitSpicePrUrl('branch tracked against main\n')).toBeUndefined();
+  });
+
+  it('returns undefined for empty stdout', () => {
+    expect(parseGitSpicePrUrl('')).toBeUndefined();
+  });
+
+  it('extracts a PR URL from multi-line output', () => {
+    const stdout = 'Tracking branch...\nSubmitting PR...\nhttps://github.com/my-org/my-repo/pull/123\nDone.\n';
+    expect(parseGitSpicePrUrl(stdout)).toBe('https://github.com/my-org/my-repo/pull/123');
+  });
+
+  it('does not extract malformed GitHub PR URL strings', () => {
+    const stdout = 'Created https://github.com/owner/repo\"><script>/pull/42';
+    expect(parseGitSpicePrUrl(stdout)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// redactProviderMessage
+// ---------------------------------------------------------------------------
+
+describe('redactProviderMessage', () => {
+  it('redacts common token shapes from provider diagnostics', () => {
+    const message = 'remote https://ghp_abcdef@github.com/o/r failed token=secret Bearer sk-123456789012345678901234';
+    const redacted = redactProviderMessage(message);
+    expect(redacted).not.toContain('ghp_abcdef');
+    expect(redacted).not.toContain('token=secret');
+    expect(redacted).not.toContain('sk-123456789012345678901234');
+    expect(redacted).toContain('[redacted]');
   });
 });
 

@@ -87,9 +87,27 @@ The queue supports dependencies and priority. A PRD can declare `depends_on` to 
 
 The **web monitor** (`http://localhost:<port>`) tracks cost, token usage, and pipeline progress in real time. It keeps running after the build completes so you can inspect results.
 
+## Artifact Branches and Landing Actions
+
+Every eforge build produces an **artifact branch** - a named Git branch (`eforge/<prd-id>`) that holds the committed output. After all plans merge into the artifact branch and post-merge validation passes, the **landing action** determines what happens next.
+
+The preferred configuration is `landing.action` (values: `pr`, `merge`, `leave`). The legacy `build.onSuccess` field is kept for compatibility and maps to the same actions, but emits a deprecation warning.
+
+| `landing.action` | Behavior |
+|-----------------|----------|
+| `pr` | Opens a PR from the artifact branch targeting the resolved base branch. The resolved base is the trunk for non-stacked builds, or the parent artifact branch for stacked builds. |
+| `merge` | Merges the artifact branch into the base branch directly. |
+| `leave` | Leaves the artifact branch in place for manual inspection or cherry-picking. |
+
 ## Post-Merge Validation
 
-After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete. The `build.onSuccess` setting controls what happens after validation passes: by default the worktree merges to the base branch, but builds can also be configured to open a GitHub pull request (`issue-pr`) or leave the branch in place for manual handling (`leave-branch`) — meaning a successful build does not always result in an automatic merge.
+After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
+
+## Stacked PRs
+
+When `stacking.enabled: true` in `eforge/config.yaml`, builds form a **branch-per-PR stack**. Each artifact branch targets the parent artifact branch instead of the trunk. git-spice is used to track branches and submit PRs into the stack.
+
+PRD frontmatter controls the stack topology: `stack_id` is a logical stack name shared by all PRDs in the stack; `stack_parent` is the parent PRD id. For single-dependency builds, `stack_parent` is inferred automatically from `depends_on`. See the [Stacked PRs](/docs/stacking) guide for setup instructions.
 
 ## Agent-Readable Artifacts
 

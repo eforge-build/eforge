@@ -1549,6 +1549,97 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
     },
   },
   // --- eforge:endregion plan-02-extension-perspective-runtime ---
+
+  // --- eforge:region plan-02-stack-provider-runtime ---
+  {
+    label: 'stack:layer:recorded',
+    payload: {
+      type: 'stack:layer:recorded',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'feat-stack-a',
+      stackId: 'stack-001',
+      provider: 'git-spice',
+      branch: 'eforge/feat-stack-a',
+      baseBranch: 'main',
+      artifact: { branch: 'eforge/feat-stack-a', commitSha: 'abc123' },
+      landingAction: 'pr',
+      status: 'built',
+    },
+  },
+  {
+    label: 'stack:provider:command (with args)',
+    payload: {
+      type: 'stack:provider:command',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      provider: 'git-spice',
+      command: '/usr/local/bin/git-spice',
+      args: ['branch', 'track', '--base', 'main'],
+      exitCode: 0,
+      branch: 'eforge/feat-stack-a',
+    },
+  },
+  {
+    label: 'stack:provider:command (without args)',
+    payload: {
+      type: 'stack:provider:command',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      provider: 'git-spice',
+      command: 'git-spice',
+      exitCode: 0,
+    },
+  },
+  {
+    label: 'stack:landing:update (started)',
+    payload: {
+      type: 'stack:landing:update',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'feat-stack-a',
+      stackId: 'stack-001',
+      action: 'pr',
+      branch: 'eforge/feat-stack-a',
+      status: 'started',
+    },
+  },
+  {
+    label: 'stack:landing:update (complete with prUrl)',
+    payload: {
+      type: 'stack:landing:update',
+      timestamp: '2025-01-01T00:00:01.000Z',
+      prdId: 'feat-stack-a',
+      stackId: 'stack-001',
+      action: 'pr',
+      branch: 'eforge/feat-stack-a',
+      status: 'complete',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+    },
+  },
+  {
+    label: 'stack:landing:update (skipped with reason)',
+    payload: {
+      type: 'stack:landing:update',
+      timestamp: '2025-01-01T00:00:01.000Z',
+      prdId: 'feat-stack-a',
+      stackId: 'stack-001',
+      action: 'leave',
+      branch: 'eforge/feat-stack-a',
+      status: 'skipped',
+      reason: "Landing action is 'leave', not 'pr'",
+    },
+  },
+  {
+    label: 'stack:landing:update (failed with reason)',
+    payload: {
+      type: 'stack:landing:update',
+      timestamp: '2025-01-01T00:00:01.000Z',
+      prdId: 'feat-stack-a',
+      stackId: 'stack-001',
+      action: 'pr',
+      branch: 'eforge/feat-stack-a',
+      status: 'failed',
+      reason: 'git-spice branch submit exited with code 1',
+    },
+  },
+  // --- eforge:endregion plan-02-stack-provider-runtime ---
 ];
 
 // ---------------------------------------------------------------------------
@@ -1750,6 +1841,59 @@ describe('events-wire-parity — invalid payloads (landing action)', () => {
   });
 });
 // --- eforge:endregion plan-01-engine-config-and-landing ---
+
+// --- eforge:region plan-02-stack-provider-runtime ---
+describe('events-wire-parity — invalid payloads (stack events)', () => {
+  it('rejects stack:landing:update with invalid status literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:landing:update',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      action: 'pr',
+      branch: 'eforge/feat-a',
+      status: 'in-progress',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects stack:landing:update with invalid action literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:landing:update',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      action: 'push',
+      branch: 'eforge/feat-a',
+      status: 'complete',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects stack:provider:command with invalid provider literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:provider:command',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      provider: 'github-stacking',
+      command: 'gs',
+      exitCode: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects stack:landing:update missing required prdId', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:landing:update',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      stackId: 'stack-1',
+      action: 'pr',
+      branch: 'eforge/feat-a',
+      status: 'started',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+// --- eforge:endregion plan-02-stack-provider-runtime ---
 
 describe('events-wire-parity — invalid payloads (unknown discriminant)', () => {
   it('rejects an event with a completely unknown type', () => {

@@ -163,6 +163,22 @@ eforge supports three config tiers, merged lowest to highest priority:
 
 The project-local tier (`.eforge/`) is automatically gitignored by `/eforge:init`. Use it for personal tuning that should not be committed - it deep-merges over the project and user tiers. Agent runtime profiles, custom workflow profiles, hooks, MCP servers, plugins, and native eforge extensions are all configurable. Native extensions are TypeScript/JavaScript modules discovered from `~/.config/eforge/extensions/`, `eforge/extensions/`, and `.eforge/extensions/`; they load in the daemon Node process without a sandbox, capture registration provenance, run `onEvent` handlers, apply per-run `onAgentRun` prompt/tool augmentation and availability tuning, dispatch `registerProfileRouter` selectors before queued builds, and execute `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge` policy gates at runtime. Project/team extensions (`eforge/extensions/`) require an explicit per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` — before loading; any code change invalidates the stored hash and blocks the extension until re-trusted. Use `eforge extension new <name>` to scaffold one, `eforge extension list/show/validate/test` to inspect and dry-run it, and `eforge extension reload` to refresh daemon discovery. Scope precedence and lookup behavior live in `@eforge-build/scopes`; reusable input artifact protocols (playbooks, session plans) live in `@eforge-build/input`. The build engine consumes normalized build source and does not know whether the source originated from a playbook, session plan, wrapper app, CLI prompt, or PRD file. Agent runtime profiles follow the same three-tier pattern: `eforge/profiles/` (project scope), `~/.config/eforge/profiles/` (user scope), and `.eforge/profiles/` (project-local scope, highest precedence). Playbooks follow the same pattern using `eforge/playbooks/`, `~/.config/eforge/playbooks/`, and `.eforge/playbooks/` respectively - higher-precedence tiers shadow lower ones by name. Use `eforge playbook list` to see available playbooks with their source and shadow chain, `eforge playbook run <name>` (or the shortcut `eforge play <name>`) to run one — autonomous playbooks are enqueued as a build; planning playbooks require an interactive agent investigation, so the standalone CLI returns `requires-agent` guidance while `/eforge:playbook run <name>` in Pi or Claude starts the investigation-first workflow that creates a session plan from codebase findings — and `eforge playbook edit <name>` to modify it in `$EDITOR`. `eforge playbook promote` moves a playbook from project-local to project scope (staged for commit); `eforge playbook demote` moves it back. See [docs/config.md](docs/config.md), [docs/extensions.md](docs/extensions.md), and [docs/hooks.md](docs/hooks.md).
 
+## Stacked PRs with git-spice
+
+eforge supports stacked pull requests via [git-spice](https://abhinav.github.io/git-spice/). Enable it in `eforge/config.yaml`:
+
+```yaml
+stacking:
+  enabled: true
+
+landing:
+  action: pr
+```
+
+When enabled, each build's artifact branch (`eforge/<prd-id>`) targets the parent artifact branch instead of the trunk, forming a linear stack of pull requests. PRD frontmatter fields `stack_id` (logical stack name) and `stack_parent` (parent PRD id) control the topology. For linear stacks with a single `depends_on` entry, `stack_parent` is inferred automatically.
+
+See [docs/stacking.md](docs/stacking.md) for the full guide including git-spice setup, the branch-per-PR topology, restack expectations, and `landing.action` vs the legacy `build.onSuccess` compatibility bridge.
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch/PR workflow and [docs/releasing.md](docs/releasing.md) for the maintainer release process.

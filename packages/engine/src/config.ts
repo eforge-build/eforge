@@ -314,17 +314,29 @@ const roleOverrideSchema = z.object({
 // --- eforge:region plan-01-stack-contracts-config-state-events ---
 /** Zod schema for the stacking subsystem config. */
 const stackingConfigSchema = z.object({
-  enabled: z.boolean().optional(),
-  provider: z.literal('git-spice').optional(),
+  enabled: z.boolean().optional().describe(
+    'Enable git-spice stacked PR support. When true, each build\'s artifact branch targets the parent artifact branch instead of the trunk, forming a linear stack of pull requests. Requires git-spice to be installed. Default: false.',
+  ),
+  provider: z.literal('git-spice').optional().describe(
+    'Stack provider. Only "git-spice" is supported in v1.',
+  ),
   gitSpice: z.object({
-    command: z.string().optional(),
-  }).optional(),
-});
+    command: z.string().optional().describe(
+      'Path or name of the git-spice executable. Defaults to "git-spice" on PATH. Set this if git-spice is installed to a non-standard location or you use a wrapper script.',
+    ),
+  }).optional().describe('git-spice provider settings.'),
+}).describe(
+  'Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology.',
+);
 
 /** Zod schema for the landing publication config. */
 const landingConfigSchema = z.object({
-  action: z.enum(['pr', 'merge', 'leave']).optional(),
-});
+  action: z.enum(['pr', 'merge', 'leave']).optional().describe(
+    'Landing action after a successful build. "pr" opens a GitHub pull request from the artifact branch targeting the resolved base branch (trunk for non-stacked builds, parent artifact branch for stacked builds). "merge" merges the artifact branch into the base branch directly. "leave" commits to the artifact branch and exits without merging or opening a PR. Default: "merge". Preferred over the legacy build.onSuccess field.',
+  ),
+}).describe(
+  'Publication action taken after all plans complete and validation passes. The preferred configuration key; supersedes the legacy build.onSuccess field, which is kept for backward compatibility and emits a deprecation warning when used.',
+);
 // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
 /** Base object schema without refinements — .partial() is derived from this. */

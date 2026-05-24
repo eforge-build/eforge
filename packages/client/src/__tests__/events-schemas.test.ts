@@ -14,9 +14,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isAlwaysYieldedAgentEvent, safeParseDaemonStreamSnapshot, safeParseEforgeEvent } from '../events.schemas.js';
+import { isAlwaysYieldedAgentEvent, safeParseDaemonStreamSnapshot, safeParseEforgeEvent, StackLayerWireSchema } from '../events.schemas.js';
 import { DAEMON_EVENT_TYPES, eventRegistry, getEventSummary, isPersistedDaemonEventType } from '../event-registry.js';
 import type { EforgeEvent } from '../events.schemas.js';
+import { Value } from '@sinclair/typebox/value';
 
 // ---------------------------------------------------------------------------
 // Fixtures — the 5 new plan lifecycle + merge worktree variants
@@ -430,6 +431,7 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
       queue: [],
       autoBuild: { enabled: false, watcher: { running: true, pid: 1234, sessionId: 'watcher-1' } },
       latestHeartbeat: null,
+      stackLayers: [],
     };
     expect(eventRegistry['daemon:auto-build:transition'].project?.(event, state)).toEqual({
       autoBuild: {
@@ -465,6 +467,7 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
       queue: [],
       autoBuild: { enabled: true, watcher: { running: true, pid: 1234, sessionId: 'watcher-1' } },
       latestHeartbeat: null,
+      stackLayers: [],
     };
 
     expect(eventRegistry['daemon:auto-build:transition'].project?.(event, state)).toMatchObject({
@@ -498,6 +501,7 @@ describe('eventRegistry — daemon:auto-build:disabled', () => {
       queue: [],
       autoBuild: { enabled: true, watcher: { running: true, pid: 1234, sessionId: null } },
       latestHeartbeat: null,
+      stackLayers: [],
     };
     const project = eventRegistry['daemon:auto-build:disabled'].project;
     expect(project?.(event, state)).toEqual({
@@ -561,6 +565,7 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
         },
         reason: 'watcher started',
       },
+      stackLayers: [],
     };
 
     const result = safeParseDaemonStreamSnapshot(snapshot);
@@ -596,6 +601,7 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
         mode: 'running',
         scheduler: { alive: true, paused: false, runningCount: 2, limit: 4 },
       },
+      stackLayers: [],
     };
 
     const result = safeParseDaemonStreamSnapshot(snapshot);
@@ -847,6 +853,51 @@ describe('safeParseEforgeEvent — rejection of invalid payloads', () => {
 // ---------------------------------------------------------------------------
 // agent:start — thinkingCoerced / thinkingOriginal fields (AC #8 precursor)
 // ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-direct-pr-landing ---
+describe('safeParseEforgeEvent — landing workflow literals', () => {
+  it('accepts landing:start with feature-pr workflow literal (direct non-trunk PR)', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'issue-pr',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'feature/parent',
+      trunkBranch: 'main',
+      workflow: 'feature-pr',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects landing:start with removed feature-pr-after-local-merge literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      action: 'issue-pr',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'feature/parent',
+      trunkBranch: 'main',
+      workflow: 'feature-pr-after-local-merge',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts all valid workflow literals in landing:start', () => {
+    const workflows = ['trunk-pr', 'trunk-local-merge', 'feature-pr', 'feature-local-merge', 'leave-branch'] as const;
+    for (const workflow of workflows) {
+      const result = safeParseEforgeEvent({
+        type: 'landing:start',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        action: 'issue-pr',
+        featureBranch: 'eforge/my-set',
+        baseBranch: 'main',
+        workflow,
+      });
+      expect(result.success, `workflow '${workflow}' should be accepted`).toBe(true);
+    }
+  });
+});
+// --- eforge:endregion plan-01-direct-pr-landing ---
 
 describe('agent:start — runtime decision fields survive schema round-trip', () => {
   it('accepts agent:start with thinkingCoerced and thinkingOriginal', () => {
@@ -2118,6 +2169,129 @@ describe('safeParseEforgeEvent — dynamic perspective keys', () => {
     });
     expect(result.success).toBe(false);
   });
+});
+
+// --- eforge:region plan-02-stack-provider-runtime ---
+describe('StackLayerWireSchema — extended landing field', () => {
+  it('accepts a layer without a landing field', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+    });
+    expect(result).toBe(true);
+  });
+
+  it('accepts a layer with a complete landing record including prUrl', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'landed',
+      recordedAt: now,
+      updatedAt: now,
+      artifact: { branch: 'eforge/feat-a', commitSha: 'abc123' },
+      landingAction: 'pr',
+      landing: {
+        action: 'pr',
+        status: 'complete',
+        prUrl: 'https://github.com/owner/repo/pull/42',
+        startedAt: now,
+        completedAt: now,
+      },
+    });
+    expect(result).toBe(true);
+  });
+
+  it('accepts a layer with a failed landing record including reason', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'failed',
+      recordedAt: now,
+      updatedAt: now,
+      landingAction: 'pr',
+      landing: {
+        action: 'pr',
+        status: 'failed',
+        reason: 'git-spice command failed',
+        startedAt: now,
+        completedAt: now,
+      },
+    });
+    expect(result).toBe(true);
+  });
+
+  it('accepts a layer with a skipped landing record (no prUrl, no reason)', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+      landing: {
+        action: 'leave',
+        status: 'skipped',
+        startedAt: now,
+      },
+    });
+    expect(result).toBe(true);
+  });
+
+  it('rejects a landing record with an invalid status', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+      landing: {
+        action: 'pr',
+        status: 'in-progress',
+        startedAt: now,
+      },
+    });
+    expect(result).toBe(false);
+  });
+
+  it('rejects a landing record with an invalid action', () => {
+    const now = new Date().toISOString();
+    const result = Value.Check(StackLayerWireSchema, {
+      prdId: 'feat-a',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/feat-a',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+      landing: {
+        action: 'push',
+        status: 'complete',
+        startedAt: now,
+      },
+    });
+    expect(result).toBe(false);
+  });
+});
+// --- eforge:endregion plan-02-stack-provider-runtime ---
+
+describe('safeParseEforgeEvent — dynamic perspective keys', () => {
 
   it('accepts all six built-in perspectives in parallel:start', () => {
     const result = safeParseEforgeEvent({
@@ -2233,6 +2407,7 @@ describe('eventRegistry — enqueue:complete queue projector', () => {
     queue: [],
     autoBuild: null,
     latestHeartbeat: null,
+    stackLayers: [],
   };
 
   const enqueueCompleteEvent = {
@@ -2315,6 +2490,7 @@ describe('eventRegistry — enqueue:complete queue projector', () => {
           subscribers: 0,
         },
       },
+      stackLayers: [],
     };
     const before = structuredClone({
       runs: stateWithNonQueueSlices.runs,

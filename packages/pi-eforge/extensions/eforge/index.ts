@@ -322,14 +322,30 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         description: "Run this build on the named profile instead of the active profile",
       })),
       onSuccess: Type.Optional(StringEnum(['merge-to-base-branch', 'issue-pr', 'leave-branch'], {
-        description: "Override the project-level on-success landing action for this build. 'merge-to-base-branch' merges the worktree branch back (default). 'issue-pr' opens a GitHub PR instead of merging (requires gh CLI). 'leave-branch' commits to the worktree branch and exits without merging or opening a PR.",
+        description: "Override the project-level landing action for this build. 'merge-to-base-branch' auto-merges the artifact branch into the base branch. 'issue-pr' opens a PR from the artifact branch targeting the resolved base branch (requires gh CLI). 'leave-branch' commits to the artifact branch and exits without merging or opening a PR.",
       })),
+      // --- eforge:region plan-04-consumer-surfaces ---
+      landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'], {
+        description: "Shorthand alias for onSuccess. 'pr' → issue-pr, 'merge' → merge-to-base-branch, 'leave' → leave-branch. Use instead of onSuccess for brevity.",
+      })),
+      // --- eforge:endregion plan-04-consumer-surfaces ---
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      // --- eforge:region plan-04-consumer-surfaces ---
+      const landingActionMap: Record<string, BuildOnSuccess> = { pr: 'issue-pr', merge: 'merge-to-base-branch', leave: 'leave-branch' };
+      let resolvedBuildOnSuccess = params.onSuccess as BuildOnSuccess | undefined;
+      if (params.landingAction) {
+        const mapped = landingActionMap[params.landingAction];
+        if (mapped && resolvedBuildOnSuccess && mapped !== resolvedBuildOnSuccess) {
+          return jsonResult({ status: 'error', error: `landingAction ${params.landingAction} (resolves to ${mapped}) conflicts with onSuccess ${resolvedBuildOnSuccess}` });
+        }
+        resolvedBuildOnSuccess = mapped ?? resolvedBuildOnSuccess;
+      }
+      // --- eforge:endregion plan-04-consumer-surfaces ---
       const policyChoice = await promptForBuildLandingGate(
         pi,
         ctx as unknown as UIContext,
-        params.onSuccess as BuildOnSuccess | undefined,
+        resolvedBuildOnSuccess,
         signal,
       );
       if (policyChoice.cancelled) {
@@ -338,7 +354,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
       const body: EnqueueRequest = { source: params.source };
       if (params.profile) body.profile = params.profile;
-      const effectiveOnSuccess = policyChoice.onSuccess ?? params.onSuccess;
+      const effectiveOnSuccess = policyChoice.onSuccess ?? resolvedBuildOnSuccess;
       if (effectiveOnSuccess) body.onSuccess = effectiveOnSuccess as BuildOnSuccess;
       const { data, port } = await requireDaemon<EnqueueResponse>(
         ctx.cwd,
@@ -1358,8 +1374,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }),
       ),
       onSuccess: Type.Optional(StringEnum(['merge-to-base-branch', 'issue-pr', 'leave-branch'], {
-        description: "On-success landing action to persist in eforge/config.yaml. 'merge-to-base-branch' merges the worktree branch back (default). 'issue-pr' opens a GitHub PR instead of merging (requires gh CLI). 'leave-branch' commits to the worktree branch and exits without merging or opening a PR.",
+        description: "On-success landing action to persist in eforge/config.yaml. 'merge-to-base-branch' auto-merges the artifact branch into the base branch. 'issue-pr' opens a PR from the artifact branch targeting the resolved base branch (requires gh CLI). 'leave-branch' commits to the artifact branch and exits without merging or opening a PR.",
       })),
+      // --- eforge:region plan-04-consumer-surfaces ---
+      landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'], {
+        description: "Shorthand alias for onSuccess to persist in eforge/config.yaml. 'pr' → issue-pr, 'merge' → merge-to-base-branch, 'leave' → leave-branch.",
+      })),
+      // --- eforge:endregion plan-04-consumer-surfaces ---
       // --- eforge:region plan-04-ux-init-build-and-docs ---
       trunkBranch: Type.Optional(
         Type.String({
@@ -1369,6 +1390,16 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       allowLocalMergeToTrunk: Type.Optional(
         Type.Boolean({
           description: "When true, merge-to-base-branch is allowed to land directly on the trunk branch without a PR. Default: false (trunk is protected). Enable only for solo developers on unprotected branches.",
+        }),
+      ),
+      stackingEnabled: Type.Optional(
+        Type.Boolean({
+          description: "Persist stacking.enabled for git-spice-backed stacked PR workflows.",
+        }),
+      ),
+      gitSpiceCommand: Type.Optional(
+        Type.String({
+          description: "Persist stacking.gitSpice.command (path or command name for the git-spice executable).",
         }),
       ),
       // --- eforge:endregion plan-04-ux-init-build-and-docs ---
@@ -1414,6 +1445,18 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
       // Ensure .gitignore has daemon state and active-profile marker
       ensureGitignoreEntries(ctx.cwd, [".eforge/", "eforge/.active-profile"]);
+
+      // --- eforge:region plan-04-consumer-surfaces ---
+      const initLandingActionMap: Record<string, string> = { pr: 'issue-pr', merge: 'merge-to-base-branch', leave: 'leave-branch' };
+      let effectiveInitPiOnSuccess = params.onSuccess as string | undefined;
+      if (params.landingAction) {
+        const mapped = initLandingActionMap[params.landingAction];
+        if (mapped && effectiveInitPiOnSuccess && mapped !== effectiveInitPiOnSuccess) {
+          return jsonResult({ status: 'error', error: `landingAction ${params.landingAction} (resolves to ${mapped}) conflicts with onSuccess ${effectiveInitPiOnSuccess}` });
+        }
+        effectiveInitPiOnSuccess = mapped ?? effectiveInitPiOnSuccess;
+      }
+      // --- eforge:endregion plan-04-consumer-surfaces ---
 
       // --- Conflict validation ---
       if (params.existingProfile) {
@@ -1550,12 +1593,19 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const existingProfileConfigData: Record<string, unknown> = {};
         const existingProfileBuildBlock: Record<string, unknown> = {};
         if (params.postMergeCommands && params.postMergeCommands.length > 0) existingProfileBuildBlock.postMergeCommands = params.postMergeCommands;
-        if (params.onSuccess) existingProfileBuildBlock.onSuccess = params.onSuccess;
+        if (params.onSuccess) existingProfileBuildBlock.onSuccess = effectiveInitPiOnSuccess;
         // --- eforge:region plan-04-ux-init-build-and-docs ---
         if (params.trunkBranch) existingProfileBuildBlock.trunkBranch = params.trunkBranch;
         if (params.allowLocalMergeToTrunk !== undefined) existingProfileBuildBlock.allowLocalMergeToTrunk = params.allowLocalMergeToTrunk;
         // --- eforge:endregion plan-04-ux-init-build-and-docs ---
         if (Object.keys(existingProfileBuildBlock).length > 0) existingProfileConfigData.build = existingProfileBuildBlock;
+        if (params.landingAction) existingProfileConfigData.landing = { action: params.landingAction };
+        if (params.stackingEnabled !== undefined || params.gitSpiceCommand !== undefined) {
+          existingProfileConfigData.stacking = {
+            ...(params.stackingEnabled !== undefined && { enabled: params.stackingEnabled }),
+            ...(params.gitSpiceCommand !== undefined && { gitSpice: { command: params.gitSpiceCommand } }),
+          };
+        }
         const existingProfileConfigContent = Object.keys(existingProfileConfigData).length > 0
           ? stringifyYaml(existingProfileConfigData)
           : "";
@@ -1691,12 +1741,19 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const configData: Record<string, unknown> = {};
       const buildBlock: Record<string, unknown> = {};
       if (params.postMergeCommands && params.postMergeCommands.length > 0) buildBlock.postMergeCommands = params.postMergeCommands;
-      if (params.onSuccess) buildBlock.onSuccess = params.onSuccess;
+      if (params.onSuccess) buildBlock.onSuccess = effectiveInitPiOnSuccess;
       // --- eforge:region plan-04-ux-init-build-and-docs ---
       if (params.trunkBranch) buildBlock.trunkBranch = params.trunkBranch;
       if (params.allowLocalMergeToTrunk !== undefined) buildBlock.allowLocalMergeToTrunk = params.allowLocalMergeToTrunk;
       // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       if (Object.keys(buildBlock).length > 0) configData.build = buildBlock;
+      if (params.landingAction) configData.landing = { action: params.landingAction };
+      if (params.stackingEnabled !== undefined || params.gitSpiceCommand !== undefined) {
+        configData.stacking = {
+          ...(params.stackingEnabled !== undefined && { enabled: params.stackingEnabled }),
+          ...(params.gitSpiceCommand !== undefined && { gitSpice: { command: params.gitSpiceCommand } }),
+        };
+      }
       const configContent = Object.keys(configData).length > 0
         ? stringifyYaml(configData)
         : "";
@@ -1946,9 +2003,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
       onSuccess: Type.Optional(
         StringEnum(['merge-to-base-branch', 'issue-pr', 'leave-branch'] as const, {
-          description: 'Override the project-level on-success landing action for this run (optional, "run" only for autonomous playbooks).',
+          description: "Override the project-level landing action for this run (optional, 'run' only for autonomous playbooks). 'issue-pr' opens a PR from the artifact branch targeting the resolved base branch.",
         }),
       ),
+      // --- eforge:region plan-04-consumer-surfaces ---
+      landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'] as const, {
+        description: "Shorthand alias for onSuccess (optional, 'run' only). 'pr' → issue-pr, 'merge' → merge-to-base-branch, 'leave' → leave-branch.",
+      })),
+      // --- eforge:endregion plan-04-consumer-surfaces ---
       raw: Type.Optional(
         Type.String({
           description: 'Raw Markdown playbook string (required for "validate")',
@@ -1956,7 +2018,18 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, name, scope, playbook, afterQueueId, onSuccess, raw } = params;
+      const { action, name, scope, playbook, afterQueueId, onSuccess, landingAction, raw } = params;
+      // --- eforge:region plan-04-consumer-surfaces ---
+      const playbookLandingActionMap: Record<string, string> = { pr: 'issue-pr', merge: 'merge-to-base-branch', leave: 'leave-branch' };
+      let resolvedPlaybookPiOnSuccess = onSuccess as string | undefined;
+      if (landingAction) {
+        const mapped = playbookLandingActionMap[landingAction];
+        if (mapped && resolvedPlaybookPiOnSuccess && mapped !== resolvedPlaybookPiOnSuccess) {
+          return jsonResult({ status: 'error', error: `landingAction ${landingAction} (resolves to ${mapped}) conflicts with onSuccess ${resolvedPlaybookPiOnSuccess}` });
+        }
+        resolvedPlaybookPiOnSuccess = mapped ?? resolvedPlaybookPiOnSuccess;
+      }
+      // --- eforge:endregion plan-04-consumer-surfaces ---
 
       if (action === "list") {
         const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.playbookList);
@@ -1984,7 +2057,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!name) throw new Error('"name" is required when action is "run"');
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
-        if (onSuccess !== undefined) body.onSuccess = onSuccess;
+        if (resolvedPlaybookPiOnSuccess !== undefined) body.onSuccess = resolvedPlaybookPiOnSuccess;
         const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookRun, body);
         return jsonResult(data);
       }

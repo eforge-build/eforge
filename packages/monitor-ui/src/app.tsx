@@ -22,6 +22,9 @@ import { useAutoBuild } from '@/hooks/use-auto-build';
 import { useDaemonEvents } from '@/hooks/use-daemon-events';
 import { getSummaryStats } from '@/lib/reducer';
 import { selectLatestSessionId } from '@/lib/daemon-reducer';
+// --- eforge:region plan-03-stack-daemon-ui ---
+import { StackLayersCard } from '@/components/stack/stack-layers-card';
+// --- eforge:endregion plan-03-stack-daemon-ui ---
 import { fetcher } from '@/lib/swr-fetcher';
 import { API_ROUTES } from '@eforge-build/client/browser';
 import type { PipelineStage, EforgeEvent } from '@/lib/types';
@@ -262,6 +265,9 @@ function AppContent() {
             ) : (
               <>
                 <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} profile={runState.profile} />
+                {/* --- eforge:region plan-03-stack-daemon-ui --- */}
+                <StackLayersCard layers={daemonState.stackLayers} />
+                {/* --- eforge:endregion plan-03-stack-daemon-ui --- */}
                 <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} events={runState.events} orchestration={effectiveOrchestration} prdSource={prdSource} planArtifacts={planArtifacts} validationCommands={runState.validationCommands} perspectiveErrors={runState.perspectiveErrors} reviewIssuesByPerspective={runState.reviewIssuesByPerspective} decisions={runState.decisions} />
                 <FailureBanner failures={buildFailures} phaseSummary={phaseSummary} />
               </>

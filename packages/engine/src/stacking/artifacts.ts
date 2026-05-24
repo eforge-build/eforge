@@ -31,6 +31,9 @@ export async function recordSuccessfulBuildArtifact(options: RecordStackArtifact
       commitSha,
     },
     ...(options.landingAction !== undefined && { landingAction: options.landingAction }),
+    // Preserve any existing landing record when retrying — do not overwrite a
+    // previously persisted landing outcome (e.g., 'complete' from a prior run).
+    ...(existing?.landing !== undefined && { landing: existing.landing }),
     status: 'built',
     recordedAt: existing?.recordedAt ?? now,
     updatedAt: now,
@@ -47,6 +50,8 @@ export async function recordSuccessfulBuildArtifact(options: RecordStackArtifact
     provider: layer.provider,
     branch: layer.branch,
     baseBranch: layer.baseBranch,
+    artifact: layer.artifact,
+    ...(layer.landingAction !== undefined && { landingAction: layer.landingAction }),
     status: layer.status,
   } as EforgeEvent;
 }

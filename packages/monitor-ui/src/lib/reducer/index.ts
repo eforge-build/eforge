@@ -346,8 +346,9 @@ export const IGNORED_EVENT_TYPES = [
   'landing:skipped',
   // --- eforge:endregion plan-01-engine-config-and-landing ---
   // --- eforge:region plan-01-stack-contracts-config-state-events ---
-  // Stack layer and provider command events — monitor UI rendering is a future plan's responsibility.
-  // Listed here so the exhaustive check passes without requiring that plan to land first.
+  // Stack layer and provider command events — projected into DaemonState via
+  // daemonHandlerRegistry (plan-03-stack-daemon-ui). The per-session eforgeReducer
+  // intentionally does not handle these; daemon projection covers the live-update path.
   'stack:layer:recorded',
   'stack:provider:command',
   'stack:landing:update',

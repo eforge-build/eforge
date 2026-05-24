@@ -48,6 +48,9 @@ import {
 } from './display.js';
 import { createClarificationHandler, createApprovalHandler, confirmTrunkLanding, type TrunkLandingChoice } from './interactive.js';
 import { formatCliError } from './errors.js';
+// --- eforge:region plan-04-consumer-surfaces ---
+import { resolveAndValidateLandingFlags, CLILandingFlagError } from './landing-options.js';
+// --- eforge:endregion plan-04-consumer-surfaces ---
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,6 +79,10 @@ export interface BuildRunOpts {
     profile?: string;
     /** Override the project-level on-success landing action for this build. */
     onSuccess?: string;
+    // --- eforge:region plan-04-consumer-surfaces ---
+    /** Landing action shorthand alias for onSuccess (pr|merge|leave). Resolved before use. */
+    landingAction?: string;
+    // --- eforge:endregion plan-04-consumer-surfaces ---
   };
   abortController?: AbortController;
   /** Called with the active monitor on start and undefined on teardown. */
@@ -291,6 +298,21 @@ export async function runOrDelegate(opts: RunOrDelegateOpts): Promise<CliExitInf
 async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
   const { source, options, abortController, onMonitor } = opts;
   const cwd = process.cwd();
+
+  // --- eforge:region plan-04-consumer-surfaces ---
+  // Resolve --landing-action shorthand into the wire-protocol onSuccess value.
+  // This is a no-op when only --on-success was provided, and throws on conflict.
+  try {
+    const resolved = resolveAndValidateLandingFlags({ landingAction: options.landingAction, onSuccess: options.onSuccess });
+    if (resolved !== undefined) options.onSuccess = resolved;
+  } catch (err) {
+    if (err instanceof CLILandingFlagError) {
+      console.error(chalk.red(`Error: ${err.message}`));
+      return { code: 1 };
+    }
+    throw err;
+  }
+  // --- eforge:endregion plan-04-consumer-surfaces ---
 
   // Path 1: Delegate to daemon when it is already running
   if (!options.foreground && !options.dryRun) {

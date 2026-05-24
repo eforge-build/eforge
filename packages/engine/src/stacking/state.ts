@@ -8,12 +8,14 @@
  * atomically via temp-file-then-rename to prevent partial writes.
  */
 
-import { readFile, writeFile, mkdir, rename, open, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, open, rm, stat } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod/v4';
-import type { StackLayer, StackState } from './types.js';
+import type { StackLayer, StackLayerLanding, StackState } from './types.js';
+
+const EMPTY_LOCK_STALE_MS = 5_000;
 
 // ---------------------------------------------------------------------------
 // Zod schemas for runtime validation
@@ -23,6 +25,15 @@ const stackArtifactRefSchema = z.object({
   branch: z.string(),
   commitSha: z.string().optional(),
   prUrl: z.string().optional(),
+});
+
+const stackLayerLandingSchema = z.object({
+  action: z.enum(['pr', 'merge', 'leave']),
+  status: z.enum(['started', 'complete', 'skipped', 'failed']),
+  prUrl: z.string().optional(),
+  reason: z.string().optional(),
+  startedAt: z.string().min(1),
+  completedAt: z.string().optional(),
 });
 
 /** Zod schema for a single stack layer record. */
@@ -35,6 +46,7 @@ export const stackLayerSchema = z.object({
   baseBranch: z.string().optional(),
   artifact: stackArtifactRefSchema.optional(),
   landingAction: z.enum(['pr', 'merge', 'leave']).optional(),
+  landing: stackLayerLandingSchema.optional(),
   status: z.enum(['pending', 'building', 'built', 'merged', 'landed', 'failed']),
   recordedAt: z.string().min(1),
   updatedAt: z.string().min(1),
@@ -122,6 +134,35 @@ export async function saveStackState(cwd: string, state: StackState): Promise<vo
  * If a layer with the same `prdId` already exists, it is replaced in-place.
  * Otherwise, the new layer is appended. Returns the updated state after writing.
  */
+async function isStackStateLockStale(lockPath: string): Promise<boolean> {
+  let rawPid: string;
+  try {
+    rawPid = await readFile(lockPath, 'utf-8');
+  } catch {
+    return false;
+  }
+
+  const trimmedPid = rawPid.trim();
+  if (trimmedPid === '') {
+    try {
+      const lockStat = await stat(lockPath);
+      return Date.now() - lockStat.mtimeMs > EMPTY_LOCK_STALE_MS;
+    } catch {
+      return false;
+    }
+  }
+  if (!/^\d+$/.test(trimmedPid)) return true;
+  const pid = Number.parseInt(trimmedPid, 10);
+  if (!Number.isFinite(pid) || pid <= 0) return true;
+
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ESRCH';
+  }
+}
+
 async function withStackStateLock<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
   const lockPath = resolve(cwd, '.eforge', 'stacks', 'layers.lock');
   await mkdir(dirname(lockPath), { recursive: true });
@@ -137,6 +178,10 @@ async function withStackStateLock<T>(cwd: string, fn: () => Promise<T>): Promise
       break;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      if (await isStackStateLockStale(lockPath)) {
+        await rm(lockPath, { force: true });
+        continue;
+      }
       await delay(10);
     }
   }
@@ -214,4 +259,84 @@ export function getRecordedArtifactRef(state: StackState, prdId: string): string
  */
 export function isArtifactAvailable(state: StackState, prdId: string): boolean {
   return getRecordedArtifactRef(state, prdId) !== undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Landing state helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Update the durable landing record for the layer identified by `prdId`.
+ *
+ * The update preserves `recordedAt` and existing artifact refs — only the
+ * `landing` field and `updatedAt` are modified. When the layer does not exist
+ * in the state file (e.g., artifact recording was skipped due to earlier
+ * failure), this is a no-op and the current state is returned unchanged.
+ */
+export async function updateStackLayerLanding(
+  cwd: string,
+  prdId: string,
+  landing: StackLayerLanding,
+): Promise<StackState> {
+  return withStackStateLock(cwd, async () => {
+    const state = await loadStackState(cwd);
+    const idx = state.layers.findIndex((l) => l.prdId === prdId);
+    if (idx === -1) {
+      // No layer recorded yet — cannot update, return state unchanged.
+      return state;
+    }
+    const existing = state.layers[idx];
+    const now = new Date().toISOString();
+    const updated: StackLayer = {
+      ...existing,
+      landing,
+      updatedAt: now,
+    };
+    const updatedLayers = state.layers.map((l, i) => (i === idx ? updated : l));
+    const updatedState: StackState = { version: 1, layers: updatedLayers };
+    await saveStackState(cwd, updatedState);
+    return updatedState;
+  });
+}
+
+/**
+ * Mark the layer for `prdId` as failed and persist the failure reason.
+ *
+ * Preserves `recordedAt`, `artifact`, and all other existing fields. When the
+ * layer does not exist the call is a no-op.
+ */
+export async function markStackLayerFailed(
+  cwd: string,
+  prdId: string,
+  reason: string,
+): Promise<StackState> {
+  return withStackStateLock(cwd, async () => {
+    const state = await loadStackState(cwd);
+    const idx = state.layers.findIndex((l) => l.prdId === prdId);
+    if (idx === -1) {
+      return state;
+    }
+    const existing = state.layers[idx];
+    const now = new Date().toISOString();
+    const updated: StackLayer = {
+      ...existing,
+      status: 'failed',
+      updatedAt: now,
+      // Preserve a completed landing (the failure happened after landing); otherwise
+      // make the landing record reflect the failed terminal state and reason.
+      landing: existing.landing?.status === 'complete'
+        ? existing.landing
+        : {
+            action: existing.landing?.action ?? existing.landingAction ?? 'leave',
+            status: 'failed',
+            reason,
+            startedAt: existing.landing?.startedAt ?? now,
+            completedAt: now,
+          },
+    };
+    const updatedLayers = state.layers.map((l, i) => (i === idx ? updated : l));
+    const updatedState: StackState = { version: 1, layers: updatedLayers };
+    await saveStackState(cwd, updatedState);
+    return updatedState;
+  });
 }

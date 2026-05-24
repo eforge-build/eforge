@@ -30,8 +30,15 @@ import type {
   ExtensionTestRequest,
   ExtensionTestResponse,
   RunSummary,
+  // --- eforge:region plan-03-stack-daemon-ui ---
+  StackLayerWire,
+  // --- eforge:endregion plan-03-stack-daemon-ui ---
 } from '@eforge-build/client';
-import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent, parseWithSchema } from '@eforge-build/client';
+import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent, parseWithSchema,
+  // --- eforge:region plan-03-stack-daemon-ui ---
+  StackLayerWireSchema, safeParseWithSchema,
+  // --- eforge:endregion plan-03-stack-daemon-ui ---
+} from '@eforge-build/client';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { AutoBuildController, AutoBuildQueueMutationReason } from './auto-build-supervisor.js';
 // --- eforge:region plan-01-fix-recovery-ux ---
@@ -707,6 +714,9 @@ export async function startServer(
       queue: snapshotCwd ? loadQueueItemsSync(snapshotQueueDir, snapshotLockDir) : [],
       sessionMetadata: db.getSessionMetadataBatch(),
       autoBuild: autoBuildStateToWire(options?.daemonState),
+      // --- eforge:region plan-03-stack-daemon-ui ---
+      stackLayers: snapshotCwd ? stackLayersToWire(snapshotCwd) : [],
+      // --- eforge:endregion plan-03-stack-daemon-ui ---
     };
     writeHello(res, helloCursor, daemonSnapshot);
     // --- eforge:endregion plan-01-handshake-primitive-additive ---
@@ -1258,6 +1268,47 @@ export async function startServer(
     postProcessQueueDependsOn(items);
     return items;
   }
+
+  // --- eforge:region plan-03-stack-daemon-ui ---
+  /**
+   * Synchronously load stack layer records from `.eforge/stacks/layers.json`.
+   * Returns an empty array when the file is absent, unreadable, or invalid.
+   * Each entry is validated against `StackLayerWireSchema`; any invalid entry invalidates the file.
+   *
+   * Used both by the `GET /api/stack/layers` route and by `serveDaemonEventsSSE`
+   * to embed stack layer state in the `stream:hello` snapshot — a single shared
+   * helper prevents the two paths from diverging.
+   */
+  function stackLayersToWire(cwd: string): StackLayerWire[] {
+    const filePath = resolve(cwd, '.eforge', 'stacks', 'layers.json');
+    let raw: string;
+    try {
+      raw = readFileSync(filePath, 'utf-8');
+    } catch {
+      return [];
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+    const layerItems =
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      (parsed as { version?: unknown }).version === 1 &&
+      Array.isArray((parsed as { layers?: unknown }).layers)
+        ? (parsed as { layers: unknown[] }).layers
+        : [];
+    const layers: StackLayerWire[] = [];
+    for (const item of layerItems) {
+      const result = safeParseWithSchema(StackLayerWireSchema, item);
+      if (!result.success) return [];
+      layers.push(result.data);
+    }
+    return layers;
+  }
+  // --- eforge:endregion plan-03-stack-daemon-ui ---
 
   /**
    * Asynchronously load queue items matching the shape of `GET /api/queue`.
@@ -4275,6 +4326,12 @@ export async function startServer(
         sendJsonError(res, 500, `Recovery sidecar JSON is malformed: ${err instanceof Error ? err.message : String(err)} (file: ${jsonPath})`);
       }
     // --- eforge:endregion plan-03-daemon-mcp-pi ---
+    // --- eforge:region plan-03-stack-daemon-ui ---
+    } else if (req.method === 'GET' && url === API_ROUTES.stackLayers) {
+      const cwd = options?.cwd;
+      const layers = cwd ? stackLayersToWire(cwd) : [];
+      sendJson(res, { layers });
+    // --- eforge:endregion plan-03-stack-daemon-ui ---
     } else if (url === API_ROUTES.queue) {
       await serveQueue(req, res);
     } else if (url === API_ROUTES.sessionMetadata) {
