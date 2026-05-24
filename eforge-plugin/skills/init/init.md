@@ -73,7 +73,7 @@ Store the shorthand value (`pr`, `merge`, or `leave`) for use in the `mcp__eforg
    > **Should builds be allowed to merge directly to `<trunk>` without opening a PR? (solo-dev opt-in)**
    >
    > - **No (recommended)** — protect the trunk. eforge will open a PR when landing on trunk. Best for team workflows.
-   > - **Yes** — allow `merge-to-base-branch` to land directly on trunk. Use for solo developers on unprotected branches.
+   > - **Yes** — allow `landing.action: merge` to land directly on trunk. Use for solo developers on unprotected branches.
 
    Default: **No**.
 
@@ -84,8 +84,26 @@ Store the shorthand value (`pr`, `merge`, or `leave`) for use in the `mcp__eforg
 Ask: "Does this project use stacked PRs with git-spice?"
 
 If **yes**:
-- Confirm the `git-spice` binary location. Ask: "Is `git-spice` on your `$PATH`, or is there a custom path? (You can also set `command: gs` in the config if you use the optional short alias.)" Default: on `$PATH` as `git-spice` (no override needed).
-- When calling `mcp__eforge__eforge_init` in Steps 1.5 and 5, the tool does not persist stacking config — stacking is set separately via `/eforge:config`. After init completes, remind the user: "To enable stacking, add `stacking.enabled: true` (and optionally `stacking.gitSpice.command: <path>`) to `eforge/config.yaml` with `/eforge:config --edit`. Run `git-spice repo init` in the repository if you haven't already."
+- Confirm the `git-spice` binary location. Ask: "Is `git-spice` on your `$PATH`, or is there a custom path? (Set `command: gs` only if you explicitly use that alias.)" Default: on `$PATH` as `git-spice` (no override needed).
+- Store `stackingEnabled: true`. If the user supplied a non-default path (anything other than `git-spice` on `$PATH`), also store `gitSpiceCommand: "<path>"`.
+- Pass `stackingEnabled: true` (and `gitSpiceCommand` when the user provided a custom path) when calling `mcp__eforge__eforge_init` in Steps 1.5 and 5. The tool persists these as `stacking.enabled` and `stacking.gitSpice.command` in `eforge/config.yaml`.
+
+Example `mcp__eforge__eforge_init` fields when stacking is selected with the default `git-spice` command:
+```json
+{
+  "stackingEnabled": true
+}
+```
+
+Example when stacking is selected with a custom path:
+```json
+{
+  "stackingEnabled": true,
+  "gitSpiceCommand": "/usr/local/bin/git-spice"
+}
+```
+
+- Remind the user to run `git-spice repo init` in the repository if they haven't already.
 
 If **no**: proceed to Step 1.5.
 
@@ -114,11 +132,13 @@ Call `mcp__eforge__eforge_init` with:
   "postMergeCommands": [...],
   "landingAction": "<pr|merge|leave>",
   "trunkBranch": "<confirmedTrunk>",
-  "allowLocalMergeToTrunk": <true|false>
+  "allowLocalMergeToTrunk": <true|false>,
+  "stackingEnabled": true,           // only when stacking was selected
+  "gitSpiceCommand": "<custom path>" // only when the user provided a non-default path
 }
 ```
 
-Include `force: true` if `$ARGUMENTS` contains `--force` or `force`.
+Include `force: true` if `$ARGUMENTS` contains `--force` or `force`. Omit `stackingEnabled` when the user did not opt into stacking. Omit `gitSpiceCommand` when using the default `git-spice` on `$PATH`.
 
 Skip Steps 2–6. Proceed directly to the result message.
 
@@ -281,11 +301,13 @@ Call `mcp__eforge__eforge_init` with:
   "landingAction": "<pr|merge|leave>",
   "trunkBranch": "<confirmedTrunk>",
   "allowLocalMergeToTrunk": <true|false>,
+  "stackingEnabled": true,           // only when stacking was selected
+  "gitSpiceCommand": "<custom path>",// only when the user provided a non-default path
   "force": true
 }
 ```
 
-Include `force: true` if `$ARGUMENTS` contains `--force` or `force`. Include `pi: { "provider": "..." }` on each tier entry only when the harness is `pi`; omit it for `claude-sdk`.
+Include `force: true` if `$ARGUMENTS` contains `--force` or `force`. Include `pi: { "provider": "..." }` on each tier entry only when the harness is `pi`; omit it for `claude-sdk`. Omit `stackingEnabled` when the user did not opt into stacking. Omit `gitSpiceCommand` when using the default `git-spice` on `$PATH`.
 
 ### Step 6: Migrate (`--migrate`)
 

@@ -693,10 +693,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       landingAction: z
         .enum(['pr', 'merge', 'leave'])
         .optional()
-        .describe("Landing action to persist as landing.action in eforge/config.yaml. 'pr' → issue-pr, 'merge' → merge-to-base-branch, 'leave' → leave-branch.")  ,
+        .describe("Landing action to persist as landing.action in eforge/config.yaml. Values: 'pr' (open a GitHub PR), 'merge' (merge the artifact branch into the base branch), 'leave' (leave the artifact branch in place)."),
       // --- eforge:region plan-04-ux-init-build-and-docs ---
       trunkBranch: z.string().optional().describe("The trunk branch name (e.g. 'main', 'master'). Stored as build.trunkBranch in eforge/config.yaml. When omitted, eforge resolves trunk via git symbolic-ref at runtime."),
-      allowLocalMergeToTrunk: z.boolean().optional().describe("When true, merge-to-base-branch is allowed to land directly on the trunk branch without a PR. Default: false (trunk is protected). Enable only for solo developers on unprotected branches."),
+      allowLocalMergeToTrunk: z.boolean().optional().describe("When true, landing.action: merge is allowed to land directly on the trunk branch without a PR. Default: false (trunk is protected). Enable only for solo developers on unprotected branches."),
       stackingEnabled: z.boolean().optional().describe('Persist stacking.enabled for git-spice-backed stacked PR workflows.'),
       gitSpiceCommand: z.string().optional().describe('Persist stacking.gitSpice.command (path or command name for the git-spice executable).'),
       // --- eforge:endregion plan-04-ux-init-build-and-docs ---

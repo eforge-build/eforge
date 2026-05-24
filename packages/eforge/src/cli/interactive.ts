@@ -65,20 +65,20 @@ export type TrunkLandingChoice = 'switch-to-pr' | 'cancel' | 'feature-branch' | 
 
 /**
  * Interactive confirmation prompt shown when the CLI detects that the user is
- * building from trunk with merge-to-base-branch and allowLocalMergeToTrunk is
+ * building from trunk with landing.action: merge and allowLocalMergeToTrunk is
  * not enabled. Presents four options and returns the user's choice.
  */
 export async function confirmTrunkLanding(trunkBranch: string): Promise<TrunkLandingChoice> {
   const rl = readline.createInterface({ input: stdin, output: stdout });
   try {
     console.error('');
-    console.error(chalk.yellow.bold(`  ⚠  Building from trunk (${trunkBranch}) with merge-to-base-branch`));
+    console.error(chalk.yellow.bold(`  ⚠  Building from trunk (${trunkBranch}) with merge landing`));
     console.error('');
     console.error(`  eforge protects trunk from direct local merges by default.`);
-    console.error(`  merge-to-base-branch on ${chalk.bold(trunkBranch)} requires build.allowLocalMergeToTrunk: true.`);
+    console.error(`  landing.action: merge on ${chalk.bold(trunkBranch)} requires build.allowLocalMergeToTrunk: true.`);
     console.error('');
     console.error(`  Options:`);
-    console.error(`    1. Switch to ${chalk.bold('issue-pr')} — open a GitHub PR from the build branch [default]`);
+    console.error(`    1. Switch to ${chalk.bold('pr')} — open a GitHub PR from the build branch [default]`);
     console.error(`    2. ${chalk.bold('Cancel')} — abort this build`);
     console.error(`    3. ${chalk.bold('Feature branch')} — print steps to switch to a feature branch first`);
     console.error(`    4. ${chalk.bold('Solo-dev opt-in')} — print steps to enable local trunk merges`);

@@ -83,7 +83,7 @@ import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
 import { showSelectPanel, type UIContext } from './ui-helpers';
 import {
-  type BuildOnSuccess,
+  type LandingAction,
 } from './trunk-landing';
 import { promptForBuildLandingGate } from './landing-gate.js';
 export {
@@ -329,7 +329,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const policyChoice = await promptForBuildLandingGate(
         pi,
         ctx as unknown as UIContext,
-        params.landingAction as BuildOnSuccess | undefined,
+        params.landingAction as LandingAction | undefined,
         signal,
       );
       if (policyChoice.cancelled) {
@@ -338,7 +338,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
       const body: EnqueueRequest = { source: params.source };
       if (params.profile) body.profile = params.profile;
-      const effectiveLandingAction = policyChoice.landingAction ?? (params.landingAction as BuildOnSuccess | undefined);
+      const effectiveLandingAction = policyChoice.landingAction ?? (params.landingAction as LandingAction | undefined);
       if (effectiveLandingAction) body.landingAction = effectiveLandingAction;
       const { data, port } = await requireDaemon<EnqueueResponse>(
         ctx.cwd,
@@ -1368,7 +1368,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
       allowLocalMergeToTrunk: Type.Optional(
         Type.Boolean({
-          description: "When true, merge-to-base-branch is allowed to land directly on the trunk branch without a PR. Default: false (trunk is protected). Enable only for solo developers on unprotected branches.",
+          description: "When true, landing.action: merge is allowed to land directly on the trunk branch without a PR. Default: false (trunk is protected). Enable only for solo developers on unprotected branches.",
         }),
       ),
       stackingEnabled: Type.Optional(

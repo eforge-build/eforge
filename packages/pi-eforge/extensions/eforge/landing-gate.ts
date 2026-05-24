@@ -26,7 +26,7 @@ import {
   enableLocalMergeToTrunkInConfigYaml,
   shouldPromptForTrunkLanding,
   getEffectiveLandingAction,
-  type BuildOnSuccess,
+  type LandingAction,
   type BuildLandingConfig,
 } from "./trunk-landing.js";
 import { buildLandingMenuModel } from "./landing-policy.js";
@@ -73,7 +73,7 @@ async function getGitBranch(
 // ---------------------------------------------------------------------------
 
 export interface LandingGateResult {
-  landingAction?: BuildOnSuccess;
+  landingAction?: LandingAction;
   cancelled?: boolean;
   configUpdated?: boolean;
 }
@@ -129,7 +129,7 @@ export async function promptForLandingSelection(
   const verboseConfig = await loadLandingConfig(ctx.cwd);
   const resolved = asRecord(verboseConfig.resolved) ?? {};
   const build = asRecord(resolved.build) as BuildLandingConfig | undefined;
-  const landing = asRecord(resolved.landing) as { action?: BuildOnSuccess } | undefined;
+  const landing = asRecord(resolved.landing) as { action?: LandingAction } | undefined;
   const configuredLandingAction = landing?.action;
   const trunkBranch = await resolveTrunkBranch(
     { build: build ?? {} } as Parameters<typeof resolveTrunkBranch>[0],
@@ -174,7 +174,7 @@ export async function promptForLandingSelection(
     return { ...(await applyConfigUpdate(ctx.cwd, projectConfigPath)), landingAction: "merge" };
   }
 
-  return { landingAction: choice as BuildOnSuccess };
+  return { landingAction: choice as LandingAction };
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +197,7 @@ export async function promptForLandingSelection(
 export async function promptForBuildLandingGate(
   pi: ExtensionAPI,
   ctx: UIContext,
-  landingActionOverride: BuildOnSuccess | undefined,
+  landingActionOverride: LandingAction | undefined,
   signal?: AbortSignal,
   options: BuildLandingGateOptions = {},
 ): Promise<LandingGateResult> {
@@ -211,7 +211,7 @@ export async function promptForBuildLandingGate(
   const verboseConfig = await loadLandingConfig(ctx.cwd);
   const resolved = asRecord(verboseConfig.resolved) ?? {};
   const build = asRecord(resolved.build) as BuildLandingConfig | undefined;
-  const landing = asRecord(resolved.landing) as { action?: BuildOnSuccess } | undefined;
+  const landing = asRecord(resolved.landing) as { action?: LandingAction } | undefined;
   const configuredLandingAction = landing?.action;
   const trunkBranch = await resolveTrunkBranch(
     { build: build ?? {} } as Parameters<typeof resolveTrunkBranch>[0],
@@ -260,7 +260,7 @@ export async function promptForBuildLandingGate(
     return { ...(await applyConfigUpdate(ctx.cwd, projectConfigPath)), landingAction: "merge" };
   }
 
-  return { landingAction: choice as BuildOnSuccess };
+  return { landingAction: choice as LandingAction };
 }
 
 // ---------------------------------------------------------------------------
