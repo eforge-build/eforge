@@ -19,6 +19,9 @@ import {
   getNameStatusDiff,
   type ExtensionDiff,
   // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+  // --- eforge:region plan-04-committed-work-artifact-safety ---
+  getWorktreeDirtyFiles,
+  // --- eforge:endregion plan-04-committed-work-artifact-safety ---
   type MergeResolver,
   // --- eforge:region plan-01-engine-config-and-landing ---
   pushFeatureBranch as pushFeatureBranchOp,
@@ -220,6 +223,21 @@ export class WorktreeManager {
       // Plan built directly on the merge worktree - commits already on featureBranch.
       // Recover from any branch drift first, then capture HEAD SHA.
       await recoverDriftedWorktree(this.mergeWorktreePath, this.featureBranch, commitMessage);
+
+      // --- eforge:region plan-04-committed-work-artifact-safety ---
+      // Reject dirty tracked or untracked changes — all implementation work must be
+      // committed so that validation and artifact recording operate on committed state.
+      const dirtyFiles = await getWorktreeDirtyFiles(this.mergeWorktreePath);
+      if (dirtyFiles.length > 0) {
+        const preview = dirtyFiles.slice(0, 10).join('\n');
+        const suffix = dirtyFiles.length > 10 ? `\n... and ${dirtyFiles.length - 10} more files` : '';
+        throw new Error(
+          `builtOnMerge plan '${planId}' has uncommitted changes in the merge worktree. ` +
+          `Commit all implementation work before marking a plan complete.\n` +
+          `Dirty files:\n${preview}${suffix}`,
+        );
+      }
+      // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
       const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: this.mergeWorktreePath });
       if (managed) managed.status = 'merged';

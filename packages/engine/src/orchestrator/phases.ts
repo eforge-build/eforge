@@ -34,6 +34,9 @@ import type { StackBaseContext } from '../stacking/base-resolver.js';
 import { upsertArtifact } from '../artifacts/registry.js';
 import { getRefSha } from '../worktree-ops.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+// --- eforge:region plan-04-committed-work-artifact-safety ---
+import { getWorktreeDirtyFiles } from '../worktree-ops.js';
+// --- eforge:endregion plan-04-committed-work-artifact-safety ---
 // --- eforge:region plan-02-stack-provider-runtime ---
 import { executeStackLanding } from '../stacking/landing.js';
 import { updateStackLayerLanding } from '../stacking/state.js';
@@ -821,6 +824,20 @@ export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeE
   try {
     const now = new Date().toISOString();
     const commitSha = await getRefSha(ctx.mergeWorktreePath, 'HEAD');
+
+    // --- eforge:region plan-04-committed-work-artifact-safety ---
+    // Reject dirty merge worktree — artifact recording must reflect committed state only.
+    // Dirty tracked or untracked files mean the implementation was not fully committed,
+    // so the recorded commitSha would not represent the full build output.
+    const dirtyFiles = await getWorktreeDirtyFiles(ctx.mergeWorktreePath);
+    if (dirtyFiles.length > 0) {
+      const preview = dirtyFiles.slice(0, 10).join('\n');
+      const suffix = dirtyFiles.length > 10 ? `\n... and ${dirtyFiles.length - 10} more files` : '';
+      throw new Error(
+        `Cannot record artifact: merge worktree has ${dirtyFiles.length} uncommitted file(s).\n${preview}${suffix}`,
+      );
+    }
+    // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
     // 1. Write to the provider-neutral artifact registry for all queued builds.
     await upsertArtifact(ctx.repoRoot, {

@@ -530,6 +530,19 @@ export async function getExistingPullRequestUrl(
 
 // --- eforge:endregion plan-01-engine-config-and-landing ---
 
+// --- eforge:region plan-04-committed-work-artifact-safety ---
+/**
+ * Return porcelain status lines for all dirty tracked and untracked files in
+ * a worktree (output of `git status --porcelain --untracked-files=all`).
+ * Returns an empty array when the worktree is completely clean.
+ * Each entry is a raw porcelain line, e.g. ` M modified.ts` or `?? untracked.ts`.
+ */
+export async function getWorktreeDirtyFiles(cwd: string): Promise<string[]> {
+  const { stdout } = await exec('git', ['status', '--porcelain', '--untracked-files=all'], { cwd });
+  return stdout.trim().split('\n').filter(Boolean);
+}
+// --- eforge:endregion plan-04-committed-work-artifact-safety ---
+
 // --- eforge:region plan-02-git-spice-provider-and-git-primitives ---
 
 /**

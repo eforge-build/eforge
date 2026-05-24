@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -428,6 +429,92 @@ describe('recordArtifact — artifact registry writes', () => {
     expect(layer).toBeDefined();
     expect(layer?.status).toBe('built');
   });
+
+  // --- eforge:region plan-04-committed-work-artifact-safety ---
+  it('refuses to write builds.json when the merge worktree has dirty tracked files', async () => {
+    const cwd = await repo();
+    // Stage a file but do NOT commit it (dirty tracked)
+    await writeFile(join(cwd, 'dirty-tracked.ts'), 'uncommitted changes\n');
+    await exec('git', ['add', 'dirty-tracked.ts'], { cwd });
+
+    const state: EforgeState = {
+      setName: 'dirty-tracked-prd',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      baseBranch: 'main',
+      featureBranch: 'eforge/dirty-tracked-prd',
+      worktreeBase: cwd,
+      plans: {
+        plan1: { status: 'merged', branch: 'plan1', dependsOn: [], merged: true },
+      },
+      completedPlans: [],
+    };
+    const ctx = {
+      state,
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      prdId: 'dirty-tracked-prd',
+      landingAction: 'merge' as const,
+      featureBranch: 'eforge/dirty-tracked-prd',
+      config: { baseBranch: 'main' } as OrchestrationConfig,
+    } as unknown as PhaseContext;
+
+    const events = await collectRecordArtifactEvents(ctx);
+
+    expect(state.status).toBe('failed');
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds.find((b) => b.prdId === 'dirty-tracked-prd')).toBeUndefined();
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'daemon:error',
+      source: 'stack:artifact-recording',
+      message: expect.stringContaining('dirty-tracked-prd'),
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'landing:skipped',
+      reason: 'Stack artifact recording failed',
+    }));
+  });
+
+  it('refuses to write builds.json when the merge worktree has untracked files', async () => {
+    const cwd = await repo();
+    // Write a file but do NOT add or commit it (untracked)
+    await writeFile(join(cwd, 'untracked-impl.ts'), 'untracked content\n');
+
+    const state: EforgeState = {
+      setName: 'untracked-prd',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      baseBranch: 'main',
+      featureBranch: 'eforge/untracked-prd',
+      worktreeBase: cwd,
+      plans: {
+        plan1: { status: 'merged', branch: 'plan1', dependsOn: [], merged: true },
+      },
+      completedPlans: [],
+    };
+    const ctx = {
+      state,
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      prdId: 'untracked-prd',
+      landingAction: 'leave' as const,
+      featureBranch: 'eforge/untracked-prd',
+      config: { baseBranch: 'main' } as OrchestrationConfig,
+    } as unknown as PhaseContext;
+
+    const events = await collectRecordArtifactEvents(ctx);
+
+    expect(state.status).toBe('failed');
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds.find((b) => b.prdId === 'untracked-prd')).toBeUndefined();
+    expect(existsSync(join(cwd, '.eforge', 'artifacts', 'builds.json'))).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'daemon:error',
+      source: 'stack:artifact-recording',
+      message: expect.stringContaining('untracked-impl.ts'),
+    }));
+  });
+  // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
   // --- eforge:region plan-02-final-validation-gates ---
   it('yields nothing and does not write builds.json when state.status is failed', async () => {

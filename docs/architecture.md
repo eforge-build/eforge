@@ -269,6 +269,8 @@ When a plan completes and merges, the orchestrator immediately checks if any pen
 
 **Post-merge validation** runs commands from `orchestration.yaml` (planner-generated) and `eforge/config.yaml` `postMergeCommands` (user-configured). On failure, the validation-fixer agent attempts repairs up to a configurable retry limit.
 
+**Committed-state invariant** — Validation commands, PRD/acceptance validation, and artifact recording all operate on the committed HEAD of the merge worktree. A `builtOnMerge` plan (single-plan build where the plan runs directly in the merge worktree) must have all implementation work committed before `mergePlan()` returns. If the merge worktree has dirty tracked or untracked files at the point where the plan is marked merged, the orchestrator rejects the merge with an error listing the offending paths. `recordArtifact()` enforces the same invariant independently: if the merge worktree is dirty at artifact-recording time, the build is marked failed and the artifact registry is not written. This ensures that the recorded `commitSha` always corresponds to the full, committed build output.
+
 Build state is persisted to disk, enabling **resume** after interruption. On resume, completed plans are skipped and in-progress plans restart.
 
 ## Queue and Daemon
