@@ -263,6 +263,27 @@ ${completedDiff}
       return;
     }
     // --- eforge:endregion plan-01-transport-resilience ---
+    // --- eforge:region plan-01-stage-local-retry-recovery ---
+    if (
+      terminalSubtype === 'error_pi_tool_infrastructure' &&
+      sawAgentResult &&
+      builderAgentId &&
+      await hasHeadAdvanced(options.cwd, startingHead)
+    ) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'agent:warning',
+        planId: plan.id,
+        agentId: builderAgentId,
+        agent: 'builder',
+        code: 'pi-infrastructure-downgraded',
+        message: `Pi tool-call infrastructure error after committed builder result was downgraded: ${message}`,
+      };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:progress', planId: plan.id, message: 'Implementation complete' };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: plan.id };
+      return;
+    }
+    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: message, ...(terminalSubtype && { terminalSubtype }) };
     return;
   }

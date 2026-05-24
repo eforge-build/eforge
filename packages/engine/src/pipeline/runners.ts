@@ -11,9 +11,11 @@ import { promisify } from 'node:util';
 
 import type { EforgeEvent, AgentRole } from '../events.js';
 import type { TracingContext } from '../tracing.js';
+import type { AgentTerminalSubtype } from '../harness.js';
 import {
   withRetry,
   DEFAULT_RETRY_POLICIES,
+  RETRYABLE_INFRASTRUCTURE_SUBTYPES,
   type RetryPolicy,
   type EvaluatorContinuationInput,
 } from '../retry.js';
@@ -70,6 +72,18 @@ export interface ReviewCycleConfig {
   };
 }
 
+// --- eforge:region plan-01-stage-local-retry-recovery ---
+/**
+ * Compile reviewer roles that receive one infrastructure/transport retry.
+ * Other reviewer roles (e.g. `reviewer` in build stages) use the non-retry path.
+ */
+const RETRIABLE_REVIEWER_ROLES = new Set<AgentRole>([
+  'plan-reviewer',
+  'architecture-reviewer',
+  'cohesion-reviewer',
+]);
+// --- eforge:endregion plan-01-stage-local-retry-recovery ---
+
 /**
  * Run a review -> evaluate cycle. The reviewer runs first (non-fatal on error).
  * If the reviewer left unstaged changes, the evaluator runs to accept/reject them.
@@ -83,10 +97,32 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
   reviewSpan.setInput(config.reviewer.metadata);
   const reviewTracker = createToolTracker(reviewSpan);
   try {
-    for await (const event of config.reviewer.run()) {
-      reviewTracker.handleEvent(event);
-      yield event;
+    // --- eforge:region plan-01-stage-local-retry-recovery ---
+    if (RETRIABLE_REVIEWER_ROLES.has(config.reviewer.role)) {
+      // Compile reviewers get one infrastructure/transport retry before swallowing failure.
+      const reviewerRetryPolicy: RetryPolicy<unknown> = {
+        agent: config.reviewer.role,
+        maxAttempts: 2,
+        retryableSubtypes: RETRYABLE_INFRASTRUCTURE_SUBTYPES as ReadonlySet<AgentTerminalSubtype>,
+        label: `${config.reviewer.role}-infrastructure-retry`,
+      };
+      yield* withRetry<unknown>(
+        async function* (_input: unknown) {
+          for await (const event of config.reviewer.run()) {
+            reviewTracker.handleEvent(event);
+            yield event;
+          }
+        },
+        reviewerRetryPolicy,
+        undefined,
+      );
+    } else {
+      for await (const event of config.reviewer.run()) {
+        reviewTracker.handleEvent(event);
+        yield event;
+      }
     }
+    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     reviewTracker.cleanup();
     reviewSpan.end();
   } catch (err) {

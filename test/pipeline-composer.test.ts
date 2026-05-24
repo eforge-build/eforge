@@ -4,6 +4,14 @@ import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
 import type { ValidationProviderRegistration } from '../packages/engine/src/extensions/types.js';
+import { AgentTerminalError } from '@eforge-build/engine/harness';
+import { withRetry, DEFAULT_RETRY_POLICIES } from '@eforge-build/engine/retry';
+import type { RetryPolicy } from '@eforge-build/engine/retry';
+import { getCompileStage, type PipelineContext } from '@eforge-build/engine/pipeline';
+import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
+import { createNoopTracingContext } from '@eforge-build/engine/tracing';
+import { ModelTracker } from '@eforge-build/engine/model-tracker';
+import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 
 const VALID_SEQUENTIAL = JSON.stringify({
   scope: 'errand',
@@ -32,8 +40,43 @@ const INVALID_PARALLEL = JSON.stringify({
   rationale: 'Parallel attempt.',
 });
 
+const VALID_DELEGATED_COMPILE = JSON.stringify({
+  scope: 'errand',
+  compile: [],
+  defaultBuild: ['implement'],
+  defaultReview: {
+    strategy: 'single',
+    perspectives: ['code'],
+    maxRounds: 1,
+    evaluatorStrictness: 'lenient',
+  },
+  rationale: 'Composer selected no further compile stages for this test.',
+});
+
 describe('composePipeline', () => {
   const makeTempDir = useTempDir('eforge-composer-test-');
+
+  function makePlannerStageContext(backend: StubHarness, cwd: string): PipelineContext {
+    return {
+      agentRuntimes: singletonRegistry(backend),
+      config: DEFAULT_CONFIG,
+      pipeline: {
+        scope: 'errand',
+        compile: ['planner'],
+        defaultBuild: ['implement'],
+        defaultReview: DEFAULT_REVIEW,
+        rationale: 'initial test pipeline',
+      },
+      tracing: createNoopTracingContext(),
+      cwd,
+      planSetName: 'test-plan',
+      sourceContent: '# PRD\nAdd a /health endpoint.',
+      modelTracker: new ModelTracker(),
+      plans: [],
+      expeditionModules: [],
+      moduleBuildConfigs: new Map(),
+    };
+  }
 
   it('yields plan:pipeline on a valid first attempt', async () => {
     const backend = new StubHarness([{ resultText: VALID_SEQUENTIAL }]);
@@ -147,5 +190,68 @@ describe('composePipeline', () => {
     expect(prompt).toContain('Validation providers loaded');
     // Both sections appear — promptAppend precedes the validation summary
     expect(prompt.indexOf('EXTRA INSTRUCTIONS')).toBeLessThan(prompt.indexOf('Validation providers loaded'));
+  });
+
+  it('retries and eventually emits planning:pipeline after a harness-level infrastructure error', async () => {
+    // Simulate a Pi tool-call infrastructure failure on the first attempt, success on the second.
+    // The infrastructure retry wrapping lives in compile-stages, so we apply it here
+    // directly to verify the agent:retry + planning:pipeline integration.
+    const infraError = new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.');
+    const backend = new StubHarness([
+      { error: infraError },
+      { resultText: VALID_SEQUENTIAL },
+    ]);
+    const cwd = makeTempDir();
+
+    const composerInput = { harness: backend, source: '# PRD\nAdd a /health endpoint.', cwd };
+    const policy = DEFAULT_RETRY_POLICIES['pipeline-composer'] as RetryPolicy<typeof composerInput>;
+
+    const events = await collectEvents(
+      withRetry(
+        async function* (input) {
+          for await (const event of composePipeline(input)) yield event;
+        },
+        policy,
+        composerInput,
+      ),
+    );
+
+    const retries = filterEvents(events, 'agent:retry');
+    expect(retries).toHaveLength(1);
+    expect(retries[0]).toMatchObject({
+      agent: 'pipeline-composer',
+      subtype: 'error_pi_tool_infrastructure',
+      attempt: 1,
+      maxAttempts: 2,
+      label: 'pipeline-composer-infrastructure-retry',
+    });
+    // The second attempt succeeds and emits planning:pipeline.
+    expect(findEvent(events, 'planning:pipeline')).toBeDefined();
+    expect(filterEvents(events, 'agent:warning')).toHaveLength(0);
+    // Two harness calls were made (one per attempt).
+    expect(backend.prompts).toHaveLength(2);
+  });
+
+  it('planner compile stage wraps pipeline-composer in retry policy', async () => {
+    const backend = new StubHarness([
+      { error: new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.') },
+      { resultText: VALID_DELEGATED_COMPILE },
+    ]);
+    const cwd = makeTempDir();
+    const ctx = makePlannerStageContext(backend, cwd);
+    const plannerStage = getCompileStage('planner');
+
+    const events = await collectEvents(plannerStage(ctx));
+
+    expect(filterEvents(events, 'agent:retry')).toHaveLength(1);
+    expect(filterEvents(events, 'agent:retry')[0]).toMatchObject({
+      agent: 'pipeline-composer',
+      subtype: 'error_pi_tool_infrastructure',
+      label: 'pipeline-composer-infrastructure-retry',
+    });
+    expect(findEvent(events, 'planning:pipeline')).toMatchObject({ compile: [] });
+    expect(findEvent(events, 'planning:progress')?.message).toContain('delegating to new compile stages');
+    expect(ctx.pipeline.compile).toEqual([]);
+    expect(backend.prompts).toHaveLength(2);
   });
 });
