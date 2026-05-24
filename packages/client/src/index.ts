@@ -318,6 +318,9 @@ export type {
   EforgeState,
   ExpeditionModule,
   PrdValidationGap,
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  AcceptanceCriterionVerdict,
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
   TestIssue,
   BuildFailureSummary,
   LandedCommit,
@@ -347,7 +350,11 @@ export type {
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 } from './events.js';
 
-export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema, PlanningDecisionSchema, safeParseEforgeEvent, parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseSessionStreamSnapshot,
+export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema, PlanningDecisionSchema,
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  AcceptanceCriterionVerdictSchema,
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
+  safeParseEforgeEvent, parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseSessionStreamSnapshot,
   // --- eforge:region plan-01-dynamic-perspective-contracts ---
   ReviewPerspectiveKeySchema, isBuiltInReviewPerspective,
   // --- eforge:endregion plan-01-dynamic-perspective-contracts ---

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { parseGaps } from '@eforge-build/engine/agents/prd-validator';
 import { prdValidate } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
@@ -53,6 +53,7 @@ describe('parseGaps', () => {
     expect(result).toEqual({
       gaps: [{ requirement: 'x', explanation: 'y', complexity: 'moderate' }],
       completionPercent: 85,
+      acceptanceVerdicts: undefined,
     });
   });
 
@@ -62,6 +63,7 @@ describe('parseGaps', () => {
     expect(result).toEqual({
       gaps: [{ requirement: 'x', explanation: 'y' }],
       completionPercent: undefined,
+      acceptanceVerdicts: undefined,
     });
   });
 
@@ -93,7 +95,7 @@ describe('parseGaps', () => {
 
   it('returns empty gaps and undefined completionPercent for empty input', () => {
     const result = parseGaps('');
-    expect(result).toEqual({ gaps: [], completionPercent: undefined });
+    expect(result).toEqual({ gaps: [], completionPercent: undefined, acceptanceVerdicts: undefined });
   });
 
   it('returns a single synthetic gap when non-empty input has no JSON block', () => {
@@ -114,7 +116,7 @@ describe('parseGaps', () => {
   it('handles raw JSON without fences', () => {
     const input = 'Some text {"completionPercent": 90, "gaps": []} more text';
     const result = parseGaps(input);
-    expect(result).toEqual({ gaps: [], completionPercent: 90 });
+    expect(result).toEqual({ gaps: [], completionPercent: 90, acceptanceVerdicts: undefined });
   });
 
   it('handles completionPercent of 0', () => {
@@ -129,6 +131,106 @@ describe('parseGaps', () => {
     const result = parseGaps(input);
     expect(result.completionPercent).toBeUndefined();
   });
+
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  it('returns acceptanceVerdicts: undefined when JSON has no acceptanceVerdicts key', () => {
+    const input = '```json\n{"completionPercent": 100, "gaps": []}\n```';
+    const result = parseGaps(input);
+    expect(result.acceptanceVerdicts).toBeUndefined();
+  });
+
+  it('returns acceptanceVerdicts: undefined when acceptanceVerdicts is empty', () => {
+    const input = '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": []}\n```';
+    const result = parseGaps(input);
+    expect(result.acceptanceVerdicts).toBeUndefined();
+  });
+
+  it('parses acceptanceVerdicts with pass/fail/unknown verdicts', () => {
+    const input = `\`\`\`json
+{
+  "completionPercent": 80,
+  "gaps": [],
+  "acceptanceVerdicts": [
+    {"criterion": "Must support login", "verdict": "pass", "evidence": "Login component found in src/login.ts"},
+    {"criterion": "Must support OAuth", "verdict": "fail", "evidence": "No OAuth integration in diff"},
+    {"criterion": "Must be accessible", "verdict": "unknown", "evidence": "Cannot verify from diff alone"}
+  ]
+}
+\`\`\``;
+    const result = parseGaps(input);
+    expect(result.acceptanceVerdicts).toHaveLength(3);
+    expect(result.acceptanceVerdicts![0]).toEqual({
+      criterion: 'Must support login',
+      verdict: 'pass',
+      evidence: 'Login component found in src/login.ts',
+    });
+    expect(result.acceptanceVerdicts![1]).toEqual({
+      criterion: 'Must support OAuth',
+      verdict: 'fail',
+      evidence: 'No OAuth integration in diff',
+    });
+    expect(result.acceptanceVerdicts![2]).toEqual({
+      criterion: 'Must be accessible',
+      verdict: 'unknown',
+      evidence: 'Cannot verify from diff alone',
+    });
+  });
+
+  it('classifies criterion with empty evidence as unknown', () => {
+    const input = '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [{"criterion": "Must support login", "verdict": "pass", "evidence": ""}]}\n```';
+    const result = parseGaps(input);
+    expect(result.acceptanceVerdicts).toHaveLength(1);
+    expect(result.acceptanceVerdicts![0].verdict).toBe('unknown');
+    expect(result.acceptanceVerdicts![0].evidence).toBe('No evidence provided for this criterion.');
+  });
+
+  it('classifies criterion with missing evidence field as unknown', () => {
+    const input = '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [{"criterion": "Must support login", "verdict": "pass"}]}\n```';
+    const result = parseGaps(input);
+    expect(result.acceptanceVerdicts).toHaveLength(1);
+    expect(result.acceptanceVerdicts![0].verdict).toBe('unknown');
+  });
+
+  it('classifies verdict with missing criterion as unknown', () => {
+    const input = '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [{"verdict": "pass", "evidence": "Some evidence"}]}\n```';
+    const result = parseGaps(input);
+    expect(result.acceptanceVerdicts).toHaveLength(1);
+    expect(result.acceptanceVerdicts![0]).toEqual({
+      criterion: 'Unknown criterion',
+      verdict: 'unknown',
+      evidence: 'No criterion provided for this acceptance verdict.',
+    });
+  });
+
+  it('classifies criterion with invalid verdict value as unknown', () => {
+    const input = '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [{"criterion": "Must support login", "verdict": "maybe", "evidence": "Some evidence"}]}\n```';
+    const result = parseGaps(input);
+    expect(result.acceptanceVerdicts).toHaveLength(1);
+    expect(result.acceptanceVerdicts![0].verdict).toBe('unknown');
+  });
+
+  it('classifies malformed verdict entries as unknown', () => {
+    const input = '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [42]}\n```';
+    const result = parseGaps(input);
+    expect(result.acceptanceVerdicts).toHaveLength(1);
+    expect(result.acceptanceVerdicts![0]).toEqual({
+      criterion: 'Unknown criterion',
+      verdict: 'unknown',
+      evidence: 'Malformed acceptance verdict entry.',
+    });
+  });
+
+  it('returns acceptanceVerdicts: undefined for unparseable JSON', () => {
+    const input = '```json\n{invalid json}\n```';
+    const result = parseGaps(input);
+    expect(result.acceptanceVerdicts).toBeUndefined();
+  });
+
+  it('returns acceptanceVerdicts: undefined when no JSON block found', () => {
+    const result = parseGaps('no json here');
+    expect(result.acceptanceVerdicts).toBeUndefined();
+  });
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
 });
 
 describe('prdValidate viability gate', () => {
@@ -169,7 +271,7 @@ describe('prdValidate viability gate', () => {
       gapCloser: async function* () {
         gapCloserCalled.value = true;
         yield { timestamp: new Date().toISOString(), type: 'gap_close:start' } as EforgeEvent;
-        yield { timestamp: new Date().toISOString(), type: 'gap_close:complete' } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'gap_close:complete', passed: true } as EforgeEvent;
       },
     });
 
@@ -190,7 +292,7 @@ describe('prdValidate viability gate', () => {
       gapCloser: async function* () {
         gapCloserCalled.value = true;
         yield { timestamp: new Date().toISOString(), type: 'gap_close:start' } as EforgeEvent;
-        yield { timestamp: new Date().toISOString(), type: 'gap_close:complete' } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'gap_close:complete', passed: true } as EforgeEvent;
       },
     });
 

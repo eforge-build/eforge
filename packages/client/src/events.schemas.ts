@@ -289,6 +289,22 @@ const PrdValidationGapSchema = Type.Object({
   ),
 });
 
+// --- eforge:region plan-01-validation-evidence-contract ---
+/**
+ * A per-criterion acceptance verdict produced by the PRD validator.
+ * Missing or unparseable evidence yields `verdict: 'unknown'` (fail-closed).
+ */
+export const AcceptanceCriterionVerdictSchema = Type.Object({
+  criterion: Type.String({ minLength: 1 }),
+  verdict: Type.Union([
+    Type.Literal('pass'),
+    Type.Literal('fail'),
+    Type.Literal('unknown'),
+  ]),
+  evidence: Type.String({ minLength: 1 }),
+});
+// --- eforge:endregion plan-01-validation-evidence-contract ---
+
 const ExpeditionModuleSchema = Type.Object({
   id: Type.String(),
   description: Type.String(),
@@ -1821,8 +1837,19 @@ const EforgeEventVariantsSchema = Type.Union([
   }),
   Type.Object({
     type: Type.Literal('gap_close:complete'),
-    passed: Type.Optional(Type.Boolean()),
+    passed: Type.Boolean(),
   }),
+
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  // Acceptance criteria validation verdict event — terminal evidence from the PRD validator.
+  Type.Object({
+    type: Type.Literal('acceptance_validation:complete'),
+    passed: Type.Boolean(),
+    verdicts: Type.Array(AcceptanceCriterionVerdictSchema, { minItems: 1 }),
+    waivers: Type.Optional(Type.Array(Type.String())),
+    source: Type.String({ minLength: 1 }),
+  }),
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
   // Reconciliation
   Type.Object({ type: Type.Literal('reconciliation:start') }),
@@ -2132,6 +2159,9 @@ export type RecoveryVerdict = Static<typeof RecoveryVerdictSchema>;
 export type ShardScope = Static<typeof ShardScopeSchema>;
 export type PipelineComposition = Static<typeof PipelineCompositionSchema>;
 export type PrdValidationGap = Static<typeof PrdValidationGapSchema>;
+// --- eforge:region plan-01-validation-evidence-contract ---
+export type AcceptanceCriterionVerdict = Static<typeof AcceptanceCriterionVerdictSchema>;
+// --- eforge:endregion plan-01-validation-evidence-contract ---
 export type ExpeditionModule = Static<typeof ExpeditionModuleSchema>;
 export type EforgeResult = Static<typeof EforgeResultSchema>;
 export type ClarificationQuestion = Static<typeof ClarificationQuestionSchema>;

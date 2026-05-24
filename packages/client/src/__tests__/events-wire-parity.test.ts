@@ -983,8 +983,35 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
   },
   {
     label: 'gap_close:complete',
-    payload: { type: 'gap_close:complete', timestamp: '2025-01-01T00:00:00.000Z' },
+    payload: { type: 'gap_close:complete', timestamp: '2025-01-01T00:00:00.000Z', passed: true },
   },
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  {
+    label: 'acceptance_validation:complete (passed)',
+    payload: {
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found at src/login.ts' },
+      ],
+      source: 'prd',
+    },
+  },
+  {
+    label: 'acceptance_validation:complete (with waivers)',
+    payload: {
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support OAuth', verdict: 'fail', evidence: 'No OAuth integration found in diff' },
+      ],
+      waivers: ['OAuth deferred to next sprint'],
+      source: 'prd',
+    },
+  },
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
   // Reconciliation
   {
@@ -1709,6 +1736,16 @@ describe('events-wire-parity — invalid payloads (missing required field)', () 
     });
     expect(result.success).toBe(false);
   });
+
+  // --- eforge:region plan-01-validation-evidence-contract ---
+  it('rejects gap_close:complete missing required passed field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'gap_close:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
+  });
+  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
   // --- eforge:region plan-01-native-event-runtime-foundation ---
   it('rejects extension:event-handler:failed missing extensionName', () => {

@@ -1019,7 +1019,7 @@ describe('runArchitectureEvaluate wiring', () => {
 describe('runPrdValidator wiring', () => {
   it('emits prd_validation:start and prd_validation:complete with no gaps when agent finds none', async () => {
     const backend = new StubHarness([{
-      text: '```json\n{ "gaps": [] }\n```',
+      text: '```json\n{ "gaps": [], "acceptanceVerdicts": [{"criterion": "Add a login page", "verdict": "pass", "evidence": "Login page component found at src/login.ts"}] }\n```',
     }]);
 
     const events = await collectEvents(runPrdValidator({
@@ -1034,6 +1034,12 @@ describe('runPrdValidator wiring', () => {
     expect(complete).toBeDefined();
     expect(complete!.passed).toBe(true);
     expect(complete!.gaps).toEqual([]);
+    // --- eforge:region plan-01-validation-evidence-contract ---
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(true);
+    expect(acceptance!.source).toBe('prd');
+    // --- eforge:endregion plan-01-validation-evidence-contract ---
   });
 
   it('emits prd_validation:complete with gaps when agent finds issues', async () => {
@@ -1049,6 +1055,10 @@ describe('runPrdValidator wiring', () => {
       "requirement": "Error messages should be user-friendly",
       "explanation": "Error handling uses raw error messages without user-friendly formatting"
     }
+  ],
+  "acceptanceVerdicts": [
+    {"criterion": "Supports OAuth login", "verdict": "fail", "evidence": "No OAuth integration found in diff"},
+    {"criterion": "User-friendly error messages", "verdict": "unknown", "evidence": "Cannot verify error message formatting from diff alone"}
   ]
 }
 \`\`\``,
@@ -1067,6 +1077,13 @@ describe('runPrdValidator wiring', () => {
     expect(complete!.gaps).toHaveLength(2);
     expect(complete!.gaps[0].requirement).toBe('Login page should support OAuth');
     expect(complete!.gaps[1].explanation).toContain('Error handling');
+    // --- eforge:region plan-01-validation-evidence-contract ---
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(false);
+    expect(acceptance!.verdicts).toHaveLength(2);
+    expect(acceptance!.source).toBe('prd');
+    // --- eforge:endregion plan-01-validation-evidence-contract ---
   });
 
   it('re-throws non-abort agent errors (fail-closed)', async () => {
@@ -1087,7 +1104,7 @@ describe('runPrdValidator wiring', () => {
 
   it('yields agent:result event (always yielded)', async () => {
     const backend = new StubHarness([{
-      text: '```json\n{ "gaps": [] }\n```',
+      text: '```json\n{ "gaps": [], "acceptanceVerdicts": [{"criterion": "PRD satisfied", "verdict": "pass", "evidence": "All requirements met per diff"}] }\n```',
     }]);
 
     const events = await collectEvents(runPrdValidator({

@@ -401,7 +401,7 @@ Every agent role has a built-in default tier. Most projects never need to change
 | `tester` | `implementation` | Test execution and analysis |
 | `recovery-analyst` | `implementation` | Build failure diagnosis |
 | `dependency-detector` | `implementation` | Dependency analysis |
-| `prd-validator` | `implementation` | PRD validation |
+| `prd-validator` | `implementation` | PRD validation and per-criterion acceptance verdicts |
 | `staleness-assessor` | `implementation` | Staleness detection |
 | `reviewer` | `review` | Code and design review |
 | `architecture-reviewer` | `review` | Architecture review |
