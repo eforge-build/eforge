@@ -14,9 +14,10 @@ const expectedDocSlugs = [
   'profiles',
   'playbooks',
   'integrations',
+  'stacking',
   'troubleshooting',
 ];
-const newGuideSlugs = ['profiles', 'playbooks', 'integrations', 'troubleshooting'];
+const newGuideSlugs = ['profiles', 'playbooks', 'integrations', 'stacking', 'troubleshooting'];
 const docsContentDir = join(process.cwd(), 'web/content/docs');
 const publicDocsDir = join(process.cwd(), 'web/public/docs');
 

@@ -17,6 +17,7 @@ export const DOCS_NAV: DocNavItem[] = [
   { slug: 'configuration', title: 'Configuration', group: 'Guides' },
   { slug: 'profiles', title: 'Profiles', group: 'Guides' },
   { slug: 'playbooks', title: 'Playbooks', group: 'Guides' },
+  { slug: 'stacking', title: 'Stacked PRs', group: 'Guides' },
   { slug: 'extensions', title: 'Extensions', group: 'Extensibility' },
   { slug: 'extensions-api', title: 'Extensions API Reference', group: 'Extensibility' },
   { slug: 'integrations', title: 'Integrations', group: 'Integrations' },

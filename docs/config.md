@@ -99,18 +99,39 @@ build:
 # Landing action (preferred over build.onSuccess)
 # landing:
 #   action: pr                # pr | merge | leave (default: merge)
-#                             #   pr: open a PR from the artifact branch targeting the resolved base branch (requires gh CLI)
+#                             #   pr: open a PR from the artifact branch targeting the resolved base branch
+#                             #       (trunk for non-stacked builds; parent artifact branch for stacked builds)
+#                             #       requires gh CLI
 #                             #   merge: auto-merge the artifact branch into the base branch
 #                             #   leave: commit to artifact branch and exit without merging or opening a PR
 #   # Note: legacy build.onSuccess (merge-to-base-branch | issue-pr | leave-branch) still works
 #   #       but emits a deprecation warning. Prefer landing.action for new configs.
+#   #
+#   # Precedence: landing.action takes precedence when both keys are present.
+#   # Compatibility mapping:
+#   #   landing.action: pr     <-> build.onSuccess: issue-pr
+#   #   landing.action: merge  <-> build.onSuccess: merge-to-base-branch
+#   #   landing.action: leave  <-> build.onSuccess: leave-branch
 
 # Stacking (git-spice backed stacked PRs)
 # stacking:
 #   enabled: false            # Default false. Set to true to enable git-spice stacking.
-#                             # When enabled, artifact branch PRs target the parent artifact branch.
+#                             # When enabled, artifact branch PRs target the parent artifact branch
+#                             # instead of the trunk, forming a linear stack.
+#                             # git-spice must be installed; see docs/stacking.md for setup.
+#   provider: git-spice       # Only "git-spice" is supported in v1.
 #   gitSpice:
-#     command: gs             # Optional path to gs binary (default: searches $PATH)
+#     command: git-spice      # Optional path to git-spice binary (default: "git-spice" on PATH).
+#                             # Set to "gs" if you use the short alias.
+#
+# Stack frontmatter in PRD files (set automatically or via /eforge:build):
+#   stack_id: <logical-stack-name>   # Shared name for all PRDs in the same stack. Optional;
+#                                    # defaults to the root PRD id if omitted.
+#   stack_parent: <parent-prd-id>    # Parent PRD whose artifact branch this PRD targets. Optional
+#                                    # for single-dependency PRDs (inferred from depends_on); required
+#                                    # when a PRD has multiple depends_on entries.
+#
+# See docs/stacking.md for the full stacking guide.
 
 plan:
   outputDir: eforge/plans     # Where plan artifacts are written

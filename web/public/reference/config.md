@@ -18,14 +18,14 @@ eforge merges configuration from three tiers (highest precedence first):
 | `daemon` |  |
 | `extensions` | Native eforge extension configuration |
 | `hooks` |  |
-| `landing` |  |
+| `landing` | Publication action taken after all plans complete and validation passes. The preferred configuration key; supersedes the legacy build.onSuccess field, which is kept for backward compatibility and emits a deprecation warning when used. |
 | `langfuse` |  |
 | `maxConcurrentBuilds` |  |
 | `monitor` |  |
 | `plan` |  |
 | `plugins` |  |
 | `prdQueue` |  |
-| `stacking` |  |
+| `stacking` | Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology. |
 | `tools` |  |
 
 ## Toolbelts
@@ -87,6 +87,50 @@ hooks:
 | `timeout` | Optional positive timeout in milliseconds; defaults to `5000`. |
 
 Hook commands run asynchronously from the pipeline path. Use them for best-effort side effects, not required validation or build steps.
+
+## Landing Action
+
+`landing.action` is the preferred key for controlling what happens after a successful build. Values: `pr` (open a GitHub pull request), `merge` (merge the artifact branch into the base branch), `leave` (leave the artifact branch in place). Default: `merge`.
+
+The legacy `build.onSuccess` field (`issue-pr` | `merge-to-base-branch` | `leave-branch`) is kept for backward compatibility and emits a deprecation warning when used. When both keys are present, `landing.action` takes precedence.
+
+| `landing.action` | Legacy `build.onSuccess` |
+|-----------------|------------------------|
+| `pr` | `issue-pr` |
+| `merge` | `merge-to-base-branch` |
+| `leave` | `leave-branch` |
+
+```yaml
+landing:
+  action: pr    # pr | merge (default) | leave
+```
+
+## Stacking
+
+`stacking` configures git-spice backed stacked pull requests. When `stacking.enabled: true`, each build's artifact branch targets the parent artifact branch instead of the trunk, forming a linear stack of PRs. git-spice must be installed; see the [Stacked PRs guide](/docs/stacking).
+
+```yaml
+stacking:
+  enabled: true              # Default false
+  gitSpice:
+    command: git-spice       # Default. Set to 'gs' if you use the short alias.
+
+landing:
+  action: pr                 # Required for stacking
+```
+
+| Field | Description |
+|-------|-------------|
+| `stacking.enabled` | Enable stacking. Default `false`. |
+| `stacking.provider` | Stack provider. Only `"git-spice"` is supported in v1. |
+| `stacking.gitSpice.command` | Path or name of the git-spice executable. Default: `"git-spice"`. |
+
+**PRD frontmatter stacking fields:**
+
+| Field | Description |
+|-------|-------------|
+| `stack_id` | Logical stack name shared by all PRDs in the stack. Optional; inferred from root PRD id. |
+| `stack_parent` | Parent PRD id. Optional for single-dependency PRDs (inferred from `depends_on`); required for multi-dependency PRDs. |
 
 ## JSON Schema
 

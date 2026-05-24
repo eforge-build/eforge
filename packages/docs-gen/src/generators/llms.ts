@@ -145,6 +145,12 @@ async function mirrorGuideMarkdown(repoRoot: string, outputPaths: OutputPaths): 
       target: outputPaths.publicDocsTroubleshooting,
     },
     // --- eforge:endregion plan-01-public-docs-audit-and-fill-gaps ---
+    // --- eforge:region plan-05-docs-and-dogfood-config ---
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'stacking.md'),
+      target: outputPaths.publicDocsStacking,
+    },
+    // --- eforge:endregion plan-05-docs-and-dogfood-config ---
   ];
 
   for (const mirror of guideMirrors) {

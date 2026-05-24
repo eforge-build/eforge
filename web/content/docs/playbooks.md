@@ -109,7 +109,7 @@ The CLI scaffold is non-interactive and creates an autonomous playbook. Use `--s
 /eforge:playbook run
 ```
 
-The skill lists available playbooks and lets you pick by number. For autonomous playbooks it first prompts you to choose a landing action (issue-pr, merge-to-base-branch, or leave-branch), then checks for in-flight builds and lets you optionally wait for one to finish before enqueueing:
+The skill lists available playbooks and lets you pick by number. For autonomous playbooks it first prompts you to choose a landing action (`pr`, `merge`, or `leave`), then checks for in-flight builds and lets you optionally wait for one to finish before enqueueing:
 
 ```
 /eforge:playbook run docs-sync

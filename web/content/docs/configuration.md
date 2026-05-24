@@ -343,26 +343,53 @@ build:
 
 Within a single build, plans run in parallel automatically as their dependencies are satisfied - no configuration needed there.
 
-## On-Success Landing Action
+## Landing Action
 
-`build.onSuccess` controls what happens when a build completes successfully. Three options are available:
+`landing.action` controls what happens when a build completes successfully. It is the preferred configuration key; the legacy `build.onSuccess` still works but emits a deprecation warning.
 
-| Value | Behavior |
+| `landing.action` | Behavior |
 |-------|----------|
-| `merge-to-base-branch` | Merges the worktree back to the base branch automatically. This is the engine default. |
-| `issue-pr` | Opens a GitHub pull request from the build branch instead of merging. Requires the `gh` CLI to be installed and authenticated. Recommended for team code review workflows. |
-| `leave-branch` | Leaves the worktree branch in place without merging or creating a PR. Useful when you want to inspect the output, cherry-pick commits, or handle the branch manually. |
+| `merge` | Merges the artifact branch into the resolved base branch automatically. This is the engine default. |
+| `pr` | Opens a GitHub pull request from the artifact branch targeting the resolved base branch. For non-stacked builds the base is the trunk (or active feature branch). For stacked builds the base is the parent artifact branch. Requires the `gh` CLI. |
+| `leave` | Leaves the artifact branch in place without merging or creating a PR. Useful when you want to inspect the output or handle the branch manually. |
 
 ```yaml
-build:
-  onSuccess: issue-pr   # merge-to-base-branch (default) | issue-pr | leave-branch
+landing:
+  action: pr    # pr | merge (default) | leave
 ```
 
-The default when `onSuccess` is not set is `merge-to-base-branch`, preserving the original auto-merge behavior.
+**Compatibility bridge**: if you have `build.onSuccess` in your config, it still works and maps to `landing.action` values. When both keys are present, `landing.action` takes precedence. Prefer `landing.action` for new configs.
 
-**Precedence**: a per-build override passed to `eforge_build` or `eforge build` takes precedence over this config value. PRD frontmatter `on_success` (if present) also overrides the config default.
+| `landing.action` | Legacy `build.onSuccess` |
+|-----------------|------------------------|
+| `pr` | `issue-pr` |
+| `merge` | `merge-to-base-branch` |
+| `leave` | `leave-branch` |
 
-**`issue-pr` prerequisite**: if you select `issue-pr`, ensure `gh` is installed (`gh --version`) and authenticated (`gh auth status`). Builds configured with `issue-pr` will fail at the landing step if `gh` is unavailable.
+**`pr` prerequisite**: ensure `gh` is installed (`gh --version`) and authenticated (`gh auth status`). Builds configured with `landing.action: pr` will fail at the landing step if `gh` is unavailable.
+
+## Stacked PRs
+
+When `stacking.enabled: true`, each build's artifact branch targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed.
+
+```yaml
+stacking:
+  enabled: true                # Default false
+  gitSpice:
+    command: git-spice         # Default. Set to 'gs' if you use the short alias.
+
+landing:
+  action: pr                   # Required for stacking
+```
+
+PRD frontmatter fields control the stack topology:
+
+- `stack_id` - logical stack name shared by all PRDs in the stack (optional; inferred from root PRD id)
+- `stack_parent` - parent PRD id (optional for single-dependency PRDs; required for multi-dependency PRDs)
+
+For single-dependency builds (`depends_on` has one entry), `stack_parent` is inferred automatically. For multi-dependency builds, set `stack_parent` explicitly to indicate the direct parent layer.
+
+See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup and restack expectations.
 
 ## Trunk Branch Policy
 
@@ -381,11 +408,11 @@ build:
 
 | Scenario | `allowLocalMergeToTrunk: false` (default) | `allowLocalMergeToTrunk: true` |
 |---|---|---|
-| On trunk, `onSuccess: merge-to-base-branch` | Rejected; CLI prompts to redirect | Merges directly to trunk |
-| On trunk, `onSuccess: issue-pr` | PR from build branch to trunk | PR from build branch to trunk |
-| On feature branch (either `onSuccess`) | Normal behavior, unaffected | Normal behavior, unaffected |
+| On trunk, `landing.action: merge` | Rejected; CLI prompts to redirect | Merges directly to trunk |
+| On trunk, `landing.action: pr` | PR from artifact branch to trunk | PR from artifact branch to trunk |
+| On feature branch (either action) | Normal behavior, unaffected | Normal behavior, unaffected |
 
-When `allowLocalMergeToTrunk` is `false` and you run interactively on trunk with `onSuccess: merge-to-base-branch`, the CLI prompts before enqueue and offers four alternatives: switch to `issue-pr`, cancel, create or switch to a feature branch, or enable the solo-dev opt-in in `eforge/config.yaml`. With `--auto`, the engine rejects the build at runtime with a clear error message.
+When `allowLocalMergeToTrunk` is `false` and you run interactively on trunk with `landing.action: merge`, the CLI prompts before enqueue and offers four alternatives: switch to `pr`, cancel, create or switch to a feature branch, or enable the solo-dev opt-in in `eforge/config.yaml`. With `--auto`, the engine rejects the build at runtime with a clear error message.
 
 ## Per-Role Tuning
 
