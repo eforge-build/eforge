@@ -72,6 +72,185 @@ function makeCtx(stateDir: string, prdValidator: PhaseContext['prdValidator']): 
   };
 }
 
+// --- eforge:region plan-02-final-validation-gates ---
+describe('prdValidate phase — acceptance gate', () => {
+  const makeTempDir = useTempDir();
+
+  it('fails build when prd passes but acceptance_validation:complete is absent', async () => {
+    const stateDir = makeTempDir();
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      // No acceptance_validation:complete emitted
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) {
+      events.push(event);
+    }
+
+    expect(ctx.state.status).toBe('failed');
+    const progress = events.find((e) => e.type === 'planning:progress' && 'message' in e && (e as { message: string }).message.includes('Acceptance'));
+    expect(progress).toBeDefined();
+  });
+
+  it('fails build when acceptance_validation:complete has passed=false', async () => {
+    const stateDir = makeTempDir();
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false, verdicts: [{ criterion: 'Must support login', verdict: 'fail', evidence: 'Not found' }], source: 'prd' } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) {
+      events.push(event);
+    }
+
+    expect(ctx.state.status).toBe('failed');
+  });
+
+  it('fails build when acceptance_validation:complete claims passed=true but includes an unknown verdict', async () => {
+    const stateDir = makeTempDir();
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: true, verdicts: [{ criterion: 'Must support login', verdict: 'unknown', evidence: 'Cannot verify login from diff' }], source: 'prd' } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) {
+      events.push(event);
+    }
+
+    expect(ctx.state.status).toBe('failed');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'planning:progress', message: expect.stringContaining('Acceptance criteria validation failed') }));
+  });
+
+  it('succeeds when prd passes and acceptance_validation:complete has passed=true with only pass verdicts', async () => {
+    const stateDir = makeTempDir();
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: true, verdicts: [{ criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found' }], source: 'prd' } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) {
+      events.push(event);
+    }
+
+    expect(ctx.state.status).not.toBe('failed');
+  });
+});
+
+describe('prdValidate phase — gap close strict handling', () => {
+  const makeTempDir = useTempDir();
+
+  it('fails build when gap_close:complete has passed=false', async () => {
+    const stateDir = makeTempDir();
+    const gaps = [{ requirement: 'Must do X', explanation: 'X not done', complexity: 'moderate' as const }];
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: false, gaps, completionPercent: 80 } as EforgeEvent;
+      yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Gaps remain.' }], source: 'prd' } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    ctx.gapCloser = async function* () {
+      yield { type: 'gap_close:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'gap_close:complete', timestamp: new Date().toISOString(), passed: false } as EforgeEvent;
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) {
+      events.push(event);
+    }
+
+    expect(ctx.state.status).toBe('failed');
+    expect(ctx.gapClosePerformed).toBe(false);
+    const progress = events.find((e) => e.type === 'planning:progress' && 'message' in e && (e as { message: string }).message.includes('Gap closing failed'));
+    expect(progress).toBeDefined();
+  });
+
+  it('fails build when gap closer emits no terminal event', async () => {
+    const stateDir = makeTempDir();
+    const gaps = [{ requirement: 'Must do X', explanation: 'X not done', complexity: 'moderate' as const }];
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: false, gaps, completionPercent: 80 } as EforgeEvent;
+      yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Gaps remain.' }], source: 'prd' } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    ctx.gapCloser = async function* () {
+      yield { type: 'gap_close:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      // No gap_close:complete emitted
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) {
+      events.push(event);
+    }
+
+    expect(ctx.state.status).toBe('failed');
+    expect(ctx.gapClosePerformed).toBe(false);
+    const progress = events.find((e) => e.type === 'planning:progress' && 'message' in e && (e as { message: string }).message.includes('Gap closing failed'));
+    expect(progress).toBeDefined();
+  });
+
+  it('fails build when gap closer throws after starting', async () => {
+    const stateDir = makeTempDir();
+    const gaps = [{ requirement: 'Must do X', explanation: 'X not done', complexity: 'moderate' as const }];
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: false, gaps, completionPercent: 80 } as EforgeEvent;
+      yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Gaps remain.' }], source: 'prd' } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    ctx.gapCloser = async function* () {
+      yield { type: 'gap_close:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      throw new Error('gap closer backend failed');
+    };
+
+    for await (const _ of prdValidate(ctx)) {
+      // drain
+    }
+
+    expect(ctx.state.status).toBe('failed');
+    expect(ctx.gapClosePerformed).toBe(false);
+  });
+
+  it('sets gapClosePerformed when gap_close:complete has passed=true', async () => {
+    const stateDir = makeTempDir();
+    const gaps = [{ requirement: 'Must do X', explanation: 'X not done', complexity: 'moderate' as const }];
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: false, gaps, completionPercent: 80 } as EforgeEvent;
+      yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Gaps remain.' }], source: 'prd' } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    ctx.gapCloser = async function* () {
+      yield { type: 'gap_close:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'gap_close:complete', timestamp: new Date().toISOString(), passed: true } as EforgeEvent;
+    };
+
+    for await (const _ of prdValidate(ctx)) {
+      // drain
+    }
+
+    expect(ctx.gapClosePerformed).toBe(true);
+    expect(ctx.state.status).not.toBe('failed');
+  });
+});
+// --- eforge:endregion plan-02-final-validation-gates ---
+
 describe('prdValidate phase error propagation', () => {
   const makeTempDir = useTempDir();
 

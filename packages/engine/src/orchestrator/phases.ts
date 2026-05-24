@@ -25,6 +25,9 @@ import { executeLandingAction, type LandingResult } from '../landing.js';
 // --- eforge:region plan-03-branch-aware-landing ---
 import type { EforgeConfig, LandingConfig } from '../config.js';
 // --- eforge:endregion plan-03-branch-aware-landing ---
+// --- eforge:region plan-02-final-validation-gates ---
+import type { ValidationConfig } from '../config.js';
+// --- eforge:endregion plan-02-final-validation-gates ---
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
@@ -115,6 +118,10 @@ export interface PhaseContext {
   /** Instantiated stack provider adapter for git-spice landing (stacked builds only). */
   stackProvider?: StackProviderAdapter;
   // --- eforge:endregion plan-02-stack-provider-runtime ---
+  // --- eforge:region plan-02-final-validation-gates ---
+  /** Explicit validation waivers (allowNoCommands, allowEmptyPrdDiff). Absent means no waivers active. */
+  validationPolicy?: ValidationConfig;
+  // --- eforge:endregion plan-02-final-validation-gates ---
 }
 
 /**
@@ -542,7 +549,27 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     ...new Set([...(ctx.postMergeCommands ?? []), ...(validateCommands ?? [])]),
   ];
 
-  if (!allMerged || allValidationCommands.length === 0 || signal?.aborted) return;
+  if (!allMerged || signal?.aborted) return;
+  if (allValidationCommands.length === 0) {
+    // --- eforge:region plan-02-final-validation-gates ---
+    const policy = ctx.validationPolicy;
+    if (policy?.allowNoCommands && policy.noCommandsReason?.trim()) {
+      yield { timestamp: new Date().toISOString(), type: 'validation:start', commands: [] };
+      yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Validation waiver (allowNoCommands): ${policy.noCommandsReason}` } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'validation:complete', passed: true };
+    } else {
+      yield { timestamp: new Date().toISOString(), type: 'validation:start', commands: [] };
+      yield { timestamp: new Date().toISOString(), type: 'validation:complete', passed: false };
+      yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action: ctx.landingAction, featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'No validation commands configured and no waiver' } as EforgeEvent;
+      if (ctx.landingAction === 'merge') {
+        yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'No validation commands configured and no waiver' } as EforgeEvent;
+      }
+      state.status = 'failed';
+      state.completedAt = new Date().toISOString();
+    }
+    // --- eforge:endregion plan-02-final-validation-gates ---
+    return;
+  }
 
   // Resolve effective timeout: clamp to floor and warn if below minimum.
   let effectiveTimeoutMs = ctx.postMergeCommandTimeoutMs ?? 300_000;
@@ -645,11 +672,28 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
   if ((state.status as string) === 'failed') return;
 
   let terminalEmitted = false;
+  // --- eforge:region plan-02-final-validation-gates ---
+  let prdValidationPassed: boolean | undefined;
+  let acceptanceReceived = false;
+  let acceptancePassed = false;
+  let gapClosePerformedThisRun = false;
+  // --- eforge:endregion plan-02-final-validation-gates ---
   try {
     for await (const event of prdValidator(ctx.mergeWorktreePath)) {
       if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
       yield event;
-      if (event.type === 'prd_validation:complete') terminalEmitted = true;
+      if (event.type === 'prd_validation:complete') {
+        terminalEmitted = true;
+        // --- eforge:region plan-02-final-validation-gates ---
+        prdValidationPassed = event.passed;
+        // --- eforge:endregion plan-02-final-validation-gates ---
+      }
+      // --- eforge:region plan-02-final-validation-gates ---
+      if (event.type === 'acceptance_validation:complete') {
+        acceptanceReceived = true;
+        acceptancePassed = event.passed && event.verdicts.length > 0 && event.verdicts.every((v) => v.verdict === 'pass');
+      }
+      // --- eforge:endregion plan-02-final-validation-gates ---
 
       // If PRD validation fails, check viability gate before attempting gap closing
       if (event.type === 'prd_validation:complete' && !event.passed) {
@@ -659,18 +703,41 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
         } else if (ctx.gapCloser && !ctx.gapClosePerformed) {
+          // --- eforge:region plan-02-final-validation-gates ---
+          let gapCloseTerminalPassed: boolean | undefined;
+          // --- eforge:endregion plan-02-final-validation-gates ---
           try {
             for await (const gapEvent of ctx.gapCloser(ctx.mergeWorktreePath, event.gaps, event.completionPercent)) {
               if (gapEvent.type === 'agent:start') ctx.modelTracker.record(gapEvent.model);
               yield gapEvent;
+              // --- eforge:region plan-02-final-validation-gates ---
+              if (gapEvent.type === 'gap_close:complete') {
+                gapCloseTerminalPassed = gapEvent.passed;
+              }
+              // --- eforge:endregion plan-02-final-validation-gates ---
             }
-            ctx.gapClosePerformed = true;
           } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') throw err;
-            // Gap closer errors are non-fatal — fall through to fail
+            // Gap closer errors fail the build
             state.status = 'failed';
             state.completedAt = new Date().toISOString();
           }
+          // --- eforge:region plan-02-final-validation-gates ---
+          if ((state.status as string) !== 'failed') {
+            if (gapCloseTerminalPassed === true) {
+              ctx.gapClosePerformed = true;
+              gapClosePerformedThisRun = true;
+              // Orchestrator will rerun validate+prdValidate after gap close
+            } else {
+              const reason = gapCloseTerminalPassed === false
+                ? 'Gap closing completed with passed=false'
+                : 'Gap closer did not emit a terminal event';
+              yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Gap closing failed: ${reason}` } as EforgeEvent;
+              state.status = 'failed';
+              state.completedAt = new Date().toISOString();
+            }
+          }
+          // --- eforge:endregion plan-02-final-validation-gates ---
         } else {
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
@@ -698,6 +765,39 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     state.status = 'failed';
     state.completedAt = new Date().toISOString();
   }
+
+  // --- eforge:region plan-02-final-validation-gates ---
+  if (!terminalEmitted && (state.status as string) !== 'failed') {
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'PRD validation failed — validator did not emit a terminal verdict' } as EforgeEvent;
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'prd_validation:complete',
+      passed: false,
+      gaps: [{ requirement: 'PRD validator terminal verdict missing', explanation: 'Validator completed without emitting prd_validation:complete.' }],
+    } as EforgeEvent;
+    state.status = 'failed';
+    state.completedAt = new Date().toISOString();
+  }
+
+  // Acceptance gate: when PRD validation passed but acceptance was absent or failed, reject the build.
+  // Skip when gap close was performed this run — the orchestrator will rerun both validate and prdValidate.
+  if (prdValidationPassed === true && (state.status as string) !== 'failed' && !gapClosePerformedThisRun) {
+    if (!acceptanceReceived) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'acceptance_validation:complete',
+        passed: false,
+        verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Validator did not emit acceptance validation evidence.' }],
+        source: 'prd',
+      } as EforgeEvent;
+    }
+    if (!acceptanceReceived || !acceptancePassed) {
+      yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Acceptance criteria validation failed — build rejected' } as EforgeEvent;
+      state.status = 'failed';
+      state.completedAt = new Date().toISOString();
+    }
+  }
+  // --- eforge:endregion plan-02-final-validation-gates ---
 }
 
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---

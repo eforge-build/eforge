@@ -65,6 +65,7 @@ describe('recordSuccessfulBuildArtifact', () => {
       prdId: stackContext.prdId,
       stackContext,
       landingAction: 'leave',
+      validationPolicy: { allowNoCommands: true, noCommandsReason: 'No validation commands for artifact recording test', allowEmptyPrdDiff: false },
     });
 
     const events: EforgeEvent[] = [];
@@ -96,6 +97,7 @@ describe('recordSuccessfulBuildArtifact', () => {
       planRunner,
       prdId: 'non-stacked-prd',
       landingAction: 'leave',
+      validationPolicy: { allowNoCommands: true, noCommandsReason: 'No validation commands for artifact recording test', allowEmptyPrdDiff: false },
     });
 
     let sawLandingStart = false;
@@ -426,4 +428,131 @@ describe('recordArtifact — artifact registry writes', () => {
     expect(layer).toBeDefined();
     expect(layer?.status).toBe('built');
   });
+
+  // --- eforge:region plan-02-final-validation-gates ---
+  it('yields nothing and does not write builds.json when state.status is failed', async () => {
+    // Simulate a post-gap-close rerun where validation or acceptance failed,
+    // leaving state.status=failed. recordArtifact must short-circuit so the
+    // artifact registry is not written for a build that did not fully pass.
+    const cwd = await repo();
+    const state: EforgeState = {
+      setName: 'failed-prd',
+      status: 'failed',
+      startedAt: new Date().toISOString(),
+      baseBranch: 'main',
+      featureBranch: 'eforge/failed-prd',
+      worktreeBase: cwd,
+      plans: {
+        plan1: { status: 'merged', branch: 'plan1', dependsOn: [], merged: true },
+      },
+      completedPlans: [],
+    };
+    const ctx = {
+      state,
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      prdId: 'failed-prd',
+      landingAction: 'merge' as const,
+      featureBranch: 'eforge/failed-prd',
+      config: { baseBranch: 'main' } as OrchestrationConfig,
+    } as unknown as PhaseContext;
+
+    const events = await collectRecordArtifactEvents(ctx);
+
+    // No events emitted — recordArtifact short-circuits on failed state
+    expect(events).toHaveLength(0);
+
+    // Artifact registry must NOT have been written for this build
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds.find((b) => b.prdId === 'failed-prd')).toBeUndefined();
+  });
+
+  it('does not write builds.json when the post-gap acceptance rerun fails', async () => {
+    const cwd = await repo();
+    await exec('git', ['branch', 'eforge/rerun-failed-prd'], { cwd });
+    let prdValidateCallCount = 0;
+    const config = {
+      name: 'rerun-failed-prd',
+      description: 'test',
+      created: new Date().toISOString(),
+      mode: 'excursion',
+      baseBranch: 'main',
+      pipeline: [],
+      plans: [],
+    } as unknown as OrchestrationConfig;
+    const orchestrator = new Orchestrator({
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      planRunner: async function* () {},
+      prdId: 'rerun-failed-prd',
+      landingAction: 'leave',
+      validationPolicy: { allowNoCommands: true, noCommandsReason: 'No validation commands for artifact recording test', allowEmptyPrdDiff: false },
+      gapCloser: async function* () {
+        yield { type: 'gap_close:start', timestamp: new Date().toISOString() } as EforgeEvent;
+        yield { type: 'gap_close:complete', timestamp: new Date().toISOString(), passed: true } as EforgeEvent;
+      },
+      prdValidator: async function* () {
+        prdValidateCallCount++;
+        if (prdValidateCallCount === 1) {
+          yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: false, gaps: [{ requirement: 'Feature X', explanation: 'Missing', complexity: 'moderate' as const }], completionPercent: 80 } as EforgeEvent;
+          return;
+        }
+        yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+        yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false, verdicts: [{ criterion: 'Feature X present', verdict: 'unknown', evidence: 'Cannot verify from rerun diff' }], source: 'prd' } as EforgeEvent;
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of orchestrator.execute(config)) events.push(event);
+
+    expect(prdValidateCallCount).toBe(2);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'acceptance_validation:complete', passed: false }));
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds.find((b) => b.prdId === 'rerun-failed-prd')).toBeUndefined();
+  });
+
+  it('does not write builds.json when the post-gap deterministic validation rerun fails', async () => {
+    const cwd = await repo();
+    await exec('git', ['branch', 'eforge/rerun-command-failed-prd'], { cwd });
+    let prdValidateCallCount = 0;
+    const config = {
+      name: 'rerun-command-failed-prd',
+      description: 'test',
+      created: new Date().toISOString(),
+      mode: 'excursion',
+      baseBranch: 'main',
+      pipeline: [],
+      plans: [],
+    } as unknown as OrchestrationConfig;
+    const orchestrator = new Orchestrator({
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      planRunner: async function* () {},
+      prdId: 'rerun-command-failed-prd',
+      landingAction: 'leave',
+      validateCommands: [
+        'if [ -f .eforge/validation-rerun-marker ]; then exit 1; else mkdir -p .eforge && touch .eforge/validation-rerun-marker; fi',
+      ],
+      gapCloser: async function* () {
+        yield { type: 'gap_close:start', timestamp: new Date().toISOString() } as EforgeEvent;
+        yield { type: 'gap_close:complete', timestamp: new Date().toISOString(), passed: true } as EforgeEvent;
+      },
+      prdValidator: async function* () {
+        prdValidateCallCount++;
+        yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: false, gaps: [{ requirement: 'Feature X', explanation: 'Missing', complexity: 'moderate' as const }], completionPercent: 80 } as EforgeEvent;
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of orchestrator.execute(config)) events.push(event);
+
+    expect(prdValidateCallCount).toBe(1);
+    expect(events.filter((event) => event.type === 'validation:complete')).toEqual([
+      expect.objectContaining({ passed: true }),
+      expect.objectContaining({ passed: false }),
+    ]);
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds.find((b) => b.prdId === 'rerun-command-failed-prd')).toBeUndefined();
+  });
+  // --- eforge:endregion plan-02-final-validation-gates ---
 });

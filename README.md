@@ -57,7 +57,7 @@ eforge also runs standalone. By default, `eforge build` enqueues and a daemon pr
 
 **Blind review** - The reviewer is an inferential sensor: an LLM judging output in a fresh context with no builder knowledge. Separating generation from evaluation [dramatically improves quality](https://www.anthropic.com/engineering/harness-design-long-running-apps) - solo agents tend to approve their own work regardless. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes. The goal is fidelity to the plan - minimizing drift and slop so the code that lands is what was specified, not a reinterpretation.
 
-**Parallel orchestration** - Each plan builds in an isolated git worktree. Expeditions run multiple plans in parallel, merging in topological dependency order. Post-merge validation runs with auto-fix.
+**Parallel orchestration** - Each plan builds in an isolated git worktree. Expeditions run multiple plans in parallel, merging in topological dependency order. Post-merge validation runs with auto-fix. Build success requires both command validation (type-check, tests) and acceptance validation evidence from the PRD validator — either condition can be waived via explicit config with a reason string.
 
 <img src="docs/images/monitor-timeline.png" alt="eforge dashboard - timeline view" width="800">
 

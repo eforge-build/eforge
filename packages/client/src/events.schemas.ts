@@ -2388,6 +2388,40 @@ export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEven
     };
   }
 
+  if (result.data.type === 'acceptance_validation:complete') {
+    const nonPassingCount = result.data.verdicts.filter((v) => v.verdict !== 'pass').length;
+    const waiverIssues = (result.data.waivers ?? [])
+      .map((waiver, index) => ({ waiver, index }))
+      .filter(({ waiver }) => waiver.trim().length === 0);
+    if (waiverIssues.length > 0) {
+      return {
+        success: false,
+        error: {
+          message: '/waivers: waiver entries must be non-empty reason strings',
+          errors: waiverIssues.map(({ index }) => ({ path: `/waivers/${index}`, message: 'waiver entries must be non-empty reason strings' })),
+        },
+      };
+    }
+    if (result.data.passed && nonPassingCount > 0 && (result.data.waivers ?? []).length === 0) {
+      return {
+        success: false,
+        error: {
+          message: '/passed: acceptance_validation passed=true requires all verdicts to pass or explicit waivers',
+          errors: [{ path: '/passed', message: 'passed=true requires all verdicts to pass or explicit waivers' }],
+        },
+      };
+    }
+    if (!result.data.passed && nonPassingCount === 0) {
+      return {
+        success: false,
+        error: {
+          message: '/passed: acceptance_validation passed=false requires at least one fail or unknown verdict',
+          errors: [{ path: '/passed', message: 'passed=false requires at least one fail or unknown verdict' }],
+        },
+      };
+    }
+  }
+
   return result;
 }
 

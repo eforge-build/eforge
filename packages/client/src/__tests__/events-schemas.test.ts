@@ -2788,6 +2788,46 @@ describe('safeParseEforgeEvent — acceptance_validation:complete', () => {
     expect(result.success).toBe(true);
   });
 
+  it('rejects acceptance_validation:complete passed:true with non-passing verdicts unless waived', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+      verdicts: [
+        { criterion: 'Must support OAuth', verdict: 'fail', evidence: 'No OAuth integration found' },
+      ],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete passed:false with all-passing verdicts', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found' },
+      ],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects acceptance_validation:complete with blank waiver reason entries', () => {
+    const result = safeParseEforgeEvent({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: true,
+      verdicts: [
+        { criterion: 'Must support OAuth', verdict: 'fail', evidence: 'No OAuth integration found' },
+      ],
+      waivers: ['   '],
+      source: 'prd',
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects acceptance_validation:complete with empty criterion string', () => {
     const result = safeParseEforgeEvent({
       type: 'acceptance_validation:complete',

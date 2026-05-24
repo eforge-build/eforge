@@ -29,6 +29,9 @@ import type { PolicyGateFailurePolicy } from './extensions/policy-gate-runtime.j
 // --- eforge:region plan-03-branch-aware-landing ---
 import type { EforgeConfig, LandingConfig } from './config.js';
 // --- eforge:endregion plan-03-branch-aware-landing ---
+// --- eforge:region plan-02-final-validation-gates ---
+import type { ValidationConfig } from './config.js';
+// --- eforge:endregion plan-02-final-validation-gates ---
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import type { StackBaseContext } from './stacking/base-resolver.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
@@ -127,6 +130,10 @@ export interface OrchestratorOptions {
   /** Instantiated stack provider adapter for git-spice landing (stacked builds only). */
   stackProvider?: StackProviderAdapter;
   // --- eforge:endregion plan-02-stack-provider-runtime ---
+  // --- eforge:region plan-02-final-validation-gates ---
+  /** Resolved validation waiver config for allowNoCommands and allowEmptyPrdDiff gates. */
+  validationPolicy?: ValidationConfig;
+  // --- eforge:endregion plan-02-final-validation-gates ---
 }
 
 /**
@@ -215,12 +222,22 @@ export class Orchestrator {
       // --- eforge:region plan-02-stack-provider-runtime ---
       stackProvider: this.options.stackProvider,
       // --- eforge:endregion plan-02-stack-provider-runtime ---
+      // --- eforge:region plan-02-final-validation-gates ---
+      validationPolicy: this.options.validationPolicy,
+      // --- eforge:endregion plan-02-final-validation-gates ---
     };
     try {
       yield* executePlans(ctx);
       if ((state.status as string) !== 'failed') yield* validate(ctx);
       if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
-      if ((state.status as string) !== 'failed' && ctx.gapClosePerformed) yield* validate(ctx);
+      // --- eforge:region plan-02-final-validation-gates ---
+      // After gap close, rerun both validate and prdValidate to confirm the fixes
+      // satisfy both validation commands and acceptance criteria.
+      if ((state.status as string) !== 'failed' && ctx.gapClosePerformed) {
+        yield* validate(ctx);
+        if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
+      }
+      // --- eforge:endregion plan-02-final-validation-gates ---
       // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
       if ((state.status as string) !== 'failed') yield* recordArtifact(ctx);
       // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---

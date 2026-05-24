@@ -328,4 +328,50 @@ describe('prdValidate viability gate', () => {
     const ctx = makePhaseContext();
     expect(ctx.minCompletionPercent).toBe(75);
   });
+
+  // --- eforge:region plan-02-final-validation-gates ---
+  it('fails build when gap_close:complete has passed=false', async () => {
+    const ctx = makePhaseContext({
+      minCompletionPercent: 75,
+      prdValidator: fakePrdValidator([
+        { timestamp: new Date().toISOString(), type: 'prd_validation:start' },
+        { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps, completionPercent: 80 },
+        { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Gaps remain.' }], source: 'prd' },
+      ]),
+      gapCloser: async function* () {
+        yield { timestamp: new Date().toISOString(), type: 'gap_close:start' } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'gap_close:complete', passed: false } as EforgeEvent;
+      },
+    });
+
+    const events = await collectEvents(prdValidate(ctx));
+
+    expect(ctx.state.status).toBe('failed');
+    expect(ctx.gapClosePerformed).toBe(false);
+    const progress = events.find((e) => e.type === 'planning:progress' && 'message' in e && (e as { message: string }).message.includes('Gap closing failed'));
+    expect(progress).toBeDefined();
+  });
+
+  it('fails build when gap closer emits no terminal event', async () => {
+    const ctx = makePhaseContext({
+      minCompletionPercent: 75,
+      prdValidator: fakePrdValidator([
+        { timestamp: new Date().toISOString(), type: 'prd_validation:start' },
+        { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps, completionPercent: 80 },
+        { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Gaps remain.' }], source: 'prd' },
+      ]),
+      gapCloser: async function* () {
+        yield { timestamp: new Date().toISOString(), type: 'gap_close:start' } as EforgeEvent;
+        // No gap_close:complete emitted
+      },
+    });
+
+    const events = await collectEvents(prdValidate(ctx));
+
+    expect(ctx.state.status).toBe('failed');
+    expect(ctx.gapClosePerformed).toBe(false);
+    const progress = events.find((e) => e.type === 'planning:progress' && 'message' in e && (e as { message: string }).message.includes('Gap closing failed'));
+    expect(progress).toBeDefined();
+  });
+  // --- eforge:endregion plan-02-final-validation-gates ---
 });

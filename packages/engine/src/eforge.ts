@@ -784,14 +784,22 @@ export class EforgeEngine {
       };
 
       // Create PRD validator closure
+      // --- eforge:region plan-02-final-validation-gates ---
+      const validationPolicy = this.config.build.validation;
+      // --- eforge:endregion plan-02-final-validation-gates ---
       const prdValidator: PrdValidator | undefined = options.prdFilePath ? async function* (validatorCwd) {
         // Read PRD content
         let prdContent: string;
         try {
           prdContent = await readFile(resolve(cwd, options.prdFilePath!), 'utf-8');
         } catch {
-          // If PRD file can't be read, skip validation
+          // --- eforge:region plan-02-final-validation-gates ---
+          // Fail closed: emit events so the orchestrator marks the build as failed.
+          yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'PRD file unreadable', explanation: 'Failed to read the PRD file; cannot validate implementation.' }] } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'PRD file could not be read.' }], source: 'prd' } as EforgeEvent;
           return;
+          // --- eforge:endregion plan-02-final-validation-gates ---
         }
 
         // Build diff: per-file budgeted, no global truncation
@@ -799,10 +807,29 @@ export class EforgeEngine {
         try {
           built = await buildPrdValidatorDiff({ cwd: validatorCwd, baseRef: orchConfig.baseBranch });
         } catch {
+          // --- eforge:region plan-02-final-validation-gates ---
+          // Fail closed: emit events so the orchestrator marks the build as failed.
+          yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'Implementation diff unavailable', explanation: 'Failed to build the implementation diff; cannot validate PRD coverage.' }] } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Implementation diff could not be computed.' }], source: 'prd' } as EforgeEvent;
           return;
+          // --- eforge:endregion plan-02-final-validation-gates ---
         }
 
-        if (!built.renderedText.trim()) return;
+        if (!built.renderedText.trim()) {
+          // --- eforge:region plan-02-final-validation-gates ---
+          if (validationPolicy?.allowEmptyPrdDiff && validationPolicy.emptyPrdDiffReason?.trim()) {
+            yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
+            yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+            yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: true, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'pass', evidence: `Waiver: ${validationPolicy.emptyPrdDiffReason}` }], source: 'prd' } as EforgeEvent;
+          } else {
+            yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
+            yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'Empty implementation diff', explanation: 'No changes were found in the implementation diff; cannot validate PRD coverage.' }] } as EforgeEvent;
+            yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No implementation changes to evaluate.' }], source: 'prd' } as EforgeEvent;
+          }
+          return;
+          // --- eforge:endregion plan-02-final-validation-gates ---
+        }
         const diff = built.renderedText;
 
         const prdSpan = tracing!.createSpan('prd-validator', {});
@@ -951,6 +978,9 @@ export class EforgeEngine {
         // --- eforge:region plan-02-stack-provider-runtime ---
         ...(options.stackProvider !== undefined && { stackProvider: options.stackProvider }),
         // --- eforge:endregion plan-02-stack-provider-runtime ---
+        // --- eforge:region plan-02-final-validation-gates ---
+        validationPolicy,
+        // --- eforge:endregion plan-02-final-validation-gates ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
@@ -980,6 +1010,15 @@ export class EforgeEngine {
             summary = `PRD validation failed: ${event.gaps.length} gap(s) found`;
           }
         }
+        // --- eforge:region plan-02-final-validation-gates ---
+        if (event.type === 'acceptance_validation:complete') {
+          const failCount = event.verdicts.filter((v) => v.verdict !== 'pass').length;
+          if (!event.passed || failCount > 0) {
+            status = 'failed';
+            summary = `Acceptance criteria validation failed: ${Math.max(failCount, 1)} criterion/criteria not met`;
+          }
+        }
+        // --- eforge:endregion plan-02-final-validation-gates ---
         // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
         if (event.type === 'daemon:error' && event.source === 'stack:artifact-recording') {
           status = 'failed';
