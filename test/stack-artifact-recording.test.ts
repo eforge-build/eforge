@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { recordSuccessfulBuildArtifact } from '@eforge-build/engine/stacking';
 import { loadStackState, updateStackLayerLanding } from '@eforge-build/engine/stacking';
+import { loadArtifactRegistry } from '@eforge-build/engine/artifacts';
 import { Orchestrator, type PlanRunner } from '@eforge-build/engine/orchestrator';
 import { recordArtifact } from '@eforge-build/engine/orchestrator/phases';
 import type { EforgeEvent, EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
@@ -61,6 +62,7 @@ describe('recordSuccessfulBuildArtifact', () => {
       repoRoot: cwd,
       mergeWorktreePath: cwd,
       planRunner,
+      prdId: stackContext.prdId,
       stackContext,
       landingAction: 'leave',
     });
@@ -73,6 +75,43 @@ describe('recordSuccessfulBuildArtifact', () => {
     expect(recordedIndex).toBeGreaterThanOrEqual(0);
     expect(landingStartIndex).toBeGreaterThanOrEqual(0);
     expect(recordedIndex).toBeLessThan(landingStartIndex);
+  });
+
+  it('writes the non-stacked artifact registry record before landing starts in the orchestrator pipeline', async () => {
+    const cwd = await repo();
+    await exec('git', ['branch', 'eforge/non-stacked-prd'], { cwd });
+    const config = {
+      name: 'non-stacked-prd',
+      description: 'test',
+      created: new Date().toISOString(),
+      mode: 'excursion',
+      baseBranch: 'main',
+      pipeline: [],
+      plans: [],
+    } as unknown as OrchestrationConfig;
+    const planRunner: PlanRunner = async function* () {};
+    const orchestrator = new Orchestrator({
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      planRunner,
+      prdId: 'non-stacked-prd',
+      landingAction: 'leave',
+    });
+
+    let sawLandingStart = false;
+    let registryRecordExistedAtLandingStart = false;
+    for await (const event of orchestrator.execute(config)) {
+      if (event.type === 'landing:start') {
+        sawLandingStart = true;
+        const registry = await loadArtifactRegistry(cwd);
+        registryRecordExistedAtLandingStart = registry.builds.some(
+          (record) => record.prdId === 'non-stacked-prd' && record.status === 'built',
+        );
+      }
+    }
+
+    expect(sawLandingStart).toBe(true);
+    expect(registryRecordExistedAtLandingStart).toBe(true);
   });
 
   it('writes durable stack layer artifact metadata for a queued PRD', async () => {
@@ -284,5 +323,107 @@ describe('recordSuccessfulBuildArtifact', () => {
       type: 'landing:skipped',
       reason: 'Stack artifact recording failed',
     }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artifact registry integration: non-stacked and stacked builds
+// ---------------------------------------------------------------------------
+
+describe('recordArtifact — artifact registry writes', () => {
+  it('writes to the artifact registry for a non-stacked queued build', async () => {
+    const cwd = await repo();
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
+    const commitSha = stdout.trim();
+    const state = {
+      setName: 'non-stacked-prd',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      baseBranch: 'main',
+      featureBranch: 'eforge/non-stacked-prd',
+      worktreeBase: cwd,
+      plans: {
+        plan1: { status: 'merged', branch: 'plan1', dependsOn: [], merged: true },
+      },
+      completedPlans: [],
+    } as EforgeState;
+    const ctx = {
+      state,
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      prdId: 'non-stacked-prd',
+      // No stackContext — this is a non-stacked queued build.
+      landingAction: 'merge' as const,
+      featureBranch: 'eforge/non-stacked-prd',
+      config: { baseBranch: 'main' } as OrchestrationConfig,
+    } as unknown as PhaseContext;
+
+    const events = await collectRecordArtifactEvents(ctx);
+
+    // No stack:layer:recorded event — no stackContext
+    expect(events.some((e) => e.type === 'stack:layer:recorded')).toBe(false);
+
+    // But the artifact registry must have the entry
+    const registry = await loadArtifactRegistry(cwd);
+    const record = registry.builds.find((b) => b.prdId === 'non-stacked-prd');
+    expect(record).toBeDefined();
+    expect(record?.status).toBe('built');
+    expect(record?.artifactBranch).toBe('eforge/non-stacked-prd');
+    expect(record?.commitSha).toBe(commitSha);
+    expect(record?.landingAction).toBe('merge');
+  });
+
+  it('writes to both artifact registry AND stack layer for a stacked queued build', async () => {
+    const cwd = await repo();
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
+    const commitSha = stdout.trim();
+    const stackContext: StackBaseContext = {
+      prdId: 'stacked-prd',
+      stackId: 'stack-1',
+      provider: 'git-spice',
+      branch: 'eforge/stacked-prd',
+      baseBranch: 'main',
+    };
+    const state = {
+      setName: 'stacked-prd',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      baseBranch: 'main',
+      featureBranch: 'eforge/stacked-prd',
+      worktreeBase: cwd,
+      plans: {
+        plan1: { status: 'merged', branch: 'plan1', dependsOn: [], merged: true },
+      },
+      completedPlans: [],
+    } as EforgeState;
+    const ctx = {
+      state,
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      stackContext,
+      prdId: 'stacked-prd',
+      landingAction: 'pr' as const,
+      featureBranch: 'eforge/stacked-prd',
+      config: { baseBranch: 'main' } as OrchestrationConfig,
+    } as unknown as PhaseContext;
+
+    const events = await collectRecordArtifactEvents(ctx);
+
+    // stack:layer:recorded event is yielded for stacked builds
+    expect(events.some((e) => e.type === 'stack:layer:recorded')).toBe(true);
+
+    // Artifact registry also has the entry
+    const registry = await loadArtifactRegistry(cwd);
+    const record = registry.builds.find((b) => b.prdId === 'stacked-prd');
+    expect(record).toBeDefined();
+    expect(record?.status).toBe('built');
+    expect(record?.artifactBranch).toBe('eforge/stacked-prd');
+    expect(record?.commitSha).toBe(commitSha);
+
+    // Stack layer projection also written
+    const stackState = await loadStackState(cwd);
+    const layer = stackState.layers.find((l) => l.prdId === 'stacked-prd');
+    expect(layer).toBeDefined();
+    expect(layer?.status).toBe('built');
   });
 });

@@ -28,6 +28,8 @@ import type { EforgeConfig, LandingConfig } from '../config.js';
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
+import { upsertArtifact } from '../artifacts/registry.js';
+import { getRefSha } from '../worktree-ops.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 // --- eforge:region plan-02-stack-provider-runtime ---
 import { executeStackLanding } from '../stacking/landing.js';
@@ -696,21 +698,48 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
 }
 
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-/** Record a successful queued stack build artifact before landing starts. */
+/**
+ * Record a successful queued build artifact before landing starts.
+ *
+ * Runs for all queued PRD builds (prdId present), not just stacked ones.
+ * Writes a durable artifact record to the provider-neutral artifact registry
+ * first, then — for stacked builds — also writes the stack layer projection.
+ * Fails the build if the registry write fails (a failed recording must not
+ * proceed to landing so downstream dependents don't unblock prematurely).
+ */
 export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
-  if (!ctx.stackContext) return;
+  // Only run for queued builds (prdId must be present)
+  if (!ctx.prdId) return;
   if ((ctx.state.status as string) === 'failed') return;
   if (ctx.signal?.aborted) return;
   const allMerged = Object.values(ctx.state.plans).every((p) => p.status === 'merged');
   if (!allMerged) return;
 
   try {
-    yield await recordSuccessfulBuildArtifact({
-      cwd: ctx.repoRoot,
-      mergeWorktreePath: ctx.mergeWorktreePath,
-      stackContext: ctx.stackContext,
+    const now = new Date().toISOString();
+    const commitSha = await getRefSha(ctx.mergeWorktreePath, 'HEAD');
+
+    // 1. Write to the provider-neutral artifact registry for all queued builds.
+    await upsertArtifact(ctx.repoRoot, {
+      prdId: ctx.prdId,
+      artifactBranch: ctx.featureBranch,
+      commitSha,
+      resolvedBase: ctx.config.baseBranch,
       landingAction: ctx.landingAction,
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
     });
+
+    // 2. For stacked builds, also write the stack layer projection.
+    if (ctx.stackContext) {
+      yield await recordSuccessfulBuildArtifact({
+        cwd: ctx.repoRoot,
+        mergeWorktreePath: ctx.mergeWorktreePath,
+        stackContext: ctx.stackContext,
+        landingAction: ctx.landingAction,
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     ctx.state.status = 'failed';
@@ -719,7 +748,7 @@ export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeE
       timestamp: new Date().toISOString(),
       type: 'daemon:error',
       source: 'stack:artifact-recording',
-      message: `Failed to record stack artifact for PRD '${ctx.prdId ?? ctx.stackContext.prdId}': ${message}`,
+      message: `Failed to record artifact for PRD '${ctx.prdId}': ${message}`,
     } as EforgeEvent;
     yield {
       timestamp: new Date().toISOString(),

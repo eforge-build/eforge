@@ -1,3 +1,18 @@
+/**
+ * Stack layer projection helper.
+ *
+ * This module writes the stack layer record to `.eforge/stacks/layers.json`
+ * for stacked builds. It is a projection for stacked topology and provider
+ * visibility only — NOT the primary artifact record.
+ *
+ * The provider-neutral artifact registry write (`.eforge/artifacts/builds.json`)
+ * happens first in `recordArtifact` (phases.ts) via `upsertArtifact` from
+ * `artifacts/registry.ts`. That registry is the engine-wide source of truth
+ * for dependency readiness and is written for ALL queued PRD builds (stacked
+ * and non-stacked). This function is called only for stacked builds, after
+ * the registry write succeeds.
+ */
+
 import { getRefSha } from '../worktree-ops.js';
 import type { EforgeEvent } from '../events.js';
 import type { LandingConfig } from '../config.js';

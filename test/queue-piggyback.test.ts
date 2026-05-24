@@ -19,7 +19,7 @@ import {
   loadQueue,
   type QueuedPrd,
 } from '@eforge-build/engine/prd-queue';
-import { upsertStackLayer } from '@eforge-build/engine/stacking';
+import { upsertArtifact } from '@eforge-build/engine/artifacts';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -91,27 +91,13 @@ function writePrdToQueue(cwd: string, queueDir: string, id: string): string {
 
 async function recordArtifact(cwd: string, id: string): Promise<void> {
   const now = new Date().toISOString();
-  await upsertStackLayer(cwd, {
+  await upsertArtifact(cwd, {
     prdId: id,
-    stackId: 'stack',
-    provider: 'git-spice',
-    branch: `eforge/${id}`,
-    artifact: { branch: `eforge/${id}`, commitSha: 'abc123' },
+    artifactBranch: `eforge/${id}`,
+    commitSha: 'abc123',
+    resolvedBase: 'main',
+    landingAction: 'leave',
     status: 'built',
-    recordedAt: now,
-    updatedAt: now,
-  });
-}
-
-async function recordFailedArtifact(cwd: string, id: string): Promise<void> {
-  const now = new Date().toISOString();
-  await upsertStackLayer(cwd, {
-    prdId: id,
-    stackId: 'stack',
-    provider: 'git-spice',
-    branch: `eforge/${id}`,
-    artifact: { branch: `eforge/${id}`, commitSha: 'abc123' },
-    status: 'failed',
     recordedAt: now,
     updatedAt: now,
   });
@@ -273,14 +259,32 @@ describe('unblockWaiting', () => {
     expect(existsSync(join(cwd, queueDir, 'feature.md'))).toBe(false);
   });
 
-  it('does not unblock a PRD when the dependency stack layer is failed even if an artifact ref exists', async () => {
+  it('does not unblock a PRD when the upstream has no usable artifact in the registry', async () => {
     const dir = makeTempDir();
     const { cwd, queueDir } = setupGitQueue(dir);
 
     writePrdToWaiting(cwd, queueDir, 'feature', ['upstream']);
-    await recordFailedArtifact(cwd, 'upstream');
+    // No artifact written to registry — upstream completed without a usable artifact record.
 
     const unblocked = await unblockWaiting(queueDir, cwd, 'upstream', { requireArtifacts: true });
+
+    expect(unblocked).not.toContain('feature');
+    expect(existsSync(join(cwd, queueDir, 'waiting', 'feature.md'))).toBe(true);
+    expect(existsSync(join(cwd, queueDir, 'feature.md'))).toBe(false);
+  });
+
+  it('does not unblock a PRD when the upstream is terminal even if a stale artifact exists', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+
+    writePrdToWaiting(cwd, queueDir, 'feature', ['upstream']);
+    writeFileSync(
+      join(cwd, queueDir, 'failed', 'upstream.md'),
+      '---\ntitle: Failed Upstream\n---\n\n# Failed Upstream\n',
+    );
+    await recordArtifact(cwd, 'upstream');
+
+    const unblocked = await unblockWaiting(queueDir, cwd, 'upstream');
 
     expect(unblocked).not.toContain('feature');
     expect(existsSync(join(cwd, queueDir, 'waiting', 'feature.md'))).toBe(true);
@@ -422,6 +426,69 @@ describe('validateDependsOnExists', () => {
     const dir = makeTempDir();
     // No queue directory at all — should not throw for empty array
     await expect(validateDependsOnExists([], 'does-not-exist', dir)).resolves.toBeUndefined();
+  });
+
+  it('resolves when upstream has a usable artifact in the registry (completed prior run)', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir), { recursive: true });
+    // No queue file — upstream completed in a prior session. But it has a registry artifact.
+    await recordArtifact(dir, 'prior-upstream');
+
+    await expect(validateDependsOnExists(['prior-upstream'], queueDir, dir)).resolves.toBeUndefined();
+  });
+
+  it('throws with "artifact" message when upstream is in failed/ without a registry artifact', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir, 'failed'), { recursive: true });
+    writeFileSync(
+      join(dir, queueDir, 'failed', 'failed-upstream.md'),
+      '---\ntitle: Failed Upstream\n---\n\n# Failed Upstream\n',
+    );
+
+    await expect(
+      validateDependsOnExists(['failed-upstream'], queueDir, dir),
+    ).rejects.toThrow(/artifact/);
+  });
+
+  it('throws with "artifact" message when upstream is in skipped/ without a registry artifact', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir, 'skipped'), { recursive: true });
+    writeFileSync(
+      join(dir, queueDir, 'skipped', 'skipped-upstream.md'),
+      '---\ntitle: Skipped Upstream\n---\n\n# Skipped Upstream\n',
+    );
+
+    await expect(
+      validateDependsOnExists(['skipped-upstream'], queueDir, dir),
+    ).rejects.toThrow(/artifact/);
+  });
+
+  it('throws when upstream is terminal even if a stale registry artifact exists', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir, 'failed'), { recursive: true });
+    writeFileSync(
+      join(dir, queueDir, 'failed', 'failed-upstream.md'),
+      '---\ntitle: Failed Upstream\n---\n\n# Failed Upstream\n',
+    );
+    await recordArtifact(dir, 'failed-upstream');
+
+    await expect(
+      validateDependsOnExists(['failed-upstream'], queueDir, dir),
+    ).rejects.toThrow(/artifact/);
+  });
+
+  it('throws with "unknown queue item" message when dep is not found anywhere', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir), { recursive: true });
+
+    await expect(
+      validateDependsOnExists(['truly-unknown'], queueDir, dir),
+    ).rejects.toThrow(/unknown queue item/);
   });
 });
 

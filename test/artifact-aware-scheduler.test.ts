@@ -10,7 +10,7 @@ import { AsyncEventQueue } from '@eforge-build/engine/concurrency';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
-import { upsertStackLayer } from '@eforge-build/engine/stacking';
+import { upsertArtifact } from '@eforge-build/engine/artifacts';
 
 const exec = promisify(execFile);
 
@@ -32,34 +32,19 @@ async function writePrdFile(p: QueuedPrd): Promise<void> {
 
 async function recordArtifact(cwd: string, id: string): Promise<void> {
   const now = new Date().toISOString();
-  await upsertStackLayer(cwd, {
+  await upsertArtifact(cwd, {
     prdId: id,
-    stackId: 'stack',
-    provider: 'git-spice',
-    branch: `eforge/${id}`,
-    baseBranch: 'main',
-    artifact: { branch: `eforge/${id}`, commitSha: 'abc123' },
+    artifactBranch: `eforge/${id}`,
+    commitSha: 'abc123',
+    resolvedBase: 'main',
+    landingAction: 'pr',
     status: 'built',
     recordedAt: now,
     updatedAt: now,
   });
 }
 
-async function recordFailedLayer(cwd: string, id: string): Promise<void> {
-  const now = new Date().toISOString();
-  await upsertStackLayer(cwd, {
-    prdId: id,
-    stackId: 'stack',
-    provider: 'git-spice',
-    branch: `eforge/${id}`,
-    baseBranch: 'main',
-    status: 'failed',
-    recordedAt: now,
-    updatedAt: now,
-  });
-}
-
-async function env() {
+async function env(stackingEnabled = true) {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-artifact-scheduler-'));
   await exec('git', ['init'], { cwd });
   await exec('git', ['config', 'user.email', 'test@test.com'], { cwd });
@@ -75,7 +60,7 @@ async function env() {
     prdQueue: { dir: '.eforge/queue', watchPollIntervalMs: 0 },
     plugins: { enabled: false },
     extensions: { policyGateTimeoutMs: 5000, policyGateFailurePolicy: 'fail-closed' },
-    stacking: { enabled: true, provider: 'git-spice', gitSpice: {} },
+    stacking: { enabled: stackingEnabled, provider: 'git-spice', gitSpice: {} },
     build: { trunkBranch: 'main' },
   } as unknown as EforgeConfig;
   const makeScheduler = (initialPrds: QueuedPrd[]) => new QueueScheduler({
@@ -132,6 +117,30 @@ describe('QueueScheduler artifact-aware readiness', () => {
     eventQueue.removeProducer();
   });
 
+  it('requires registry artifacts even when stacking is disabled', async () => {
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await env(false);
+    const foundation = prd('foundation', cwd);
+    const feature = prd('feature', cwd, ['foundation']);
+    await writePrdFile(foundation);
+    await writePrdFile(feature);
+
+    const scheduler = makeScheduler([foundation, feature]);
+    await scheduler.start();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toEqual(['foundation']);
+
+    bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'foundation', status: 'completed', timestamp: new Date().toISOString() } satisfies SchedulerInputEvent);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toEqual(['foundation']);
+
+    await recordArtifact(cwd, 'foundation');
+    bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'foundation', status: 'completed', timestamp: new Date().toISOString() } satisfies SchedulerInputEvent);
+    await new Promise((r) => setTimeout(r, 150));
+
+    expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toEqual(['foundation', 'feature']);
+    eventQueue.removeProducer();
+  });
+
   it('does not satisfy an active upstream from a stale pre-existing artifact', async () => {
     const { cwd, eventQueue, spawnPrdChild, makeScheduler } = await env();
     await recordArtifact(cwd, 'foundation');
@@ -171,9 +180,14 @@ describe('QueueScheduler artifact-aware readiness', () => {
     eventQueue.removeProducer();
   });
 
-  it('blocks a dependent when an upstream is only present as a failed stack layer', async () => {
+  it('blocks a dependent when an upstream is present in the failed terminal queue', async () => {
     const { cwd, eventQueue, spawnPrdChild, makeScheduler } = await env();
-    await recordFailedLayer(cwd, 'failed-upstream');
+    await mkdir(join(cwd, '.eforge', 'queue', 'failed'), { recursive: true });
+    await writeFile(
+      join(cwd, '.eforge', 'queue', 'failed', 'failed-upstream.md'),
+      '---\ntitle: failed-upstream\n---\n\n# failed-upstream\n',
+      'utf-8',
+    );
     const feature = prd('feature', cwd, ['failed-upstream']);
     await writePrdFile(feature);
 

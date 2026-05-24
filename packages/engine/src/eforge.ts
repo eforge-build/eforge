@@ -65,8 +65,8 @@ import { applyShardedPlanGuard } from './sharded-plan-guard.js';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { resolveStackBaseContext, type StackBaseContext } from './stacking/base-resolver.js';
-import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from './stacking/state.js';
-import type { StackState } from './stacking/types.js';
+import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
+import type { ArtifactRegistry } from './artifacts/registry.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 // --- eforge:region plan-02-stack-provider-runtime ---
 import { createProvider } from './stacking/provider.js';
@@ -1582,33 +1582,28 @@ export class EforgeEngine {
       prdState.set(prd.id, { status: 'pending', dependsOn: deps });
     }
 
-    const artifactAwareDependencies = (): boolean => this.config.stacking.enabled;
-    const dependencyHasArtifact = (stackState: StackState | undefined, dep: string): boolean =>
-      stackState !== undefined && getRecordedArtifactRef(stackState, dep) !== undefined;
-    const isDependencySatisfied = (dep: string, stackState: StackState | undefined): boolean => {
+    const loadTerminalDependencyIds = async (): Promise<Set<string>> => new Set<string>([
+      ...(await loadQueue(`${queueDir}/failed`, cwd).catch((): import('./prd-queue.js').QueuedPrd[] => [])).map((p) => p.id),
+      ...(await loadQueue(`${queueDir}/skipped`, cwd).catch((): import('./prd-queue.js').QueuedPrd[] => [])).map((p) => p.id),
+    ]);
+    const isDependencySatisfied = (dep: string, artifactRegistry: ArtifactRegistry, terminalIds: Set<string>): boolean => {
+      if (terminalIds.has(dep)) return false;
       const depState = prdState.get(dep);
-      if (artifactAwareDependencies()) {
-        if (depState) return depState.status === 'completed' && dependencyHasArtifact(stackState, dep);
-        return dependencyHasArtifact(stackState, dep);
+      if (depState) {
+        return depState.status === 'completed' && hasUsableArtifact(artifactRegistry, dep);
       }
-      if (!depState) return true;
-      return depState.status === 'completed';
+      return hasUsableArtifact(artifactRegistry, dep);
     };
-    const isDependencyBlocking = (dep: string, stackState: StackState | undefined): boolean => {
+    const isDependencyBlocking = (dep: string, terminalIds: Set<string>): boolean => {
+      if (terminalIds.has(dep)) return true;
       const depState = prdState.get(dep);
-      if (depState?.status === 'failed' || depState?.status === 'skipped' || depState?.status === 'blocked') {
-        return true;
-      }
-      if (!depState && stackState) {
-        return lookupLayerByPrdId(stackState, dep)?.status === 'failed';
-      }
-      return false;
+      return depState?.status === 'failed' || depState?.status === 'skipped' || depState?.status === 'blocked';
     };
 
-    const isReady = (prdId: string, stackState: StackState | undefined): boolean => {
+    const isReady = (prdId: string, artifactRegistry: ArtifactRegistry, terminalIds: Set<string>): boolean => {
       const state = prdState.get(prdId)!;
       if (state.status !== 'pending') return false;
-      return state.dependsOn.every((dep) => isDependencySatisfied(dep, stackState));
+      return state.dependsOn.every((dep) => isDependencySatisfied(dep, artifactRegistry, terminalIds));
     };
 
     // --- eforge:region gap-close ---
@@ -1701,18 +1696,19 @@ export class EforgeEngine {
     };
 
     const startReadyPrds = async (): Promise<void> => {
-      const stackState = artifactAwareDependencies() ? await loadStackState(cwd) : undefined;
+      const artifactRegistry = await loadArtifactRegistry(cwd);
+      const terminalIds = await loadTerminalDependencyIds();
       for (const prd of orderedPrds) {
         if (abortController?.signal.aborted) break;
         const candidateState = prdState.get(prd.id);
         if (candidateState?.status === 'pending') {
-          const blockingDeps = candidateState.dependsOn.filter((dep) => isDependencyBlocking(dep, stackState));
+          const blockingDeps = candidateState.dependsOn.filter((dep) => isDependencyBlocking(dep, terminalIds));
           if (blockingDeps.length > 0) {
             candidateState.status = 'blocked';
             propagateBlocked(prd.id);
           }
         }
-        if (!isReady(prd.id, stackState)) continue;
+        if (!isReady(prd.id, artifactRegistry, terminalIds)) continue;
 
         // --- eforge:region gap-close ---
         const stackValidatedPrd = await applyStackingDispatchValidation(prd);
@@ -1834,7 +1830,7 @@ export class EforgeEngine {
         // This ensures discoverNewPrds() finds any newly unblocked PRDs.
         if (completionStatus === 'completed') {
           try {
-            await unblockWaiting(queueDir, cwd, completedPrdId, { requireArtifacts: this.config.stacking.enabled });
+            await unblockWaiting(queueDir, cwd, completedPrdId, { requireArtifacts: true });
           } catch {
             // Non-fatal: filesystem unblock failure doesn't stop the scheduler
           }
