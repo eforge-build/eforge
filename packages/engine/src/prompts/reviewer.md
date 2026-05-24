@@ -8,12 +8,20 @@ You are reviewing code changes for the following plan:
 
 {{plan_content}}
 
-The changes were made on a branch derived from `{{base_branch}}`. Use `git diff {{base_branch}}...HEAD` to scope your review to only the changed files.
+The engine has provided the changed files and diff context below. Use these to scope your review.
+
+**Changed files:**
+
+{{changed_files}}
+
+**Diff context:**
+
+{{diff_context}}
 
 # Scope
 
-1. Run `git diff {{base_branch}}...HEAD --name-only` to identify changed files.
-2. Read each changed file in full to understand the implementation.
+1. Review the changed files listed above in the engine-provided context.
+2. Read each changed file in full using Read/Grep/Glob to understand the implementation.
 3. Review the changes against the plan's requirements and general code quality standards.
 4. Focus only on the diff — do not review unchanged code.
 
@@ -98,6 +106,6 @@ Rules:
 
 - Do NOT write fixes to files - describe them in the `<fix>` element only
 - Do NOT run `git add` or `git commit`
-- Do NOT modify files outside the scope of `git diff {{base_branch}}...HEAD`
+- Do NOT modify any files — describe fixes in the `<fix>` element only
 - Do NOT review or modify test files unless they are part of the diff
-- Review ONLY the changed files — ignore pre-existing issues in unchanged code
+- Review ONLY the changed files listed in the context above — ignore pre-existing issues in unchanged code

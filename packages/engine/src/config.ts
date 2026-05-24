@@ -51,7 +51,7 @@ export const AGENT_TIERS = ['planning', 'implementation', 'review', 'evaluation'
 export type AgentTier = (typeof AGENT_TIERS)[number];
 export const agentTierSchema = z.enum(AGENT_TIERS).describe('Agent tier for grouping roles by workload type');
 
-const toolPresetConfigSchema = z.enum(['coding', 'none']);
+const toolPresetConfigSchema = z.enum(['coding', 'read-only', 'none']);
 
 // ---------------------------------------------------------------------------
 // Toolbelt Schemas

@@ -67,6 +67,7 @@ describe('directory structure: harnesses/ present with all required files', () =
     'eforge-resource-filter.ts',
     'pi-extensions.ts',
     'pi-mcp-bridge.ts',
+    'tool-safety.ts',
     'usage.ts',
   ] as const;
 

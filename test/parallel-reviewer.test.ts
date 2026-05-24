@@ -304,3 +304,66 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
   });
 });
 // --- eforge:endregion plan-03-reviewer-contract-hardening ---
+
+// --- eforge:region plan-01-reviewer-isolation ---
+describe('runParallelReview — read-only tool preset', () => {
+  it('dispatches built-in perspective reviewers with read-only tools', async () => {
+    const backend = new StubHarness([
+      { text: '<review-issues></review-issues>' },
+      { text: '<review-issues></review-issues>' },
+    ]);
+
+    await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-read-only-tools',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code', 'security'],
+      }),
+    );
+
+    expect(backend.calls.length).toBeGreaterThanOrEqual(2);
+    for (const call of backend.calls) {
+      expect(call.tools).toBe('read-only');
+    }
+  });
+
+  it('dispatches extension perspective reviewers with read-only tools', async () => {
+    const registration: ReviewerPerspectiveRegistration = {
+      kind: 'reviewerPerspective',
+      extensionName: 'test-ext',
+      extensionPath: '/test/ext.js',
+      name: 'accessibility',
+      value: {
+        key: 'accessibility',
+        label: 'Accessibility Review',
+        description: 'Check accessibility concerns.',
+        promptFragment: 'Review keyboard and screen reader support.',
+      },
+    };
+
+    const backend = new StubHarness([{
+      text: '<review-issues></review-issues>',
+    }]);
+
+    await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-ext-read-only',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['accessibility'],
+        extensionReviewerPerspectives: [registration],
+      }),
+    );
+
+    expect(backend.calls).toHaveLength(1);
+    expect(backend.calls[0].tools).toBe('read-only');
+  });
+});
+// --- eforge:endregion plan-01-reviewer-isolation ---

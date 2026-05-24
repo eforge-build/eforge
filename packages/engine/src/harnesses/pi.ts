@@ -36,6 +36,7 @@ import { discoverPiExtensions, type PiExtensionConfig } from './pi-extensions.js
 import { normalizeUsage, toModelUsageEntry } from './usage.js';
 import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
 import { isEforgePiResource, EFORGE_PI_PACKAGE_NAME } from './eforge-resource-filter.js';
+import { expandDisallowedToolAliasesForPi } from './tool-safety.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -608,7 +609,12 @@ export class PiHarness implements AgentHarness {
 
       // Build tools
       const isCoding = options.tools === 'coding';
-      const baseTools = isCoding ? createCodingTools(options.cwd) : createReadOnlyTools(options.cwd);
+      const isReadOnly = options.tools === 'read-only';
+      const baseTools = isCoding
+        ? createCodingTools(options.cwd)
+        : isReadOnly
+          ? createReadOnlyTools(options.cwd)
+          : [];
 
       // Collect bridged MCP tools (only for coding agents). These come from
       // `PiMcpBridge` and are kept strictly separate from planner-supplied
@@ -640,8 +646,10 @@ export class PiHarness implements AgentHarness {
       // only uses `params`, the rest are accepted and ignored.
       // The inputSchema is now a TypeBox TObject — pass it directly as parameters
       // without any Zod/JSON-Schema round-trip.
+      // Read-only agents never receive custom tools — they are blind sensors with
+      // no submission or mutation capability.
       const eforgeCustomTools: ToolDefinition[] = [];
-      if (options.customTools && options.customTools.length > 0) {
+      if (!isReadOnly && options.customTools && options.customTools.length > 0) {
         for (const ct of options.customTools) {
           const parameters = ct.inputSchema;
           const execute: ToolDefinition['execute'] = async (
@@ -675,12 +683,17 @@ export class PiHarness implements AgentHarness {
         }
       }
 
+      // Expand Claude SDK PascalCase mutation tool names to their Pi lowercase
+      // equivalents so that a caller who sets disallowedTools: ['Write', 'Edit', 'Bash']
+      // also blocks 'write', 'edit', 'bash' in Pi without requiring separate callsites.
+      const effectiveDisallowed = expandDisallowedToolAliasesForPi(options.disallowedTools ?? []);
+
       // Filter built-in, bridged, and eforge custom tools independently so
       // each respects `allowedTools`/`disallowedTools` without interfering
       // with the others.
-      const filteredBaseTools = filterTools(baseTools, options.allowedTools, options.disallowedTools);
-      const filteredBridgedMcpTools = filterTools(bridgedMcpTools, options.allowedTools, options.disallowedTools);
-      const filteredEforgeCustomTools = filterTools(eforgeCustomTools, options.allowedTools, options.disallowedTools);
+      const filteredBaseTools = filterTools(baseTools, options.allowedTools, effectiveDisallowed);
+      const filteredBridgedMcpTools = filterTools(bridgedMcpTools, options.allowedTools, effectiveDisallowed);
+      const filteredEforgeCustomTools = filterTools(eforgeCustomTools, options.allowedTools, effectiveDisallowed);
 
       // Create session manager (in-memory, no persistence needed for one-shot agents)
       const sessionManager = SessionManager.inMemory();
@@ -928,9 +941,10 @@ export class PiHarness implements AgentHarness {
           ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
           maxTurns: options.maxTurns,
           ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
-          ...(options.disallowedTools !== undefined ? { disallowedTools: options.disallowedTools } : {}),
+          ...(effectiveDisallowed.length > 0 ? { disallowedTools: effectiveDisallowed } : {}),
           extra: {
             toolsMode: options.tools,
+            isReadOnly,
             thinkingLevel,
             bare: this.bare,
             // --- eforge:region plan-01-pi-headless-isolation ---

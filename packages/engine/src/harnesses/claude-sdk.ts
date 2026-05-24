@@ -30,6 +30,7 @@ import { AgentTerminalError } from '../harness.js';
 import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
 import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
 import { EFORGE_DISALLOWED_TOOL_PATTERNS } from './eforge-resource-filter.js';
+import { mergeMutationDisallowedTools } from './tool-safety.js';
 
 // ---------------------------------------------------------------------------
 // TypeBox → Zod adapter
@@ -273,8 +274,17 @@ export class ClaudeSDKHarness implements AgentHarness {
           ? { ...(this.mcpServers ?? {}), ...customMcpServers }
           : undefined;
 
-      const effectiveDisallowed = resolveDisallowedTools(options.disallowedTools, this.disableSubagents);
-      const usesPreset = options.tools === 'coding';
+      const isReadOnly = options.tools === 'read-only';
+      const usesPreset = options.tools === 'coding' || isReadOnly;
+
+      // For read-only agents: always block mutation tools + subagents, skip mcpServers/plugins/settingSources.
+      // resolveDisallowedTools adds the eforge anti-recursion patterns on top.
+      const effectiveDisallowed = isReadOnly
+        ? resolveDisallowedTools(
+            mergeMutationDisallowedTools(options.disallowedTools, { includeSubagent: true }),
+            false, // Task already included by mergeMutationDisallowedTools
+          )
+        : resolveDisallowedTools(options.disallowedTools, this.disableSubagents);
 
       // Fire debug capture hook with the request eforge is about to hand to the SDK.
       // The Claude Code CLI subprocess may add its own preset preamble on top when
@@ -286,7 +296,7 @@ export class ClaudeSDKHarness implements AgentHarness {
           userPrompt: options.prompt,
           systemPrompt: '', // eforge never sets systemPrompt; SDK coerces undefined to ""
           tools: usesPreset
-            ? [{ name: '<preset:claude_code>', description: 'Claude Code built-in tool preset (Read/Write/Edit/Bash/Grep/Glob/Task/...)' }]
+            ? [{ name: '<preset:claude_code>', description: isReadOnly ? 'Claude Code built-in tool preset (Read-only: Write/Edit/Bash/Task blocked)' : 'Claude Code built-in tool preset (Read/Write/Edit/Bash/Grep/Glob/Task/...)' }]
             : [],
           model: { id: options.model?.id ?? 'default' },
           ...(options.effort !== undefined ? { effort: options.effort } : {}),
@@ -297,15 +307,16 @@ export class ClaudeSDKHarness implements AgentHarness {
           extra: {
             toolsMode: options.tools,
             usesPreset,
+            isReadOnly,
             disableSubagents: this.disableSubagents,
             bare: this.bare,
             projectMcpServerNames: Object.keys(this.mcpServers ?? {}).sort(),
             internalMcpServerNames: customMcpServers.eforge_engine ? ['eforge_engine'] : [],
-            pluginCount: this.plugins?.length ?? 0,
-            settingSources: usesPreset ? (this.settingSources ?? null) : null,
+            pluginCount: isReadOnly ? 0 : (this.plugins?.length ?? 0),
+            settingSources: (usesPreset && !isReadOnly) ? (this.settingSources ?? null) : null,
             customToolCount: options.customTools?.length ?? 0,
             eforgeDisallowedPatterns: [...EFORGE_DISALLOWED_TOOL_PATTERNS],
-            note: 'systemPrompt is empty because eforge does not set one; the Claude Code CLI may inject its preset preamble downstream when usesPreset=true. projectMcpServerNames lists project MCP servers filtered by the tier toolbelt; internalMcpServerNames lists engine-internal MCP servers (eforge_engine custom tools) which are always preserved regardless of toolbelt filtering.',
+            note: 'systemPrompt is empty because eforge does not set one; the Claude Code CLI may inject its preset preamble downstream when usesPreset=true. For read-only agents, mcpServers/plugins/settingSources are omitted to prevent mutating tools from being injected via project config. projectMcpServerNames lists project MCP servers filtered by the tier toolbelt; internalMcpServerNames lists engine-internal MCP servers (eforge_engine custom tools) which are always preserved regardless of toolbelt filtering.',
           },
         };
         await this.onDebugPayload(debugPayload);
@@ -319,10 +330,12 @@ export class ClaudeSDKHarness implements AgentHarness {
           model: options.model?.id,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
-          tools: options.tools === 'coding'
+          tools: usesPreset
             ? { type: 'preset', preset: 'claude_code' }
             : [],
-          ...(options.tools === 'coding' ? {
+          // For read-only agents, omit mcpServers/plugins/settingSources — project config
+          // could inject mutating tools via MCP servers or plugins.
+          ...(usesPreset && !isReadOnly ? {
             mcpServers: mergedMcpServers,
             plugins: this.plugins,
             settingSources: this.settingSources,

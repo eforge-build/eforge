@@ -45,6 +45,9 @@ import {
 } from '../../evaluation/index.js';
 import type { EvaluationVerdict } from '../../schemas.js';
 // --- eforge:endregion plan-02-build-evaluator-enforcement ---
+// --- eforge:region plan-01-reviewer-isolation ---
+import { captureEvaluationSnapshot, EvaluationInvariantError } from '../../evaluation/index.js';
+// --- eforge:endregion plan-01-reviewer-isolation ---
 
 import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
@@ -302,6 +305,35 @@ async function* reviewStageInner(
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
   const reviewTracker = createToolTracker(reviewSpan);
+
+  // --- eforge:region plan-01-reviewer-isolation ---
+  // Capture a worktree snapshot before dispatching reviewers so we can detect
+  // and discard any mutations they make (reviewers must be non-mutating).
+  // Non-git directories (e.g. narrow unit tests) cannot be snapshotted, but a
+  // real git worktree that fails snapshot capture must fail closed.
+  let reviewWorktreeSnapshot: EvaluationSnapshot | undefined;
+  try {
+    reviewWorktreeSnapshot = await captureEvaluationSnapshot(ctx.worktreePath);
+  } catch (snapshotErr) {
+    let isGitWorktree = false;
+    try {
+      const { stdout } = await exec('git', ['rev-parse', '--is-inside-work-tree'], { cwd: ctx.worktreePath });
+      isGitWorktree = stdout.trim() === 'true';
+    } catch {
+      // Not a git repository — reviewer drift detection is skipped.
+    }
+    if (isGitWorktree) {
+      reviewTracker.cleanup();
+      reviewSpan.error(snapshotErr as Error);
+      ctx.buildFailed = true;
+      yield toBuildFailedEvent(ctx.planId, snapshotErr);
+      return metadata;
+    }
+  }
+  // Buffer the aggregate complete event; yield lifecycle/perspective events normally.
+  let bufferedReviewComplete: Extract<EforgeEvent, { type: 'plan:build:review:complete' }> | undefined;
+  // --- eforge:endregion plan-01-reviewer-isolation ---
+
   try {
     for await (const event of runParallelReview({
       planContent: ctx.planFile.body,
@@ -322,7 +354,14 @@ async function* reviewStageInner(
       harness: reviewerHarness,
     })) {
       reviewTracker.handleEvent(event);
-      yield event;
+      // --- eforge:region plan-01-reviewer-isolation ---
+      if (event.type === 'plan:build:review:complete') {
+        // Buffer — yield after drift check below.
+        bufferedReviewComplete = event;
+      } else {
+        yield event;
+      }
+      // --- eforge:endregion plan-01-reviewer-isolation ---
       // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
       if (event.type === 'plan:build:review:parallel:start') {
         metadata.parallel = true;
@@ -335,12 +374,6 @@ async function* reviewStageInner(
         metadata.perspectiveErrors.push(event.perspective);
       }
       // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
-      if (event.type === 'plan:build:review:complete') {
-        ctx.reviewIssues = event.issues;
-        // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
-        metadata.completeIssueCount = event.issues.length;
-        // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
-      }
     }
     reviewTracker.cleanup();
     reviewSpan.end();
@@ -349,15 +382,71 @@ async function* reviewStageInner(
     reviewSpan.error(err as Error);
     // Reviewer agent failed without emitting plan:build:review:complete — inject a
     // synthetic critical issue so the current review cannot be mistaken for stale
-    // issues from an earlier stage or for a clean no-issues result.
-    ctx.reviewIssues = [{
+    // issues from an earlier stage or for a clean no-issues result. Continue to
+    // the drift check below so any reviewer-side mutations made before the
+    // failure are restored before review-fixer/evaluator stages run.
+    const failureIssues: ReviewIssue[] = [{
       severity: 'critical',
       category: 'review-contract',
       file: 'reviewer-output',
       description: `Reviewer agent failed: ${err instanceof Error ? err.message : String(err)}`,
     }];
-    metadata.completeIssueCount = 1;
+    ctx.reviewIssues = failureIssues;
+    metadata.completeIssueCount = failureIssues.length;
+    bufferedReviewComplete = {
+      timestamp: new Date().toISOString(),
+      type: 'plan:build:review:complete',
+      planId: ctx.planId,
+      issues: failureIssues,
+    };
   }
+
+  // --- eforge:region plan-01-reviewer-isolation ---
+  // Check for reviewer-introduced worktree mutations and restore if found.
+  let driftIssue: ReviewIssue | undefined;
+  if (reviewWorktreeSnapshot !== undefined) {
+    try {
+      await assertNoEvaluationDrift(reviewWorktreeSnapshot);
+    } catch (driftErr) {
+      const driftDescription = driftErr instanceof EvaluationInvariantError || driftErr instanceof Error
+        ? driftErr.message
+        : String(driftErr);
+      driftIssue = {
+        severity: 'critical',
+        category: 'review-contract',
+        file: 'reviewer-output',
+        description: `Reviewer agent mutated the worktree: ${driftDescription}`,
+      };
+      try {
+        await restoreEvaluationSnapshotAfterFailure(reviewWorktreeSnapshot);
+      } catch (restoreErr) {
+        // Restoration failed — the worktree is in an unknown state.  Fail the
+        // build so mutated reviewer work cannot silently reach evaluation.
+        ctx.buildFailed = true;
+        yield toBuildFailedEvent(ctx.planId, restoreErr);
+        // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
+        return metadata;
+        // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
+      }
+    }
+  }
+
+  // Augment the buffered complete event with the drift issue (if any), then yield it.
+  const finalIssues = driftIssue
+    ? [...(bufferedReviewComplete?.issues ?? []), driftIssue]
+    : (bufferedReviewComplete?.issues ?? []);
+
+  const completeEvent: Extract<EforgeEvent, { type: 'plan:build:review:complete' }> = bufferedReviewComplete
+    ? { ...bufferedReviewComplete, issues: finalIssues }
+    : { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId: ctx.planId, issues: finalIssues };
+
+  ctx.reviewIssues = completeEvent.issues;
+  // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
+  metadata.completeIssueCount = completeEvent.issues.length;
+  // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
+  yield completeEvent;
+  // --- eforge:endregion plan-01-reviewer-isolation ---
+
   // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
   return metadata;
   // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
@@ -1028,6 +1117,7 @@ registerBuildStage({
 
     // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
     const reviewMetadata = yield* reviewStageInner(ctx, { strategy, perspectives: activePerspectivesForRound });
+    if (ctx.buildFailed) return;
     if (!initialPerspectiveOrder && reviewMetadata.activePerspectives.length > 0) {
       initialPerspectiveOrder = reviewMetadata.activePerspectives;
     }
