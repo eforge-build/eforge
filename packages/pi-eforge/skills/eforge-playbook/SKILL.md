@@ -274,17 +274,17 @@ Call `eforge_playbook { action: "show", name: "<name>" }` to get the full playbo
 Before checking the queue, ask the user how the playbook's branch should land when the build completes:
 
 > "When this playbook finishes, what should happen to the branch?
-> 1. **issue-pr** — open a pull request
-> 2. **merge-to-base-branch** — merge directly to the base branch
-> 3. **leave-branch** — leave the branch as-is (no PR, no merge)"
+> 1. **pr** (`issue-pr`) — open a pull request
+> 2. **merge** (`merge-to-base-branch`) — merge directly to the base branch
+> 3. **leave** (`leave-branch`) — leave the branch as-is (no PR, no merge)"
 
 Await the user's selection. If the user cancels or dismisses, make no enqueue calls and exit.
 
-**If the user selects `merge-to-base-branch`, the current branch is the configured trunk branch, and direct trunk landing is not permitted** (`build.allowLocalMergeToTrunk` is not set to `true` in `eforge/config.yaml`), show the same remediation choices used by `eforge_build`:
+**If the user selects `merge` (`merge-to-base-branch`), the current branch is the configured trunk branch, and direct trunk landing is not permitted** (`build.allowLocalMergeToTrunk` is not set to `true` in `eforge/config.yaml`), show the same remediation choices used by `eforge_build`:
 
 > "Direct merges to trunk are not enabled for this project. Would you like to:
-> 1. **Use `issue-pr` for this run** — open a PR instead
-> 2. **Enable direct merges** — update `eforge/config.yaml` with `build.allowLocalMergeToTrunk: true`, then proceed with `merge-to-base-branch`
+> 1. **Use `pr` for this run** — open a PR instead
+> 2. **Enable direct merges** — update `eforge/config.yaml` with `build.allowLocalMergeToTrunk: true`, then proceed with `merge`
 > 3. **Cancel**"
 
 - If the user picks option 1: set `onSuccess` to `"issue-pr"` and continue to Step 5.4.

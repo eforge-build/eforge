@@ -1,5 +1,16 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
+/**
+ * Wire-protocol values for the landing action.
+ *
+ * User-facing shorthands (`pr`, `merge`, `leave`) map to these values:
+ *   pr    → issue-pr
+ *   merge → merge-to-base-branch
+ *   leave → leave-branch
+ *
+ * These wire values are what the daemon and engine accept via `onSuccess`.
+ * The `landing.action` config key also accepts these values.
+ */
 export type BuildOnSuccess = "merge-to-base-branch" | "issue-pr" | "leave-branch";
 
 export interface BuildLandingConfig {

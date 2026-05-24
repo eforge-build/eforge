@@ -87,10 +87,6 @@ maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (defaul
 build:
   maxValidationRetries: 2     # Fix attempts on validation failure (0 = no retries)
   cleanupPlanFiles: true      # Remove plan files after successful build
-  # onSuccess: merge-to-base-branch  # Landing action after a successful build:
-  #                           #   merge-to-base-branch (default) - auto-merge worktree to base branch
-  #                           #   issue-pr - open a GitHub PR via gh CLI (requires gh)
-  #                           #   leave-branch - leave the branch in place for manual handling
   # trunkBranch: main         # Trunk branch name (default: detected from origin/HEAD, fallback: main)
   # allowLocalMergeToTrunk: false # Allow merge-to-base-branch to land directly on trunk without a PR
   #                           #   Default false; set to true only for solo/unprotected projects
@@ -99,6 +95,22 @@ build:
   # postMergeCommands:        # Extra validation commands
   #   - "pnpm type-check"
   #   - "pnpm test"
+
+# Landing action (preferred over build.onSuccess)
+# landing:
+#   action: pr                # pr | merge | leave (default: merge)
+#                             #   pr: open a PR from the artifact branch targeting the resolved base branch (requires gh CLI)
+#                             #   merge: auto-merge the artifact branch into the base branch
+#                             #   leave: commit to artifact branch and exit without merging or opening a PR
+#   # Note: legacy build.onSuccess (merge-to-base-branch | issue-pr | leave-branch) still works
+#   #       but emits a deprecation warning. Prefer landing.action for new configs.
+
+# Stacking (git-spice backed stacked PRs)
+# stacking:
+#   enabled: false            # Default false. Set to true to enable git-spice stacking.
+#                             # When enabled, artifact branch PRs target the parent artifact branch.
+#   gitSpice:
+#     command: gs             # Optional path to gs binary (default: searches $PATH)
 
 plan:
   outputDir: eforge/plans     # Where plan artifacts are written
@@ -121,9 +133,9 @@ Each command in `postMergeCommands` and the planner-generated validate commands 
 
 `build.trunkBranch` names the project's trunk. eforge detects it automatically from `origin/HEAD` during `eforge init` and writes the result to `eforge/config.yaml`. Override it here if detection is wrong or the repository uses a non-standard default branch name.
 
-`build.allowLocalMergeToTrunk` controls whether `onSuccess: merge-to-base-branch` is permitted to land directly on trunk without opening a pull request. The default is `false`, which is appropriate for team projects with branch protection rules. Set to `true` only for solo projects or repositories where direct trunk commits are acceptable.
+`build.allowLocalMergeToTrunk` controls whether `landing.action: merge` (or legacy `onSuccess: merge-to-base-branch`) is permitted to land directly on trunk without opening a pull request. The default is `false`, which is appropriate for team projects with branch protection rules. Set to `true` only for solo projects or repositories where direct trunk commits are acceptable.
 
-When `allowLocalMergeToTrunk` is `false` and the current branch is trunk, the interactive CLI prompts before enqueue and offers four alternatives: switch to `issue-pr`, cancel, create a feature branch, or enable the solo-dev opt-in. With `--auto`, the engine rejects the build at runtime with a clear error message rather than prompting.
+When `allowLocalMergeToTrunk` is `false` and the current branch is trunk, the interactive CLI prompts before enqueue and offers four alternatives: switch to `pr` (`issue-pr`), cancel, create a feature branch, or enable the solo-dev opt-in. With `--auto`, the engine rejects the build at runtime with a clear error message rather than prompting.
 
 ## PRD provenance
 

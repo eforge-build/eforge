@@ -104,9 +104,9 @@ When the current branch is the **trunk branch** (e.g. `main`) and the effective 
 
 When the current branch is a **feature branch**:
 
-- `merge-to-base-branch` merges the eforge work branch into the user's feature branch locally (no PR required for this step).
-- `issue-pr` merges the eforge work branch into the feature branch locally, then opens a PR from the feature branch to the trunk branch.
-- `leave-branch` commits to the eforge work branch and exits without merging.
+- `merge-to-base-branch` merges the artifact branch into the feature branch locally (no PR required for this step).
+- `issue-pr` opens a PR from the artifact branch targeting the feature branch directly.
+- `leave-branch` commits to the artifact branch and exits without merging or opening a PR.
 
 <!-- parity-skip-start -->
 Call the `eforge_confirm_build` tool with `{ source: "<the complete working source text>" }`. This opens an editor-first review flow where the user can revise the source directly, then choose confirm, revise again, or cancel from a compact keyboard-navigable selector.

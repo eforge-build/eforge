@@ -286,16 +286,16 @@ When a build fails, the queue parent's finalize handler runs the recovery-analys
 
 ## Branch-Aware Landing
 
-After all plans merge into the feature branch, eforge executes the `onSuccess` landing action. The action permitted depends on whether the current branch is the project trunk.
+After all plans merge into the feature branch, eforge executes the landing action. The preferred configuration key is `landing.action` (`pr` | `merge` | `leave`); the legacy `build.onSuccess` key (`issue-pr` | `merge-to-base-branch` | `leave-branch`) still works but emits a deprecation warning. The action permitted depends on whether the current branch is the project trunk.
 
-`build.trunkBranch` names the trunk (detected from `origin/HEAD` at init time; defaults to `main`). `build.allowLocalMergeToTrunk` controls whether a direct local merge to trunk is permitted when `onSuccess: merge-to-base-branch`.
+`build.trunkBranch` names the trunk (detected from `origin/HEAD` at init time; defaults to `main`). `build.allowLocalMergeToTrunk` controls whether a direct local merge to trunk is permitted when `landing.action: merge`.
 
-| Current branch | `onSuccess: merge-to-base-branch` | `onSuccess: issue-pr` |
+| Current branch | `landing.action: merge` | `landing.action: pr` |
 |---|---|---|
-| **Trunk** | Requires `allowLocalMergeToTrunk: true`; rejected with a remediation message otherwise | PR from build branch to trunk |
-| **Feature branch** | Merges build branch into feature branch locally | Merges build branch into feature branch locally, then opens PR from feature branch to trunk |
+| **Trunk** | Requires `allowLocalMergeToTrunk: true`; rejected with a remediation message otherwise | PR from artifact branch to trunk |
+| **Feature branch** | Merges artifact branch into feature branch locally | Opens a PR from the artifact branch targeting the feature branch directly |
 
-When `allowLocalMergeToTrunk` is `false` and the CLI is running interactively on trunk, it prompts before enqueue and offers four resolutions: switch to `issue-pr`, cancel, create or switch to a feature branch, or enable the solo-dev opt-in. When `--auto` is set, the CLI defers to the engine, which rejects the build at runtime via `landing:skipped` with a reason of the form `Local merge to trunk '<trunk>' is not permitted (set allowLocalMergeToTrunk: true to opt in)`.
+When `allowLocalMergeToTrunk` is `false` and the CLI is running interactively on trunk, it prompts before enqueue and offers four resolutions: switch to `pr` (`issue-pr`), cancel, create or switch to a feature branch, or enable the solo-dev opt-in. When `--auto` is set, the CLI defers to the engine, which rejects the build at runtime via `landing:skipped` with a reason of the form `Local merge to trunk '<trunk>' is not permitted (set allowLocalMergeToTrunk: true to opt in)`.
 
 ## Monitor
 
