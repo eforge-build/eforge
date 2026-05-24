@@ -19,7 +19,7 @@ import {
   loadQueue,
   type QueuedPrd,
 } from '@eforge-build/engine/prd-queue';
-import { upsertArtifact } from '@eforge-build/engine/artifacts';
+import { upsertArtifact, upsertCompletion } from '@eforge-build/engine/artifacts';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -412,6 +412,46 @@ describe('validateDependsOnExists', () => {
     await expect(validateDependsOnExists(['in-waiting'], queueDir, dir)).resolves.toBeUndefined();
   });
 
+  it('resolves for an active queue item even when a stale completion index entry exists', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir), { recursive: true });
+    writeFileSync(
+      join(dir, queueDir, 'active-upstream.md'),
+      '---\ntitle: Active Upstream\n---\n\n# Active Upstream\n',
+    );
+    const now = new Date().toISOString();
+    await upsertCompletion(dir, {
+      prdId: 'active-upstream',
+      status: 'failed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(validateDependsOnExists(['active-upstream'], queueDir, dir)).resolves.toBeUndefined();
+  });
+
+  it('resolves for an active waiting item even when a stale completion index entry exists', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir, 'waiting'), { recursive: true });
+    writeFileSync(
+      join(dir, queueDir, 'waiting', 'waiting-upstream.md'),
+      '---\ntitle: Waiting Upstream\n---\n\n# Waiting Upstream\n',
+    );
+    const now = new Date().toISOString();
+    await upsertCompletion(dir, {
+      prdId: 'waiting-upstream',
+      status: 'completed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(validateDependsOnExists(['waiting-upstream'], queueDir, dir)).resolves.toBeUndefined();
+  });
+
   it('throws when upstream does not exist anywhere in the queue', async () => {
     const dir = makeTempDir();
     const queueDir = 'eforge/queue';
@@ -490,6 +530,128 @@ describe('validateDependsOnExists', () => {
       validateDependsOnExists(['truly-unknown'], queueDir, dir),
     ).rejects.toThrow(/unknown queue item/);
   });
+
+  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+
+  it('throws with "artifact" message when completion index has failed entry even with stale registry artifact', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir), { recursive: true });
+    // Stale artifact exists but completion index says failed — completion index wins.
+    await recordArtifact(dir, 'ci-failed-upstream');
+    const now = new Date().toISOString();
+    await upsertCompletion(dir, {
+      prdId: 'ci-failed-upstream',
+      status: 'failed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      validateDependsOnExists(['ci-failed-upstream'], queueDir, dir),
+    ).rejects.toThrow(/artifact/);
+  });
+
+  it('throws with "artifact" message when completion index has skipped entry even with stale registry artifact', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir), { recursive: true });
+    // Stale artifact exists but completion index says skipped — completion index wins.
+    await recordArtifact(dir, 'ci-skipped-upstream');
+    const now = new Date().toISOString();
+    await upsertCompletion(dir, {
+      prdId: 'ci-skipped-upstream',
+      status: 'skipped',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      validateDependsOnExists(['ci-skipped-upstream'], queueDir, dir),
+    ).rejects.toThrow(/artifact/);
+  });
+
+  it('throws with "artifact" message when completion index has completed entry with artifactAvailable: false', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir), { recursive: true });
+    const now = new Date().toISOString();
+    await upsertCompletion(dir, {
+      prdId: 'ci-completed-no-artifact',
+      status: 'completed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      validateDependsOnExists(['ci-completed-no-artifact'], queueDir, dir),
+    ).rejects.toThrow(/artifact/);
+  });
+
+  it('throws with "artifact" message when completion index completed without artifact even with stale registry artifact', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir), { recursive: true });
+    await recordArtifact(dir, 'ci-completed-no-artifact-stale');
+    const now = new Date().toISOString();
+    await upsertCompletion(dir, {
+      prdId: 'ci-completed-no-artifact-stale',
+      status: 'completed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      validateDependsOnExists(['ci-completed-no-artifact-stale'], queueDir, dir),
+    ).rejects.toThrow(/artifact/);
+  });
+
+  it('throws with "artifact" message when completion index completed but no registry artifact', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir), { recursive: true });
+    // completion index says completed+artifactAvailable:true but no actual artifact record
+    const now = new Date().toISOString();
+    await upsertCompletion(dir, {
+      prdId: 'ci-completed-missing-artifact',
+      status: 'completed',
+      artifactAvailable: true,
+      artifactBranch: 'eforge/ci-completed-missing-artifact',
+      completedAt: now,
+      updatedAt: now,
+    });
+    // No upsertArtifact call — registry has no record.
+
+    await expect(
+      validateDependsOnExists(['ci-completed-missing-artifact'], queueDir, dir),
+    ).rejects.toThrow(/artifact/);
+  });
+
+  it('resolves when completion index completed with artifactAvailable: true and registry artifact present', async () => {
+    const dir = makeTempDir();
+    const queueDir = 'eforge/queue';
+    mkdirSync(join(dir, queueDir), { recursive: true });
+    await recordArtifact(dir, 'ci-completed-with-artifact');
+    const now = new Date().toISOString();
+    await upsertCompletion(dir, {
+      prdId: 'ci-completed-with-artifact',
+      status: 'completed',
+      artifactAvailable: true,
+      artifactBranch: 'eforge/ci-completed-with-artifact',
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      validateDependsOnExists(['ci-completed-with-artifact'], queueDir, dir),
+    ).resolves.toBeUndefined();
+  });
+
+  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 });
 
 // ---------------------------------------------------------------------------

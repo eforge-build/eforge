@@ -25,6 +25,10 @@ import type { QueueOptions } from '../eforge.js';
 import { loadArtifactRegistry, hasUsableArtifact } from '../artifacts/registry.js';
 import type { ArtifactRegistry } from '../artifacts/registry.js';
 // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+// --- eforge:region plan-01-runtime-artifact-diagnostics ---
+import { loadCompletionRegistry, upsertCompletion, lookupCompletion } from '../artifacts/completions.js';
+import type { CompletionRegistry } from '../artifacts/completions.js';
+// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 // --- eforge:region plan-02-runtime-and-integration ---
 import type { NativeExtensionRegistry } from '../extensions/types.js';
 import type { ProfileUsageProvider } from '../profile-usage.js';
@@ -405,28 +409,49 @@ export class QueueScheduler {
   }
 
   // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-  private isDependencyBlocking(dep: string, terminalIds: Set<string>): boolean {
-    const depState = this.prdState.get(dep);
-    return terminalIds.has(dep) || depState?.status === 'failed' || depState?.status === 'skipped' || depState?.status === 'blocked';
-  }
+  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+  private isDependencyBlocking(dep: string, terminalIds: Set<string>, completionRegistry: CompletionRegistry): boolean {
+    if (terminalIds.has(dep)) return true;
 
-  private isDependencySatisfied(dep: string, artifactRegistry: ArtifactRegistry, terminalIds: Set<string>): boolean {
-    if (terminalIds.has(dep)) return false;
     const depState = this.prdState.get(dep);
     if (depState) {
-      // Completion is necessary but not sufficient: the durable registry record
-      // remains the source of truth for dependency readiness.
+      // Active in-memory queue state takes precedence over stale completion
+      // records from prior attempts. Pending/running deps are unmet, not
+      // terminally blocked.
+      return depState.status === 'failed' || depState.status === 'skipped' || depState.status === 'blocked';
+    }
+
+    // Completion index supersedes stale artifacts for out-of-session deps.
+    const completionRecord = lookupCompletion(completionRegistry, dep);
+    if (completionRecord?.status === 'failed' || completionRecord?.status === 'skipped') return true;
+    return false;
+  }
+
+  private isDependencySatisfied(dep: string, artifactRegistry: ArtifactRegistry, terminalIds: Set<string>, completionRegistry: CompletionRegistry): boolean {
+    if (terminalIds.has(dep)) return false;
+
+    const depState = this.prdState.get(dep);
+    if (depState) {
+      // For active deps in this scheduler, wait for the live run outcome and
+      // the durable artifact registry entry; do not let stale completion
+      // records from earlier attempts override current queue state.
       return depState.status === 'completed' && hasUsableArtifact(artifactRegistry, dep);
     }
+
+    // Completion index supersedes stale artifacts for out-of-session deps.
+    const completionRecord = lookupCompletion(completionRegistry, dep);
+    if (completionRecord?.status === 'failed' || completionRecord?.status === 'skipped') return false;
+    if (completionRecord?.status === 'completed' && !completionRecord.artifactAvailable) return false;
     // Out-of-session dep (completed in a prior run or enqueued into a
     // separate queue instance): require a durable artifact registry entry.
     return hasUsableArtifact(artifactRegistry, dep);
   }
+  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
-  private isReady(prdId: string, artifactRegistry: ArtifactRegistry, terminalIds: Set<string>): boolean {
+  private isReady(prdId: string, artifactRegistry: ArtifactRegistry, terminalIds: Set<string>, completionRegistry: CompletionRegistry): boolean {
     const state = this.prdState.get(prdId);
     if (!state || state.status !== 'pending') return false;
-    return state.dependsOn.every((dep) => this.isDependencySatisfied(dep, artifactRegistry, terminalIds));
+    return state.dependsOn.every((dep) => this.isDependencySatisfied(dep, artifactRegistry, terminalIds, completionRegistry));
   }
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
@@ -592,7 +617,12 @@ export class QueueScheduler {
     // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
     // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-    const artifactRegistry = await loadArtifactRegistry(this.cwd);
+    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+    const [artifactRegistry, completionRegistry] = await Promise.all([
+      loadArtifactRegistry(this.cwd),
+      loadCompletionRegistry(this.cwd),
+    ]);
+    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
     const terminalIds = new Set<string>([
       ...(await loadQueue(`${this.queueDir}/failed`, this.cwd).catch((): QueuedPrd[] => [])).map((p) => p.id),
       ...(await loadQueue(`${this.queueDir}/skipped`, this.cwd).catch((): QueuedPrd[] => [])).map((p) => p.id),
@@ -607,12 +637,12 @@ export class QueueScheduler {
       const candidateState = this.prdState.get(prd.id);
       if (candidateState?.status === 'pending') {
         // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-        const blockingDeps = candidateState.dependsOn.filter((dep) => this.isDependencyBlocking(dep, terminalIds));
+        const blockingDeps = candidateState.dependsOn.filter((dep) => this.isDependencyBlocking(dep, terminalIds, completionRegistry));
         if (blockingDeps.length > 0) {
           candidateState.status = 'blocked';
           this.propagateBlocked(prd.id);
         }
-        const unmetDeps = candidateState.dependsOn.filter((dep) => !this.isDependencySatisfied(dep, artifactRegistry, terminalIds));
+        const unmetDeps = candidateState.dependsOn.filter((dep) => !this.isDependencySatisfied(dep, artifactRegistry, terminalIds, completionRegistry));
         // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
         if (unmetDeps.length > 0 && !dependencyBlockedEmitted.has(prd.id)) {
           dependencyBlockedEmitted.add(prd.id);
@@ -626,7 +656,7 @@ export class QueueScheduler {
       }
       // --- eforge:endregion plan-02-scheduler-emission ---
 
-      if (!this.isReady(prd.id, artifactRegistry, terminalIds)) continue;
+      if (!this.isReady(prd.id, artifactRegistry, terminalIds, completionRegistry)) continue;
 
       // --- eforge:region plan-02-runtime-and-integration ---
       // Skip if already in routing/launch path (prevents duplicate launches
@@ -909,6 +939,38 @@ export class QueueScheduler {
     } else {
       this._processed++;
     }
+
+    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+    // Record terminal completion in the completion index before unblocking waiting
+    // PRDs or propagating skips. This ensures the index is current when dependents
+    // are evaluated.
+    try {
+      const now = new Date().toISOString();
+      // For completed status, check artifact registry to determine artifactAvailable.
+      let artifactAvailable = false;
+      let artifactBranch: string | undefined;
+      if (status === 'completed') {
+        try {
+          const artifactRegistry = await loadArtifactRegistry(this.cwd);
+          const record = artifactRegistry.builds.find((b) => b.prdId === prdId);
+          artifactAvailable = record?.status === 'built';
+          artifactBranch = record?.artifactBranch;
+        } catch {
+          // Best-effort: if registry can't be read, artifactAvailable stays false.
+        }
+      }
+      await upsertCompletion(this.cwd, {
+        prdId,
+        status,
+        artifactAvailable,
+        ...(artifactBranch !== undefined && { artifactBranch }),
+        completedAt: now,
+        updatedAt: now,
+      });
+    } catch {
+      // Non-fatal: completion index recording failure must not block scheduling.
+    }
+    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
     // Filesystem state transitions (preserving plan-05 semantics).
     // --- eforge:region plan-05-piggyback-and-queue-scheduling ---

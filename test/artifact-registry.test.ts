@@ -15,6 +15,7 @@ import {
   lookupArtifactByPrdId,
   hasUsableArtifact,
   artifactRegistryPath,
+  updateArtifactRecord,
   type ArtifactRecord,
   type ArtifactRegistry,
 } from '@eforge-build/engine/artifacts';
@@ -240,5 +241,149 @@ describe('hasUsableArtifact', () => {
       builds: [{ ...makeRecord('prd-failed'), status: 'failed' }],
     } as unknown as ArtifactRegistry;
     expect(hasUsableArtifact(registry, 'prd-failed')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ArtifactRecord — optional landing metadata fields
+// ---------------------------------------------------------------------------
+
+describe('ArtifactRecord landing metadata schema', () => {
+  it('accepts a record with no landing metadata (all optional fields absent)', () => {
+    const record = makeRecord('prd-no-landing');
+    // All landing metadata fields are optional — the base record should be valid.
+    expect(record.landingStatus).toBeUndefined();
+    expect(record.prUrl).toBeUndefined();
+    expect(record.landingCompletedAt).toBeUndefined();
+    expect(record.landingFailureReason).toBeUndefined();
+  });
+
+  it('stores and loads landing metadata round-trip', async () => {
+    const makeTempDir = useTempDir('eforge-artifact-landing-schema-');
+    const cwd = makeTempDir();
+    const record: ArtifactRecord = {
+      ...makeRecord('prd-landing'),
+      landingStatus: 'complete',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+      landingCompletedAt: '2026-01-01T12:00:00.000Z',
+    };
+    await upsertArtifact(cwd, record);
+
+    const registry = await loadArtifactRegistry(cwd);
+    const loaded = registry.builds[0];
+    expect(loaded.landingStatus).toBe('complete');
+    expect(loaded.prUrl).toBe('https://github.com/owner/repo/pull/42');
+    expect(loaded.landingCompletedAt).toBe('2026-01-01T12:00:00.000Z');
+    expect(loaded.landingFailureReason).toBeUndefined();
+  });
+
+  it('stores failed landing metadata including failure reason', async () => {
+    const makeTempDir = useTempDir('eforge-artifact-landing-failed-');
+    const cwd = makeTempDir();
+    const record: ArtifactRecord = {
+      ...makeRecord('prd-failed-landing'),
+      landingStatus: 'failed',
+      landingFailureReason: 'gh pr create failed: repository not found',
+      landingCompletedAt: '2026-01-01T12:00:00.000Z',
+    };
+    await upsertArtifact(cwd, record);
+
+    const registry = await loadArtifactRegistry(cwd);
+    const loaded = registry.builds[0];
+    expect(loaded.landingStatus).toBe('failed');
+    expect(loaded.landingFailureReason).toBe('gh pr create failed: repository not found');
+    expect(loaded.prUrl).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateArtifactRecord — locked partial update
+// ---------------------------------------------------------------------------
+
+describe('updateArtifactRecord', () => {
+  const makeTempDir = useTempDir('eforge-artifact-update-');
+
+  it('is a no-op when no record exists for prdId', async () => {
+    const cwd = makeTempDir();
+    // Should not throw and should return an empty registry.
+    const registry = await updateArtifactRecord(cwd, 'prd-ghost', { landingStatus: 'complete' });
+    expect(registry.builds).toHaveLength(0);
+  });
+
+  it('merges updates into an existing record', async () => {
+    const cwd = makeTempDir();
+    await upsertArtifact(cwd, makeRecord('prd-update-me'));
+
+    await updateArtifactRecord(cwd, 'prd-update-me', {
+      landingStatus: 'complete',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      landingCompletedAt: '2026-01-01T12:00:00.000Z',
+    });
+
+    const registry = await loadArtifactRegistry(cwd);
+    const updated = registry.builds[0];
+    expect(updated.landingStatus).toBe('complete');
+    expect(updated.prUrl).toBe('https://github.com/owner/repo/pull/1');
+    expect(updated.landingCompletedAt).toBe('2026-01-01T12:00:00.000Z');
+  });
+
+  it('preserves recordedAt from the original record', async () => {
+    const cwd = makeTempDir();
+    const originalTime = '2025-01-01T00:00:00.000Z';
+    await upsertArtifact(cwd, makeRecord('prd-preserve', { recordedAt: originalTime }));
+
+    await updateArtifactRecord(cwd, 'prd-preserve', { landingStatus: 'complete' });
+
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds[0].recordedAt).toBe(originalTime);
+  });
+
+  it('preserves status: built on the record', async () => {
+    const cwd = makeTempDir();
+    await upsertArtifact(cwd, makeRecord('prd-status'));
+
+    await updateArtifactRecord(cwd, 'prd-status', { landingStatus: 'skipped' });
+
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds[0].status).toBe('built');
+    // hasUsableArtifact must remain true after updating landing metadata.
+    expect(hasUsableArtifact(registry, 'prd-status')).toBe(true);
+  });
+
+  it('updates updatedAt when merging partial updates', async () => {
+    const cwd = makeTempDir();
+    const originalTime = '2025-01-01T00:00:00.000Z';
+    await saveArtifactRegistry(cwd, {
+      version: 1,
+      builds: [makeRecord('prd-ts-upd', { updatedAt: originalTime })],
+    });
+
+    await updateArtifactRecord(cwd, 'prd-ts-upd', { landingStatus: 'complete' });
+
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds[0].updatedAt).not.toBe(originalTime);
+  });
+
+  it('can update commitSha on the artifact record', async () => {
+    const cwd = makeTempDir();
+    await upsertArtifact(cwd, makeRecord('prd-sha', { commitSha: 'old-sha' }));
+
+    await updateArtifactRecord(cwd, 'prd-sha', { commitSha: 'new-sha-after-cleanup' });
+
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds[0].commitSha).toBe('new-sha-after-cleanup');
+  });
+
+  it('does not affect other records when updating one', async () => {
+    const cwd = makeTempDir();
+    await upsertArtifact(cwd, makeRecord('prd-a'));
+    await upsertArtifact(cwd, makeRecord('prd-b'));
+
+    await updateArtifactRecord(cwd, 'prd-a', { landingStatus: 'complete' });
+
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds).toHaveLength(2);
+    const bRecord = registry.builds.find((b) => b.prdId === 'prd-b');
+    expect(bRecord?.landingStatus).toBeUndefined();
   });
 });

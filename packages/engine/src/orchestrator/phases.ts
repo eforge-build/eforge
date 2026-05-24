@@ -37,6 +37,9 @@ import { getRefSha } from '../worktree-ops.js';
 // --- eforge:region plan-04-committed-work-artifact-safety ---
 import { getWorktreeDirtyFiles } from '../worktree-ops.js';
 // --- eforge:endregion plan-04-committed-work-artifact-safety ---
+// --- eforge:region plan-01-runtime-artifact-diagnostics ---
+import { updateArtifactRecord } from '../artifacts/registry.js';
+// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 // --- eforge:region plan-02-stack-provider-runtime ---
 import { executeStackLanding } from '../stacking/landing.js';
 import { updateStackLayerLanding } from '../stacking/state.js';
@@ -924,6 +927,22 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
       startedAt: now,
       completedAt: now,
     });
+    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+    // Record skipped landing metadata on the artifact record when build fails
+    // before landing could be attempted. The pre-landing artifact record remains
+    // usable (hasUsableArtifact still returns true) — only landing metadata is added.
+    if (ctx.prdId) {
+      try {
+        await updateArtifactRecord(ctx.repoRoot, ctx.prdId, {
+          landingStatus: 'skipped',
+          landingFailureReason: preLandingSkipReason,
+          landingCompletedAt: now,
+        });
+      } catch {
+        // Non-fatal.
+      }
+    }
+    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
     yield {
       timestamp: now,
       type: 'stack:landing:update',
@@ -947,6 +966,9 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
   // a successful PR landing.
   let stackPrLandingCompleted = false;
   let stackPrLandingFailure: string | undefined;
+  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+  let stackPrLandingPrUrl: string | undefined;
+  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
   for await (const event of executeStackLanding({
     cwd: ctx.repoRoot,
     mergeWorktreePath: ctx.mergeWorktreePath,
@@ -961,7 +983,12 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
   })) {
     if (event.type === 'stack:landing:update' && effectiveLandingAction === 'pr') {
-      if (event.status === 'complete') stackPrLandingCompleted = true;
+      if (event.status === 'complete') {
+        stackPrLandingCompleted = true;
+        // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+        stackPrLandingPrUrl = (event as { prUrl?: string }).prUrl;
+        // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
+      }
       if (event.status === 'failed') stackPrLandingFailure = event.reason ?? 'Stack landing failed';
     }
     yield event;
@@ -972,8 +999,48 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
   if (effectiveLandingAction === 'pr') {
     if (stackPrLandingCompleted) {
       ctx.landingSucceeded = true;
+      // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+      // Finalize artifact record with landing metadata after stacked PR landing completes.
+      if (ctx.prdId) {
+        try {
+          const completedAt = new Date().toISOString();
+          // Refresh commitSha from the feature branch ref after cleanup commits.
+          let commitSha: string | undefined;
+          try {
+            const dirtyFiles = await getWorktreeDirtyFiles(ctx.mergeWorktreePath);
+            if (dirtyFiles.length === 0) {
+              commitSha = await getRefSha(ctx.mergeWorktreePath, ctx.featureBranch);
+            }
+          } catch {
+            // Best-effort: if SHA refresh fails, preserve the pre-landing SHA.
+          }
+          await updateArtifactRecord(ctx.repoRoot, ctx.prdId, {
+            ...(commitSha !== undefined && { commitSha }),
+            landingStatus: 'complete',
+            ...(stackPrLandingPrUrl !== undefined && { prUrl: stackPrLandingPrUrl }),
+            landingCompletedAt: completedAt,
+          });
+        } catch {
+          // Non-fatal: artifact metadata update failure must not affect landing outcome.
+        }
+      }
+      // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
     } else {
       const reason = stackPrLandingFailure ?? 'Stack landing did not complete';
+      // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+      // Record landing failure metadata on the artifact record.
+      if (ctx.prdId) {
+        try {
+          await updateArtifactRecord(ctx.repoRoot, ctx.prdId, {
+            landingStatus: 'failed',
+            landingFailureReason: reason,
+            landingCompletedAt: new Date().toISOString(),
+          });
+        } catch {
+          // Non-fatal.
+        }
+      }
+      // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
       if (stackPrLandingFailure === undefined) {
         const now = new Date().toISOString();
         // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
@@ -1054,6 +1121,20 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason };
         yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason };
         // --- eforge:endregion plan-01-engine-config-and-landing ---
+        // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+        // Record skipped landing metadata when policy gate blocks the build.
+        if (ctx.prdId) {
+          try {
+            await updateArtifactRecord(ctx.repoRoot, ctx.prdId, {
+              landingStatus: 'skipped',
+              landingFailureReason: reason,
+              landingCompletedAt: new Date().toISOString(),
+            });
+          } catch {
+            // Non-fatal.
+          }
+        }
+        // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
         state.status = 'failed';
         state.completedAt = new Date().toISOString();
         if (ctx.stackContext) {
@@ -1129,6 +1210,40 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       yield next.value;
     }
     ctx.landingSucceeded = landingResult.landingSucceeded;
+
+    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+    // Finalize artifact metadata after generic landing for queued builds.
+    // Runs for all landing actions (pr, merge, leave) when prdId is present.
+    if (ctx.prdId) {
+      try {
+        const completedAt = new Date().toISOString();
+        const genericLandingStatus = landingResult.landingSucceeded ? 'complete' : (landingTerminalReason !== undefined ? 'skipped' : 'failed');
+
+        // Refresh commitSha from the feature branch ref after cleanup commits.
+        // For merge action, the artifact branch ref reflects cleanup commits;
+        // the merge result SHA on baseBranch is NOT what we want here.
+        let commitSha: string | undefined;
+        try {
+          const dirtyFiles = await getWorktreeDirtyFiles(ctx.mergeWorktreePath);
+          if (dirtyFiles.length === 0) {
+            commitSha = await getRefSha(ctx.mergeWorktreePath, ctx.featureBranch);
+          }
+        } catch {
+          // Best-effort: if SHA refresh fails, preserve the pre-landing SHA.
+        }
+
+        await updateArtifactRecord(ctx.repoRoot, ctx.prdId, {
+          ...(commitSha !== undefined && { commitSha }),
+          landingStatus: genericLandingStatus,
+          ...(landingResult.prUrl !== undefined && { prUrl: landingResult.prUrl }),
+          landingCompletedAt: completedAt,
+          ...(genericLandingStatus !== 'complete' && landingTerminalReason !== undefined && { landingFailureReason: landingTerminalReason }),
+        });
+      } catch {
+        // Non-fatal: artifact metadata update failure must not affect landing outcome.
+      }
+    }
+    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
     if (ctx.stackContext && action !== 'pr') {
       const completedAt = new Date().toISOString();

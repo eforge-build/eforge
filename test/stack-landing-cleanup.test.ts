@@ -241,3 +241,90 @@ describe('executeStackLanding — cleanup runs exactly once', () => {
 });
 
 // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
+
+// ---------------------------------------------------------------------------
+// Stack landing exposes PR URL and status for artifact finalization
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-runtime-artifact-diagnostics ---
+
+describe('executeStackLanding — PR URL and status in stack:landing:update events', () => {
+  it('emits stack:landing:update complete with prUrl from submit output', async () => {
+    const prUrl = 'https://github.com/owner/repo/pull/42';
+    const provider = makeStubProvider({
+      submitBranch: async () =>
+        makeResult('git-spice', ['branch', 'submit'], `Created PR ${prUrl}`),
+    });
+    const opts: StackLandingOptions = {
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext: makeStackContext(),
+      landingAction: 'pr',
+      provider,
+    };
+
+    const events = await collectEvents(executeStackLanding(opts));
+    const completeEvent = events.find(
+      (e) =>
+        e.type === 'stack:landing:update' &&
+        (e as Record<string, unknown>).status === 'complete',
+    ) as (Record<string, unknown> & { type: string }) | undefined;
+
+    expect(completeEvent).toBeDefined();
+    // prUrl should be surfaced in the complete event so stackLanding() can finalize artifact.
+    expect(completeEvent?.prUrl).toBe(prUrl);
+  });
+
+  it('emits stack:landing:update failed with reason when trackBranch throws', async () => {
+    const provider = makeStubProvider({
+      trackBranch: async () => {
+        const err = new Error('git-spice: branch track failed');
+        (err as NodeJS.ErrnoException & { command?: string; args?: string[]; exitCode?: number }).command = 'git-spice';
+        (err as NodeJS.ErrnoException & { command?: string; args?: string[]; exitCode?: number }).args = ['branch', 'track', '--base', 'main'];
+        (err as NodeJS.ErrnoException & { command?: string; args?: string[]; exitCode?: number }).exitCode = 1;
+        throw err;
+      },
+    });
+    const opts: StackLandingOptions = {
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext: makeStackContext(),
+      landingAction: 'pr',
+      provider,
+    };
+
+    const events = await collectEvents(executeStackLanding(opts));
+    const failedEvent = events.find(
+      (e) =>
+        e.type === 'stack:landing:update' &&
+        (e as Record<string, unknown>).status === 'failed',
+    ) as (Record<string, unknown> & { type: string }) | undefined;
+
+    expect(failedEvent).toBeDefined();
+    expect(typeof failedEvent?.reason).toBe('string');
+    expect(String(failedEvent?.reason).length).toBeGreaterThan(0);
+  });
+
+  it('emits stack:landing:update skipped with reason for non-pr actions', async () => {
+    const provider = makeStubProvider();
+    const opts: StackLandingOptions = {
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext: makeStackContext(),
+      landingAction: 'merge',
+      provider,
+    };
+
+    const events = await collectEvents(executeStackLanding(opts));
+    const skippedEvent = events.find(
+      (e) =>
+        e.type === 'stack:landing:update' &&
+        (e as Record<string, unknown>).status === 'skipped',
+    ) as (Record<string, unknown> & { type: string }) | undefined;
+
+    expect(skippedEvent).toBeDefined();
+    expect(typeof skippedEvent?.reason).toBe('string');
+  });
+});
+
+// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---

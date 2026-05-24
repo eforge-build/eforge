@@ -39,6 +39,16 @@ const artifactRecordSchema = z.object({
   recordedAt: z.string().min(1),
   /** ISO-8601 timestamp of the last update to this record. */
   updatedAt: z.string().min(1),
+  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
+  /** Terminal outcome of the post-build landing step, if landing has been attempted. */
+  landingStatus: z.enum(['complete', 'failed', 'skipped']).optional(),
+  /** PR URL when landingAction is 'pr' and landing completed. */
+  prUrl: z.string().optional(),
+  /** ISO-8601 timestamp when the landing step finished. */
+  landingCompletedAt: z.string().optional(),
+  /** Reason string when landingStatus is 'failed' or 'skipped'. */
+  landingFailureReason: z.string().optional(),
+  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 });
 
 export type ArtifactRecord = z.output<typeof artifactRecordSchema>;
@@ -211,3 +221,57 @@ export function hasUsableArtifact(registry: ArtifactRegistry, prdId: string): bo
   const record = lookupArtifactByPrdId(registry, prdId);
   return record?.status === 'built';
 }
+
+// --- eforge:region plan-01-runtime-artifact-diagnostics ---
+
+/**
+ * Partial fields that can be updated on an existing artifact record.
+ * `prdId`, `status`, and `recordedAt` are immutable — they are excluded.
+ */
+export type ArtifactRecordUpdates = Partial<
+  Omit<ArtifactRecord, 'prdId' | 'status' | 'recordedAt' | 'updatedAt'>
+>;
+
+/**
+ * Perform a locked partial update on an existing artifact record.
+ *
+ * Merges `updates` into the existing record for `prdId`, preserving `recordedAt`
+ * and `status`, and setting `updatedAt` to the current time. If no record exists
+ * for `prdId`, this is a no-op (the pre-landing build artifact may not have been
+ * written yet — callers must handle this gracefully).
+ *
+ * Returns the updated registry, or the unchanged registry when no record was found.
+ */
+export async function updateArtifactRecord(
+  cwd: string,
+  prdId: string,
+  updates: ArtifactRecordUpdates,
+): Promise<ArtifactRegistry> {
+  return withArtifactRegistryLock(cwd, async () => {
+    const registry = await loadArtifactRegistry(cwd);
+    const idx = registry.builds.findIndex((b) => b.prdId === prdId);
+    if (idx === -1) {
+      // No record to update — caller must handle this gracefully.
+      return registry;
+    }
+
+    const existing = registry.builds[idx];
+    const now = new Date().toISOString();
+    const updated: ArtifactRecord = {
+      ...existing,
+      ...updates,
+      // Immutable fields preserved
+      prdId: existing.prdId,
+      status: existing.status,
+      recordedAt: existing.recordedAt,
+      updatedAt: now,
+    };
+
+    const builds = registry.builds.map((b, i) => (i === idx ? updated : b));
+    const updatedRegistry: ArtifactRegistry = { version: 1, builds };
+    await saveArtifactRegistry(cwd, updatedRegistry);
+    return updatedRegistry;
+  });
+}
+
+// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
