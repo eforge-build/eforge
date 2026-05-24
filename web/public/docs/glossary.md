@@ -91,7 +91,7 @@ A structured recovery analysis artifact written for a failed build plan. It reco
 
 ## Recovery verdict
 
-The outcome of a recovery sidecar analysis: `requeue`, `enqueue-successor`, `archive`, or `manual`. Applied via `/eforge:recover` or `eforge_apply_recovery`. See [Troubleshooting - Recover from a failed build](/docs/troubleshooting#recover-from-a-failed-build).
+The outcome of a recovery sidecar analysis: `retry`, `split`, `abandon`, or `manual`. Applied via `/eforge:recover`, `eforge_apply_recovery`, or `eforge apply-recovery <prdId>`. See [Troubleshooting - Recover from a failed build](/docs/troubleshooting#recover-from-a-failed-build).
 
 ## Reviewer
 
@@ -111,7 +111,7 @@ A named declarative bundle of project MCP servers (from `.mcp.json`) that a tier
 
 ## Trunk branch policy
 
-The pair of config fields (`build.trunkBranch` and `build.allowLocalMergeToTrunk`) that control how eforge handles landing when the current branch is the project trunk. By default, `merge-to-base-branch` is rejected on trunk to prevent accidental direct commits to a protected branch; the policy must be explicitly opted into for solo or unprotected projects. See [Configuration - Trunk Branch Policy](/docs/configuration#trunk-branch-policy).
+The pair of config fields (`build.trunkBranch` and `build.allowLocalMergeToTrunk`) that control how eforge handles landing when the current branch is the project trunk. By default, `landing.action: merge` (legacy `build.onSuccess: merge-to-base-branch`) is rejected on trunk to prevent accidental direct commits to a protected branch; the policy must be explicitly opted into for solo or unprotected projects. See [Configuration - Trunk Branch Policy](/docs/configuration#trunk-branch-policy).
 
 ## Worktree
 

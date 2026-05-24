@@ -39,5 +39,6 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 - [Full LLM reference bundle](/llms-full.txt): Complete concatenated reference documentation for agents that need full context
 - [Why eforge](/why): Positioning and product thesis: asynchronous engineering for planned work
 - [Core concepts](/docs/concepts.md): Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts
+- [Stacked PRs](/docs/stacking.md): Configure git-spice-backed artifact branch stacks and PR targeting
 - [Glossary](/docs/glossary.md): eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook
 - [Project README](https://github.com/eforge-build/eforge#readme): Broader project narrative, screenshots, install notes, and examples

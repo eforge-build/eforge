@@ -154,6 +154,11 @@ export const LLMS_MANIFEST: LlmsManifest = {
       description: 'Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts',
     },
     {
+      title: 'Stacked PRs',
+      url: '/docs/stacking.md',
+      description: 'Configure git-spice-backed artifact branch stacks and PR targeting',
+    },
+    {
       title: 'Glossary',
       url: '/docs/glossary.md',
       description: 'eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook',
