@@ -18,10 +18,11 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import http from 'node:http';
+import type { StackLayerWire } from '@eforge-build/client';
 import { openDatabase } from '../db.js';
 import { startServer } from '../server.js';
 import type { MonitorServer } from '../server.js';
@@ -394,3 +395,96 @@ describe('serveDaemonEventsSSE — subscriber lastSeenId after initial connect',
     db.close();
   });
 });
+
+// ---------------------------------------------------------------------------
+// (e) stream:hello includes stackLayers with canonical fields
+// --- eforge:region plan-03-stack-daemon-ui ---
+// ---------------------------------------------------------------------------
+
+describe('serveDaemonEventsSSE — stream:hello.stackLayers', () => {
+  it('includes stackLayers: [] when .eforge/stacks/layers.json is absent', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+
+    const raw = await fetchSseFirstChunk(
+      `http://127.0.0.1:${server.port}/api/daemon-events`,
+      {},
+      1,
+      400,
+    );
+
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+
+    const dataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    expect(dataLine).toBeDefined();
+    const helloData = JSON.parse(dataLine!.slice('data: '.length)) as { stackLayers: unknown };
+
+    expect(Array.isArray(helloData.stackLayers)).toBe(true);
+    expect(helloData.stackLayers).toEqual([]);
+
+    await server.stop();
+    db.close();
+  });
+
+  it('includes populated stackLayers matching the fixture file', async () => {
+    const cwd = makeTmpCwd();
+    mkdirSync(join(cwd, '.eforge', 'stacks'), { recursive: true });
+
+    const layer: StackLayerWire = {
+      prdId: 'prd-sse-001',
+      stackId: 'stack-sse',
+      provider: 'git-spice',
+      branch: 'feat/prd-sse-001',
+      baseBranch: 'main',
+      status: 'pending',
+      recordedAt: '2024-01-15T10:00:00.000Z',
+      updatedAt: '2024-01-15T10:00:00.000Z',
+    };
+
+    writeFileSync(
+      join(cwd, '.eforge', 'stacks', 'layers.json'),
+      JSON.stringify({ version: 1, layers: [layer] }),
+      'utf-8',
+    );
+
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+
+    const raw = await fetchSseFirstChunk(
+      `http://127.0.0.1:${server.port}/api/daemon-events`,
+      {},
+      1,
+      400,
+    );
+
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+
+    const dataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    expect(dataLine).toBeDefined();
+    const helloData = JSON.parse(dataLine!.slice('data: '.length)) as {
+      stackLayers: StackLayerWire[];
+    };
+
+    expect(Array.isArray(helloData.stackLayers)).toBe(true);
+    expect(helloData.stackLayers).toHaveLength(1);
+
+    const received = helloData.stackLayers[0]!;
+    expect(received.prdId).toBe('prd-sse-001');
+    expect(received.stackId).toBe('stack-sse');
+    expect(received.provider).toBe('git-spice');
+    expect(received.branch).toBe('feat/prd-sse-001');
+    expect(received.baseBranch).toBe('main');
+    expect(received.status).toBe('pending');
+
+    await server.stop();
+    db.close();
+  });
+});
+// --- eforge:endregion plan-03-stack-daemon-ui ---

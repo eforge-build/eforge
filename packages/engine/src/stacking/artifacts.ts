@@ -50,6 +50,8 @@ export async function recordSuccessfulBuildArtifact(options: RecordStackArtifact
     provider: layer.provider,
     branch: layer.branch,
     baseBranch: layer.baseBranch,
+    artifact: layer.artifact,
+    ...(layer.landingAction !== undefined && { landingAction: layer.landingAction }),
     status: layer.status,
   } as EforgeEvent;
 }

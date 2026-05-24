@@ -19,7 +19,7 @@
  * update here.
  */
 
-import type { EforgeEvent } from './events.js';
+import type { EforgeEvent, StackLayerWire } from './events.js';
 import type { RunInfo, QueueItem, AutoBuildState } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -56,6 +56,10 @@ export interface ProjectableState {
       subscribers: number;
     };
   } | null;
+  // --- eforge:region plan-03-stack-daemon-ui ---
+  /** Stack layer records keyed by prdId, or empty array when none have been recorded. */
+  stackLayers: StackLayerWire[];
+  // --- eforge:endregion plan-03-stack-daemon-ui ---
 }
 
 // ---------------------------------------------------------------------------
@@ -844,6 +848,49 @@ const eventRegistry = {
     scope: 'session',
     persist: true,
     summary: (e) => `Stack layer recorded: ${e.prdId} (${e.status}) on ${e.branch}`,
+    // --- eforge:region plan-03-stack-daemon-ui ---
+    project: (e, state) => {
+      const existing = state.stackLayers.find((l) => l.prdId === e.prdId);
+      if (existing) {
+        return {
+          stackLayers: state.stackLayers.map((l) =>
+            l.prdId === e.prdId
+              ? {
+                  ...l,
+                  stackId: e.stackId,
+                  parentPrdId: e.parentPrdId,
+                  provider: e.provider,
+                  branch: e.branch,
+                  baseBranch: e.baseBranch,
+                  ...(e.artifact !== undefined && { artifact: e.artifact }),
+                  ...(e.landingAction !== undefined && { landingAction: e.landingAction }),
+                  status: e.status,
+                  updatedAt: e.timestamp,
+                }
+              : l,
+          ),
+        };
+      }
+      return {
+        stackLayers: [
+          ...state.stackLayers,
+          {
+            prdId: e.prdId,
+            stackId: e.stackId,
+            parentPrdId: e.parentPrdId,
+            provider: e.provider,
+            branch: e.branch,
+            baseBranch: e.baseBranch,
+            ...(e.artifact !== undefined && { artifact: e.artifact }),
+            ...(e.landingAction !== undefined && { landingAction: e.landingAction }),
+            status: e.status,
+            recordedAt: e.timestamp,
+            updatedAt: e.timestamp,
+          },
+        ],
+      };
+    },
+    // --- eforge:endregion plan-03-stack-daemon-ui ---
   },
 
   'stack:provider:command': {
@@ -864,6 +911,33 @@ const eventRegistry = {
       if (e.reason) return `${base} — ${e.reason}`;
       return base;
     },
+    // --- eforge:region plan-03-stack-daemon-ui ---
+    project: (e, state) => {
+      const existing = state.stackLayers.find((l) => l.prdId === e.prdId);
+      if (!existing) return undefined;
+      return {
+        stackLayers: state.stackLayers.map((l) =>
+          l.prdId === e.prdId
+            ? {
+                ...l,
+                landing: {
+                  action: e.action,
+                  status: e.status,
+                  prUrl: e.prUrl,
+                  reason: e.reason,
+                  startedAt: l.landing?.startedAt ?? e.timestamp,
+                  completedAt:
+                    e.status === 'complete' || e.status === 'failed' || e.status === 'skipped'
+                      ? e.timestamp
+                      : undefined,
+                },
+                updatedAt: e.timestamp,
+              }
+            : l,
+        ),
+      };
+    },
+    // --- eforge:endregion plan-03-stack-daemon-ui ---
   },
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 

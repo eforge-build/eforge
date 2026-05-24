@@ -186,6 +186,11 @@ export type {
   PlaybookRunRequiresAgentResponse,
 } from './routes.js';
 
+// --- eforge:region plan-03-stack-daemon-ui ---
+export type { StackLayersResponse } from './routes.js';
+export { apiGetStackLayers, apiGetStackLayersIfRunning } from './api/stack.js';
+// --- eforge:endregion plan-03-stack-daemon-ui ---
+
 export {
   apiSessionPlanList,
   apiSessionPlanListIfRunning,

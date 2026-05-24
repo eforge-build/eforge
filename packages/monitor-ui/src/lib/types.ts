@@ -28,6 +28,10 @@ export type { QueueItem, RunInfo, SessionMetadata } from '@eforge-build/client/b
 export type { StackProvider, LandingPublicationAction, StackLayerStatus, StackArtifactRef, StackLayerWire } from '@eforge-build/client/browser';
 // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
+// --- eforge:region plan-03-stack-daemon-ui ---
+export type { StackLayersResponse } from '@eforge-build/client/browser';
+// --- eforge:endregion plan-03-stack-daemon-ui ---
+
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
 export type PipelineStage = 'plan' | 'implement' | 'doc-author' | 'doc-sync' | 'test' | 'review' | 'evaluate' | 'complete' | 'failed';

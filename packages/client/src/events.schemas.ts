@@ -2070,6 +2070,8 @@ const EforgeEventVariantsSchema = Type.Union([
     provider: StackProviderSchema,
     branch: Type.String(),
     baseBranch: Type.Optional(Type.String()),
+    artifact: Type.Optional(StackArtifactRefSchema),
+    landingAction: Type.Optional(LandingPublicationActionSchema),
     status: StackLayerStatusSchema,
   }),
   Type.Object({
@@ -2299,6 +2301,9 @@ export const DaemonStreamSnapshotSchema = Type.Object({
   queue: Type.Array(DaemonQueueItemSchema),
   sessionMetadata: Type.Record(Type.String(), DaemonSessionMetadataItemSchema),
   autoBuild: DaemonAutoBuildSchema,
+  // --- eforge:region plan-03-stack-daemon-ui ---
+  stackLayers: Type.Array(StackLayerWireSchema),
+  // --- eforge:endregion plan-03-stack-daemon-ui ---
 });
 
 /**

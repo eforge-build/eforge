@@ -8,12 +8,14 @@
  * atomically via temp-file-then-rename to prevent partial writes.
  */
 
-import { readFile, writeFile, mkdir, rename, open, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, open, rm, stat } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod/v4';
 import type { StackLayer, StackLayerLanding, StackState } from './types.js';
+
+const EMPTY_LOCK_STALE_MS = 5_000;
 
 // ---------------------------------------------------------------------------
 // Zod schemas for runtime validation
@@ -132,6 +134,35 @@ export async function saveStackState(cwd: string, state: StackState): Promise<vo
  * If a layer with the same `prdId` already exists, it is replaced in-place.
  * Otherwise, the new layer is appended. Returns the updated state after writing.
  */
+async function isStackStateLockStale(lockPath: string): Promise<boolean> {
+  let rawPid: string;
+  try {
+    rawPid = await readFile(lockPath, 'utf-8');
+  } catch {
+    return false;
+  }
+
+  const trimmedPid = rawPid.trim();
+  if (trimmedPid === '') {
+    try {
+      const lockStat = await stat(lockPath);
+      return Date.now() - lockStat.mtimeMs > EMPTY_LOCK_STALE_MS;
+    } catch {
+      return false;
+    }
+  }
+  if (!/^\d+$/.test(trimmedPid)) return true;
+  const pid = Number.parseInt(trimmedPid, 10);
+  if (!Number.isFinite(pid) || pid <= 0) return true;
+
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ESRCH';
+  }
+}
+
 async function withStackStateLock<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
   const lockPath = resolve(cwd, '.eforge', 'stacks', 'layers.lock');
   await mkdir(dirname(lockPath), { recursive: true });
@@ -147,6 +178,10 @@ async function withStackStateLock<T>(cwd: string, fn: () => Promise<T>): Promise
       break;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      if (await isStackStateLockStale(lockPath)) {
+        await rm(lockPath, { force: true });
+        continue;
+      }
       await delay(10);
     }
   }

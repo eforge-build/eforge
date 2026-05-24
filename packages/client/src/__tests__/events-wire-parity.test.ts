@@ -1561,6 +1561,8 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       provider: 'git-spice',
       branch: 'eforge/feat-stack-a',
       baseBranch: 'main',
+      artifact: { branch: 'eforge/feat-stack-a', commitSha: 'abc123' },
+      landingAction: 'pr',
       status: 'built',
     },
   },

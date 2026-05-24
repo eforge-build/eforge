@@ -13,6 +13,9 @@
 import type { RunInfo, QueueItem, SessionMetadata, ConnectionStatus } from '@/lib/types';
 import type { EforgeEvent } from '@/lib/types';
 import type { AutoBuildState } from '@/lib/api';
+// --- eforge:region plan-03-stack-daemon-ui ---
+import type { StackLayerWire } from '@/lib/types';
+// --- eforge:endregion plan-03-stack-daemon-ui ---
 import { daemonHandlerRegistry } from './daemon-reducer/index';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +78,10 @@ export interface DaemonState {
    * heartbeat has been received yet. Used to determine daemon liveness.
    */
   latestHeartbeat: { at: number; payload: HeartbeatPayload } | null;
+  // --- eforge:region plan-03-stack-daemon-ui ---
+  /** Stack layer records from the daemon snapshot, updated by live stack events. */
+  stackLayers: StackLayerWire[];
+  // --- eforge:endregion plan-03-stack-daemon-ui ---
 }
 
 export const initialDaemonState: DaemonState = {
@@ -85,6 +92,9 @@ export const initialDaemonState: DaemonState = {
   connectionStatus: 'disconnected',
   daemonActivity: [],
   latestHeartbeat: null,
+  // --- eforge:region plan-03-stack-daemon-ui ---
+  stackLayers: [],
+  // --- eforge:endregion plan-03-stack-daemon-ui ---
 };
 
 // ---------------------------------------------------------------------------
@@ -109,6 +119,10 @@ export type DaemonAction =
        * heartbeat so `state.latestHeartbeat` is populated immediately on (re)connect.
        */
       latestHeartbeat?: { at: number; payload: HeartbeatPayload };
+      // --- eforge:region plan-03-stack-daemon-ui ---
+      /** Stack layer snapshot from `stream:hello`. Seeds state.stackLayers. */
+      stackLayers?: StackLayerWire[];
+      // --- eforge:endregion plan-03-stack-daemon-ui ---
     }
   | { type: 'ADD_EVENT'; event: EforgeEvent; eventId: string }
   | { type: 'SET_CONNECTION_STATUS'; status: ConnectionStatus }
@@ -147,6 +161,9 @@ export function daemonReducer(state: DaemonState, action: DaemonAction): DaemonS
         ...(action.latestHeartbeat !== undefined && {
           latestHeartbeat: action.latestHeartbeat,
         }),
+        // --- eforge:region plan-03-stack-daemon-ui ---
+        stackLayers: action.stackLayers ?? state.stackLayers,
+        // --- eforge:endregion plan-03-stack-daemon-ui ---
       };
     }
 
@@ -216,6 +233,11 @@ export const selectSessionMetadata = (
 /** The daemon activity ring buffer (newest entries are at the end). */
 export const selectDaemonActivity = (state: DaemonState): DaemonActivityEntry[] =>
   state.daemonActivity;
+
+// --- eforge:region plan-03-stack-daemon-ui ---
+/** All stack layer records. */
+export const selectStackLayers = (state: DaemonState): StackLayerWire[] => state.stackLayers;
+// --- eforge:endregion plan-03-stack-daemon-ui ---
 
 /**
  * Daemon liveness based on time elapsed since the last heartbeat.

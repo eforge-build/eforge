@@ -431,6 +431,7 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
       queue: [],
       autoBuild: { enabled: false, watcher: { running: true, pid: 1234, sessionId: 'watcher-1' } },
       latestHeartbeat: null,
+      stackLayers: [],
     };
     expect(eventRegistry['daemon:auto-build:transition'].project?.(event, state)).toEqual({
       autoBuild: {
@@ -466,6 +467,7 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
       queue: [],
       autoBuild: { enabled: true, watcher: { running: true, pid: 1234, sessionId: 'watcher-1' } },
       latestHeartbeat: null,
+      stackLayers: [],
     };
 
     expect(eventRegistry['daemon:auto-build:transition'].project?.(event, state)).toMatchObject({
@@ -499,6 +501,7 @@ describe('eventRegistry — daemon:auto-build:disabled', () => {
       queue: [],
       autoBuild: { enabled: true, watcher: { running: true, pid: 1234, sessionId: null } },
       latestHeartbeat: null,
+      stackLayers: [],
     };
     const project = eventRegistry['daemon:auto-build:disabled'].project;
     expect(project?.(event, state)).toEqual({
@@ -562,6 +565,7 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
         },
         reason: 'watcher started',
       },
+      stackLayers: [],
     };
 
     const result = safeParseDaemonStreamSnapshot(snapshot);
@@ -597,6 +601,7 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
         mode: 'running',
         scheduler: { alive: true, paused: false, runningCount: 2, limit: 4 },
       },
+      stackLayers: [],
     };
 
     const result = safeParseDaemonStreamSnapshot(snapshot);
@@ -2402,6 +2407,7 @@ describe('eventRegistry — enqueue:complete queue projector', () => {
     queue: [],
     autoBuild: null,
     latestHeartbeat: null,
+    stackLayers: [],
   };
 
   const enqueueCompleteEvent = {
@@ -2484,6 +2490,7 @@ describe('eventRegistry — enqueue:complete queue projector', () => {
           subscribers: 0,
         },
       },
+      stackLayers: [],
     };
     const before = structuredClone({
       runs: stateWithNonQueueSlices.runs,

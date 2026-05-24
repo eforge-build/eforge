@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -244,6 +244,25 @@ describe('isArtifactAvailable', () => {
 // ---------------------------------------------------------------------------
 
 describe('upsertStackLayer — concurrent writes', () => {
+  it('removes a stale lock file instead of waiting forever', async () => {
+    await mkdir(join(cwd, '.eforge', 'stacks'), { recursive: true });
+    await writeFile(join(cwd, '.eforge', 'stacks', 'layers.lock'), 'not-a-pid', 'utf-8');
+
+    const now = new Date().toISOString();
+    await upsertStackLayer(cwd, {
+      prdId: 'stale-lock-prd',
+      stackId: 'stack-stale-lock',
+      provider: 'git-spice',
+      branch: 'feat/stale-lock-prd',
+      status: 'pending',
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    const state = await loadStackState(cwd);
+    expect(state.layers.map((layer) => layer.prdId)).toEqual(['stale-lock-prd']);
+  });
+
   it('preserves all layers from concurrent upserts of different PRD ids', async () => {
     const now = new Date().toISOString();
     const layers: StackLayer[] = Array.from({ length: 20 }, (_, i) => ({

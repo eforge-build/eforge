@@ -3,6 +3,10 @@
  * Re-export from index so callers can import the request/response pair together.
  */
 
+// --- eforge:region plan-03-stack-daemon-ui ---
+import type { StackLayerWire } from './events.js';
+// --- eforge:endregion plan-03-stack-daemon-ui ---
+
 /** The set of valid on-success landing actions for a per-build override. */
 export type BuildOnSuccess = 'merge-to-base-branch' | 'issue-pr' | 'leave-branch';
 
@@ -186,6 +190,9 @@ export const API_ROUTES = {
   sessionPlanMigrateLegacy: '/api/session-plan/migrate-legacy',
   sessionPlanCreateFromPlaybook: '/api/session-plan/create-from-playbook',
   daemonEvents: '/api/daemon-events',
+  // --- eforge:region plan-03-stack-daemon-ui ---
+  stackLayers: '/api/stack/layers',
+  // --- eforge:endregion plan-03-stack-daemon-ui ---
 } as const;
 
 /** Response body for GET /api/version */
@@ -417,6 +424,13 @@ export interface SessionPlanMigrateLegacyResponse {
   /** True when the plan was on the legacy schema and got migrated; false when the plan was already on the current schema. */
   migrated: boolean;
 }
+
+// --- eforge:region plan-03-stack-daemon-ui ---
+/** Response for GET /api/stack/layers */
+export interface StackLayersResponse {
+  layers: StackLayerWire[];
+}
+// --- eforge:endregion plan-03-stack-daemon-ui ---
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];
 

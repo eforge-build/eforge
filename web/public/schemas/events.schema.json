@@ -9578,6 +9578,39 @@
             "baseBranch": {
               "type": "string"
             },
+            "artifact": {
+              "type": "object",
+              "required": [
+                "branch"
+              ],
+              "properties": {
+                "branch": {
+                  "type": "string"
+                },
+                "commitSha": {
+                  "type": "string"
+                },
+                "prUrl": {
+                  "type": "string"
+                }
+              }
+            },
+            "landingAction": {
+              "anyOf": [
+                {
+                  "const": "pr",
+                  "type": "string"
+                },
+                {
+                  "const": "merge",
+                  "type": "string"
+                },
+                {
+                  "const": "leave",
+                  "type": "string"
+                }
+              ]
+            },
             "status": {
               "anyOf": [
                 {

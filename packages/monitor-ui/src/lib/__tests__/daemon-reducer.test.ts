@@ -8,13 +8,14 @@ import {
   selectRuns,
   selectDaemonActivity,
   selectHeartbeatStaleness,
+  selectStackLayers,
   ACTIVITY_BUFFER_CAP,
   type DaemonState,
   type HeartbeatPayload,
 } from '../daemon-reducer';
 import type { EforgeEvent } from '../types';
 import type { AutoBuildState } from '../api';
-import type { RunInfo, QueueItem } from '../types';
+import type { RunInfo, QueueItem, StackLayerWire } from '../types';
 
 // Hand-crafted event helper following the "cast through unknown" test pattern.
 function makeEvent<T extends EforgeEvent['type']>(
@@ -1138,6 +1139,221 @@ describe('ADD_EVENT: daemon:warning / daemon:error', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Stack layers — BATCH_SEED seeding and live event projection
+// --- eforge:region plan-03-stack-daemon-ui ---
+// ---------------------------------------------------------------------------
+
+function makeStackLayer(overrides: Partial<StackLayerWire> = {}): StackLayerWire {
+  return {
+    prdId: 'prd-001',
+    stackId: 'stack-abc',
+    provider: 'git-spice',
+    branch: 'feat/prd-001',
+    status: 'pending',
+    recordedAt: '2024-01-15T10:00:00.000Z',
+    updatedAt: '2024-01-15T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('BATCH_SEED: stackLayers seeding', () => {
+  it('seeds stackLayers from the snapshot', () => {
+    const layers = [makeStackLayer({ prdId: 'prd-seed-1' })];
+    const state = daemonReducer(initialDaemonState, {
+      type: 'BATCH_SEED',
+      runs: [],
+      queue: [],
+      sessionMetadata: {},
+      autoBuild: null,
+      stackLayers: layers,
+    });
+    expect(state.stackLayers).toEqual(layers);
+  });
+
+  it('initialDaemonState.stackLayers is an empty array', () => {
+    expect(initialDaemonState.stackLayers).toEqual([]);
+  });
+
+  it('preserves existing stackLayers when stackLayers is omitted in BATCH_SEED', () => {
+    const existing = [makeStackLayer({ prdId: 'prd-existing' })];
+    const startState = { ...initialDaemonState, stackLayers: existing };
+    const next = daemonReducer(startState, {
+      type: 'BATCH_SEED',
+      runs: [],
+      queue: [],
+      sessionMetadata: {},
+      autoBuild: null,
+      // stackLayers omitted
+    });
+    expect(next.stackLayers).toEqual(existing);
+  });
+
+  it('replaces stackLayers with an empty array when snapshot has []', () => {
+    const existing = [makeStackLayer({ prdId: 'prd-old' })];
+    const startState = { ...initialDaemonState, stackLayers: existing };
+    const next = daemonReducer(startState, {
+      type: 'BATCH_SEED',
+      runs: [],
+      queue: [],
+      sessionMetadata: {},
+      autoBuild: null,
+      stackLayers: [],
+    });
+    expect(next.stackLayers).toEqual([]);
+  });
+});
+
+describe('ADD_EVENT: stack:layer:recorded — live projection', () => {
+  it('appends a new layer when the prdId is not yet in the list', () => {
+    const event = makeEvent('stack:layer:recorded', {
+      prdId: 'prd-new',
+      stackId: 'stack-xyz',
+      provider: 'git-spice',
+      branch: 'feat/prd-new',
+      baseBranch: 'main',
+      artifact: { branch: 'feat/prd-new', commitSha: 'abc123' },
+      landingAction: 'pr',
+      status: 'pending',
+    });
+
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.stackLayers).toHaveLength(1);
+    expect(next.stackLayers[0]).toMatchObject({
+      prdId: 'prd-new',
+      stackId: 'stack-xyz',
+      provider: 'git-spice',
+      branch: 'feat/prd-new',
+      baseBranch: 'main',
+      artifact: { branch: 'feat/prd-new', commitSha: 'abc123' },
+      landingAction: 'pr',
+      status: 'pending',
+    });
+    expect(next.daemonActivity).toHaveLength(1);
+    expect(next.daemonActivity[0].id).toBe('e1');
+  });
+
+  it('updates an existing layer by prdId', () => {
+    const existing = makeStackLayer({ prdId: 'prd-update', status: 'pending', branch: 'feat/old' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:layer:recorded', {
+      prdId: 'prd-update',
+      stackId: 'stack-abc',
+      provider: 'git-spice',
+      branch: 'feat/new',
+      status: 'building',
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e2' });
+
+    expect(next.stackLayers).toHaveLength(1);
+    expect(next.stackLayers[0]).toMatchObject({
+      prdId: 'prd-update',
+      branch: 'feat/new',
+      status: 'building',
+    });
+  });
+
+  it('leaves other layers untouched when updating one', () => {
+    const layer1 = makeStackLayer({ prdId: 'prd-a' });
+    const layer2 = makeStackLayer({ prdId: 'prd-b', status: 'building' });
+    const startState = { ...initialDaemonState, stackLayers: [layer1, layer2] };
+
+    const event = makeEvent('stack:layer:recorded', {
+      prdId: 'prd-a',
+      stackId: 'stack-abc',
+      provider: 'git-spice',
+      branch: 'feat/prd-a',
+      status: 'built',
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e3' });
+
+    expect(next.stackLayers).toHaveLength(2);
+    expect(next.stackLayers[0]?.status).toBe('built');
+    expect(next.stackLayers[1]).toEqual(layer2);
+  });
+});
+
+describe('ADD_EVENT: stack:landing:update — live projection', () => {
+  it('attaches landing data to an existing layer', () => {
+    const existing = makeStackLayer({ prdId: 'prd-land' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:landing:update', {
+      prdId: 'prd-land',
+      stackId: 'stack-abc',
+      action: 'pr',
+      branch: 'feat/prd-land',
+      status: 'started',
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.stackLayers[0]?.landing).toMatchObject({
+      action: 'pr',
+      status: 'started',
+    });
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('updates landing with prUrl when status is complete', () => {
+    const existing = makeStackLayer({ prdId: 'prd-land-complete' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    // First: start the landing
+    const startEvent = makeEvent('stack:landing:update', {
+      prdId: 'prd-land-complete',
+      stackId: 'stack-abc',
+      action: 'pr',
+      branch: 'feat/prd-land-complete',
+      status: 'started',
+    });
+    const s1 = daemonReducer(startState, { type: 'ADD_EVENT', event: startEvent, eventId: 'e1' });
+
+    // Then: complete with a PR URL
+    const completeEvent = makeEvent('stack:landing:update', {
+      prdId: 'prd-land-complete',
+      stackId: 'stack-abc',
+      action: 'pr',
+      branch: 'feat/prd-land-complete',
+      status: 'complete',
+      prUrl: 'https://github.com/org/repo/pull/99',
+    });
+    const s2 = daemonReducer(s1, { type: 'ADD_EVENT', event: completeEvent, eventId: 'e2' });
+
+    expect(s2.stackLayers[0]?.landing).toMatchObject({
+      action: 'pr',
+      status: 'complete',
+      prUrl: 'https://github.com/org/repo/pull/99',
+    });
+  });
+
+  it('is a no-op (but still appends to activity) when prdId is not found', () => {
+    const existing = makeStackLayer({ prdId: 'prd-other' });
+    const startState = { ...initialDaemonState, stackLayers: [existing] };
+
+    const event = makeEvent('stack:landing:update', {
+      prdId: 'prd-unknown',
+      stackId: 'stack-xyz',
+      action: 'pr',
+      branch: 'feat/unknown',
+      status: 'started',
+    });
+
+    const next = daemonReducer(startState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    // Layer unchanged
+    expect(next.stackLayers[0]).toEqual(existing);
+    // Activity still appended
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+});
+
+// --- eforge:endregion plan-03-stack-daemon-ui ---
+
+// ---------------------------------------------------------------------------
 // selectDaemonActivity
 // ---------------------------------------------------------------------------
 
@@ -1238,3 +1454,21 @@ describe('selectHeartbeatStaleness', () => {
     expect(selectHeartbeatStaleness(state)).toBe('fresh');
   });
 });
+
+// ---------------------------------------------------------------------------
+// selectStackLayers
+// --- eforge:region plan-03-stack-daemon-ui ---
+// ---------------------------------------------------------------------------
+
+describe('selectStackLayers', () => {
+  it('returns the stackLayers array', () => {
+    const layers = [makeStackLayer({ prdId: 'prd-sel-1' })];
+    const state: DaemonState = { ...initialDaemonState, stackLayers: layers };
+    expect(selectStackLayers(state)).toBe(layers);
+  });
+
+  it('returns [] from initialDaemonState', () => {
+    expect(selectStackLayers(initialDaemonState)).toEqual([]);
+  });
+});
+// --- eforge:endregion plan-03-stack-daemon-ui ---
