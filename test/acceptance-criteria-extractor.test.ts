@@ -300,7 +300,7 @@ Some overview text.
 - [ ] Type checking passes
 - [ ] Build succeeds
 `.trim();
-    const criteria = extractExpectedAcceptanceCriteria(body);
+    const criteria = extractExpectedAcceptanceCriteria(body, { allowFallbackSections: true });
     expect(criteria).toHaveLength(2);
     expect(criteria[0].id).toBe('ac-001');
     expect(criteria[0].text).toBe('Type checking passes');
@@ -318,7 +318,7 @@ Run the following:
 
 Some prose note.
 `.trim();
-    const criteria = extractExpectedAcceptanceCriteria(body);
+    const criteria = extractExpectedAcceptanceCriteria(body, { allowFallbackSections: true });
     expect(criteria).toHaveLength(1);
     expect(criteria[0].text).toBe('Type checking passes');
   });
@@ -330,7 +330,7 @@ Some prose note.
 - Add login page
 - Support OAuth
 `.trim();
-    const criteria = extractExpectedAcceptanceCriteria(body);
+    const criteria = extractExpectedAcceptanceCriteria(body, { allowFallbackSections: true });
     expect(criteria).toHaveLength(2);
   });
 
@@ -345,7 +345,7 @@ Some prose note.
 
 - [ ] Type checking passes
 `.trim();
-    const criteria = extractExpectedAcceptanceCriteria(body);
+    const criteria = extractExpectedAcceptanceCriteria(body, { allowFallbackSections: true });
     expect(criteria).toHaveLength(3);
     expect(criteria[0]).toMatchObject({ id: 'ac-001', text: 'Add login page' });
     expect(criteria[1]).toMatchObject({ id: 'ac-002', text: 'Support OAuth' });
@@ -366,7 +366,7 @@ Some prose note.
 - Native mobile app
 - Billing integration
 `.trim();
-    const criteria = extractExpectedAcceptanceCriteria(body);
+    const criteria = extractExpectedAcceptanceCriteria(body, { allowFallbackSections: true });
     expect(criteria).toHaveLength(2);
     expect(criteria.map((c) => c.text)).toEqual(['Implement login page', 'Support OAuth']);
   });
@@ -385,7 +385,7 @@ Some prose note.
 
 - Included item
 `.trim();
-    const criteria = extractExpectedAcceptanceCriteria(body);
+    const criteria = extractExpectedAcceptanceCriteria(body, { allowFallbackSections: true });
     // Top-level and In Scope bullets included; Out of Scope bullets excluded
     expect(criteria.map((c) => c.text)).toContain('Top-level scope item');
     expect(criteria.map((c) => c.text)).toContain('Included item');

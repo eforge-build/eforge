@@ -846,7 +846,11 @@ export function renderEvent(event: EforgeEvent): void {
     // gap_close:plan_ready and planning:submission — no CLI output; handled by default.
 
     case 'gap_close:complete':
-      succeedSpinner('gap-close', 'Gap closing complete');
+      if (event.passed) {
+        succeedSpinner('gap-close', 'Gap closing complete');
+      } else {
+        failSpinner('gap-close', chalk.red('Gap closing failed'));
+      }
       break;
 
     case 'planning:error':
@@ -940,6 +944,31 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.red(`  ✗ Daemon error [${event.source}]: ${event.message}`));
       break;
     // --- eforge:endregion plan-01-types-and-daemon-emission ---
+
+    // --- eforge:region plan-04-rendering-and-docs ---
+    case 'acceptance_validation:complete': {
+      const verdicts = event.verdicts ?? [];
+      const passCount = verdicts.filter((v) => v.verdict === 'pass').length;
+      const failCount = verdicts.filter((v) => v.verdict === 'fail').length;
+      const unknownCount = verdicts.filter((v) => v.verdict === 'unknown').length;
+      const parts: string[] = [];
+      if (passCount > 0) parts.push(chalk.green(`${passCount} passed`));
+      if (failCount > 0) parts.push(chalk.red(`${failCount} failed`));
+      if (unknownCount > 0) parts.push(chalk.yellow(`${unknownCount} unknown`));
+      const summary = parts.length > 0 ? parts.join(', ') : 'no verdicts';
+      if (event.passed) {
+        console.log(chalk.green(`✓ Acceptance validation passed: ${summary}`));
+      } else {
+        console.log(chalk.red(`✗ Acceptance validation failed: ${summary}`));
+      }
+      if (event.waivers && event.waivers.length > 0) {
+        for (const waiver of event.waivers) {
+          console.log(chalk.dim(`  Waiver: ${waiver}`));
+        }
+      }
+      break;
+    }
+    // --- eforge:endregion plan-04-rendering-and-docs ---
 
     default: {
       // Daemon-internal events, plan lifecycle state events, and any other

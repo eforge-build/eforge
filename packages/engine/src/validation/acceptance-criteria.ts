@@ -175,19 +175,31 @@ const FALLBACK_HEADING_NAMES = ['Verification', 'Scope'] as const;
  * 1. Look for a heading named `Acceptance Criteria`, `Acceptance criteria`, or
  *    `ACs`. Extract all bullet/checklist lines until the next heading of equal
  *    or higher depth.
- * 2. If no explicit AC section is found, fall back to `## Verification` and
- *    `## Scope` sections, collecting checklist/bullet lines as candidate criteria.
+ * 2. If no explicit AC section is found and `allowFallbackSections` is true,
+ *    fall back to `## Verification` and `## Scope` sections, collecting
+ *    checklist/bullet lines as candidate criteria. This fallback is intended
+ *    only for plan-file bodies, not PRD content — PRDs without an explicit
+ *    AC section should return an empty array so the no-AC policy applies.
  *
  * Blank, `TBD`, `N/A`, `none`, and similar placeholder lines are excluded.
  *
  * @param body - Full markdown body of the PRD or plan file.
+ * @param options.allowFallbackSections - When true, fall back to Verification/Scope
+ *   sections if no explicit AC section is found. Default false.
  * @returns Array of expected criteria, possibly empty.
  */
-export function extractExpectedAcceptanceCriteria(body: string): ExpectedAcceptanceCriterion[] {
+export function extractExpectedAcceptanceCriteria(
+  body: string,
+  options?: { allowFallbackSections?: boolean },
+): ExpectedAcceptanceCriterion[] {
   // 1. Try explicit AC section first
   const acLines = extractSectionLines(body, AC_HEADING_NAMES);
   if (acLines !== null) {
     return linesToCriteria(acLines);
+  }
+
+  if (!options?.allowFallbackSections) {
+    return [];
   }
 
   // 2. Fallback: collect bullet/checklist lines from Verification + Scope in source order

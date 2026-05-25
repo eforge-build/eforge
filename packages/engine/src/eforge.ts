@@ -816,7 +816,7 @@ export class EforgeEngine {
         const allCriteria: ExpectedAcceptanceCriterion[] = [];
         let counter = 1;
         for (const planFile of planFileMap.values()) {
-          const planCriteria = extractExpectedAcceptanceCriteria(planFile.body);
+          const planCriteria = extractExpectedAcceptanceCriteria(planFile.body, { allowFallbackSections: true });
           for (const c of planCriteria) {
             allCriteria.push({ id: `ac-${String(counter).padStart(3, '0')}`, text: c.text, raw: c.raw });
             counter++;

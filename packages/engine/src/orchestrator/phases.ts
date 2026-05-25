@@ -764,6 +764,29 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     for await (const event of prdValidator(ctx.mergeWorktreePath)) {
       if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
       // --- eforge:region plan-02-engine-acceptance-gates ---
+      // When the expected criteria inventory is defined but empty, a validator-produced
+      // passing verdict cannot be trusted — there was nothing to verify. Fail-closed
+      // unless an allowNoAcceptanceCriteria waiver is active.
+      if (event.type === 'acceptance_validation:complete' && ctx.expectedAcceptanceCriteria && ctx.expectedAcceptanceCriteria.length === 0) {
+        const _policy = ctx.validationPolicy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string } | undefined;
+        const waiverReason = _policy?.allowNoAcceptanceCriteria
+          ? (_policy.noAcceptanceCriteriaReason ?? '').trim()
+          : '';
+        if (waiverReason) {
+          yield { ...event, passed: true, waivers: [waiverReason] } as EforgeEvent;
+        } else {
+          yield {
+            timestamp: event.timestamp,
+            type: 'acceptance_validation:complete',
+            passed: false,
+            verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No acceptance criteria found in PRD; cannot verify validator verdicts against an empty inventory.' }],
+            source: (event as unknown as { source?: string }).source as 'prd' | 'plan' | undefined,
+          } as EforgeEvent;
+        }
+        acceptanceReceived = true;
+        acceptancePassed = !!waiverReason;
+        continue;
+      }
       // Intercept acceptance_validation:complete to synthesize unknown verdicts for any
       // expected criteria not covered by the validator output. Fail-closed: a criterion
       // with no matching verdict is treated as unverified.

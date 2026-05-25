@@ -100,6 +100,10 @@ build:
   #   noCommandsReason: ""    # Required when allowNoCommands is true
   #   allowEmptyPrdDiff: false # Allow PRD validation to pass when the implementation diff is empty
   #   emptyPrdDiffReason: ""  # Required when allowEmptyPrdDiff is true
+  #   allowNoAcceptanceCriteria: false # Allow builds with no extractable acceptance criteria to pass instead of failing
+  #   noAcceptanceCriteriaReason: ""   # Required when allowNoAcceptanceCriteria is true
+  #   allowNoCommittedChanges: false   # Allow builds that produce no committed changes to pass instead of failing
+  #   noCommittedChangesReason: ""     # Required when allowNoCommittedChanges is true
 
 # Landing action
 # landing:
@@ -172,6 +176,8 @@ When `allowLocalMergeToTrunk` is `false` and the current branch is trunk, the in
 
 By default, build success requires both command validation (type-check, tests, etc.) and acceptance validation evidence from the PRD validator. Either requirement can be explicitly waived via `build.validation` with a mandatory reason string.
 
+**Waivers are policy overrides, not evidence.** A waiver declares that the build is intentionally exempt from a specific validation requirement in a known context — for example, a config-only change with no source diff, or a monorepo where tests run in CI rather than per-PRD. The reason string is surfaced in the monitor UI so reviewers can confirm intent. Waivers do not replace the missing evidence; they record that the evidence is not applicable for this build.
+
 ### `build.validation.allowNoCommands`
 
 When all plans merge and the combined set of planner-generated `validateCommands` plus `postMergeCommands` is empty, the build fails with `validation:complete passed:false`. Set `allowNoCommands: true` with a non-empty `noCommandsReason` to allow such builds to pass:
@@ -187,7 +193,9 @@ The waiver reason is surfaced as a `planning:progress` event and in the monitor 
 
 ### `build.validation.allowEmptyPrdDiff`
 
-When the implementation diff computed for PRD validation is empty (no changes detected relative to the base branch), the build fails with `prd_validation:complete passed:false`. Set `allowEmptyPrdDiff: true` with a non-empty `emptyPrdDiffReason` to allow such builds to pass:
+When the implementation diff computed for PRD validation is empty (no changes detected relative to the base branch), the build fails with `prd_validation:complete passed:false`. This covers the scenario where the build produced zero diff visible to the PRD validator — the validator cannot confirm that any acceptance criterion was addressed when there is nothing to inspect.
+
+Set `allowEmptyPrdDiff: true` with a non-empty `emptyPrdDiffReason` to allow such builds to pass:
 
 ```yaml
 build:
@@ -196,9 +204,35 @@ build:
     emptyPrdDiffReason: "Config-only change — no source file diff is expected"
 ```
 
+### `build.validation.allowNoAcceptanceCriteria`
+
+When no extractable acceptance criteria are found in the PRD (the `## Acceptance Criteria` section is absent or empty), the build fails with `acceptance_validation:complete passed:false`. The PRD validator cannot produce meaningful per-criterion verdicts against an empty inventory.
+
+Set `allowNoAcceptanceCriteria: true` with a non-empty `noAcceptanceCriteriaReason` to allow such builds to pass:
+
+```yaml
+build:
+  validation:
+    allowNoAcceptanceCriteria: true
+    noAcceptanceCriteriaReason: "Exploratory build — acceptance criteria defined post-hoc"
+```
+
+### `build.validation.allowNoCommittedChanges`
+
+When a `builtOnMerge` plan produces no committed file changes relative to `baseSha`, the build fails during merge. The implementation was expected to produce at least one commit.
+
+Set `allowNoCommittedChanges: true` with a non-empty `noCommittedChangesReason` to allow such builds to pass:
+
+```yaml
+build:
+  validation:
+    allowNoCommittedChanges: true
+    noCommittedChangesReason: "Config-only change recorded in parent PR"
+```
+
 ### Reason string requirement
 
-Both waiver booleans require a non-empty reason string. A config that sets `allowNoCommands: true` without `noCommandsReason` (or sets it to an empty string) is rejected by config validation at startup.
+All waiver booleans require a non-empty reason string. A config that sets any waiver boolean to `true` without the corresponding reason field (or sets it to an empty or whitespace-only string) is rejected by config validation at startup. This applies to all four waivers: `allowNoCommands`/`noCommandsReason`, `allowEmptyPrdDiff`/`emptyPrdDiffReason`, `allowNoAcceptanceCriteria`/`noAcceptanceCriteriaReason`, and `allowNoCommittedChanges`/`noCommittedChangesReason`.
 
 ## PRD provenance
 
