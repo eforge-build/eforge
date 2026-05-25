@@ -427,6 +427,23 @@ describe('matchVerdictsToExpected', () => {
     expect(matched.get('ac-001')).toEqual(verdicts[0]);
   });
 
+  it('matches verdict to expected criterion by criterion ID', () => {
+    const expected = extractExpectedAcceptanceCriteria(`
+## Acceptance Criteria
+
+- Add login page
+- Support OAuth
+`.trim());
+    // Validator returns criterion field set to the stable ID rather than the text
+    const verdicts = [
+      { criterion: 'ac-001', verdict: 'pass' as const, evidence: 'Login page implemented.' },
+      { criterion: 'ac-002', verdict: 'fail' as const, evidence: 'OAuth not implemented.' },
+    ];
+    const matched = matchVerdictsToExpected(expected, verdicts);
+    expect(matched.get('ac-001')).toEqual(verdicts[0]);
+    expect(matched.get('ac-002')).toEqual(verdicts[1]);
+  });
+
   it('returns undefined for unmatched expected criteria', () => {
     const expected = extractExpectedAcceptanceCriteria(`
 ## Acceptance Criteria
@@ -480,6 +497,24 @@ describe('synthesizeMissingVerdicts', () => {
     expect(combined[1].criterion).toBe('Support OAuth');
     expect(combined[1].verdict).toBe('unknown');
     expect(combined[1].evidence).toMatch(/ac-002/);
+  });
+
+  it('does not synthesize a verdict when the validator returns the criterion ID as the criterion field', () => {
+    const expected = extractExpectedAcceptanceCriteria(`
+## Acceptance Criteria
+
+- Add login page
+- Support OAuth
+`.trim());
+    // Validator uses stable IDs in the criterion field
+    const verdicts = [
+      { criterion: 'ac-001', verdict: 'pass' as const, evidence: 'Login page implemented.' },
+      { criterion: 'ac-002', verdict: 'pass' as const, evidence: 'OAuth flow implemented.' },
+    ];
+    const combined = synthesizeMissingVerdicts(expected, verdicts);
+    // Both criteria matched by ID — no synthesized unknowns
+    expect(combined).toHaveLength(2);
+    expect(combined.every((v) => v.verdict === 'pass')).toBe(true);
   });
 
   it('returns original verdicts unchanged when all criteria are matched', () => {

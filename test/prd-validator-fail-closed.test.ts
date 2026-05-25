@@ -78,6 +78,58 @@ describe('runPrdValidator fail-closed behavior', () => {
   });
 });
 
+// --- eforge:region plan-02-engine-acceptance-gates ---
+describe('runPrdValidator malformed gap entries behavior', () => {
+  it('produces synthetic failure gaps for malformed gap entries instead of silently dropping them', async () => {
+    const backend = new StubHarness([
+      { text: '```json\n{"completionPercent": 80, "gaps": [null, {"requirement": "valid req", "explanation": "valid exp"}, 42]}\n```' },
+    ]);
+
+    const events = await collectEvents(runPrdValidator(makeOptions(backend)));
+    const complete = findEvent(events, 'prd_validation:complete');
+    expect(complete).toBeDefined();
+    // All 3 entries are preserved: 2 malformed → synthetic failure gap, 1 valid
+    expect(complete!.gaps).toHaveLength(3);
+    expect(complete!.gaps[0]).toMatchObject({ requirement: 'Malformed PRD validation gap entry' });
+    expect(complete!.gaps[1]).toMatchObject({ requirement: 'valid req', explanation: 'valid exp' });
+    expect(complete!.gaps[2]).toMatchObject({ requirement: 'Malformed PRD validation gap entry' });
+    // Build must fail because gaps are present
+    expect(complete!.passed).toBe(false);
+  });
+});
+
+describe('runPrdValidator expectedAcceptanceCriteria synthesis behavior', () => {
+  it('synthesizes unknown verdicts for expected criteria not covered by the validator output', async () => {
+    const backend = new StubHarness([
+      {
+        text: '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [{"criterion": "Must support login", "verdict": "pass", "evidence": "Login found at src/login.ts"}]}\n```',
+      },
+    ]);
+
+    const events = await collectEvents(runPrdValidator({
+      ...makeOptions(backend),
+      expectedAcceptanceCriteria: [
+        { id: 'ac-001', text: 'Must support login', raw: 'Must support login' },
+        { id: 'ac-002', text: 'Must support OAuth', raw: 'Must support OAuth' },
+      ],
+    }));
+
+    // prd_validation:complete should pass (no gaps)
+    const complete = findEvent(events, 'prd_validation:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.passed).toBe(true);
+
+    // acceptance_validation:complete — runPrdValidator itself only emits raw validator output.
+    // Synthesis is the orchestrator's responsibility (prdValidate phase).
+    // The emitted acceptance event should only have the single verdict the validator returned.
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.verdicts).toHaveLength(1);
+    expect(acceptance!.verdicts[0]).toMatchObject({ criterion: 'Must support login', verdict: 'pass' });
+  });
+});
+// --- eforge:endregion plan-02-engine-acceptance-gates ---
+
 // --- eforge:region plan-01-validation-evidence-contract ---
 describe('runPrdValidator acceptance_validation:complete behavior', () => {
   it('emits acceptance_validation:complete with passed=false and unknown verdict when agent JSON omits the verdict array', async () => {

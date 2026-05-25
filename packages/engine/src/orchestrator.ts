@@ -140,6 +140,13 @@ export interface OrchestratorOptions {
   /** Resolved validation waiver config for allowNoCommands and allowEmptyPrdDiff gates. */
   validationPolicy?: ValidationConfig;
   // --- eforge:endregion plan-02-final-validation-gates ---
+  // --- eforge:region plan-02-engine-acceptance-gates ---
+  /** Expected acceptance criteria derived from the PRD or plan files. When defined, the
+   *  prdValidate phase enforces that every criterion receives a verdict (synthesizing
+   *  unknown for any not covered by the validator). When no prdValidator is configured
+   *  and this array is defined, the build fails unless an explicit waiver is active. */
+  expectedAcceptanceCriteria?: import('./validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
+  // --- eforge:endregion plan-02-engine-acceptance-gates ---
 }
 
 /**
@@ -235,6 +242,9 @@ export class Orchestrator {
       // --- eforge:region plan-02-final-validation-gates ---
       validationPolicy: this.options.validationPolicy,
       // --- eforge:endregion plan-02-final-validation-gates ---
+      // --- eforge:region plan-02-engine-acceptance-gates ---
+      expectedAcceptanceCriteria: this.options.expectedAcceptanceCriteria,
+      // --- eforge:endregion plan-02-engine-acceptance-gates ---
     };
     try {
       yield* executePlans(ctx);

@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans, finalize, validate, prdValidate, recordArtifact } from '@eforge-build/engine/orchestrator/phases';
+import { extractExpectedAcceptanceCriteria } from '@eforge-build/engine/validation/acceptance-criteria';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import { initializeState, Orchestrator } from '@eforge-build/engine/orchestrator';
@@ -1388,3 +1389,192 @@ describe('gap-close: clean review does not bypass acceptance gate', () => {
 });
 // --- eforge:endregion gap-close ---
 // --- eforge:endregion plan-02-final-validation-gates ---
+
+// --- eforge:region plan-02-engine-acceptance-gates ---
+describe('prdValidate — no-validator acceptance gate', () => {
+  function makeBaseCtx(overrides: Partial<PhaseContext> = {}): PhaseContext {
+    const state = makeState({});
+    return {
+      state,
+      config: makeConfig({ plans: [] }),
+      repoRoot: '/tmp/repo',
+      planRunner: async function* () {},
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: {} as unknown as WorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false,
+      landingAction: 'merge' as const,
+      modelTracker: new ModelTracker(),
+      ...overrides,
+    };
+  }
+
+  it('fails build when expectedAcceptanceCriteria is defined and no prdValidator is configured', async () => {
+    const ctx = makeBaseCtx({
+      expectedAcceptanceCriteria: [
+        { id: 'ac-001', text: 'Must support login', raw: 'Must support login' },
+      ],
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    expect(ctx.state.status).toBe('failed');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'prd_validation:start' }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'prd_validation:complete', passed: false }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'acceptance_validation:complete', passed: false }));
+    const progress = events.find(
+      (e) => e.type === 'planning:progress' && 'message' in e &&
+      (e as { message: string }).message.includes('no PRD validator configured'),
+    );
+    expect(progress).toBeDefined();
+  });
+
+  it('does nothing (no gate) when expectedAcceptanceCriteria is undefined and no prdValidator', async () => {
+    const ctx = makeBaseCtx({
+      // expectedAcceptanceCriteria is absent — no gate should fire
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    expect(events).toHaveLength(0);
+    expect(ctx.state.status).not.toBe('failed');
+  });
+
+  it('passes build when expectedAcceptanceCriteria is defined and allowNoAcceptanceCriteria waiver is active with a non-empty reason', async () => {
+    const ctx = makeBaseCtx({
+      expectedAcceptanceCriteria: [
+        { id: 'ac-001', text: 'Must support login', raw: 'Must support login' },
+      ],
+      validationPolicy: {
+        allowNoAcceptanceCriteria: true,
+        noAcceptanceCriteriaReason: 'Exploratory build; criteria defined post-hoc',
+        allowNoCommands: false,
+        allowEmptyPrdDiff: false,
+        allowNoCommittedChanges: false,
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    expect(ctx.state.status).not.toBe('failed');
+    // Must emit prd_validation:complete passed=true
+    expect(events).toContainEqual(expect.objectContaining({ type: 'prd_validation:complete', passed: true }));
+    // Must emit acceptance_validation:complete passed=true with waivers populated
+    const acceptance = events.find((e) => e.type === 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect((acceptance as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>).passed).toBe(true);
+    const waivers = (acceptance as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>).waivers;
+    expect(waivers).toBeDefined();
+    expect(waivers).toContain('Exploratory build; criteria defined post-hoc');
+  });
+
+  it('fails build when expectedAcceptanceCriteria is an empty array and no prdValidator is configured', async () => {
+    const ctx = makeBaseCtx({
+      expectedAcceptanceCriteria: [],
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    expect(ctx.state.status).toBe('failed');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'prd_validation:start' }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'prd_validation:complete', passed: false }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'acceptance_validation:complete', passed: false }));
+    const progress = events.find(
+      (e) => e.type === 'planning:progress' && 'message' in e &&
+      (e as { message: string }).message.includes('no PRD validator configured'),
+    );
+    expect(progress).toBeDefined();
+  });
+
+  it('passes build when expectedAcceptanceCriteria is an empty array and allowNoAcceptanceCriteria waiver is active with a non-empty reason', async () => {
+    const ctx = makeBaseCtx({
+      expectedAcceptanceCriteria: [],
+      validationPolicy: {
+        allowNoAcceptanceCriteria: true,
+        noAcceptanceCriteriaReason: 'No plan-level criteria defined; waived for this build',
+        allowNoCommands: false,
+        allowEmptyPrdDiff: false,
+        allowNoCommittedChanges: false,
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    expect(ctx.state.status).not.toBe('failed');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'prd_validation:complete', passed: true }));
+    const acceptance = events.find((e) => e.type === 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect((acceptance as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>).passed).toBe(true);
+    const waivers = (acceptance as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>).waivers;
+    expect(waivers).toBeDefined();
+    expect(waivers).toContain('No plan-level criteria defined; waived for this build');
+  });
+
+  it('derives expected criteria from real PRD markdown and enforces them in the acceptance gate', async () => {
+    // Simulate what eforge.ts does: extract criteria from PRD content then pass into ctx
+    const prdMarkdown = `
+# My Feature PRD
+
+## Acceptance Criteria
+
+- Add login page with username and password
+- Support OAuth via Google
+- All existing tests pass
+`.trim();
+
+    const derived = extractExpectedAcceptanceCriteria(prdMarkdown);
+    // Sanity check the extraction produced the right criteria
+    expect(derived).toHaveLength(3);
+    expect(derived[0]).toMatchObject({ id: 'ac-001', text: 'Add login page with username and password' });
+    expect(derived[1]).toMatchObject({ id: 'ac-002', text: 'Support OAuth via Google' });
+    expect(derived[2]).toMatchObject({ id: 'ac-003', text: 'All existing tests pass' });
+
+    // Wire the derived criteria into a prdValidate context with a stub validator that only
+    // covers ac-001 and ac-002 — ac-003 should be synthesized as unknown, failing the build.
+    const ctx = makeBaseCtx({
+      expectedAcceptanceCriteria: derived,
+      prdValidator: async function* () {
+        yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+        yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+        yield {
+          type: 'acceptance_validation:complete',
+          timestamp: new Date().toISOString(),
+          passed: true,
+          verdicts: [
+            { criterion: 'ac-001', verdict: 'pass', evidence: 'Login page found.' },
+            { criterion: 'ac-002', verdict: 'pass', evidence: 'OAuth implemented.' },
+          ],
+          source: 'prd',
+        } as EforgeEvent;
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    // ac-003 is not covered — synthesized as unknown — gate must fail
+    expect(ctx.state.status).toBe('failed');
+    const acceptance = events.find((e) => e.type === 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    const typed = acceptance as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>;
+    expect(typed.passed).toBe(false);
+    // The synthesized unknown verdict for ac-003 must appear
+    const unknownVerdict = typed.verdicts.find((v) => v.verdict === 'unknown');
+    expect(unknownVerdict).toBeDefined();
+    expect(unknownVerdict!.evidence).toContain('ac-003');
+  });
+});
+// --- eforge:endregion plan-02-engine-acceptance-gates ---

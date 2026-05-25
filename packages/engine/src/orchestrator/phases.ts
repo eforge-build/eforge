@@ -28,6 +28,9 @@ import type { EforgeConfig, LandingConfig } from '../config.js';
 // --- eforge:region plan-02-final-validation-gates ---
 import type { ValidationConfig } from '../config.js';
 // --- eforge:endregion plan-02-final-validation-gates ---
+// --- eforge:region plan-02-engine-acceptance-gates ---
+import { synthesizeMissingVerdicts } from '../validation/acceptance-criteria.js';
+// --- eforge:endregion plan-02-engine-acceptance-gates ---
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
@@ -134,6 +137,13 @@ export interface PhaseContext {
   /** Explicit validation waivers (allowNoCommands, allowEmptyPrdDiff). Absent means no waivers active. */
   validationPolicy?: ValidationConfig;
   // --- eforge:endregion plan-02-final-validation-gates ---
+  // --- eforge:region plan-02-engine-acceptance-gates ---
+  /** Expected acceptance criteria inventory derived from PRD or plan files.
+   *  When defined, prdValidate synthesizes unknown verdicts for any expected criterion not
+   *  covered by the validator output, and fails the build when no prdValidator is configured
+   *  (unless a waiver is active). When undefined, no enforcement is applied. */
+  expectedAcceptanceCriteria?: import('../validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
+  // --- eforge:endregion plan-02-engine-acceptance-gates ---
 }
 
 /**
@@ -699,7 +709,48 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   const { state, prdValidator } = ctx;
 
-  if (!prdValidator) return;
+  if (!prdValidator) {
+    // --- eforge:region plan-02-engine-acceptance-gates ---
+    // When expected acceptance criteria are defined and no validator is configured,
+    // fail the build unless an explicit allowNoAcceptanceCriteria waiver is active.
+    if (ctx.expectedAcceptanceCriteria !== undefined) {
+      const policy = ctx.validationPolicy;
+      const waiverReason = (policy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string } | undefined)?.allowNoAcceptanceCriteria
+        ? ((policy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string }).noAcceptanceCriteriaReason ?? '').trim()
+        : '';
+      yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
+      if (waiverReason) {
+        yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'acceptance_validation:complete',
+          passed: true,
+          verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No PRD validator configured.' }],
+          waivers: [waiverReason],
+          source: 'plan',
+        } as EforgeEvent;
+      } else {
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'prd_validation:complete',
+          passed: false,
+          gaps: [{ requirement: 'No PRD validator configured', explanation: 'Acceptance criteria enforcement requires a PRD validator; none was configured and no waiver is active.' }],
+        } as EforgeEvent;
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'acceptance_validation:complete',
+          passed: false,
+          verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No PRD validator configured to evaluate acceptance criteria.' }],
+          source: 'plan',
+        } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Acceptance criteria validation not possible — no PRD validator configured' } as EforgeEvent;
+        state.status = 'failed';
+        state.completedAt = new Date().toISOString();
+      }
+    }
+    // --- eforge:endregion plan-02-engine-acceptance-gates ---
+    return;
+  }
   if ((state.status as string) === 'failed') return;
 
   let terminalEmitted = false;
@@ -712,6 +763,21 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
   try {
     for await (const event of prdValidator(ctx.mergeWorktreePath)) {
       if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
+      // --- eforge:region plan-02-engine-acceptance-gates ---
+      // Intercept acceptance_validation:complete to synthesize unknown verdicts for any
+      // expected criteria not covered by the validator output. Fail-closed: a criterion
+      // with no matching verdict is treated as unverified.
+      if (event.type === 'acceptance_validation:complete' && ctx.expectedAcceptanceCriteria && ctx.expectedAcceptanceCriteria.length > 0) {
+        const augmented = synthesizeMissingVerdicts(ctx.expectedAcceptanceCriteria, event.verdicts);
+        const allAugmentedPass = augmented.length > 0 && augmented.every((v) => v.verdict === 'pass');
+        const hasWaiver = (event.waivers ?? []).some((w) => w.trim().length > 0);
+        const augmentedPassed = allAugmentedPass || hasWaiver;
+        yield { ...event, verdicts: augmented, passed: augmentedPassed } as EforgeEvent;
+        acceptanceReceived = true;
+        acceptancePassed = augmentedPassed && augmented.length > 0;
+        continue;
+      }
+      // --- eforge:endregion plan-02-engine-acceptance-gates ---
       yield event;
       if (event.type === 'prd_validation:complete') {
         terminalEmitted = true;

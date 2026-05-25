@@ -262,7 +262,7 @@ export function matchVerdictsToExpected(
 
   for (const criterion of expected) {
     const match = verdicts.find(
-      (v) => normalizeCriterionText(v.criterion) === criterion.text,
+      (v) => normalizeCriterionText(v.criterion) === criterion.text || v.criterion.trim() === criterion.id,
     );
     result.set(criterion.id, match);
   }

@@ -80,6 +80,9 @@ import type { StackProviderAdapter } from './stacking/provider.js';
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
 // --- eforge:endregion plan-02-runtime-and-integration ---
+// --- eforge:region plan-02-engine-acceptance-gates ---
+import { extractExpectedAcceptanceCriteria, type ExpectedAcceptanceCriterion } from './validation/acceptance-criteria.js';
+// --- eforge:endregion plan-02-engine-acceptance-gates ---
 
 const exec = promisify(execFile);
 
@@ -798,6 +801,30 @@ export class EforgeEngine {
       // --- eforge:region plan-02-final-validation-gates ---
       const validationPolicy = this.config.build.validation;
       // --- eforge:endregion plan-02-final-validation-gates ---
+      // --- eforge:region plan-02-engine-acceptance-gates ---
+      // Pre-derive expected acceptance criteria before validator closure construction.
+      // PRD builds extract from the PRD content; non-PRD builds aggregate from plan file bodies.
+      let expectedAcceptanceCriteria: ExpectedAcceptanceCriterion[];
+      if (options.prdFilePath) {
+        try {
+          const prdContentForAC = await readFile(resolve(cwd, options.prdFilePath), 'utf-8');
+          expectedAcceptanceCriteria = extractExpectedAcceptanceCriteria(prdContentForAC);
+        } catch {
+          expectedAcceptanceCriteria = [];
+        }
+      } else {
+        const allCriteria: ExpectedAcceptanceCriterion[] = [];
+        let counter = 1;
+        for (const planFile of planFileMap.values()) {
+          const planCriteria = extractExpectedAcceptanceCriteria(planFile.body);
+          for (const c of planCriteria) {
+            allCriteria.push({ id: `ac-${String(counter).padStart(3, '0')}`, text: c.text, raw: c.raw });
+            counter++;
+          }
+        }
+        expectedAcceptanceCriteria = allCriteria;
+      }
+      // --- eforge:endregion plan-02-engine-acceptance-gates ---
       const prdValidator: PrdValidator | undefined = options.prdFilePath ? async function* (validatorCwd) {
         // Read PRD content
         let prdContent: string;
@@ -832,7 +859,11 @@ export class EforgeEngine {
           if (validationPolicy?.allowEmptyPrdDiff && validationPolicy.emptyPrdDiffReason?.trim()) {
             yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
             yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
-            yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: true, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'pass', evidence: `Waiver: ${validationPolicy.emptyPrdDiffReason}` }], source: 'prd' } as EforgeEvent;
+            // --- eforge:region plan-02-engine-acceptance-gates ---
+            // Use waivers field instead of a synthetic pass verdict — a waived empty diff cannot
+            // certify acceptance criteria as met, so verdicts are unknown with an explicit waiver.
+            yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: true, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No implementation diff to evaluate (waived).' }], waivers: [validationPolicy.emptyPrdDiffReason!], source: 'prd' } as EforgeEvent;
+            // --- eforge:endregion plan-02-engine-acceptance-gates ---
           } else {
             yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
             yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'Empty implementation diff', explanation: 'No changes were found in the implementation diff; cannot validate PRD coverage.' }] } as EforgeEvent;
@@ -866,6 +897,9 @@ export class EforgeEngine {
             abortController,
             phase: 'standalone',
             harness: agentRuntimes.forRole('prd-validator'),
+            // --- eforge:region plan-02-engine-acceptance-gates ---
+            expectedAcceptanceCriteria,
+            // --- eforge:endregion plan-02-engine-acceptance-gates ---
           })) {
             prdTracker.handleEvent(event);
             yield event;
@@ -1003,6 +1037,9 @@ export class EforgeEngine {
         // --- eforge:region plan-02-final-validation-gates ---
         validationPolicy,
         // --- eforge:endregion plan-02-final-validation-gates ---
+        // --- eforge:region plan-02-engine-acceptance-gates ---
+        expectedAcceptanceCriteria,
+        // --- eforge:endregion plan-02-engine-acceptance-gates ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
