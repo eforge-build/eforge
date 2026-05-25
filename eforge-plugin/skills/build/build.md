@@ -14,6 +14,8 @@ Enqueue a PRD file or description for the eforge daemon to build. Uses the eforg
 - `--infer` (optional) - Skip session-plan discovery and infer the source from conversation context. Used by Pi's native `/eforge:build` source selector.
 - `--profile <name>` (optional) - Use this eforge agent runtime profile for the build instead of the active profile.
 - `--landing-action <action>` (optional) - Override the landing action for this build. One of `pr`, `merge`, or `leave`. Precedence: this argument > PRD frontmatter > `landing.action` in `eforge/config.yaml` > engine default (`merge`). If omitted, the project config default applies. Note: `merge` on the trunk branch requires `build.allowLocalMergeToTrunk: true` in `eforge/config.yaml`.
+- `--landing-auto-merge` (optional) - Enable GitHub PR auto-merge for this build. Only applies when the effective landing action is `pr`. Sends `landingAutoMerge: true` in the enqueue body, overriding the configured `landing.pr.autoMerge` policy for this run.
+- `--no-landing-auto-merge` (optional) - Disable GitHub PR auto-merge for this build. Only applies when the effective landing action is `pr`. Sends `landingAutoMerge: false` in the enqueue body, overriding the configured `landing.pr.autoMerge` policy for this run.
 
 ## Workflow
 
@@ -104,6 +106,14 @@ The build skill uses a **unified landing selector** to determine what happens to
 - **merge** — Merge the artifact branch into the base branch directly.
 - **leave** — Commit to the artifact branch and exit without merging or opening a PR.
 
+**PR auto-merge sub-selector (only when `pr` is selected):** After the user selects `pr` as the landing action, present a follow-up selector to determine whether GitHub auto-merge should be enabled on the opened PR:
+
+- **Use policy default** — Defers to `landing.pr.autoMerge` from `eforge/config.yaml`. **No `landingAutoMerge` key is sent in the enqueue body.**
+- **Enable auto-merge** — Sends `landingAutoMerge: true` in the enqueue body. Overrides the configured policy for this run.
+- **Disable auto-merge** — Sends `landingAutoMerge: false` in the enqueue body. Overrides the configured policy for this run.
+
+If `$ARGUMENTS` already contains `--landing-auto-merge`, skip the sub-selector and use `landingAutoMerge: true`. If `$ARGUMENTS` contains `--no-landing-auto-merge`, use `landingAutoMerge: false`. When neither flag is present and `pr` is selected interactively, present the sub-selector.
+
 **If `$ARGUMENTS` already contains an explicit landing override** (e.g. `--landing-action <value>`), skip the selector and use the provided value at enqueue time.
 
 **Protected trunk behavior**: When the current branch is the configured trunk branch (e.g. `main`) and `build.allowLocalMergeToTrunk` is not `true` in `eforge/config.yaml`:
@@ -153,7 +163,7 @@ First, validate the project config by calling the `mcp__eforge__eforge_config` t
 
 - If `valid` is `true`, continue silently.
 
-Call the `mcp__eforge__eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If an explicit landing action was selected (anything other than "Use project default"), include `landingAction: "<value>"` in the call. **Do not include `landingAction` when the user selected "Use project default" or when no landing override is present in `$ARGUMENTS` — omitting the key lets the engine inherit the configured default.**
+Call the `mcp__eforge__eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If an explicit landing action was selected (anything other than "Use project default"), include `landingAction: "<value>"` in the call. **Do not include `landingAction` when the user selected "Use project default" or when no landing override is present in `$ARGUMENTS` — omitting the key lets the engine inherit the configured default.** If an explicit auto-merge override was selected (anything other than "Use policy default"), include `landingAutoMerge: <true|false>` in the call. **Do not include `landingAutoMerge` when "Use policy default" was selected or when neither `--landing-auto-merge` nor `--no-landing-auto-merge` is present in `$ARGUMENTS` — omitting the key defers to the `landing.pr.autoMerge` policy.**
 
 <!-- parity-skip-start -->
 Present the landing selector conversationally with the four choices (Use project default, pr, merge, leave) before calling the tool, unless an explicit override is already in `$ARGUMENTS`. On protected trunk with unsafe effective default, exclude merge and project-default-as-merge from the normal options and offer the remediation choices instead (pr, leave, update config if applicable, cancel).

@@ -105,6 +105,27 @@ landing:
   action: pr    # pr | merge (default) | leave
 ```
 
+## PR Auto-Merge
+
+`landing.pr.autoMerge` controls whether GitHub PR auto-merge is enabled after a PR is opened. This setting only applies when `landing.action: pr`. Default: `ask`.
+
+Note: `landing.pr.autoMerge` is distinct from `landing.action: merge`. The `action: merge` setting merges the artifact branch directly into the base branch without opening a PR. `landing.pr.autoMerge` opens a PR and then optionally enables GitHub's native auto-merge feature on it.
+
+| Value | Behavior |
+|-------|----------|
+| `ask` (default) | Enable auto-merge only when the per-run `landingAutoMerge` flag is explicitly `true`. Omitting the per-run flag means no auto-merge. |
+| `always` | Enable auto-merge on every PR unless the per-run `landingAutoMerge` flag is explicitly `false`. |
+| `never` | Never enable auto-merge; skips auto-merge silently and emits a skipped event. |
+
+**Per-run override:** Individual builds and playbook runs can override the policy via the `landingAutoMerge` field in the enqueue body (CLI: `--landing-auto-merge` / `--no-landing-auto-merge`). Omitting the field defers to the `landing.pr.autoMerge` policy.
+
+```yaml
+landing:
+  action: pr
+  pr:
+    autoMerge: ask    # ask (default) | always | never
+```
+
 ## Stacking
 
 `stacking` configures git-spice backed stacked pull requests. When `stacking.enabled: true`, each build's artifact branch targets the parent artifact branch instead of the trunk, forming a linear stack of PRs. git-spice must be installed; see the [Stacked PRs guide](/docs/stacking).

@@ -5226,6 +5226,7 @@
           "required": [
             "type",
             "featureBranch",
+            "baseBranch",
             "prUrl"
           ],
           "properties": {
@@ -5236,6 +5237,9 @@
             "featureBranch": {
               "type": "string"
             },
+            "baseBranch": {
+              "type": "string"
+            },
             "prUrl": {
               "type": "string"
             }
@@ -5246,6 +5250,7 @@
           "required": [
             "type",
             "featureBranch",
+            "baseBranch",
             "prUrl"
           ],
           "properties": {
@@ -5256,6 +5261,9 @@
             "featureBranch": {
               "type": "string"
             },
+            "baseBranch": {
+              "type": "string"
+            },
             "prUrl": {
               "type": "string"
             }
@@ -5266,6 +5274,7 @@
           "required": [
             "type",
             "featureBranch",
+            "baseBranch",
             "reason"
           ],
           "properties": {
@@ -5274,6 +5283,9 @@
               "type": "string"
             },
             "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
               "type": "string"
             },
             "prUrl": {

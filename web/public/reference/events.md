@@ -126,9 +126,9 @@ Total variants: 200
 | `landing:start` | `action`, `baseBranch`, `featureBranch`, `trunkBranch`, `workflow` |
 | `landing:complete` | `action`, `baseBranch`, `commitSha`, `featureBranch`, `prUrl` |
 | `landing:skipped` | `action`, `baseBranch`, `featureBranch`, `reason` |
-| `landing:auto-merge:start` | `featureBranch`, `prUrl` |
-| `landing:auto-merge:complete` | `featureBranch`, `prUrl` |
-| `landing:auto-merge:skipped` | `featureBranch`, `prUrl`, `reason` |
+| `landing:auto-merge:start` | `baseBranch`, `featureBranch`, `prUrl` |
+| `landing:auto-merge:complete` | `baseBranch`, `featureBranch`, `prUrl` |
+| `landing:auto-merge:skipped` | `baseBranch`, `featureBranch`, `prUrl`, `reason` |
 | `merge:worktree:set` | `path` |
 | `merge:worktree:clear` | - |
 | `expedition:architecture:complete` | `modules` |

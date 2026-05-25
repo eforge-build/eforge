@@ -3530,17 +3530,22 @@ export async function startServer(
       // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       if (playbookLandingAutoMerge === true) {
         if (cwd) {
-          const { loadConfig } = await import('@eforge-build/engine/config');
-          const { config: cfg } = await loadConfig(cwd);
-          const cfgTyped = cfg as unknown as { landing?: { action?: string; pr?: { autoMerge?: string } } };
-          const effectiveLandingAction = playbookLandingAction ?? cfgTyped.landing?.action ?? 'merge';
-          if (effectiveLandingAction !== 'pr') {
-            sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when the effective landing action is 'pr' (got '${effectiveLandingAction}')`);
-            return;
-          }
-          const policy = cfgTyped.landing?.pr?.autoMerge;
-          if (policy === 'never') {
-            sendJsonError(res, 400, "landingAutoMerge: true is not allowed when landing.pr.autoMerge is 'never' in project config");
+          try {
+            const { loadConfig } = await import('@eforge-build/engine/config');
+            const { config: cfg } = await loadConfig(cwd);
+            const cfgTyped = cfg as unknown as { landing?: { action?: string; pr?: { autoMerge?: string } } };
+            const effectiveLandingAction = playbookLandingAction ?? cfgTyped.landing?.action ?? 'merge';
+            if (effectiveLandingAction !== 'pr') {
+              sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when the effective landing action is 'pr' (got '${effectiveLandingAction}')`);
+              return;
+            }
+            const policy = cfgTyped.landing?.pr?.autoMerge;
+            if (policy === 'never') {
+              sendJsonError(res, 400, "landingAutoMerge: true is not allowed when landing.pr.autoMerge is 'never' in project config");
+              return;
+            }
+          } catch (configErr) {
+            sendJsonError(res, 500, `Failed to load project config: ${configErr instanceof Error ? configErr.message : String(configErr)}`);
             return;
           }
         } else if (playbookLandingAction !== undefined && playbookLandingAction !== 'pr') {

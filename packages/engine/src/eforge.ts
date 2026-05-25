@@ -956,6 +956,13 @@ export class EforgeEngine {
       // --- eforge:region plan-01-engine-config-and-landing ---
       const effectiveLandingAction = options.landingAction ?? this.config.landing.action;
       // --- eforge:endregion plan-01-engine-config-and-landing ---
+      // --- eforge:region plan-01-core-engine-auto-merge ---
+      if (options.landingAutoMerge === true && effectiveLandingAction !== 'pr') {
+        status = 'failed';
+        summary = `landingAutoMerge: true is only valid when the effective landing action is 'pr' (got '${effectiveLandingAction}')`;
+        return;
+      }
+      // --- eforge:endregion plan-01-core-engine-auto-merge ---
       const orchestrator = new Orchestrator({
         repoRoot: cwd,
         planRunner,

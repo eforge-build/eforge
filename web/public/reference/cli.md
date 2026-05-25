@@ -97,6 +97,9 @@ Process PRDs from the queue
 | `--max-concurrent-builds <n>` | Max parallel queue PRDs |
 | `--watch` | Watch mode: continuously poll the queue for new PRDs |
 | `--poll-interval <ms>` | Poll interval in milliseconds for watch mode |
+| `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
+| `--landing-auto-merge` | Enable PR auto-merge for this build |
+| `--no-landing-auto-merge` | Disable PR auto-merge for this build |
 
 #### `exec`
 
