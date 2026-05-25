@@ -135,8 +135,12 @@ function extractSectionLines(body: string, headingNames: readonly string[]): str
  * Convert raw content lines into `ExpectedAcceptanceCriterion` records.
  * Blank lines, headings, and placeholder sentinels are skipped.
  * IDs are assigned in order starting at `ac-001`.
+ *
+ * When `listItemsOnly` is true, only lines that look like bullet, ordered-list,
+ * or checklist items are collected. This prevents introductory prose lines such as
+ * "The implementation is accepted when:" from becoming required criteria.
  */
-function linesToCriteria(lines: string[], startIndex = 1): ExpectedAcceptanceCriterion[] {
+function linesToCriteria(lines: string[], startIndex = 1, listItemsOnly = false): ExpectedAcceptanceCriterion[] {
   const criteria: ExpectedAcceptanceCriterion[] = [];
   let counter = startIndex;
 
@@ -146,6 +150,13 @@ function linesToCriteria(lines: string[], startIndex = 1): ExpectedAcceptanceCri
     if (trimmed === '') continue;
     // Skip sub-headings inside the section
     if (headingDepth(trimmed) !== null) continue;
+
+    if (listItemsOnly) {
+      const isBullet = /^[-*+]\s/.test(trimmed);
+      const isOrdered = /^\d+[.)]\s/.test(trimmed);
+      const isCheckbox = /^\[[ xX]\]/.test(trimmed);
+      if (!isBullet && !isOrdered && !isCheckbox) continue;
+    }
 
     const normalized = normalizeCriterionText(trimmed);
     if (isPlaceholder(normalized)) continue;
@@ -195,7 +206,7 @@ export function extractExpectedAcceptanceCriteria(
   // 1. Try explicit AC section first
   const acLines = extractSectionLines(body, AC_HEADING_NAMES);
   if (acLines !== null) {
-    return linesToCriteria(acLines);
+    return linesToCriteria(acLines, 1, true);
   }
 
   if (!options?.allowFallbackSections) {
@@ -263,7 +274,11 @@ export function extractExpectedAcceptanceCriteria(
  * Match a validator's `AcceptanceCriterionVerdict` list against an inventory of
  * expected criteria using normalized text comparison.
  *
- * Returns a map from expected criterion ID to the first matching verdict, or
+ * Each verdict can satisfy at most one expected criterion. Exact criterion ID
+ * matches are preferred; remaining criteria are matched by normalized text.
+ * Consumed verdicts are not reused for subsequent criteria.
+ *
+ * Returns a map from expected criterion ID to the matching verdict, or
  * `undefined` when no verdict matches the criterion.
  */
 export function matchVerdictsToExpected(
@@ -271,12 +286,27 @@ export function matchVerdictsToExpected(
   verdicts: readonly AcceptanceCriterionVerdict[],
 ): Map<string, AcceptanceCriterionVerdict | undefined> {
   const result = new Map<string, AcceptanceCriterionVerdict | undefined>();
+  const consumed = new Set<number>();
 
+  // Pass 1: exact criterion ID matches
   for (const criterion of expected) {
-    const match = verdicts.find(
-      (v) => normalizeCriterionText(v.criterion) === criterion.text || v.criterion.trim() === criterion.id,
-    );
-    result.set(criterion.id, match);
+    const idx = verdicts.findIndex((v, i) => !consumed.has(i) && v.criterion.trim() === criterion.id);
+    if (idx !== -1) {
+      result.set(criterion.id, verdicts[idx]);
+      consumed.add(idx);
+    }
+  }
+
+  // Pass 2: normalized text matches for criteria not yet matched
+  for (const criterion of expected) {
+    if (result.has(criterion.id)) continue;
+    const idx = verdicts.findIndex((v, i) => !consumed.has(i) && normalizeCriterionText(v.criterion) === criterion.text);
+    if (idx !== -1) {
+      result.set(criterion.id, verdicts[idx]);
+      consumed.add(idx);
+    } else {
+      result.set(criterion.id, undefined);
+    }
   }
 
   return result;

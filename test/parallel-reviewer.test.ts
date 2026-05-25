@@ -268,6 +268,45 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
     expect(complete!.issues[0].description).toContain('docs reviewer unavailable');
   });
 
+  it('aggregate includes synthetic critical issue when one perspective returns trailing prose after the terminal block', async () => {
+    class RoutedHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        const text = options.perspective === 'docs'
+          ? '<review-issues></review-issues>\ntrailing prose'
+          : '<review-issues></review-issues>';
+        for await (const event of new StubHarness([{ text }]).run(options, agent, planId)) {
+          yield event;
+        }
+      }
+    }
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: new RoutedHarness([]),
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-parallel-trailing-prose',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code', 'docs'],
+      }),
+    );
+
+    const docsComplete = events.find(
+      (event): event is Extract<EforgeEvent, { type: 'plan:build:review:parallel:perspective:complete' }> =>
+        event.type === 'plan:build:review:parallel:perspective:complete' && event.perspective === 'docs',
+    );
+    expect(docsComplete).toBeDefined();
+    expect(docsComplete!.issues).toHaveLength(1);
+    expect(docsComplete!.issues[0]).toMatchObject({ severity: 'critical', category: 'review-contract', file: 'reviewer-output' });
+
+    const complete = findEvent(events, 'plan:build:review:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'critical', category: 'review-contract', file: 'reviewer-output' }),
+    ]));
+  });
+
   it('aggregate includes synthetic critical issue when an extension perspective violates the contract', async () => {
     const registration: ReviewerPerspectiveRegistration = {
       kind: 'reviewerPerspective',

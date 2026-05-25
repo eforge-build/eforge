@@ -713,9 +713,12 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     // --- eforge:region plan-02-engine-acceptance-gates ---
     // When expected acceptance criteria are defined and no validator is configured,
     // fail the build unless an explicit allowNoAcceptanceCriteria waiver is active.
+    // The waiver is only honored when no criteria were extractable (length === 0).
+    // When real criteria exist, always fail closed regardless of any waiver.
     if (ctx.expectedAcceptanceCriteria !== undefined) {
       const policy = ctx.validationPolicy;
-      const waiverReason = (policy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string } | undefined)?.allowNoAcceptanceCriteria
+      const hasRealCriteria = ctx.expectedAcceptanceCriteria.length > 0;
+      const waiverReason = !hasRealCriteria && (policy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string } | undefined)?.allowNoAcceptanceCriteria
         ? ((policy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string }).noAcceptanceCriteriaReason ?? '').trim()
         : '';
       yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
@@ -730,6 +733,13 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
           source: 'plan',
         } as EforgeEvent;
       } else {
+        const unknownVerdicts = hasRealCriteria
+          ? ctx.expectedAcceptanceCriteria.map((c) => ({
+              criterion: c.text,
+              verdict: 'unknown' as const,
+              evidence: `No PRD validator configured to evaluate expected criterion ${c.id}: ${c.text}`,
+            }))
+          : [{ criterion: 'Acceptance criteria', verdict: 'unknown' as const, evidence: 'No PRD validator configured to evaluate acceptance criteria.' }];
         yield {
           timestamp: new Date().toISOString(),
           type: 'prd_validation:complete',
@@ -740,7 +750,7 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
           timestamp: new Date().toISOString(),
           type: 'acceptance_validation:complete',
           passed: false,
-          verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No PRD validator configured to evaluate acceptance criteria.' }],
+          verdicts: unknownVerdicts,
           source: 'plan',
         } as EforgeEvent;
         yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Acceptance criteria validation not possible — no PRD validator configured' } as EforgeEvent;
