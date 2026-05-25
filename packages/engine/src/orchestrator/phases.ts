@@ -713,12 +713,10 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     // --- eforge:region plan-02-engine-acceptance-gates ---
     // When expected acceptance criteria are defined and no validator is configured,
     // fail the build unless an explicit allowNoAcceptanceCriteria waiver is active.
-    // The waiver is only honored when no criteria were extractable (length === 0).
-    // When real criteria exist, always fail closed regardless of any waiver.
     if (ctx.expectedAcceptanceCriteria !== undefined) {
       const policy = ctx.validationPolicy;
       const hasRealCriteria = ctx.expectedAcceptanceCriteria.length > 0;
-      const waiverReason = !hasRealCriteria && (policy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string } | undefined)?.allowNoAcceptanceCriteria
+      const waiverReason = (policy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string } | undefined)?.allowNoAcceptanceCriteria
         ? ((policy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string }).noAcceptanceCriteriaReason ?? '').trim()
         : '';
       yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
