@@ -7,7 +7,7 @@ import { resolveConfig, DEFAULT_CONFIG } from '@eforge-build/engine/config';
 // ---------------------------------------------------------------------------
 
 describe('resolveAgentConfig with tier recipes', () => {
-  it('throws when role tier has no recipe', () => {
+  it('preserves default tier recipes when a partial profile config omits a tier', () => {
     const config = resolveConfig({
       agents: {
         tiers: {
@@ -15,8 +15,11 @@ describe('resolveAgentConfig with tier recipes', () => {
         },
       },
     });
-    // builder is in the implementation tier, but only planning is configured
-    expect(() => resolveAgentConfig('builder', config)).toThrow(/no tier recipe is configured/);
+    // builder is in the implementation tier; the omitted tier falls back to defaults.
+    const builder = resolveAgentConfig('builder', config);
+    expect(builder.harness).toBe('claude-sdk');
+    expect(builder.model.id).toBe('claude-sonnet-4-6');
+    expect(builder.maxTurns).toBe(80);
   });
 
   it('DEFAULT_CONFIG resolves every role to claude-sdk via tier recipes', () => {
@@ -109,6 +112,22 @@ describe('resolveAgentConfig maxTurns — implementation tier budget', () => {
   it('resolveAgentConfig("builder", DEFAULT_CONFIG).maxTurns equals 80', () => {
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
     expect(result.maxTurns).toBe(80);
+  });
+
+  it('custom agents.tiers.implementation preserves the default 80 maxTurns when omitted', () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'pi' as const, pi: { provider: 'openai-codex' }, model: 'gpt-5.5', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'pi' as const, pi: { provider: 'openai-codex' }, model: 'gpt-5.5', effort: 'high' as const },
+          evaluation: { harness: 'pi' as const, pi: { provider: 'openai-codex' }, model: 'gpt-5.5', effort: 'high' as const },
+        },
+      },
+    });
+    expect(resolveAgentConfig('review-fixer', config).maxTurns).toBe(80);
+    expect(resolveAgentConfig('validation-fixer', config).maxTurns).toBe(80);
+    expect(resolveAgentConfig('builder', config).maxTurns).toBe(80);
   });
 
   it('custom agents.tiers.implementation.maxTurns overrides the 80 default for review-fixer', () => {
