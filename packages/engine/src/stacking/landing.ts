@@ -325,6 +325,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
         timestamp: ts(),
         type: 'landing:auto-merge:skipped',
         featureBranch: branch,
+        baseBranch: resolvedBase,
         reason: 'No PR URL discovered; cannot enable auto-merge for stacked PR',
       } as unknown as EforgeEvent;
     } else {
@@ -332,6 +333,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
         timestamp: ts(),
         type: 'landing:auto-merge:start',
         featureBranch: branch,
+        baseBranch: resolvedBase,
         prUrl,
       } as unknown as EforgeEvent;
       try {
@@ -340,6 +342,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
           timestamp: ts(),
           type: 'landing:auto-merge:complete',
           featureBranch: branch,
+          baseBranch: resolvedBase,
           prUrl,
         } as unknown as EforgeEvent;
       } catch (autoMergeErr) {
@@ -347,6 +350,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
           timestamp: ts(),
           type: 'landing:auto-merge:skipped',
           featureBranch: branch,
+          baseBranch: resolvedBase,
           prUrl,
           reason: `gh pr merge failed: ${(autoMergeErr as Error).message}`,
         } as unknown as EforgeEvent;
@@ -355,11 +359,14 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   } else {
     const skipReason = prAutoMergePolicy === 'never'
       ? 'Auto-merge policy is "never"'
-      : 'Auto-merge not requested (policy is "ask")';
+      : (prAutoMergePolicy === 'always' && landingAutoMerge === false)
+        ? 'Auto-merge explicitly disabled for this run'
+        : 'Auto-merge not requested (policy is "ask")';
     yield {
       timestamp: ts(),
       type: 'landing:auto-merge:skipped',
       featureBranch: branch,
+      baseBranch: resolvedBase,
       ...(prUrl !== undefined && { prUrl }),
       reason: skipReason,
     } as unknown as EforgeEvent;

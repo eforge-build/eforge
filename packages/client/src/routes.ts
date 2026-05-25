@@ -16,7 +16,7 @@ export interface EnqueueRequest {
   /** Override the project-level landing action for this build. */
   landingAction?: 'pr' | 'merge' | 'leave';
   // --- eforge:region plan-01-core-engine-auto-merge ---
-  /** When true, enable GitHub PR auto-merge after PR creation (requires landingAction: 'pr'). */
+  /** When true, enable GitHub PR auto-merge after PR creation (requires the effective landing action to be 'pr', whether supplied via landingAction or resolved from project config). */
   landingAutoMerge?: boolean;
   // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }
@@ -379,7 +379,7 @@ export interface PlaybookRunRequest {
   /** Override the project-level landing action for this autonomous playbook run. */
   landingAction?: 'pr' | 'merge' | 'leave';
   // --- eforge:region plan-01-core-engine-auto-merge ---
-  /** When true, enable GitHub PR auto-merge after PR creation (requires landingAction: 'pr'). */
+  /** When true, enable GitHub PR auto-merge after PR creation (requires the effective landing action to be 'pr', whether supplied via landingAction or resolved from project config). */
   landingAutoMerge?: boolean;
   // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }

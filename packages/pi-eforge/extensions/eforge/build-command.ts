@@ -67,10 +67,13 @@ function hasProfileOverride(args: string): boolean {
 
 /**
  * Returns true when args already contain an explicit landing override so the
- * landing selector should be bypassed. Detects: landingAction, --landing-action.
+ * landing selector should be bypassed. Detects: landingAction, --landing-action,
+ * --landing-auto-merge, --no-landing-auto-merge, landingAutoMerge.
  */
 function hasLandingOverride(args: string): boolean {
-  return /(?:^|\s)(--landing-action|landingAction)(?:\s|=|:|$)/.test(args);
+  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+  return /(?:^|\s)(--landing-action|landingAction|--landing-auto-merge|--no-landing-auto-merge|landingAutoMerge)(?:\s|=|:|$)/.test(args);
+  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 }
 
 async function selectProfileArgs(ctx: UIContext, args: string): Promise<string | null> {
@@ -197,8 +200,15 @@ export async function handleBuildCommand(
 
   let finalArgs = argsWithProfile;
   if (landingResult.landingAction) {
-    finalArgs = `${argsWithProfile} --landing-action ${landingResult.landingAction}`;
+    finalArgs = `${finalArgs} --landing-action ${landingResult.landingAction}`;
   }
+  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+  if (landingResult.landingAutoMerge === true) {
+    finalArgs = `${finalArgs} --landing-auto-merge`;
+  } else if (landingResult.landingAutoMerge === false) {
+    finalArgs = `${finalArgs} --no-landing-auto-merge`;
+  }
+  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
   sendBuildSkill(pi, finalArgs);
 }

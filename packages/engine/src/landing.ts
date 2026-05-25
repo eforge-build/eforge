@@ -389,6 +389,7 @@ export async function* executeLandingAction(
         yield {
           type: 'landing:auto-merge:start' as const,
           featureBranch,
+          baseBranch,
           prUrl: url,
           timestamp: ts(),
         } as unknown as EforgeEvent;
@@ -397,6 +398,7 @@ export async function* executeLandingAction(
           yield {
             type: 'landing:auto-merge:complete' as const,
             featureBranch,
+            baseBranch,
             prUrl: url,
             timestamp: ts(),
           } as unknown as EforgeEvent;
@@ -404,6 +406,7 @@ export async function* executeLandingAction(
           yield {
             type: 'landing:auto-merge:skipped' as const,
             featureBranch,
+            baseBranch,
             prUrl: url,
             reason: `gh pr merge failed: ${(autoMergeErr as Error).message}`,
             timestamp: ts(),
@@ -412,10 +415,13 @@ export async function* executeLandingAction(
       } else {
         const skipReason = prAutoMergePolicy === 'never'
           ? 'Auto-merge policy is "never"'
-          : 'Auto-merge not requested (policy is "ask")';
+          : (prAutoMergePolicy === 'always' && landingAutoMerge === false)
+            ? 'Auto-merge explicitly disabled for this run'
+            : 'Auto-merge not requested (policy is "ask")';
         yield {
           type: 'landing:auto-merge:skipped' as const,
           featureBranch,
+          baseBranch,
           prUrl: url,
           reason: skipReason,
           timestamp: ts(),

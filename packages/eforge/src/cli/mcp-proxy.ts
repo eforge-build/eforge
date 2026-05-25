@@ -209,8 +209,14 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         .enum(['pr', 'merge', 'leave'])
         .optional()
         .describe("Landing action for this build. 'pr' opens a PR from the artifact branch. 'merge' auto-merges into the base branch. 'leave' commits to the artifact branch without merging or opening a PR."),
+      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+      landingAutoMerge: z
+        .boolean()
+        .optional()
+        .describe("When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge. When false, explicitly disable auto-merge even if the project default is 'always'. Omit to use the project default."),
+      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     },
-    handler: async ({ source, profile, landingAction }, { cwd: toolCwd }) => {
+    handler: async ({ source, profile, landingAction, landingAutoMerge }, { cwd: toolCwd }) => {
       const { resolveAndValidateLandingFlags: resolveFlags, CLILandingFlagError: LandingFlagError } = await import('./landing-options.js');
       let resolvedLandingAction: 'pr' | 'merge' | 'leave' | undefined;
       try {
@@ -222,6 +228,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const body: EnqueueRequest = { source };
       if (profile) body.profile = profile;
       if (resolvedLandingAction) body.landingAction = resolvedLandingAction;
+      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+      if (landingAutoMerge !== undefined) body.landingAutoMerge = landingAutoMerge;
+      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, body);
       return { ...data, monitorUrl: `http://localhost:${port}` };
     },
@@ -1010,10 +1019,13 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }),
       }).optional().describe('Playbook content (required for "save")'),
       afterQueueId: z.string().optional().describe('Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].'),
-      landingAction: z.enum(['pr', 'merge', 'leave']).optional().describe("Landing action for this run (optional, 'run' only for autonomous playbooks). 'pr' opens a PR, 'merge' auto-merges, 'leave' commits without merging.")  ,
+      landingAction: z.enum(['pr', 'merge', 'leave']).optional().describe("Landing action for this run (optional, 'run' only for autonomous playbooks). 'pr' opens a PR, 'merge' auto-merges, 'leave' commits without merging."),
+      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+      landingAutoMerge: z.boolean().optional().describe("When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge for this playbook run. When false, explicitly disable auto-merge. Omit to use the project default. Only applies to autonomous playbooks via 'run'."),
+      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       raw: z.string().optional().describe('Raw Markdown playbook string (required for "validate")'),
     },
-    handler: async ({ action, name, scope, playbook, afterQueueId, landingAction, raw }, { cwd: toolCwd }) => {
+    handler: async ({ action, name, scope, playbook, afterQueueId, landingAction, landingAutoMerge, raw }, { cwd: toolCwd }) => {
       const { resolveAndValidateLandingFlags: resolvePlaybookFlags, CLILandingFlagError: PlaybookLandingFlagError } = await import('./landing-options.js');
       let resolvedPlaybookLandingAction: 'pr' | 'merge' | 'leave' | undefined;
       try {
@@ -1045,6 +1057,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
         if (resolvedPlaybookLandingAction !== undefined) body.landingAction = resolvedPlaybookLandingAction;
+        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+        if (landingAutoMerge !== undefined) body.landingAutoMerge = landingAutoMerge;
+        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookRun, body);
         return data;
       }

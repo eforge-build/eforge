@@ -53,3 +53,23 @@ export class CLILandingFlagError extends Error {
     this.name = 'CLILandingFlagError';
   }
 }
+
+// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+/**
+ * Resolve paired boolean auto-merge flags into a `boolean | undefined`.
+ *
+ * Commander paired booleans (`--landing-auto-merge` / `--no-landing-auto-merge`)
+ * produce a single `landingAutoMerge?: boolean` option where:
+ *   - `--landing-auto-merge` → `true`
+ *   - `--no-landing-auto-merge` → `false`
+ *   - neither flag → `undefined`
+ *
+ * Commander handles conflict resolution (last flag wins), so this function is
+ * a simple pass-through that documents the contract.
+ */
+export function resolveAndValidateLandingAutoMergeFlags(opts: {
+  landingAutoMerge?: boolean;
+}): boolean | undefined {
+  return opts.landingAutoMerge;
+}
+// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

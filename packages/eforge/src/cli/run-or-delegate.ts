@@ -79,6 +79,10 @@ export interface BuildRunOpts {
     profile?: string;
     /** Landing action for this build (pr|merge|leave). */
     landingAction?: 'pr' | 'merge' | 'leave';
+    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+    /** Per-run PR auto-merge intent override. Requires landingAction: 'pr'. */
+    landingAutoMerge?: boolean;
+    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
   };
   abortController?: AbortController;
   /** Called with the active monitor on start and undefined on teardown. */
@@ -98,6 +102,12 @@ export interface QueueRunOpts {
     maxConcurrentBuilds?: number;
     watch?: boolean;
     pollInterval?: number;
+    /** Override the project-level landing action for this queue run. */
+    landingAction?: 'pr' | 'merge' | 'leave';
+    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+    /** Per-run PR auto-merge intent override. Requires effective landing action to be 'pr'. */
+    landingAutoMerge?: boolean;
+    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
   };
   abortController?: AbortController;
   /** Called with the active monitor on start and undefined on teardown. */
@@ -319,6 +329,9 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
             // Pass explicit profile to daemon; daemon handles inherited agent_profile detection
             ...(options.profile && { profile: options.profile }),
             ...(options.landingAction && { landingAction: options.landingAction }),
+            // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+            ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
+            // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
           },
         });
         const result = data as EnqueueResponse;
@@ -452,6 +465,9 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
         abortController,
         ...(effectiveProfile && { profile: effectiveProfile }),
         ...(options.landingAction && { landingAction: options.landingAction }),
+        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+        ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
+        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       });
     }
 
@@ -537,6 +553,10 @@ async function runQueue(opts: QueueRunOpts): Promise<CliExitInfo> {
       verbose: options.verbose,
       abortController,
       ...(options.pollInterval !== undefined && { pollIntervalMs: options.pollInterval }),
+      ...(options.landingAction !== undefined && { landingAction: options.landingAction }),
+      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+      ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
+      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     };
 
     const queueEvents = options.watch

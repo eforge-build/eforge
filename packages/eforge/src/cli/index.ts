@@ -63,6 +63,9 @@ import { formatCliError } from './errors.js';
 // --- eforge:region plan-04-consumer-surfaces ---
 import { resolveAndValidateLandingFlags, CLILandingFlagError } from './landing-options.js';
 // --- eforge:endregion plan-04-consumer-surfaces ---
+// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+import { resolveAndValidateLandingAutoMergeFlags } from './landing-options.js';
+// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -427,6 +430,10 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--no-plugins', 'Disable plugin loading')
     .option('--profile <name>', 'Override active profile for this enqueue + build')
     .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
+    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+    .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
+    .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
+    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     .action(
       async (
         source: string,
@@ -436,6 +443,9 @@ export function createProgram(abortController?: AbortController, version?: strin
           plugins?: boolean;
           profile?: string;
           landingAction?: string;
+          // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+          landingAutoMerge?: boolean;
+          // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         },
       ) => {
         let resolvedLandingAction: 'pr' | 'merge' | 'leave' | undefined;
@@ -448,6 +458,9 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
           throw err;
         }
+        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+        const resolvedLandingAutoMerge = resolveAndValidateLandingAutoMergeFlags({ landingAutoMerge: options.landingAutoMerge });
+        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         initDisplay({ verbose: options.verbose });
 
         const configOverrides = buildConfigOverrides(options);
@@ -509,6 +522,9 @@ export function createProgram(abortController?: AbortController, version?: strin
               abortController,
               ...(effectiveProfile && { profile: effectiveProfile }),
               ...(resolvedLandingAction && { landingAction: resolvedLandingAction }),
+              // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+              ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
+              // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
             });
           }
           // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
@@ -545,6 +561,10 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--poll-interval <ms>', 'Poll interval in milliseconds for watch mode', parseInt)
     .option('--profile <name>', 'Override active profile for this build')
     .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
+    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+    .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
+    .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
+    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     .action(
       async (
         source: string | undefined,
@@ -563,6 +583,9 @@ export function createProgram(abortController?: AbortController, version?: strin
           pollInterval?: number;
           profile?: string;
           landingAction?: string;
+          // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+          landingAutoMerge?: boolean;
+          // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         },
       ) => {
         let resolvedLandingActionBuild: 'pr' | 'merge' | 'leave' | undefined;
@@ -575,6 +598,9 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
           throw err;
         }
+        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+        const resolvedLandingAutoMergeBuild = resolveAndValidateLandingAutoMergeFlags({ landingAutoMerge: options.landingAutoMerge });
+        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         if (resolvedLandingActionBuild !== undefined) {
           options.landingAction = resolvedLandingActionBuild;
         }
@@ -601,6 +627,9 @@ export function createProgram(abortController?: AbortController, version?: strin
               abortController,
               ...(options.pollInterval !== undefined && { pollIntervalMs: options.pollInterval }),
               ...(options.landingAction && { landingAction: options.landingAction as 'pr' | 'merge' | 'leave' }),
+              // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+              ...(resolvedLandingAutoMergeBuild !== undefined && { landingAutoMerge: resolvedLandingAutoMergeBuild }),
+              // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
             };
 
             const queueEvents = options.watch
@@ -647,6 +676,9 @@ export function createProgram(abortController?: AbortController, version?: strin
               maxConcurrentBuilds: options.maxConcurrentBuilds,
               profile: options.profile,
               landingAction: resolvedLandingActionBuild,
+              // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+              landingAutoMerge: resolvedLandingAutoMergeBuild,
+              // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
             },
             abortController,
             onMonitor: (m) => { activeMonitor = m; },
@@ -760,6 +792,11 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--max-concurrent-builds <n>', 'Max parallel queue PRDs', parseInt)
     .option('--watch', 'Watch mode: continuously poll the queue for new PRDs')
     .option('--poll-interval <ms>', 'Poll interval in milliseconds for watch mode', parseInt)
+    .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
+    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+    .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
+    .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
+    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     .action(
       async (
         name: string | undefined,
@@ -772,10 +809,39 @@ export function createProgram(abortController?: AbortController, version?: strin
           maxConcurrentBuilds?: number;
           watch?: boolean;
           pollInterval?: number;
+          landingAction?: string;
+          // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+          landingAutoMerge?: boolean;
+          // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         },
       ) => {
+        let resolvedLandingActionQueue: 'pr' | 'merge' | 'leave' | undefined;
         try {
-          const result = await runOrDelegate({ mode: 'queue', name, options, abortController, onMonitor: (m) => { activeMonitor = m; } });
+          resolvedLandingActionQueue = resolveAndValidateLandingFlags({ landingAction: options.landingAction });
+        } catch (err) {
+          if (err instanceof CLILandingFlagError) {
+            console.error(chalk.red(`Error: ${err.message}`));
+            process.exit(1);
+          }
+          throw err;
+        }
+        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+        let resolvedLandingAutoMergeQueue: boolean | undefined;
+        try {
+          resolvedLandingAutoMergeQueue = resolveAndValidateLandingAutoMergeFlags({ landingAutoMerge: options.landingAutoMerge });
+        } catch (err) {
+          if (err instanceof CLILandingFlagError) {
+            console.error(chalk.red(`Error: ${err.message}`));
+            process.exit(1);
+          }
+          throw err;
+        }
+        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+        if (resolvedLandingActionQueue !== undefined) {
+          options.landingAction = resolvedLandingActionQueue;
+        }
+        try {
+          const result = await runOrDelegate({ mode: 'queue', name, options: { ...options, landingAction: options.landingAction as 'pr' | 'merge' | 'leave' | undefined, landingAutoMerge: resolvedLandingAutoMergeQueue }, abortController, onMonitor: (m) => { activeMonitor = m; } });
           process.exit(result.code);
         } catch (err) {
           const { message, exitCode } = formatCliError(err);
@@ -829,8 +895,14 @@ export function createProgram(abortController?: AbortController, version?: strin
         }
         // --- eforge:region plan-01-core-engine-auto-merge ---
         let resolvedLandingAutoMerge: boolean | undefined;
-        if (options.landingAutoMerge === 'true') resolvedLandingAutoMerge = true;
-        else if (options.landingAutoMerge === 'false') resolvedLandingAutoMerge = false;
+        if (options.landingAutoMerge !== undefined) {
+          if (options.landingAutoMerge === 'true') resolvedLandingAutoMerge = true;
+          else if (options.landingAutoMerge === 'false') resolvedLandingAutoMerge = false;
+          else {
+            console.error(chalk.red(`Error: --landing-auto-merge must be exactly 'true' or 'false', got '${options.landingAutoMerge}'`));
+            process.exit(QueueExecExitCode.Failed);
+          }
+        }
         // --- eforge:endregion plan-01-core-engine-auto-merge ---
         process.title = `eforge-build:${prdId}`;
         initDisplay({ verbose: options.verbose });

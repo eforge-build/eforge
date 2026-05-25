@@ -1666,16 +1666,19 @@ const EforgeEventVariantsSchema = Type.Union([
   Type.Object({
     type: Type.Literal('landing:auto-merge:start'),
     featureBranch: Type.String(),
+    baseBranch: Type.String(),
     prUrl: Type.String(),
   }),
   Type.Object({
     type: Type.Literal('landing:auto-merge:complete'),
     featureBranch: Type.String(),
+    baseBranch: Type.String(),
     prUrl: Type.String(),
   }),
   Type.Object({
     type: Type.Literal('landing:auto-merge:skipped'),
     featureBranch: Type.String(),
+    baseBranch: Type.String(),
     prUrl: Type.Optional(Type.String()),
     reason: Type.String(),
   }),
