@@ -40,6 +40,9 @@ export async function* runPrdValidator(
   // --- eforge:endregion plan-02-engine-acceptance-gates ---
   // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
   const validationEvidence = formatValidationCommandEvidence(options.validationCommandEvidence);
+  const validationEvidenceInstruction = validationEvidence
+    ? '9. When the **Deterministic Validation Command Evidence** section is present: a command with exit code 0 MAY serve as supporting evidence for a command-based acceptance criterion (e.g., a passing `pnpm type-check` supports "code must type-check"). A non-zero exit code or timeout is direct failure evidence. Absence of a command result means `unknown` — do not infer success'
+    : '';
   // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   const prompt = await loadPrompt('prd-validator', {
     prd: options.prdContent,
@@ -49,6 +52,7 @@ export async function* runPrdValidator(
     // --- eforge:endregion plan-02-engine-acceptance-gates ---
     // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
     validationEvidence,
+    validationEvidenceInstruction,
     // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   }, options.promptAppend);
 
