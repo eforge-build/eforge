@@ -94,13 +94,23 @@ export async function composeReviewPrompt(
 }
 
 /**
- * Parse `<review-issues>` XML blocks from text into structured ReviewIssue[].
+ * Legacy fail-open parser for `<review-issues>` XML blocks.
+ *
+ * Advisory-only: planning reviewers (plan-reviewer, architecture-reviewer,
+ * cohesion-reviewer) intentionally use this parser because their outputs are
+ * advisory — a missing or malformed XML block is treated as "no issues" rather
+ * than a contract violation. Build reviewers must use parseReviewIssuesStrict
+ * instead.
  *
  * Handles:
  * - Multiple `<review-issues>` blocks (merges all issues)
  * - Missing optional attributes (line, fix)
  * - Malformed XML (returns empty array, never throws)
  * - No XML present (returns empty array)
+ * - Non-numeric line attribute (silently omits the line field)
+ *
+ * @deprecated For build reviewers, use parseReviewIssuesStrict which enforces
+ *   the terminal-block contract and treats contract violations as critical issues.
  */
 export function parseReviewIssues(text: string): ReviewIssue[] {
   const issues: ReviewIssue[] = [];
@@ -228,12 +238,12 @@ export interface ParseReviewIssuesResult {
  */
 export function parseReviewIssuesStrict(text: string): ParseReviewIssuesResult {
   const blockRegex = /<review-issues>([\s\S]*?)<\/review-issues>/g;
-  const blocks: string[] = [];
+  const blocks: Array<{ content: string; endIndex: number }> = [];
   let blockMatch: RegExpExecArray | null;
 
   try {
     while ((blockMatch = blockRegex.exec(text)) !== null) {
-      blocks.push(blockMatch[1]);
+      blocks.push({ content: blockMatch[1], endIndex: blockRegex.lastIndex });
     }
   } catch {
     return {
@@ -261,8 +271,21 @@ export function parseReviewIssuesStrict(text: string): ParseReviewIssuesResult {
     };
   }
 
-  // Exactly one block — validate each issue inside it
-  const blockContent = blocks[0];
+  // Exactly one block — enforce terminal-block contract: only whitespace may follow the closing tag.
+  const afterBlock = text.slice(blocks[0].endIndex);
+  if (afterBlock.trim().length > 0) {
+    return {
+      valid: false,
+      issues: [syntheticContractIssue(
+        'Reviewer output has non-whitespace content after the terminal <review-issues> block. ' +
+        'Only whitespace may follow the closing tag.',
+      )],
+      errors: ['Trailing non-whitespace content after </review-issues>'],
+    };
+  }
+
+  // Exactly one block with valid terminal position — validate each issue inside it
+  const blockContent = blocks[0].content;
   const issues: ReviewIssue[] = [];
   const errors: string[] = [];
 
@@ -279,7 +302,7 @@ export function parseReviewIssuesStrict(text: string): ParseReviewIssuesResult {
       const severityMatch = attrs.match(/severity="([^"]+)"/);
       const categoryMatch = attrs.match(/category="([^"]+)"/);
       const fileMatch = attrs.match(/file="([^"]+)"/);
-      const lineMatch = attrs.match(/line="([^"]+)"/);
+      const lineMatch = attrs.match(/line="([^"]*)"/);
 
       if (!severityMatch) {
         errors.push('Issue is missing required severity attribute');
@@ -318,9 +341,12 @@ export function parseReviewIssuesStrict(text: string): ParseReviewIssuesResult {
       };
 
       if (lineMatch) {
-        const lineNum = parseInt(lineMatch[1], 10);
-        if (!isNaN(lineNum)) {
-          issue.line = lineNum;
+        const rawLine = lineMatch[1];
+        if (/^[1-9]\d*$/.test(rawLine)) {
+          issue.line = Number(rawLine);
+        } else {
+          errors.push(`Issue has a non-numeric line attribute: "${rawLine}" (must be a positive integer or omitted)`);
+          continue;
         }
       }
 

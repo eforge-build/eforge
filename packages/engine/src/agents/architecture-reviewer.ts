@@ -133,6 +133,11 @@ export async function* runArchitectureReview(
     await applyArchitectureReviewFixes({ cwd, outputDir, planSetName, fixes: (captured as ArchitectureReviewSubmission).fixes });
   }
 
+  // Advisory-only: architecture-reviewer uses the legacy fail-open parser intentionally.
+  // Missing or malformed XML is treated as "no issues" rather than a contract violation
+  // because architecture review outputs are advisory — the review cycle handles them through
+  // the evaluator rather than rejecting the build outright. Build reviewers in reviewer.ts
+  // use parseReviewIssuesStrict for hard contract enforcement.
   const issues = parseReviewIssues(fullText);
 
   yield { timestamp: new Date().toISOString(), type: 'planning:architecture:review:complete', issues };

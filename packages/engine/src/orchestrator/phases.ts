@@ -486,12 +486,21 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
           }
           // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
+          // --- eforge:region plan-03-parser-and-committed-work-hardening ---
+          let noCommittedChangesWaiverApplied = false;
+          // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
+
           const commitSha = await ctx.worktreeManager.mergePlan(planId, plan, {
             mode: config.mode,
             mergeResolver: ctx.mergeResolver,
             recentlyMergedIds: ctx.recentlyMergedIds,
             planMap,
             modelTracker: perPlanTrackers.get(planId),
+            // --- eforge:region plan-03-parser-and-committed-work-hardening ---
+            allowNoCommittedChanges: ctx.validationPolicy?.allowNoCommittedChanges,
+            noCommittedChangesReason: ctx.validationPolicy?.noCommittedChangesReason,
+            onNoCommittedChangesWaiver: () => { noCommittedChangesWaiverApplied = true; },
+            // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
           });
 
           yield* transitionPlan(state, planId, 'merged');
@@ -499,6 +508,16 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
           ctx.recentlyMergedIds.push(planId);
 
           yield { timestamp: new Date().toISOString(), type: 'plan:merge:complete', planId, commitSha };
+
+          // --- eforge:region plan-03-parser-and-committed-work-hardening ---
+          if (noCommittedChangesWaiverApplied) {
+            yield {
+              timestamp: new Date().toISOString(),
+              type: 'planning:progress',
+              message: `No committed changes waiver (allowNoCommittedChanges): ${ctx.validationPolicy?.noCommittedChangesReason ?? '(no reason provided)'}`,
+            } as EforgeEvent;
+          }
+          // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
         } catch (err) {
           ctx.failedMerges.add(planId);
           yield* transitionPlan(state, planId, 'failed', { error: `Merge failed: ${(err as Error).message}` });

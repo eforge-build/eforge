@@ -195,6 +195,7 @@ export function extractExpectedAcceptanceCriteria(body: string): ExpectedAccepta
   const bodyLines = body.split('\n');
   let sectionDepth: number | null = null;
   let inFallbackSection = false;
+  let inOutOfScopeSubsection = false;
   const fallbackCriteria: ExpectedAcceptanceCriterion[] = [];
   let counter = 1;
 
@@ -207,13 +208,18 @@ export function extractExpectedAcceptanceCriteria(body: string): ExpectedAccepta
       if (inFallbackSection && depth <= sectionDepth!) {
         inFallbackSection = false;
         sectionDepth = null;
+        inOutOfScopeSubsection = false;
       }
 
       if (!inFallbackSection && fallbackSectionNames.has(headingText.toLowerCase()) && depth === 2) {
         inFallbackSection = true;
         sectionDepth = depth;
+        inOutOfScopeSubsection = false;
+      } else if (inFallbackSection && depth > sectionDepth!) {
+        // Subsection inside a fallback section — skip bullets under "Out of Scope"
+        inOutOfScopeSubsection = /out\s+of\s+scope/i.test(headingText);
       }
-    } else if (inFallbackSection) {
+    } else if (inFallbackSection && !inOutOfScopeSubsection) {
       const trimmed = line.trim();
       if (trimmed === '') continue;
       if (headingDepth(trimmed) !== null) continue;

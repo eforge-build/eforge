@@ -548,6 +548,134 @@ describe('executePlans - build:failed handling', () => {
   });
   // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
+  // --- eforge:region plan-03-parser-and-committed-work-hardening ---
+  it('clean no-op builtOnMerge (no committed diff, no waiver) fails merge and emits plan:build:failed', async () => {
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+    const state = initializeState(config, '/tmp/repo').state;
+
+    const planRunner: PlanRunner = async function* () {};
+
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      mergePlan: async () => {
+        throw new Error(
+          "builtOnMerge plan 'plan-a' has no committed changes since baseSha (deadbeef). " +
+          "Either commit implementation work or configure allowNoCommittedChanges with a noCommittedChangesReason " +
+          "in the validation policy.",
+        );
+      },
+    } as unknown as WorktreeManager;
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: ['echo validation-should-not-run'],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false,
+      landingAction: 'merge' as const,
+      modelTracker: new ModelTracker(),
+      prdId: 'no-op-prd',
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of executePlans(ctx)) events.push(event);
+    for await (const event of validate(ctx)) events.push(event);
+    for await (const event of recordArtifact(ctx)) events.push(event);
+
+    expect(events.some((e) => e.type === 'plan:build:failed' && e.planId === 'plan-a')).toBe(true);
+    // Validation and artifact recording must not run after merge failure
+    expect(events.some((e) => e.type === 'validation:start')).toBe(false);
+    expect(events.some((e) => e.type === 'stack:layer:recorded' || e.type === 'daemon:error')).toBe(false);
+    expect(state.plans['plan-a'].status).toBe('failed');
+    expect(state.status).toBe('failed');
+  });
+
+  it('clean no-op builtOnMerge with allowNoCommittedChanges waiver succeeds and emits planning:progress', async () => {
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+    const state = initializeState(config, '/tmp/repo').state;
+
+    const planRunner: PlanRunner = async function* () {};
+
+    // mergePlan simulates the waiver being applied: calls the callback and returns a SHA.
+    // The stub also asserts that executePlans correctly forwards allowNoCommittedChanges
+    // and noCommittedChangesReason from ctx.validationPolicy.
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      mergePlan: async (_planId: string, _plan: unknown, opts: {
+        allowNoCommittedChanges?: boolean;
+        noCommittedChangesReason?: string;
+        onNoCommittedChangesWaiver?: () => void;
+      }) => {
+        expect(opts.allowNoCommittedChanges).toBe(true);
+        expect(opts.noCommittedChangesReason).toBe('Config-only change recorded in parent PR');
+        opts.onNoCommittedChangesWaiver?.();
+        return 'abc123';
+      },
+    } as unknown as WorktreeManager;
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false,
+      landingAction: 'merge' as const,
+      modelTracker: new ModelTracker(),
+      validationPolicy: {
+        allowNoCommands: false,
+        allowEmptyPrdDiff: false,
+        allowNoAcceptanceCriteria: false,
+        allowNoCommittedChanges: true,
+        noCommittedChangesReason: 'Config-only change recorded in parent PR',
+      },
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of executePlans(ctx)) events.push(event);
+
+    expect(state.plans['plan-a'].status).toBe('merged');
+    expect(events.some((e) => e.type === 'plan:merge:complete' && e.planId === 'plan-a')).toBe(true);
+    // Waiver progress message must be emitted with the reason
+    expect(events.some((e) =>
+      e.type === 'planning:progress' &&
+      (e as Extract<EforgeEvent, { type: 'planning:progress' }>).message.includes('allowNoCommittedChanges') &&
+      (e as Extract<EforgeEvent, { type: 'planning:progress' }>).message.includes('Config-only change recorded in parent PR'),
+    )).toBe(true);
+  });
+  // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
+
   // --- eforge:region plan-04-committed-work-artifact-safety ---
   it('dirty builtOnMerge merge failure emits plan:build:failed and does not emit validation:start', async () => {
     const config = makeConfig({

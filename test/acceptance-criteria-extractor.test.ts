@@ -352,6 +352,46 @@ Some prose note.
     expect(criteria[2]).toMatchObject({ id: 'ac-003', text: 'Type checking passes' });
   });
 
+  it('does not collect bullets from an Out of Scope subsection inside ## Scope', () => {
+    const body = `
+## Scope
+
+### In Scope
+
+- Implement login page
+- Support OAuth
+
+### Out of Scope
+
+- Native mobile app
+- Billing integration
+`.trim();
+    const criteria = extractExpectedAcceptanceCriteria(body);
+    expect(criteria).toHaveLength(2);
+    expect(criteria.map((c) => c.text)).toEqual(['Implement login page', 'Support OAuth']);
+  });
+
+  it('collects bullets from In Scope but skips Out of Scope in the same ## Scope section', () => {
+    const body = `
+## Scope
+
+- Top-level scope item
+
+### Out of Scope
+
+- Excluded item
+
+### In Scope
+
+- Included item
+`.trim();
+    const criteria = extractExpectedAcceptanceCriteria(body);
+    // Top-level and In Scope bullets included; Out of Scope bullets excluded
+    expect(criteria.map((c) => c.text)).toContain('Top-level scope item');
+    expect(criteria.map((c) => c.text)).toContain('Included item');
+    expect(criteria.map((c) => c.text)).not.toContain('Excluded item');
+  });
+
   it('prefers explicit AC section over fallback even when both are present', () => {
     const body = `
 ## Acceptance Criteria
