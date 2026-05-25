@@ -2303,12 +2303,39 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         } else if ((data as { ready?: unknown }).ready !== undefined && (data as { missingDimensions?: unknown }).missingDimensions !== undefined) {
           const ready = (data as { ready: boolean }).ready;
           const missing = (data as { missingDimensions: string[] }).missingDimensions;
+          const acDiagnostics = (data as { acDiagnostics?: Array<{ kind: string; message: string; suggestion: string }> }).acDiagnostics;
           if (ready) {
             lines.push(theme.fg("success", "✓ Ready"));
           } else {
             lines.push(theme.fg("warning", "Not ready"));
             for (const dim of missing) {
               lines.push(`  ${theme.fg("warning", `missing: ${dim}`)}`);
+            }
+            if (acDiagnostics && acDiagnostics.length > 0) {
+              lines.push(`  ${theme.fg("warning", "acceptance criteria issues:")}`);
+              for (const d of acDiagnostics) {
+                lines.push(`    ${theme.fg("warning", `[${d.kind}]`)} ${theme.fg("text", d.message)}`);
+                lines.push(`    ${theme.fg("muted", `Fix: ${d.suggestion}`)}`);
+              }
+            }
+          }
+        } else if ((data as { session?: unknown; readiness?: unknown }).session && (data as { readiness?: { ready?: unknown } }).readiness) {
+          const nestedReadiness = (data as { session: string; readiness: { ready: boolean; missingDimensions?: string[]; acDiagnostics?: Array<{ kind: string; message: string; suggestion: string }> } }).readiness;
+          const nestedSession = (data as { session: string }).session;
+          lines.push(theme.fg("success", "✓ ") + theme.fg("text", nestedSession));
+          if (nestedReadiness.ready) {
+            lines.push(theme.fg("success", "✓ Ready"));
+          } else {
+            lines.push(theme.fg("warning", "Not ready"));
+            for (const dim of nestedReadiness.missingDimensions ?? []) {
+              lines.push(`  ${theme.fg("warning", `missing: ${dim}`)}`);
+            }
+            if (nestedReadiness.acDiagnostics && nestedReadiness.acDiagnostics.length > 0) {
+              lines.push(`  ${theme.fg("warning", "acceptance criteria issues:")}`);
+              for (const d of nestedReadiness.acDiagnostics) {
+                lines.push(`    ${theme.fg("warning", `[${d.kind}]`)} ${theme.fg("text", d.message)}`);
+                lines.push(`    ${theme.fg("muted", `Fix: ${d.suggestion}`)}`);
+              }
             }
           }
         } else if ((data as { session?: unknown }).session) {

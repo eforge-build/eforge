@@ -168,6 +168,25 @@ Work through `required_dimensions` in order, then any `optional_dimensions` for 
 
 **acceptance-criteria** — Specific, testable conditions that confirm the change is complete. Include validation criteria for important assumptions when practical. This is a required dimension for every work type, including the `unknown` fallback.
 
+Each criterion must be **flat, standalone, atomic, and objectively validatable** — a third party can determine pass or fail without judgment. The following are required:
+
+- **No grouping labels** — bullets ending with `:` are headers, not criteria. Do not write `- Tests cover:` or `- Targeted validation passes:`. Write each sub-item as its own standalone bullet.
+- **No bare command fragments** — `` - `pnpm type-check`. `` cannot be verified without an expected outcome. Write the outcome: `` - `pnpm type-check` exits 0. ``
+- **No vague criteria** — `- Works correctly.` and `- Improves reliability.` cannot be objectively verified. Name the specific behavior, command, event, file, or API response.
+
+**Valid examples:**
+- `` - `pnpm type-check` exits 0. ``
+- `` - `pnpm build` completes without errors. ``
+- `- Engine emits an \`enqueue:failed\` event when AC content contains grouping labels.`
+- `- The readiness route returns \`ready: false\` with \`acDiagnostics\` for invalid AC content.`
+- `- The queue directory contains zero new markdown files when enqueue is rejected.`
+
+**Invalid examples (session plan cannot be marked ready; enqueue will fail):**
+- `- Tests cover:` — grouping label (ends with `:`)
+- `` - `pnpm type-check`. `` — bare command fragment (no outcome)
+- `- Works correctly.` — vague (no specific, verifiable behavior)
+- `- Improves reliability.` — vague (no measurable outcome)
+
 ### Step 6: Profile Signal
 
 Based on everything explored, recommend an eforge profile. Profile selection is about **planning complexity**, not just number of files or breadth of code touched.
@@ -193,7 +212,9 @@ Before marking a plan ready, review `assumptions-and-validation`:
 - Do not mark ready if a low-confidence/high-impact assumption lacks a validation path or explicit user acceptance.
 - If all assumptions are validated or low impact, say that explicitly.
 
-When all required dimensions appear complete and the assumption review passes, call `eforge_session_plan { action: 'readiness', session }` to verify. The tool checks all required dimensions and returns a readiness report with `ready`, `missingDimensions`, `coveredDimensions`, and `skippedDimensions`. Optional dimensions never block readiness.
+When all required dimensions appear complete and the assumption review passes, call `eforge_session_plan { action: 'readiness', session }` to verify. The tool checks all required dimensions and returns a readiness report with `ready`, `missingDimensions`, `coveredDimensions`, `skippedDimensions`, and optionally `acDiagnostics`. Optional dimensions never block readiness.
+
+When `readiness.ready` is false and `acDiagnostics` is present, the acceptance criteria contain quality issues that must be fixed before the plan can be marked ready. Surface each diagnostic's `message` and `suggestion` to the user and rewrite the acceptance criteria section to address them, then call readiness again.
 
 When `readiness.ready` is true:
 

@@ -1,0 +1,60 @@
+name: complete-and-verify-ac-quality-gate-continuation
+description: Complete the acceptance-criteria quality gate continuation by
+  auditing WIP state, finishing enqueue rejection, adding shared session-plan
+  readiness diagnostics, updating planning skill guidance, and driving targeted
+  validation green.
+base_branch: eforge/prevent-invalid-acceptance-criteria-from-being-enqueued
+mode: excursion
+validate:
+  - pnpm vitest run test/acceptance-criteria-quality.test.ts
+    test/acceptance-criteria-extractor.test.ts
+    test/prd-validator-fail-closed.test.ts
+  - pnpm vitest run test/session-plan-helpers.test.ts
+    test/daemon-session-plan-routes.test.ts test/skills-docs-wiring.test.ts
+    test/normalize-build-source.test.ts
+  - pnpm docs:check-parity
+  - pnpm type-check
+plans:
+  - id: plan-01-complete-ac-quality-gate
+    name: Complete Acceptance Criteria Quality Gate
+    depends_on: []
+    branch: complete-and-verify-ac-quality-gate-continuation/plan-01-complete-ac-quality-gate
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: strict
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - doc-sync
+      - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a multi-file continuation involving engine validation logic,
+    enqueue behavior, Pi/session-plan readiness, prompt/skill guidance, and
+    targeted tests, so excursion is appropriate. A plan review cycle helps catch
+    scope drift and ensure the WIP audit/repair work is planned carefully
+    without requiring expedition-scale module planning. The build pipeline
+    implements repairs first, then syncs documentation-like guidance and
+    writes/updates tests in parallel, runs iterative test validation, and
+    finishes with a review cycle. Review focuses on code correctness and test
+    coverage for the quality gate while avoiding unnecessary security/API
+    perspectives.

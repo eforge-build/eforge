@@ -17,6 +17,177 @@
 import type { AcceptanceCriterionVerdict } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
+// AC quality analysis — inlined here to avoid a dependency on @eforge-build/input
+// (the engine must not import from that package per boundary constraints).
+// The canonical copy lives in packages/input/src/acceptance-criteria-quality.ts;
+// keep these in sync when making changes to the analysis logic.
+// ---------------------------------------------------------------------------
+
+/** A diagnostic produced by the AC quality analyzer for a single criterion. */
+export interface AcDiagnostic {
+  /** Classification of the quality issue. */
+  kind: 'grouping-label' | 'bare-command' | 'vague';
+  /** The raw line text that triggered the diagnostic (with list markers). */
+  line: string;
+  /** Human-readable description of the issue. */
+  message: string;
+  /** Suggestion for how to fix the criterion. */
+  suggestion: string;
+}
+
+/** Result of analyzing an acceptance criteria section. */
+export interface AcQualityResult {
+  /** True when no quality issues were found. */
+  valid: boolean;
+  /** Diagnostics for each criterion that failed quality analysis. */
+  diagnostics: AcDiagnostic[];
+}
+
+/** Strip common Markdown list markers from the beginning of a string. */
+function _stripListMarkersForQuality(text: string): string {
+  let s = text.replace(/^\[[ xX]\]\s*/, '');
+  s = s.replace(/^\d+[.)]\s+/, '');
+  s = s.replace(/^[-*+]\s+/, '');
+  s = s.replace(/^\[[ xX]\]\s*/, '');
+  return s;
+}
+
+/** Normalize a criterion text for quality checks: trim, strip list markers, collapse whitespace. */
+function _normalizeLineForQuality(raw: string): string {
+  return _stripListMarkersForQuality(raw.trim()).replace(/\s+/g, ' ').trim();
+}
+
+function _isGroupingLabel(normalized: string): boolean {
+  return normalized.endsWith(':');
+}
+
+function _isBareCommand(normalized: string): boolean {
+  return /^`[^`]+`\.?\s*$/.test(normalized);
+}
+
+const _VAGUE_VERB_RE =
+  /^(works?|improves?|handles?|fixes?|addresses?|makes?\s+\w+\s+(?:faster|better|more\s+\w+)|ensures?\s+(?:correct|proper|better)|allows?|supports?|provides?\s+better)\b/i;
+
+function _isVague(normalized: string): boolean {
+  if (/`[^`]+`/.test(normalized)) return false;
+  if (/[A-Z][a-z]+[A-Z]|[a-z][A-Z]/.test(normalized)) return false;
+  if (/\d/.test(normalized)) return false;
+  if (/\/|\.(?:[a-z]{2,4})\b/.test(normalized)) return false;
+  return _VAGUE_VERB_RE.test(normalized);
+}
+
+/**
+ * Analyze a single criterion line for quality issues.
+ */
+export function analyzeAcceptanceCriteriaItem(rawLine: string): AcDiagnostic | null {
+  const normalized = _normalizeLineForQuality(rawLine);
+  if (normalized === '') return null;
+
+  if (_isGroupingLabel(normalized)) {
+    return {
+      kind: 'grouping-label',
+      line: rawLine,
+      message: `"${normalized}" is a grouping label, not a standalone criterion. Acceptance criteria must not use bullets ending in ":" to introduce nested sub-criteria.`,
+      suggestion:
+        'Replace this grouping label with individual standalone criterion bullets — each a complete, verifiable statement.',
+    };
+  }
+
+  if (_isBareCommand(normalized)) {
+    return {
+      kind: 'bare-command',
+      line: rawLine,
+      message: `"${normalized}" is a bare command fragment. Acceptance criteria must state the expected outcome, not just a command to run.`,
+      suggestion:
+        'Append the expected outcome after the command, e.g., change "`pnpm type-check`." to "`pnpm type-check` exits 0."',
+    };
+  }
+
+  if (_isVague(normalized)) {
+    return {
+      kind: 'vague',
+      line: rawLine,
+      message: `"${normalized}" is too vague to be objectively verified. Acceptance criteria must state a specific, observable behavior or outcome.`,
+      suggestion:
+        'Replace with a concrete, testable criterion that names a specific behavior, command, event, file, or API response.',
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Analyze the text content of an acceptance criteria section for quality issues.
+ */
+export function analyzeAcceptanceCriteria(content: string): AcQualityResult {
+  const diagnostics: AcDiagnostic[] = [];
+  const lines = content.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === '') continue;
+
+    const isBullet = /^[-*+]\s/.test(trimmed);
+    const isOrdered = /^\d+[.)]\s/.test(trimmed);
+    const isCheckbox = /^\[[ xX]\]/.test(trimmed);
+    if (!isBullet && !isOrdered && !isCheckbox) continue;
+
+    const diagnostic = analyzeAcceptanceCriteriaItem(trimmed);
+    if (diagnostic) {
+      diagnostics.push(diagnostic);
+    }
+  }
+
+  return { valid: diagnostics.length === 0, diagnostics };
+}
+
+const _AC_HEADING_NAMES_LOWER_FOR_QUALITY = ['acceptance criteria', 'acs'];
+
+/**
+ * Extract and analyze the acceptance criteria section content from a full PRD body.
+ */
+export function analyzeAcceptanceCriteriaInBody(body: string): AcQualityResult | null {
+  const lines = body.split('\n');
+  let inSection = false;
+  let sectionDepth: number | null = null;
+  const sectionLines: string[] = [];
+
+  for (const line of lines) {
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      const depth = headingMatch[1].length;
+      const headingText = headingMatch[2].trim().toLowerCase();
+
+      if (!inSection) {
+        if (_AC_HEADING_NAMES_LOWER_FOR_QUALITY.includes(headingText)) {
+          inSection = true;
+          sectionDepth = depth;
+        }
+      } else {
+        if (depth <= sectionDepth!) break;
+      }
+    } else if (inSection) {
+      sectionLines.push(line);
+    }
+  }
+
+  if (!inSection) return null;
+  return analyzeAcceptanceCriteria(sectionLines.join('\n'));
+}
+
+/**
+ * Format AC diagnostics into a human-readable summary suitable for error messages.
+ */
+export function formatAcDiagnostics(diagnostics: AcDiagnostic[]): string {
+  if (diagnostics.length === 0) return '';
+  const lines = [
+    `Acceptance criteria quality issues (${diagnostics.length}):`,
+    ...diagnostics.map((d, i) => `  ${i + 1}. [${d.kind}] ${d.message}\n     Fix: ${d.suggestion}`),
+  ];
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Model
 // ---------------------------------------------------------------------------
 

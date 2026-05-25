@@ -1123,3 +1123,135 @@ describe('POST /api/session-plan/create-from-playbook', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ---------------------------------------------------------------------------
+// AC quality gate — readiness route diagnostics and set-status rejection
+// ---------------------------------------------------------------------------
+
+/** Build a session plan raw with AC content in the body. */
+function makeSessionPlanWithAc(session: string, acLines: string[]): string {
+  const acContent = acLines.join('\n');
+  return [
+    '---',
+    `session: ${session}`,
+    'topic: "Test Plan"',
+    'status: planning',
+    'planning_type: feature',
+    'planning_depth: focused',
+    'required_dimensions:',
+    '  - scope',
+    '  - acceptance-criteria',
+    'optional_dimensions: []',
+    'skipped_dimensions: []',
+    'open_questions: []',
+    'profile: null',
+    '---',
+    '',
+    '# Test Plan',
+    '',
+    '## Scope',
+    '',
+    'Real scope content for the test.',
+    '',
+    '## Acceptance Criteria',
+    '',
+    acContent,
+    '',
+  ].join('\n');
+}
+
+describe('GET /api/session-plan/readiness — AC quality diagnostics', () => {
+  it('returns acDiagnostics when AC section contains a grouping label', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const session = '2026-01-01-ac-grouping';
+    await writeSessionPlanFile(tmpDir, session, makeSessionPlanWithAc(session, ['- Tests cover:']));
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await fetch(
+      `http://localhost:${server.port}${API_ROUTES.sessionPlanReadiness}?session=${session}`,
+    );
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as {
+      ready: boolean;
+      acDiagnostics?: Array<{ kind: string; message: string; suggestion: string }>;
+    };
+    expect(data.ready).toBe(false);
+    expect(Array.isArray(data.acDiagnostics)).toBe(true);
+    expect(data.acDiagnostics!.length).toBeGreaterThan(0);
+    expect(data.acDiagnostics![0].kind).toBe('grouping-label');
+  });
+
+  it('returns ready: true with no acDiagnostics for valid command AC', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const session = '2026-01-01-ac-valid';
+    await writeSessionPlanFile(tmpDir, session, makeSessionPlanWithAc(session, ['- `pnpm type-check` exits 0.']));
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await fetch(
+      `http://localhost:${server.port}${API_ROUTES.sessionPlanReadiness}?session=${session}`,
+    );
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as {
+      ready: boolean;
+      acDiagnostics?: unknown;
+    };
+    expect(data.ready).toBe(true);
+    expect(data.acDiagnostics).toBeUndefined();
+  });
+});
+
+describe('POST /api/session-plan/set-status — AC quality gate', () => {
+  it('rejects set-status: ready when AC section contains a grouping label', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const session = '2026-01-01-ac-reject';
+    await writeSessionPlanFile(tmpDir, session, makeSessionPlanWithAc(session, ['- Tests cover:']));
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanSetStatus}`, {
+      session,
+      status: 'ready',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string; readiness: { acDiagnostics: unknown[] } };
+    expect(data.error).toMatch(/acceptance criteria quality/i);
+    expect(Array.isArray(data.readiness.acDiagnostics)).toBe(true);
+
+    // Plan file status must NOT have been changed
+    const filePath = resolve(tmpDir, '.eforge', 'session-plans', `${session}.md`);
+    const content = await readFile(filePath, 'utf-8');
+    expect(content).toContain('status: planning');
+    expect(content).not.toContain('status: ready');
+  });
+
+  it('accepts set-status: ready when AC section has valid criteria', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const session = '2026-01-01-ac-accept';
+    await writeSessionPlanFile(tmpDir, session, makeSessionPlanWithAc(session, ['- `pnpm type-check` exits 0.']));
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.sessionPlanSetStatus}`, {
+      session,
+      status: 'ready',
+    });
+    expect(res.status).toBe(200);
+
+    const filePath = resolve(tmpDir, '.eforge', 'session-plans', `${session}.md`);
+    const content = await readFile(filePath, 'utf-8');
+    expect(content).toContain('status: ready');
+  });
+});
