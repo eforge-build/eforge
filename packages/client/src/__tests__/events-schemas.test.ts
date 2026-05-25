@@ -899,6 +899,78 @@ describe('safeParseEforgeEvent — landing workflow literals', () => {
 });
 // --- eforge:endregion plan-01-direct-pr-landing ---
 
+// --- eforge:region plan-01-core-engine-auto-merge ---
+describe('safeParseEforgeEvent — landing:auto-merge:* events', () => {
+  it('accepts landing:auto-merge:start with featureBranch and prUrl', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:auto-merge:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts landing:auto-merge:complete with featureBranch and prUrl', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:auto-merge:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts landing:auto-merge:skipped with prUrl and reason', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:auto-merge:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+      reason: 'Auto-merge policy is "never"',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts landing:auto-merge:skipped without prUrl (optional)', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:auto-merge:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+      reason: 'No PR URL discovered',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects landing:auto-merge:start missing featureBranch', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:auto-merge:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects landing:auto-merge:complete missing prUrl', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:auto-merge:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects landing:auto-merge:skipped missing reason', () => {
+    const result = safeParseEforgeEvent({
+      type: 'landing:auto-merge:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+// --- eforge:endregion plan-01-core-engine-auto-merge ---
+
 describe('agent:start — runtime decision fields survive schema round-trip', () => {
   it('accepts agent:start with thinkingCoerced and thinkingOriginal', () => {
     const event = {

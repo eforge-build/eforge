@@ -14,7 +14,7 @@ import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
-import { startServer, type DaemonState, type MonitorServer } from '@eforge-build/monitor/server';
+import { startServer, type DaemonState, type MonitorServer, type WorkerTracker } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
 import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
 
@@ -970,3 +970,177 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(entry!.mode).toBe('autonomous');
   });
 });
+
+// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+
+// ---------------------------------------------------------------------------
+// Helpers for enqueue-route tests (daemon mode requires workerTracker)
+// ---------------------------------------------------------------------------
+
+function makeStubWorkerTracker(): WorkerTracker {
+  return {
+    spawnWorker(_command: string, _args: string[]): { sessionId: string; pid: number } {
+      return { sessionId: 'stub-session', pid: 99999 };
+    },
+    cancelWorker(_sessionId: string): boolean {
+      return false;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Route: POST /api/enqueue — landingAutoMerge validation
+// ---------------------------------------------------------------------------
+
+describe('POST /api/enqueue - landingAutoMerge validation', () => {
+  it('returns 400 when landingAutoMerge is true and landingAction is merge', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, {
+      strictPort: true,
+      cwd: tmpDir,
+      workerTracker: makeStubWorkerTracker(),
+    });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a new feature',
+      landingAction: 'merge',
+      landingAutoMerge: true,
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('landingAutoMerge');
+    expect(data.error).toContain('pr');
+  });
+
+  it('returns 400 when landingAutoMerge is a non-boolean value', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, {
+      strictPort: true,
+      cwd: tmpDir,
+      workerTracker: makeStubWorkerTracker(),
+    });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a new feature',
+      landingAutoMerge: 'yes',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('landingAutoMerge');
+    expect(data.error).toContain('boolean');
+  });
+
+  it('returns 400 when landingAutoMerge is true and policy is never', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    // Set landing.pr.autoMerge: never in project config
+    await writeFile(resolve(configDir, 'config.yaml'), 'landing:\n  pr:\n    autoMerge: never\n', 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, {
+      strictPort: true,
+      cwd: tmpDir,
+      workerTracker: makeStubWorkerTracker(),
+    });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a new feature',
+      landingAction: 'pr',
+      landingAutoMerge: true,
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain("never");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Route: POST /api/playbook/run — landingAutoMerge persistence
+// ---------------------------------------------------------------------------
+
+describe('POST /api/playbook/run - landingAutoMerge persistence', () => {
+  it('persists landing_auto_merge: true in PRD frontmatter when landingAction pr and landingAutoMerge true are both supplied', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-feature',
+      landingAction: 'pr',
+      landingAutoMerge: true,
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { kind: string; id: string };
+    expect(data.kind).toBe('enqueued');
+
+    // Verify the queued PRD contains both landing: pr and landing_auto_merge: true
+    const queueFile = resolve(tmpDir, '.eforge', 'queue', `${data.id}.md`);
+    const content = await readFile(queueFile, 'utf-8');
+    const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
+    expect(frontmatter).toBeDefined();
+    expect(frontmatter).toContain('landing: pr');
+    expect(frontmatter).toContain('landing_auto_merge: true');
+  });
+
+  it('returns 400 when landingAutoMerge is not a boolean', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-feature',
+      landingAutoMerge: 'yes',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('landingAutoMerge');
+  });
+
+  it('returns 400 when landingAutoMerge is true but landingAction is leave', async () => {
+    const tmpDir = makeTempDir();
+    const { configDir } = await setupProject(tmpDir);
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-feature',
+      landingAction: 'leave',
+      landingAutoMerge: true,
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('landingAutoMerge');
+  });
+});
+
+// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

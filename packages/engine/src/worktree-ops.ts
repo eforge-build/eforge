@@ -528,6 +528,19 @@ export async function getExistingPullRequestUrl(
   }
 }
 
+/**
+ * Enable GitHub PR auto-merge via `gh pr merge --auto --merge`.
+ *
+ * @param cwd       - Working directory (merge worktree or repo root).
+ * @param selector  - PR URL or branch name (passed directly to `gh pr merge`).
+ *
+ * Non-fatal by design: callers should catch errors and emit a
+ * `landing:auto-merge:skipped` event rather than failing the build.
+ */
+export async function enablePullRequestAutoMerge(cwd: string, selector: string): Promise<void> {
+  await exec('gh', ['pr', 'merge', selector, '--auto', '--merge'], { cwd });
+}
+
 // --- eforge:endregion plan-01-engine-config-and-landing ---
 
 // --- eforge:region plan-04-committed-work-artifact-safety ---

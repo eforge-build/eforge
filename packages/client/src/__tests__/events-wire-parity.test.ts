@@ -1551,6 +1551,46 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
   },
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  {
+    label: 'landing:auto-merge:start',
+    payload: {
+      type: 'landing:auto-merge:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+    },
+  },
+  {
+    label: 'landing:auto-merge:complete',
+    payload: {
+      type: 'landing:auto-merge:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+    },
+  },
+  {
+    label: 'landing:auto-merge:skipped (with prUrl)',
+    payload: {
+      type: 'landing:auto-merge:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+      reason: 'Auto-merge policy is "never"',
+    },
+  },
+  {
+    label: 'landing:auto-merge:skipped (no prUrl)',
+    payload: {
+      type: 'landing:auto-merge:skipped',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      featureBranch: 'eforge/my-set',
+      reason: 'No PR URL discovered',
+    },
+  },
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
+
   // --- eforge:region plan-02-extension-perspective-runtime ---
   {
     label: 'extension:reviewer-perspective:applied',

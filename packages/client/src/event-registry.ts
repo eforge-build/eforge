@@ -843,6 +843,26 @@ const eventRegistry = {
   },
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  'landing:auto-merge:start': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `PR auto-merge: enabling for ${e.prUrl}`,
+  },
+
+  'landing:auto-merge:complete': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `PR auto-merge: enabled for ${e.prUrl}`,
+  },
+
+  'landing:auto-merge:skipped': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `PR auto-merge skipped: ${e.reason}`,
+  },
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
+
   // --- eforge:region plan-01-stack-contracts-config-state-events ---
   'stack:layer:recorded': {
     scope: 'session',

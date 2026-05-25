@@ -324,6 +324,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'], {
         description: "Override the project-level landing action for this build. 'pr' opens a PR targeting the resolved base branch (requires gh CLI). 'merge' auto-merges the artifact branch into the base branch. 'leave' commits to the artifact branch and exits without merging or opening a PR.",
       })),
+      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+      landingAutoMerge: Type.Optional(Type.Boolean({
+        description: "When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge — the PR will be merged automatically once all required checks pass. When false, explicitly disable auto-merge even if the project default is 'always'. Omit to use the project default.",
+      })),
+      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const policyChoice = await promptForBuildLandingGate(
@@ -331,6 +336,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         ctx as unknown as UIContext,
         params.landingAction as LandingAction | undefined,
         signal,
+        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+        { landingAutoMergeOverride: params.landingAutoMerge },
+        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       );
       if (policyChoice.cancelled) {
         return jsonResult({ status: "cancelled", message: "Build cancelled before enqueue." });
@@ -340,6 +348,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       if (params.profile) body.profile = params.profile;
       const effectiveLandingAction = policyChoice.landingAction ?? (params.landingAction as LandingAction | undefined);
       if (effectiveLandingAction) body.landingAction = effectiveLandingAction;
+      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+      const effectiveLandingAutoMerge = policyChoice.landingAutoMerge ?? params.landingAutoMerge;
+      if (effectiveLandingAutoMerge !== undefined) body.landingAutoMerge = effectiveLandingAutoMerge;
+      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       const { data, port } = await requireDaemon<EnqueueResponse>(
         ctx.cwd,
         "POST",
@@ -1969,6 +1981,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'] as const, {
         description: "Override the project-level landing action for this run (optional, 'run' only for autonomous playbooks). 'pr' opens a PR targeting the resolved base branch. 'merge' auto-merges. 'leave' commits and exits without merging or opening a PR.",
       })),
+      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+      landingAutoMerge: Type.Optional(Type.Boolean({
+        description: "When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge for this playbook run. When false, explicitly disable auto-merge. Omit to use the project default. Only applies to autonomous playbooks via 'run'.",
+      })),
+      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       raw: Type.Optional(
         Type.String({
           description: 'Raw Markdown playbook string (required for "validate")',
@@ -1976,7 +1993,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, name, scope, playbook, afterQueueId, landingAction, raw } = params;
+      const { action, name, scope, playbook, afterQueueId, landingAction, landingAutoMerge, raw } = params;
 
       if (action === "list") {
         const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.playbookList);
@@ -2005,6 +2022,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
         if (landingAction !== undefined) body.landingAction = landingAction;
+        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+        if (landingAutoMerge !== undefined) body.landingAutoMerge = landingAutoMerge;
+        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookRun, body);
         return jsonResult(data);
       }

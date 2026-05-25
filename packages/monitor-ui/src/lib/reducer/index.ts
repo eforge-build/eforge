@@ -357,6 +357,13 @@ export const IGNORED_EVENT_TYPES = [
   'stack:provider:command',
   'stack:landing:update',
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  // PR auto-merge lifecycle events — monitor UI rendering is future work.
+  // Listed here so the exhaustive check passes without that work landing first.
+  'landing:auto-merge:start',
+  'landing:auto-merge:complete',
+  'landing:auto-merge:skipped',
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 ] as const;
 
 // ---------------------------------------------------------------------------

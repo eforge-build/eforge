@@ -191,4 +191,37 @@ describe('loadConfig — build.onSuccess deprecation warning', () => {
     const hasWarning = warnings.some((w) => w.includes('build.onSuccess'));
     expect(hasWarning).toBe(false);
   });
+
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  it('resolves landing.pr.autoMerge from config file', async () => {
+    await writeFile(
+      join(cwd, 'eforge', 'config.yaml'),
+      'landing:\n  action: pr\n  pr:\n    autoMerge: always\n',
+      'utf-8',
+    );
+    const { config } = await loadConfig(cwd);
+    expect(config.landing.pr.autoMerge).toBe('always');
+  });
+
+  it('landing.pr.autoMerge defaults to ask when not in config file', async () => {
+    await writeFile(
+      join(cwd, 'eforge', 'config.yaml'),
+      'landing:\n  action: pr\n',
+      'utf-8',
+    );
+    const { config } = await loadConfig(cwd);
+    expect(config.landing.pr.autoMerge).toBe('ask');
+  });
+
+  it('landing.action validation is unchanged when landing.pr.autoMerge is set', async () => {
+    await writeFile(
+      join(cwd, 'eforge', 'config.yaml'),
+      'landing:\n  action: leave\n  pr:\n    autoMerge: never\n',
+      'utf-8',
+    );
+    const { config } = await loadConfig(cwd);
+    expect(config.landing.action).toBe('leave');
+    expect(config.landing.pr.autoMerge).toBe('never');
+  });
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 });

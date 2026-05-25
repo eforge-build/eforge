@@ -28,6 +28,9 @@ import {
   createPullRequest as createPullRequestOp,
   getExistingPullRequestUrl,
   ensureGhAvailable,
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  enablePullRequestAutoMerge,
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 } from './worktree-ops.js';
 import type { ModelTracker } from './model-tracker.js';
@@ -341,6 +344,20 @@ export class WorktreeManager {
   async leaveBranch(): Promise<void> {
     // No-op: branch remains for manual inspection or follow-up
   }
+
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  /**
+   * Enable GitHub PR auto-merge via `gh pr merge --auto --merge`.
+   *
+   * @param prUrlOrBranch - PR URL (preferred) or branch name passed to `gh pr merge`.
+   *
+   * Non-fatal by design: callers must catch errors and emit a
+   * `landing:auto-merge:skipped` event rather than propagating the failure.
+   */
+  async enablePrAutoMerge(prUrlOrBranch: string): Promise<void> {
+    return enablePullRequestAutoMerge(this.mergeWorktreePath, prUrlOrBranch);
+  }
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 
   /**

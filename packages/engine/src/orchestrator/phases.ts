@@ -120,6 +120,12 @@ export interface PhaseContext {
   /** Which post-build landing action to execute (canonical: pr | merge | leave). */
   landingAction: LandingConfig['action'];
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  /** Configured PR auto-merge policy (from landing.pr.autoMerge). Defaults to 'ask'. */
+  prAutoMergePolicy?: 'ask' | 'always' | 'never';
+  /** Per-run PR auto-merge intent (from landingAutoMerge option/frontmatter). */
+  landingAutoMerge?: boolean;
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
   // --- eforge:region plan-02-stack-provider-runtime ---
   /** Instantiated stack provider adapter for git-spice landing (stacked builds only). */
   stackProvider?: StackProviderAdapter;
@@ -981,6 +987,10 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     cleanupOutputDir: ctx.cleanupOutputDir,
     cleanupPrdFilePath: ctx.cleanupPrdFilePath,
     // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
+    // --- eforge:region plan-01-core-engine-auto-merge ---
+    prAutoMergePolicy: ctx.prAutoMergePolicy,
+    landingAutoMerge: ctx.landingAutoMerge,
+    // --- eforge:endregion plan-01-core-engine-auto-merge ---
   })) {
     if (event.type === 'stack:landing:update' && effectiveLandingAction === 'pr') {
       if (event.status === 'complete') {
@@ -1193,6 +1203,10 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       // --- eforge:region plan-03-branch-aware-landing ---
       engineConfig: ctx.engineConfig,
       // --- eforge:endregion plan-03-branch-aware-landing ---
+      // --- eforge:region plan-01-core-engine-auto-merge ---
+      prAutoMergePolicy: ctx.prAutoMergePolicy,
+      landingAutoMerge: ctx.landingAutoMerge,
+      // --- eforge:endregion plan-01-core-engine-auto-merge ---
     });
 
     // Manually iterate to capture the generator return value (LandingResult).

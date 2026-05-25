@@ -34,6 +34,9 @@ import { cleanupPlanFiles } from './cleanup.js';
 import { resolveTrunkBranch, isTrunkBranch } from './branch-policy.js';
 import type { EforgeConfig } from './config.js';
 // --- eforge:endregion plan-03-branch-aware-landing ---
+// --- eforge:region plan-01-core-engine-auto-merge ---
+import { resolvePrAutoMergeIntent } from './config.js';
+// --- eforge:endregion plan-01-core-engine-auto-merge ---
 
 const exec = promisify(execFile);
 
@@ -77,6 +80,12 @@ export interface LandingActionOptions {
   /** EforgeConfig subset for trunk policy resolution. When omitted, trunk defaults to "main". */
   engineConfig?: Pick<EforgeConfig, 'build'>;
   // --- eforge:endregion plan-03-branch-aware-landing ---
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  /** Configured PR auto-merge policy (from landing.pr.autoMerge). Defaults to 'ask'. */
+  prAutoMergePolicy?: 'ask' | 'always' | 'never';
+  /** Per-run PR auto-merge intent (from landingAutoMerge build option / PRD frontmatter). */
+  landingAutoMerge?: boolean;
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }
 
 export interface LandingResult {
@@ -201,6 +210,10 @@ export async function* executeLandingAction(
     cleanupPlanSet,
     cleanupOutputDir,
     cleanupPrdFilePath,
+    // --- eforge:region plan-01-core-engine-auto-merge ---
+    prAutoMergePolicy = 'ask',
+    landingAutoMerge,
+    // --- eforge:endregion plan-01-core-engine-auto-merge ---
   } = opts;
 
   const ts = (): string => new Date().toISOString();
@@ -368,6 +381,54 @@ export async function* executeLandingAction(
         prUrl: url,
         timestamp: ts(),
       } as EforgeEvent;
+
+      // --- eforge:region plan-01-core-engine-auto-merge ---
+      // Attempt PR auto-merge (non-fatal) after successful PR creation.
+      const shouldAutoMerge = resolvePrAutoMergeIntent(prAutoMergePolicy, landingAutoMerge);
+      if (shouldAutoMerge) {
+        yield {
+          type: 'landing:auto-merge:start' as const,
+          featureBranch,
+          baseBranch,
+          prUrl: url,
+          timestamp: ts(),
+        } as unknown as EforgeEvent;
+        try {
+          await worktreeManager.enablePrAutoMerge(url);
+          yield {
+            type: 'landing:auto-merge:complete' as const,
+            featureBranch,
+            baseBranch,
+            prUrl: url,
+            timestamp: ts(),
+          } as unknown as EforgeEvent;
+        } catch (autoMergeErr) {
+          yield {
+            type: 'landing:auto-merge:skipped' as const,
+            featureBranch,
+            baseBranch,
+            prUrl: url,
+            reason: `gh pr merge failed: ${(autoMergeErr as Error).message}`,
+            timestamp: ts(),
+          } as unknown as EforgeEvent;
+        }
+      } else {
+        const skipReason = prAutoMergePolicy === 'never'
+          ? 'Auto-merge policy is "never"'
+          : (prAutoMergePolicy === 'always' && landingAutoMerge === false)
+            ? 'Auto-merge explicitly disabled for this run'
+            : 'Auto-merge not requested (policy is "ask")';
+        yield {
+          type: 'landing:auto-merge:skipped' as const,
+          featureBranch,
+          baseBranch,
+          prUrl: url,
+          reason: skipReason,
+          timestamp: ts(),
+        } as unknown as EforgeEvent;
+      }
+      // --- eforge:endregion plan-01-core-engine-auto-merge ---
+
       return { landingSucceeded: true, prUrl: url };
     } catch (err) {
       const reason = (err as Error).message;

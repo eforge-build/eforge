@@ -349,6 +349,13 @@ const landingConfigSchema = z.object({
   action: z.enum(['pr', 'merge', 'leave']).optional().describe(
     'Landing action after a successful build. "pr" opens a GitHub pull request from the artifact branch targeting the resolved base branch (current base branch for non-stacked builds, parent artifact branch for stacked builds). "merge" merges the artifact branch into the base branch directly. "leave" commits to the artifact branch and exits without merging or opening a PR. Default: "merge".',
   ),
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  pr: z.object({
+    autoMerge: z.enum(['ask', 'always', 'never']).optional().describe(
+      'GitHub PR auto-merge policy. "always": enable auto-merge on every PR unless the per-run landingAutoMerge flag is explicitly false. "ask": enable auto-merge only when the per-run landingAutoMerge flag is explicitly true. "never": never enable auto-merge and emit a skipped event. Default: "ask".',
+    ),
+  }).optional(),
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }).describe(
   'Publication action taken after all plans complete and validation passes.',
 );
@@ -510,6 +517,12 @@ export interface StackingConfig {
 /** Resolved landing publication config. */
 export interface LandingConfig {
   action: 'pr' | 'merge' | 'leave';
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  pr: {
+    /** GitHub PR auto-merge policy. Default: 'ask'. */
+    autoMerge: 'ask' | 'always' | 'never';
+  };
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }
 
 // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
@@ -854,7 +867,12 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   tools: Object.freeze({ toolbelts: {} }),
   // --- eforge:region plan-01-stack-contracts-config-state-events ---
   stacking: Object.freeze({ enabled: false, provider: 'git-spice' as const, gitSpice: Object.freeze({}) as { command?: string } }),
-  landing: Object.freeze({ action: 'merge' as const }),
+  landing: Object.freeze({
+    action: 'merge' as const,
+    // --- eforge:region plan-01-core-engine-auto-merge ---
+    pr: Object.freeze({ autoMerge: 'ask' as const }),
+    // --- eforge:endregion plan-01-core-engine-auto-merge ---
+  }),
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 });
 
@@ -998,10 +1016,38 @@ export function resolveConfig(
     }),
     landing: Object.freeze({
       action: landingAction,
+      // --- eforge:region plan-01-core-engine-auto-merge ---
+      pr: Object.freeze({
+        autoMerge: fileConfig.landing?.pr?.autoMerge ?? DEFAULT_CONFIG.landing.pr.autoMerge,
+      }),
+      // --- eforge:endregion plan-01-core-engine-auto-merge ---
     }),
     // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
   });
 }
+
+// --- eforge:region plan-01-core-engine-auto-merge ---
+/**
+ * Resolve whether GitHub PR auto-merge should be enabled for this landing.
+ *
+ * Resolution rules:
+ *   - `always`: enable unless the per-run `requested` flag is explicitly `false`.
+ *   - `ask`:    enable only when `requested` is explicitly `true`.
+ *   - `never`:  always disable regardless of `requested`.
+ *
+ * @param policy   - The configured `landing.pr.autoMerge` value.
+ * @param requested - Per-run intent from `landingAutoMerge` option/frontmatter.
+ */
+export function resolvePrAutoMergeIntent(
+  policy: 'ask' | 'always' | 'never',
+  requested: boolean | undefined,
+): boolean {
+  if (policy === 'never') return false;
+  if (policy === 'always') return requested !== false;
+  // 'ask': only enable when explicitly requested
+  return requested === true;
+}
+// --- eforge:endregion plan-01-core-engine-auto-merge ---
 
 /**
  * Error thrown when config.yaml contains a legacy field that must be migrated.

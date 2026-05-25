@@ -140,6 +140,10 @@ export interface QueueOptions {
   /** Override the project-level landing action for this build. */
   landingAction?: 'pr' | 'merge' | 'leave';
   // --- eforge:endregion plan-02-api-queue-and-ui ---
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  /** Per-run PR auto-merge intent override. Resolved against `landing.pr.autoMerge` policy. */
+  landingAutoMerge?: boolean;
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
   // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
   /**
    * Callback invoked once the scheduler is ready, passing a control object
@@ -552,6 +556,9 @@ export class EforgeEngine {
         depends_on: dependsOn,
         ...(options.profile !== undefined && { profile: options.profile }),
         ...(options.landingAction !== undefined && { landingAction: options.landingAction }),
+        // --- eforge:region plan-01-core-engine-auto-merge ---
+        ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
+        // --- eforge:endregion plan-01-core-engine-auto-merge ---
         ...(options.stack_id !== undefined && { stack_id: options.stack_id }),
         ...(options.stack_parent !== undefined && { stack_parent: options.stack_parent }),
         ...(options.stack_provider !== undefined && { stack_provider: options.stack_provider }),
@@ -949,6 +956,13 @@ export class EforgeEngine {
       // --- eforge:region plan-01-engine-config-and-landing ---
       const effectiveLandingAction = options.landingAction ?? this.config.landing.action;
       // --- eforge:endregion plan-01-engine-config-and-landing ---
+      // --- eforge:region plan-01-core-engine-auto-merge ---
+      if (options.landingAutoMerge === true && effectiveLandingAction !== 'pr') {
+        status = 'failed';
+        summary = `landingAutoMerge: true is only valid when the effective landing action is 'pr' (got '${effectiveLandingAction}')`;
+        return;
+      }
+      // --- eforge:endregion plan-01-core-engine-auto-merge ---
       const orchestrator = new Orchestrator({
         repoRoot: cwd,
         planRunner,
@@ -979,6 +993,10 @@ export class EforgeEngine {
         stackContext: options.stackContext,
         landingAction: effectiveLandingAction,
         // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+        // --- eforge:region plan-01-core-engine-auto-merge ---
+        prAutoMergePolicy: this.config.landing.pr.autoMerge,
+        ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
+        // --- eforge:endregion plan-01-core-engine-auto-merge ---
         // --- eforge:region plan-02-stack-provider-runtime ---
         ...(options.stackProvider !== undefined && { stackProvider: options.stackProvider }),
         // --- eforge:endregion plan-02-stack-provider-runtime ---
@@ -1251,6 +1269,9 @@ export class EforgeEngine {
       // Build the plan — PRD cleanup flows through build()
       // Resolve landing precedence: explicit options.landingAction > PRD landing frontmatter.
       const resolvedLandingAction = options.landingAction ?? prd.frontmatter.landing;
+      // --- eforge:region plan-01-core-engine-auto-merge ---
+      const resolvedLandingAutoMerge = options.landingAutoMerge ?? prd.frontmatter.landing_auto_merge;
+      // --- eforge:endregion plan-01-core-engine-auto-merge ---
       let buildFailed = false;
       for await (const event of withRunId(this.build(planSetName, {
         auto: options.auto,
@@ -1266,6 +1287,9 @@ export class EforgeEngine {
         ...(stackProvider !== undefined && { stackProvider }),
         // --- eforge:endregion plan-02-stack-provider-runtime ---
         ...(resolvedLandingAction !== undefined && { landingAction: resolvedLandingAction }),
+        // --- eforge:region plan-01-core-engine-auto-merge ---
+        ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
+        // --- eforge:endregion plan-01-core-engine-auto-merge ---
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
@@ -1378,6 +1402,12 @@ export class EforgeEngine {
         if (childLandingAction) {
           args.push('--landing-action', childLandingAction);
         }
+        // --- eforge:region plan-01-core-engine-auto-merge ---
+        const childLandingAutoMerge = options.landingAutoMerge ?? prd.frontmatter.landing_auto_merge;
+        if (childLandingAutoMerge !== undefined) {
+          args.push('--landing-auto-merge', String(childLandingAutoMerge));
+        }
+        // --- eforge:endregion plan-01-core-engine-auto-merge ---
         doSpawn(args);
       };
 

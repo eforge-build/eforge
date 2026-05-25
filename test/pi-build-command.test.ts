@@ -88,7 +88,7 @@ function captureSkillCall(pi: ReturnType<typeof makePi>): string | undefined {
   return calls.length > 0 ? (calls[0][0] as string) : undefined;
 }
 
-function mockLandingGate(result: { landingAction?: string; cancelled?: boolean; configUpdated?: boolean }) {
+function mockLandingGate(result: { landingAction?: string; cancelled?: boolean; configUpdated?: boolean; landingAutoMerge?: boolean }) {
   (promptForBuildLandingGate as ReturnType<typeof vi.fn>).mockResolvedValue(result);
 }
 
@@ -332,3 +332,77 @@ describe('handleBuildCommand - profile override preservation', () => {
     expect(call).toContain('--profile');
   });
 });
+
+// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+
+// ---------------------------------------------------------------------------
+// Tests: PR auto-merge selection forwarding
+// ---------------------------------------------------------------------------
+
+describe('handleBuildCommand - PR auto-merge selection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('appends --landing-auto-merge when gate returns landingAutoMerge: true', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+    mockLandingGate({ landingAction: 'pr', landingAutoMerge: true });
+
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
+
+    const call = captureSkillCall(pi)!;
+    expect(call).toContain('--landing-action pr');
+    expect(call).toContain('--landing-auto-merge');
+    expect(call).not.toContain('--no-landing-auto-merge');
+  });
+
+  it('appends --no-landing-auto-merge when gate returns landingAutoMerge: false', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+    mockLandingGate({ landingAction: 'pr', landingAutoMerge: false });
+
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
+
+    const call = captureSkillCall(pi)!;
+    expect(call).toContain('--landing-action pr');
+    expect(call).toContain('--no-landing-auto-merge');
+    expect(call).not.toContain('--landing-auto-merge ');
+  });
+
+  it('appends neither auto-merge flag when gate returns no landingAutoMerge', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+    mockLandingGate({ landingAction: 'pr' });
+
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
+
+    const call = captureSkillCall(pi)!;
+    expect(call).not.toContain('--landing-auto-merge');
+    expect(call).not.toContain('--no-landing-auto-merge');
+  });
+
+  it('does not call landing gate when args already contain --landing-auto-merge', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" --landing-auto-merge');
+
+    expect(promptForBuildLandingGate).not.toHaveBeenCalled();
+    const call = captureSkillCall(pi)!;
+    expect(call).toContain('--landing-auto-merge');
+  });
+
+  it('does not call landing gate when args already contain --no-landing-auto-merge', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" --no-landing-auto-merge');
+
+    expect(promptForBuildLandingGate).not.toHaveBeenCalled();
+    const call = captureSkillCall(pi)!;
+    expect(call).toContain('--no-landing-auto-merge');
+  });
+});
+
+// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

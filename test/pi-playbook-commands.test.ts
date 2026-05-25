@@ -95,7 +95,7 @@ function mockPlaybookList(playbooks: PlaybookListEntry[]) {
   });
 }
 
-function mockLandingGate(result: { landingAction?: string; cancelled?: boolean; configUpdated?: boolean }) {
+function mockLandingGate(result: { landingAction?: string; cancelled?: boolean; configUpdated?: boolean; landingAutoMerge?: boolean }) {
   (promptForPlaybookLandingGate as ReturnType<typeof vi.fn>).mockResolvedValue(result);
 }
 
@@ -423,3 +423,107 @@ describe('Pi handlePlaybookCommand - explicit leave propagation', () => {
     expect(fallbackCall.body).not.toHaveProperty('afterQueueId');
   });
 });
+
+// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+
+// ---------------------------------------------------------------------------
+// Tests: landingAutoMerge propagation — immediate, delayed, fallback
+// ---------------------------------------------------------------------------
+
+describe('Pi handlePlaybookCommand - landingAutoMerge propagation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('propagates landingAutoMerge: true to immediate enqueue body', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
+    mockLandingGate({ landingAction: 'pr', landingAutoMerge: true });
+    mockQueueEmpty();
+    mockPlaybookRun();
+
+    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
+    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      body: Record<string, unknown>;
+    };
+    expect(call.body).toHaveProperty('name', 'my-feature');
+    expect(call.body).toHaveProperty('landingAction', 'pr');
+    expect(call.body).toHaveProperty('landingAutoMerge', true);
+    expect(call.body).not.toHaveProperty('afterQueueId');
+  });
+
+  it('propagates landingAutoMerge: true to delayed enqueue body (with afterQueueId)', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
+    mockLandingGate({ landingAction: 'pr', landingAutoMerge: true });
+    mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
+    mockPlaybookRun();
+
+    (showSelectOverlay as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('build-1')  // wait choice
+      .mockResolvedValueOnce('confirm'); // confirm
+
+    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
+    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      body: Record<string, unknown>;
+    };
+    expect(call.body).toHaveProperty('name', 'my-feature');
+    expect(call.body).toHaveProperty('afterQueueId', 'build-1');
+    expect(call.body).toHaveProperty('landingAction', 'pr');
+    expect(call.body).toHaveProperty('landingAutoMerge', true);
+  });
+
+  it('preserves landingAutoMerge: true in fallback enqueue body when stale afterQueueId fails', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
+    mockLandingGate({ landingAction: 'pr', landingAutoMerge: true });
+    mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
+    // First call (with afterQueueId) fails; second (fallback) succeeds
+    mockPlaybookRunFailThenSucceed('not found');
+
+    (showSelectOverlay as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('build-1')  // wait choice
+      .mockResolvedValueOnce('confirm'); // confirm
+
+    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledTimes(2);
+    const fallbackCall = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[1][0] as {
+      body: Record<string, unknown>;
+    };
+    // The fallback enqueue must carry landingAutoMerge: true even though afterQueueId was stale
+    expect(fallbackCall.body).toHaveProperty('name', 'my-feature');
+    expect(fallbackCall.body).toHaveProperty('landingAutoMerge', true);
+    expect(fallbackCall.body).not.toHaveProperty('afterQueueId');
+  });
+
+  it('omits landingAutoMerge from enqueue body when gate returns no landingAutoMerge', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+
+    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
+    mockLandingGate({ landingAction: 'leave' }); // no landingAutoMerge
+    mockQueueEmpty();
+    mockPlaybookRun();
+
+    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
+    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      body: Record<string, unknown>;
+    };
+    expect(call.body).not.toHaveProperty('landingAutoMerge');
+  });
+});
+
+// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

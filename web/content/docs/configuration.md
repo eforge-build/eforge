@@ -364,6 +364,27 @@ landing:
 
 **Migrating from `build.onSuccess`**: if you have the old `build.onSuccess` key in your config, replace it with `landing.action`. The values map as follows: `issue-pr` → `pr`, `merge-to-base-branch` → `merge`, `leave-branch` → `leave`. New builds reject both the old `build.onSuccess` key and the legacy full-string values (`issue-pr`, `merge-to-base-branch`, `leave-branch`) with migration guidance - only `pr`, `merge`, and `leave` are valid for `landing.action`.
 
+### PR auto-merge policy
+
+`landing.pr.autoMerge` controls whether GitHub PR auto-merge is enabled after a PR is opened. Only applies when `landing.action: pr`. Default: `ask`.
+
+| Value | Behavior |
+|-------|----------|
+| `ask` (default) | Enable auto-merge only when the per-run `landingAutoMerge` flag is explicitly `true`. |
+| `always` | Enable auto-merge on every PR unless the per-run `landingAutoMerge` flag is explicitly `false`. |
+| `never` | Never enable auto-merge; skips auto-merge and emits a skipped event. |
+
+Individual builds and playbook runs can override the policy with `--landing-auto-merge` or `--no-landing-auto-merge` (CLI), or by sending `landingAutoMerge: true/false` in the enqueue body. Omitting the flag defers to the configured policy.
+
+Note: `landing.pr.autoMerge` is distinct from `landing.action: merge`. The `action: merge` setting merges the artifact branch directly into the base branch without opening a PR.
+
+```yaml
+landing:
+  action: pr
+  pr:
+    autoMerge: ask    # ask (default) | always | never
+```
+
 ## Stacked PRs
 
 When `stacking.enabled: true`, each build's artifact branch targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed.

@@ -156,3 +156,115 @@ describe('enqueuePrd — landing frontmatter write', () => {
     await expect(loadQueue(queueDir, cwd)).rejects.toThrow(/onSuccess.*landing/s);
   });
 });
+
+// --- eforge:region plan-01-core-engine-auto-merge ---
+
+describe('prdFrontmatterSchema — landing_auto_merge validation', () => {
+  it('accepts landing_auto_merge: true', () => {
+    const result = validatePrdFrontmatter({ title: 'T', landing_auto_merge: true });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.landing_auto_merge).toBe(true);
+  });
+
+  it('accepts landing_auto_merge: false', () => {
+    const result = validatePrdFrontmatter({ title: 'T', landing_auto_merge: false });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.landing_auto_merge).toBe(false);
+  });
+
+  it('accepts absent landing_auto_merge (optional)', () => {
+    const result = validatePrdFrontmatter({ title: 'T' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.landing_auto_merge).toBeUndefined();
+  });
+});
+
+describe('enqueuePrd — landing_auto_merge frontmatter write', () => {
+  it('writes landing_auto_merge: true when provided', async () => {
+    const cwd = await createGitRepo();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
+
+    const result = await enqueuePrd({
+      body: '# Auto Merge Feature\n\nEnable auto-merge.',
+      title: 'Auto Merge Feature',
+      queueDir,
+      cwd,
+      landingAutoMerge: true,
+    });
+
+    const content = await readFile(result.filePath, 'utf-8');
+    expect(content).toContain('landing_auto_merge: true');
+  });
+
+  it('writes landing_auto_merge: false when provided', async () => {
+    const cwd = await createGitRepo();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
+
+    const result = await enqueuePrd({
+      body: '# No Auto Merge\n\nDisable auto-merge.',
+      title: 'No Auto Merge',
+      queueDir,
+      cwd,
+      landingAutoMerge: false,
+    });
+
+    const content = await readFile(result.filePath, 'utf-8');
+    expect(content).toContain('landing_auto_merge: false');
+  });
+
+  it('does not write landing_auto_merge when absent', async () => {
+    const cwd = await createGitRepo();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
+
+    const result = await enqueuePrd({
+      body: '# Default Feature\n\nDefault behavior.',
+      title: 'Default Feature',
+      queueDir,
+      cwd,
+    });
+
+    const content = await readFile(result.filePath, 'utf-8');
+    expect(content).not.toContain('landing_auto_merge');
+  });
+
+  it('roundtrips landing_auto_merge: true through loadQueue', async () => {
+    const cwd = await createGitRepo();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
+
+    await enqueuePrd({
+      body: '# Auto Merge True\n\nEnable auto-merge.',
+      title: 'Auto Merge True',
+      queueDir,
+      cwd,
+      landingAutoMerge: true,
+    });
+
+    const prds = await loadQueue(queueDir, cwd);
+    expect(prds).toHaveLength(1);
+    expect(prds[0].frontmatter.landing_auto_merge).toBe(true);
+  });
+
+  it('roundtrips landing_auto_merge: false through loadQueue', async () => {
+    const cwd = await createGitRepo();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
+
+    await enqueuePrd({
+      body: '# Auto Merge False\n\nDisable auto-merge.',
+      title: 'Auto Merge False',
+      queueDir,
+      cwd,
+      landingAutoMerge: false,
+    });
+
+    const prds = await loadQueue(queueDir, cwd);
+    expect(prds).toHaveLength(1);
+    expect(prds[0].frontmatter.landing_auto_merge).toBe(false);
+  });
+});
+
+// --- eforge:endregion plan-01-core-engine-auto-merge ---

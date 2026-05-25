@@ -21,6 +21,10 @@ import { isGitHubPullRequestUrl, parseGitSpicePrUrl, redactProviderMessage } fro
 // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
 import { runCleanup } from '../landing.js';
 // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
+// --- eforge:region plan-01-core-engine-auto-merge ---
+import { resolvePrAutoMergeIntent } from '../config.js';
+import { enablePullRequestAutoMerge } from '../worktree-ops.js';
+// --- eforge:endregion plan-01-core-engine-auto-merge ---
 
 const execFileAsync = promisify(execFile);
 
@@ -96,6 +100,12 @@ export interface StackLandingOptions {
   /** Path to the PRD file to remove during cleanup. */
   cleanupPrdFilePath?: string;
   // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  /** Configured PR auto-merge policy (from landing.pr.autoMerge). Defaults to 'ask'. */
+  prAutoMergePolicy?: 'ask' | 'always' | 'never';
+  /** Per-run PR auto-merge intent (from landingAutoMerge option). */
+  landingAutoMerge?: boolean;
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +154,9 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   const { cwd, mergeWorktreePath, stackContext, landingAction, provider,
     shouldCleanup, cleanupPlanSet, cleanupOutputDir, cleanupPrdFilePath } = opts;
   // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  const { prAutoMergePolicy = 'ask', landingAutoMerge } = opts;
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
   const { prdId, stackId, branch, baseBranch, provider: providerName } = stackContext;
 
   const ts = (): string => new Date().toISOString();
@@ -301,4 +314,62 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     status: 'complete',
     ...(prUrl !== undefined && { prUrl }),
   } as EforgeEvent;
+
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  // Step 6: Attempt PR auto-merge (non-fatal) after successful PR landing.
+  const shouldAutoMerge = resolvePrAutoMergeIntent(prAutoMergePolicy, landingAutoMerge);
+  if (shouldAutoMerge) {
+    if (prUrl === undefined) {
+      // No PR URL was discovered from the git-spice output — skip auto-merge with a diagnostic.
+      yield {
+        timestamp: ts(),
+        type: 'landing:auto-merge:skipped',
+        featureBranch: branch,
+        baseBranch: resolvedBase,
+        reason: 'No PR URL discovered; cannot enable auto-merge for stacked PR',
+      } as unknown as EforgeEvent;
+    } else {
+      yield {
+        timestamp: ts(),
+        type: 'landing:auto-merge:start',
+        featureBranch: branch,
+        baseBranch: resolvedBase,
+        prUrl,
+      } as unknown as EforgeEvent;
+      try {
+        await enablePullRequestAutoMerge(mergeWorktreePath, prUrl);
+        yield {
+          timestamp: ts(),
+          type: 'landing:auto-merge:complete',
+          featureBranch: branch,
+          baseBranch: resolvedBase,
+          prUrl,
+        } as unknown as EforgeEvent;
+      } catch (autoMergeErr) {
+        yield {
+          timestamp: ts(),
+          type: 'landing:auto-merge:skipped',
+          featureBranch: branch,
+          baseBranch: resolvedBase,
+          prUrl,
+          reason: `gh pr merge failed: ${(autoMergeErr as Error).message}`,
+        } as unknown as EforgeEvent;
+      }
+    }
+  } else {
+    const skipReason = prAutoMergePolicy === 'never'
+      ? 'Auto-merge policy is "never"'
+      : (prAutoMergePolicy === 'always' && landingAutoMerge === false)
+        ? 'Auto-merge explicitly disabled for this run'
+        : 'Auto-merge not requested (policy is "ask")';
+    yield {
+      timestamp: ts(),
+      type: 'landing:auto-merge:skipped',
+      featureBranch: branch,
+      baseBranch: resolvedBase,
+      ...(prUrl !== undefined && { prUrl }),
+      reason: skipReason,
+    } as unknown as EforgeEvent;
+  }
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }

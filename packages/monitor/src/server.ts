@@ -1948,7 +1948,7 @@ export async function startServer(
         return;
       }
       try {
-        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; landingAction?: string; onSuccess?: unknown };
+        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; landingAction?: string; onSuccess?: unknown; landingAutoMerge?: unknown };
         if (!body.source || typeof body.source !== 'string') {
           sendJsonError(res, 400, 'Missing required field: source');
           return;
@@ -1969,6 +1969,41 @@ export async function startServer(
           }
           explicitLandingAction = body.landingAction as LandingActionValue;
         }
+        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+        let explicitLandingAutoMerge: boolean | undefined;
+        if (body.landingAutoMerge !== undefined) {
+          if (typeof body.landingAutoMerge !== 'boolean') {
+            sendJsonError(res, 400, 'Invalid field: landingAutoMerge must be a boolean');
+            return;
+          }
+          if (body.landingAutoMerge === true) {
+            if (cwd) {
+              try {
+                const { loadConfig } = await import('@eforge-build/engine/config');
+                const { config: cfg } = await loadConfig(cwd);
+                const cfgTyped = cfg as unknown as { landing?: { action?: string; pr?: { autoMerge?: string } } };
+                const effectiveLandingAction = explicitLandingAction ?? cfgTyped.landing?.action ?? 'merge';
+                if (effectiveLandingAction !== 'pr') {
+                  sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when the effective landing action is 'pr' (got '${effectiveLandingAction}')`);
+                  return;
+                }
+                const policy = cfgTyped.landing?.pr?.autoMerge;
+                if (policy === 'never') {
+                  sendJsonError(res, 400, "landingAutoMerge: true is not allowed when landing.pr.autoMerge is 'never' in project config");
+                  return;
+                }
+              } catch (configErr) {
+                sendJsonError(res, 500, `Failed to load project config: ${configErr instanceof Error ? configErr.message : String(configErr)}`);
+                return;
+              }
+            } else if (explicitLandingAction !== undefined && explicitLandingAction !== 'pr') {
+              sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when landingAction is 'pr' (got '${explicitLandingAction}')`);
+              return;
+            }
+          }
+          explicitLandingAutoMerge = body.landingAutoMerge;
+        }
+        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         // --- eforge:region plan-01-per-build-profile-override ---
         // Validate explicit profile override before spawning any worker.
         let explicitProfileName: string | undefined;
@@ -2049,6 +2084,13 @@ export async function startServer(
         if (explicitLandingAction) {
           args.push('--landing-action', explicitLandingAction);
         }
+        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+        if (explicitLandingAutoMerge === true) {
+          args.push('--landing-auto-merge');
+        } else if (explicitLandingAutoMerge === false) {
+          args.push('--no-landing-auto-merge');
+        }
+        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         // --- eforge:region plan-01-semantic-enqueue-wake ---
         // Wake is now driven by the persisted enqueue:complete DB event via the
         // daemon semantic-event reaction path (daemon-event-reactions.ts).
@@ -3444,7 +3486,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Working directory not configured');
         return;
       }
-      let body: { name?: unknown; afterQueueId?: unknown; landingAction?: unknown; onSuccess?: unknown };
+      let body: { name?: unknown; afterQueueId?: unknown; landingAction?: unknown; onSuccess?: unknown; landingAutoMerge?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
@@ -3475,6 +3517,43 @@ export async function startServer(
         }
         playbookLandingAction = body.landingAction as PlaybookLandingActionValue;
       }
+      // --- eforge:region plan-01-core-engine-auto-merge ---
+      let playbookLandingAutoMerge: boolean | undefined;
+      if (body.landingAutoMerge !== undefined) {
+        if (typeof body.landingAutoMerge !== 'boolean') {
+          sendJsonError(res, 400, 'Invalid field: landingAutoMerge must be a boolean');
+          return;
+        }
+        playbookLandingAutoMerge = body.landingAutoMerge;
+      }
+      // --- eforge:endregion plan-01-core-engine-auto-merge ---
+      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+      if (playbookLandingAutoMerge === true) {
+        if (cwd) {
+          try {
+            const { loadConfig } = await import('@eforge-build/engine/config');
+            const { config: cfg } = await loadConfig(cwd);
+            const cfgTyped = cfg as unknown as { landing?: { action?: string; pr?: { autoMerge?: string } } };
+            const effectiveLandingAction = playbookLandingAction ?? cfgTyped.landing?.action ?? 'merge';
+            if (effectiveLandingAction !== 'pr') {
+              sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when the effective landing action is 'pr' (got '${effectiveLandingAction}')`);
+              return;
+            }
+            const policy = cfgTyped.landing?.pr?.autoMerge;
+            if (policy === 'never') {
+              sendJsonError(res, 400, "landingAutoMerge: true is not allowed when landing.pr.autoMerge is 'never' in project config");
+              return;
+            }
+          } catch (configErr) {
+            sendJsonError(res, 500, `Failed to load project config: ${configErr instanceof Error ? configErr.message : String(configErr)}`);
+            return;
+          }
+        } else if (playbookLandingAction !== undefined && playbookLandingAction !== 'pr') {
+          sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when landingAction is 'pr' (got '${playbookLandingAction}')`);
+          return;
+        }
+      }
+      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
         const { loadPlaybook, playbookToBuildSource } = await import('@eforge-build/input');
@@ -3544,6 +3623,9 @@ export async function startServer(
             profile: plan.profile,
             // --- eforge:endregion plan-01-core-profile-propagation ---
             ...(playbookLandingAction !== undefined && { landingAction: playbookLandingAction }),
+            // --- eforge:region plan-01-core-engine-auto-merge ---
+            ...(playbookLandingAutoMerge !== undefined && { landingAutoMerge: playbookLandingAutoMerge }),
+            // --- eforge:endregion plan-01-core-engine-auto-merge ---
           });
           // Enqueue is filesystem-only — queue state is runtime, not tracked in git.
           notifyQueueMutation(options.daemonState, 'playbook-enqueue');

@@ -298,6 +298,9 @@ async function handleRunBranch(
   const landingResult = await promptForPlaybookLandingGate(pi, ctx);
   if (landingResult.cancelled) return;
   const landingAction: LandingAction | undefined = landingResult.landingAction;
+  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+  const landingAutoMerge: boolean | undefined = landingResult.landingAutoMerge;
+  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
   // Step 3b: Check for in-flight builds (autonomous playbooks only)
   const { runningItems } = await withLoader(
@@ -363,8 +366,8 @@ async function handleRunBranch(
   let runResult: PlaybookRunResponse | null = null;
   try {
     const enqueueBody = afterQueueId
-      ? { name: selectedName!, afterQueueId, ...(landingAction ? { landingAction } : {}) }
-      : { name: selectedName!, ...(landingAction ? { landingAction } : {}) };
+      ? { name: selectedName!, afterQueueId, ...(landingAction ? { landingAction } : {}), ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}) }
+      : { name: selectedName!, ...(landingAction ? { landingAction } : {}), ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}) };
     const enqueueR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
       apiPlaybookRunIfRunning({
         cwd: ctx.cwd,
@@ -386,7 +389,7 @@ async function handleRunBranch(
         `The build you selected has already finished. Running **${selectedName}** now instead.`,
       );
       try {
-        const fallbackBody = { name: selectedName!, ...(landingAction ? { landingAction } : {}) };
+        const fallbackBody = { name: selectedName!, ...(landingAction ? { landingAction } : {}), ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}) };
         const fallbackR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
           apiPlaybookRunIfRunning({
             cwd: ctx.cwd,

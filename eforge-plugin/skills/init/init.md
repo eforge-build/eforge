@@ -58,6 +58,14 @@ If the command is not found or fails: warn the user that `pr` requires the `gh` 
 
 Store the shorthand value (`pr`, `merge`, or `leave`) for use in the `mcp__eforge__eforge_init` calls below (both the existingProfile and fresh-init paths) as `landingAction`.
 
+### Step 1.35: PR auto-merge policy (optional, only when `pr` is selected)
+
+If the user selected `pr` as the landing action, briefly inform them about the GitHub PR auto-merge policy option:
+
+> "eforge will open a GitHub PR when your build finishes. By default, auto-merge is `ask` — enabled only when explicitly requested per-build via `--landing-auto-merge`. You can set a project-level default in `eforge/config.yaml` under `landing.pr.autoMerge` (ask | always | never) after init. Run `/eforge:config` to edit it."
+
+Skip this step if the user selected `merge` or `leave` as the landing action.
+
 ### Step 1.4: Confirm trunk branch and protection policy
 
 1. Run this Bash command to detect the remote default branch:

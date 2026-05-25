@@ -23,6 +23,8 @@ Normalize input and add it to the PRD queue
 | `--no-plugins` | Disable plugin loading |
 | `--profile <name>` | Override active profile for this enqueue + build |
 | `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
+| `--landing-auto-merge` | Enable PR auto-merge for this build |
+| `--no-landing-auto-merge` | Disable PR auto-merge for this build |
 
 ### `build`
 
@@ -49,6 +51,8 @@ Compile + build + validate in one step
 | `--poll-interval <ms>` | Poll interval in milliseconds for watch mode |
 | `--profile <name>` | Override active profile for this build |
 | `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
+| `--landing-auto-merge` | Enable PR auto-merge for this build |
+| `--no-landing-auto-merge` | Disable PR auto-merge for this build |
 
 ### `monitor`
 
@@ -93,6 +97,9 @@ Process PRDs from the queue
 | `--max-concurrent-builds <n>` | Max parallel queue PRDs |
 | `--watch` | Watch mode: continuously poll the queue for new PRDs |
 | `--poll-interval <ms>` | Poll interval in milliseconds for watch mode |
+| `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
+| `--landing-auto-merge` | Enable PR auto-merge for this build |
+| `--no-landing-auto-merge` | Disable PR auto-merge for this build |
 
 #### `exec`
 
@@ -110,6 +117,7 @@ Build a single PRD directly (subprocess entry point for the queue scheduler)
 | `--session-id <uuid>` | Session ID injected by parent scheduler (skips child session:start emission) |
 | `--profile <name>` | Override active profile for this build |
 | `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
+| `--landing-auto-merge <bool>` | Enable PR auto-merge for this build (true\|false) |
 
 ### `extension`
 

@@ -317,3 +317,105 @@ describe('buildLandingMenuModel - unknown currentBranch', () => {
     expect(choiceValues(model.normalChoices)).toContain('merge');
   });
 });
+
+// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+
+// ---------------------------------------------------------------------------
+// autoMergePolicy - pr-auto-merge choice inclusion/exclusion
+// ---------------------------------------------------------------------------
+
+describe('buildLandingMenuModel - autoMergePolicy: ask (default)', () => {
+  const baseInput = {
+    effectiveLanding: 'merge' as const,
+    currentBranch: FEATURE_BRANCH,
+    trunkBranch: TRUNK,
+    allowLocalMergeToTrunk: false,
+    offerProjectDefault: true,
+  };
+
+  it('includes pr-auto-merge in normalChoices when autoMergePolicy is ask', () => {
+    const model = buildLandingMenuModel({ ...baseInput, autoMergePolicy: 'ask' });
+    expect(choiceValues(model.normalChoices)).toContain('pr-auto-merge');
+  });
+
+  it('includes pr-auto-merge in normalChoices when autoMergePolicy is omitted (default ask)', () => {
+    const model = buildLandingMenuModel(baseInput);
+    expect(choiceValues(model.normalChoices)).toContain('pr-auto-merge');
+  });
+
+  it('pr-auto-merge appears after pr in normalChoices', () => {
+    const model = buildLandingMenuModel({ ...baseInput, autoMergePolicy: 'ask' });
+    const values = choiceValues(model.normalChoices);
+    const prIdx = values.indexOf('pr');
+    const autoMergeIdx = values.indexOf('pr-auto-merge');
+    expect(prIdx).toBeGreaterThanOrEqual(0);
+    expect(autoMergeIdx).toBeGreaterThan(prIdx);
+  });
+});
+
+describe('buildLandingMenuModel - autoMergePolicy: always', () => {
+  const baseInput = {
+    effectiveLanding: 'merge' as const,
+    currentBranch: FEATURE_BRANCH,
+    trunkBranch: TRUNK,
+    allowLocalMergeToTrunk: false,
+    offerProjectDefault: true,
+  };
+
+  it('includes pr-auto-merge in normalChoices when autoMergePolicy is always', () => {
+    const model = buildLandingMenuModel({ ...baseInput, autoMergePolicy: 'always' });
+    expect(choiceValues(model.normalChoices)).toContain('pr-auto-merge');
+  });
+
+  it('includes both pr and pr-auto-merge in normalChoices when autoMergePolicy is always', () => {
+    const model = buildLandingMenuModel({ ...baseInput, autoMergePolicy: 'always' });
+    const values = choiceValues(model.normalChoices);
+    expect(values).toContain('pr');
+    expect(values).toContain('pr-auto-merge');
+  });
+});
+
+describe('buildLandingMenuModel - autoMergePolicy: never', () => {
+  const featureBranchInput = {
+    effectiveLanding: 'merge' as const,
+    currentBranch: FEATURE_BRANCH,
+    trunkBranch: TRUNK,
+    allowLocalMergeToTrunk: false,
+    offerProjectDefault: true,
+  };
+
+  const protectedTrunkInput = {
+    effectiveLanding: 'merge' as const,
+    currentBranch: TRUNK,
+    trunkBranch: TRUNK,
+    allowLocalMergeToTrunk: false,
+    offerProjectDefault: true,
+  };
+
+  it('excludes pr-auto-merge from normalChoices on a feature branch when autoMergePolicy is never', () => {
+    const model = buildLandingMenuModel({ ...featureBranchInput, autoMergePolicy: 'never' });
+    expect(choiceValues(model.normalChoices)).not.toContain('pr-auto-merge');
+  });
+
+  it('still includes pr in normalChoices when autoMergePolicy is never', () => {
+    const model = buildLandingMenuModel({ ...featureBranchInput, autoMergePolicy: 'never' });
+    expect(choiceValues(model.normalChoices)).toContain('pr');
+  });
+
+  it('excludes pr-auto-merge from normalChoices on protected trunk when autoMergePolicy is never', () => {
+    const model = buildLandingMenuModel({ ...protectedTrunkInput, autoMergePolicy: 'never' });
+    expect(choiceValues(model.normalChoices)).not.toContain('pr-auto-merge');
+  });
+
+  it('excludes pr-auto-merge from remediationChoices on protected trunk when autoMergePolicy is never', () => {
+    const model = buildLandingMenuModel({ ...protectedTrunkInput, autoMergePolicy: 'never' });
+    expect(choiceValues(model.remediationChoices)).not.toContain('pr-auto-merge');
+  });
+
+  it('still includes pr in remediationChoices on protected trunk when autoMergePolicy is never', () => {
+    const model = buildLandingMenuModel({ ...protectedTrunkInput, autoMergePolicy: 'never' });
+    expect(choiceValues(model.remediationChoices)).toContain('pr');
+  });
+});
+
+// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

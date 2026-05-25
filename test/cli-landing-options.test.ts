@@ -20,6 +20,9 @@ import {
   resolveLandingAction,
   resolveAndValidateLandingFlags,
   CLILandingFlagError,
+  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+  resolveAndValidateLandingAutoMergeFlags,
+  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 } from '../packages/eforge/src/cli/landing-options.js';
 
 describe('resolveLandingAction', () => {
@@ -77,3 +80,25 @@ describe('resolveAndValidateLandingFlags', () => {
 });
 
 // --- eforge:endregion plan-04-consumer-surfaces ---
+
+// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
+
+describe('resolveAndValidateLandingAutoMergeFlags', () => {
+  it('returns undefined when landingAutoMerge is not provided', () => {
+    expect(resolveAndValidateLandingAutoMergeFlags({})).toBeUndefined();
+  });
+
+  it('returns true when landingAutoMerge is true', () => {
+    expect(resolveAndValidateLandingAutoMergeFlags({ landingAutoMerge: true })).toBe(true);
+  });
+
+  it('returns false when landingAutoMerge is false', () => {
+    expect(resolveAndValidateLandingAutoMergeFlags({ landingAutoMerge: false })).toBe(false);
+  });
+
+  it('returns undefined when landingAutoMerge is explicitly undefined', () => {
+    expect(resolveAndValidateLandingAutoMergeFlags({ landingAutoMerge: undefined })).toBeUndefined();
+  });
+});
+
+// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

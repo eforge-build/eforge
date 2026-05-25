@@ -109,6 +109,13 @@ build:
 #                             #       requires gh CLI
 #                             #   merge: auto-merge the artifact branch into the base branch
 #                             #   leave: commit to artifact branch and exit without merging or opening a PR
+#   pr:
+#     autoMerge: ask          # ask (default) | always | never
+#                             #   Only applies when landing.action: pr
+#                             #   ask: enable GitHub PR auto-merge only when landingAutoMerge is explicitly true per-run
+#                             #   always: enable auto-merge on every PR unless landingAutoMerge is explicitly false per-run
+#                             #   never: never enable auto-merge (emits skipped event)
+#                             #   Note: distinct from landing.action: merge (which merges without opening a PR)
 #
 # Migration from build.onSuccess:
 #   The old 'build.onSuccess' key and the legacy full-string values

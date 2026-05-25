@@ -89,6 +89,10 @@ export interface BuildOptions {
   /** Override the configured landing action for this build. */
   landingAction?: 'pr' | 'merge' | 'leave';
   // --- eforge:endregion plan-01-engine-config-and-landing ---
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  /** Per-run PR auto-merge intent. Resolved against `landing.pr.autoMerge` policy. */
+  landingAutoMerge?: boolean;
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }
 
 export interface EnqueueOptions {
@@ -101,6 +105,10 @@ export interface EnqueueOptions {
   // --- eforge:region plan-01-engine-config-and-landing ---
   /** Override the configured landing action for this enqueued build. */
   landingAction?: 'pr' | 'merge' | 'leave';
+  // --- eforge:region plan-01-core-engine-auto-merge ---
+  /** Per-run PR auto-merge intent. Resolved against `landing.pr.autoMerge` policy. */
+  landingAutoMerge?: boolean;
+  // --- eforge:endregion plan-01-core-engine-auto-merge ---
   /** Logical stack identifier to persist in PRD frontmatter. */
   stack_id?: string;
   /** Parent PRD id for this stack layer, if any. */

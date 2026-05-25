@@ -123,7 +123,12 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 40', () => {
+  it('is 41', () => {
+    // v41: `landing:auto-merge:start`, `landing:auto-merge:complete`, `landing:auto-merge:skipped`
+    // event variants added; `landingAutoMerge` (boolean) optional field added to `EnqueueRequest`,
+    // `PlaybookRunRequest`, `BuildOptions`, `EnqueueOptions`, and PRD frontmatter
+    // (`landing_auto_merge`); `landing.pr.autoMerge` config field added (`ask|always|never`,
+    // default `ask`).
     // v40: `gap_close:complete.passed` is now a required field on the wire event;
     // older clients/daemons that treated it as optional will disagree on the event schema.
     // v39: landing action vocabulary changed from full strings (merge-to-base-branch|issue-pr|leave-branch)
@@ -133,7 +138,7 @@ describe('DAEMON_API_VERSION', () => {
     // v38: `landing:start` wire event removes `feature-pr-after-local-merge` workflow literal
     // and replaces it with `feature-pr`; older clients that validated the event against the
     // previous schema union will reject events emitted by the new daemon.
-    expect(DAEMON_API_VERSION).toBe(40);
+    expect(DAEMON_API_VERSION).toBe(41);
   });
 });
 

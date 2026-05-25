@@ -283,6 +283,14 @@ Record the selection as `landingActionOverride`:
 - **"Use project default" selected**: set `landingActionOverride = undefined`. **Do not include `landingAction` in any enqueue body.**
 - **Explicit selection** (pr/merge/leave): set `landingActionOverride` to the chosen value. Include `landingAction: landingActionOverride` in all enqueue bodies.
 
+**PR auto-merge sub-selector (only when `pr` is selected):** After the user selects `pr` as the landing action, present a follow-up selector to determine whether GitHub auto-merge should be enabled on the opened PR:
+
+- **Use policy default** — Defers to `landing.pr.autoMerge` from `eforge/config.yaml`. **No `landingAutoMerge` key is sent in any enqueue body.**
+- **Enable auto-merge** — Sets `landingAutoMergeOverride = true`. Include `landingAutoMerge: true` in all enqueue bodies.
+- **Disable auto-merge** — Sets `landingAutoMergeOverride = false`. Include `landingAutoMerge: false` in all enqueue bodies.
+
+Record the selection as `landingAutoMergeOverride` (`true | false | undefined`). When `landingActionOverride` is not `"pr"`, skip this sub-selector and set `landingAutoMergeOverride = undefined`. Carry `landingAutoMergeOverride` forward to all enqueue calls in Step 5.4.
+
 **Protected trunk behavior**: When the current branch is the configured trunk branch and `build.allowLocalMergeToTrunk` is not `true` in `eforge/config.yaml`:
 - Exclude the **merge** option and the **project default** option (when the effective project default is `merge`) from the normal selector.
 - Display a warning that direct trunk merges are not permitted for this project.
@@ -340,12 +348,14 @@ For **explicit selections** (`landingActionOverride` is set), include `landingAc
 
 The `afterQueueId` is the internal queue id resolved above — never the title and never typed by the user.
 
+When `landingAutoMergeOverride` is set (not `undefined`), append `landingAutoMerge: <landingAutoMergeOverride>` to the call body in all four cases above. Omit `landingAutoMerge` when `landingAutoMergeOverride` is `undefined` — omitting the key defers to the `landing.pr.autoMerge` policy.
+
 On **`kind: 'enqueued'`** response: Report the enqueue confirmation and point at the monitor UI.
 > "Playbook `{name}` enqueued as `{id}`. {If afterQueueId: 'It will start after `{build-title}` completes.'} Watch progress in the monitor UI."
 
 If the enqueue fails because the upstream is no longer active (404 from daemon), tell the user:
 > "The build you selected has already finished. Running `{name}` now instead."
-Then re-enqueue without `afterQueueId`, preserving `landingActionOverride` from Step 5.3: include `landingAction: "<landingActionOverride>"` for explicit selections, or omit `landingAction` for project default.
+Then re-enqueue without `afterQueueId`, preserving `landingActionOverride` from Step 5.3: include `landingAction: "<landingActionOverride>"` for explicit selections, or omit `landingAction` for project default. Also preserve `landingAutoMergeOverride` from Step 5.3: include `landingAutoMerge: <landingAutoMergeOverride>` when set, or omit `landingAutoMerge` when `undefined`.
 
 ### 5.5: Investigation-first planning flow
 
