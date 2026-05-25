@@ -2231,12 +2231,9 @@ describe('AgentRuntimeRegistry profile override threading', () => {
   it("override profile's per-role tier mapping is honored by forRole", async () => {
     const projectRoot = makeTempDir();
 
-    // Project default: defines ONLY the implementation tier — crucially, NOT
-    // the planning tier. Without role-override threading, forRole('planner')
-    // falls back to AGENT_ROLE_TIERS['planner'] = 'planning', which is absent
-    // from the merged config, so the registry would throw. This guarantees
-    // the test fails if the override's `roles` map is not actually threaded
-    // through loadConfig into the merged config consumed by the registry.
+    // Project default defines the implementation tier. Defaults now preserve
+    // the planning tier too, so this test distinguishes the role override by
+    // giving the implementation tier a unique toolbelt setting.
     mkdirSync(join(projectRoot, 'eforge'), { recursive: true });
     writeFileSync(
       join(projectRoot, 'eforge', 'config.yaml'),
@@ -2264,6 +2261,7 @@ describe('AgentRuntimeRegistry profile override threading', () => {
         '      harness: claude-sdk',
         '      model: claude-haiku-4-5',
         '      effort: low',
+        '      toolbelt: none',
         '  roles:',
         '    planner:',
         '      tier: implementation',
@@ -2275,17 +2273,19 @@ describe('AgentRuntimeRegistry profile override threading', () => {
     // The override's role map must reach the merged config so the registry
     // can read it at agent-runtime-registry.ts:187.
     expect(result.config.agents.roles?.planner?.tier).toBe('implementation');
-    // The merged config must NOT have a planning tier (proves the negative).
-    expect(result.config.agents.tiers?.['planning']).toBeUndefined();
+    // The default planning tier is preserved, so the assertion below proves the
+    // registry uses the role override rather than the built-in planner tier.
+    expect(result.config.agents.tiers?.['planning']).toBeDefined();
 
     const registry = await buildAgentRuntimeRegistry(result.config);
 
-    // forRole('planner') must not throw — the role-to-tier lookup at
-    // agent-runtime-registry.ts:187 sees the override profile's roles map
-    // and resolves planner -> implementation tier, which is defined.
-    // Without role-mapping threading, this would throw because `planning`
-    // is missing from the merged config.
-    expect(registry.forRole('planner')).toBeDefined();
+    // forRoleResolved('planner') must use the override profile's roles map and
+    // resolve planner -> implementation tier, observing implementation's unique
+    // toolbelt setting. Without role-mapping threading, planner would resolve
+    // to the preserved default planning tier with projectMcpSelection: 'all'.
+    const resolved = registry.forRoleResolved('planner');
+    expect(resolved.harness).toBeDefined();
+    expect(resolved.toolbeltSummary.projectMcpSelection).toBe('none');
   });
 });
 

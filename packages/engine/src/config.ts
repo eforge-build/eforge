@@ -946,6 +946,25 @@ export async function findConfigFile(startDir: string): Promise<string | null> {
   return null;
 }
 
+function mergeTierRecipesWithDefaults(
+  tiers?: Partial<Record<AgentTier, TierConfig>>,
+): Partial<Record<AgentTier, TierConfig>> {
+  if (!tiers) return DEFAULT_CONFIG.agents.tiers;
+
+  const merged: Partial<Record<AgentTier, TierConfig>> = { ...DEFAULT_CONFIG.agents.tiers };
+  for (const tierName of new Set<AgentTier>([
+    ...AGENT_TIERS,
+    ...(Object.keys(tiers) as AgentTier[]),
+  ])) {
+    const defaultTier = DEFAULT_CONFIG.agents.tiers[tierName];
+    const configuredTier = tiers[tierName];
+    if (configuredTier) {
+      merged[tierName] = defaultTier ? { ...defaultTier, ...configuredTier } : configuredTier;
+    }
+  }
+  return merged;
+}
+
 /**
  * Merge file-based config with env vars. Env vars take precedence.
  * Sets langfuse.enabled = true only when both keys are present.
@@ -959,7 +978,7 @@ export function resolveConfig(
   const langfuseHost = env.LANGFUSE_BASE_URL ?? fileConfig.langfuse?.host ?? DEFAULT_CONFIG.langfuse.host;
   const langfuseEnabled = !!(langfusePublicKey && langfuseSecretKey);
 
-  const tiers = (fileConfig.agents?.tiers as Partial<Record<AgentTier, TierConfig>> | undefined) ?? DEFAULT_CONFIG.agents.tiers;
+  const tiers = mergeTierRecipesWithDefaults(fileConfig.agents?.tiers as Partial<Record<AgentTier, TierConfig>> | undefined);
   const landingAction = fileConfig.landing?.action ?? DEFAULT_CONFIG.landing.action;
 
   return Object.freeze({

@@ -57,6 +57,45 @@ describe('resolveConfig', () => {
     expect(config.agents.promptDir).toBe('eforge/prompts');
   });
 
+  it('preserves default tier fields when a profile tier omits them', () => {
+    const config = resolveConfig(
+      {
+        agents: {
+          tiers: {
+            implementation: {
+              harness: 'claude-sdk',
+              model: 'claude-sonnet-4-6',
+              effort: 'medium',
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(config.agents.tiers.implementation?.maxTurns).toBe(80);
+  });
+
+  it('lets profile tiers override default tier fields explicitly', () => {
+    const config = resolveConfig(
+      {
+        agents: {
+          tiers: {
+            implementation: {
+              harness: 'claude-sdk',
+              model: 'claude-sonnet-4-6',
+              effort: 'medium',
+              maxTurns: 120,
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(config.agents.tiers.implementation?.maxTurns).toBe(120);
+  });
+
   it('env overrides file for langfuse keys', () => {
     const config = resolveConfig(
       { langfuse: { enabled: false, publicKey: 'file-pk', secretKey: 'file-sk', host: 'https://file.host' } },

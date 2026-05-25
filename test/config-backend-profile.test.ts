@@ -542,6 +542,31 @@ describe('loadConfig integration with backend profiles', () => {
     expect(cfg.agents.maxTurns).toBe(40);
   });
 
+  it('active profile tier preserves default implementation maxTurns when omitted', async () => {
+    ({ projectDir, configDir } = await makeProject({
+      configYaml: 'agents:\n  maxTurns: 30\n',
+    }));
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(
+      join(configDir, 'profiles', 'combo.yaml'),
+      [
+        'agents:',
+        '  tiers:',
+        '    implementation:',
+        '      harness: claude-sdk',
+        '      model: claude-sonnet-4-6',
+        '      effort: medium',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    await writeFile(join(configDir, '.active-profile'), 'combo\n', 'utf-8');
+
+    const { config: cfg } = await loadConfig(projectDir);
+    expect(cfg.agents.maxTurns).toBe(30);
+    expect(cfg.agents.tiers.implementation?.maxTurns).toBe(80);
+  });
+
   it('marker selects specific profile', async () => {
     ({ projectDir, configDir } = await makeProject({
       configYaml: '',
