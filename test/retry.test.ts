@@ -1669,4 +1669,80 @@ describe('RetryPolicy type surface', () => {
     expect(input.reviewFixerOptions.continuationContext?.attempt).toBe(1);
     expect(input.reviewFixerOptions.continuationContext?.partialDiff).toContain('foo.ts');
   });
+
+  it('review-fixer continuation input type accepts enriched discovery context fields', () => {
+    const input: ReviewFixerContinuationInput = {
+      cwd: '/tmp/wt',
+      planId: 'plan-01',
+      reviewFixerOptions: {
+        continuationContext: {
+          attempt: 1,
+          maxContinuations: 2,
+          partialDiff: '',
+          filesInspected: ['src/foo.ts', 'src/bar.ts'],
+          searches: ['grep: useState in src'],
+          commands: ['npm run lint'],
+          recentMessages: ['Checking the hook'],
+          toolResultSnippets: ['[Read] export const x = 1;'],
+        },
+      },
+    };
+    const ctx = input.reviewFixerOptions.continuationContext;
+    expect(ctx?.filesInspected).toEqual(['src/foo.ts', 'src/bar.ts']);
+    expect(ctx?.searches).toEqual(['grep: useState in src']);
+    expect(ctx?.commands).toEqual(['npm run lint']);
+    expect(ctx?.recentMessages).toEqual(['Checking the hook']);
+    expect(ctx?.toolResultSnippets).toEqual(['[Read] export const x = 1;']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildReviewFixerContinuationInput — enriched continuation context in withRetry
+// ---------------------------------------------------------------------------
+
+describe('buildReviewFixerContinuationInput — enriched context preserved through withRetry policy', () => {
+  it('review-fixer policy preserves discovery fields in continuationContext after buildContinuationInput', async () => {
+    const policy = DEFAULT_RETRY_POLICIES['review-fixer'];
+    expect(policy).toBeDefined();
+
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer' as const,
+        tool: 'Read', toolUseId: 'tu-1', input: { file_path: 'src/component.ts' },
+      },
+      {
+        timestamp: ts(), type: 'agent:tool_result', agentId: 'a1', agent: 'review-fixer' as const,
+        tool: 'Read', toolUseId: 'tu-1', output: 'export const Component = () => null;',
+      },
+      {
+        timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'review-fixer' as const,
+        content: 'Found the component.',
+      },
+    ];
+
+    const info = makeAttemptInfo<ReviewFixerContinuationInput>({
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      events,
+      prevInput: {
+        cwd: '/tmp/nonexistent-for-test',
+        planId: 'plan-enriched',
+        reviewFixerOptions: {},
+      },
+    });
+
+    const decision = await buildReviewFixerContinuationInput(info);
+    expect(decision.kind).toBe('retry');
+    if (decision.kind === 'retry') {
+      const ctx = decision.input.reviewFixerOptions.continuationContext;
+      expect(ctx).toBeDefined();
+      expect(ctx!.attempt).toBe(1);
+      expect(ctx!.maxContinuations).toBe(2);
+      // Discovery context is populated from events
+      expect(ctx!.filesInspected).toContain('src/component.ts');
+      expect(ctx!.recentMessages).toContain('Found the component.');
+      expect(ctx!.toolResultSnippets?.some((s) => s.includes('Component'))).toBe(true);
+    }
+  });
 });

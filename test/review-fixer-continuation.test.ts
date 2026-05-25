@@ -22,6 +22,7 @@ import {
   withRetry,
   DEFAULT_RETRY_POLICIES,
   buildReviewFixerContinuationInput,
+  extractReviewFixerDiscoveryContext,
   type RetryPolicy,
   type ReviewFixerContinuationInput,
   type RetryAttemptInfo,
@@ -485,6 +486,143 @@ describe('withRetry — review-fixer policy integration', () => {
     expect((thrown as AgentTerminalError).subtype).toBe('error_max_turns');
   });
 
+  it('second attempt prompt includes discovery context from first attempt tool events', async () => {
+    const makeTempDir2 = useTempDir('eforge-rfx-discovery-');
+    const dir = makeTempDir2();
+    await createGitRepo(dir);
+
+    const maxTurnsError = new AgentTerminalError('error_max_turns', 'Turn limit reached');
+    const backend = new StubHarness([{ text: 'All fixed.' }]);
+
+    // Simulate a custom first attempt that emits tool events then throws max-turns.
+    // withRetry collects those events and passes them to buildReviewFixerContinuationInput.
+    let firstAttemptDone = false;
+    const runAgent = async function* (input: ReviewFixerContinuationInput): AsyncGenerator<EforgeEvent> {
+      if (!firstAttemptDone) {
+        firstAttemptDone = true;
+        // Emit tool events that withRetry should collect in attemptEvents
+        yield {
+          timestamp: new Date().toISOString(), type: 'agent:tool_use', agentId: 'a1',
+          agent: 'review-fixer', tool: 'Read', toolUseId: 'tu-1',
+          input: { file_path: 'src/component.ts' },
+        };
+        yield {
+          timestamp: new Date().toISOString(), type: 'agent:tool_result', agentId: 'a1',
+          agent: 'review-fixer', tool: 'Read', toolUseId: 'tu-1', output: 'export const x = 1;',
+        };
+        yield {
+          timestamp: new Date().toISOString(), type: 'agent:tool_use', agentId: 'a1',
+          agent: 'review-fixer', tool: 'Grep', toolUseId: 'tu-2',
+          input: { pattern: 'useEffect', path: 'src' },
+        };
+        yield {
+          timestamp: new Date().toISOString(), type: 'agent:tool_result', agentId: 'a1',
+          agent: 'review-fixer', tool: 'Grep', toolUseId: 'tu-2',
+          output: 'src/app.ts:10:  useEffect(() => {',
+        };
+        yield {
+          timestamp: new Date().toISOString(), type: 'agent:message', agentId: 'a1',
+          agent: 'review-fixer', content: 'Analyzing issues...',
+        };
+        throw maxTurnsError;
+      }
+      // Second attempt: use real runReviewFixer with backend
+      yield* runReviewFixer({
+        harness: backend,
+        planId: input.planId,
+        cwd: input.cwd,
+        issues: SAMPLE_ISSUES,
+        ...(input.reviewFixerOptions.continuationContext !== undefined
+          ? { continuationContext: input.reviewFixerOptions.continuationContext }
+          : {}),
+      });
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES['review-fixer'] as RetryPolicy<ReviewFixerContinuationInput>;
+    const initialInput: ReviewFixerContinuationInput = {
+      cwd: dir,
+      planId: 'plan-discovery',
+      reviewFixerOptions: {},
+    };
+
+    await collectEvents(withRetry(runAgent, policy, initialInput));
+
+    // Second prompt should include discovery context sections
+    expect(backend.prompts[0]).toContain('Files inspected');
+    expect(backend.prompts[0]).toContain('src/component.ts');
+    expect(backend.prompts[0]).toContain('Searches and globs run');
+    expect(backend.prompts[0]).toContain('grep: useEffect');
+    // Message from first attempt should appear in recent messages
+    expect(backend.prompts[0]).toContain('Recent agent messages');
+    expect(backend.prompts[0]).toContain('Analyzing issues...');
+    // Discovery context guidance
+    expect(backend.prompts[0]).toContain('do not restart cold');
+  });
+
+  it('second attempt prompt includes discovery context even when partialDiff is empty', async () => {
+    const makeTempDir3 = useTempDir('eforge-rfx-nodiff-');
+    const dir = makeTempDir3();
+    await createGitRepo(dir);
+
+    // Clean worktree — no diff — but tool events still present
+    const maxTurnsError = new AgentTerminalError('error_max_turns', 'Turn limit reached');
+    const backend = new StubHarness([{ text: 'Completed.' }]);
+
+    let firstAttemptDone2 = false;
+    const runAgent2 = async function* (input: ReviewFixerContinuationInput): AsyncGenerator<EforgeEvent> {
+      if (!firstAttemptDone2) {
+        firstAttemptDone2 = true;
+        yield {
+          timestamp: new Date().toISOString(), type: 'agent:tool_use', agentId: 'a1',
+          agent: 'review-fixer', tool: 'Glob', toolUseId: 'tu-glob-1',
+          input: { pattern: '**/*.ts' },
+        };
+        yield {
+          timestamp: new Date().toISOString(), type: 'agent:tool_result', agentId: 'a1',
+          agent: 'review-fixer', tool: 'Glob', toolUseId: 'tu-glob-1', output: 'src/a.ts\nsrc/b.ts',
+        };
+        yield {
+          timestamp: new Date().toISOString(), type: 'agent:tool_use', agentId: 'a1',
+          agent: 'review-fixer', tool: 'Bash', toolUseId: 'tu-bash-1',
+          input: { command: 'npx tsc --noEmit' },
+        };
+        yield {
+          timestamp: new Date().toISOString(), type: 'agent:tool_result', agentId: 'a1',
+          agent: 'review-fixer', tool: 'Bash', toolUseId: 'tu-bash-1', output: 'No errors found',
+        };
+        throw maxTurnsError;
+      }
+      yield* runReviewFixer({
+        harness: backend,
+        planId: input.planId,
+        cwd: input.cwd,
+        issues: SAMPLE_ISSUES,
+        ...(input.reviewFixerOptions.continuationContext !== undefined
+          ? { continuationContext: input.reviewFixerOptions.continuationContext }
+          : {}),
+      });
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES['review-fixer'] as RetryPolicy<ReviewFixerContinuationInput>;
+    const initialInput: ReviewFixerContinuationInput = {
+      cwd: dir,
+      planId: 'plan-nodiff',
+      reviewFixerOptions: {},
+    };
+
+    await collectEvents(withRetry(runAgent2, policy, initialInput));
+
+    // Should still include discovery context
+    expect(backend.prompts[0]).toContain('Searches and globs run');
+    expect(backend.prompts[0]).toContain('glob: **/*.ts');
+    expect(backend.prompts[0]).toContain('Shell commands run');
+    expect(backend.prompts[0]).toContain('npx tsc --noEmit');
+    // No-diff message still present
+    expect(backend.prompts[0]).toContain('no changes were made in the previous attempt');
+    // Guidance to use discovery context
+    expect(backend.prompts[0]).toContain('do not restart cold');
+  });
+
   it('emits two agent:retry events and two plan:build:review:fix:continuation events for three attempts', async () => {
     const maxTurnsError = new AgentTerminalError('error_max_turns', 'Exceeded turn limit');
     // Attempts 1 and 2 fail; attempt 3 succeeds
@@ -519,5 +657,212 @@ describe('withRetry — review-fixer policy integration', () => {
     expect(filterEvents(events, 'plan:build:review:fix:continuation')).toHaveLength(2);
     // Final attempt succeeds — complete event is present
     expect(filterEvents(events, 'plan:build:review:fix:complete')).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractReviewFixerDiscoveryContext — unit tests
+// ---------------------------------------------------------------------------
+
+describe('extractReviewFixerDiscoveryContext', () => {
+  const ts = () => new Date().toISOString();
+
+  it('extracts file paths from Read tool_use events filtered to review-fixer agent', () => {
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Read', toolUseId: 'tu-1', input: { file_path: 'src/foo.ts' },
+      },
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a2', agent: 'reviewer',
+        tool: 'Read', toolUseId: 'tu-2', input: { file_path: 'src/bar.ts' },
+      },
+    ];
+    const ctx = extractReviewFixerDiscoveryContext(events);
+    expect(ctx.filesInspected).toContain('src/foo.ts');
+    // Reviewer event should be excluded
+    expect(ctx.filesInspected).not.toContain('src/bar.ts');
+  });
+
+  it('extracts grep searches from Grep tool_use events', () => {
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Grep', toolUseId: 'tu-1', input: { pattern: 'useState', path: 'src' },
+      },
+    ];
+    const ctx = extractReviewFixerDiscoveryContext(events);
+    expect(ctx.searches.some((s) => s.includes('useState'))).toBe(true);
+    expect(ctx.searches.some((s) => s.includes('src'))).toBe(true);
+  });
+
+  it('extracts glob patterns from Glob tool_use events', () => {
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Glob', toolUseId: 'tu-1', input: { pattern: '**/*.test.ts' },
+      },
+    ];
+    const ctx = extractReviewFixerDiscoveryContext(events);
+    expect(ctx.searches.some((s) => s.includes('**/*.test.ts'))).toBe(true);
+  });
+
+  it('extracts bash commands from Bash tool_use events', () => {
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Bash', toolUseId: 'tu-1', input: { command: 'npm run lint' },
+      },
+    ];
+    const ctx = extractReviewFixerDiscoveryContext(events);
+    expect(ctx.commands).toContain('npm run lint');
+  });
+
+  it('pairs tool_result with tool_use via toolUseId for snippets', () => {
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Read', toolUseId: 'tu-read-1', input: { file_path: 'src/foo.ts' },
+      },
+      {
+        timestamp: ts(), type: 'agent:tool_result', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Read', toolUseId: 'tu-read-1', output: 'export const x = 1;',
+      },
+    ];
+    const ctx = extractReviewFixerDiscoveryContext(events);
+    expect(ctx.toolResultSnippets.some((s) => s.includes('export const x = 1;'))).toBe(true);
+    expect(ctx.toolResultSnippets.some((s) => s.includes('[Read]'))).toBe(true);
+  });
+
+  it('collects agent:message content as recentMessages', () => {
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'review-fixer',
+        content: 'Found the issue in the hook.',
+      },
+      {
+        timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'review-fixer',
+        content: 'Applying fix now.',
+      },
+    ];
+    const ctx = extractReviewFixerDiscoveryContext(events);
+    expect(ctx.recentMessages).toContain('Found the issue in the hook.');
+    expect(ctx.recentMessages).toContain('Applying fix now.');
+  });
+
+  it('deduplicates file paths', () => {
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Read', toolUseId: 'tu-1', input: { file_path: 'src/foo.ts' },
+      },
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Read', toolUseId: 'tu-2', input: { file_path: 'src/foo.ts' },
+      },
+    ];
+    const ctx = extractReviewFixerDiscoveryContext(events);
+    expect(ctx.filesInspected.filter((f) => f === 'src/foo.ts')).toHaveLength(1);
+  });
+
+  it('returns empty arrays for an empty event list', () => {
+    const ctx = extractReviewFixerDiscoveryContext([]);
+    expect(ctx.filesInspected).toHaveLength(0);
+    expect(ctx.searches).toHaveLength(0);
+    expect(ctx.commands).toHaveLength(0);
+    expect(ctx.recentMessages).toHaveLength(0);
+    expect(ctx.toolResultSnippets).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildReviewFixerContinuationInput — discovery context inclusion
+// ---------------------------------------------------------------------------
+
+describe('buildReviewFixerContinuationInput — discovery context', () => {
+  const makeTempDir4 = useTempDir('eforge-rfx-disc-ctx-');
+  const ts = () => new Date().toISOString();
+
+  it('includes discovery context derived from events in continuationContext', async () => {
+    const dir = makeTempDir4();
+    await createGitRepo(dir);
+
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Read', toolUseId: 'tu-1', input: { file_path: 'src/types.ts' },
+      },
+      {
+        timestamp: ts(), type: 'agent:tool_result', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Read', toolUseId: 'tu-1', output: 'interface Foo { bar: string }',
+      },
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Grep', toolUseId: 'tu-2', input: { pattern: 'Foo', path: 'src' },
+      },
+      {
+        timestamp: ts(), type: 'agent:tool_result', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Grep', toolUseId: 'tu-2', output: 'src/types.ts:1:interface Foo',
+      },
+      {
+        timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'review-fixer',
+        content: 'The Foo interface needs updating.',
+      },
+    ];
+
+    const info: RetryAttemptInfo<ReviewFixerContinuationInput> = {
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      events,
+      prevInput: { cwd: dir, planId: 'plan-disc', reviewFixerOptions: {} },
+    };
+
+    const decision = await buildReviewFixerContinuationInput(info);
+    expect(decision.kind).toBe('retry');
+    if (decision.kind === 'retry') {
+      const ctx = decision.input.reviewFixerOptions.continuationContext;
+      expect(ctx).toBeDefined();
+      expect(ctx!.filesInspected).toContain('src/types.ts');
+      expect(ctx!.searches?.some((s) => s.includes('Foo'))).toBe(true);
+      expect(ctx!.recentMessages).toContain('The Foo interface needs updating.');
+      expect(ctx!.toolResultSnippets?.some((s) => s.includes('interface Foo'))).toBe(true);
+    }
+  });
+
+  it('includes discovery context even when partialDiff is empty (no git changes)', async () => {
+    const dir = makeTempDir4();
+    await createGitRepo(dir);
+
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Bash', toolUseId: 'tu-1', input: { command: 'ls src/' },
+      },
+      {
+        timestamp: ts(), type: 'agent:tool_result', agentId: 'a1', agent: 'review-fixer',
+        tool: 'Bash', toolUseId: 'tu-1', output: 'index.ts\ntypes.ts',
+      },
+    ];
+
+    const info: RetryAttemptInfo<ReviewFixerContinuationInput> = {
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      events,
+      prevInput: { cwd: dir, planId: 'plan-nodiff-disc', reviewFixerOptions: {} },
+    };
+
+    const decision = await buildReviewFixerContinuationInput(info);
+    expect(decision.kind).toBe('retry');
+    if (decision.kind === 'retry') {
+      const ctx = decision.input.reviewFixerOptions.continuationContext;
+      expect(ctx).toBeDefined();
+      // No diff (clean worktree)
+      expect(ctx!.partialDiff).toBe('');
+      // But discovery context is still present
+      expect(ctx!.commands).toContain('ls src/');
+      expect(ctx!.toolResultSnippets?.some((s) => s.includes('index.ts'))).toBe(true);
+    }
   });
 });
