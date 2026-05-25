@@ -5226,7 +5226,6 @@
           "required": [
             "type",
             "featureBranch",
-            "baseBranch",
             "prUrl"
           ],
           "properties": {
@@ -5250,7 +5249,6 @@
           "required": [
             "type",
             "featureBranch",
-            "baseBranch",
             "prUrl"
           ],
           "properties": {
@@ -5274,7 +5272,6 @@
           "required": [
             "type",
             "featureBranch",
-            "baseBranch",
             "reason"
           ],
           "properties": {
