@@ -625,6 +625,81 @@ export function buildShardPolicy(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Review-fixer continuation types and builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Context passed to the next review-fixer attempt's prompt so the agent
+ * knows what was already fixed and doesn't repeat work.
+ */
+export interface ReviewFixerContinuationContext {
+  /** 1-indexed number of the upcoming attempt (i.e. the attempt that just failed + 1). */
+  attempt: number;
+  /** Total continuations allowed (= maxAttempts - 1). */
+  maxContinuations: number;
+  /** Truncated diff of fixes already applied (from `git diff HEAD --`). */
+  partialDiff: string;
+}
+
+/**
+ * Input shape the review-fixer continuation builder reads and returns.
+ */
+export interface ReviewFixerContinuationInput {
+  /** Working directory (the worktree where the review-fixer operates). */
+  cwd: string;
+  /** Plan identifier — passed through to the `plan:build:review:fix:continuation` event. */
+  planId: string;
+  /** Options forwarded to `runReviewFixer`. */
+  reviewFixerOptions: Record<string, unknown> & {
+    continuationContext?: ReviewFixerContinuationContext;
+  };
+}
+
+/** Character limit for the partial diff passed to the review-fixer continuation prompt. */
+const REVIEW_FIXER_DIFF_CHAR_LIMIT = 40_000;
+
+/**
+ * Build the next review-fixer attempt's input:
+ * - Read `git diff HEAD --` (working-tree changes since HEAD — unstaged by design).
+ * - If there are no changes, return `{ kind: 'retry' }` with an empty diff so
+ *   the next attempt starts fresh (the fixer made no progress but we still give
+ *   it another chance).
+ * - Splice `continuationContext` with the partial diff into the options.
+ *
+ * NOTE: This function is intentionally read-only with respect to git.
+ * The review-fixer invariant is that it NEVER stages or commits changes.
+ */
+export async function buildReviewFixerContinuationInput(
+  info: RetryAttemptInfo<ReviewFixerContinuationInput>,
+): Promise<ContinuationDecision<ReviewFixerContinuationInput>> {
+  const { cwd, planId, reviewFixerOptions } = info.prevInput;
+
+  let partialDiff = '';
+  try {
+    const { stdout } = await exec('git', ['diff', 'HEAD', '--'], { cwd });
+    partialDiff = stdout.length <= REVIEW_FIXER_DIFF_CHAR_LIMIT
+      ? stdout
+      : `[Diff too large (${stdout.length} chars) — showing truncated]\n${stdout.slice(0, REVIEW_FIXER_DIFF_CHAR_LIMIT)}`;
+  } catch {
+    partialDiff = '[Unable to generate diff]';
+  }
+
+  const nextInput: ReviewFixerContinuationInput = {
+    cwd,
+    planId,
+    reviewFixerOptions: {
+      ...reviewFixerOptions,
+      continuationContext: {
+        attempt: info.attempt,
+        maxContinuations: info.maxAttempts - 1,
+        partialDiff,
+      },
+    },
+  };
+  return { kind: 'retry', input: nextInput };
+}
+
 /**
  * Shape of the evaluator input the continuation builder augments with
  * `evaluatorContinuationContext`. The `hasUnstagedChanges` short-circuit
@@ -854,6 +929,25 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
       maxContinuations: info.maxAttempts - 1,
     }],
     label: 'architecture-evaluator-continuation',
+  },
+  'review-fixer': {
+    agent: 'review-fixer' as AgentRole,
+    maxAttempts: 3,
+    retryableSubtypes: RETRYABLE_MAX_TURNS,
+    buildContinuationInput: (info) =>
+      buildReviewFixerContinuationInput(info as RetryAttemptInfo<ReviewFixerContinuationInput>) as Promise<ContinuationDecision<unknown>>,
+    onRetry: (info) => {
+      const planId = (info.prevInput as ReviewFixerContinuationInput).planId;
+      return [{
+        timestamp: new Date().toISOString(),
+        type: 'plan:build:review:fix:continuation',
+        planId,
+        attempt: info.attempt,
+        maxContinuations: info.maxAttempts - 1,
+      }];
+    },
+    planIdFromInput: (input) => (input as ReviewFixerContinuationInput).planId,
+    label: 'review-fixer-continuation',
   },
   // --- eforge:region plan-01-stage-local-retry-recovery ---
   'pipeline-composer': {

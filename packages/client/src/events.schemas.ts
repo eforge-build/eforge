@@ -1530,6 +1530,12 @@ const EforgeEventVariantsSchema = Type.Union([
     issueCount: Type.Number(),
   }),
   Type.Object({ type: Type.Literal('plan:build:review:fix:complete'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:review:fix:continuation'),
+    planId: Type.String(),
+    attempt: Type.Number(),
+    maxContinuations: Type.Number(),
+  }),
   Type.Object({ type: Type.Literal('plan:build:evaluate:start'), planId: Type.String() }),
   Type.Object({
     type: Type.Literal('plan:build:evaluate:continuation'),

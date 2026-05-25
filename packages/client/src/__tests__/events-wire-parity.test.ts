@@ -492,6 +492,10 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
     payload: { type: 'plan:build:review:fix:complete', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01' },
   },
   {
+    label: 'plan:build:review:fix:continuation',
+    payload: { type: 'plan:build:review:fix:continuation', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01', attempt: 1, maxContinuations: 2 },
+  },
+  {
     label: 'plan:build:evaluate:start',
     payload: { type: 'plan:build:evaluate:start', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01' },
   },

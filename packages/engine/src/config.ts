@@ -832,6 +832,7 @@ const DEFAULT_TIER_RECIPES: Partial<Record<AgentTier, TierConfig>> = Object.free
     harness: 'claude-sdk' as const,
     model: 'claude-sonnet-4-6',
     effort: 'medium' as const,
+    maxTurns: 80,
   }),
   review: Object.freeze({
     harness: 'claude-sdk' as const,

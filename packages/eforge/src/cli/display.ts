@@ -379,6 +379,12 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
+    case 'plan:build:review:fix:continuation': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} \u2014 applying fixes (continuation ${event.attempt}/${event.maxContinuations})...`;
+      break;
+    }
+
     case 'plan:build:evaluate:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 evaluating fixes...`;

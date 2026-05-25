@@ -19,11 +19,13 @@ import {
   isBeforePlannerSubmissionBoundary,
   isRetryableInfrastructureSubtype,
   buildEvaluatorContinuationInput,
+  buildReviewFixerContinuationInput,
   type RetryPolicy,
   type RetryAttemptInfo,
   type EvaluatorContinuationInput,
   type PlannerContinuationInput,
   type BuilderContinuationInput,
+  type ReviewFixerContinuationInput,
 } from '@eforge-build/engine/retry';
 import { builderEvaluate } from '@eforge-build/engine/agents/builder';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
@@ -417,7 +419,6 @@ describe('getPolicy — unregistered roles default to no-retry', () => {
   // Note: 'pipeline-composer' has an explicit policy registered (infrastructure retry).
   const unregisteredRoles: AgentRole[] = [
     'reviewer',
-    'review-fixer',
     'module-planner',
     'formatter',
     'doc-author',
@@ -444,6 +445,86 @@ describe('getPolicy — unregistered roles default to no-retry', () => {
     const planner = getPolicy('planner');
     expect(planner.label).toBe('planner-continuation');
     expect(planner.maxAttempts).toBe(3);
+
+    const reviewFixer = getPolicy('review-fixer');
+    expect(reviewFixer.label).toBe('review-fixer-continuation');
+    expect(reviewFixer.maxAttempts).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DEFAULT_RETRY_POLICIES — review-fixer policy
+// ---------------------------------------------------------------------------
+
+describe('DEFAULT_RETRY_POLICIES — review-fixer policy', () => {
+  it('is registered with maxAttempts 3 and label review-fixer-continuation', () => {
+    const policy = getPolicy('review-fixer');
+    expect(policy.maxAttempts).toBe(3);
+    expect(policy.label).toBe('review-fixer-continuation');
+  });
+
+  it('retryableSubtypes includes only error_max_turns', () => {
+    const policy = getPolicy('review-fixer');
+    expect(policy.retryableSubtypes.has('error_max_turns')).toBe(true);
+    expect(policy.retryableSubtypes.has('error_transient_transport')).toBe(false);
+    expect(policy.retryableSubtypes.size).toBe(1);
+  });
+
+  it('buildReviewFixerContinuationInput splices continuationContext with partial diff', async () => {
+    const info = makeAttemptInfo<ReviewFixerContinuationInput>({
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      prevInput: {
+        cwd: '/tmp/nonexistent-for-test',
+        planId: 'plan-01',
+        reviewFixerOptions: {},
+      },
+    });
+
+    // The git command will fail on a non-existent dir — expect a graceful fallback
+    const decision = await buildReviewFixerContinuationInput(info);
+    expect(decision.kind).toBe('retry');
+    if (decision.kind === 'retry') {
+      const ctx = decision.input.reviewFixerOptions.continuationContext;
+      expect(ctx).toBeDefined();
+      expect(ctx!.attempt).toBe(1);
+      expect(ctx!.maxContinuations).toBe(2);
+      // On error, partialDiff is a fallback string
+      expect(ctx!.partialDiff).toBeDefined();
+    }
+  });
+
+  it('onRetry emits plan:build:review:fix:continuation event', () => {
+    const policy = DEFAULT_RETRY_POLICIES['review-fixer'];
+    expect(policy).toBeDefined();
+    if (!policy?.onRetry) throw new Error('onRetry not defined');
+
+    const info = makeAttemptInfo<ReviewFixerContinuationInput>({
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      prevInput: {
+        cwd: '/tmp/wt',
+        planId: 'plan-42',
+        reviewFixerOptions: {},
+      },
+    });
+
+    const events = policy.onRetry(info as RetryAttemptInfo<unknown>);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('plan:build:review:fix:continuation');
+    const evt = events[0] as Extract<EforgeEvent, { type: 'plan:build:review:fix:continuation' }>;
+    expect(evt.planId).toBe('plan-42');
+    expect(evt.attempt).toBe(1);
+    expect(evt.maxContinuations).toBe(2);
+  });
+
+  it('planIdFromInput extracts planId from ReviewFixerContinuationInput', () => {
+    const policy = DEFAULT_RETRY_POLICIES['review-fixer'];
+    expect(policy?.planIdFromInput).toBeDefined();
+    const input: ReviewFixerContinuationInput = { cwd: '/tmp/wt', planId: 'plan-99', reviewFixerOptions: {} };
+    expect(policy!.planIdFromInput!(input as unknown)).toBe('plan-99');
   });
 });
 
@@ -1571,5 +1652,21 @@ describe('RetryPolicy type surface', () => {
       },
     };
     expect(input.evaluatorOptions.evaluatorContinuationContext?.attempt).toBe(1);
+  });
+
+  it('review-fixer continuation input type accepts expected fields', () => {
+    const input: ReviewFixerContinuationInput = {
+      cwd: '/tmp/wt',
+      planId: 'plan-01',
+      reviewFixerOptions: {
+        continuationContext: {
+          attempt: 1,
+          maxContinuations: 2,
+          partialDiff: 'diff --git a/foo.ts b/foo.ts\n--- a/foo.ts\n+++ b/foo.ts',
+        },
+      },
+    };
+    expect(input.reviewFixerOptions.continuationContext?.attempt).toBe(1);
+    expect(input.reviewFixerOptions.continuationContext?.partialDiff).toContain('foo.ts');
   });
 });
