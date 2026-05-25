@@ -19,11 +19,13 @@ import {
   isBeforePlannerSubmissionBoundary,
   isRetryableInfrastructureSubtype,
   buildEvaluatorContinuationInput,
+  buildReviewFixerContinuationInput,
   type RetryPolicy,
   type RetryAttemptInfo,
   type EvaluatorContinuationInput,
   type PlannerContinuationInput,
   type BuilderContinuationInput,
+  type ReviewFixerContinuationInput,
 } from '@eforge-build/engine/retry';
 import { builderEvaluate } from '@eforge-build/engine/agents/builder';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
@@ -417,7 +419,6 @@ describe('getPolicy — unregistered roles default to no-retry', () => {
   // Note: 'pipeline-composer' has an explicit policy registered (infrastructure retry).
   const unregisteredRoles: AgentRole[] = [
     'reviewer',
-    'review-fixer',
     'module-planner',
     'formatter',
     'doc-author',
@@ -444,6 +445,86 @@ describe('getPolicy — unregistered roles default to no-retry', () => {
     const planner = getPolicy('planner');
     expect(planner.label).toBe('planner-continuation');
     expect(planner.maxAttempts).toBe(3);
+
+    const reviewFixer = getPolicy('review-fixer');
+    expect(reviewFixer.label).toBe('review-fixer-continuation');
+    expect(reviewFixer.maxAttempts).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DEFAULT_RETRY_POLICIES — review-fixer policy
+// ---------------------------------------------------------------------------
+
+describe('DEFAULT_RETRY_POLICIES — review-fixer policy', () => {
+  it('is registered with maxAttempts 3 and label review-fixer-continuation', () => {
+    const policy = getPolicy('review-fixer');
+    expect(policy.maxAttempts).toBe(3);
+    expect(policy.label).toBe('review-fixer-continuation');
+  });
+
+  it('retryableSubtypes includes only error_max_turns', () => {
+    const policy = getPolicy('review-fixer');
+    expect(policy.retryableSubtypes.has('error_max_turns')).toBe(true);
+    expect(policy.retryableSubtypes.has('error_transient_transport')).toBe(false);
+    expect(policy.retryableSubtypes.size).toBe(1);
+  });
+
+  it('buildReviewFixerContinuationInput splices continuationContext with partial diff', async () => {
+    const info = makeAttemptInfo<ReviewFixerContinuationInput>({
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      prevInput: {
+        cwd: '/tmp/nonexistent-for-test',
+        planId: 'plan-01',
+        reviewFixerOptions: {},
+      },
+    });
+
+    // The git command will fail on a non-existent dir — expect a graceful fallback
+    const decision = await buildReviewFixerContinuationInput(info);
+    expect(decision.kind).toBe('retry');
+    if (decision.kind === 'retry') {
+      const ctx = decision.input.reviewFixerOptions.continuationContext;
+      expect(ctx).toBeDefined();
+      expect(ctx!.attempt).toBe(1);
+      expect(ctx!.maxContinuations).toBe(2);
+      // On error, partialDiff is a fallback string
+      expect(ctx!.partialDiff).toBeDefined();
+    }
+  });
+
+  it('onRetry emits plan:build:review:fix:continuation event', () => {
+    const policy = DEFAULT_RETRY_POLICIES['review-fixer'];
+    expect(policy).toBeDefined();
+    if (!policy?.onRetry) throw new Error('onRetry not defined');
+
+    const info = makeAttemptInfo<ReviewFixerContinuationInput>({
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      prevInput: {
+        cwd: '/tmp/wt',
+        planId: 'plan-42',
+        reviewFixerOptions: {},
+      },
+    });
+
+    const events = policy.onRetry(info as RetryAttemptInfo<unknown>);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('plan:build:review:fix:continuation');
+    const evt = events[0] as Extract<EforgeEvent, { type: 'plan:build:review:fix:continuation' }>;
+    expect(evt.planId).toBe('plan-42');
+    expect(evt.attempt).toBe(1);
+    expect(evt.maxContinuations).toBe(2);
+  });
+
+  it('planIdFromInput extracts planId from ReviewFixerContinuationInput', () => {
+    const policy = DEFAULT_RETRY_POLICIES['review-fixer'];
+    expect(policy?.planIdFromInput).toBeDefined();
+    const input: ReviewFixerContinuationInput = { cwd: '/tmp/wt', planId: 'plan-99', reviewFixerOptions: {} };
+    expect(policy!.planIdFromInput!(input as unknown)).toBe('plan-99');
   });
 });
 
@@ -1571,5 +1652,97 @@ describe('RetryPolicy type surface', () => {
       },
     };
     expect(input.evaluatorOptions.evaluatorContinuationContext?.attempt).toBe(1);
+  });
+
+  it('review-fixer continuation input type accepts expected fields', () => {
+    const input: ReviewFixerContinuationInput = {
+      cwd: '/tmp/wt',
+      planId: 'plan-01',
+      reviewFixerOptions: {
+        continuationContext: {
+          attempt: 1,
+          maxContinuations: 2,
+          partialDiff: 'diff --git a/foo.ts b/foo.ts\n--- a/foo.ts\n+++ b/foo.ts',
+        },
+      },
+    };
+    expect(input.reviewFixerOptions.continuationContext?.attempt).toBe(1);
+    expect(input.reviewFixerOptions.continuationContext?.partialDiff).toContain('foo.ts');
+  });
+
+  it('review-fixer continuation input type accepts enriched discovery context fields', () => {
+    const input: ReviewFixerContinuationInput = {
+      cwd: '/tmp/wt',
+      planId: 'plan-01',
+      reviewFixerOptions: {
+        continuationContext: {
+          attempt: 1,
+          maxContinuations: 2,
+          partialDiff: '',
+          filesInspected: ['src/foo.ts', 'src/bar.ts'],
+          searches: ['grep: useState in src'],
+          commands: ['npm run lint'],
+          recentMessages: ['Checking the hook'],
+          toolResultSnippets: ['[Read] export const x = 1;'],
+        },
+      },
+    };
+    const ctx = input.reviewFixerOptions.continuationContext;
+    expect(ctx?.filesInspected).toEqual(['src/foo.ts', 'src/bar.ts']);
+    expect(ctx?.searches).toEqual(['grep: useState in src']);
+    expect(ctx?.commands).toEqual(['npm run lint']);
+    expect(ctx?.recentMessages).toEqual(['Checking the hook']);
+    expect(ctx?.toolResultSnippets).toEqual(['[Read] export const x = 1;']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildReviewFixerContinuationInput — enriched continuation context in withRetry
+// ---------------------------------------------------------------------------
+
+describe('buildReviewFixerContinuationInput — enriched context preserved through withRetry policy', () => {
+  it('review-fixer policy preserves discovery fields in continuationContext after buildContinuationInput', async () => {
+    const policy = DEFAULT_RETRY_POLICIES['review-fixer'];
+    expect(policy).toBeDefined();
+
+    const events: EforgeEvent[] = [
+      {
+        timestamp: ts(), type: 'agent:tool_use', agentId: 'a1', agent: 'review-fixer' as const,
+        tool: 'Read', toolUseId: 'tu-1', input: { file_path: 'src/component.ts' },
+      },
+      {
+        timestamp: ts(), type: 'agent:tool_result', agentId: 'a1', agent: 'review-fixer' as const,
+        tool: 'Read', toolUseId: 'tu-1', output: 'export const Component = () => null;',
+      },
+      {
+        timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'review-fixer' as const,
+        content: 'Found the component.',
+      },
+    ];
+
+    const info = makeAttemptInfo<ReviewFixerContinuationInput>({
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      events,
+      prevInput: {
+        cwd: '/tmp/nonexistent-for-test',
+        planId: 'plan-enriched',
+        reviewFixerOptions: {},
+      },
+    });
+
+    const decision = await buildReviewFixerContinuationInput(info);
+    expect(decision.kind).toBe('retry');
+    if (decision.kind === 'retry') {
+      const ctx = decision.input.reviewFixerOptions.continuationContext;
+      expect(ctx).toBeDefined();
+      expect(ctx!.attempt).toBe(1);
+      expect(ctx!.maxContinuations).toBe(2);
+      // Discovery context is populated from events
+      expect(ctx!.filesInspected).toContain('src/component.ts');
+      expect(ctx!.recentMessages).toContain('Found the component.');
+      expect(ctx!.toolResultSnippets?.some((s) => s.includes('Component'))).toBe(true);
+    }
   });
 });

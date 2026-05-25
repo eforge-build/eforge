@@ -3205,3 +3205,125 @@ describe('recovery:summary event — optional BuildFailureSummary fields', () =>
 });
 // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 // --- eforge:endregion plan-01-validation-evidence-contract ---
+
+// --- eforge:region plan-01-review-fixer-continuation ---
+
+// ---------------------------------------------------------------------------
+// plan:build:review:fix:continuation and review-fixer agent:retry variants
+// ---------------------------------------------------------------------------
+
+describe('safeParseEforgeEvent — plan:build:review:fix:continuation', () => {
+  it('accepts plan:build:review:fix:continuation with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:fix:continuation',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      attempt: 1,
+      maxContinuations: 2,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects plan:build:review:fix:continuation missing planId', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:fix:continuation',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      attempt: 1,
+      maxContinuations: 2,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects plan:build:review:fix:continuation missing attempt', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:fix:continuation',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      maxContinuations: 2,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects plan:build:review:fix:continuation missing maxContinuations', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:fix:continuation',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      attempt: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('round-trips through JSON', () => {
+    const event: EforgeEvent = {
+      type: 'plan:build:review:fix:continuation',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-42',
+      attempt: 2,
+      maxContinuations: 2,
+    };
+    const parsed = JSON.parse(JSON.stringify(event));
+    const result = safeParseEforgeEvent(parsed);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual(event);
+    }
+  });
+});
+
+describe('safeParseEforgeEvent — review-fixer agent:retry payload', () => {
+  it('accepts agent:retry with agent review-fixer and error_max_turns', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:retry',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agent: 'review-fixer',
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      label: 'review-fixer-continuation',
+      planId: 'plan-42',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts agent:retry for review-fixer without planId', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:retry',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agent: 'review-fixer',
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      label: 'review-fixer-continuation',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts agent:retry for review-fixer with any valid AgentTerminalSubtype (schema not restricted to error_max_turns)', () => {
+    // The schema accepts any valid AgentTerminalSubtype — policy filtering is runtime-only.
+    const result = safeParseEforgeEvent({
+      type: 'agent:retry',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agent: 'review-fixer',
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_during_execution',
+      label: 'review-fixer-continuation',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects agent:retry missing agent field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:retry',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      attempt: 1,
+      maxAttempts: 3,
+      subtype: 'error_max_turns',
+      label: 'review-fixer-continuation',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// --- eforge:endregion plan-01-review-fixer-continuation ---

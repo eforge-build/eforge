@@ -632,6 +632,12 @@ const eventRegistry = {
     summary: (e) => `Plan ${e.planId}: fixes applied`,
   },
 
+  'plan:build:review:fix:continuation': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Plan ${e.planId}: review-fixer continuation attempt ${e.attempt}/${e.maxContinuations}`,
+  },
+
   'plan:build:evaluate:start': {
     scope: 'session',
     persist: false,

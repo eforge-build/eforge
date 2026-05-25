@@ -625,6 +625,216 @@ export function buildShardPolicy(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Review-fixer continuation types and builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Context passed to the next review-fixer attempt's prompt so the agent
+ * knows what was already fixed and doesn't repeat work.
+ */
+export interface ReviewFixerContinuationContext {
+  /** 1-indexed number of the upcoming attempt (i.e. the attempt that just failed + 1). */
+  attempt: number;
+  /** Total continuations allowed (= maxAttempts - 1). */
+  maxContinuations: number;
+  /** Truncated diff of fixes already applied (from `git diff HEAD --`). */
+  partialDiff: string;
+  /** Untracked files present in the working tree (new files not yet tracked by git). */
+  untrackedFiles?: string[];
+  /** Files the previous attempt read or inspected. */
+  filesInspected?: string[];
+  /** Search and glob queries the previous attempt ran. */
+  searches?: string[];
+  /** Shell commands the previous attempt executed. */
+  commands?: string[];
+  /** Recent agent messages from the previous attempt (bounded). */
+  recentMessages?: string[];
+  /** Truncated tool-result snippets for useful findings. */
+  toolResultSnippets?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Discovery context extraction
+// ---------------------------------------------------------------------------
+
+const MAX_FILES_INSPECTED = 20;
+const MAX_SEARCHES = 20;
+const MAX_COMMANDS = 15;
+const MAX_RECENT_MESSAGES = 5;
+const MAX_TOOL_RESULT_SNIPPETS = 8;
+const TOOL_RESULT_SNIPPET_LENGTH = 500;
+/** Maximum character length for a single recent agent message included in the handoff context. */
+const MAX_RECENT_MESSAGE_LENGTH = 2_000;
+/** Maximum character length for a single search/glob summary string. */
+const MAX_SEARCH_SUMMARY_LENGTH = 300;
+
+interface DiscoveryContext {
+  filesInspected: string[];
+  searches: string[];
+  commands: string[];
+  recentMessages: string[];
+  toolResultSnippets: string[];
+}
+
+/**
+ * Derive bounded discovery context from a failed review-fixer attempt's events.
+ *
+ * - Filters to events where `agent === 'review-fixer'`.
+ * - Processes `agent:tool_use` for Read, Grep, Glob, and Bash tool names.
+ * - Pairs `agent:tool_result` with prior tool uses via `toolUseId` for snippets.
+ * - Collects `agent:message` content as recent messages.
+ * - Deduplicates file/search/command summaries; truncates snippet content.
+ */
+export function extractReviewFixerDiscoveryContext(events: readonly EforgeEvent[]): DiscoveryContext {
+  const filesInspectedSet = new Set<string>();
+  const searchesSet = new Set<string>();
+  const commandsSet = new Set<string>();
+  const recentMessages: string[] = [];
+  const toolResultSnippets: string[] = [];
+
+  // Index tool_use events by toolUseId for pairing with tool_result
+  const toolUseIndex = new Map<string, { tool: string }>();
+
+  for (const ev of events) {
+    // Filter to review-fixer agent events only
+    if (!('agent' in ev) || (ev as { agent?: string }).agent !== 'review-fixer') continue;
+
+    if (ev.type === 'agent:tool_use') {
+      const tool = ev.tool as string;
+      const input: Record<string, unknown> = typeof ev.input === 'object' && ev.input !== null
+        ? ev.input as Record<string, unknown>
+        : {};
+      toolUseIndex.set(ev.toolUseId as string, { tool });
+
+      if (tool === 'Read') {
+        const filePath = typeof input.file_path === 'string' ? input.file_path : String(input.file_path ?? '');
+        if (filePath) filesInspectedSet.add(filePath);
+      } else if (tool === 'Grep') {
+        const pattern = typeof input.pattern === 'string' ? input.pattern : '';
+        const path = typeof input.path === 'string' ? ` in ${input.path}` : '';
+        const rawSummary = `grep: ${pattern}${path}`.trim();
+        const summary = rawSummary.length > MAX_SEARCH_SUMMARY_LENGTH
+          ? `${rawSummary.slice(0, MAX_SEARCH_SUMMARY_LENGTH)}...`
+          : rawSummary;
+        if (pattern) searchesSet.add(summary);
+      } else if (tool === 'Glob') {
+        const pattern = typeof input.pattern === 'string' ? input.pattern : '';
+        const rawSummary = `glob: ${pattern}`;
+        const summary = rawSummary.length > MAX_SEARCH_SUMMARY_LENGTH
+          ? `${rawSummary.slice(0, MAX_SEARCH_SUMMARY_LENGTH)}...`
+          : rawSummary;
+        if (pattern) searchesSet.add(summary);
+      } else if (tool === 'Bash') {
+        const cmd = typeof input.command === 'string'
+          ? input.command.slice(0, 200)
+          : '';
+        if (cmd) commandsSet.add(cmd);
+      }
+    } else if (ev.type === 'agent:tool_result') {
+      const toolUse = toolUseIndex.get(ev.toolUseId as string);
+      const output = ev.output as string;
+      if (toolUse && ['Read', 'Grep', 'Glob', 'Bash'].includes(toolUse.tool) && output.trim()) {
+        const snippet = output.length > TOOL_RESULT_SNIPPET_LENGTH
+          ? `${output.slice(0, TOOL_RESULT_SNIPPET_LENGTH)}...`
+          : output;
+        toolResultSnippets.push(`[${toolUse.tool}] ${snippet}`);
+      }
+    } else if (ev.type === 'agent:message') {
+      const content = ev.content as string;
+      const truncated = content.length > MAX_RECENT_MESSAGE_LENGTH
+        ? `${content.slice(0, MAX_RECENT_MESSAGE_LENGTH)}...`
+        : content;
+      recentMessages.push(truncated);
+    }
+  }
+
+  return {
+    filesInspected: [...filesInspectedSet].slice(-MAX_FILES_INSPECTED),
+    searches: [...searchesSet].slice(-MAX_SEARCHES),
+    commands: [...commandsSet].slice(-MAX_COMMANDS),
+    recentMessages: recentMessages.slice(-MAX_RECENT_MESSAGES),
+    toolResultSnippets: toolResultSnippets.slice(-MAX_TOOL_RESULT_SNIPPETS),
+  };
+}
+
+/**
+ * Input shape the review-fixer continuation builder reads and returns.
+ */
+export interface ReviewFixerContinuationInput {
+  /** Working directory (the worktree where the review-fixer operates). */
+  cwd: string;
+  /** Plan identifier — passed through to the `plan:build:review:fix:continuation` event. */
+  planId: string;
+  /** Options forwarded to `runReviewFixer`. */
+  reviewFixerOptions: Record<string, unknown> & {
+    continuationContext?: ReviewFixerContinuationContext;
+  };
+}
+
+/** Character limit for the partial diff passed to the review-fixer continuation prompt. */
+const REVIEW_FIXER_DIFF_CHAR_LIMIT = 40_000;
+
+/**
+ * Build the next review-fixer attempt's input:
+ * - Read `git diff HEAD --` (working-tree changes since HEAD — unstaged by design).
+ * - If there are no changes, return `{ kind: 'retry' }` with an empty diff so
+ *   the next attempt starts fresh (the fixer made no progress but we still give
+ *   it another chance, using discovery context from the failed attempt).
+ * - Extract bounded discovery context (files inspected, searches, commands,
+ *   recent messages, tool-result snippets) from the failed attempt's events.
+ * - Splice `continuationContext` with the partial diff and discovery context
+ *   into the options.
+ *
+ * NOTE: This function is intentionally read-only with respect to git.
+ * The review-fixer invariant is that it NEVER stages or commits changes.
+ */
+export async function buildReviewFixerContinuationInput(
+  info: RetryAttemptInfo<ReviewFixerContinuationInput>,
+): Promise<ContinuationDecision<ReviewFixerContinuationInput>> {
+  const { cwd, planId, reviewFixerOptions } = info.prevInput;
+
+  let partialDiff = '';
+  try {
+    const { stdout } = await exec('git', ['diff', 'HEAD', '--'], { cwd });
+    partialDiff = stdout.length <= REVIEW_FIXER_DIFF_CHAR_LIMIT
+      ? stdout
+      : `[Diff too large (${stdout.length} chars) — showing truncated]\n${stdout.slice(0, REVIEW_FIXER_DIFF_CHAR_LIMIT)}`;
+  } catch {
+    partialDiff = '[Unable to generate diff]';
+  }
+
+  let untrackedFiles: string[] = [];
+  try {
+    const { stdout } = await exec('git', ['ls-files', '--others', '--exclude-standard'], { cwd });
+    untrackedFiles = stdout.trim().split('\n').filter(Boolean);
+  } catch {
+    // best-effort; leave empty
+  }
+
+  const discovery = extractReviewFixerDiscoveryContext(info.events);
+
+  const nextInput: ReviewFixerContinuationInput = {
+    cwd,
+    planId,
+    reviewFixerOptions: {
+      ...reviewFixerOptions,
+      continuationContext: {
+        attempt: info.attempt,
+        maxContinuations: info.maxAttempts - 1,
+        partialDiff,
+        untrackedFiles,
+        filesInspected: discovery.filesInspected,
+        searches: discovery.searches,
+        commands: discovery.commands,
+        recentMessages: discovery.recentMessages,
+        toolResultSnippets: discovery.toolResultSnippets,
+      },
+    },
+  };
+  return { kind: 'retry', input: nextInput };
+}
+
 /**
  * Shape of the evaluator input the continuation builder augments with
  * `evaluatorContinuationContext`. The `hasUnstagedChanges` short-circuit
@@ -854,6 +1064,25 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
       maxContinuations: info.maxAttempts - 1,
     }],
     label: 'architecture-evaluator-continuation',
+  },
+  'review-fixer': {
+    agent: 'review-fixer' as AgentRole,
+    maxAttempts: 3,
+    retryableSubtypes: RETRYABLE_MAX_TURNS,
+    buildContinuationInput: (info) =>
+      buildReviewFixerContinuationInput(info as RetryAttemptInfo<ReviewFixerContinuationInput>) as Promise<ContinuationDecision<unknown>>,
+    onRetry: (info) => {
+      const planId = (info.prevInput as ReviewFixerContinuationInput).planId;
+      return [{
+        timestamp: new Date().toISOString(),
+        type: 'plan:build:review:fix:continuation',
+        planId,
+        attempt: info.attempt,
+        maxContinuations: info.maxAttempts - 1,
+      }];
+    },
+    planIdFromInput: (input) => (input as ReviewFixerContinuationInput).planId,
+    label: 'review-fixer-continuation',
   },
   // --- eforge:region plan-01-stage-local-retry-recovery ---
   'pipeline-composer': {

@@ -4421,6 +4421,30 @@
           "type": "object",
           "required": [
             "type",
+            "planId",
+            "attempt",
+            "maxContinuations"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:review:fix:continuation",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxContinuations": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "planId"
           ],
           "properties": {

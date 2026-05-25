@@ -8,6 +8,8 @@ The following issues were identified by specialist reviewers, sorted by severity
 
 {{issues}}
 
+{{continuation_context}}
+
 # Instructions
 
 1. Work through the issues in the order listed (critical first, then warning, then suggestion).

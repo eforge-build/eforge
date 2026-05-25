@@ -60,7 +60,6 @@ export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
 
 /** Per-role default maxTurns for agents that have a non-default budget. */
 export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, { maxTurns?: number }>> = {
-  builder: { maxTurns: 80 },
   planner: { maxTurns: 80 },
   tester: { maxTurns: 40 },
   reviewer: { maxTurns: 60 },

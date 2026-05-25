@@ -16,6 +16,7 @@ import {
   type BuilderContinuationInput,
   type BuilderShardContinuationInput,
   type EvaluatorContinuationInput,
+  type ReviewFixerContinuationInput,
   buildShardPolicy,
 } from '../../retry.js';
 import { builderImplement, builderEvaluate, type BuilderEvaluationResult } from '../../agents/builder.js';
@@ -55,6 +56,7 @@ import { registerBuildStage } from '../registry.js';
 import { runValidationProvider } from '../../extensions/validation-provider-runtime.js';
 // --- eforge:endregion plan-01-validation-provider-runtime ---
 import { resolveAgentConfig } from '../agent-config.js';
+import { isMaxTurnsError } from '../../harness.js';
 import { createToolTracker } from '../span-wiring.js';
 import { withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../git-helpers.js';
 import { toBuildFailedEvent } from '../error-translator.js';
@@ -598,6 +600,46 @@ async function* evaluateStageInner(
   }
 }
 
+/** Per-retry review-fixer span + event processing. Span and tracker created per attempt. */
+async function* runReviewFixerAttempt(
+  input: ReviewFixerContinuationInput,
+  ctx: BuildStageContext,
+  onAgentId: (id: string) => void,
+): AsyncGenerator<EforgeEvent> {
+  const { harness: fixerHarness, toolbeltSummary: fixerTb } = ctx.agentRuntimes.forRoleResolved('review-fixer', ctx.planFile);
+  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile, fixerTb);
+  const fixerConfigWithPhase = { ...fixerConfig, phase: 'build', stage: 'review-fix' };
+  const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
+  fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
+  const fixTracker = createToolTracker(fixSpan);
+  try {
+    for await (const event of withPeriodicFileCheck(runReviewFixer({
+      planId: input.planId,
+      cwd: input.cwd,
+      issues: ctx.reviewIssues,
+      verbose: ctx.verbose,
+      abortController: ctx.abortController,
+      ...fixerConfigWithPhase,
+      harness: fixerHarness,
+      ...(input.reviewFixerOptions.continuationContext !== undefined
+        ? { continuationContext: input.reviewFixerOptions.continuationContext }
+        : {}),
+    }), ctx)) {
+      if (event.type === 'agent:start' && event.agent === 'review-fixer') {
+        onAgentId(event.agentId);
+      }
+      fixTracker.handleEvent(event);
+      yield event;
+    }
+    fixTracker.cleanup();
+    fixSpan.end();
+  } catch (err) {
+    fixTracker.cleanup();
+    fixSpan.error(err as Error);
+    throw err;
+  }
+}
+
 async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
   if (ctx.reviewIssues.length === 0) return;
 
@@ -610,43 +652,42 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
     // Not available — skip activity emission
   }
 
-  const { harness: fixerHarness, toolbeltSummary: fixerTb } = ctx.agentRuntimes.forRoleResolved('review-fixer', ctx.planFile);
-  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile, fixerTb);
-  // Add phase/stage for extension hook context
-  const fixerConfigWithPhase = { ...fixerConfig, phase: 'build', stage: 'review-fix' };
-  const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
-  fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
-  const fixTracker = createToolTracker(fixSpan);
   let fixerAgentId: string | undefined;
+
+  // Resolve maxContinuations: per-plan > global config > default (3)
+  const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
+  const reviewFixerPolicy: RetryPolicy<ReviewFixerContinuationInput> = {
+    ...(DEFAULT_RETRY_POLICIES['review-fixer'] as RetryPolicy<ReviewFixerContinuationInput>),
+    maxAttempts: maxContinuations + 1,
+  };
+  const initialInput: ReviewFixerContinuationInput = {
+    cwd: ctx.worktreePath,
+    planId: ctx.planId,
+    reviewFixerOptions: {},
+  };
+
   try {
-    for await (const event of withPeriodicFileCheck(runReviewFixer({
-      planId: ctx.planId,
-      cwd: ctx.worktreePath,
-      issues: ctx.reviewIssues,
-      verbose: ctx.verbose,
-      abortController: ctx.abortController,
-      ...fixerConfigWithPhase,
-      harness: fixerHarness,
-    }), ctx)) {
-      if (event.type === 'agent:start' && event.agent === 'review-fixer') {
-        fixerAgentId = event.agentId;
-      }
-      fixTracker.handleEvent(event);
+    for await (const event of withRetry(
+      (input) => runReviewFixerAttempt(input, ctx, (id) => { fixerAgentId = id; }),
+      reviewFixerPolicy,
+      initialInput,
+    )) {
       yield event;
     }
-    fixTracker.cleanup();
-    if (!fixerAgentId) {
-      fixSpan.setOutput({ activitySkipped: true, reason: 'no-agent-id' });
-    }
-    fixSpan.end();
   } catch (err) {
-    fixTracker.cleanup();
-    if (!fixerAgentId) {
-      fixSpan.setOutput({ activitySkipped: true, reason: 'no-agent-id' });
-    }
-    fixSpan.error(err as Error);
     if (err instanceof Error && err.name === 'AbortError') throw err;
-    // Review fixer failures are non-fatal
+    // When retry budget is exhausted on max-turns, emit a non-fatal warning
+    if (isMaxTurnsError(err)) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'agent:warning',
+        agent: 'review-fixer',
+        agentId: fixerAgentId ?? 'review-fixer-unknown',
+        code: 'review-fixer-retry-budget-exhausted',
+        message: `Review fixer exhausted all ${reviewFixerPolicy.maxAttempts} attempt(s) without completing all fixes. Partial fixes may be present in the working tree.`,
+      };
+    }
+    // All other errors are non-fatal — swallow silently
   }
 
   // Emit agent:activity for the review fixer with exact attribution.

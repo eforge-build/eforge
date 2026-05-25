@@ -228,6 +228,7 @@ export const IGNORED_EVENT_TYPES = [
   'plan:build:review:parallel:perspective:start',
   'plan:build:review:fix:start',
   'plan:build:review:fix:complete',
+  'plan:build:review:fix:continuation',
   'plan:build:evaluate:continuation',
   'plan:build:evaluate:complete',
   'plan:build:progress',

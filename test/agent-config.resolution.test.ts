@@ -90,3 +90,88 @@ describe('resolveAgentConfig provider splice', () => {
     expect(result.model.id).toBe('claude-sonnet-4-6');
   });
 });
+
+// ---------------------------------------------------------------------------
+// maxTurns resolution — implementation tier default propagation
+// ---------------------------------------------------------------------------
+
+describe('resolveAgentConfig maxTurns — implementation tier budget', () => {
+  it('resolveAgentConfig("review-fixer", DEFAULT_CONFIG).maxTurns equals 80', () => {
+    const result = resolveAgentConfig('review-fixer', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(80);
+  });
+
+  it('resolveAgentConfig("validation-fixer", DEFAULT_CONFIG).maxTurns equals 80', () => {
+    const result = resolveAgentConfig('validation-fixer', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(80);
+  });
+
+  it('resolveAgentConfig("builder", DEFAULT_CONFIG).maxTurns equals 80', () => {
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(80);
+  });
+
+  it('custom agents.tiers.implementation.maxTurns overrides the 80 default for review-fixer', () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const, maxTurns: 120 },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
+    });
+    expect(resolveAgentConfig('review-fixer', config).maxTurns).toBe(120);
+    expect(resolveAgentConfig('validation-fixer', config).maxTurns).toBe(120);
+    expect(resolveAgentConfig('builder', config).maxTurns).toBe(120);
+  });
+
+  it('plan-level maxTurns override takes highest precedence over tier default', () => {
+    const planEntry = {
+      agents: {
+        'review-fixer': { maxTurns: 50 },
+      },
+    };
+    const result = resolveAgentConfig('review-fixer', DEFAULT_CONFIG, planEntry);
+    expect(result.maxTurns).toBe(50);
+  });
+
+  it('role-level maxTurns override takes precedence over tier default', () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+        roles: {
+          'review-fixer': { maxTurns: 45 },
+        },
+      },
+    });
+    expect(resolveAgentConfig('review-fixer', config).maxTurns).toBe(45);
+  });
+
+  it('plan override beats role override beats tier default', () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const, maxTurns: 100 },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+        roles: {
+          'review-fixer': { maxTurns: 60 },
+        },
+      },
+    });
+    // Plan override wins over both role and tier
+    const planEntry = { agents: { 'review-fixer': { maxTurns: 25 } } };
+    expect(resolveAgentConfig('review-fixer', config, planEntry).maxTurns).toBe(25);
+    // Role override wins over tier without a plan override
+    expect(resolveAgentConfig('review-fixer', config).maxTurns).toBe(60);
+  });
+});

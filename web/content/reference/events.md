@@ -11,7 +11,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 200
+Total variants: 201
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -97,6 +97,7 @@ Total variants: 200
 | `plan:build:review:parallel:perspective:error` | `error`, `perspective`, `planId` |
 | `plan:build:review:fix:start` | `issueCount`, `planId` |
 | `plan:build:review:fix:complete` | `planId` |
+| `plan:build:review:fix:continuation` | `attempt`, `maxContinuations`, `planId` |
 | `plan:build:evaluate:start` | `planId` |
 | `plan:build:evaluate:continuation` | `attempt`, `maxContinuations`, `planId` |
 | `plan:build:evaluate:complete` | `accepted`, `planId`, `rejected`, `verdicts` |

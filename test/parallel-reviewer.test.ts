@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { ReviewIssue, EforgeEvent, AgentRole } from '@eforge-build/engine/events';
 import type { AgentRunOptions } from '@eforge-build/engine/harness';
+import { AgentTerminalError } from '@eforge-build/engine/harness';
 import type { ReviewerPerspectiveRegistration } from '@eforge-build/engine/extensions';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
@@ -141,6 +142,29 @@ describe('runReviewFixer', () => {
     // Should still emit fix:start and fix:complete
     expect(findEvent(events, 'plan:build:review:fix:start')).toBeDefined();
     expect(findEvent(events, 'plan:build:review:fix:complete')).toBeDefined();
+  });
+
+  it('rethrows AgentTerminalError with error_max_turns subtype', async () => {
+    const maxTurnsError = new AgentTerminalError('error_max_turns', 'Turn limit reached');
+    const backend = new StubHarness([{ error: maxTurnsError }]);
+
+    let thrown: unknown;
+    try {
+      await collectEvents(
+        runReviewFixer({
+          harness: backend,
+          planId: 'plan-01',
+          cwd: '/tmp/test',
+          issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],
+        }),
+      );
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeDefined();
+    expect(thrown).toBeInstanceOf(AgentTerminalError);
+    expect((thrown as AgentTerminalError).subtype).toBe('error_max_turns');
   });
 });
 
