@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { prdValidate } from '@eforge-build/engine/orchestrator/phases';
+import { prdValidate, validate } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import type { EforgeEvent, EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
@@ -654,6 +654,28 @@ describe('prdValidate phase error propagation', () => {
 // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 describe('prdValidate phase — validationCommandEvidence plumbing', () => {
   const makeTempDir = useTempDir();
+
+  it('validate resets command evidence on retry and retains only the final attempt', async () => {
+    const stateDir = makeTempDir();
+    const ctx = makeCtx(stateDir, async function* () {});
+    ctx.mergeWorktreePath = stateDir;
+    ctx.state.plans = { 'plan-01': { status: 'merged', merged: true } as unknown as EforgeState['plans'][string] };
+    ctx.validateCommands = [
+      'if [ -f .validation-attempt ]; then exit 0; else touch .validation-attempt; exit 1; fi',
+    ];
+    ctx.maxValidationRetries = 1;
+    ctx.validationFixer = async function* () {};
+
+    const events: EforgeEvent[] = [];
+    for await (const event of validate(ctx)) {
+      events.push(event);
+    }
+
+    expect(events.filter((e) => e.type === 'validation:complete')).toHaveLength(2);
+    expect(ctx.validationCommandEvidence).toHaveLength(1);
+    expect(ctx.validationCommandEvidence![0].exitCode).toBe(0);
+    expect(ctx.validationCommandEvidence![0].output).not.toContain('exit 1');
+  });
 
   it('passes validationCommandEvidence from PhaseContext to the prdValidator callback', async () => {
     const stateDir = makeTempDir();

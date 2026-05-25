@@ -139,15 +139,54 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         const phaseStatus = typeof phaseResult.status === 'string' ? phaseResult.status : undefined;
 
         // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
-        // Check for an acceptance-validation failure before falling back to the compile/agent:stop path.
-        // A failed phase:end that was preceded by acceptance_validation:complete with passed=false
-        // is a terminal acceptance-validation rejection, not a code-level crash.
+        // Prefer PRD-validation terminal failures over acceptance failures. runPrdValidator
+        // can emit acceptance_validation:complete even when PRD validation failed; reporting
+        // those runs as acceptance-validation failures hides the real terminal gate.
+        const prdValidationStmt = db.prepare(
+          `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'prd_validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`,
+        );
+        const prdValidationRow = prdValidationStmt.get(runId, failedPhase.id) as EventHistoryRow | undefined;
+        const parsedPrdValidation = prdValidationRow ? parseEventData(prdValidationRow.data) : undefined;
+        const prdValidationGaps = parsedPrdValidation && Array.isArray(parsedPrdValidation.gaps)
+          ? parsedPrdValidation.gaps
+          : [];
+        const prdValidationPassedCleanly = Boolean(
+          parsedPrdValidation?.passed === true && prdValidationGaps.length === 0,
+        );
+
+        if (parsedPrdValidation?.passed === false) {
+          const gapCount = prdValidationGaps.length;
+          const errorMessage = `PRD validation failed: ${gapCount} gap(s) found`;
+          return {
+            prdId,
+            setName,
+            featureBranch: `eforge/${setName}`,
+            baseBranch: 'main',
+            plans: [{ planId: 'prd-validation', status: 'failed', error: errorMessage }],
+            failingPlan: { planId: 'prd-validation', errorMessage },
+            landedCommits: [] as LandedCommit[],
+            diffStat: '',
+            modelsUsed,
+            failedAt: failedPhase.timestamp,
+            partial: true,
+            terminalFailure: {
+              stage: 'prd-validation',
+              ...(phaseSummary !== undefined ? { phaseSummary } : {}),
+              ...(phaseStatus !== undefined ? { phaseStatus } : {}),
+              eventType: 'prd_validation:complete',
+            },
+          };
+        }
+
+        // Check for an acceptance-validation failure before falling back to the agent:stop path.
+        // Only synthesize an acceptance-validation terminal rejection when the latest PRD
+        // validation completed cleanly first; otherwise the PRD gate is still unresolved.
         const acceptanceStmt = db.prepare(
           `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'acceptance_validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`,
         );
         const acceptanceRow = acceptanceStmt.get(runId, failedPhase.id) as EventHistoryRow | undefined;
 
-        if (acceptanceRow) {
+        if (acceptanceRow && prdValidationPassedCleanly) {
           const parsedAcc = parseEventData(acceptanceRow.data);
           if (parsedAcc.passed === false) {
             // Extract verdicts (fail-safe: filter out malformed entries)
@@ -258,15 +297,16 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           : failedStop.agent ?? undefined;
         const terminalSubtype = terminalSubtypeFromMessage(errorMessage);
 
+        const fallbackPlanId = failedStop.planId ?? (run.command === 'compile' ? 'compile' : agentRole ?? run.command);
         failingPlan = {
-          planId: 'compile',
+          planId: fallbackPlanId,
           agentId,
           agentRole,
           errorMessage,
           ...(terminalSubtype && { terminalSubtype }),
         };
         plans = [{
-          planId: 'compile',
+          planId: fallbackPlanId,
           status: 'failed',
           error: errorMessage,
           ...(terminalSubtype && { terminalSubtype }),

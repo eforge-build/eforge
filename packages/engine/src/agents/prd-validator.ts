@@ -152,6 +152,7 @@ export function formatValidationCommandEvidence(
   for (const cmd of commands) {
     const status = cmd.exitCode === 0 ? 'PASSED' : `FAILED (exit ${cmd.exitCode})`;
     lines.push(`### \`${cmd.command}\` — ${status}`);
+    lines.push(`exitCode: ${cmd.exitCode}`);
     if (cmd.output) {
       const truncated = cmd.output.length > MAX_COMMAND_OUTPUT_CHARS
         ? cmd.output.slice(0, MAX_COMMAND_OUTPUT_CHARS) + '\n[...truncated]'

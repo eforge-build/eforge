@@ -253,8 +253,9 @@ describe('runPrdValidator — deterministic validation command evidence', () => 
 
     const prompt = backend.prompts[0];
     expect(prompt).toContain('pnpm type-check');
-    // formatValidationCommandEvidence labels exit 0 as PASSED
+    // formatValidationCommandEvidence labels exit 0 as PASSED and includes exact exit code evidence.
     expect(prompt).toContain('PASSED');
+    expect(prompt).toContain('exitCode: 0');
     expect(prompt).toContain('Type checking complete');
   });
 
@@ -272,6 +273,7 @@ describe('runPrdValidator — deterministic validation command evidence', () => 
 
     const prompt = backend.prompts[0];
     expect(prompt).toContain('PASSED');
+    expect(prompt).toContain('exitCode: 0');
     expect(prompt).toContain('pnpm type-check');
   });
 
@@ -289,6 +291,7 @@ describe('runPrdValidator — deterministic validation command evidence', () => 
 
     const prompt = backend.prompts[0];
     expect(prompt).toContain('FAILED (exit 1)');
+    expect(prompt).toContain('exitCode: 1');
   });
 
   it('truncates long output to bounded length in the prompt', async () => {
