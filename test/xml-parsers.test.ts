@@ -343,15 +343,70 @@ describe('parseReviewIssuesStrict', () => {
     }
   });
 
-  it('valid empty block followed by prose is still valid:true', () => {
+  it('trailing prose after valid empty block returns valid:false', () => {
     const text = `I reviewed the code and found nothing wrong.
 
 <review-issues></review-issues>
 
 Some trailing text.`;
     const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('Trailing');
+    expect(result.issues[0].severity).toBe('critical');
+    expect(result.issues[0].category).toBe('review-contract');
+  });
+
+  it('returns valid:false when trailing prose follows the terminal block', () => {
+    const result = parseReviewIssuesStrict('<review-issues></review-issues> trailing');
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('Trailing');
+  });
+
+  it('returns valid:true for empty block with only surrounding whitespace', () => {
+    const result = parseReviewIssuesStrict('  \n<review-issues></review-issues>\n  ');
     expect(result.valid).toBe(true);
     expect(result.issues).toHaveLength(0);
+  });
+
+  it('returns valid:false when an issue has a non-numeric line attribute', () => {
+    const text = '<review-issues><issue severity="warning" category="bugs" file="src/a.ts" line="abc">Bad line attr</issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('non-numeric line');
+    expect(result.issues[0].severity).toBe('critical');
+    expect(result.issues[0].category).toBe('review-contract');
+  });
+
+  it('returns valid:false when an issue has a partially numeric line attribute (line="42abc")', () => {
+    const text = '<review-issues><issue severity="warning" category="bugs" file="src/a.ts" line="42abc">Partial numeric line</issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('non-numeric line');
+    expect(result.issues[0].severity).toBe('critical');
+    expect(result.issues[0].category).toBe('review-contract');
+  });
+
+  it('returns valid:false when an issue has a floating-point line attribute (line="1.5")', () => {
+    const text = '<review-issues><issue severity="warning" category="bugs" file="src/a.ts" line="1.5">Float line</issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('non-numeric line');
+    expect(result.issues[0].severity).toBe('critical');
+    expect(result.issues[0].category).toBe('review-contract');
+  });
+
+  it('returns valid:true for issues without any line attribute', () => {
+    const text = '<review-issues><issue severity="warning" category="bugs" file="src/a.ts">No line</issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(true);
+    expect(result.issues[0].line).toBeUndefined();
+  });
+
+  it('returns valid:true for issues with a valid numeric line attribute', () => {
+    const text = '<review-issues><issue severity="warning" category="bugs" file="src/a.ts" line="42">Valid line</issue></review-issues>';
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(true);
+    expect(result.issues[0].line).toBe(42);
   });
 
   it('returns valid:false for plain text reviewer output with no XML block', () => {

@@ -430,6 +430,43 @@ describe('recordArtifact — artifact registry writes', () => {
     expect(layer?.status).toBe('built');
   });
 
+  // --- eforge:region plan-03-parser-and-committed-work-hardening ---
+  it('does not write builds.json after a no-committed-diff merge failure (no-op plan without waiver)', async () => {
+    // When mergePlan() throws because the builtOnMerge plan has no committed changes
+    // (and allowNoCommittedChanges is not set), executePlans() marks state.status='failed'.
+    // recordArtifact() must then short-circuit without writing the artifact registry.
+    const cwd = await repo();
+    const state: EforgeState = {
+      setName: 'no-op-prd',
+      status: 'failed', // Simulates the state after a no-committed-diff merge failure
+      startedAt: new Date().toISOString(),
+      baseBranch: 'main',
+      featureBranch: 'eforge/no-op-prd',
+      worktreeBase: cwd,
+      plans: {
+        plan1: { status: 'failed', branch: 'plan1', dependsOn: [], merged: false, error: 'no committed changes' },
+      },
+      completedPlans: [],
+    };
+    const ctx = {
+      state,
+      repoRoot: cwd,
+      mergeWorktreePath: cwd,
+      prdId: 'no-op-prd',
+      landingAction: 'merge' as const,
+      featureBranch: 'eforge/no-op-prd',
+      config: { baseBranch: 'main' } as OrchestrationConfig,
+    } as unknown as PhaseContext;
+
+    const events = await collectRecordArtifactEvents(ctx);
+
+    // recordArtifact must emit nothing and write no artifact
+    expect(events).toHaveLength(0);
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds.find((b) => b.prdId === 'no-op-prd')).toBeUndefined();
+  });
+  // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
+
   // --- eforge:region plan-04-committed-work-artifact-safety ---
   it('refuses to write builds.json when the merge worktree has dirty tracked files', async () => {
     const cwd = await repo();

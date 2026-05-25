@@ -6,6 +6,12 @@ You are validating that a completed implementation satisfies the original PRD (P
 
 {{prd}}
 
+## Expected Acceptance Criteria
+
+{{criteria}}
+
+When the list above is populated, you MUST produce a verdict entry in `acceptanceVerdicts` for **every** criterion listed. Do not skip or merge criteria.
+
 ## Implementation Diff
 
 {{diff}}

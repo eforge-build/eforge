@@ -231,6 +231,24 @@ describe('parseGaps', () => {
     expect(result.acceptanceVerdicts).toBeUndefined();
   });
   // --- eforge:endregion plan-01-validation-evidence-contract ---
+
+  // --- eforge:region plan-02-engine-acceptance-gates ---
+  it('synthesizes a failure gap for malformed gap entries instead of silently filtering', () => {
+    const input = '```json\n{"completionPercent": 80, "gaps": [null, 42, {"requirement": "valid req", "explanation": "valid exp"}]}\n```';
+    const result = parseGaps(input);
+    expect(result.gaps).toHaveLength(3);
+    expect(result.gaps[0]).toMatchObject({ requirement: 'Malformed PRD validation gap entry', explanation: expect.stringContaining('could not be parsed') });
+    expect(result.gaps[1]).toMatchObject({ requirement: 'Malformed PRD validation gap entry' });
+    expect(result.gaps[2]).toMatchObject({ requirement: 'valid req', explanation: 'valid exp' });
+  });
+
+  it('synthesizes a failure gap when a gap entry is missing required fields', () => {
+    const input = '```json\n{"completionPercent": 70, "gaps": [{"requirement": "only requirement, no explanation"}]}\n```';
+    const result = parseGaps(input);
+    expect(result.gaps).toHaveLength(1);
+    expect(result.gaps[0]).toMatchObject({ requirement: 'Malformed PRD validation gap entry' });
+  });
+  // --- eforge:endregion plan-02-engine-acceptance-gates ---
 });
 
 describe('prdValidate viability gate', () => {

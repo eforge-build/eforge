@@ -52,6 +52,22 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type === 'recovery:complete') return { cls: 'complete', label: type };
   if (type === 'recovery:error') return { cls: 'failed', label: type };
   // --- eforge:endregion plan-04-monitor-ui ---
+  // --- eforge:region plan-04-rendering-and-docs ---
+  if (type === 'gap_close:complete') {
+    const passed = 'passed' in event ? (event as { passed?: boolean }).passed : undefined;
+    return { cls: passed === false ? 'failed' : 'complete', label: type };
+  }
+  if (type === 'acceptance_validation:complete') {
+    const passed = 'passed' in event ? (event as { passed?: boolean }).passed : undefined;
+    return { cls: passed === false ? 'failed' : 'complete', label: type };
+  }
+  // --- eforge:endregion plan-04-rendering-and-docs ---
+  // Verdict-bearing :complete events must not use the generic success classification.
+  // Check for a boolean passed field and classify as failed when passed === false.
+  if (type.endsWith(':complete')) {
+    const passed = 'passed' in event ? (event as { passed?: boolean }).passed : undefined;
+    if (passed === false) return { cls: 'failed', label: type };
+  }
   if (type.endsWith(':start')) return { cls: 'start', label: type };
   if (type.endsWith(':complete')) return { cls: 'complete', label: type };
   if (type.endsWith(':failed')) return { cls: 'failed', label: type };
@@ -145,7 +161,16 @@ function eventSummary(event: EforgeEvent): string {
       const gaps = 'gaps' in event ? (event as { gaps?: unknown[] }).gaps : undefined;
       return `Gap close plan ready: ${gaps?.length || 0} gap(s) addressed`;
     }
-    case 'gap_close:complete': return 'Gap closing complete';
+    // --- eforge:region plan-04-rendering-and-docs ---
+    case 'gap_close:complete': return event.passed ? 'Gap closing complete' : 'Gap closing failed';
+    case 'acceptance_validation:complete': {
+      const verdicts = event.verdicts ?? [];
+      const passCount = verdicts.filter((v) => v.verdict === 'pass').length;
+      const failCount = verdicts.filter((v) => v.verdict === 'fail').length;
+      const unknownCount = verdicts.filter((v) => v.verdict === 'unknown').length;
+      return `Acceptance: ${passCount} pass, ${failCount} fail, ${unknownCount} unknown`;
+    }
+    // --- eforge:endregion plan-04-rendering-and-docs ---
     case 'approval:needed': return `Approval needed: ${event.action}`;
     case 'approval:response': return event.approved ? 'Approved' : 'Rejected';
     case 'enqueue:start': return `Enqueuing from: ${event.source}`;
@@ -377,6 +402,23 @@ function eventDetail(event: EforgeEvent): string | null {
         ...(event.command ? [`Command: ${event.command}`] : []),
       ].join('\n');
     // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
+    // --- eforge:region plan-04-rendering-and-docs ---
+    case 'acceptance_validation:complete': {
+      const verdicts = event.verdicts ?? [];
+      const parts: string[] = [];
+      for (const v of verdicts) {
+        const icon = v.verdict === 'pass' ? '✓' : v.verdict === 'fail' ? '✗' : '?';
+        parts.push(`${icon} [${v.verdict}] ${v.criterion}\n  ${v.evidence}`);
+      }
+      if (event.waivers && event.waivers.length > 0) {
+        parts.push('Waivers:');
+        for (const waiver of event.waivers) {
+          parts.push(`  • ${waiver}`);
+        }
+      }
+      return parts.join('\n\n') || null;
+    }
+    // --- eforge:endregion plan-04-rendering-and-docs ---
     case 'planning:decision':
       return decisionDetail(event.decision);
     case 'plan:build:decision':

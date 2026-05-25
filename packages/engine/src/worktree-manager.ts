@@ -216,6 +216,17 @@ export class WorktreeManager {
       recentlyMergedIds?: string[];
       planMap?: Map<string, { name: string }>;
       modelTracker?: ModelTracker;
+      // --- eforge:region plan-03-parser-and-committed-work-hardening ---
+      /** When true, a builtOnMerge plan with no committed changes since baseSha is allowed to proceed. */
+      allowNoCommittedChanges?: boolean;
+      /** Human-readable reason for the allowNoCommittedChanges waiver. */
+      noCommittedChangesReason?: string;
+      /**
+       * Called synchronously when the allowNoCommittedChanges waiver is applied.
+       * Callers can use this to emit a planning:progress waiver event after the merge resolves.
+       */
+      onNoCommittedChangesWaiver?: () => void;
+      // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
     } = {},
   ): Promise<string> {
     const managed = this.worktrees.get(planId);
@@ -243,8 +254,34 @@ export class WorktreeManager {
       // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
       const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: this.mergeWorktreePath });
+      const currentSha = shaOut.trim();
+
+      // --- eforge:region plan-03-parser-and-committed-work-hardening ---
+      // Enforce committed diff: builtOnMerge plans must have at least one committed file
+      // change since baseSha so that validation and artifact recording operate on non-trivial
+      // state. Dirty-work is already rejected above; this gate catches clean no-op builds,
+      // including empty commits where HEAD advances but the committed diff vs baseSha is empty.
+      if (managed?.baseSha) {
+        const committedDiff = await getNameStatusDiff(this.mergeWorktreePath, managed.baseSha, 'HEAD');
+        if (committedDiff.files.length === 0) {
+          const waiverValid =
+            opts.allowNoCommittedChanges === true &&
+            typeof opts.noCommittedChangesReason === 'string' &&
+            opts.noCommittedChangesReason.trim().length > 0;
+          if (!waiverValid) {
+            throw new Error(
+              `builtOnMerge plan '${planId}' has no committed changes since baseSha (${managed.baseSha}). ` +
+              `Either commit implementation work or configure allowNoCommittedChanges with a noCommittedChangesReason ` +
+              `in the validation policy.`,
+            );
+          }
+          opts.onNoCommittedChangesWaiver?.();
+        }
+      }
+      // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
+
       if (managed) managed.status = 'merged';
-      return shaOut.trim();
+      return currentSha;
     }
 
     // Dedicated worktree plan - squash merge into featureBranch

@@ -461,6 +461,22 @@
             "emptyPrdDiffReason": {
               "description": "Required human-readable reason when allowEmptyPrdDiff is true.",
               "type": "string"
+            },
+            "allowNoAcceptanceCriteria": {
+              "description": "Allow builds with no extractable acceptance criteria to pass instead of failing. Requires noAcceptanceCriteriaReason.",
+              "type": "boolean"
+            },
+            "noAcceptanceCriteriaReason": {
+              "description": "Required human-readable reason when allowNoAcceptanceCriteria is true.",
+              "type": "string"
+            },
+            "allowNoCommittedChanges": {
+              "description": "Allow builds that produce no committed changes to pass instead of failing. Requires noCommittedChangesReason.",
+              "type": "boolean"
+            },
+            "noCommittedChangesReason": {
+              "description": "Required human-readable reason when allowNoCommittedChanges is true.",
+              "type": "string"
             }
           },
           "additionalProperties": false,

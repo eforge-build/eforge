@@ -18,6 +18,9 @@ import { runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evalua
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runArchitectureReview } from '@eforge-build/engine/agents/architecture-reviewer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
+// --- eforge:region plan-02-engine-acceptance-gates ---
+import type { ExpectedAcceptanceCriterion } from '@eforge-build/engine/validation/acceptance-criteria';
+// --- eforge:endregion plan-02-engine-acceptance-gates ---
 import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig, AGENT_ROLE_DEFAULTS } from '@eforge-build/engine/pipeline';
 import { DEFAULT_CONFIG, resolveConfig, loadConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
@@ -1164,6 +1167,70 @@ describe('runPrdValidator wiring', () => {
 
     expect(findEvent(events, 'agent:result')).toBeDefined();
   });
+
+  // --- eforge:region plan-02-engine-acceptance-gates ---
+  it('passes expectedAcceptanceCriteria and emits per-criterion verdicts from agent response', async () => {
+    const expectedCriteria: ExpectedAcceptanceCriterion[] = [
+      { id: 'ac-001', text: 'Must support login', raw: '- Must support login' },
+      { id: 'ac-002', text: 'Must support OAuth', raw: '- Must support OAuth' },
+    ];
+    // Stub returns a verdict for each expected criterion
+    const backend = new StubHarness([{
+      text: `\`\`\`json
+{
+  "gaps": [],
+  "acceptanceVerdicts": [
+    {"criterion": "Must support login", "verdict": "pass", "evidence": "Login component found at src/login.ts"},
+    {"criterion": "Must support OAuth", "verdict": "pass", "evidence": "OAuth flow found at src/oauth.ts"}
+  ]
+}
+\`\`\``,
+    }]);
+
+    const events = await collectEvents(runPrdValidator({
+      harness: backend,
+      cwd: '/tmp',
+      prdContent: '# PRD\n\nAdd a login page with OAuth.',
+      diff: 'diff --git a/src/login.ts b/src/login.ts\n+export function LoginPage() {}',
+      expectedAcceptanceCriteria: expectedCriteria,
+    }));
+
+    const complete = findEvent(events, 'prd_validation:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.passed).toBe(true);
+
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.verdicts).toHaveLength(2);
+    expect(acceptance!.verdicts[0]).toMatchObject({ criterion: 'Must support login', verdict: 'pass' });
+    expect(acceptance!.verdicts[1]).toMatchObject({ criterion: 'Must support OAuth', verdict: 'pass' });
+    expect(acceptance!.passed).toBe(true);
+  });
+
+  it('emits unknown synthetic verdict when agent omits acceptanceVerdicts and expectedAcceptanceCriteria are present', async () => {
+    const expectedCriteria: ExpectedAcceptanceCriterion[] = [
+      { id: 'ac-001', text: 'Must support login', raw: '- Must support login' },
+    ];
+    // Stub returns no acceptanceVerdicts field — fail-closed
+    const backend = new StubHarness([{
+      text: '```json\n{"gaps": []}\n```',
+    }]);
+
+    const events = await collectEvents(runPrdValidator({
+      harness: backend,
+      cwd: '/tmp',
+      prdContent: '# PRD\n\nAdd login.',
+      diff: 'diff',
+      expectedAcceptanceCriteria: expectedCriteria,
+    }));
+
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    // When no acceptanceVerdicts, runPrdValidator synthesizes a single unknown verdict (fail-closed)
+    expect(acceptance!.passed).toBe(false);
+    expect(acceptance!.verdicts[0]).toMatchObject({ verdict: 'unknown' });
+  });
+  // --- eforge:endregion plan-02-engine-acceptance-gates ---
 });
 
 // --- Stage Descriptor Metadata ---

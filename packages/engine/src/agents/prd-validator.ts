@@ -10,6 +10,11 @@ export interface PrdValidatorOptions extends SdkPassthroughConfig {
   diff: string;
   verbose?: boolean;
   abortController?: AbortController;
+  // --- eforge:region plan-02-engine-acceptance-gates ---
+  /** Expected acceptance criteria inventory for prompt injection. When non-empty, the criteria are
+   *  listed in the prompt so the validator knows which ACs to produce verdicts for. */
+  expectedAcceptanceCriteria?: import('../validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
+  // --- eforge:endregion plan-02-engine-acceptance-gates ---
 }
 
 /**
@@ -22,9 +27,17 @@ export async function* runPrdValidator(
 ): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' };
 
+  // --- eforge:region plan-02-engine-acceptance-gates ---
+  const criteriaText = options.expectedAcceptanceCriteria && options.expectedAcceptanceCriteria.length > 0
+    ? options.expectedAcceptanceCriteria.map((c, i) => `${i + 1}. ${c.text}`).join('\n')
+    : '';
+  // --- eforge:endregion plan-02-engine-acceptance-gates ---
   const prompt = await loadPrompt('prd-validator', {
     prd: options.prdContent,
     diff: options.diff,
+    // --- eforge:region plan-02-engine-acceptance-gates ---
+    criteria: criteriaText,
+    // --- eforge:endregion plan-02-engine-acceptance-gates ---
   }, options.promptAppend);
 
   let gaps: PrdValidationGap[] = [];
@@ -133,22 +146,32 @@ export function parseGaps(text: string): {
 
     let gaps: PrdValidationGap[];
     if (Array.isArray(parsed.gaps)) {
-      gaps = parsed.gaps
-        .filter((g: unknown): g is { requirement: string; explanation: string; complexity?: string } =>
+      // --- eforge:region plan-02-engine-acceptance-gates ---
+      // Map instead of filter: malformed entries produce a synthetic failure gap rather than
+      // being silently dropped. Dropping malformed entries would hide validator bugs and
+      // allow a corrupted gap list to appear as "no gaps" (fail-open).
+      gaps = parsed.gaps.map((g: unknown): PrdValidationGap => {
+        if (
           typeof g === 'object' && g !== null &&
           typeof (g as Record<string, unknown>).requirement === 'string' &&
-          typeof (g as Record<string, unknown>).explanation === 'string',
-        )
-        .map((g: { requirement: string; explanation: string; complexity?: string }) => {
+          typeof (g as Record<string, unknown>).explanation === 'string'
+        ) {
+          const validGap = g as { requirement: string; explanation: string; complexity?: string };
           const gap: PrdValidationGap = {
-            requirement: g.requirement,
-            explanation: g.explanation,
+            requirement: validGap.requirement,
+            explanation: validGap.explanation,
           };
-          if (typeof g.complexity === 'string' && VALID_COMPLEXITIES.has(g.complexity)) {
-            gap.complexity = g.complexity as PrdValidationGap['complexity'];
+          if (typeof validGap.complexity === 'string' && VALID_COMPLEXITIES.has(validGap.complexity)) {
+            gap.complexity = validGap.complexity as PrdValidationGap['complexity'];
           }
           return gap;
-        });
+        }
+        return {
+          requirement: 'Malformed PRD validation gap entry',
+          explanation: 'The validator returned a gap entry that could not be parsed; treating as a validation failure.',
+        };
+      });
+      // --- eforge:endregion plan-02-engine-acceptance-gates ---
     } else {
       gaps = [unparseableGap];
     }

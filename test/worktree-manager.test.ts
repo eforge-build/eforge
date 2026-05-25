@@ -366,6 +366,92 @@ describe('WorktreeManager', () => {
     )).rejects.toThrow('untracked-impl.ts');
   });
 
+  // --- eforge:region plan-03-parser-and-committed-work-hardening ---
+  it('mergePlan throws when builtOnMerge plan has an empty commit (HEAD advances but no file diff)', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    await wm.acquireForPlan('plan-empty-commit', 'eforge/plan-empty-commit', false);
+
+    // Create an empty commit — HEAD advances but the committed diff vs baseSha is empty
+    await exec('git', ['commit', '--allow-empty', '-m', 'empty commit'], { cwd: mergeWorktreePath });
+
+    await expect(wm.mergePlan(
+      'plan-empty-commit',
+      { id: 'plan-empty-commit', name: 'Empty Commit Plan', branch: 'eforge/plan-empty-commit' },
+    )).rejects.toThrow('no committed changes since baseSha');
+  });
+
+  it('mergePlan succeeds with empty commit when allowNoCommittedChanges waiver is provided', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    await wm.acquireForPlan('plan-empty-waiver', 'eforge/plan-empty-waiver', false);
+
+    // Create an empty commit — HEAD advances but the committed diff vs baseSha is empty
+    await exec('git', ['commit', '--allow-empty', '-m', 'empty commit'], { cwd: mergeWorktreePath });
+
+    let waiverCalled = false;
+    const sha = await wm.mergePlan(
+      'plan-empty-waiver',
+      { id: 'plan-empty-waiver', name: 'Empty Waiver Plan', branch: 'eforge/plan-empty-waiver' },
+      {
+        allowNoCommittedChanges: true,
+        noCommittedChangesReason: 'Config-only change with no file modifications',
+        onNoCommittedChangesWaiver: () => { waiverCalled = true; },
+      },
+    );
+
+    expect(sha).toBeTruthy();
+    expect(waiverCalled).toBe(true);
+  });
+
+  it('mergePlan throws when builtOnMerge plan has no commits at all (HEAD === baseSha)', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    await wm.acquireForPlan('plan-no-commit', 'eforge/plan-no-commit', false);
+
+    // Do NOT make any commit — HEAD === baseSha
+
+    await expect(wm.mergePlan(
+      'plan-no-commit',
+      { id: 'plan-no-commit', name: 'No Commit Plan', branch: 'eforge/plan-no-commit' },
+    )).rejects.toThrow('no committed changes since baseSha');
+  });
+
+  it('mergePlan succeeds with no commits when allowNoCommittedChanges waiver is provided', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    await wm.acquireForPlan('plan-no-commit-waiver', 'eforge/plan-no-commit-waiver', false);
+
+    // Do NOT make any commit — HEAD === baseSha
+
+    let waiverCalled = false;
+    const sha = await wm.mergePlan(
+      'plan-no-commit-waiver',
+      { id: 'plan-no-commit-waiver', name: 'No Commit Waiver Plan', branch: 'eforge/plan-no-commit-waiver' },
+      {
+        allowNoCommittedChanges: true,
+        noCommittedChangesReason: 'No implementation changes needed for this plan',
+        onNoCommittedChangesWaiver: () => { waiverCalled = true; },
+      },
+    );
+
+    expect(sha).toBeTruthy();
+    expect(waiverCalled).toBe(true);
+  });
+  // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
+
   it('mergePlan succeeds and returns HEAD SHA when builtOnMerge plan changes are committed', async () => {
     const baseDir = makeTempDir();
     const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =

@@ -129,6 +129,11 @@ export async function* runPlanReview(
     await applyPlanReviewFixes({ cwd, outputDir, planSetName, fixes: (captured as PlanReviewSubmission).fixes });
   }
 
+  // Advisory-only: plan-reviewer uses the legacy fail-open parser intentionally.
+  // Missing or malformed XML is treated as "no issues" rather than a contract violation
+  // because planning review outputs are advisory — the review cycle handles them through
+  // the evaluator rather than rejecting the build outright. Build reviewers in reviewer.ts
+  // use parseReviewIssuesStrict for hard contract enforcement.
   const issues = parseReviewIssues(fullText);
 
   yield { timestamp: new Date().toISOString(), type: 'planning:review:complete', issues };
