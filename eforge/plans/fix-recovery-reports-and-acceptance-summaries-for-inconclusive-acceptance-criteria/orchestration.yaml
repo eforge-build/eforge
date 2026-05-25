@@ -1,0 +1,71 @@
+name: fix-recovery-reports-and-acceptance-summaries-for-inconclusive-acceptance-criteria
+description: Fix recovery evidence synthesis and acceptance reporting for builds
+  rejected by inconclusive acceptance criteria while preserving fail-closed
+  unknown verdict behavior.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm exec vitest run test/recovery.test.ts
+    test/prd-validator-fail-closed.test.ts test/prd-validate-phase.test.ts
+    test/acceptance-summary.test.ts
+    packages/client/src/__tests__/events-wire-parity.test.ts
+    packages/client/src/__tests__/events-schemas.test.ts
+plans:
+  - id: plan-01-recovery-and-acceptance-reporting
+    name: Recovery and Acceptance Reporting for Inconclusive Criteria
+    depends_on: []
+    branch: fix-recovery-reports-and-acceptance-summaries-for-inconclusive-acceptance-criteria/plan-01-recovery-and-acceptance-reporting
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Crosses engine recovery synthesis, shared event schemas, PRD
+          validator prompt/context flow, and user-facing final summaries;
+          requires preserving fail-closed behavior while changing evidence
+          plumbing and wording.
+      reviewer:
+        effort: high
+        rationale: Review must check schema compatibility, fail-closed acceptance
+          semantics, recovery sidecar safety, and that validation command
+          evidence does not become a blanket pass.
+      tester:
+        effort: high
+        rationale: Targeted tests span monitor DB recovery synthesis, event wire
+          schemas, PRD validator prompt context, orchestrator PRD validation
+          behavior, and final summary wording.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is a focused multi-file engine/client bugfix with recovery
+    synthesis, acceptance-summary wording, validation evidence flow, and tests,
+    so excursion is appropriate. Plan review is included because the work
+    crosses event schemas, recovery summaries, and validation behavior while
+    preserving fail-closed semantics. The build pipeline emphasizes
+    implementation plus new/updated tests and iterative test validation before
+    review. API and test review perspectives target the highest-risk areas:
+    wire/schema compatibility and regression coverage."

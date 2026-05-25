@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { prdValidate } from '@eforge-build/engine/orchestrator/phases';
+import { prdValidate, validate } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import type { EforgeEvent, EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
@@ -650,3 +650,131 @@ describe('prdValidate phase error propagation', () => {
     }).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
+
+// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+describe('prdValidate phase — validationCommandEvidence plumbing', () => {
+  const makeTempDir = useTempDir();
+
+  it('validate resets command evidence on retry and retains only the final attempt', async () => {
+    const stateDir = makeTempDir();
+    const ctx = makeCtx(stateDir, async function* () {});
+    ctx.mergeWorktreePath = stateDir;
+    ctx.state.plans = { 'plan-01': { status: 'merged', merged: true } as unknown as EforgeState['plans'][string] };
+    ctx.validateCommands = [
+      'if [ -f .validation-attempt ]; then exit 0; else touch .validation-attempt; exit 1; fi',
+    ];
+    ctx.maxValidationRetries = 1;
+    ctx.validationFixer = async function* () {};
+
+    const events: EforgeEvent[] = [];
+    for await (const event of validate(ctx)) {
+      events.push(event);
+    }
+
+    expect(events.filter((e) => e.type === 'validation:complete')).toHaveLength(2);
+    expect(ctx.validationCommandEvidence).toHaveLength(1);
+    expect(ctx.validationCommandEvidence![0].exitCode).toBe(0);
+    expect(ctx.validationCommandEvidence![0].output).not.toContain('exit 1');
+  });
+
+  it('passes validationCommandEvidence from PhaseContext to the prdValidator callback', async () => {
+    const stateDir = makeTempDir();
+    let capturedContext: { validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }> } | undefined;
+
+    const validator: PhaseContext['prdValidator'] = async function* (
+      _cwd: string,
+      context?: { validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }> },
+    ) {
+      capturedContext = context;
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      yield {
+        type: 'acceptance_validation:complete',
+        timestamp: new Date().toISOString(),
+        passed: true,
+        verdicts: [{ criterion: 'pnpm type-check passes', verdict: 'pass', evidence: 'Confirmed by exit code 0' }],
+        source: 'prd',
+      } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    ctx.validationCommandEvidence = [
+      { command: 'pnpm type-check', exitCode: 0, output: 'No errors found' },
+    ];
+
+    for await (const _ of prdValidate(ctx)) {
+      // drain
+    }
+
+    expect(capturedContext).toBeDefined();
+    expect(capturedContext!.validationCommandEvidence).toBeDefined();
+    expect(capturedContext!.validationCommandEvidence).toHaveLength(1);
+    expect(capturedContext!.validationCommandEvidence![0].command).toBe('pnpm type-check');
+    expect(capturedContext!.validationCommandEvidence![0].exitCode).toBe(0);
+  });
+
+  it('passes undefined context when validationCommandEvidence is not set', async () => {
+    const stateDir = makeTempDir();
+    let capturedContext: unknown = 'not-called';
+
+    const validator: PhaseContext['prdValidator'] = async function* (
+      _cwd: string,
+      context?: { validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }> },
+    ) {
+      capturedContext = context;
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      yield {
+        type: 'acceptance_validation:complete',
+        timestamp: new Date().toISOString(),
+        passed: true,
+        verdicts: [{ criterion: 'Must support login', verdict: 'pass', evidence: 'Found' }],
+        source: 'prd',
+      } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    // validationCommandEvidence is NOT set on ctx
+
+    for await (const _ of prdValidate(ctx)) {
+      // drain
+    }
+
+    // When ctx.validationCommandEvidence is undefined, the callback receives undefined context
+    expect(capturedContext).toBeUndefined();
+  });
+
+  it('still fails build when unknown verdicts emitted even with passing validationCommandEvidence', async () => {
+    const stateDir = makeTempDir();
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      // Unknown verdict — fail-closed even when validation commands passed
+      yield {
+        type: 'acceptance_validation:complete',
+        timestamp: new Date().toISOString(),
+        passed: false,
+        verdicts: [{ criterion: 'Must support login', verdict: 'unknown', evidence: 'Cannot determine from diff alone' }],
+        source: 'prd',
+      } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    ctx.validationCommandEvidence = [
+      { command: 'pnpm type-check', exitCode: 0, output: 'No errors' },
+      { command: 'pnpm test', exitCode: 0, output: 'All tests pass' },
+    ];
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) {
+      events.push(event);
+    }
+
+    // Unknown verdict must still fail the build regardless of passing commands
+    expect(ctx.state.status).toBe('failed');
+    const acceptance = events.find((e) => e.type === 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect((acceptance as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>).passed).toBe(false);
+  });
+});
+// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---

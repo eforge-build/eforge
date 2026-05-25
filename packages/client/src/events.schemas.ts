@@ -533,6 +533,32 @@ const BuildFailureSummarySchema = Type.Object({
   failedAt: Type.String(),
   partial: Type.Optional(Type.Boolean()),
   prdContent: Type.Optional(Type.String()),
+  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+  terminalFailure: Type.Optional(Type.Object({
+    stage: Type.String(),
+    phaseSummary: Type.Optional(Type.String()),
+    phaseStatus: Type.Optional(Type.String()),
+    eventType: Type.Optional(Type.String()),
+  })),
+  acceptanceValidation: Type.Optional(Type.Object({
+    passed: Type.Boolean(),
+    total: Type.Number(),
+    pass: Type.Number(),
+    fail: Type.Number(),
+    unknown: Type.Number(),
+    verdicts: Type.Array(AcceptanceCriterionVerdictSchema),
+  })),
+  validationCommands: Type.Optional(Type.Array(Type.Object({
+    command: Type.String(),
+    exitCode: Type.Number(),
+    output: Type.Optional(Type.String()),
+  }))),
+  landing: Type.Optional(Type.Object({
+    status: Type.String(),
+    action: Type.Optional(Type.String()),
+    reason: Type.Optional(Type.String()),
+  })),
+  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 });
 
 // --- eforge:region plan-01-supervisor-foundation ---

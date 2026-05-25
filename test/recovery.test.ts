@@ -386,6 +386,120 @@ describe('writeRecoverySidecar', () => {
       expect(parsed.schemaVersion).toBe(2);
     }
   });
+
+  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+  function makeSummaryWithAcceptanceFailure(): BuildFailureSummary {
+    return {
+      ...makeSummary(),
+      terminalFailure: {
+        stage: 'acceptance-validation',
+        phaseStatus: 'failed',
+        phaseSummary: 'Acceptance criteria validation failed: 2 unknown',
+        eventType: 'acceptance_validation:complete',
+      },
+      acceptanceValidation: {
+        passed: false,
+        total: 2,
+        pass: 0,
+        fail: 0,
+        unknown: 2,
+        verdicts: [
+          { criterion: 'Must support OAuth login', verdict: 'unknown', evidence: 'Cannot verify OAuth from diff alone' },
+          { criterion: 'Must handle rate limiting', verdict: 'unknown', evidence: 'No rate-limiting code visible in diff' },
+        ],
+      },
+      validationCommands: [
+        { command: 'pnpm type-check', exitCode: 0, output: 'No errors found' },
+      ],
+      landing: {
+        status: 'skipped',
+        action: 'pr',
+        reason: 'Acceptance criteria validation failed — landing skipped',
+      },
+    };
+  }
+
+  it('Markdown includes terminal failure stage when terminalFailure is present', async () => {
+    const dir = makeTempDir();
+    const { mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummaryWithAcceptanceFailure(),
+      verdict: makeVerdict('manual')!,
+    });
+
+    const md = await readFile(mdPath, 'utf-8');
+    expect(md).toContain('Terminal Failure');
+    expect(md).toContain('acceptance-validation');
+    expect(md).toContain('acceptance_validation:complete');
+  });
+
+  it('Markdown includes unknown acceptance verdict count when acceptanceValidation is present', async () => {
+    const dir = makeTempDir();
+    const { mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummaryWithAcceptanceFailure(),
+      verdict: makeVerdict('manual')!,
+    });
+
+    const md = await readFile(mdPath, 'utf-8');
+    expect(md).toContain('Acceptance Validation');
+    expect(md).toContain('**Total:** 2 | **Pass:** 0 | **Fail:** 0 | **Unknown (inconclusive):** 2');
+    // At least one unknown criterion appears in the table
+    expect(md).toContain('Must support OAuth login');
+    expect(md).toContain('Must handle rate limiting');
+  });
+
+  it('Markdown includes validation commands section when validationCommands is present', async () => {
+    const dir = makeTempDir();
+    const { mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummaryWithAcceptanceFailure(),
+      verdict: makeVerdict('manual')!,
+    });
+
+    const md = await readFile(mdPath, 'utf-8');
+    expect(md).toContain('Validation Commands');
+    expect(md).toContain('| pnpm type-check | 0 |');
+  });
+
+  it('Markdown includes landing status and reason when landing is present', async () => {
+    const dir = makeTempDir();
+    const { mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummaryWithAcceptanceFailure(),
+      verdict: makeVerdict('manual')!,
+    });
+
+    const md = await readFile(mdPath, 'utf-8');
+    expect(md).toContain('Landing Status');
+    expect(md).toContain('skipped');
+    expect(md).toContain('Acceptance criteria');
+  });
+
+  it('JSON sidecar serializes all new optional summary fields', async () => {
+    const dir = makeTempDir();
+    const { jsonPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummaryWithAcceptanceFailure(),
+      verdict: makeVerdict('manual')!,
+    });
+
+    const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
+    expect(parsed.summary.terminalFailure).toBeDefined();
+    expect(parsed.summary.terminalFailure.stage).toBe('acceptance-validation');
+    expect(parsed.summary.acceptanceValidation).toBeDefined();
+    expect(parsed.summary.acceptanceValidation.unknown).toBe(2);
+    expect(parsed.summary.validationCommands).toBeDefined();
+    expect(parsed.summary.validationCommands).toHaveLength(1);
+    expect(parsed.summary.landing).toBeDefined();
+    expect(parsed.summary.landing.status).toBe('skipped');
+  });
+  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 });
 
 // ---------------------------------------------------------------------------
@@ -573,6 +687,282 @@ describe('buildFailureSummary', () => {
     expect(summary.failedAt).toBe(summary.landedCommits[0].date);
     expect(summary.failedAt.length).toBeGreaterThan(0);
   });
+
+  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+  /**
+   * Seed a monitor DB with a build run that failed at acceptance validation:
+   * - Passing validation commands (pnpm type-check, pnpm test)
+   * - Passing PRD validation (prd_validation:complete with passed: true)
+   * - acceptance_validation:complete with unknown verdicts
+   * - landing:skipped event
+   * - phase:end with status: failed
+   */
+  function seedAcceptanceFailureDb(
+    dir: string,
+    options: { prdValidationPassed?: boolean; landingEventType?: 'landing:skipped' | 'stack:landing:update' } = {},
+  ): string {
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'monitor.db');
+    const db = openDatabase(dbPath);
+    const phaseTs = new Date('2024-02-01T11:30:00.000Z').toISOString();
+    const prdValidationPassed = options.prdValidationPassed ?? true;
+    const landingEventType = options.landingEventType ?? 'stack:landing:update';
+    db.insertRun({
+      id: 'run-acc-fail-01',
+      sessionId: 'session-acc-01',
+      planSet: 'acceptance-fail-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date('2024-02-01T11:00:00.000Z').toISOString(),
+      cwd: dir,
+      pid: 11111,
+    });
+    // Earlier failed validation attempt that must not leak into recovered evidence.
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'validation:start',
+      data: JSON.stringify({ type: 'validation:start', commands: ['pnpm type-check'] }),
+      timestamp: new Date('2024-02-01T11:07:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'validation:command:complete',
+      data: JSON.stringify({ type: 'validation:command:complete', command: 'pnpm type-check', exitCode: 1, output: 'stale type error' }),
+      timestamp: new Date('2024-02-01T11:08:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'validation:complete',
+      data: JSON.stringify({ type: 'validation:complete', passed: false }),
+      timestamp: new Date('2024-02-01T11:09:00.000Z').toISOString(),
+    });
+    // Final passing validation command events.
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'validation:start',
+      data: JSON.stringify({ type: 'validation:start', commands: ['pnpm type-check', 'pnpm test'] }),
+      timestamp: new Date('2024-02-01T11:10:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'validation:command:complete',
+      data: JSON.stringify({ type: 'validation:command:complete', command: 'pnpm type-check', exitCode: 0, output: 'No errors found' }),
+      timestamp: new Date('2024-02-01T11:10:10.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'validation:command:complete',
+      data: JSON.stringify({ type: 'validation:command:complete', command: 'pnpm test', exitCode: 0, output: '42 tests passed' }),
+      timestamp: new Date('2024-02-01T11:11:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'validation:complete',
+      data: JSON.stringify({ type: 'validation:complete', passed: true }),
+      timestamp: new Date('2024-02-01T11:12:00.000Z').toISOString(),
+    });
+    // PRD validation result. When this fails, later acceptance_validation evidence must not
+    // be treated as the terminal acceptance failure.
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'prd_validation:complete',
+      data: JSON.stringify({
+        type: 'prd_validation:complete',
+        passed: prdValidationPassed,
+        gaps: prdValidationPassed ? [] : [{ requirement: 'Document recovery fallback', explanation: 'Missing fallback test' }],
+        completionPercent: prdValidationPassed ? 100 : 80,
+      }),
+      timestamp: new Date('2024-02-01T11:15:00.000Z').toISOString(),
+    });
+    // Acceptance validation failure with unknown verdicts
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'acceptance_validation:complete',
+      data: JSON.stringify({
+        type: 'acceptance_validation:complete',
+        passed: false,
+        verdicts: [
+          { criterion: 'Must support OAuth login', verdict: 'unknown', evidence: 'Cannot verify OAuth from diff alone' },
+          { criterion: 'Must handle rate limiting', verdict: 'unknown', evidence: 'No rate-limiting code visible in diff' },
+        ],
+        source: 'prd',
+      }),
+      timestamp: new Date('2024-02-01T11:20:00.000Z').toISOString(),
+    });
+    // Landing skipped because acceptance failed. Exercise both stack and ordinary skipped events.
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: landingEventType,
+      data: landingEventType === 'landing:skipped'
+        ? JSON.stringify({ type: 'landing:skipped', action: 'pr', reason: 'Build failed before landing could be attempted' })
+        : JSON.stringify({ type: 'stack:landing:update', status: 'skipped', action: 'pr', reason: 'Build failed before landing could be attempted' }),
+      timestamp: new Date('2024-02-01T11:25:00.000Z').toISOString(),
+    });
+    // Failed phase:end (no plan:build:failed — acceptance validation is the terminal failure)
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'phase:end',
+      data: JSON.stringify({ type: 'phase:end', result: { status: 'failed', summary: 'Acceptance criteria validation failed: 2 unknown' } }),
+      timestamp: phaseTs,
+    });
+    // Agent model evidence
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'agent:start',
+      data: JSON.stringify({ type: 'agent:start', model: 'claude-sonnet-4-5', agent: 'prd-validator' }),
+      timestamp: new Date('2024-02-01T11:05:00.000Z').toISOString(),
+    });
+    db.close();
+    return dbPath;
+  }
+
+  it('synthesizes acceptance-validation terminal failure when phase:end failed and acceptance_validation:complete exists', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedAcceptanceFailureDb(dir);
+
+    // Verify the seeded DB contains a passing prd_validation:complete event
+    {
+      const db = openDatabase(dbPath);
+      const prdValidationEvents = db.getEventsByType('run-acc-fail-01', 'prd_validation:complete');
+      db.close();
+      expect(prdValidationEvents.length).toBeGreaterThanOrEqual(1);
+      const payload = JSON.parse(prdValidationEvents[0].data);
+      expect(payload.passed).toBe(true);
+      expect(payload.gaps).toEqual([]);
+    }
+
+    const summary = await buildFailureSummary({
+      setName: 'acceptance-fail-set',
+      prdId: 'acceptance-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    // failingPlan.planId must NOT be 'unknown' — it is 'acceptance-validation'
+    expect(summary.failingPlan.planId).not.toBe('unknown');
+    expect(summary.failingPlan.planId).toBe('acceptance-validation');
+
+    // failedAt must be derived from the phase:end event timestamp
+    expect(summary.failedAt).toBe(new Date('2024-02-01T11:30:00.000Z').toISOString());
+
+    // terminalFailure must describe the acceptance-validation stage
+    expect(summary.terminalFailure).toBeDefined();
+    expect(summary.terminalFailure!.stage).toBe('acceptance-validation');
+    expect(summary.terminalFailure!.eventType).toBe('acceptance_validation:complete');
+
+    // acceptanceValidation counts must reflect the unknown verdicts
+    expect(summary.acceptanceValidation).toBeDefined();
+    expect(summary.acceptanceValidation!.passed).toBe(false);
+    expect(summary.acceptanceValidation!.unknown).toBe(2);
+    expect(summary.acceptanceValidation!.fail).toBe(0);
+    expect(summary.acceptanceValidation!.pass).toBe(0);
+    expect(summary.acceptanceValidation!.total).toBe(2);
+    expect(summary.acceptanceValidation!.verdicts).toHaveLength(2);
+    expect(summary.acceptanceValidation!.verdicts.every((v) => v.verdict === 'unknown')).toBe(true);
+
+    // Validation commands must be included
+    expect(summary.validationCommands).toBeDefined();
+    expect(summary.validationCommands!).toHaveLength(2);
+    expect(summary.validationCommands!.find((c) => c.command === 'pnpm type-check')).toBeDefined();
+    expect(summary.validationCommands!.find((c) => c.command === 'pnpm test')).toBeDefined();
+    expect(summary.validationCommands!.find((c) => c.exitCode === 0)).toBeDefined();
+    expect(summary.validationCommands!.find((c) => c.exitCode === 1)).toBeUndefined();
+    expect(summary.validationCommands!.some((c) => c.output?.includes('stale type error'))).toBe(false);
+
+    // Landing evidence should reflect skipped stack landing, not PR creation
+    expect(summary.landing).toBeDefined();
+    expect(summary.landing!.status).toBe('skipped');
+    expect(summary.landing!.reason).toContain('Build failed before landing');
+    // The landing reason must NOT imply PR was successfully created
+    expect(summary.landing!.reason).not.toContain('PR created');
+    expect(summary.landing!.reason).not.toContain('created successfully');
+  });
+
+  it('infers skipped landing status for landing:skipped events without a status field', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedAcceptanceFailureDb(dir, { landingEventType: 'landing:skipped' });
+
+    const summary = await buildFailureSummary({
+      setName: 'acceptance-fail-set',
+      prdId: 'acceptance-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    expect(summary.landing).toMatchObject({
+      status: 'skipped',
+      action: 'pr',
+      reason: 'Build failed before landing could be attempted',
+    });
+  });
+
+  it('reports PRD validation, not acceptance validation, when the latest PRD validation failed', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedAcceptanceFailureDb(dir, { prdValidationPassed: false });
+
+    const summary = await buildFailureSummary({
+      setName: 'acceptance-fail-set',
+      prdId: 'acceptance-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    expect(summary.failingPlan.planId).toBe('prd-validation');
+    expect(summary.terminalFailure).toMatchObject({
+      stage: 'prd-validation',
+      eventType: 'prd_validation:complete',
+    });
+    expect(summary.acceptanceValidation).toBeUndefined();
+  });
+
+  it('does not label build-run agent stop fallback as compile when the failing agent has no planId', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'monitor.db');
+    const db = openDatabase(dbPath);
+    db.insertRun({
+      id: 'run-build-agent-stop',
+      sessionId: 'session-build-agent-stop',
+      planSet: 'build-agent-stop-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date('2024-02-01T12:00:00.000Z').toISOString(),
+      cwd: dir,
+      pid: 22222,
+    });
+    db.insertEvent({
+      runId: 'run-build-agent-stop',
+      type: 'agent:stop',
+      agent: 'prd-validator',
+      data: JSON.stringify({ type: 'agent:stop', agent: 'prd-validator', agentId: 'agent-1', error: 'validator crashed' }),
+      timestamp: new Date('2024-02-01T12:10:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-build-agent-stop',
+      type: 'phase:end',
+      data: JSON.stringify({ type: 'phase:end', result: { status: 'failed', summary: 'PRD validator crashed' } }),
+      timestamp: new Date('2024-02-01T12:11:00.000Z').toISOString(),
+    });
+    db.close();
+
+    const summary = await buildFailureSummary({
+      setName: 'build-agent-stop-set',
+      prdId: 'build-agent-stop-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    expect(summary.failingPlan.planId).toBe('prd-validator');
+    expect(summary.failingPlan.planId).not.toBe('compile');
+    expect(summary.plans[0].planId).toBe('prd-validator');
+  });
+  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 });
 
 // ---------------------------------------------------------------------------
@@ -740,6 +1130,8 @@ describe('runRecoveryAnalyst wiring', () => {
     expect(prompt).toContain('# My PRD');
     expect(prompt).toContain('test-set'); // from summary JSON
     expect(prompt).toContain('verdict'); // from schema YAML
+    expect(prompt).toContain('unknown` verdicts dominate');
+    expect(prompt).toContain('prefer `manual`');
   });
 
   it('parses retry verdict correctly', async () => {

@@ -160,6 +160,12 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
     modelsUsed,
     failedAt,
     ...(prdContent !== undefined ? { prdContent } : {}),
+    // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+    ...(eventFragment?.terminalFailure !== undefined ? { terminalFailure: eventFragment.terminalFailure } : {}),
+    ...(eventFragment?.acceptanceValidation !== undefined ? { acceptanceValidation: eventFragment.acceptanceValidation } : {}),
+    ...(eventFragment?.validationCommands !== undefined ? { validationCommands: eventFragment.validationCommands } : {}),
+    ...(eventFragment?.landing !== undefined ? { landing: eventFragment.landing } : {}),
+    // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   };
 
   // Only set partial: true when no monitor DB events were found

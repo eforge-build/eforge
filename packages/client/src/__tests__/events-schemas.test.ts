@@ -3058,4 +3058,150 @@ describe('eventRegistry — validation evidence summaries', () => {
   });
 });
 // --- eforge:endregion plan-01-validation-evidence-contract ---
+
+// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+describe('recovery:summary event — optional BuildFailureSummary fields', () => {
+  function makeBaseSummary() {
+    return {
+      prdId: 'prd-1',
+      setName: 'my-set',
+      featureBranch: 'eforge/my-set',
+      baseBranch: 'main',
+      plans: [{ planId: 'acceptance-validation', status: 'failed' }],
+      failingPlan: { planId: 'acceptance-validation' },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: ['claude-sonnet-4-5'],
+      failedAt: '2025-01-01T00:00:00.000Z',
+      partial: true,
+    };
+  }
+
+  it('accepts a recovery:summary event with no optional fields', () => {
+    const event: EforgeEvent = {
+      type: 'recovery:summary',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-1',
+      summary: makeBaseSummary(),
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with terminalFailure field', () => {
+    const event: EforgeEvent = {
+      type: 'recovery:summary',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-1',
+      summary: {
+        ...makeBaseSummary(),
+        terminalFailure: {
+          stage: 'acceptance-validation',
+          phaseSummary: 'All acceptance criteria failed',
+          phaseStatus: 'failed',
+          eventType: 'acceptance_validation:complete',
+        },
+      },
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with acceptanceValidation field including unknown verdicts', () => {
+    const event: EforgeEvent = {
+      type: 'recovery:summary',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-2',
+      summary: {
+        ...makeBaseSummary(),
+        acceptanceValidation: {
+          passed: false,
+          total: 2,
+          pass: 0,
+          fail: 0,
+          unknown: 2,
+          verdicts: [
+            { criterion: 'Must support login', verdict: 'unknown', evidence: 'Cannot verify login from diff alone' },
+            { criterion: 'Must support OAuth', verdict: 'unknown', evidence: 'Cannot verify OAuth from diff alone' },
+          ],
+        },
+      },
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with validationCommands field', () => {
+    const event: EforgeEvent = {
+      type: 'recovery:summary',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-1',
+      summary: {
+        ...makeBaseSummary(),
+        validationCommands: [
+          { command: 'pnpm type-check', exitCode: 0, output: 'No errors found' },
+          { command: 'pnpm test', exitCode: 1, output: 'Test failed' },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with landing field', () => {
+    const event: EforgeEvent = {
+      type: 'recovery:summary',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-1',
+      summary: {
+        ...makeBaseSummary(),
+        landing: {
+          status: 'skipped',
+          action: 'pr',
+          reason: 'Acceptance validation failed — landing skipped',
+        },
+      },
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with all optional fields combined', () => {
+    const event: EforgeEvent = {
+      type: 'recovery:summary',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-full',
+      summary: {
+        ...makeBaseSummary(),
+        terminalFailure: {
+          stage: 'acceptance-validation',
+          phaseStatus: 'failed',
+          eventType: 'acceptance_validation:complete',
+        },
+        acceptanceValidation: {
+          passed: false,
+          total: 3,
+          pass: 1,
+          fail: 0,
+          unknown: 2,
+          verdicts: [
+            { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found' },
+            { criterion: 'Must support OAuth', verdict: 'unknown', evidence: 'Cannot determine OAuth from diff' },
+            { criterion: 'Must be accessible', verdict: 'unknown', evidence: 'Cannot verify accessibility from diff' },
+          ],
+        },
+        validationCommands: [
+          { command: 'pnpm type-check', exitCode: 0, output: 'No errors' },
+        ],
+        landing: {
+          status: 'skipped',
+          reason: 'Acceptance validation failed',
+        },
+      },
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+});
+// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 // --- eforge:endregion plan-01-validation-evidence-contract ---

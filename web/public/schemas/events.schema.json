@@ -7955,6 +7955,129 @@
                 },
                 "prdContent": {
                   "type": "string"
+                },
+                "terminalFailure": {
+                  "type": "object",
+                  "required": [
+                    "stage"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "type": "string"
+                    },
+                    "phaseSummary": {
+                      "type": "string"
+                    },
+                    "phaseStatus": {
+                      "type": "string"
+                    },
+                    "eventType": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "acceptanceValidation": {
+                  "type": "object",
+                  "required": [
+                    "passed",
+                    "total",
+                    "pass",
+                    "fail",
+                    "unknown",
+                    "verdicts"
+                  ],
+                  "properties": {
+                    "passed": {
+                      "type": "boolean"
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "pass": {
+                      "type": "number"
+                    },
+                    "fail": {
+                      "type": "number"
+                    },
+                    "unknown": {
+                      "type": "number"
+                    },
+                    "verdicts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "criterion",
+                          "verdict",
+                          "evidence"
+                        ],
+                        "properties": {
+                          "criterion": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "verdict": {
+                            "anyOf": [
+                              {
+                                "const": "pass",
+                                "type": "string"
+                              },
+                              {
+                                "const": "fail",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "evidence": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "validationCommands": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "command",
+                      "exitCode"
+                    ],
+                    "properties": {
+                      "command": {
+                        "type": "string"
+                      },
+                      "exitCode": {
+                        "type": "number"
+                      },
+                      "output": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "landing": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }

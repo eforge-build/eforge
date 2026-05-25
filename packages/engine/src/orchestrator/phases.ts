@@ -144,6 +144,12 @@ export interface PhaseContext {
    *  (unless a waiver is active). When undefined, no enforcement is applied. */
   expectedAcceptanceCriteria?: import('../validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
   // --- eforge:endregion plan-02-engine-acceptance-gates ---
+  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+  /** Validation command results accumulated during the validate phase.
+   *  Reset at the start of each validate attempt, then passed to prdValidate so the
+   *  PRD validator can cite deterministic command execution as evidence. */
+  validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }>;
+  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 }
 
 /**
@@ -634,6 +640,12 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       } as EforgeEvent;
     }
 
+    // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+    // Reset evidence accumulator at the start of each attempt so the final attempt's
+    // results are what gets passed to the PRD validator.
+    ctx.validationCommandEvidence = [];
+    // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
+
     yield { timestamp: new Date().toISOString(), type: 'validation:start', commands: allValidationCommands };
     const failures: Array<{ command: string; exitCode: number; output: string }> = [];
     let validationPassed = true;
@@ -655,18 +667,27 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         };
         const output = `[timed out after ${effectiveTimeoutMs}ms]`;
         yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 124, output };
+        // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+        ctx.validationCommandEvidence!.push({ command: cmd, exitCode: 124, output });
+        // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
         failures.push({ command: cmd, exitCode: 124, output });
         validationPassed = false;
         break; // Stop on timeout, same as non-zero exit
       } else if (result.exitCode !== 0) {
         const output = (result.stdout + result.stderr).trim();
         yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: result.exitCode, output };
+        // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+        ctx.validationCommandEvidence!.push({ command: cmd, exitCode: result.exitCode, output });
+        // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
         failures.push({ command: cmd, exitCode: result.exitCode, output });
         validationPassed = false;
         break; // Stop on first non-zero exit code
       } else {
         const output = (result.stdout + result.stderr).trim();
         yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 0, output };
+        // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+        ctx.validationCommandEvidence!.push({ command: cmd, exitCode: 0, output });
+        // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
       }
     }
 
@@ -769,7 +790,12 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
   let gapClosePerformedThisRun = false;
   // --- eforge:endregion plan-02-final-validation-gates ---
   try {
-    for await (const event of prdValidator(ctx.mergeWorktreePath)) {
+    // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+    const validatorContext = ctx.validationCommandEvidence !== undefined
+      ? { validationCommandEvidence: ctx.validationCommandEvidence }
+      : undefined;
+    // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
+    for await (const event of prdValidator(ctx.mergeWorktreePath, validatorContext)) {
       if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
       // --- eforge:region plan-02-engine-acceptance-gates ---
       // When the expected criteria inventory is defined but empty, a validator-produced

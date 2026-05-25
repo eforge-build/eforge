@@ -166,6 +166,62 @@ function buildMarkdown(
     lines.push('');
   }
 
+  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+  if (summary.terminalFailure) {
+    lines.push('## Terminal Failure', '');
+    lines.push(`**Stage:** ${summary.terminalFailure.stage}`);
+    if (summary.terminalFailure.phaseStatus) {
+      lines.push(`**Phase Status:** ${summary.terminalFailure.phaseStatus}`);
+    }
+    if (summary.terminalFailure.phaseSummary) {
+      lines.push(`**Phase Summary:** ${escapeTableCell(summary.terminalFailure.phaseSummary)}`);
+    }
+    if (summary.terminalFailure.eventType) {
+      lines.push(`**Event Type:** ${summary.terminalFailure.eventType}`);
+    }
+    lines.push('');
+  }
+
+  if (summary.acceptanceValidation) {
+    const av = summary.acceptanceValidation;
+    lines.push('## Acceptance Validation', '');
+    lines.push(`**Result:** ${av.passed ? 'PASSED' : 'FAILED'}`);
+    lines.push(`**Total:** ${av.total} | **Pass:** ${av.pass} | **Fail:** ${av.fail} | **Unknown (inconclusive):** ${av.unknown}`);
+    lines.push('');
+    if (av.verdicts.length > 0) {
+      lines.push('| Criterion | Verdict | Evidence |');
+      lines.push('|-----------|---------|----------|');
+      for (const v of av.verdicts) {
+        lines.push(`| ${escapeTableCell(v.criterion)} | ${v.verdict} | ${escapeTableCell(v.evidence)} |`);
+      }
+      lines.push('');
+    }
+  }
+
+  if (summary.validationCommands && summary.validationCommands.length > 0) {
+    lines.push('## Validation Commands', '');
+    lines.push('| Command | Exit Code | Output |');
+    lines.push('|---------|-----------|--------|');
+    for (const cmd of summary.validationCommands) {
+      const outputPreview = cmd.output ? escapeTableCell(cmd.output.slice(0, 120)) : '';
+      lines.push(`| ${escapeTableCell(cmd.command)} | ${cmd.exitCode} | ${outputPreview} |`);
+    }
+    lines.push('');
+  }
+
+  if (summary.landing) {
+    lines.push('## Landing Status', '');
+    lines.push(`**Status:** ${summary.landing.status}`);
+    if (summary.landing.action) {
+      lines.push(`**Action:** ${summary.landing.action}`);
+    }
+    if (summary.landing.reason) {
+      lines.push(`**Reason:** ${escapeTableCell(summary.landing.reason)}`);
+    }
+    lines.push('');
+  }
+  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
+
   if (summary.diffStat) {
     lines.push('## Diff Stat', '');
     lines.push('```');

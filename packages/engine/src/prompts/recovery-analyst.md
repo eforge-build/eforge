@@ -37,6 +37,18 @@ Choose exactly one verdict:
 
 Require concrete, specific evidence from the failure summary to choose `retry`, `split`, or `abandon`. When in doubt, choose `manual`.
 
+## Inconclusive Acceptance Validation
+
+When the failure summary contains `acceptanceValidation` evidence with `unknown` verdicts (and no `fail` verdicts), this means the validator ran but could **not conclusively determine** whether the acceptance criteria were met — insufficient evidence, not proven failure.
+
+- Inconclusive acceptance validation (`unknown` verdicts only) does **not** constitute sufficient evidence to choose `abandon`. The implementation may be correct but the validator lacked context to confirm it.
+- A verdict of `unknown` is not the same as `fail`. Do not treat inconclusive evidence as proof that requirements are unmet.
+- When `unknown` verdicts dominate: prefer `manual` so a human can inspect whether the implementation actually satisfies the criteria.
+- Only choose `abandon` when there are explicit `fail` verdicts with concrete evidence, or when the requirements are demonstrably impossible to meet.
+- A mix of `pass` and `unknown` verdicts may warrant `split` (completed work is preserved, remaining criteria need human review) or `manual`.
+
+The `validationCommands` field (when present) shows deterministic command results. Passing validation commands (exitCode: 0) are supporting evidence that the build infrastructure is functional.
+
 ## prd-completeness Rule for split
 
 When choosing `split`, the `suggestedSuccessorPrd` must contain the **complete** PRD for the successor session — not just a description of what remains. The successor PRD must be implementable without reference to the original PRD. It must include:

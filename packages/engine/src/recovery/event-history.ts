@@ -9,7 +9,7 @@
  */
 
 import { DatabaseSync } from 'node:sqlite';
-import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit } from '../events.js';
+import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit, AcceptanceCriterionVerdict } from '../events.js';
 import { classifyAgentTerminalSubtype } from '../harness.js';
 
 export interface SynthesizeOptions {
@@ -116,8 +116,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         failedAt = failedEvent.timestamp;
       } else {
         // --- eforge:region plan-01-transport-resilience ---
-        if (run.command !== 'compile') return null;
-
         const phaseStmt = db.prepare(
           `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'phase:end' ORDER BY id DESC LIMIT 20`,
         );
@@ -132,6 +130,154 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           );
         });
         if (!failedPhase) return null;
+
+        const failedPhaseData = parseEventData(failedPhase.data);
+        const phaseResult = failedPhaseData.result && typeof failedPhaseData.result === 'object'
+          ? failedPhaseData.result as Record<string, unknown>
+          : {};
+        const phaseSummary = typeof phaseResult.summary === 'string' ? phaseResult.summary : undefined;
+        const phaseStatus = typeof phaseResult.status === 'string' ? phaseResult.status : undefined;
+
+        // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+        // Prefer PRD-validation terminal failures over acceptance failures. runPrdValidator
+        // can emit acceptance_validation:complete even when PRD validation failed; reporting
+        // those runs as acceptance-validation failures hides the real terminal gate.
+        const prdValidationStmt = db.prepare(
+          `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'prd_validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`,
+        );
+        const prdValidationRow = prdValidationStmt.get(runId, failedPhase.id) as EventHistoryRow | undefined;
+        const parsedPrdValidation = prdValidationRow ? parseEventData(prdValidationRow.data) : undefined;
+        const prdValidationGaps = parsedPrdValidation && Array.isArray(parsedPrdValidation.gaps)
+          ? parsedPrdValidation.gaps
+          : [];
+        const prdValidationPassedCleanly = Boolean(
+          parsedPrdValidation?.passed === true && prdValidationGaps.length === 0,
+        );
+
+        if (parsedPrdValidation?.passed === false) {
+          const gapCount = prdValidationGaps.length;
+          const errorMessage = `PRD validation failed: ${gapCount} gap(s) found`;
+          return {
+            prdId,
+            setName,
+            featureBranch: `eforge/${setName}`,
+            baseBranch: 'main',
+            plans: [{ planId: 'prd-validation', status: 'failed', error: errorMessage }],
+            failingPlan: { planId: 'prd-validation', errorMessage },
+            landedCommits: [] as LandedCommit[],
+            diffStat: '',
+            modelsUsed,
+            failedAt: failedPhase.timestamp,
+            partial: true,
+            terminalFailure: {
+              stage: 'prd-validation',
+              ...(phaseSummary !== undefined ? { phaseSummary } : {}),
+              ...(phaseStatus !== undefined ? { phaseStatus } : {}),
+              eventType: 'prd_validation:complete',
+            },
+          };
+        }
+
+        // Check for an acceptance-validation failure before falling back to the agent:stop path.
+        // Only synthesize an acceptance-validation terminal rejection when the latest PRD
+        // validation completed cleanly first; otherwise the PRD gate is still unresolved.
+        const acceptanceStmt = db.prepare(
+          `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'acceptance_validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`,
+        );
+        const acceptanceRow = acceptanceStmt.get(runId, failedPhase.id) as EventHistoryRow | undefined;
+
+        if (acceptanceRow && prdValidationPassedCleanly) {
+          const parsedAcc = parseEventData(acceptanceRow.data);
+          if (parsedAcc.passed === false) {
+            // Extract verdicts (fail-safe: filter out malformed entries)
+            const rawVerdicts = Array.isArray(parsedAcc.verdicts) ? parsedAcc.verdicts : [];
+            const verdicts: AcceptanceCriterionVerdict[] = rawVerdicts.filter(
+              (v): v is AcceptanceCriterionVerdict =>
+                typeof v === 'object' && v !== null &&
+                typeof (v as Record<string, unknown>).criterion === 'string' &&
+                typeof (v as Record<string, unknown>).verdict === 'string' &&
+                typeof (v as Record<string, unknown>).evidence === 'string',
+            );
+            const passCount = verdicts.filter((v) => v.verdict === 'pass').length;
+            const failCount = verdicts.filter((v) => v.verdict === 'fail').length;
+            const unknownCount = verdicts.filter((v) => v.verdict !== 'pass' && v.verdict !== 'fail').length;
+
+            // Gather validation command results from the final validation attempt only.
+            // Find the latest validation:start before the acceptance event to bound the window.
+            const finalValidationStartStmt = db.prepare(
+              `SELECT id FROM events WHERE run_id = ? AND type = 'validation:start' AND id <= ? ORDER BY id DESC LIMIT 1`,
+            );
+            const finalValidationStart = finalValidationStartStmt.get(runId, acceptanceRow.id) as { id: number } | undefined;
+            const validationWindowStart = finalValidationStart ? finalValidationStart.id : 0;
+            const cmdStmt = db.prepare(
+              `SELECT data FROM events WHERE run_id = ? AND type = 'validation:command:complete' AND id > ? AND id <= ? ORDER BY id`,
+            );
+            const cmdRows = cmdStmt.all(runId, validationWindowStart, failedPhase.id) as { data: string }[];
+            const validationCommands: Array<{ command: string; exitCode: number; output?: string }> = [];
+            for (const ce of cmdRows) {
+              const parsedCmd = parseEventData(ce.data);
+              if (typeof parsedCmd.command === 'string' && typeof parsedCmd.exitCode === 'number') {
+                validationCommands.push({
+                  command: parsedCmd.command,
+                  exitCode: parsedCmd.exitCode,
+                  ...(typeof parsedCmd.output === 'string' ? { output: parsedCmd.output } : {}),
+                });
+              }
+            }
+
+            // Gather landing evidence (landing:skipped or stack:landing:update).
+            // landing:skipped has no status field in the schema; infer it from the event type.
+            const landingStmt = db.prepare(
+              `SELECT type, data FROM events WHERE run_id = ? AND (type = 'landing:skipped' OR type = 'stack:landing:update') AND id <= ? ORDER BY id DESC LIMIT 1`,
+            );
+            const landingRow = landingStmt.get(runId, failedPhase.id) as { type: string; data: string } | undefined;
+            let landingInfo: { status: string; action?: string; reason?: string } | undefined;
+            if (landingRow) {
+              const parsedLanding = parseEventData(landingRow.data);
+              const landingStatus = landingRow.type === 'landing:skipped'
+                ? 'skipped'
+                : (typeof parsedLanding.status === 'string' ? parsedLanding.status : undefined);
+              if (landingStatus !== undefined) {
+                landingInfo = {
+                  status: landingStatus,
+                  ...(typeof parsedLanding.action === 'string' ? { action: parsedLanding.action } : {}),
+                  ...(typeof parsedLanding.reason === 'string' ? { reason: parsedLanding.reason } : {}),
+                };
+              }
+            }
+
+            return {
+              prdId,
+              setName,
+              featureBranch: `eforge/${setName}`,
+              baseBranch: 'main',
+              plans: [{ planId: 'acceptance-validation', status: 'failed', error: 'Acceptance criteria validation failed' }],
+              failingPlan: { planId: 'acceptance-validation' },
+              landedCommits: [] as LandedCommit[],
+              diffStat: '',
+              modelsUsed,
+              failedAt: failedPhase.timestamp,
+              partial: true,
+              terminalFailure: {
+                stage: 'acceptance-validation',
+                ...(phaseSummary !== undefined ? { phaseSummary } : {}),
+                ...(phaseStatus !== undefined ? { phaseStatus } : {}),
+                eventType: 'acceptance_validation:complete',
+              },
+              acceptanceValidation: {
+                passed: false,
+                total: verdicts.length,
+                pass: passCount,
+                fail: failCount,
+                unknown: unknownCount,
+                verdicts,
+              },
+              ...(validationCommands.length > 0 ? { validationCommands } : {}),
+              ...(landingInfo !== undefined ? { landing: landingInfo } : {}),
+            };
+          }
+        }
+        // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
         const stopStmt = db.prepare(
           `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'agent:stop' AND id <= ? ORDER BY id DESC LIMIT 20`,
@@ -151,15 +297,16 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           : failedStop.agent ?? undefined;
         const terminalSubtype = terminalSubtypeFromMessage(errorMessage);
 
+        const fallbackPlanId = failedStop.planId ?? (run.command === 'compile' ? 'compile' : agentRole ?? run.command);
         failingPlan = {
-          planId: 'compile',
+          planId: fallbackPlanId,
           agentId,
           agentRole,
           errorMessage,
           ...(terminalSubtype && { terminalSubtype }),
         };
         plans = [{
-          planId: 'compile',
+          planId: fallbackPlanId,
           status: 'failed',
           error: errorMessage,
           ...(terminalSubtype && { terminalSubtype }),

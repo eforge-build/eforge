@@ -1107,6 +1107,55 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       },
     },
   },
+  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+  {
+    label: 'recovery:summary (with acceptance validation evidence and inconclusive verdicts)',
+    payload: {
+      type: 'recovery:summary',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-2',
+      summary: {
+        prdId: 'prd-2',
+        setName: 'ac-set',
+        featureBranch: 'eforge/ac-set',
+        baseBranch: 'main',
+        plans: [{ planId: 'acceptance-validation', status: 'failed', error: 'Acceptance criteria validation failed' }],
+        failingPlan: { planId: 'acceptance-validation' },
+        landedCommits: [],
+        diffStat: '',
+        modelsUsed: ['claude-sonnet-4-5'],
+        failedAt: '2025-01-01T00:05:00.000Z',
+        partial: true,
+        terminalFailure: {
+          stage: 'acceptance-validation',
+          phaseStatus: 'failed',
+          phaseSummary: 'Acceptance validation rejected the build',
+          eventType: 'acceptance_validation:complete',
+        },
+        acceptanceValidation: {
+          passed: false,
+          total: 2,
+          pass: 1,
+          fail: 0,
+          unknown: 1,
+          verdicts: [
+            { criterion: 'Must support login', verdict: 'pass', evidence: 'Login component found at src/login.ts' },
+            { criterion: 'Must support OAuth', verdict: 'unknown', evidence: 'OAuth flow not verifiable from diff alone' },
+          ],
+        },
+        validationCommands: [
+          { command: 'pnpm type-check', exitCode: 0, output: 'No errors found' },
+          { command: 'pnpm test', exitCode: 0, output: 'All tests passed' },
+        ],
+        landing: {
+          status: 'skipped',
+          action: 'merge',
+          reason: 'Build failed before landing could be attempted',
+        },
+      },
+    },
+  },
+  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   {
     label: 'recovery:complete',
     payload: {
