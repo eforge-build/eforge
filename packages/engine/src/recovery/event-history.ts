@@ -163,11 +163,17 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
             const failCount = verdicts.filter((v) => v.verdict === 'fail').length;
             const unknownCount = verdicts.filter((v) => v.verdict !== 'pass' && v.verdict !== 'fail').length;
 
-            // Gather validation command results (all passing commands feed the PRD validator prompt)
-            const cmdStmt = db.prepare(
-              `SELECT data FROM events WHERE run_id = ? AND type = 'validation:command:complete' AND id <= ? ORDER BY id`,
+            // Gather validation command results from the final validation attempt only.
+            // Find the latest validation:start before the acceptance event to bound the window.
+            const finalValidationStartStmt = db.prepare(
+              `SELECT id FROM events WHERE run_id = ? AND type = 'validation:start' AND id <= ? ORDER BY id DESC LIMIT 1`,
             );
-            const cmdRows = cmdStmt.all(runId, failedPhase.id) as { data: string }[];
+            const finalValidationStart = finalValidationStartStmt.get(runId, acceptanceRow.id) as { id: number } | undefined;
+            const validationWindowStart = finalValidationStart ? finalValidationStart.id : 0;
+            const cmdStmt = db.prepare(
+              `SELECT data FROM events WHERE run_id = ? AND type = 'validation:command:complete' AND id > ? AND id <= ? ORDER BY id`,
+            );
+            const cmdRows = cmdStmt.all(runId, validationWindowStart, failedPhase.id) as { data: string }[];
             const validationCommands: Array<{ command: string; exitCode: number; output?: string }> = [];
             for (const ce of cmdRows) {
               const parsedCmd = parseEventData(ce.data);
@@ -180,17 +186,21 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
               }
             }
 
-            // Gather landing evidence (landing:skipped or stack:landing:update)
+            // Gather landing evidence (landing:skipped or stack:landing:update).
+            // landing:skipped has no status field in the schema; infer it from the event type.
             const landingStmt = db.prepare(
-              `SELECT data FROM events WHERE run_id = ? AND (type = 'landing:skipped' OR type = 'stack:landing:update') AND id <= ? ORDER BY id DESC LIMIT 1`,
+              `SELECT type, data FROM events WHERE run_id = ? AND (type = 'landing:skipped' OR type = 'stack:landing:update') AND id <= ? ORDER BY id DESC LIMIT 1`,
             );
-            const landingRow = landingStmt.get(runId, failedPhase.id) as { data: string } | undefined;
+            const landingRow = landingStmt.get(runId, failedPhase.id) as { type: string; data: string } | undefined;
             let landingInfo: { status: string; action?: string; reason?: string } | undefined;
             if (landingRow) {
               const parsedLanding = parseEventData(landingRow.data);
-              if (typeof parsedLanding.status === 'string') {
+              const landingStatus = landingRow.type === 'landing:skipped'
+                ? 'skipped'
+                : (typeof parsedLanding.status === 'string' ? parsedLanding.status : undefined);
+              if (landingStatus !== undefined) {
                 landingInfo = {
-                  status: parsedLanding.status,
+                  status: landingStatus,
                   ...(typeof parsedLanding.action === 'string' ? { action: parsedLanding.action } : {}),
                   ...(typeof parsedLanding.reason === 'string' ? { reason: parsedLanding.reason } : {}),
                 };

@@ -695,6 +695,7 @@ describe('buildFailureSummary', () => {
   /**
    * Seed a monitor DB with a build run that failed at acceptance validation:
    * - Passing validation commands (pnpm type-check, pnpm test)
+   * - Passing PRD validation (prd_validation:complete with passed: true)
    * - acceptance_validation:complete with unknown verdicts
    * - landing:skipped event
    * - phase:end with status: failed
@@ -727,6 +728,13 @@ describe('buildFailureSummary', () => {
       type: 'validation:command:complete',
       data: JSON.stringify({ type: 'validation:command:complete', command: 'pnpm test', exitCode: 0, output: '42 tests passed' }),
       timestamp: new Date('2024-02-01T11:11:00.000Z').toISOString(),
+    });
+    // Passing PRD validation
+    db.insertEvent({
+      runId: 'run-acc-fail-01',
+      type: 'prd_validation:complete',
+      data: JSON.stringify({ type: 'prd_validation:complete', passed: true, gaps: [], completionPercent: 100 }),
+      timestamp: new Date('2024-02-01T11:15:00.000Z').toISOString(),
     });
     // Acceptance validation failure with unknown verdicts
     db.insertEvent({
@@ -772,6 +780,17 @@ describe('buildFailureSummary', () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
     const dbPath = seedAcceptanceFailureDb(dir);
+
+    // Verify the seeded DB contains a passing prd_validation:complete event
+    {
+      const db = openDatabase(dbPath);
+      const prdValidationEvents = db.getEventsByType('run-acc-fail-01', 'prd_validation:complete');
+      db.close();
+      expect(prdValidationEvents.length).toBeGreaterThanOrEqual(1);
+      const payload = JSON.parse(prdValidationEvents[0].data);
+      expect(payload.passed).toBe(true);
+      expect(payload.gaps).toEqual([]);
+    }
 
     const summary = await buildFailureSummary({
       setName: 'acceptance-fail-set',
