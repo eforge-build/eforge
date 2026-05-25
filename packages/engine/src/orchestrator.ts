@@ -65,10 +65,14 @@ export type ValidationFixer = (
  * Callback that runs PRD validation after post-merge validation passes.
  * Injected by the consumer (typically wraps the prd-validator agent).
  * @param cwd - Working directory (merge worktree path)
+ * @param context - Optional context carrying deterministic validation evidence
  */
+// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 export type PrdValidator = (
   cwd: string,
+  context?: { validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }> },
 ) => AsyncGenerator<EforgeEvent>;
+// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
 /**
  * Callback that attempts to close PRD validation gaps.

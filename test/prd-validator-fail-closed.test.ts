@@ -236,3 +236,90 @@ describe('runPrdValidator acceptance_validation:complete behavior', () => {
   });
 });
 // --- eforge:endregion plan-01-validation-evidence-contract ---
+
+// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+describe('runPrdValidator — deterministic validation command evidence', () => {
+  it('includes command evidence in the prompt when validationCommandEvidence is provided', async () => {
+    const backend = new StubHarness([
+      { text: '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [{"criterion": "pnpm type-check passes", "verdict": "pass", "evidence": "Exit code 0 confirmed by validation command"}]}\n```' },
+    ]);
+
+    await collectEvents(runPrdValidator({
+      ...makeOptions(backend),
+      validationCommandEvidence: [
+        { command: 'pnpm type-check', exitCode: 0, output: 'Type checking complete — no errors' },
+      ],
+    }));
+
+    const prompt = backend.prompts[0];
+    expect(prompt).toContain('pnpm type-check');
+    // formatValidationCommandEvidence labels exit 0 as PASSED
+    expect(prompt).toContain('PASSED');
+    expect(prompt).toContain('Type checking complete');
+  });
+
+  it('includes PASSED status label for exit code 0 in the prompt', async () => {
+    const backend = new StubHarness([
+      { text: '```json\n{"completionPercent": 100, "gaps": []}\n```' },
+    ]);
+
+    await collectEvents(runPrdValidator({
+      ...makeOptions(backend),
+      validationCommandEvidence: [
+        { command: 'pnpm type-check', exitCode: 0, output: 'No errors found' },
+      ],
+    }));
+
+    const prompt = backend.prompts[0];
+    expect(prompt).toContain('PASSED');
+    expect(prompt).toContain('pnpm type-check');
+  });
+
+  it('includes FAILED status label for non-zero exit code in the prompt', async () => {
+    const backend = new StubHarness([
+      { text: '```json\n{"completionPercent": 80, "gaps": [{"requirement": "Type errors", "explanation": "Types fail"}]}\n```' },
+    ]);
+
+    await collectEvents(runPrdValidator({
+      ...makeOptions(backend),
+      validationCommandEvidence: [
+        { command: 'pnpm type-check', exitCode: 1, output: 'error TS2345: Type mismatch' },
+      ],
+    }));
+
+    const prompt = backend.prompts[0];
+    expect(prompt).toContain('FAILED (exit 1)');
+  });
+
+  it('truncates long output to bounded length in the prompt', async () => {
+    const longOutput = 'A'.repeat(1000);
+    const backend = new StubHarness([
+      { text: '```json\n{"completionPercent": 100, "gaps": []}\n```' },
+    ]);
+
+    await collectEvents(runPrdValidator({
+      ...makeOptions(backend),
+      validationCommandEvidence: [
+        { command: 'pnpm type-check', exitCode: 0, output: longOutput },
+      ],
+    }));
+
+    const prompt = backend.prompts[0];
+    // Truncated output should contain the truncation marker
+    expect(prompt).toContain('[...truncated]');
+    // But the full 1000-char string should NOT appear (it was truncated)
+    expect(prompt).not.toContain('A'.repeat(600));
+  });
+
+  it('omits the evidence section entirely when no commands are provided', async () => {
+    const backend = new StubHarness([
+      { text: '```json\n{"completionPercent": 100, "gaps": []}\n```' },
+    ]);
+
+    await collectEvents(runPrdValidator(makeOptions(backend)));
+
+    const prompt = backend.prompts[0];
+    expect(prompt).not.toContain('Deterministic Validation Command Evidence');
+  });
+});
+// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---

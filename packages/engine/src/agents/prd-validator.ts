@@ -15,6 +15,12 @@ export interface PrdValidatorOptions extends SdkPassthroughConfig {
    *  listed in the prompt so the validator knows which ACs to produce verdicts for. */
   expectedAcceptanceCriteria?: import('../validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
   // --- eforge:endregion plan-02-engine-acceptance-gates ---
+  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+  /** Deterministic validation command results from the validate phase.
+   *  When provided, the validator prompt includes a bounded evidence appendix so
+   *  command-based acceptance criteria can cite successful command execution. */
+  validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }>;
+  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 }
 
 /**
@@ -32,12 +38,18 @@ export async function* runPrdValidator(
     ? options.expectedAcceptanceCriteria.map((c, i) => `${i + 1}. ${c.text}`).join('\n')
     : '';
   // --- eforge:endregion plan-02-engine-acceptance-gates ---
+  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+  const validationEvidence = formatValidationCommandEvidence(options.validationCommandEvidence);
+  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   const prompt = await loadPrompt('prd-validator', {
     prd: options.prdContent,
     diff: options.diff,
     // --- eforge:region plan-02-engine-acceptance-gates ---
     criteria: criteriaText,
     // --- eforge:endregion plan-02-engine-acceptance-gates ---
+    // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+    validationEvidence,
+    // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   }, options.promptAppend);
 
   let gaps: PrdValidationGap[] = [];
@@ -111,6 +123,45 @@ export async function* runPrdValidator(
     source: 'prd',
   };
 }
+
+// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+const MAX_COMMAND_OUTPUT_CHARS = 500;
+
+/**
+ * Format validation command evidence for injection into the PRD validator prompt.
+ * Produces an empty string when no evidence is provided (omits the section entirely).
+ * Each command's output is bounded to MAX_COMMAND_OUTPUT_CHARS to prevent context bloat.
+ */
+export function formatValidationCommandEvidence(
+  commands?: Array<{ command: string; exitCode: number; output?: string }>,
+): string {
+  if (!commands || commands.length === 0) return '';
+
+  const lines: string[] = [
+    '## Deterministic Validation Command Evidence',
+    '',
+    'The following commands were executed in the merge worktree before this validation ran.',
+    'Exit code 0 means the command succeeded; non-zero or timed-out means failure.',
+    '',
+  ];
+
+  for (const cmd of commands) {
+    const status = cmd.exitCode === 0 ? 'PASSED' : `FAILED (exit ${cmd.exitCode})`;
+    lines.push(`### \`${cmd.command}\` — ${status}`);
+    if (cmd.output) {
+      const truncated = cmd.output.length > MAX_COMMAND_OUTPUT_CHARS
+        ? cmd.output.slice(0, MAX_COMMAND_OUTPUT_CHARS) + '\n[...truncated]'
+        : cmd.output;
+      lines.push('```');
+      lines.push(truncated);
+      lines.push('```');
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
 const VALID_COMPLEXITIES = new Set(['trivial', 'moderate', 'significant']);
 

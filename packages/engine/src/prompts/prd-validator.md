@@ -12,6 +12,8 @@ You are validating that a completed implementation satisfies the original PRD (P
 
 When the list above is populated, you MUST produce a verdict entry in `acceptanceVerdicts` for **every** criterion listed. Do not skip or merge criteria.
 
+{{validationEvidence}}
+
 ## Implementation Diff
 
 {{diff}}
@@ -31,6 +33,7 @@ Some files appear with a marker of the form `[summarized: ...]` instead of a ful
    - `fail`: the diff clearly shows the AC is not satisfied — include what is missing
    - `unknown`: you cannot determine from the diff alone whether the AC is satisfied — explain why
 8. When uncertain about an acceptance criterion, classify it as `unknown` — do not assume the implementation is correct
+9. When the **Deterministic Validation Command Evidence** section is present: a command with exit code 0 MAY serve as supporting evidence for a command-based acceptance criterion (e.g., a passing `pnpm type-check` supports "code must type-check"). A non-zero exit code or timeout is direct failure evidence. Absence of a command result means `unknown` — do not infer success
 
 ## Output Format
 

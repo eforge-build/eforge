@@ -83,6 +83,9 @@ export type { ProfileUsageProvider } from './profile-usage.js';
 // --- eforge:region plan-02-engine-acceptance-gates ---
 import { extractExpectedAcceptanceCriteria, type ExpectedAcceptanceCriterion } from './validation/acceptance-criteria.js';
 // --- eforge:endregion plan-02-engine-acceptance-gates ---
+// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
+// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
 const exec = promisify(execFile);
 
@@ -825,7 +828,9 @@ export class EforgeEngine {
         expectedAcceptanceCriteria = allCriteria;
       }
       // --- eforge:endregion plan-02-engine-acceptance-gates ---
-      const prdValidator: PrdValidator | undefined = options.prdFilePath ? async function* (validatorCwd) {
+      // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+      const prdValidator: PrdValidator | undefined = options.prdFilePath ? async function* (validatorCwd, validatorContext) {
+      // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
         // Read PRD content
         let prdContent: string;
         try {
@@ -900,6 +905,9 @@ export class EforgeEngine {
             // --- eforge:region plan-02-engine-acceptance-gates ---
             expectedAcceptanceCriteria,
             // --- eforge:endregion plan-02-engine-acceptance-gates ---
+            // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+            validationCommandEvidence: validatorContext?.validationCommandEvidence,
+            // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
           })) {
             prdTracker.handleEvent(event);
             yield event;
@@ -1075,7 +1083,9 @@ export class EforgeEngine {
           const hasWaiver = (event.waivers ?? []).some((waiver) => waiver.trim().length > 0);
           if (!event.passed || (failCount > 0 && !hasWaiver)) {
             status = 'failed';
-            summary = `Acceptance criteria validation failed: ${Math.max(failCount, 1)} criterion/criteria not met`;
+            // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+            summary = formatAcceptanceFailureSummary(event.verdicts);
+            // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
           }
         }
         // --- eforge:endregion plan-02-final-validation-gates ---

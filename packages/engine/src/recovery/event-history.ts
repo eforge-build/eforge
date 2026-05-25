@@ -9,7 +9,7 @@
  */
 
 import { DatabaseSync } from 'node:sqlite';
-import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit } from '../events.js';
+import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit, AcceptanceCriterionVerdict } from '../events.js';
 import { classifyAgentTerminalSubtype } from '../harness.js';
 
 export interface SynthesizeOptions {
@@ -116,8 +116,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         failedAt = failedEvent.timestamp;
       } else {
         // --- eforge:region plan-01-transport-resilience ---
-        if (run.command !== 'compile') return null;
-
         const phaseStmt = db.prepare(
           `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'phase:end' ORDER BY id DESC LIMIT 20`,
         );
@@ -132,6 +130,105 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           );
         });
         if (!failedPhase) return null;
+
+        const failedPhaseData = parseEventData(failedPhase.data);
+        const phaseResult = failedPhaseData.result && typeof failedPhaseData.result === 'object'
+          ? failedPhaseData.result as Record<string, unknown>
+          : {};
+        const phaseSummary = typeof phaseResult.summary === 'string' ? phaseResult.summary : undefined;
+        const phaseStatus = typeof phaseResult.status === 'string' ? phaseResult.status : undefined;
+
+        // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+        // Check for an acceptance-validation failure before falling back to the compile/agent:stop path.
+        // A failed phase:end that was preceded by acceptance_validation:complete with passed=false
+        // is a terminal acceptance-validation rejection, not a code-level crash.
+        const acceptanceStmt = db.prepare(
+          `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'acceptance_validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`,
+        );
+        const acceptanceRow = acceptanceStmt.get(runId, failedPhase.id) as EventHistoryRow | undefined;
+
+        if (acceptanceRow) {
+          const parsedAcc = parseEventData(acceptanceRow.data);
+          if (parsedAcc.passed === false) {
+            // Extract verdicts (fail-safe: filter out malformed entries)
+            const rawVerdicts = Array.isArray(parsedAcc.verdicts) ? parsedAcc.verdicts : [];
+            const verdicts: AcceptanceCriterionVerdict[] = rawVerdicts.filter(
+              (v): v is AcceptanceCriterionVerdict =>
+                typeof v === 'object' && v !== null &&
+                typeof (v as Record<string, unknown>).criterion === 'string' &&
+                typeof (v as Record<string, unknown>).verdict === 'string' &&
+                typeof (v as Record<string, unknown>).evidence === 'string',
+            );
+            const passCount = verdicts.filter((v) => v.verdict === 'pass').length;
+            const failCount = verdicts.filter((v) => v.verdict === 'fail').length;
+            const unknownCount = verdicts.filter((v) => v.verdict !== 'pass' && v.verdict !== 'fail').length;
+
+            // Gather validation command results (all passing commands feed the PRD validator prompt)
+            const cmdStmt = db.prepare(
+              `SELECT data FROM events WHERE run_id = ? AND type = 'validation:command:complete' AND id <= ? ORDER BY id`,
+            );
+            const cmdRows = cmdStmt.all(runId, failedPhase.id) as { data: string }[];
+            const validationCommands: Array<{ command: string; exitCode: number; output?: string }> = [];
+            for (const ce of cmdRows) {
+              const parsedCmd = parseEventData(ce.data);
+              if (typeof parsedCmd.command === 'string' && typeof parsedCmd.exitCode === 'number') {
+                validationCommands.push({
+                  command: parsedCmd.command,
+                  exitCode: parsedCmd.exitCode,
+                  ...(typeof parsedCmd.output === 'string' ? { output: parsedCmd.output } : {}),
+                });
+              }
+            }
+
+            // Gather landing evidence (landing:skipped or stack:landing:update)
+            const landingStmt = db.prepare(
+              `SELECT data FROM events WHERE run_id = ? AND (type = 'landing:skipped' OR type = 'stack:landing:update') AND id <= ? ORDER BY id DESC LIMIT 1`,
+            );
+            const landingRow = landingStmt.get(runId, failedPhase.id) as { data: string } | undefined;
+            let landingInfo: { status: string; action?: string; reason?: string } | undefined;
+            if (landingRow) {
+              const parsedLanding = parseEventData(landingRow.data);
+              if (typeof parsedLanding.status === 'string') {
+                landingInfo = {
+                  status: parsedLanding.status,
+                  ...(typeof parsedLanding.action === 'string' ? { action: parsedLanding.action } : {}),
+                  ...(typeof parsedLanding.reason === 'string' ? { reason: parsedLanding.reason } : {}),
+                };
+              }
+            }
+
+            return {
+              prdId,
+              setName,
+              featureBranch: `eforge/${setName}`,
+              baseBranch: 'main',
+              plans: [{ planId: 'acceptance-validation', status: 'failed', error: 'Acceptance criteria validation failed' }],
+              failingPlan: { planId: 'acceptance-validation' },
+              landedCommits: [] as LandedCommit[],
+              diffStat: '',
+              modelsUsed,
+              failedAt: failedPhase.timestamp,
+              partial: true,
+              terminalFailure: {
+                stage: 'acceptance-validation',
+                ...(phaseSummary !== undefined ? { phaseSummary } : {}),
+                ...(phaseStatus !== undefined ? { phaseStatus } : {}),
+                eventType: 'acceptance_validation:complete',
+              },
+              acceptanceValidation: {
+                passed: false,
+                total: verdicts.length,
+                pass: passCount,
+                fail: failCount,
+                unknown: unknownCount,
+                verdicts,
+              },
+              ...(validationCommands.length > 0 ? { validationCommands } : {}),
+              ...(landingInfo !== undefined ? { landing: landingInfo } : {}),
+            };
+          }
+        }
+        // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
         const stopStmt = db.prepare(
           `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'agent:stop' AND id <= ? ORDER BY id DESC LIMIT 20`,
