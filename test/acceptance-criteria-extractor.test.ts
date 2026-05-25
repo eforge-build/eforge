@@ -4,6 +4,7 @@ import {
   normalizeCriterionText,
   matchVerdictsToExpected,
   synthesizeMissingVerdicts,
+  analyzeAcceptanceCriteriaItem,
 } from '@eforge-build/engine/validation/acceptance-criteria';
 
 // ---------------------------------------------------------------------------
@@ -406,6 +407,46 @@ Some prose note.
     // Should only return from AC section, not from Verification
     expect(criteria).toHaveLength(1);
     expect(criteria[0].text).toBe('Real criterion');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractExpectedAcceptanceCriteria — grouped parent bullets
+// ---------------------------------------------------------------------------
+
+describe('extractExpectedAcceptanceCriteria — grouped parent bullets', () => {
+  it('extracts leaf items from an AC section containing grouping-label parent bullets', () => {
+    // The extractor uses listItemsOnly=true so it extracts any list item.
+    // Grouping labels (ending in ":") are included in extraction — they are
+    // NOT automatically rejected by the extractor, only by the quality analyzer.
+    const body = `
+## Acceptance Criteria
+
+- Tests cover:
+  - Engine enqueue gate
+  - Session-plan readiness
+- \`pnpm type-check\` exits 0.
+`.trim();
+
+    const criteria = extractExpectedAcceptanceCriteria(body);
+    // Extractor collects all list items including the grouping label
+    // (filtering is done by the quality gate, not the extractor)
+    expect(criteria.length).toBeGreaterThan(0);
+    // The "`pnpm type-check` exits 0." item should be present
+    const concreteItem = criteria.find((c) => c.text.includes('`pnpm type-check` exits 0'));
+    expect(concreteItem).toBeDefined();
+  });
+
+  it('reports grouping-label diagnostic for "Tests cover:" via the quality analyzer', () => {
+    const d = analyzeAcceptanceCriteriaItem('- Tests cover:');
+    expect(d).not.toBeNull();
+    expect(d!.kind).toBe('grouping-label');
+  });
+
+  it('reports grouping-label diagnostic for "Targeted validation passes:" via the quality analyzer', () => {
+    const d = analyzeAcceptanceCriteriaItem('- Targeted validation passes:');
+    expect(d).not.toBeNull();
+    expect(d!.kind).toBe('grouping-label');
   });
 });
 

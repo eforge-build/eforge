@@ -31,6 +31,7 @@ import { resolve, basename, dirname, sep } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 import { playbookToPlanSeed, type Playbook } from './playbook.js';
+import { analyzeAcceptanceCriteria, type AcDiagnostic } from './acceptance-criteria-quality.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -513,26 +514,16 @@ export function selectDimensions(plan: SessionPlan): {
  *   blank lines, or "TBD"/"N/A"), OR
  * - Appears in `skipped_dimensions` with a reason.
  *
- * Optional dimensions never block readiness.
+ * Optional dimensions never block readiness. Acceptance criteria quality issues
+ * (grouping labels, bare command fragments, or vague criteria) also prevent
+ * readiness, consistent with `getReadinessDetail`.
  */
 export function checkReadiness(plan: SessionPlan): {
   ready: boolean;
   missingDimensions: string[];
 } {
-  const skippedNames = new Set(plan.skipped_dimensions.map((s) => s.name));
-  const { required } = selectDimensions(plan);
-
-  const missingDimensions = required.filter((dim) => {
-    if (skippedNames.has(dim)) return false;
-    const sectionKey = dimensionToSectionKey(dim);
-    const content = plan.sections.get(sectionKey) ?? '';
-    return !hasSubstantiveContent(content);
-  });
-
-  return {
-    ready: missingDimensions.length === 0,
-    missingDimensions,
-  };
+  const { ready, missingDimensions } = getReadinessDetail(plan);
+  return { ready, missingDimensions };
 }
 
 /**
@@ -543,18 +534,24 @@ export function checkReadiness(plan: SessionPlan): {
  * A dimension is **missing** when it is required but neither covered nor skipped.
  *
  * Optional dimensions are not included in any of the arrays.
+ *
+ * When the `acceptance-criteria` dimension is covered but contains quality issues
+ * (grouping labels, bare command fragments, or vague criteria), `ready` is set to
+ * `false` and `acDiagnostics` is populated with actionable feedback.
  */
 export function getReadinessDetail(plan: SessionPlan): {
   ready: boolean;
   missingDimensions: string[];
   coveredDimensions: string[];
   skippedDimensions: string[];
+  acDiagnostics?: AcDiagnostic[];
 } {
   const skippedNames = new Set(plan.skipped_dimensions.map((s) => s.name));
   const { required } = selectDimensions(plan);
 
   const missingDimensions: string[] = [];
   const coveredDimensions: string[] = [];
+  let acDiagnostics: AcDiagnostic[] | undefined;
 
   for (const dim of required) {
     if (skippedNames.has(dim)) {
@@ -564,16 +561,27 @@ export function getReadinessDetail(plan: SessionPlan): {
     const content = plan.sections.get(sectionKey) ?? '';
     if (hasSubstantiveContent(content)) {
       coveredDimensions.push(dim);
+
+      // Extra quality check for acceptance-criteria dimension
+      if (dim === 'acceptance-criteria') {
+        const result = analyzeAcceptanceCriteria(content);
+        if (!result.valid) {
+          acDiagnostics = result.diagnostics;
+        }
+      }
     } else {
       missingDimensions.push(dim);
     }
   }
 
+  const ready = missingDimensions.length === 0 && acDiagnostics === undefined;
+
   return {
-    ready: missingDimensions.length === 0,
+    ready,
     missingDimensions,
     coveredDimensions,
     skippedDimensions: plan.skipped_dimensions.map((s) => s.name),
+    ...(acDiagnostics !== undefined && { acDiagnostics }),
   };
 }
 

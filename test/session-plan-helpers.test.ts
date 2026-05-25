@@ -407,6 +407,67 @@ describe('getReadinessDetail', () => {
     expect(detail).toHaveProperty('coveredDimensions');
     expect(detail).toHaveProperty('skippedDimensions');
   });
+
+  it('returns ready: false and acDiagnostics for grouping-label AC ("Tests cover:")', () => {
+    const plan = parseSessionPlan(makePlanRaw({
+      required_dimensions: ['scope', 'acceptance-criteria'],
+      body: '\n# Test Plan\n\n## Scope\n\nReal scope.\n\n## Acceptance Criteria\n\n- Tests cover:\n  - Something\n',
+    }));
+    const detail = getReadinessDetail(plan);
+
+    expect(detail.ready).toBe(false);
+    expect(detail.acDiagnostics).toBeDefined();
+    expect(detail.acDiagnostics!.length).toBeGreaterThan(0);
+    expect(detail.acDiagnostics![0].kind).toBe('grouping-label');
+    // acceptance-criteria is covered (has substantive content) but quality-invalid
+    expect(detail.coveredDimensions).toContain('acceptance-criteria');
+    expect(detail.missingDimensions).not.toContain('acceptance-criteria');
+  });
+
+  it('returns ready: false and acDiagnostics for bare-command AC ("`pnpm type-check`.")', () => {
+    const plan = parseSessionPlan(makePlanRaw({
+      required_dimensions: ['scope', 'acceptance-criteria'],
+      body: '\n# Test Plan\n\n## Scope\n\nReal scope.\n\n## Acceptance Criteria\n\n- `pnpm type-check`.\n',
+    }));
+    const detail = getReadinessDetail(plan);
+
+    expect(detail.ready).toBe(false);
+    expect(detail.acDiagnostics).toBeDefined();
+    expect(detail.acDiagnostics![0].kind).toBe('bare-command');
+  });
+
+  it('returns ready: true and no acDiagnostics for valid command AC ("`pnpm type-check` exits 0.")', () => {
+    const plan = parseSessionPlan(makePlanRaw({
+      required_dimensions: ['scope', 'acceptance-criteria'],
+      body: '\n# Test Plan\n\n## Scope\n\nReal scope.\n\n## Acceptance Criteria\n\n- `pnpm type-check` exits 0.\n',
+    }));
+    const detail = getReadinessDetail(plan);
+
+    expect(detail.ready).toBe(true);
+    expect(detail.acDiagnostics).toBeUndefined();
+  });
+
+  it('does not add acDiagnostics when acceptance-criteria dimension is skipped', () => {
+    const plan = parseSessionPlan(makePlanRaw({
+      required_dimensions: ['scope', 'acceptance-criteria'],
+      skipped_dimensions: [{ name: 'acceptance-criteria', reason: 'covered by integration tests' }],
+      body: '\n# Test Plan\n\n## Scope\n\nReal scope.\n',
+    }));
+    const detail = getReadinessDetail(plan);
+
+    expect(detail.acDiagnostics).toBeUndefined();
+  });
+
+  it('does not add acDiagnostics when acceptance-criteria is not in required dimensions', () => {
+    const plan = parseSessionPlan(makePlanRaw({
+      required_dimensions: ['scope'],
+      body: '\n# Test Plan\n\n## Scope\n\nReal scope.\n',
+    }));
+    const detail = getReadinessDetail(plan);
+
+    expect(detail.acDiagnostics).toBeUndefined();
+    expect(detail.ready).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

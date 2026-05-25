@@ -3899,6 +3899,9 @@ export async function startServer(
                 path: entry.path,
                 ready: readiness.ready,
                 missingDimensions: readiness.missingDimensions,
+                ...(readiness.acDiagnostics && readiness.acDiagnostics.length > 0
+                  ? { acDiagnostics: readiness.acDiagnostics }
+                  : {}),
               };
             } catch {
               return {
@@ -4149,8 +4152,24 @@ export async function startServer(
         return;
       }
       try {
-        const { loadSessionPlan, setSessionPlanStatus, writeSessionPlan } = await import('@eforge-build/input');
+        const { loadSessionPlan, setSessionPlanStatus, writeSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
         const plan = await loadSessionPlan({ cwd, session: body.session });
+
+        // Gate set-status: ready — reject when readiness helper reports invalid AC content.
+        // Only blocks when acceptance-criteria content exists but has quality issues
+        // (grouping labels, bare command fragments, or vague criteria). Missing dimensions
+        // are advisory and do not block the status transition here.
+        if (body.status === 'ready') {
+          const readiness = getReadinessDetail(plan);
+          if (readiness.acDiagnostics && readiness.acDiagnostics.length > 0) {
+            const issueMsg = readiness.acDiagnostics.map((d) => d.message).join('; ');
+            const errorMsg = `Cannot mark session plan ready: acceptance criteria quality issues: ${issueMsg}`;
+            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: errorMsg, readiness }));
+            return;
+          }
+        }
+
         const updated = setSessionPlanStatus(
           plan,
           body.status as 'planning' | 'ready' | 'abandoned' | 'submitted',
@@ -4248,6 +4267,7 @@ export async function startServer(
       try {
         const { loadSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
         const plan = await loadSessionPlan({ cwd, session });
+        // getReadinessDetail now includes acDiagnostics when AC content has quality issues
         const readiness = getReadinessDetail(plan);
         sendJson(res, readiness);
       } catch (err) {

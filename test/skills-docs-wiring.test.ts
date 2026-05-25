@@ -429,3 +429,87 @@ describe('enum drift - piThinkingLevel and effortLevel values', () => {
     expect(pluginConfig).toMatch(/low.*medium.*high.*xhigh.*max/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// AC quality guidance in plan skills (plan-01-complete-ac-quality-gate)
+// ---------------------------------------------------------------------------
+
+describe('eforge-plugin/skills/plan/plan.md — AC quality guidance', () => {
+  const raw = readRepoFile('eforge-plugin/skills/plan/plan.md');
+
+  it('documents the flat, standalone, atomic, objectively validatable AC rule', () => {
+    expect(raw).toMatch(/flat.*standalone.*atomic.*objectively validatable/s);
+  });
+
+  it('documents the "no grouping labels" rule (bullets ending with ":")', () => {
+    expect(raw).toContain('grouping label');
+    expect(raw).toMatch(/ending.*:.*criteria/s);
+  });
+
+  it('documents the "no bare command fragments" rule', () => {
+    expect(raw).toContain('bare command fragment');
+  });
+
+  it('documents the "no vague criteria" rule', () => {
+    expect(raw).toContain('vague');
+  });
+
+  it('includes a valid example with outcome: "`pnpm type-check` exits 0."', () => {
+    expect(raw).toContain('`pnpm type-check` exits 0.');
+  });
+
+  it('includes an invalid grouping-label example: "- Tests cover:"', () => {
+    expect(raw).toContain('Tests cover:');
+  });
+
+  it('includes an invalid bare-command example: "- `pnpm type-check`."', () => {
+    // The bare command example (ending in period only)
+    expect(raw).toMatch(/`pnpm type-check`\./);
+  });
+
+  it('includes an invalid vague example: "Works correctly."', () => {
+    expect(raw).toContain('Works correctly.');
+  });
+
+  it('includes an invalid vague example: "Improves reliability."', () => {
+    expect(raw).toContain('Improves reliability.');
+  });
+});
+
+describe('packages/pi-eforge/skills/eforge-plan/SKILL.md — AC quality guidance', () => {
+  const raw = readRepoFile('packages/pi-eforge/skills/eforge-plan/SKILL.md');
+
+  it('documents the flat, standalone, atomic, objectively validatable AC rule', () => {
+    expect(raw).toMatch(/flat.*standalone.*atomic.*objectively validatable/s);
+  });
+
+  it('documents the "no grouping labels" rule', () => {
+    expect(raw).toContain('grouping label');
+  });
+
+  it('documents the "no bare command fragments" rule', () => {
+    expect(raw).toContain('bare command fragment');
+  });
+
+  it('documents the "no vague criteria" rule', () => {
+    expect(raw).toContain('vague');
+  });
+
+  it('includes a valid example: "`pnpm type-check` exits 0."', () => {
+    expect(raw).toContain('`pnpm type-check` exits 0.');
+  });
+
+  it('includes invalid examples: grouping label, bare command, vague criteria', () => {
+    expect(raw).toContain('Tests cover:');
+    expect(raw).toContain('Works correctly.');
+    expect(raw).toContain('Improves reliability.');
+  });
+
+  it('formatter prompt documents AC rules — grouping labels and bare commands forbidden', () => {
+    const formatterPrompt = readRepoFile('packages/engine/src/prompts/formatter.md');
+    expect(formatterPrompt).toContain('grouping label');
+    expect(formatterPrompt).toContain('bare command');
+    expect(formatterPrompt).toContain('exits 0');
+  });
+});
+

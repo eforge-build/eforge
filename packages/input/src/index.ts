@@ -143,6 +143,22 @@ export type {
 } from './session-plan.js';
 
 // ---------------------------------------------------------------------------
+// Acceptance criteria quality exports
+// ---------------------------------------------------------------------------
+
+export {
+  analyzeAcceptanceCriteriaItem,
+  analyzeAcceptanceCriteria,
+  analyzeAcceptanceCriteriaInBody,
+  formatAcDiagnostics,
+} from './acceptance-criteria-quality.js';
+
+export type {
+  AcDiagnostic,
+  AcQualityResult,
+} from './acceptance-criteria-quality.js';
+
+// ---------------------------------------------------------------------------
 // Extension-aware preprocessing exports
 // ---------------------------------------------------------------------------
 

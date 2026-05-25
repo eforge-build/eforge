@@ -83,6 +83,9 @@ export type { ProfileUsageProvider } from './profile-usage.js';
 // --- eforge:region plan-02-engine-acceptance-gates ---
 import { extractExpectedAcceptanceCriteria, type ExpectedAcceptanceCriterion } from './validation/acceptance-criteria.js';
 // --- eforge:endregion plan-02-engine-acceptance-gates ---
+// --- eforge:region plan-01-complete-ac-quality-gate ---
+import { analyzeAcceptanceCriteriaInBody, formatAcDiagnostics } from './validation/acceptance-criteria.js';
+// --- eforge:endregion plan-01-complete-ac-quality-gate ---
 // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
 // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
@@ -513,6 +516,17 @@ export class EforgeEngine {
 
       // Infer title from formatted content (or from name override)
       const title = options.name ?? inferTitle(formattedBody, !source.includes('\n') ? source : undefined);
+
+      // --- eforge:region plan-01-complete-ac-quality-gate ---
+      // Run AC quality gate: reject before any queue write when formatted PRD
+      // contains grouping labels, bare command fragments, or vague criteria.
+      const acQualityResult = analyzeAcceptanceCriteriaInBody(formattedBody);
+      if (acQualityResult !== null && !acQualityResult.valid) {
+        const errorMsg = `PRD acceptance criteria quality gate failed:\n${formatAcDiagnostics(acQualityResult.diagnostics)}`;
+        yield { timestamp: new Date().toISOString(), type: 'enqueue:failed', error: errorMsg };
+        return;
+      }
+      // --- eforge:endregion plan-01-complete-ac-quality-gate ---
 
       // Run dependency detection (graceful fallback on failure)
       let dependsOn: string[] = [];

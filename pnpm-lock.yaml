@@ -197,6 +197,9 @@ importers:
       '@eforge-build/extension-sdk':
         specifier: workspace:*
         version: link:../extension-sdk
+      '@eforge-build/input':
+        specifier: workspace:*
+        version: link:../input
       '@eforge-build/scopes':
         specifier: workspace:*
         version: link:../scopes
