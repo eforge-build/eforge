@@ -380,6 +380,20 @@ const validationWaiverConfigSchema = z.object({
   emptyPrdDiffReason: z.string().optional().describe(
     'Required human-readable reason when allowEmptyPrdDiff is true.',
   ),
+  // --- eforge:region plan-01-acceptance-evidence-model ---
+  allowNoAcceptanceCriteria: z.boolean().optional().describe(
+    'Allow builds with no extractable acceptance criteria to pass instead of failing. Requires noAcceptanceCriteriaReason.',
+  ),
+  noAcceptanceCriteriaReason: z.string().optional().describe(
+    'Required human-readable reason when allowNoAcceptanceCriteria is true.',
+  ),
+  allowNoCommittedChanges: z.boolean().optional().describe(
+    'Allow builds that produce no committed changes to pass instead of failing. Requires noCommittedChangesReason.',
+  ),
+  noCommittedChangesReason: z.string().optional().describe(
+    'Required human-readable reason when allowNoCommittedChanges is true.',
+  ),
+  // --- eforge:endregion plan-01-acceptance-evidence-model ---
 }).superRefine((data, ctx) => {
   if (data.allowNoCommands && !data.noCommandsReason?.trim()) {
     ctx.addIssue({
@@ -395,6 +409,22 @@ const validationWaiverConfigSchema = z.object({
       path: ['emptyPrdDiffReason'],
     });
   }
+  // --- eforge:region plan-01-acceptance-evidence-model ---
+  if (data.allowNoAcceptanceCriteria && !data.noAcceptanceCriteriaReason?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '"noAcceptanceCriteriaReason" must be a non-empty string when "allowNoAcceptanceCriteria" is true',
+      path: ['noAcceptanceCriteriaReason'],
+    });
+  }
+  if (data.allowNoCommittedChanges && !data.noCommittedChangesReason?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '"noCommittedChangesReason" must be a non-empty string when "allowNoCommittedChanges" is true',
+      path: ['noCommittedChangesReason'],
+    });
+  }
+  // --- eforge:endregion plan-01-acceptance-evidence-model ---
 }).describe('Explicit validation waivers. Each waiver boolean requires a non-empty reason string.');
 // --- eforge:endregion plan-02-final-validation-gates ---
 
@@ -504,6 +534,12 @@ export interface ValidationConfig {
   noCommandsReason?: string;
   allowEmptyPrdDiff: boolean;
   emptyPrdDiffReason?: string;
+  // --- eforge:region plan-01-acceptance-evidence-model ---
+  allowNoAcceptanceCriteria: boolean;
+  noAcceptanceCriteriaReason?: string;
+  allowNoCommittedChanges: boolean;
+  noCommittedChangesReason?: string;
+  // --- eforge:endregion plan-01-acceptance-evidence-model ---
 }
 // --- eforge:endregion plan-02-final-validation-gates ---
 
@@ -832,7 +868,14 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     allowLocalMergeToTrunk: false,
     // --- eforge:endregion plan-01-config-and-trunk-resolution ---
     // --- eforge:region plan-02-final-validation-gates ---
-    validation: Object.freeze({ allowNoCommands: false, allowEmptyPrdDiff: false } as ValidationConfig),
+    validation: Object.freeze({
+      allowNoCommands: false,
+      allowEmptyPrdDiff: false,
+      // --- eforge:region plan-01-acceptance-evidence-model ---
+      allowNoAcceptanceCriteria: false,
+      allowNoCommittedChanges: false,
+      // --- eforge:endregion plan-01-acceptance-evidence-model ---
+    } as ValidationConfig),
     // --- eforge:endregion plan-02-final-validation-gates ---
   }),
   // --- eforge:endregion plan-01-engine-config-and-landing ---
@@ -954,6 +997,12 @@ export function resolveConfig(
         noCommandsReason: fileConfig.build?.validation?.noCommandsReason,
         allowEmptyPrdDiff: fileConfig.build?.validation?.allowEmptyPrdDiff ?? false,
         emptyPrdDiffReason: fileConfig.build?.validation?.emptyPrdDiffReason,
+        // --- eforge:region plan-01-acceptance-evidence-model ---
+        allowNoAcceptanceCriteria: fileConfig.build?.validation?.allowNoAcceptanceCriteria ?? false,
+        noAcceptanceCriteriaReason: fileConfig.build?.validation?.noAcceptanceCriteriaReason,
+        allowNoCommittedChanges: fileConfig.build?.validation?.allowNoCommittedChanges ?? false,
+        noCommittedChangesReason: fileConfig.build?.validation?.noCommittedChangesReason,
+        // --- eforge:endregion plan-01-acceptance-evidence-model ---
       } as ValidationConfig),
       // --- eforge:endregion plan-02-final-validation-gates ---
     }),

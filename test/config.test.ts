@@ -832,3 +832,114 @@ describe('validation waiver config — schema validation and merge/defaults', ()
   });
 });
 // --- eforge:endregion plan-02-final-validation-gates ---
+
+// --- eforge:region plan-01-acceptance-evidence-model ---
+describe('validation waiver config — acceptance criteria and committed changes waivers', () => {
+  it('resolveConfig sets allowNoAcceptanceCriteria to false by default', () => {
+    const config = resolveConfig({}, {});
+    expect(config.build.validation.allowNoAcceptanceCriteria).toBe(false);
+  });
+
+  it('resolveConfig sets allowNoCommittedChanges to false by default', () => {
+    const config = resolveConfig({}, {});
+    expect(config.build.validation.allowNoCommittedChanges).toBe(false);
+  });
+
+  it('resolveConfig sets noAcceptanceCriteriaReason to undefined by default', () => {
+    const config = resolveConfig({}, {});
+    expect(config.build.validation.noAcceptanceCriteriaReason).toBeUndefined();
+  });
+
+  it('resolveConfig sets noCommittedChangesReason to undefined by default', () => {
+    const config = resolveConfig({}, {});
+    expect(config.build.validation.noCommittedChangesReason).toBeUndefined();
+  });
+
+  it('rejects allowNoAcceptanceCriteria: true without a noAcceptanceCriteriaReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowNoAcceptanceCriteria: true } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const hasIssue = result.error.issues.some(
+        (i) => Array.isArray(i.path) && i.path.includes('noAcceptanceCriteriaReason'),
+      );
+      expect(hasIssue).toBe(true);
+    }
+  });
+
+  it('accepts allowNoAcceptanceCriteria: true with a non-empty noAcceptanceCriteriaReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowNoAcceptanceCriteria: true, noAcceptanceCriteriaReason: 'Exploratory build; criteria defined post-hoc' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects allowNoAcceptanceCriteria: true with a whitespace-only noAcceptanceCriteriaReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowNoAcceptanceCriteria: true, noAcceptanceCriteriaReason: '   ' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects allowNoCommittedChanges: true without a noCommittedChangesReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowNoCommittedChanges: true } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const hasIssue = result.error.issues.some(
+        (i) => Array.isArray(i.path) && i.path.includes('noCommittedChangesReason'),
+      );
+      expect(hasIssue).toBe(true);
+    }
+  });
+
+  it('accepts allowNoCommittedChanges: true with a non-empty noCommittedChangesReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowNoCommittedChanges: true, noCommittedChangesReason: 'Config-only change recorded in parent PR' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects allowNoCommittedChanges: true with a whitespace-only noCommittedChangesReason', () => {
+    const result = eforgeConfigSchema.safeParse({
+      build: { validation: { allowNoCommittedChanges: true, noCommittedChangesReason: '\t  ' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('resolveConfig propagates allowNoAcceptanceCriteria and noAcceptanceCriteriaReason', () => {
+    const config = resolveConfig(
+      { build: { validation: { allowNoAcceptanceCriteria: true, noAcceptanceCriteriaReason: 'Exploratory task' } } },
+      {},
+    );
+    expect(config.build.validation.allowNoAcceptanceCriteria).toBe(true);
+    expect(config.build.validation.noAcceptanceCriteriaReason).toBe('Exploratory task');
+    expect(config.build.validation.allowNoCommittedChanges).toBe(false);
+  });
+
+  it('resolveConfig propagates allowNoCommittedChanges and noCommittedChangesReason', () => {
+    const config = resolveConfig(
+      { build: { validation: { allowNoCommittedChanges: true, noCommittedChangesReason: 'Docs-only sync' } } },
+      {},
+    );
+    expect(config.build.validation.allowNoCommittedChanges).toBe(true);
+    expect(config.build.validation.noCommittedChangesReason).toBe('Docs-only sync');
+    expect(config.build.validation.allowNoAcceptanceCriteria).toBe(false);
+  });
+
+  it('mergePartialConfigs preserves acceptance criteria and committed changes waiver fields across layers', () => {
+    const merged = mergePartialConfigs(
+      { build: { validation: { allowNoAcceptanceCriteria: true, noAcceptanceCriteriaReason: 'Exploratory' } } },
+      { build: { validation: { allowNoCommittedChanges: true, noCommittedChangesReason: 'Docs-only' } } },
+    );
+    expect(merged.build?.validation).toEqual({
+      allowNoAcceptanceCriteria: true,
+      noAcceptanceCriteriaReason: 'Exploratory',
+      allowNoCommittedChanges: true,
+      noCommittedChangesReason: 'Docs-only',
+    });
+  });
+});
+// --- eforge:endregion plan-01-acceptance-evidence-model ---
