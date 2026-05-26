@@ -480,3 +480,219 @@ describe('applyRecovery — error paths', () => {
     expect(errorEvent).toBeDefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Backward compatibility: sidecars with optional verdict metadata fields
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-02-deterministic-recovery-verdicts ---
+describe('applyRecovery — backward compatibility with optional verdict metadata fields', () => {
+  const makeTempDir = useTempDir('eforge-apply-verdict-metadata-compat-');
+
+  /**
+   * Seed a sidecar JSON with optional plan-02 verdict metadata fields.
+   * Existing consumers of the sidecar (applyRecovery) must not reject these fields.
+   */
+  async function seedSidecarWithVerdictMetadata(
+    dir: string,
+    prdId: string,
+    verdictType: 'retry' | 'split',
+  ): Promise<void> {
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+
+    const prdContent = `# Test PRD: ${prdId}\n\nBuild something.`;
+    await writeFile(join(failedDir, `${prdId}.md`), prdContent, 'utf-8');
+
+    const recoveryMd = `## Recovery Report\n\nVerdict: ${verdictType.toUpperCase()}\n\n**Verdict Source:** deterministic`;
+    await writeFile(join(failedDir, `${prdId}.recovery.md`), recoveryMd, 'utf-8');
+
+    const verdictJson: Record<string, unknown> = {
+      verdict: verdictType,
+      confidence: 'high',
+      rationale: 'All failures were transient transport errors.',
+      completedWork: [],
+      remainingWork: [],
+      risks: [],
+      // New optional fields from plan-02
+      recommendationSource: 'deterministic',
+      recommendationRationale: 'All failed plans have terminalSubtype error_transient_transport with zero tool use.',
+    };
+    if (verdictType === 'split') {
+      verdictJson.suggestedSuccessorPrd = '# Successor PRD\n\nRetry the failed plans.';
+    }
+
+    const sidecarJson = {
+      schemaVersion: 2,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        prdId,
+        setName: 'test-set',
+        featureBranch: 'eforge/test-set',
+        baseBranch: 'main',
+        plans: [{ planId: 'plan-01', status: 'failed', error: 'API error 529' }],
+        failingPlan: { planId: 'plan-01', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport' },
+        failingPlans: [
+          { planId: 'plan-01', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport', toolUseCount: 0 },
+        ],
+        landedCommits: [],
+        diffStat: '',
+        modelsUsed: [],
+        failedAt: new Date().toISOString(),
+      },
+      verdict: verdictJson,
+    };
+
+    await writeFile(
+      join(failedDir, `${prdId}.recovery.json`),
+      JSON.stringify(sidecarJson, null, 2),
+      'utf-8',
+    );
+
+    const gitOpts = { cwd: dir };
+    execFileSync('git', ['add', '--', failedDir], gitOpts);
+    execFileSync('git', ['commit', '-m', `chore: seed sidecar with verdict metadata ${prdId}`], gitOpts);
+  }
+
+  it('applyRecovery — retry sidecar with recommendationSource metadata is applied without error', async () => {
+    const dir = makeTempDir();
+    const prdId = 'compat-retry-metadata';
+    seedGitRepo(dir);
+    await seedSidecarWithVerdictMetadata(dir, prdId, 'retry');
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+
+    // Must succeed — schema changes are backward-compatible
+    expect(result.verdict).toBe('retry');
+    expect(result.noAction).toBe(false);
+    expect(result.commitSha).toBe('');
+  });
+
+  it('applyRecovery — split sidecar with recommendationSource metadata is applied without error', async () => {
+    const dir = makeTempDir();
+    const prdId = 'compat-split-metadata';
+    seedGitRepo(dir);
+    await seedSidecarWithVerdictMetadata(dir, prdId, 'split');
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+
+    expect(result.verdict).toBe('split');
+    expect(result.noAction).toBe(false);
+  });
+
+  it('applyRecovery — sidecar with verdictInvalidationReason is applied without error', async () => {
+    const dir = makeTempDir();
+    const prdId = 'compat-invalidation-retry';
+    seedGitRepo(dir);
+
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, `${prdId}.md`), `# Test PRD: ${prdId}`, 'utf-8');
+    await writeFile(join(failedDir, `${prdId}.recovery.md`), '## Recovery\n\nAnalyst rejected.', 'utf-8');
+
+    // Sidecar with verdictInvalidationReason from analyst invalidation path
+    const sidecarJson = {
+      schemaVersion: 2,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        prdId,
+        setName: 'test-set',
+        featureBranch: 'eforge/test-set',
+        baseBranch: 'main',
+        plans: [{ planId: 'plan-01', status: 'failed' }],
+        failingPlan: { planId: 'plan-01' },
+        failingPlans: [{ planId: 'plan-01', errorMessage: 'API error 529' }],
+        landedCommits: [],
+        diffStat: '',
+        modelsUsed: [],
+        failedAt: new Date().toISOString(),
+      },
+      verdict: {
+        verdict: 'manual',
+        confidence: 'low',
+        rationale: 'Analyst verdict was rejected due to missing plan coverage.',
+        completedWork: [],
+        remainingWork: [],
+        risks: [],
+        // New optional plan-02 field
+        verdictInvalidationReason: 'Analyst rationale did not mention plan-01',
+        recommendationSource: 'manual-fallback',
+      },
+    };
+
+    await writeFile(
+      join(failedDir, `${prdId}.recovery.json`),
+      JSON.stringify(sidecarJson, null, 2),
+      'utf-8',
+    );
+    execFileSync('git', ['add', '--', failedDir], { cwd: dir });
+    execFileSync('git', ['commit', '-m', `chore: seed invalidation sidecar ${prdId}`], { cwd: dir });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+
+    // manual verdict → noAction: true (no files moved)
+    expect(result.verdict).toBe('manual');
+    expect(result.noAction).toBe(true);
+  });
+
+  it('applyRecovery — legacy sidecar without verdict metadata is still applied correctly', async () => {
+    // Ensures backward compatibility: old sidecars without plan-02 metadata fields
+    // must continue to work through applyRecovery
+    const dir = makeTempDir();
+    const prdId = 'legacy-no-metadata';
+    seedGitRepo(dir);
+
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, `${prdId}.md`), `# Test PRD: ${prdId}`, 'utf-8');
+    await writeFile(join(failedDir, `${prdId}.recovery.md`), '## Recovery\n\nLegacy sidecar.', 'utf-8');
+
+    // Classic v2 sidecar without any plan-02 metadata
+    const legacySidecarJson = {
+      schemaVersion: 2,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        prdId,
+        setName: 'test-set',
+        featureBranch: 'eforge/test-set',
+        baseBranch: 'main',
+        plans: [{ planId: 'plan-01', status: 'failed', error: 'Compile error' }],
+        failingPlan: { planId: 'plan-01', errorMessage: 'Compile error' },
+        // No failingPlans, no new fields
+        landedCommits: [],
+        diffStat: '',
+        modelsUsed: [],
+        failedAt: new Date().toISOString(),
+      },
+      verdict: {
+        verdict: 'retry',
+        confidence: 'medium',
+        rationale: 'Classic recovery verdict without metadata fields.',
+        completedWork: [],
+        remainingWork: [],
+        risks: [],
+        // No recommendationSource, recommendationRationale, or verdictInvalidationReason
+      },
+    };
+
+    await writeFile(
+      join(failedDir, `${prdId}.recovery.json`),
+      JSON.stringify(legacySidecarJson, null, 2),
+      'utf-8',
+    );
+    execFileSync('git', ['add', '--', failedDir], { cwd: dir });
+    execFileSync('git', ['commit', '-m', `chore: seed legacy sidecar ${prdId}`], { cwd: dir });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+
+    // Legacy sidecar must work exactly as before
+    expect(result.verdict).toBe('retry');
+    expect(result.noAction).toBe(false);
+    expect(result.commitSha).toBe('');
+  });
+});
+// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---

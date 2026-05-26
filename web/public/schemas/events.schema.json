@@ -7914,16 +7914,19 @@
                         "type": "string"
                       },
                       "testPassed": {
-                        "type": "number"
+                        "minimum": 0,
+                        "type": "integer"
                       },
                       "testFailed": {
-                        "type": "number"
+                        "minimum": 0,
+                        "type": "integer"
                       },
                       "completedAt": {
                         "type": "string"
                       },
                       "toolUseCount": {
-                        "type": "number"
+                        "minimum": 0,
+                        "type": "integer"
                       }
                     }
                   }
@@ -7950,7 +7953,8 @@
                       "type": "string"
                     },
                     "toolUseCount": {
-                      "type": "number"
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 },
@@ -8145,7 +8149,8 @@
                         "type": "string"
                       },
                       "toolUseCount": {
-                        "type": "number"
+                        "minimum": 0,
+                        "type": "integer"
                       }
                     }
                   }
@@ -8244,6 +8249,28 @@
                   "type": "boolean"
                 },
                 "recoveryError": {
+                  "type": "string"
+                },
+                "recommendationSource": {
+                  "anyOf": [
+                    {
+                      "const": "deterministic",
+                      "type": "string"
+                    },
+                    {
+                      "const": "analyst",
+                      "type": "string"
+                    },
+                    {
+                      "const": "manual-fallback",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "recommendationRationale": {
+                  "type": "string"
+                },
+                "verdictInvalidationReason": {
                   "type": "string"
                 }
               }

@@ -13,6 +13,9 @@ import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { getRecoveryVerdictSchemaYaml } from '../schemas.js';
 import { parseRecoveryVerdictBlock } from './common.js';
+// --- eforge:region plan-02-deterministic-recovery-verdicts ---
+import { determineRecoveryRecommendation } from '../recovery/recommendation.js';
+// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 
 // ---------------------------------------------------------------------------
 // Options
@@ -66,6 +69,27 @@ export async function* runRecoveryAnalyst(
     ? 'Note: this summary is partial (some context was unavailable); prefer verdict=manual and document missing context in the rationale.'
     : '';
 
+  // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+  const deterministicRec = determineRecoveryRecommendation(summary);
+  const deterministicRecommendation =
+    `Deterministic policy recommendation: **${deterministicRec.verdict}**\n\n` +
+    `Evidence: ${deterministicRec.rationale}\n\n` +
+    `You may agree or disagree with this recommendation, but you must explain any disagreement with specific evidence from the failure summary.`;
+  // Build the failing plan IDs list using the same coverage logic as validateAnalystVerdict:
+  // prefer failingPlans array, fall back to failingPlan.planId when it is present and not "unknown".
+  let failingPlanIds: string[];
+  if (summary.failingPlans && summary.failingPlans.length > 0) {
+    failingPlanIds = summary.failingPlans.map(p => p.planId);
+  } else if (summary.failingPlan?.planId && summary.failingPlan.planId !== 'unknown') {
+    failingPlanIds = [summary.failingPlan.planId];
+  } else {
+    failingPlanIds = [];
+  }
+  const failedPlanIdsList = failingPlanIds.length > 0
+    ? failingPlanIds.join(', ')
+    : '(none identified — use partial context indicators in the summary)';
+  // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
+
   const prompt = await loadPrompt(
     'recovery-analyst',
     {
@@ -73,6 +97,10 @@ export async function* runRecoveryAnalyst(
       summary: JSON.stringify(summary, null, 2),
       recovery_schema: getRecoveryVerdictSchemaYaml(),
       partialHint,
+      // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+      deterministicRecommendation,
+      failedPlanIdsList,
+      // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
     },
     options.promptAppend,
   );

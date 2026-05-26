@@ -95,6 +95,20 @@ function buildMarkdown(
       `**⚠ Partial summary** — context was incomplete: ${verdict.recoveryError ?? 'some context was unavailable'}`,
       '',
     ] : []),
+    // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+    ...(verdict.recommendationSource !== undefined ? [
+      `**Verdict Source:** ${verdict.recommendationSource}`,
+      '',
+    ] : []),
+    ...(verdict.verdictInvalidationReason !== undefined ? [
+      `**⚠ Analyst Verdict Rejected:** ${escapeTableCell(verdict.verdictInvalidationReason)}`,
+      '',
+    ] : []),
+    ...(verdict.recommendationRationale !== undefined && verdict.recommendationSource === 'deterministic' ? [
+      `**Deterministic Rationale:** ${escapeTableCell(verdict.recommendationRationale)}`,
+      '',
+    ] : []),
+    // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
     '## Rationale',
     '',
     verdict.rationale,

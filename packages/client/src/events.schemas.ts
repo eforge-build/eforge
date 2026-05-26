@@ -179,6 +179,15 @@ const RecoveryVerdictSchema = Type.Object({
   suggestedSuccessorPrd: Type.Optional(Type.String()),
   partial: Type.Optional(Type.Boolean()),
   recoveryError: Type.Optional(Type.String()),
+  // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+  recommendationSource: Type.Optional(Type.Union([
+    Type.Literal('deterministic'),
+    Type.Literal('analyst'),
+    Type.Literal('manual-fallback'),
+  ])),
+  recommendationRationale: Type.Optional(Type.String()),
+  verdictInvalidationReason: Type.Optional(Type.String()),
+  // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 });
 
 const ShardScopeSchema = Type.Object({

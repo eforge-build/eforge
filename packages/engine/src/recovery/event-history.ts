@@ -251,13 +251,14 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
             : terminalSubtypeFromMessage(err);
           const tuCount = toolUseMap.get(planId);
 
-          return {
+          failingPlanMap.set(planId, {
             planId,
             ...(err !== undefined ? { errorMessage: err } : {}),
             ...(sub ? { terminalSubtype: sub } : {}),
             ...(tuCount !== undefined ? { toolUseCount: tuCount } : {}),
-          };
-        });
+          });
+        }
+        failingPlans = [...failingPlanMap.values()];
       }
       // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
       else {

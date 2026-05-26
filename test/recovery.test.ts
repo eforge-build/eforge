@@ -1721,6 +1721,55 @@ describe('runRecoveryAnalyst wiring', () => {
     expect(prompt).toContain('prefer `manual`');
   });
 
+  it('prompt includes deterministic recommendation evidence, failed plan IDs, and coverage requirements', async () => {
+    // Verification criterion: "The analyst prompt must include the deterministic policy
+    // recommendation, each failed plan ID, and language requiring every failed plan to
+    // be mentioned and split successors to cover failed/remaining plans."
+    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const cwd = makeTempDir();
+
+    const summaryWithFailingPlans: BuildFailureSummary = {
+      prdId: 'test-prd',
+      setName: 'test-set',
+      featureBranch: 'eforge/test-set',
+      baseBranch: 'main',
+      plans: [
+        { planId: 'plan-01-alpha', status: 'failed', error: 'API error 529', terminalSubtype: 'error_transient_transport' },
+        { planId: 'plan-02-beta', status: 'failed', error: 'API error 529', terminalSubtype: 'error_transient_transport' },
+      ],
+      failingPlan: { planId: 'plan-02-beta', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport' },
+      failingPlans: [
+        { planId: 'plan-01-alpha', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport', toolUseCount: 0 },
+        { planId: 'plan-02-beta', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport', toolUseCount: 0 },
+      ],
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: [],
+      failedAt: '2026-05-26T06:15:10.000Z',
+    };
+
+    await collectEvents(runRecoveryAnalyst({
+      harness: backend,
+      prdId: 'test-prd',
+      prdContent: '# My PRD\n\nDo a thing.',
+      summary: summaryWithFailingPlans,
+      cwd,
+    }));
+
+    const prompt = backend.prompts[0]!;
+    // Deterministic policy recommendation section must be present
+    expect(prompt).toContain('Deterministic policy recommendation:');
+    // Deterministic evidence/rationale must be included
+    expect(prompt).toMatch(/error_transient_transport|transient.*transport|retry/i);
+    // Each failed plan ID must be listed in the prompt
+    expect(prompt).toContain('plan-01-alpha');
+    expect(prompt).toContain('plan-02-beta');
+    // Language requiring every failed plan ID to be in the rationale
+    expect(prompt).toMatch(/every plan.*ID|all.*plan.*ID|must.*mention.*plan|plan.*ID.*rationale/i);
+    // Language requiring split successors to cover all failed/remaining plans
+    expect(prompt).toMatch(/split.*successor.*cover|successor.*PRD.*cover|split.*successor.*plan.*ID/i);
+  });
+
   it('parses retry verdict correctly', async () => {
     const retryOutput = `<recovery verdict="retry" confidence="high">
   <rationale>Network timeout — transient failure.</rationale>
@@ -2136,3 +2185,370 @@ describe('BuildFailureSummary schema: count fields reject negative and fractiona
     expect(safeParseEforgeEvent(event).success).toBe(false);
   });
 });
+
+// --- eforge:region plan-02-deterministic-recovery-verdicts ---
+// ---------------------------------------------------------------------------
+// EforgeEngine.recover() — deterministic verdict integration
+// Unit tests for determineRecoveryRecommendation / validateAnalystVerdict /
+// selectFinalVerdict live in test/recovery-recommendation.test.ts.
+// ---------------------------------------------------------------------------
+
+describe('EforgeEngine.recover() — deterministic verdict with all-transient failures', () => {
+  const makeTempDir = useTempDir('eforge-deterministic-verdict-test-');
+
+  function seedGitRepo(dir: string): void {
+    const gitOpts = { cwd: dir };
+    execFileSync('git', ['init', '-b', 'main'], gitOpts);
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], gitOpts);
+    execFileSync('git', ['config', 'user.name', 'Test'], gitOpts);
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'chore: initial commit'], gitOpts);
+  }
+
+  /**
+   * Seed monitor DB with only transient-transport failures, no completed/merged work.
+   * This is the scenario where the deterministic policy should produce 'retry'.
+   */
+  function seedAllTransientNoCompletionDb(dir: string): string {
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'monitor.db');
+    const db = openDatabase(dbPath);
+
+    db.insertRun({
+      id: 'run-deterministic-01',
+      sessionId: 'session-det-01',
+      planSet: 'deterministic-test-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date('2026-05-26T05:00:00.000Z').toISOString(),
+      cwd: dir,
+      pid: 55555,
+    });
+
+    // plan-01 fails with transient transport — no tool use
+    db.insertEvent({
+      runId: 'run-deterministic-01',
+      type: 'plan:status:change',
+      planId: 'plan-01',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-01', status: 'failed' }),
+      timestamp: new Date('2026-05-26T06:00:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-deterministic-01',
+      type: 'plan:build:failed',
+      planId: 'plan-01',
+      data: JSON.stringify({
+        type: 'plan:build:failed',
+        planId: 'plan-01',
+        error: 'API error 529: overloaded_error',
+        terminalSubtype: 'error_transient_transport',
+      }),
+      timestamp: new Date('2026-05-26T06:00:00.000Z').toISOString(),
+    });
+
+    db.close();
+    return dbPath;
+  }
+
+  /**
+   * Seed monitor DB with transient-transport failures PLUS some merged/completed plans.
+   * Deterministic policy should produce 'split'.
+   */
+  function seedTransientWithCompletionDb(dir: string): string {
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'monitor.db');
+    const db = openDatabase(dbPath);
+
+    db.insertRun({
+      id: 'run-det-split-01',
+      sessionId: 'session-det-split-01',
+      planSet: 'det-split-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date('2026-05-26T05:00:00.000Z').toISOString(),
+      cwd: dir,
+      pid: 66666,
+    });
+
+    // plan-01 merges successfully
+    db.insertEvent({
+      runId: 'run-det-split-01',
+      type: 'plan:status:change',
+      planId: 'plan-01',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-01', status: 'merged' }),
+      timestamp: new Date('2026-05-26T05:30:00.000Z').toISOString(),
+    });
+
+    // plan-02 fails with transient transport — no tool use
+    db.insertEvent({
+      runId: 'run-det-split-01',
+      type: 'plan:status:change',
+      planId: 'plan-02',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-02', status: 'failed' }),
+      timestamp: new Date('2026-05-26T06:15:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-det-split-01',
+      type: 'plan:build:failed',
+      planId: 'plan-02',
+      data: JSON.stringify({
+        type: 'plan:build:failed',
+        planId: 'plan-02',
+        error: 'API error 529: overloaded_error',
+        terminalSubtype: 'error_transient_transport',
+      }),
+      timestamp: new Date('2026-05-26T06:15:00.000Z').toISOString(),
+    });
+
+    db.close();
+    return dbPath;
+  }
+
+  it('produces retry verdict with recommendationSource=deterministic when analyst output is malformed and all failures are transient', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+
+    // Create the failed PRD
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'deterministic-test-prd.md'), '# Test PRD\n\nBuild something.', 'utf-8');
+
+    // Seed the DB (all transient, no completion)
+    seedAllTransientNoCompletionDb(dir);
+
+    // Stub returns garbage — forces deterministic fallback
+    const stub = new StubHarness([{ text: 'This cannot be parsed as a recovery verdict.' }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.recover('deterministic-test-set', 'deterministic-test-prd')) {
+      events.push(event);
+    }
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    // Deterministic policy: all-transient + no completion → retry
+    expect(sidecarContent.verdict.verdict).toBe('retry');
+    // recommendationSource must record that this came from deterministic policy
+    expect(sidecarContent.verdict.recommendationSource).toBe('deterministic');
+    // rationale should reference deterministic evidence
+    expect(typeof sidecarContent.verdict.rationale).toBe('string');
+    expect(sidecarContent.verdict.rationale.length).toBeGreaterThan(0);
+  });
+
+  it('produces deterministic retry verdict with recoveryError when analyst throws during recovery', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'thrown-analyst-prd.md'), '# Test PRD\n\nBuild something.', 'utf-8');
+
+    // Seed DB: all transient, no completion (deterministic → retry)
+    seedAllTransientNoCompletionDb(dir);
+
+    // Stub throws an error to simulate analyst agent crash
+    const thrownError = new Error('Simulated analyst agent crash: connection reset');
+    const stub = new StubHarness([{ error: thrownError }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.recover('deterministic-test-set', 'thrown-analyst-prd')) {
+      events.push(event);
+    }
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    // Deterministic policy applies: all-transient, no completion → retry
+    expect(sidecarContent.verdict.verdict).toBe('retry');
+    // Source must be deterministic (not analyst, since analyst threw)
+    expect(sidecarContent.verdict.recommendationSource).toBe('deterministic');
+    // recoveryError must record the analyst failure
+    expect(typeof sidecarContent.verdict.recoveryError).toBe('string');
+    expect(sidecarContent.verdict.recoveryError.length).toBeGreaterThan(0);
+  });
+
+  it('produces split verdict with recommendationSource=deterministic when some plans completed before transient failures', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'det-split-prd.md'), '# Test PRD\n\nBuild something.', 'utf-8');
+
+    // Seed the DB (merged plan-01, failed plan-02 transient)
+    seedTransientWithCompletionDb(dir);
+
+    // Stub returns garbage — forces deterministic fallback
+    const stub = new StubHarness([{ text: 'No recovery verdict here.' }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.recover('det-split-set', 'det-split-prd')) {
+      events.push(event);
+    }
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    // Deterministic policy: transient + some completion → split
+    expect(sidecarContent.verdict.verdict).toBe('split');
+    expect(sidecarContent.verdict.recommendationSource).toBe('deterministic');
+  });
+
+  it('sidecar JSON records recommendationSource for analyst-validated path', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'analyst-validated-prd.md'), '# Test PRD\n\nBuild something.', 'utf-8');
+
+    // Seed the DB (all transient, no completion)
+    seedAllTransientNoCompletionDb(dir);
+
+    // Stub returns a valid analyst verdict that covers the one failed plan
+    const validAnalystOutput = `Based on my analysis:
+
+<recovery verdict="retry" confidence="high">
+  <rationale>plan-01 failed due to API error 529: overloaded_error — a transient transport failure. No tool calls were executed.</rationale>
+  <completedWork></completedWork>
+  <remainingWork><item>plan-01 needs retry</item></remainingWork>
+  <risks><item>API may be temporarily overloaded</item></risks>
+</recovery>`;
+
+    const stub = new StubHarness([{ text: validAnalystOutput }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.recover('deterministic-test-set', 'analyst-validated-prd')) {
+      events.push(event);
+    }
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    expect(sidecarContent.verdict.verdict).toBe('retry');
+    // Analyst verdict passed validation → recommendationSource should be 'analyst'
+    expect(sidecarContent.verdict.recommendationSource).toBe('analyst');
+    // No invalidation reason should be recorded
+    expect(sidecarContent.verdict.verdictInvalidationReason).toBeUndefined();
+  });
+
+  it('sidecar Markdown displays verdict source when present', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'md-source-test-prd.md'), '# Test PRD\n\nBuild something.', 'utf-8');
+
+    // Seed the DB (all transient, no completion)
+    seedAllTransientNoCompletionDb(dir);
+
+    // Stub returns garbage — forces deterministic fallback
+    const stub = new StubHarness([{ text: 'Not a valid verdict.' }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.recover('deterministic-test-set', 'md-source-test-prd')) {
+      events.push(event);
+    }
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarMdPath).toBeDefined();
+
+    const md = await readFile(complete!.sidecarMdPath!, 'utf-8');
+    // The Markdown must display the verdict source label with exact text
+    expect(md).toContain('**Verdict Source:** deterministic');
+    // The Markdown must also render the deterministic rationale with its label and evidence
+    expect(md).toContain('**Deterministic Rationale:**');
+    expect(md).toMatch(/error_transient_transport|zero tool use/i);
+  });
+
+  it('sidecar JSON records verdictInvalidationReason when analyst verdict fails invariant check', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+
+    // Seed DB with two failed plans (plan-01 and plan-02, both transient)
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'monitor.db');
+    const db = openDatabase(dbPath);
+
+    db.insertRun({
+      id: 'run-invalidation-01',
+      sessionId: 'session-inv-01',
+      planSet: 'invalidation-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date('2026-05-26T05:00:00.000Z').toISOString(),
+      cwd: dir,
+      pid: 77777,
+    });
+    for (const planId of ['plan-01-alpha', 'plan-02-beta']) {
+      db.insertEvent({
+        runId: 'run-invalidation-01',
+        type: 'plan:status:change',
+        planId,
+        data: JSON.stringify({ type: 'plan:status:change', planId, status: 'failed' }),
+        timestamp: new Date('2026-05-26T06:15:00.000Z').toISOString(),
+      });
+      db.insertEvent({
+        runId: 'run-invalidation-01',
+        type: 'plan:build:failed',
+        planId,
+        data: JSON.stringify({
+          type: 'plan:build:failed',
+          planId,
+          error: 'API error 529: overloaded_error',
+          terminalSubtype: 'error_transient_transport',
+        }),
+        timestamp: new Date('2026-05-26T06:15:00.000Z').toISOString(),
+      });
+    }
+    db.close();
+
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'invalidation-prd.md'), '# Test PRD\n\nBuild something.', 'utf-8');
+
+    // Analyst only mentions plan-02-beta, omitting plan-01-alpha
+    const incompleteAnalystOutput = `<recovery verdict="retry" confidence="high">
+  <rationale>plan-02-beta failed due to API error 529 transient error. No tool calls were made.</rationale>
+  <completedWork></completedWork>
+  <remainingWork><item>plan-02-beta needs retry</item></remainingWork>
+  <risks></risks>
+</recovery>`;
+
+    const stub = new StubHarness([{ text: incompleteAnalystOutput }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.recover('invalidation-set', 'invalidation-prd')) {
+      events.push(event);
+    }
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    // verdictInvalidationReason should record why the analyst verdict was rejected
+    expect(sidecarContent.verdict.verdictInvalidationReason).toBeTruthy();
+    expect(String(sidecarContent.verdict.verdictInvalidationReason)).toMatch(/plan-01-alpha/i);
+  });
+});
+// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
