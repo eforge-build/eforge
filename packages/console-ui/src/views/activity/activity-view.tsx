@@ -7,13 +7,15 @@
  * Rendering regions:
  *   1. Header — route title, total count, visible count, last-event timestamp.
  *   2. State panels — connecting, disconnected-error, disconnected-with-data.
- *   3. Toolbar — family chips, attention toggle, text search inputs.
- *   4. Event list — newest-first rows with raw JSON disclosure.
+ *   3. Toolbar — family chips, single search input.
+ *   4. Event list — newest-first clickable rows.
+ *   5. Raw event panel — slide-over showing JSON for the selected row.
  */
 import * as React from 'react';
 import { useState } from 'react';
 import { ActivityToolbar } from './activity-toolbar';
 import { ActivityEventList } from './activity-event-list';
+import { RawEventPanel } from './raw-event-panel';
 import {
   selectActivityRows,
   filterActivityRows,
@@ -45,6 +47,7 @@ export interface ActivityAuditViewProps {
 
 export function ActivityAuditView({ projectState, now }: ActivityAuditViewProps) {
   const [filters, setFilters] = useState<ActivityFilterState>(defaultActivityFilters);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   const effectiveNow = now ?? Date.now();
   const rows = selectActivityRows(projectState.recentActivity, effectiveNow);
@@ -59,6 +62,12 @@ export function ActivityAuditView({ projectState, now }: ActivityAuditViewProps)
 
   const handleResetFilters = () => setFilters(defaultActivityFilters);
 
+  const handleRowSelect = (id: string) => {
+    setSelectedEventId((prev) => (prev === id ? null : id));
+  };
+
+  const selectedRow = rows.find((r) => r.id === selectedEventId) ?? null;
+
   return (
     <div className="flex flex-col gap-4 h-full">
       {/* Header */}
@@ -72,7 +81,7 @@ export function ActivityAuditView({ projectState, now }: ActivityAuditViewProps)
             {visibleRows.length} visible
           </span>
         )}
-        <span className="ml-auto text-[10px] text-muted-foreground">
+        <span className="ml-auto text-xs text-muted-foreground">
           daemon stream backed
         </span>
       </div>
@@ -121,10 +130,19 @@ export function ActivityAuditView({ projectState, now }: ActivityAuditViewProps)
               rows={visibleRows}
               sourceCount={rows.length}
               onResetFilters={handleResetFilters}
+              selectedRowId={selectedEventId}
+              onRowSelect={handleRowSelect}
             />
           </div>
         </>
       )}
+
+      {/* Raw event panel (slide-over) */}
+      <RawEventPanel
+        row={selectedRow}
+        open={selectedEventId !== null}
+        onClose={() => setSelectedEventId(null)}
+      />
     </div>
   );
 }

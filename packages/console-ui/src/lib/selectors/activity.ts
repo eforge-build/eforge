@@ -28,16 +28,13 @@ export type ActivityFamily =
 
 export interface ActivityFilterState {
   family: ActivityFamily;
-  attentionOnly: boolean;
-  typeQuery: string;
-  identifierQuery: string;
+  /** Single query string searched against event type and identifier values. */
+  query: string;
 }
 
 export const defaultActivityFilters: ActivityFilterState = {
   family: 'all',
-  attentionOnly: false,
-  typeQuery: '',
-  identifierQuery: '',
+  query: '',
 };
 
 export interface ActivityEventRowModel {
@@ -307,6 +304,9 @@ export function selectActivityRows(
 /**
  * Apply client-side filters to a set of activity rows.
  * Returns a new array containing only rows that pass all active filters.
+ *
+ * The `query` field is searched against both the event type and identifier
+ * values (display labels and raw slugs). A row is included if either matches.
  */
 export function filterActivityRows(
   rows: ActivityEventRowModel[],
@@ -314,20 +314,17 @@ export function filterActivityRows(
 ): ActivityEventRowModel[] {
   return rows.filter((row) => {
     if (filters.family !== 'all' && row.family !== filters.family) return false;
-    if (filters.attentionOnly && !row.attention) return false;
-    if (filters.typeQuery) {
-      const q = filters.typeQuery.toLowerCase();
-      if (!row.eventType.toLowerCase().includes(q)) return false;
-    }
-    if (filters.identifierQuery) {
-      const q = filters.identifierQuery.toLowerCase();
+    if (filters.query) {
+      const q = filters.query.toLowerCase();
+      if (row.eventType.toLowerCase().includes(q)) return true;
       // Include both normalized display values and raw slugs so that users can
       // search by either the human-readable label or the original identifier.
       const searchable = row.identifiers
         .flatMap((i) => (i.rawValue ? [i.value, i.rawValue] : [i.value]))
         .join(' ')
         .toLowerCase();
-      if (!searchable.includes(q)) return false;
+      if (searchable.includes(q)) return true;
+      return false;
     }
     return true;
   });

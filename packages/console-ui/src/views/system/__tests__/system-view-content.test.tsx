@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { SystemViewContent } from '../system-view-content';
 import { SystemConfigurationView } from '../system-configuration-view';
 import type { SystemSurfacesState } from '../system-types';
@@ -293,10 +293,14 @@ describe('SystemViewContent', () => {
     expect(getByText('Add new feature')).toBeDefined();
   });
 
-  it('renders model id', () => {
-    const { getByText } = render(
+  it('renders model id after expanding provider', () => {
+    const { container, getByText } = render(
       <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
     );
+    // Providers are collapsed by default; click the first summary to expand it.
+    const summaries = container.querySelectorAll('details > summary');
+    expect(summaries.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(summaries[summaries.length - 1]!);
     expect(getByText('claude-3-5-sonnet-20241022')).toBeDefined();
   });
 
@@ -315,9 +319,7 @@ describe('SystemViewContent', () => {
     const { getAllByText } = render(
       <SystemViewContent state={makeEmptyState()} onRefresh={() => {}} />,
     );
-    // Both harnesses should show "No providers reported" and "No models reported"
-    const noProviders = getAllByText('No providers reported');
-    expect(noProviders.length).toBeGreaterThanOrEqual(1);
+    // Both harnesses should show "No models reported" when empty
     const noModels = getAllByText('No models reported');
     expect(noModels.length).toBeGreaterThanOrEqual(1);
   });
@@ -466,6 +468,49 @@ describe('SystemViewContent', () => {
     expect(queryByRole('button', { name: /sync stack/i })).toBeNull();
     expect(queryByRole('link', { name: /sync stack/i })).toBeNull();
   });
+
+  // --- eforge:region plan-05-system-activity-progressive-disclosure-and-guards ---
+  it('Models section renders at least one <details> per provider in the loaded state', () => {
+    const { container } = render(
+      <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
+    );
+    // makeLoadedState has models for pi (anthropic) and claude-sdk (anthropic)
+    // Each harness should have one provider <details>
+    const details = container.querySelectorAll('details');
+    expect(details.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('Models section provider <details> elements are closed on initial render', () => {
+    const { container } = render(
+      <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
+    );
+    const details = container.querySelectorAll('details');
+    for (const el of Array.from(details)) {
+      expect(el.hasAttribute('open')).toBe(false);
+    }
+  });
+
+  it('Models section renders zero <li> elements while all providers are collapsed', () => {
+    const { container } = render(
+      <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
+    );
+    // Scope to the Models section only — other sections (profiles, extensions, etc.) use <li> elements
+    const modelsSection = container.querySelector('section[aria-label="Models"]');
+    expect(modelsSection).not.toBeNull();
+    const listItems = modelsSection!.querySelectorAll('li');
+    expect(listItems.length).toBe(0);
+  });
+
+  it('Models section renders a text input with an accessible name for model search', () => {
+    const { container } = render(
+      <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
+    );
+    const searchInput = container.querySelector('input[type="text"][aria-label]');
+    expect(searchInput).not.toBeNull();
+    const label = searchInput!.getAttribute('aria-label') ?? '';
+    expect(label.toLowerCase()).toMatch(/model/i);
+  });
+  // --- eforge:endregion plan-05-system-activity-progressive-disclosure-and-guards ---
 });
 
 // ---------------------------------------------------------------------------

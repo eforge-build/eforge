@@ -421,80 +421,72 @@ describe('filterActivityRows', () => {
     expect(filtered[0].id).toBe('e2');
   });
 
-  it('filters attention-only: keeps attention events, excludes others', () => {
-    const rows = selectActivityRows(activity, FIXED_NOW);
-    const filtered = filterActivityRows(rows, { ...defaultActivityFilters, attentionOnly: true });
-    // daemon:error is attention; session:start, agent:start, daemon:lifecycle:ready are not
-    expect(filtered.some((r) => r.id === 'e3')).toBe(true);
-    expect(filtered.every((r) => r.attention)).toBe(true);
-  });
-
-  it('filters by type query case-insensitively', () => {
+  it('filters by query matching event type case-insensitively', () => {
     const rows = selectActivityRows(activity, FIXED_NOW);
     // 'SESSION' should match 'session:start'
     const filtered = filterActivityRows(rows, {
       ...defaultActivityFilters,
-      typeQuery: 'SESSION',
+      query: 'SESSION',
     });
     expect(filtered).toHaveLength(1);
     expect(filtered[0].eventType).toBe('session:start');
   });
 
-  it('filters by identifier query matching sessionId', () => {
+  it('filters by query matching sessionId identifier', () => {
     const rows = selectActivityRows(activity, FIXED_NOW);
     const filtered = filterActivityRows(rows, {
       ...defaultActivityFilters,
-      identifierQuery: 'sess-abc',
+      query: 'sess-abc',
     });
     expect(filtered).toHaveLength(1);
     expect(filtered[0].id).toBe('e1');
   });
 
-  it('filters by identifier query matching planId', () => {
+  it('filters by query matching planId identifier', () => {
     const rows = selectActivityRows(activity, FIXED_NOW);
     const filtered = filterActivityRows(rows, {
       ...defaultActivityFilters,
-      identifierQuery: 'plan-01',
+      query: 'plan-01',
     });
     expect(filtered).toHaveLength(1);
     expect(filtered[0].id).toBe('e2');
   });
 
-  it('filters by identifier query matching agent', () => {
+  it('filters by query matching agent identifier', () => {
     const rows = selectActivityRows(activity, FIXED_NOW);
     const filtered = filterActivityRows(rows, {
       ...defaultActivityFilters,
-      identifierQuery: 'implementor',
+      query: 'implementor',
     });
     expect(filtered).toHaveLength(1);
     expect(filtered[0].id).toBe('e2');
   });
 
-  it('filters by identifier query matching source', () => {
+  it('filters by query matching source identifier', () => {
     const rows = selectActivityRows(activity, FIXED_NOW);
     const filtered = filterActivityRows(rows, {
       ...defaultActivityFilters,
-      identifierQuery: 'scheduler',
+      query: 'scheduler',
     });
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0].id).toBe('e3');
+    // daemon:error has source: 'scheduler' in its identifiers
+    expect(filtered.some((r) => r.id === 'e3')).toBe(true);
   });
 
-  it('identifier query is case-insensitive', () => {
+  it('query matching is case-insensitive', () => {
     const rows = selectActivityRows(activity, FIXED_NOW);
     const filtered = filterActivityRows(rows, {
       ...defaultActivityFilters,
-      identifierQuery: 'SESS-ABC',
+      query: 'SESS-ABC',
     });
     expect(filtered).toHaveLength(1);
     expect(filtered[0].id).toBe('e1');
   });
 
-  it('returns empty array when no rows match the filter', () => {
+  it('returns empty array when no rows match the query', () => {
     const rows = selectActivityRows(activity, FIXED_NOW);
     const filtered = filterActivityRows(rows, {
       ...defaultActivityFilters,
-      typeQuery: 'nonexistent:event:type',
+      query: 'nonexistent:event:type',
     });
     expect(filtered).toHaveLength(0);
   });

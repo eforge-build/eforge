@@ -13,9 +13,19 @@ interface ActivityEventListProps {
   sourceCount: number;
   /** Called when the user clicks the reset-filters button. */
   onResetFilters: () => void;
+  /** The id of the currently selected row, or null if none selected. */
+  selectedRowId: string | null;
+  /** Called when the user clicks a row to select it. */
+  onRowSelect: (id: string) => void;
 }
 
-export function ActivityEventList({ rows, sourceCount, onResetFilters }: ActivityEventListProps) {
+export function ActivityEventList({
+  rows,
+  sourceCount,
+  onResetFilters,
+  selectedRowId,
+  onRowSelect,
+}: ActivityEventListProps) {
   if (sourceCount === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -42,7 +52,12 @@ export function ActivityEventList({ rows, sourceCount, onResetFilters }: Activit
   return (
     <div className="flex flex-col gap-1.5">
       {rows.map((row) => (
-        <ActivityEventRow key={row.id} row={row} />
+        <ActivityEventRow
+          key={row.id}
+          row={row}
+          isSelected={row.id === selectedRowId}
+          onSelect={onRowSelect}
+        />
       ))}
     </div>
   );
