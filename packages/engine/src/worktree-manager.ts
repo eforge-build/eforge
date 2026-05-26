@@ -31,8 +31,14 @@ import {
   // --- eforge:region plan-01-core-engine-auto-merge ---
   enablePullRequestAutoMerge,
   // --- eforge:endregion plan-01-core-engine-auto-merge ---
+  // --- eforge:region plan-01-pr-metadata ---
+  editPullRequest as editPullRequestOp,
+  // --- eforge:endregion plan-01-pr-metadata ---
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 } from './worktree-ops.js';
+// --- eforge:region plan-01-pr-metadata ---
+import type { PullRequestMetadata } from './pr-metadata.js';
+// --- eforge:endregion plan-01-pr-metadata ---
 import type { ModelTracker } from './model-tracker.js';
 import { composeCommitMessage } from './model-tracker.js';
 import type { EforgeEvent, EforgeState, ReconciliationReport } from './events.js';
@@ -346,28 +352,48 @@ export class WorktreeManager {
    * Create a pull request for the feature branch targeting baseBranch.
    * Pushes `featureBranch` first, then runs `gh pr create --base baseBranch --head featureBranch`.
    * Detects an already-existing PR and returns its URL instead of throwing.
+   * When metadata is provided and an existing PR is found, attempts a best-effort
+   * `gh pr edit` to apply deterministic title/body before returning the URL.
    * Returns `{ url }` on success or throws on any other failure.
    *
    * @param opts.baseBranch - The PR target (base) branch.
+   * @param opts.metadata   - Optional deterministic PR title/body (no raw commit trailers).
    */
   async issuePr(opts: {
     baseBranch: string;
+    // --- eforge:region plan-01-pr-metadata ---
+    metadata?: PullRequestMetadata;
+    // --- eforge:endregion plan-01-pr-metadata ---
   }): Promise<{ url: string }> {
     await ensureGhAvailable(this.mergeWorktreePath);
 
     // Direct PR workflow: push featureBranch, open PR featureBranch -> baseBranch
     await pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch);
     try {
+      // --- eforge:region plan-01-pr-metadata ---
+      const metadata = opts.metadata ?? { title: this.featureBranch, body: '' };
       return await createPullRequestOp(this.mergeWorktreePath, {
         baseBranch: opts.baseBranch,
         featureBranch: this.featureBranch,
+        metadata,
       });
+      // --- eforge:endregion plan-01-pr-metadata ---
     } catch (err) {
       // PR may already exist — retrieve its URL
       const existing = await getExistingPullRequestUrl(this.mergeWorktreePath, this.featureBranch, {
         baseBranch: opts.baseBranch,
       });
       if (existing) {
+        // --- eforge:region plan-01-pr-metadata ---
+        // Best-effort metadata repair on the existing PR.
+        if (opts.metadata) {
+          try {
+            await editPullRequestOp(this.mergeWorktreePath, existing, opts.metadata);
+          } catch {
+            // Non-fatal: preserve existing URL even when metadata edit fails.
+          }
+        }
+        // --- eforge:endregion plan-01-pr-metadata ---
         return { url: existing };
       }
       throw err;

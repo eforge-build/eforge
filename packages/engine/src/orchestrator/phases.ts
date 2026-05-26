@@ -22,6 +22,9 @@ import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
 // --- eforge:region plan-01-engine-config-and-landing ---
 import { executeLandingAction, type LandingResult } from '../landing.js';
 // --- eforge:endregion plan-01-engine-config-and-landing ---
+// --- eforge:region plan-01-pr-metadata ---
+import { renderPullRequestMetadata } from '../pr-metadata.js';
+// --- eforge:endregion plan-01-pr-metadata ---
 // --- eforge:region plan-03-branch-aware-landing ---
 import type { EforgeConfig, LandingConfig } from '../config.js';
 // --- eforge:endregion plan-03-branch-aware-landing ---
@@ -1133,6 +1136,14 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     prAutoMergePolicy: ctx.prAutoMergePolicy,
     landingAutoMerge: ctx.landingAutoMerge,
     // --- eforge:endregion plan-01-core-engine-auto-merge ---
+    // --- eforge:region plan-01-pr-metadata ---
+    metadata: renderPullRequestMetadata({
+      config: ctx.config,
+      featureBranch: ctx.stackContext.branch,
+      baseBranch: ctx.stackContext.baseBranch ?? ctx.config.baseBranch,
+      modelTracker: ctx.modelTracker,
+    }),
+    // --- eforge:endregion plan-01-pr-metadata ---
   })) {
     if (event.type === 'stack:landing:update' && effectiveLandingAction === 'pr') {
       if (event.status === 'complete') {
