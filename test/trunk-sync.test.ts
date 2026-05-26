@@ -61,6 +61,12 @@ async function setupRepoWithRemote(baseDir: string): Promise<{ remoteDir: string
   await exec('git', ['commit', '-m', 'initial commit'], { cwd: repoRoot });
   await exec('git', ['branch', '-M', 'main'], { cwd: repoRoot });
   await exec('git', ['push', 'origin', 'main'], { cwd: repoRoot });
+  // Keep the bare remote's default branch aligned with the test trunk.
+  // Some CI images still initialize bare repositories with HEAD pointing at
+  // `master`; subsequent clones would then start from an unborn non-main
+  // branch and `git push origin main` would fail with "src refspec main does
+  // not match any".
+  await exec('git', ['symbolic-ref', 'HEAD', 'refs/heads/main'], { cwd: remoteDir });
 
   return { remoteDir, repoRoot };
 }
