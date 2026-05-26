@@ -51,6 +51,17 @@ export const AGENT_TIERS = ['planning', 'implementation', 'review', 'evaluation'
 export type AgentTier = (typeof AGENT_TIERS)[number];
 export const agentTierSchema = z.enum(AGENT_TIERS).describe('Agent tier for grouping roles by workload type');
 
+/** Built-in global fallback when neither a role nor its tier sets maxTurns. */
+export const DEFAULT_AGENT_MAX_TURNS = 50;
+
+/** Built-in max-turn defaults for each agent tier. */
+export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
+  planning: 80,
+  implementation: 80,
+  review: 60,
+  evaluation: DEFAULT_AGENT_MAX_TURNS,
+});
+
 const toolPresetConfigSchema = z.enum(['coding', 'read-only', 'none']);
 
 // ---------------------------------------------------------------------------
@@ -827,22 +838,25 @@ const DEFAULT_TIER_RECIPES: Partial<Record<AgentTier, TierConfig>> = Object.free
     harness: 'claude-sdk' as const,
     model: 'claude-opus-4-7',
     effort: 'high' as const,
+    maxTurns: DEFAULT_TIER_MAX_TURNS.planning,
   }),
   implementation: Object.freeze({
     harness: 'claude-sdk' as const,
     model: 'claude-sonnet-4-6',
     effort: 'medium' as const,
-    maxTurns: 80,
+    maxTurns: DEFAULT_TIER_MAX_TURNS.implementation,
   }),
   review: Object.freeze({
     harness: 'claude-sdk' as const,
     model: 'claude-opus-4-7',
     effort: 'high' as const,
+    maxTurns: DEFAULT_TIER_MAX_TURNS.review,
   }),
   evaluation: Object.freeze({
     harness: 'claude-sdk' as const,
     model: 'claude-opus-4-7',
     effort: 'high' as const,
+    maxTurns: DEFAULT_TIER_MAX_TURNS.evaluation,
   }),
 }) as Partial<Record<AgentTier, TierConfig>>;
 
@@ -850,7 +864,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   maxConcurrentBuilds: 2,
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({
-    maxTurns: 30,
+    maxTurns: DEFAULT_AGENT_MAX_TURNS,
     maxContinuations: 3,
     permissionMode: 'bypass' as const,
     settingSources: ['project'] as string[],

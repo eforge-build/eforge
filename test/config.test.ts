@@ -23,6 +23,7 @@ import {
   sanitizeProfileName,
   parseRawConfigLegacy,
   tierConfigSchema,
+  DEFAULT_TIER_MAX_TURNS,
 } from '@eforge-build/engine/config';
 import { pickSdkOptions } from '@eforge-build/engine/harness';
 import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
@@ -73,7 +74,7 @@ describe('resolveConfig', () => {
       {},
     );
 
-    expect(config.agents.tiers.implementation?.maxTurns).toBe(80);
+    expect(config.agents.tiers.implementation?.maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
   });
 
   it('lets profile tiers override default tier fields explicitly', () => {

@@ -267,7 +267,7 @@ describe('resolveAgentConfig for builder', () => {
 // --- resolveAgentConfig for planner is 80 ---
 
 describe('resolveAgentConfig for planner', () => {
-  it('returns maxTurns of 80 (built-in role default matches builder)', () => {
+  it('returns maxTurns of 80 from the planning tier default', () => {
     const result = resolveAgentConfig('planner', DEFAULT_CONFIG);
     expect(result.maxTurns).toBe(80);
   });

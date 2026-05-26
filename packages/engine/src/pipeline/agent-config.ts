@@ -7,7 +7,7 @@
  * picks a tier; the tier carries everything else.
  *
  * `resolveAgentConfig` is a 6-step algorithm:
- *   1. Determine tier name (role default → role override → plan override)
+ *   1. Determine tier name (built-in role tier → user role override → plan override)
  *   2. Take the tier recipe from config
  *   3. Apply role-level field overrides
  *   4. Apply plan-level field overrides
@@ -56,18 +56,6 @@ export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
   'architecture-evaluator': 'evaluation',
   'cohesion-evaluator': 'evaluation',
   'plan-evaluator': 'evaluation',
-};
-
-/** Per-role default maxTurns for agents that have a non-default budget. */
-export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, { maxTurns?: number }>> = {
-  planner: { maxTurns: 80 },
-  tester: { maxTurns: 40 },
-  reviewer: { maxTurns: 60 },
-  'module-planner': { maxTurns: 20 },
-  'doc-author': { maxTurns: 20 },
-  'doc-syncer': { maxTurns: 20 },
-  'test-writer': { maxTurns: 30 },
-  'gap-closer': { maxTurns: 20 },
 };
 
 /** Per-role default maxContinuations for agents that support continuation loops. */
@@ -138,7 +126,7 @@ function coerceThinking(raw: unknown): ThinkingConfig | undefined {
  * Resolve agent config for a given role.
  *
  * Six-step algorithm:
- *   1. Determine tier name (role default → role override → plan override)
+ *   1. Determine tier name (built-in role tier → user role override → plan override)
  *   2. Take tier recipe from config
  *   3. Apply role-level field overrides
  *   4. Apply plan-level field overrides
@@ -211,12 +199,10 @@ export function resolveAgentConfig(
     thinkingSource = 'role';
   }
 
-  // Resolve maxTurns: plan > role > builtin-role > tier > global
-  const builtinRoleMaxTurns = AGENT_ROLE_DEFAULTS[role]?.maxTurns;
+  // Resolve maxTurns: plan > user role override > tier > global.
   const maxTurns =
     planOverride.maxTurns
     ?? roleOverride.maxTurns
-    ?? builtinRoleMaxTurns
     ?? tierRecipe.maxTurns
     ?? config.agents.maxTurns;
 

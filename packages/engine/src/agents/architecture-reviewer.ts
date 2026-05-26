@@ -13,6 +13,7 @@ import {
 import { safeParseWithSchema } from '@eforge-build/client';
 import { applyArchitectureReviewFixes } from '../plan.js';
 import { formatSubmissionValidationError } from './planner.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 /**
  * Options for the architecture reviewer agent.
@@ -34,6 +35,8 @@ export interface ArchitectureReviewerOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Plan output directory (defaults to 'eforge/plans'). */
   outputDir?: string;
+  /** Override max conversation turns (default: review tier default). */
+  maxTurns?: number;
 }
 
 /**
@@ -111,7 +114,7 @@ export async function* runArchitectureReview(
     {
       prompt,
       cwd,
-      maxTurns: 30,
+      maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review,
       tools: 'coding',
       abortSignal: abortController?.signal,
       customTools,

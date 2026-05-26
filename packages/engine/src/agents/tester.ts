@@ -3,6 +3,7 @@ import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type TestIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getTestIssueSchemaYaml } from '../schemas.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { parseTestIssues } from './common.js';
 
 export interface TestWriterOptions extends SdkPassthroughConfig {
@@ -73,7 +74,7 @@ export async function* runTestWriter(
       {
         prompt,
         cwd: options.cwd,
-        maxTurns: options.maxTurns ?? 30,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
         ...pickSdkOptions(options),
@@ -137,7 +138,7 @@ export async function* runTester(
       {
         prompt,
         cwd: options.cwd,
-        maxTurns: options.maxTurns ?? 40,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
         ...pickSdkOptions(options),

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveAgentConfig } from '@eforge-build/engine/pipeline';
-import { resolveConfig, DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { resolveConfig, DEFAULT_CONFIG, DEFAULT_TIER_MAX_TURNS } from '@eforge-build/engine/config';
 
 // ---------------------------------------------------------------------------
 // resolveAgentConfig — tier recipes drive harness, model, effort
@@ -19,7 +19,7 @@ describe('resolveAgentConfig with tier recipes', () => {
     const builder = resolveAgentConfig('builder', config);
     expect(builder.harness).toBe('claude-sdk');
     expect(builder.model.id).toBe('claude-sonnet-4-6');
-    expect(builder.maxTurns).toBe(80);
+    expect(builder.maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
   });
 
   it('DEFAULT_CONFIG resolves every role to claude-sdk via tier recipes', () => {
@@ -98,23 +98,30 @@ describe('resolveAgentConfig provider splice', () => {
 // maxTurns resolution — implementation tier default propagation
 // ---------------------------------------------------------------------------
 
-describe('resolveAgentConfig maxTurns — implementation tier budget', () => {
-  it('resolveAgentConfig("review-fixer", DEFAULT_CONFIG).maxTurns equals 80', () => {
-    const result = resolveAgentConfig('review-fixer', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(80);
+describe('resolveAgentConfig maxTurns — tier budgets', () => {
+  it('uses the planning tier maxTurns for planner roles', () => {
+    const result = resolveAgentConfig('planner', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.planning);
   });
 
-  it('resolveAgentConfig("validation-fixer", DEFAULT_CONFIG).maxTurns equals 80', () => {
-    const result = resolveAgentConfig('validation-fixer', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(80);
+  it('uses the implementation tier maxTurns for implementation roles', () => {
+    expect(resolveAgentConfig('review-fixer', DEFAULT_CONFIG).maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
+    expect(resolveAgentConfig('validation-fixer', DEFAULT_CONFIG).maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
+    expect(resolveAgentConfig('builder', DEFAULT_CONFIG).maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
+    expect(resolveAgentConfig('doc-author', DEFAULT_CONFIG).maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
   });
 
-  it('resolveAgentConfig("builder", DEFAULT_CONFIG).maxTurns equals 80', () => {
-    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(80);
+  it('uses the review tier maxTurns for reviewer roles', () => {
+    const result = resolveAgentConfig('reviewer', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.review);
   });
 
-  it('custom agents.tiers.implementation preserves the default 80 maxTurns when omitted', () => {
+  it('uses the evaluation tier maxTurns for evaluator roles', () => {
+    const result = resolveAgentConfig('evaluator', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.evaluation);
+  });
+
+  it('custom agents.tiers.implementation preserves the default implementation maxTurns when omitted', () => {
     const config = resolveConfig({
       agents: {
         tiers: {
@@ -125,9 +132,9 @@ describe('resolveAgentConfig maxTurns — implementation tier budget', () => {
         },
       },
     });
-    expect(resolveAgentConfig('review-fixer', config).maxTurns).toBe(80);
-    expect(resolveAgentConfig('validation-fixer', config).maxTurns).toBe(80);
-    expect(resolveAgentConfig('builder', config).maxTurns).toBe(80);
+    expect(resolveAgentConfig('review-fixer', config).maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
+    expect(resolveAgentConfig('validation-fixer', config).maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
+    expect(resolveAgentConfig('builder', config).maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
   });
 
   it('custom agents.tiers.implementation.maxTurns overrides the 80 default for review-fixer', () => {

@@ -263,7 +263,7 @@ const effortLevelForTuningSchema = Type.Union(
   ['low', 'medium', 'high', 'xhigh', 'max'].map(v => Type.Literal(v)),
   {
     description:
-      'Effort level for thinking depth. Set xhigh only for modules with significant ambiguity, novel API design, or large refactors. Omit to use the role default.',
+      'Effort level for thinking depth. Set xhigh only for modules with significant ambiguity, novel API design, or large refactors. Omit to use the resolved tier default.',
   },
 );
 

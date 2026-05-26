@@ -2,6 +2,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ClarificationQuestion } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
 
 export interface ModulePlannerOptions extends SdkPassthroughConfig {
@@ -18,7 +19,7 @@ export interface ModulePlannerOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   abortController?: AbortController;
-  /** Override max conversation turns (default: 20) */
+  /** Override max conversation turns (default: planning tier default) */
   maxTurns?: number;
   /** Plan output directory (defaults to 'eforge/plans'). */
   outputDir?: string;
@@ -48,7 +49,7 @@ export async function* runModulePlanner(
   }, options.promptAppend);
 
   for await (const event of options.harness.run(
-    { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 20, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
+    { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
     'module-planner',
   )) {
     // Always yield agent:result + tool events for tracing; gate streaming text on verbose

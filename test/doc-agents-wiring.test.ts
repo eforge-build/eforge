@@ -13,7 +13,7 @@ import {
 } from '@eforge-build/engine/pipeline';
 import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
-import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
+import { DEFAULT_CONFIG, DEFAULT_REVIEW, DEFAULT_TIER_MAX_TURNS } from '@eforge-build/engine/config';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import type { EforgeEvent, PlanFile, OrchestrationConfig } from '@eforge-build/engine/events';
 import type { AgentHarness } from '@eforge-build/engine/harness';
@@ -65,7 +65,7 @@ describe('runDocAuthor wiring', () => {
     expect(prompt).toContain('Some plan body here');
   });
 
-  it('backend options include tools: coding and maxTurns: 20', async () => {
+  it('backend options include tools: coding and implementation tier maxTurns', async () => {
     const backend = new StubHarness([{ text: '' }]);
 
     await collectEvents(runDocAuthor({
@@ -77,7 +77,7 @@ describe('runDocAuthor wiring', () => {
 
     expect(backend.calls).toHaveLength(1);
     expect(backend.calls[0].tools).toBe('coding');
-    expect(backend.calls[0].maxTurns).toBe(20);
+    expect(backend.calls[0].maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
   });
 
   it('parses docsAuthored count from XML summary', async () => {
@@ -283,7 +283,7 @@ describe('runDocSyncer wiring', () => {
     expect(prompt).toContain('src.ts');
   });
 
-  it('backend options include tools: coding and maxTurns: 20', async () => {
+  it('backend options include tools: coding and implementation tier maxTurns', async () => {
     const backend = new StubHarness([{ text: '' }]);
 
     await collectEvents(runDocSyncer({
@@ -296,7 +296,7 @@ describe('runDocSyncer wiring', () => {
 
     expect(backend.calls).toHaveLength(1);
     expect(backend.calls[0].tools).toBe('coding');
-    expect(backend.calls[0].maxTurns).toBe(20);
+    expect(backend.calls[0].maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
   });
 
   it('parses docsSynced count from XML summary', async () => {

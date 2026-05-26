@@ -2,6 +2,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap, type AcceptanceCriterionVerdict } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 export interface PrdValidatorOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -10,6 +11,8 @@ export interface PrdValidatorOptions extends SdkPassthroughConfig {
   diff: string;
   verbose?: boolean;
   abortController?: AbortController;
+  /** Override max conversation turns (default: implementation tier default). */
+  maxTurns?: number;
   // --- eforge:region plan-02-engine-acceptance-gates ---
   /** Expected acceptance criteria inventory for prompt injection. When non-empty, the criteria are
    *  listed in the prompt so the validator knows which ACs to produce verdicts for. */
@@ -67,7 +70,7 @@ export async function* runPrdValidator(
       {
         prompt,
         cwd: options.cwd,
-        maxTurns: 15,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
         ...pickSdkOptions(options),

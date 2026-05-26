@@ -14,6 +14,7 @@ import { selectInitialReviewPerspectives, shouldParallelizeReview, isBuiltInRevi
 import { emitBuildDecisionForPlan } from '../decisions.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { runReview, parseReviewIssuesStrict, computeReviewContext } from './reviewer.js';
 import {
   getReviewIssueSchemaYaml,
@@ -103,6 +104,8 @@ export interface ParallelReviewerOptions extends SdkPassthroughConfig {
   strategy?: 'auto' | 'single' | 'parallel';
   /** Override which review perspectives to use (only applies when parallel path is taken) */
   perspectives?: string[];
+  /** Override max conversation turns (default: review tier default) */
+  maxTurns?: number;
   // --- eforge:region plan-02-extension-perspective-runtime ---
   /** Extension reviewer perspective registrations from the native extension registry. */
   extensionReviewerPerspectives?: ReviewerPerspectiveRegistration[];
@@ -319,7 +322,7 @@ export async function* runParallelReview(
           let fullText = '';
 
           for await (const event of harness.run(
-            { prompt, cwd, maxTurns: 30, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
+            { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
             'reviewer',
             planId,
           )) {
@@ -361,7 +364,7 @@ export async function* runParallelReview(
         let fullText = '';
 
         for await (const event of harness.run(
-          { prompt, cwd, maxTurns: 30, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
+          { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
           'reviewer',
           planId,
         )) {

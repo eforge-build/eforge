@@ -589,34 +589,41 @@ describe('PipelineContext mutable state', () => {
 // ---------------------------------------------------------------------------
 
 describe('agent config threading', () => {
-  it('resolveAgentConfig uses role default for builder', async () => {
+  it('resolveAgentConfig uses the implementation tier maxTurns for builder', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(80); // builder role default
-  });
-
-  it('resolveAgentConfig returns role default when no profile config set', async () => {
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-
-    // Builder has a role default of 80, so it should return 80 (not the global 30)
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
     expect(result.maxTurns).toBe(80);
   });
 
-  it('resolveAgentConfig returns role default over global config', async () => {
+  it('resolveAgentConfig returns tier maxTurns when no profile config set', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
 
-    // Builder has a role default of 80 - even with global maxTurns set differently
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(80);
+  });
+
+  it('resolveAgentConfig returns tier maxTurns over global config', async () => {
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
+
     const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 25 } };
     const result = resolveAgentConfig('builder', config);
     expect(result.maxTurns).toBe(80);
   });
 
-  it('resolveAgentConfig falls back to global maxTurns for roles without a specific default', async () => {
+  it('resolveAgentConfig falls back to global maxTurns when the tier omits maxTurns', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
 
-    const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 42 } };
-    // evaluator has no role default, so it should fall back to the global config value
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        maxTurns: 42,
+        tiers: {
+          ...DEFAULT_CONFIG.agents.tiers,
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
+    };
     const result = resolveAgentConfig('evaluator', config);
     expect(result.maxTurns).toBe(42);
   });
@@ -661,7 +668,7 @@ describe('agent config threading', () => {
     expect(result.effort).toBe('low');
   });
 
-  it('resolveAgentConfig: user per-role maxTurns overrides built-in role default', async () => {
+  it('resolveAgentConfig: user per-role maxTurns overrides tier default', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
@@ -676,13 +683,12 @@ describe('agent config threading', () => {
     expect(result.maxTurns).toBe(100);
   });
 
-  it('resolveAgentConfig: built-in role maxTurns beats user global maxTurns', async () => {
+  it('resolveAgentConfig: tier maxTurns beats user global maxTurns', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: { ...DEFAULT_CONFIG.agents, maxTurns: 20 },
     };
-    // builder has built-in default of 80 which beats user global 20
     const result = resolveAgentConfig('builder', config);
     expect(result.maxTurns).toBe(80);
   });
