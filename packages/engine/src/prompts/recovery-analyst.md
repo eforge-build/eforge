@@ -60,6 +60,20 @@ When choosing `split`, the `suggestedSuccessorPrd` must contain the **complete**
 
 {{partialHint}}
 
+## Deterministic Recommendation
+
+{{deterministicRecommendation}}
+
+## Coverage Requirements
+
+The following failed plan IDs have been identified in the build failure summary:
+
+**{{failedPlanIdsList}}**
+
+Your rationale **must** explicitly mention every plan ID in the list above. A verdict whose rationale omits any of these IDs will be rejected by the invariant validator.
+
+When choosing `split`, the `suggestedSuccessorPrd` content **must** explicitly reference every failed and remaining plan ID from the list above. A split verdict whose successor PRD does not cover all failed plans will be rejected.
+
 ## Output
 
 Emit exactly one `<recovery>` XML block. The verdict and confidence are attributes; all other fields are child elements.

@@ -7909,6 +7909,24 @@
                       },
                       "terminalSubtype": {
                         "type": "string"
+                      },
+                      "commitSha": {
+                        "type": "string"
+                      },
+                      "testPassed": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "testFailed": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "completedAt": {
+                        "type": "string"
+                      },
+                      "toolUseCount": {
+                        "minimum": 0,
+                        "type": "integer"
                       }
                     }
                   }
@@ -7933,6 +7951,10 @@
                     },
                     "terminalSubtype": {
                       "type": "string"
+                    },
+                    "toolUseCount": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 },
@@ -8102,6 +8124,36 @@
                       "type": "string"
                     }
                   }
+                },
+                "failingPlans": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "planId"
+                    ],
+                    "properties": {
+                      "planId": {
+                        "type": "string"
+                      },
+                      "agentId": {
+                        "type": "string"
+                      },
+                      "agentRole": {
+                        "type": "string"
+                      },
+                      "errorMessage": {
+                        "type": "string"
+                      },
+                      "terminalSubtype": {
+                        "type": "string"
+                      },
+                      "toolUseCount": {
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -8197,6 +8249,28 @@
                   "type": "boolean"
                 },
                 "recoveryError": {
+                  "type": "string"
+                },
+                "recommendationSource": {
+                  "anyOf": [
+                    {
+                      "const": "deterministic",
+                      "type": "string"
+                    },
+                    {
+                      "const": "analyst",
+                      "type": "string"
+                    },
+                    {
+                      "const": "manual-fallback",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "recommendationRationale": {
+                  "type": "string"
+                },
+                "verdictInvalidationReason": {
                   "type": "string"
                 }
               }

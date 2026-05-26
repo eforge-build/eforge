@@ -79,9 +79,12 @@ function addRemote(repoRoot: string, remotePath: string): void {
  * Create a fake `gh` script in a temp bin dir and return the dir path.
  * The script is a Node.js script that simulates `gh pr create` behavior.
  *
+ * Logs all `pr` subcommand args to `gh-args.log`.
+ * Copies body-file content to `gh-body.log` when `--body-file` is present.
+ *
  * @param behavior
  *   'create-new' — creates a new PR successfully
- *   'existing-pr' — fails on pr create (already exists), succeeds on pr view
+ *   'existing-pr' — fails on pr create (already exists), succeeds on pr view and pr edit
  */
 function createFakeGhBin(
   dir: string,
@@ -92,28 +95,47 @@ function createFakeGhBin(
   const scriptPath = join(binDir, 'gh');
   let scriptContent: string;
 
-  if (behavior === 'create-new') {
-    scriptContent = `#!/usr/bin/env node
+  // Shared preamble: log pr subcommand args and copy body-file content
+  const preamble = `
 const args = process.argv.slice(2);
+const fs = require('fs');
+const path = require('path');
 if (args[0] === '--version') {
   process.stdout.write('gh version test\\n');
   process.exit(0);
 }
+// Log all pr subcommand invocations
+if (args[0] === 'pr') {
+  fs.appendFileSync(path.join(__dirname, 'gh-args.log'), JSON.stringify(args) + '\\n');
+}
+// Copy body-file content before engine deletes the temp file
+const bodyFileIdx = args.indexOf('--body-file');
+if (bodyFileIdx !== -1) {
+  const bodyFile = args[bodyFileIdx + 1];
+  if (bodyFile) {
+    try {
+      const body = fs.readFileSync(bodyFile, 'utf8');
+      fs.appendFileSync(path.join(__dirname, 'gh-body.log'), body + '\\n---END---\\n');
+    } catch {}
+  }
+}
+`;
+
+  if (behavior === 'create-new') {
+    scriptContent = `#!/usr/bin/env node
+${preamble}
 if (args[0] === 'pr' && args[1] === 'create') {
-  require('fs').appendFileSync(require('path').join(__dirname, 'gh-args.log'),
-    JSON.stringify(args) + '\\n');
   process.stdout.write('https://github.com/test/repo/pull/1\\n');
+  process.exit(0);
+}
+if (args[0] === 'pr' && args[1] === 'edit') {
   process.exit(0);
 }
 process.exit(0);
 `;
   } else {
     scriptContent = `#!/usr/bin/env node
-const args = process.argv.slice(2);
-if (args[0] === '--version') {
-  process.stdout.write('gh version test\\n');
-  process.exit(0);
-}
+${preamble}
 if (args[0] === 'pr' && args[1] === 'create') {
   process.stderr.write('a pull request for branch "eforge/test-set" already exists:\\nhttps://github.com/test/repo/pull/42\\n');
   process.exit(1);
@@ -124,6 +146,9 @@ if (args[0] === 'pr' && args[1] === 'view') {
   } else {
     process.stdout.write('https://github.com/test/repo/pull/42\\n');
   }
+  process.exit(0);
+}
+if (args[0] === 'pr' && args[1] === 'edit') {
   process.exit(0);
 }
 process.exit(1);
@@ -851,6 +876,171 @@ describe('executeLandingAction', () => {
         process.env.PATH = origPath;
       }
     });
+
+    // --- eforge:region plan-01-pr-metadata ---
+
+    it('direct PR create uses --title and --body-file, does not use --fill', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const remotePath = setupRemote(dir);
+      addRemote(repoRoot, remotePath);
+      execFileSync('git', ['-C', repoRoot, 'push', 'origin', 'main']);
+
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+      const mergeWorktreePath = await setupFeatureBranch(repoRoot, worktreeBase, featureBranch);
+
+      const ghBinDir = createFakeGhBin(dir, 'create-new');
+      const origPath = process.env.PATH;
+      process.env.PATH = `${ghBinDir}:${origPath}`;
+
+      try {
+        const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+        const state = makeMinimalState(featureBranch);
+        const config = makeMinimalConfig(featureBranch);
+        const engineConfig = makeEngineConfig('main');
+
+        await drainLanding(executeLandingAction({
+          action: 'pr',
+          featureBranch,
+          baseBranch: 'main',
+          repoRoot,
+          mergeWorktreePath,
+          worktreeManager: wm,
+          modelTracker: new ModelTracker(),
+          commitMessage: '',
+          state,
+          config,
+          engineConfig,
+        }));
+
+        const ghArgsLog = readFileSync(join(ghBinDir, 'gh-args.log'), 'utf-8').trim();
+        const invocations: string[][] = ghArgsLog.split('\n').map((line) => JSON.parse(line));
+        const createInvocation = invocations.find((args) => args[0] === 'pr' && args[1] === 'create');
+
+        expect(createInvocation).toBeDefined();
+        expect(createInvocation).toContain('--title');
+        expect(createInvocation).toContain('--body-file');
+        expect(createInvocation).not.toContain('--fill');
+      } finally {
+        process.env.PATH = origPath;
+      }
+    });
+
+    it('direct PR create body-file content contains required fields and excludes raw trailers', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const remotePath = setupRemote(dir);
+      addRemote(repoRoot, remotePath);
+      execFileSync('git', ['-C', repoRoot, 'push', 'origin', 'main']);
+
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+      const mergeWorktreePath = await setupFeatureBranch(repoRoot, worktreeBase, featureBranch);
+
+      const ghBinDir = createFakeGhBin(dir, 'create-new');
+      const origPath = process.env.PATH;
+      process.env.PATH = `${ghBinDir}:${origPath}`;
+
+      try {
+        const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+        const state = makeMinimalState(featureBranch);
+        const config = makeMinimalConfig(featureBranch);
+        const engineConfig = makeEngineConfig('main');
+        // Record a model to verify Models used section appears
+        const tracker = new ModelTracker();
+        tracker.record('claude-opus-4-5');
+
+        await drainLanding(executeLandingAction({
+          action: 'pr',
+          featureBranch,
+          baseBranch: 'main',
+          repoRoot,
+          mergeWorktreePath,
+          worktreeManager: wm,
+          modelTracker: tracker,
+          commitMessage: '',
+          state,
+          config,
+          engineConfig,
+        }));
+
+        const body = readFileSync(join(ghBinDir, 'gh-body.log'), 'utf-8');
+
+        // Required fields
+        expect(body).toContain('Plan set:');
+        expect(body).toContain('test-set');
+        expect(body).toContain('Base branch:');
+        expect(body).toContain('main');
+        expect(body).toContain('Artifact branch:');
+        expect(body).toContain('eforge/test-set');
+        expect(body).toContain('plan-01');
+
+        // Models used summary (no raw trailer label)
+        expect(body).toContain('Models used');
+        expect(body).toContain('claude-opus-4-5');
+
+        // Must NOT contain raw commit trailer labels
+        expect(body).not.toContain('Co-Authored-By:');
+        expect(body).not.toContain('Models-Used:');
+      } finally {
+        process.env.PATH = origPath;
+      }
+    });
+
+    it('existing PR fallback returns URL and attempts gh pr edit with deterministic metadata', async () => {
+      const dir = makeTempDir();
+      const repoRoot = await initRepo(dir);
+      const remotePath = setupRemote(dir);
+      addRemote(repoRoot, remotePath);
+      execFileSync('git', ['-C', repoRoot, 'push', 'origin', 'main']);
+
+      const worktreeBase = join(dir, 'worktrees');
+      const featureBranch = 'eforge/test-set';
+      const mergeWorktreePath = await setupFeatureBranch(repoRoot, worktreeBase, featureBranch);
+
+      // Use the existing-pr gh shim (pr create fails, pr view returns URL, pr edit succeeds)
+      const ghBinDir = createFakeGhBin(dir, 'existing-pr');
+      const origPath = process.env.PATH;
+      process.env.PATH = `${ghBinDir}:${origPath}`;
+
+      try {
+        const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+        const state = makeMinimalState(featureBranch);
+        const config = makeMinimalConfig(featureBranch);
+
+        const { result } = await drainLanding(executeLandingAction({
+          action: 'pr',
+          featureBranch,
+          baseBranch: 'main',
+          repoRoot,
+          mergeWorktreePath,
+          worktreeManager: wm,
+          modelTracker: new ModelTracker(),
+          commitMessage: '',
+          state,
+          config,
+        }));
+
+        // URL must be the discovered existing PR URL
+        expect(result.prUrl).toBe('https://github.com/test/repo/pull/42');
+        expect(result.landingSucceeded).toBe(true);
+
+        // gh pr edit must have been called with the discovered URL
+        const ghArgsLog = readFileSync(join(ghBinDir, 'gh-args.log'), 'utf-8').trim();
+        const invocations: string[][] = ghArgsLog.split('\n').map((line) => JSON.parse(line));
+        const editInvocation = invocations.find((args) => args[0] === 'pr' && args[1] === 'edit');
+
+        expect(editInvocation).toBeDefined();
+        expect(editInvocation).toContain('https://github.com/test/repo/pull/42');
+        expect(editInvocation).toContain('--title');
+        expect(editInvocation).toContain('--body-file');
+      } finally {
+        process.env.PATH = origPath;
+      }
+    });
+
+    // --- eforge:endregion plan-01-pr-metadata ---
 
     // --- eforge:region plan-01-core-engine-auto-merge ---
 

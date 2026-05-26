@@ -6,10 +6,14 @@
 
 import { execFile } from 'node:child_process';
 import { basename, resolve, join } from 'node:path';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 
 import { retryOnLock, forgeCommit } from './git.js';
+// --- eforge:region plan-01-pr-metadata ---
+import type { PullRequestMetadata } from './pr-metadata.js';
+// --- eforge:endregion plan-01-pr-metadata ---
 
 const exec = promisify(execFile);
 
@@ -479,20 +483,63 @@ export async function pushFeatureBranch(
 /**
  * Create a pull request via `gh pr create`.
  * Opens a direct PR: `--head featureBranch --base baseBranch`.
+ * Uses deterministic `--title` and `--body-file` (writes a temp file, deleted after).
  * Returns `{ url: string }` with the PR URL on success.
  * Throws when creation fails for any reason (callers handle existing-PR detection).
  */
 export async function createPullRequest(
   cwd: string,
-  opts: { baseBranch: string; featureBranch: string },
+  opts: { baseBranch: string; featureBranch: string; metadata: PullRequestMetadata },
 ): Promise<{ url: string }> {
-  const { stdout } = await exec(
-    'gh',
-    ['pr', 'create', '--base', opts.baseBranch, '--head', opts.featureBranch, '--fill'],
-    { cwd },
-  );
-  return { url: stdout.trim() };
+  const tempDir = await mkdtemp(join(tmpdir(), 'eforge-gh-body-'));
+  try {
+    const bodyFile = join(tempDir, 'body.md');
+    await writeFile(bodyFile, opts.metadata.body, 'utf-8');
+    const { stdout } = await exec(
+      'gh',
+      [
+        'pr', 'create',
+        '--base', opts.baseBranch,
+        '--head', opts.featureBranch,
+        '--title', opts.metadata.title,
+        '--body-file', bodyFile,
+      ],
+      { cwd },
+    );
+    return { url: stdout.trim() };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
+
+// --- eforge:region plan-01-pr-metadata ---
+/**
+ * Edit an existing pull request's title and body via `gh pr edit`.
+ * Uses a temp body file (written, passed as `--body-file`, deleted in `finally`).
+ *
+ * @param cwd       - Working directory for the `gh` call.
+ * @param selector  - PR URL or branch name passed directly to `gh pr edit`.
+ * @param metadata  - Deterministic title and body to set on the PR.
+ */
+export async function editPullRequest(
+  cwd: string,
+  selector: string,
+  metadata: PullRequestMetadata,
+): Promise<void> {
+  const tempDir = await mkdtemp(join(tmpdir(), 'eforge-gh-body-'));
+  try {
+    const bodyFile = join(tempDir, 'body.md');
+    await writeFile(bodyFile, metadata.body, 'utf-8');
+    await exec(
+      'gh',
+      ['pr', 'edit', selector, '--title', metadata.title, '--body-file', bodyFile],
+      { cwd },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+// --- eforge:endregion plan-01-pr-metadata ---
 
 /**
  * Retrieve the URL of an existing PR for the given branch.

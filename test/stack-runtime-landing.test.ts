@@ -1145,3 +1145,152 @@ describe('executeStackLanding — PR auto-merge', () => {
 });
 
 // --- eforge:endregion plan-01-core-engine-auto-merge ---
+
+// --- eforge:region plan-01-pr-metadata ---
+
+import { readFileSync } from 'node:fs';
+import type { PullRequestMetadata } from '@eforge-build/engine/pr-metadata';
+
+function makeFakeGhForMetadata(binDir: string, editBehavior: 'success' | 'fail'): void {
+  execFileSync('mkdir', ['-p', binDir]);
+  const scriptPath = join(binDir, 'gh');
+  const exitCode = editBehavior === 'success' ? 0 : 1;
+  writeFileSync(scriptPath, `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const fs = require('fs');
+const path = require('path');
+// Log pr subcommand invocations
+if (args[0] === 'pr') {
+  fs.appendFileSync(path.join(__dirname, '..', 'gh-pr-args.log'), JSON.stringify(args) + '\\n');
+}
+// Copy body-file content
+const bodyFileIdx = args.indexOf('--body-file');
+if (bodyFileIdx !== -1) {
+  const bodyFile = args[bodyFileIdx + 1];
+  if (bodyFile) {
+    try {
+      const body = fs.readFileSync(bodyFile, 'utf8');
+      fs.appendFileSync(path.join(__dirname, '..', 'gh-pr-body.log'), body + '\\n---END---\\n');
+    } catch {}
+  }
+}
+if (args[0] === 'pr' && args[1] === 'merge') { process.exit(0); }
+if (args[0] === 'pr' && args[1] === 'edit') {
+  if (${exitCode} !== 0) { process.stderr.write('edit failed\\n'); }
+  process.exit(${exitCode});
+}
+process.exit(0);
+`, { mode: 0o755 });
+}
+
+describe('executeStackLanding — PR metadata editing', () => {
+  it('calls gh pr edit with the discovered PR URL when metadata is provided', async () => {
+    await seedLayer(cwd);
+
+    const binDir = join(cwd, 'bin-stack-meta-ok');
+    makeFakeGhForMetadata(binDir, 'success');
+    const argsLog = join(cwd, 'gh-pr-args.log');
+
+    const origPath = process.env.PATH;
+    process.env.PATH = `${binDir}:${origPath}`;
+
+    try {
+      const prUrl = 'https://github.com/owner/repo/pull/42';
+      const provider = makeStubProvider({
+        submitBranch: async () =>
+          makeResult('git-spice', ['branch', 'submit'], `Created PR ${prUrl}`),
+      });
+
+      const metadata: PullRequestMetadata = {
+        title: 'Test PR title',
+        body: '## Summary\nTest PR body\n\n## Build metadata\n- Plan set: `test-set`\n- Base branch: `main`\n- Artifact branch: `eforge/test-prd`',
+      };
+
+      const opts: StackLandingOptions = {
+        cwd,
+        mergeWorktreePath: cwd,
+        stackContext: makeStackContext(),
+        landingAction: 'pr',
+        provider,
+        metadata,
+      };
+
+      const events = await collectEvents(executeStackLanding(opts));
+
+      // Provider calls must still happen in order
+      const providerCmds = events.filter((e) => e.type === 'stack:provider:command');
+      expect(providerCmds).toHaveLength(3);
+      expect(providerCmds[0]).toMatchObject({ args: expect.arrayContaining(['track']) });
+      expect(providerCmds[1]).toMatchObject({ args: expect.arrayContaining(['restack']) });
+      expect(providerCmds[2]).toMatchObject({ args: expect.arrayContaining(['submit']) });
+
+      // stack:landing:update with status complete must be emitted
+      const completeEvent = events.find(
+        (e) => e.type === 'stack:landing:update' && (e as Record<string, unknown>).status === 'complete',
+      );
+      expect(completeEvent).toBeDefined();
+
+      // gh pr edit must have been called with the discovered URL
+      const ghArgsRaw = readFileSync(argsLog, 'utf-8').trim();
+      const invocations: string[][] = ghArgsRaw.split('\n').map((line) => JSON.parse(line));
+      const editInvocation = invocations.find((args) => args[0] === 'pr' && args[1] === 'edit');
+      expect(editInvocation).toBeDefined();
+      expect(editInvocation).toContain(prUrl);
+      expect(editInvocation).toContain('--title');
+      expect(editInvocation).toContain('--body-file');
+    } finally {
+      process.env.PATH = origPath;
+    }
+  });
+
+  it('emits planning:progress diagnostic and still emits stack:landing:update complete when gh pr edit fails', async () => {
+    await seedLayer(cwd);
+
+    const binDir = join(cwd, 'bin-stack-meta-fail');
+    makeFakeGhForMetadata(binDir, 'fail');
+
+    const origPath = process.env.PATH;
+    process.env.PATH = `${binDir}:${origPath}`;
+
+    try {
+      const prUrl = 'https://github.com/owner/repo/pull/99';
+      const provider = makeStubProvider({
+        submitBranch: async () =>
+          makeResult('git-spice', ['branch', 'submit'], `Created PR ${prUrl}`),
+      });
+
+      const metadata: PullRequestMetadata = {
+        title: 'Test PR title',
+        body: '## Summary\nTest PR body',
+      };
+
+      const opts: StackLandingOptions = {
+        cwd,
+        mergeWorktreePath: cwd,
+        stackContext: makeStackContext(),
+        landingAction: 'pr',
+        provider,
+        metadata,
+      };
+
+      const events = await collectEvents(executeStackLanding(opts));
+
+      // stack:landing:update must still reach complete status (edit failure is non-fatal)
+      const completeEvent = events.find(
+        (e) => e.type === 'stack:landing:update' && (e as Record<string, unknown>).status === 'complete',
+      );
+      expect(completeEvent).toBeDefined();
+
+      // A planning:progress diagnostic must have been emitted for the edit failure
+      const progressEvent = events.find(
+        (e) => e.type === 'planning:progress',
+      ) as Extract<EforgeEvent, { type: 'planning:progress' }> | undefined;
+      expect(progressEvent).toBeDefined();
+      expect(progressEvent?.message).toMatch(/PR metadata|metadata update/i);
+    } finally {
+      process.env.PATH = origPath;
+    }
+  });
+});
+
+// --- eforge:endregion plan-01-pr-metadata ---
