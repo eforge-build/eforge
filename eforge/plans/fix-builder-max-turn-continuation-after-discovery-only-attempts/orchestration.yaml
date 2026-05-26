@@ -1,0 +1,53 @@
+name: fix-builder-max-turn-continuation-after-discovery-only-attempts
+description: Fix builder continuation so max-turn discovery-only attempts retry
+  with bounded discovery handoff instead of failing when no diff can be
+  checkpointed.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm vitest run test/retry.test.ts test/continuation.test.ts
+    test/review-fixer-continuation.test.ts test/sharded-builder.test.ts
+plans:
+  - id: plan-01-builder-discovery-continuation
+    name: Builder Discovery-Only Continuation
+    depends_on: []
+    branch: fix-builder-max-turn-continuation-after-discovery-only-attempts/plan-01-builder-discovery-continuation
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused multi-file engine bugfix involving retry semantics,
+    continuation context, prompt rendering, and regression tests, so excursion
+    is appropriate. A plan review gate helps catch edge cases such as diff
+    checkpoint preservation, discovery-only continuation, and sharded-builder
+    behavior without needing expedition module planning. Build runs
+    implementation first, then writes/updates tests, executes an iterative test
+    cycle for the specified retry/continuation regressions, and finishes with a
+    review cycle. Code and test perspectives are selected because correctness
+    depends on internal retry behavior and durable regression coverage; no docs,
+    API, or security stages are needed.
