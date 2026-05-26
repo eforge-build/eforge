@@ -23,11 +23,14 @@ build:
     - pnpm build
     - pnpm type-check
     - pnpm test
-# --- eforge:region plan-01-stack-contracts-config-state-events ---
 stacking:
-  # git-spice has been initialized for this repo; enable stacked PRs for eforge builds.
   enabled: true
   provider: git-spice
 landing:
   action: pr
-# --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+tools:
+  toolbelts:
+    browser-ui:
+      description: Playwright MCP server for browser automation and UI testing
+      mcpServers:
+        - playwright
