@@ -260,27 +260,36 @@ describe('useRunDetail', () => {
       getByTestId('change-selection').click();
     });
 
-    // Resolve all def fetches with good data
+    // Resolve all def (session-b) fetches with data identifiable as belonging to session-b
+    const defSummary: RunSummary = { ...makeRunSummary(), sessionId: 'result-for-def' };
     await act(async () => {
       for (const resolve of (resolvers['def'] ?? [])) {
-        resolve(makeRunSummary());
+        resolve(defSummary);
       }
     });
 
-    // Now resolve the stale abc fetches
-    await act(async () => {
-      for (const resolve of (resolvers['abc'] ?? [])) {
-        resolve(makeRunSummary());
-      }
-    });
-
-    // The final state should reflect session-b (def) selections
+    // Wait for session-b data to be reflected in the hook
     await waitFor(() => {
       const last = resultRef[resultRef.length - 1];
-      // After the abc resolves stale, summary should still reflect the current selection
-      // (either loading/error from def or success — not abc data overwriting def state)
-      // Key assertion: the stale abc data did not cause a regression
-      expect(['loading', 'success', 'empty', 'error']).toContain(last.summary.status);
+      expect(last.summary.status).toBe('success');
+    });
+
+    // Now resolve the stale abc fetches with data identifiable as belonging to session-a
+    const abcSummary: RunSummary = { ...makeRunSummary(), sessionId: 'result-for-abc' };
+    await act(async () => {
+      for (const resolve of (resolvers['abc'] ?? [])) {
+        resolve(abcSummary);
+      }
+    });
+
+    // The final state must still reflect session-b data — stale abc data must not overwrite it
+    await waitFor(() => {
+      const last = resultRef[resultRef.length - 1];
+      expect(last.summary.status).toBe('success');
+      // Verify the payload belongs to def (session-b), not the stale abc response
+      if (last.summary.status === 'success') {
+        expect(last.summary.data.sessionId).toBe('result-for-def');
+      }
     });
   });
 });

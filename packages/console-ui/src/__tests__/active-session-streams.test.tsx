@@ -135,17 +135,18 @@ describe('useActiveSessionStreams', () => {
   });
 
   it('starts zero streams when active ID list is empty', async () => {
-    capturedCalls.length = 0;
-    const channels: ChannelMap = new Map();
-    const fakeSub = makeFakeSubscribeFn(channels);
+    // Use a subscribe spy that would fail the test immediately if called,
+    // giving a deterministic signal instead of relying on a real-time delay.
+    const subscribeSpy = vi.fn() as unknown as SubscribeFn;
 
     const { unmount } = render(
-      <TestComponent initialIds={[]} subscribeFn={fakeSub} />,
+      <TestComponent initialIds={[]} subscribeFn={subscribeSpy} />,
     );
 
-    // Small delay — no subscriptions should start
-    await new Promise((r) => setTimeout(r, 20));
-    expect(capturedCalls).toHaveLength(0);
+    // Flush all pending React effects deterministically
+    await act(async () => {});
+
+    expect(subscribeSpy).not.toHaveBeenCalled();
 
     unmount();
   });

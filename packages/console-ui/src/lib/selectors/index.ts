@@ -17,3 +17,7 @@ export * from './system';
 // --- eforge:region activity-audit-view ---
 export * from './activity';
 // --- eforge:endregion activity-audit-view ---
+
+// --- eforge:region plan-02-queue-view ---
+export * from './queue';
+// --- eforge:endregion plan-02-queue-view ---

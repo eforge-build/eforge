@@ -20,6 +20,9 @@ import { SystemConfigurationView } from '@/views/system';
 // --- eforge:region activity-audit-view ---
 import { ActivityAuditView } from '@/views/activity';
 // --- eforge:endregion activity-audit-view ---
+// --- eforge:region plan-02-queue-view ---
+import { QueueView } from '@/views/queue';
+// --- eforge:endregion plan-02-queue-view ---
 
 function getInitialRoute(): ConsoleRouteId {
   if (typeof window !== 'undefined') {
@@ -87,6 +90,12 @@ export function App() {
       return <ActivityAuditView projectState={projectState} />;
     }
     // --- eforge:endregion activity-audit-view ---
+
+    // --- eforge:region plan-02-queue-view ---
+    if (currentRoute === 'queue') {
+      return <QueueView projectState={projectState} />;
+    }
+    // --- eforge:endregion plan-02-queue-view ---
 
     return (
       <RoutePlaceholder

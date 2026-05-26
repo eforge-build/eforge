@@ -74,3 +74,8 @@ export const RUNS_NAV_DESCRIPTION =
 /** Human-readable description for the Activity route used in placeholder text. */
 export const ACTIVITY_ROUTE_DESCRIPTION = 'Live daemon event log and audit details';
 // --- eforge:endregion activity-audit-view ---
+
+// --- eforge:region plan-02-queue-view ---
+/** Human-readable description for the Queue route used in placeholder text and headers. */
+export const QUEUE_ROUTE_DESCRIPTION = 'Read-only view of the daemon build queue';
+// --- eforge:endregion plan-02-queue-view ---
