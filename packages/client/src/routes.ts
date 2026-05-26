@@ -194,6 +194,9 @@ export const API_ROUTES = {
   // --- eforge:region plan-03-stack-daemon-ui ---
   stackLayers: '/api/stack/layers',
   // --- eforge:endregion plan-03-stack-daemon-ui ---
+  // --- eforge:region plan-01-stack-sync-daemon-cli ---
+  stackSync: '/api/stack/sync',
+  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 } as const;
 
 /** Response body for GET /api/version */
@@ -436,6 +439,74 @@ export interface StackLayersResponse {
   layers: StackLayerWire[];
 }
 // --- eforge:endregion plan-03-stack-daemon-ui ---
+
+// --- eforge:region plan-01-stack-sync-daemon-cli ---
+/** A single provider command recorded in a POST /api/stack/sync response. */
+export interface StackSyncProviderCommandWire {
+  /** The resolved executable path. */
+  command: string;
+  /** The argv passed to the command (without the executable). */
+  args: string[];
+  /** True when the command was not executed (dry-run mode). */
+  dryRun: boolean;
+  /** True when the command was actually executed. Always false in dry-run mode. */
+  ran: boolean;
+  /** Captured stdout from the command (absent in dry-run). */
+  stdout?: string;
+  /** Captured stderr from the command (absent in dry-run). */
+  stderr?: string;
+  /** Exit code. Always 0 on success; absent in dry-run mode. */
+  exitCode?: number;
+}
+
+/** An active-build skip entry in POST /api/stack/sync response. */
+export interface StackSyncActiveBuildSkipWire {
+  /** Branch prefix that was excluded (e.g. 'eforge/my-plan-set'). */
+  branch: string;
+  /** Worktree path associated with the active build, when available. */
+  worktree?: string;
+  /** Human-readable reason for the exclusion. */
+  reason: string;
+}
+
+/** Outcome of a POST /api/stack/sync operation. */
+export type StackSyncOutcomeWire = 'skipped' | 'complete' | 'failed' | 'conflict';
+
+/** Request body for POST /api/stack/sync */
+export interface StackSyncRequest {
+  /**
+   * When true, determine what commands would run but do not execute them.
+   * Branch SHAs are left unchanged.
+   */
+  dryRun?: boolean;
+}
+
+/** Response for POST /api/stack/sync */
+export interface StackSyncResponse {
+  /** Overall outcome. */
+  outcome: StackSyncOutcomeWire;
+  /** Human-readable reason (always present for 'skipped', 'failed', 'conflict'). */
+  reason?: string;
+  /** True when stacking is enabled and active (false for 'skipped' outcome). */
+  stackingActive: boolean;
+  /** Whether the sync was a dry run. */
+  dryRun: boolean;
+  /** SHA of the local trunk branch, when available. */
+  localTrunkSha?: string;
+  /** SHA of origin/<trunk>, when available. */
+  originTrunkSha?: string;
+  /** Whether the local trunk is already at or behind origin (fast-forward eligible). */
+  fastForward?: boolean;
+  /** Artifact branches eligible for restack (after active-build exclusions). */
+  restackCandidates?: string[];
+  /** Branches and worktrees skipped because active builds are using them. */
+  activeBuildSkips: StackSyncActiveBuildSkipWire[];
+  /** Provider commands that were executed or would be executed in dry-run mode. */
+  providerCommands: StackSyncProviderCommandWire[];
+  /** Error message when outcome is 'failed' or 'conflict'. */
+  error?: string;
+}
+// --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];
 

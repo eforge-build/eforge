@@ -9,7 +9,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 63
+Total routes: 64
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -75,6 +75,7 @@ Total routes: 63
 | `sessionPlanShow` | `/api/session-plan/show` |
 | `sessionPlanSkipDimension` | `/api/session-plan/skip-dimension` |
 | `stackLayers` | `/api/stack/layers` |
+| `stackSync` | `/api/stack/sync` |
 | `version` | `/api/version` |
 
 ## SSE Streams

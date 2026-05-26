@@ -57,6 +57,10 @@ import {
   type ExtensionPromoteResponse,
   type ExtensionDemoteResponse,
   // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
+  // --- eforge:region plan-01-stack-sync-daemon-cli ---
+  apiStackSyncIfRunning,
+  type StackSyncResponse,
+  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 } from '@eforge-build/client';
 import { runOrDelegate } from './run-or-delegate.js';
 import { formatCliError } from './errors.js';
@@ -413,6 +417,62 @@ function isExtensionPathArg(value: string): boolean {
   return /[\\/]/.test(value) || /\.(?:mjs|mts|js|ts)$/.test(value);
 }
 // --- eforge:endregion plan-02-extension-tooling-surfaces ---
+
+// --- eforge:region plan-01-stack-sync-daemon-cli ---
+function renderStackSyncReport(report: StackSyncResponse, _dryRun: boolean): void {
+  const outcomeColor =
+    report.outcome === 'complete'
+      ? chalk.green
+      : report.outcome === 'skipped'
+        ? chalk.dim
+        : chalk.red;
+
+  console.log(outcomeColor(`Stack sync outcome: ${report.outcome}`));
+  if (report.reason) {
+    console.log(chalk.dim(`  Reason: ${report.reason}`));
+  }
+  if (report.localTrunkSha) {
+    console.log(`  Local trunk SHA:  ${report.localTrunkSha}`);
+  }
+  if (report.originTrunkSha) {
+    console.log(`  Origin trunk SHA: ${report.originTrunkSha}`);
+  }
+  if (report.fastForward !== undefined) {
+    console.log(`  Fast-forward:     ${report.fastForward ? 'yes' : 'no'}`);
+  }
+  if (report.restackCandidates && report.restackCandidates.length > 0) {
+    console.log(`  Restack candidates:`);
+    for (const branch of report.restackCandidates) {
+      console.log(chalk.dim(`    - ${branch}`));
+    }
+  }
+  if (report.activeBuildSkips.length > 0) {
+    console.log(`  Active-build skips:`);
+    for (const skip of report.activeBuildSkips) {
+      const detail = skip.worktree ? ` (${skip.worktree})` : '';
+      console.log(chalk.yellow(`    - ${skip.branch}${detail}: ${skip.reason}`));
+    }
+  }
+  if (report.providerCommands.length > 0) {
+    const header = report.dryRun ? '  Provider commands (dry-run):' : '  Provider commands:';
+    console.log(header);
+    for (const cmd of report.providerCommands) {
+      const argv = [cmd.command, ...cmd.args].join(' ');
+      const status = cmd.ran ? chalk.green('ran') : chalk.dim('not run');
+      console.log(`    [${status}] ${argv}`);
+      if (cmd.exitCode !== undefined && cmd.exitCode !== 0) {
+        console.log(chalk.red(`      exit: ${cmd.exitCode}`));
+      }
+      if (cmd.stderr) {
+        console.log(chalk.red(`      stderr: ${cmd.stderr}`));
+      }
+    }
+  }
+  if (report.error) {
+    console.error(chalk.red(`  Error: ${report.error}`));
+  }
+}
+// --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
 export function createProgram(abortController?: AbortController, version?: string): Command {
   const program = new Command();
@@ -1764,6 +1824,60 @@ export function createProgram(abortController?: AbortController, version?: strin
       const { runMcpProxy } = await import('./mcp-proxy.js');
       await runMcpProxy(process.cwd());
     });
+
+  // --- eforge:region plan-01-stack-sync-daemon-cli ---
+  {
+    const stackCmd = program.command('stack').description('Stack management commands');
+
+    stackCmd
+      .command('sync')
+      .description('Sync the git-spice stack with remote and restack eligible branches')
+      .option('--dry-run', 'Show what commands would run without executing them')
+      .option('--cwd <cwd>', 'Working directory override')
+      .action(async (options: { dryRun?: boolean; cwd?: string }) => {
+        const cwd = options.cwd ? resolve(options.cwd) : process.cwd();
+        const dryRun = options.dryRun === true;
+
+        try {
+          // Prefer daemon when live
+          const daemonResult = await apiStackSyncIfRunning({ cwd, body: { dryRun } });
+
+          if (daemonResult !== null) {
+            renderStackSyncReport(daemonResult.data, dryRun);
+            process.exit(daemonResult.data.outcome === 'failed' || daemonResult.data.outcome === 'conflict' ? 1 : 0);
+            return;
+          }
+
+          // Local in-process fallback
+          const { loadConfig } = await import('@eforge-build/engine/config');
+          const { config } = await loadConfig(cwd);
+
+          if (!config.stacking.enabled) {
+            const skippedReport: StackSyncResponse = {
+              outcome: 'skipped',
+              reason: 'Stacking is not enabled. Set stacking.enabled: true in eforge/config.yaml to activate.',
+              stackingActive: false,
+              dryRun,
+              activeBuildSkips: [],
+              providerCommands: [],
+            };
+            renderStackSyncReport(skippedReport, dryRun);
+            return;
+          }
+
+          const { performStackSync } = await import('@eforge-build/engine/stacking/sync');
+          const report = await performStackSync(config, { cwd, dryRun });
+          const fullReport: StackSyncResponse = { ...report, activeBuildSkips: [] };
+          renderStackSyncReport(fullReport, dryRun);
+          process.exit(report.outcome === 'failed' || report.outcome === 'conflict' ? 1 : 0);
+        } catch (err) {
+          const { message, exitCode } = formatCliError(err);
+          console.error(chalk.red(`Error: ${message}`));
+          process.exit(exitCode);
+        }
+      });
+  }
+  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
   return program;
 }

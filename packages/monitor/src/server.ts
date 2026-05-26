@@ -4464,6 +4464,87 @@ export async function startServer(
       const layers = cwd ? stackLayersToWire(cwd) : [];
       sendJson(res, { layers });
     // --- eforge:endregion plan-03-stack-daemon-ui ---
+    // --- eforge:region plan-01-stack-sync-daemon-cli ---
+    } else if (req.method === 'POST' && url === API_ROUTES.stackSync) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      const syncCwd = options?.cwd;
+      if (!syncCwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let rawBody: unknown;
+      try {
+        rawBody = await parseJsonBody(req);
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON request body');
+        return;
+      }
+      const rawDryRun =
+        rawBody !== null &&
+        typeof rawBody === 'object'
+          ? (rawBody as Record<string, unknown>).dryRun
+          : undefined;
+      if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') {
+        sendJsonError(res, 400, 'dryRun must be a boolean when present');
+        return;
+      }
+      const dryRun = rawDryRun === true;
+      try {
+        const { loadConfig } = await import('@eforge-build/engine/config');
+        const { config } = await loadConfig(syncCwd);
+
+        if (!config.stacking.enabled) {
+          const resp = {
+            outcome: 'skipped' as const,
+            reason: 'Stacking is not enabled. Set stacking.enabled: true in eforge/config.yaml to activate.',
+            stackingActive: false,
+            dryRun,
+            activeBuildSkips: [],
+            providerCommands: [],
+          };
+          sendJson(res, resp);
+          return;
+        }
+
+        // Collect active-build exclusions from running DB runs
+        const runningRuns = db.getRunningRuns();
+        const { computeWorktreeBase } = await import('@eforge-build/engine/worktree-ops');
+        const activeBuildSkips: Array<{ branch: string; worktree?: string; reason: string }> = [];
+        const excludedBranchPrefixes: string[] = [];
+
+        for (const run of runningRuns) {
+          const branchPrefix = `eforge/${run.planSet}`;
+          const worktreeBase = computeWorktreeBase(syncCwd, run.planSet);
+          activeBuildSkips.push({
+            branch: branchPrefix,
+            worktree: run.cwd,
+            reason: `Active build: run ${run.id} (planSet: ${run.planSet}, cwd: ${run.cwd})`,
+          });
+          // Also record the deterministic worktree base path as a separate skip entry
+          if (worktreeBase !== run.cwd) {
+            activeBuildSkips.push({
+              branch: branchPrefix,
+              worktree: worktreeBase,
+              reason: `Active build worktree base: run ${run.id} (planSet: ${run.planSet})`,
+            });
+          }
+          if (!excludedBranchPrefixes.includes(branchPrefix)) {
+            excludedBranchPrefixes.push(branchPrefix);
+          }
+        }
+
+        const { performStackSync } = await import('@eforge-build/engine/stacking/sync');
+        const report = await performStackSync(config, {
+          cwd: syncCwd,
+          dryRun,
+          excludedBranchPrefixes,
+        });
+
+        sendJson(res, { ...report, activeBuildSkips });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Stack sync failed');
+      }
+    // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
     } else if (url === API_ROUTES.queue) {
       await serveQueue(req, res);
     } else if (url === API_ROUTES.sessionMetadata) {

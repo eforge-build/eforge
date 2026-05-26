@@ -56,3 +56,13 @@ export {
 export { executeStackLanding } from './landing.js';
 export type { StackLandingOptions } from './landing.js';
 // --- eforge:endregion plan-02-stack-provider-runtime ---
+
+// --- eforge:region plan-01-stack-sync-daemon-cli ---
+export { performStackSync } from './sync.js';
+export type {
+  StackSyncOptions,
+  StackSyncReport,
+  StackSyncProviderCommand,
+  StackSyncOutcome,
+} from './sync.js';
+// --- eforge:endregion plan-01-stack-sync-daemon-cli ---
