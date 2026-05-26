@@ -498,7 +498,7 @@ export interface StackSyncResponse {
   /** Whether the local trunk is already at or behind origin (fast-forward eligible). */
   fastForward?: boolean;
   /** Artifact branches eligible for restack (after active-build exclusions). */
-  restackCandidates?: string[];
+  restackCandidates: string[];
   /** Branches and worktrees skipped because active builds are using them. */
   activeBuildSkips: StackSyncActiveBuildSkipWire[];
   /** Provider commands that were executed or would be executed in dry-run mode. */

@@ -60,7 +60,9 @@ export interface StackSyncReport {
   /** Whether the local trunk is already at or behind origin (fast-forward eligible). */
   fastForward?: boolean;
   /** Artifact branches eligible for restack (after exclusion filtering). */
-  restackCandidates?: string[];
+  restackCandidates: string[];
+  /** Artifact branches that were excluded from restack because they matched an active-build prefix. */
+  excludedCandidates: string[];
   /** Provider commands that were executed or would be executed in dry-run. */
   providerCommands: StackSyncProviderCommand[];
   /** Error message when outcome is 'failed' or 'conflict'. */
@@ -180,6 +182,12 @@ export async function performStackSync(
         (prefix) => branch === prefix || branch.startsWith(`${prefix}/`),
       ),
   );
+  const excludedCandidates = allCandidates.filter(
+    (branch) =>
+      excludedBranchPrefixes.some(
+        (prefix) => branch === prefix || branch.startsWith(`${prefix}/`),
+      ),
+  );
 
   // Determine the provider command name (for dry-run records)
   const gsCommand = config.stacking.gitSpice?.command ?? 'git-spice';
@@ -223,6 +231,7 @@ export async function performStackSync(
       originTrunkSha,
       fastForward,
       restackCandidates,
+      excludedCandidates,
       providerCommands,
     };
   }
@@ -250,6 +259,7 @@ export async function performStackSync(
       originTrunkSha,
       fastForward,
       restackCandidates,
+      excludedCandidates,
       providerCommands,
       error: errorMsg,
     };
@@ -294,6 +304,7 @@ export async function performStackSync(
         originTrunkSha: postSyncOriginTrunkSha,
         fastForward: postSyncFastForward,
         restackCandidates,
+        excludedCandidates,
         providerCommands,
         error: errorMsg,
       };
@@ -309,6 +320,7 @@ export async function performStackSync(
     originTrunkSha: postSyncOriginTrunkSha,
     fastForward: postSyncFastForward,
     restackCandidates,
+    excludedCandidates,
     providerCommands,
   };
 }

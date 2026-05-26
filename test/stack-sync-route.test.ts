@@ -172,12 +172,35 @@ describe('POST /api/stack/sync — dry run', () => {
 describe('POST /api/stack/sync — active-build skip', () => {
   it('(3) skips active build branch from running DB run and includes it in activeBuildSkips', async () => {
     const cwd = makeTmpCwd();
+    initGitRepo(cwd);
     writeStackingConfig(cwd, true);
+
+    // Write a stack state file so the active build's branch prefix matches an actual stack candidate
+    mkdirSync(join(cwd, '.eforge', 'stacks'), { recursive: true });
+    const now = new Date().toISOString();
+    writeFileSync(
+      join(cwd, '.eforge', 'stacks', 'layers.json'),
+      JSON.stringify({
+        version: 1,
+        layers: [
+          {
+            prdId: 'my-feature',
+            stackId: 'my-feature',
+            provider: 'git-spice',
+            branch: 'feature/my-feature',
+            artifact: { branch: 'eforge/my-feature' },
+            status: 'built',
+            recordedAt: now,
+            updatedAt: now,
+          },
+        ],
+      }),
+      'utf-8',
+    );
 
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
 
     // Insert a running run to simulate an active build
-    const now = new Date().toISOString();
     db.insertRun({
       id: 'run-active-001',
       sessionId: 'session-active-001',
@@ -199,9 +222,10 @@ describe('POST /api/stack/sync — active-build skip', () => {
 
     const skips = resp.activeBuildSkips as Array<Record<string, unknown>>;
     expect(Array.isArray(skips)).toBe(true);
+    // Only builds whose branches match actual stack candidates appear in activeBuildSkips
     expect(skips.length).toBeGreaterThan(0);
 
-    // The skip for eforge/my-feature branch should be present
+    // The skip for eforge/my-feature branch should be present (it matched the stack candidate)
     const featureSkip = skips.find((s) => (s.branch as string).includes('my-feature'));
     expect(featureSkip).toBeDefined();
     expect(typeof featureSkip!.reason).toBe('string');

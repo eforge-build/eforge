@@ -164,6 +164,26 @@ monitor:
 
 Each command in `postMergeCommands` and the planner-generated validate commands runs under a wall-clock timeout. On expiry the full subprocess tree is killed and the validation-fixer loop is invoked as if the command had exited non-zero. Default 300000 ms (5 minutes). Values below 10000 ms are clamped and emit a `config:warning` event.
 
+## Workflow Presets
+
+Workflow presets are shortcut configurations that bundle common landing action, stacking, and PR settings into a named preset. Use `/eforge:workflow` (Claude Code) or `/eforge:workflow` (Pi) to configure a preset through a guided wizard instead of editing `eforge/config.yaml` manually.
+
+In Pi, the workflow wizard uses native select-overlay panels. In Claude Code, the same preset logic and config keys are applied through a conversational Q&A flow.
+
+The wizard asks four questions - solo vs team, direct merge vs PR, stacked PRs, and automatic stack sync - and maps the answers to one of five presets:
+
+| Preset | When selected | Config keys written |
+|--------|--------------|---------------------|
+| `solo-merge` | Solo developer, direct merge to trunk | `landing.action: merge`, `build.allowLocalMergeToTrunk: true`, `stacking.enabled: false` |
+| `solo-pr` | Solo developer, PR workflow, no stacking | `landing.action: pr`, `landing.pr.autoMerge: always`, `stacking.enabled: false` |
+| `team-pr` | Team project, PR workflow, no stacking | `landing.action: pr`, `landing.pr.autoMerge: ask`, `stacking.enabled: false` |
+| `stacked-pr` | git-spice stacking, manual sync | `landing.action: pr`, `stacking.enabled: true` |
+| `stacked-pr-autosync` | git-spice stacking, automatic post-merge sync | `landing.action: pr`, `stacking.enabled: true`, `build.postMergeCommands: [eforge stack sync]` |
+
+For stacking presets where the user provides a non-default git-spice path, `stacking.gitSpice.command` is also written.
+
+Run `/eforge:workflow --reconfigure` (Claude Code) or `/eforge:workflow:reconfigure` (Pi) at any time to re-run the wizard and change the preset.
+
 ## Trunk branch policy
 
 `build.trunkBranch` names the project's trunk. eforge detects it automatically from `origin/HEAD` during `eforge init` and writes the result to `eforge/config.yaml`. Override it here if detection is wrong or the repository uses a non-standard default branch name.

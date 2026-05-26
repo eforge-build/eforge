@@ -31,7 +31,6 @@
 
 **Goal**: Polish the end-to-end stacked PR workflow and expand provider support.
 
-- **Automated post-merge restack/sync** - After an upstream PR merges, automatically run `git-spice stack restack` or equivalent to update downstream artifact branches without a manual developer step. Requires a daemon-side GitHub webhook or polling trigger.
 - **Additional stack providers** - v1 supports only git-spice. Future providers (e.g. Graphite, manual git-based stacking) may be added here.
 
 ---

@@ -1490,20 +1490,24 @@ export async function startServer(
     return hostname === 'localhost' || hostname === '::1' || (ipVersion === 4 && hostname.startsWith('127.'));
   }
 
-  function rejectUnsafeExtensionMutationRequest(req: IncomingMessage, res: ServerResponse): boolean {
+  function rejectUnsafeExtensionMutationRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+    operationLabel = 'Extension management mutations',
+  ): boolean {
     const remoteAddress = req.socket.remoteAddress;
     const isLoopback = remoteAddress === undefined
       || remoteAddress === '::1'
       || remoteAddress === '::ffff:127.0.0.1'
       || remoteAddress.startsWith('127.');
     if (!isLoopback) {
-      sendJsonError(res, 403, 'Extension management mutations must originate from the local machine');
+      sendJsonError(res, 403, `${operationLabel} must originate from the local machine`);
       return true;
     }
 
     const host = req.headers.host;
     if (!isLoopbackHostHeader(host)) {
-      sendJsonError(res, 403, 'Extension management mutations require a loopback Host header');
+      sendJsonError(res, 403, `${operationLabel} require a loopback Host header`);
       return true;
     }
 
@@ -1512,11 +1516,11 @@ export async function startServer(
     if (origin) {
       try {
         if (new URL(origin).host !== host) {
-          sendJsonError(res, 403, 'Cross-origin extension management mutations are not allowed');
+          sendJsonError(res, 403, `Cross-origin ${operationLabel.toLowerCase()} are not allowed`);
           return true;
         }
       } catch {
-        sendJsonError(res, 403, 'Cross-origin extension management mutations are not allowed');
+        sendJsonError(res, 403, `Cross-origin ${operationLabel.toLowerCase()} are not allowed`);
         return true;
       }
     }
@@ -4466,7 +4470,7 @@ export async function startServer(
     // --- eforge:endregion plan-03-stack-daemon-ui ---
     // --- eforge:region plan-01-stack-sync-daemon-cli ---
     } else if (req.method === 'POST' && url === API_ROUTES.stackSync) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Stack sync mutations')) return;
       const syncCwd = options?.cwd;
       if (!syncCwd) {
         sendJsonError(res, 503, 'Working directory not configured');
@@ -4479,9 +4483,12 @@ export async function startServer(
         sendJsonError(res, 400, 'Invalid JSON request body');
         return;
       }
+      if (rawBody !== null && (typeof rawBody !== 'object' || Array.isArray(rawBody))) {
+        sendJsonError(res, 400, 'Request body must be a JSON object');
+        return;
+      }
       const rawDryRun =
-        rawBody !== null &&
-        typeof rawBody === 'object'
+        rawBody !== null
           ? (rawBody as Record<string, unknown>).dryRun
           : undefined;
       if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') {
@@ -4499,6 +4506,7 @@ export async function startServer(
             reason: 'Stacking is not enabled. Set stacking.enabled: true in eforge/config.yaml to activate.',
             stackingActive: false,
             dryRun,
+            restackCandidates: [],
             activeBuildSkips: [],
             providerCommands: [],
           };
@@ -4540,7 +4548,17 @@ export async function startServer(
           excludedBranchPrefixes,
         });
 
-        sendJson(res, { ...report, activeBuildSkips });
+        // Filter activeBuildSkips to only include running builds whose branches actually
+        // matched and were excluded from restack candidates. This prevents reporting
+        // unrelated active builds as stack sync skips.
+        const { excludedCandidates, ...reportForResponse } = report;
+        const filteredActiveBuildSkips = activeBuildSkips.filter((skip) =>
+          excludedCandidates.some(
+            (candidate) => candidate === skip.branch || candidate.startsWith(`${skip.branch}/`),
+          ),
+        );
+
+        sendJson(res, { ...reportForResponse, activeBuildSkips: filteredActiveBuildSkips });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Stack sync failed');
       }
