@@ -1,0 +1,95 @@
+name: stack-sync-daemon-cli-surface-and-integration-parity
+description: Wire the landed stack sync engine to daemon, CLI, Pi/plugin
+  surfaces, and documentation parity.
+base_branch: eforge/automate-git-spice-stack-sync-and-restack-workflow
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-stack-sync-daemon-cli
+    name: Stack Sync Daemon Route, Client Helper, and CLI
+    depends_on: []
+    branch: stack-sync-daemon-cli-surface-and-integration-parity/plan-01-stack-sync-daemon-cli
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-02-pi-workflow-wizard-and-stack-sync
+    name: Pi Workflow Wizard and Stack Sync Entry Point
+    depends_on:
+      - plan-01-stack-sync-daemon-cli
+    branch: stack-sync-daemon-cli-surface-and-integration-parity/plan-02-pi-workflow-wizard-and-stack-sync
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Native Pi command flow spans config mutation, overlay UX, shared
+          workflow preset logic, and dry-run stack sync reporting.
+  - id: plan-03-plugin-docs-and-generated-reference
+    name: Claude Plugin Parity, Docs, and Generated References
+    depends_on:
+      - plan-01-stack-sync-daemon-cli
+      - plan-02-pi-workflow-wizard-and-stack-sync
+    branch: stack-sync-daemon-cli-surface-and-integration-parity/plan-03-plugin-docs-and-generated-reference
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - docs
+        - api
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - security
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a multi-surface feature spanning daemon routes, typed client
+    helpers, CLI, Pi/plugin integration, docs, and tests, but the work is
+    cohesive and can be planned by one planner, so excursion is appropriate. A
+    plan review gate helps catch scope drift around already-landed stack-sync
+    foundations. Implementation runs alongside documentation authoring because
+    the PRD has explicit docs requirements; doc-sync follows implementation to
+    update generated/user-facing references. Test-write and test-cycle are
+    included because the PRD requires new daemon, client-helper, and Pi helper
+    tests. Parallel API and security review is warranted because the change
+    exposes public HTTP/CLI/extension surfaces and invokes git/provider
+    subprocess workflows through the daemon.
