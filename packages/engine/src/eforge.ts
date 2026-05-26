@@ -31,6 +31,9 @@ import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual } from './recovery/apply.js';
 import { recoveryVerdictSchema } from './schemas.js';
+// --- eforge:region plan-02-deterministic-recovery-verdicts ---
+import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/recommendation.js';
+// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { emitBuildDecisionForPlan } from './decisions.js';
@@ -1589,10 +1592,17 @@ export class EforgeEngine {
             const recoveryModelTracker = new ModelTracker();
             const recoveryAbort = new AbortController();
             const recoveryTimer = setTimeout(() => recoveryAbort.abort(), 90_000);
+            // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+            const inlineDeterministicRec = determineRecoveryRecommendation(summary);
+            // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
             try {
               let verdictResult: RecoveryVerdict | null = null;
               const harness = agentRuntimes.forRole('recovery-analyst');
               const agentConfig = resolveAgentConfig('recovery-analyst', config);
+              // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+              let inlineAgentError: string | undefined;
+              let inlineParseError: string | undefined;
+              // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 
               try {
                 for await (const event of runRecoveryAnalyst({
@@ -1608,36 +1618,30 @@ export class EforgeEngine {
                   if (event.type === 'recovery:complete') {
                     verdictResult = event.verdict;
                   }
+                  // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+                  if (event.type === 'recovery:error') {
+                    inlineParseError = event.error;
+                  }
+                  // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
                   if (event.type === 'agent:start' && 'model' in event && typeof event.model === 'string') {
                     recoveryModelTracker.record(event.model);
                   }
                 }
               } catch (agentErr) {
-                // Agent failed or timed out — fall through to manual verdict
-                verdict = {
-                  verdict: 'manual',
-                  confidence: 'low',
-                  rationale: 'Recovery analyst failed or timed out.',
-                  completedWork: [],
-                  remainingWork: [],
-                  risks: [],
-                  partial: true,
-                  recoveryError: agentErr instanceof Error ? agentErr.message : String(agentErr),
-                };
+                // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+                inlineAgentError = agentErr instanceof Error ? agentErr.message : String(agentErr);
+                // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
               }
 
-              if (!verdict!) {
-                verdict = verdictResult ?? {
-                  verdict: 'manual',
-                  confidence: 'low',
-                  rationale: 'Recovery analyst output could not be parsed.',
-                  completedWork: [],
-                  remainingWork: [],
-                  risks: [],
-                  partial: summary.partial === true,
-                  recoveryError: 'Failed to parse recovery analyst output',
-                };
-              }
+              // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+              verdict = selectFinalVerdict({
+                deterministicRecommendation: inlineDeterministicRec,
+                analystVerdict: verdictResult,
+                analystError: inlineAgentError,
+                parseError: inlineParseError,
+                summary,
+              });
+              // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
             } finally {
               clearTimeout(recoveryTimer);
             }
@@ -2244,6 +2248,8 @@ export class EforgeEngine {
           risks: [],
           partial: true,
           recoveryError: prdMissingError ?? 'PRD file not found',
+          recommendationSource: 'manual-fallback',
+          recommendationRationale: 'PRD file not found; cannot perform automated recovery analysis.',
         };
         const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict });
         yield {
@@ -2285,6 +2291,10 @@ export class EforgeEngine {
       let parseError: string | undefined;
       let agentError: string | undefined;
 
+      // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+      const deterministicRec = determineRecoveryRecommendation(summary);
+      // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
+
       try {
         for await (const event of runRecoveryAnalyst({
           ...agentConfig,
@@ -2311,17 +2321,16 @@ export class EforgeEngine {
         agentError = err instanceof Error ? err.message : String(err);
       }
 
-      // Determine final verdict — fallback to manual on parse or agent failure
-      const verdict: RecoveryVerdict = verdictResult ?? {
-        verdict: 'manual',
-        confidence: 'low',
-        rationale: `Recovery analyst failed or output could not be parsed. ${agentError ?? parseError ?? 'Unknown error.'}`,
-        completedWork: [],
-        remainingWork: [],
-        risks: [],
-        partial: summary.partial === true || agentError !== undefined,
-        recoveryError: agentError ?? parseError,
-      };
+      // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+      // Determine final verdict using deterministic recommendation + analyst output
+      const verdict: RecoveryVerdict = selectFinalVerdict({
+        deterministicRecommendation: deterministicRec,
+        analystVerdict: verdictResult,
+        analystError: agentError,
+        parseError,
+        summary,
+      });
+      // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 
       // Write sidecar files
       const { mdPath, jsonPath } = await writeRecoverySidecar({
@@ -2366,6 +2375,8 @@ export class EforgeEngine {
           risks: [],
           partial: true,
           recoveryError: errMsg,
+          recommendationSource: 'manual-fallback',
+          recommendationRationale: 'Recovery process failed unexpectedly; cannot perform automated recovery analysis.',
         };
         const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict });
         yield {

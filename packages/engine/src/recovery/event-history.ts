@@ -83,38 +83,185 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
       }
       const modelsUsed = [...modelSet].sort();
 
-      // Find the most recent plan:build:failed event for this run
-      const failedStmt = db.prepare(
-        `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'plan:build:failed' ORDER BY id DESC LIMIT 1`,
-      );
-      const failedEvent = failedStmt.get(runId) as EventHistoryRow | undefined;
-
       let failingPlan: FailingPlanEntry;
       let plans: PlanSummaryEntry[];
       let failedAt: string;
+      let failingPlans: FailingPlanEntry[] | undefined;
 
-      if (failedEvent) {
-        const failingPlanId = failedEvent.planId ?? 'unknown';
-        const parsed = parseEventData(failedEvent.data);
-        const errorMessage = typeof parsed.error === 'string' ? parsed.error : undefined;
-        const terminalSubtype = typeof parsed.terminalSubtype === 'string'
-          ? parsed.terminalSubtype
-          : terminalSubtypeFromMessage(errorMessage);
+      // --- eforge:region plan-01-recovery-summary-reconstruction ---
+      // Query ALL plan:build:failed events for the run (ordered by id ASC; latest = last element).
+      const allFailedStmt = db.prepare(
+        `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'plan:build:failed' ORDER BY id ASC`,
+      );
+      const allFailedEvents = allFailedStmt.all(runId) as unknown as EventHistoryRow[];
+
+      if (allFailedEvents.length > 0) {
+        // Latest failed event is the last one (highest id) — preserve for backward compat.
+        const latestFailedEvent = allFailedEvents[allFailedEvents.length - 1]!;
+        failedAt = latestFailedEvent.timestamp;
+
+        const latestParsed = parseEventData(latestFailedEvent.data);
+        const latestError = typeof latestParsed.error === 'string' ? latestParsed.error : undefined;
+        const latestSubtype = typeof latestParsed.terminalSubtype === 'string'
+          ? latestParsed.terminalSubtype
+          : terminalSubtypeFromMessage(latestError);
 
         failingPlan = {
-          planId: failingPlanId,
-          errorMessage,
-          ...(terminalSubtype && { terminalSubtype }),
+          planId: latestFailedEvent.planId ?? 'unknown',
+          ...(latestError !== undefined ? { errorMessage: latestError } : {}),
+          ...(latestSubtype ? { terminalSubtype: latestSubtype } : {}),
         };
 
-        plans = [{
-          planId: failingPlanId,
-          status: 'failed',
-          error: errorMessage,
-          ...(terminalSubtype && { terminalSubtype }),
-        }];
-        failedAt = failedEvent.timestamp;
-      } else {
+        // Build per-plan error map from all plan:build:failed events.
+        const planErrorMap = new Map<string, { error?: string; terminalSubtype?: string }>();
+        for (const row of allFailedEvents) {
+          if (!row.planId) continue;
+          const parsed = parseEventData(row.data);
+          const err = typeof parsed.error === 'string' ? parsed.error : undefined;
+          const sub = typeof parsed.terminalSubtype === 'string'
+            ? parsed.terminalSubtype
+            : terminalSubtypeFromMessage(err);
+          planErrorMap.set(row.planId, {
+            ...(err !== undefined ? { error: err } : {}),
+            ...(sub ? { terminalSubtype: sub } : {}),
+          });
+        }
+
+        // Enrich planErrorMap from plan:error:set / plan:error:clear for plans
+        // that have no plan:build:failed row. Process ASC so the latest row wins.
+        const errorSetStmt = db.prepare(
+          `SELECT id, plan_id as planId, type, data FROM events WHERE run_id = ? AND type IN ('plan:error:set', 'plan:error:clear') AND plan_id IS NOT NULL ORDER BY id ASC`,
+        );
+        const errorSetRows = errorSetStmt.all(runId) as unknown as Array<{ id: number; planId: string; type: string; data: string }>;
+        const derivedErrorMap = new Map<string, { error?: string; terminalSubtype?: string } | null>();
+        for (const row of errorSetRows) {
+          if (row.type === 'plan:error:clear') {
+            derivedErrorMap.set(row.planId, null);
+          } else {
+            const parsed = parseEventData(row.data);
+            const err = typeof parsed.error === 'string' ? parsed.error : undefined;
+            const sub = typeof parsed.terminalSubtype === 'string'
+              ? parsed.terminalSubtype
+              : terminalSubtypeFromMessage(err);
+            derivedErrorMap.set(row.planId, {
+              ...(err !== undefined ? { error: err } : {}),
+              ...(sub ? { terminalSubtype: sub } : {}),
+            });
+          }
+        }
+        // Only fill in error details for plans not already covered by plan:build:failed.
+        for (const [planId, errorEntry] of derivedErrorMap) {
+          if (!planErrorMap.has(planId) && errorEntry !== null) {
+            planErrorMap.set(planId, errorEntry);
+          }
+        }
+
+        // Reconstruct latest status per plan from plan:status:change events (ASC → last wins).
+        const statusChangeStmt = db.prepare(
+          `SELECT id, plan_id as planId, data, timestamp FROM events WHERE run_id = ? AND type = 'plan:status:change' AND plan_id IS NOT NULL ORDER BY id ASC`,
+        );
+        const statusChangeEvents = statusChangeStmt.all(runId) as unknown as EventHistoryRow[];
+        const planStatusMap = new Map<string, string>();
+        const planStatusTimestampMap = new Map<string, string>();
+        for (const row of statusChangeEvents) {
+          if (!row.planId) continue;
+          const parsed = parseEventData(row.data);
+          const status = typeof parsed.status === 'string' ? parsed.status : 'unknown';
+          planStatusMap.set(row.planId, status);
+          planStatusTimestampMap.set(row.planId, row.timestamp);
+        }
+
+        // Enrich with plan:merge:complete (commitSha, mergedAt timestamp).
+        const mergeCompleteStmt = db.prepare(
+          `SELECT plan_id as planId, data, timestamp FROM events WHERE run_id = ? AND type = 'plan:merge:complete' AND plan_id IS NOT NULL ORDER BY id ASC`,
+        );
+        const mergeCompleteRows = mergeCompleteStmt.all(runId) as unknown as Array<{ planId: string; data: string; timestamp: string }>;
+        const mergeCompleteMap = new Map<string, { commitSha?: string; mergedAt: string }>();
+        for (const row of mergeCompleteRows) {
+          const parsed = parseEventData(row.data);
+          mergeCompleteMap.set(row.planId, {
+            mergedAt: row.timestamp,
+            ...(typeof parsed.commitSha === 'string' ? { commitSha: parsed.commitSha } : {}),
+          });
+        }
+
+        // Enrich with plan:build:test:complete (testPassed, testFailed).
+        const testCompleteStmt = db.prepare(
+          `SELECT plan_id as planId, data FROM events WHERE run_id = ? AND type = 'plan:build:test:complete' AND plan_id IS NOT NULL ORDER BY id ASC`,
+        );
+        const testCompleteRows = testCompleteStmt.all(runId) as unknown as Array<{ planId: string; data: string }>;
+        const testCompleteMap = new Map<string, { testPassed: number; testFailed: number }>();
+        for (const row of testCompleteRows) {
+          const parsed = parseEventData(row.data);
+          const p = typeof parsed.passed === 'number' ? parsed.passed : undefined;
+          const f = typeof parsed.failed === 'number' ? parsed.failed : undefined;
+          if (p !== undefined && f !== undefined) {
+            testCompleteMap.set(row.planId, { testPassed: p, testFailed: f });
+          }
+        }
+
+        // Count agent:tool_use events per planId.
+        const toolUseCountStmt = db.prepare(
+          `SELECT plan_id as planId, COUNT(*) as count FROM events WHERE run_id = ? AND type = 'agent:tool_use' AND plan_id IS NOT NULL GROUP BY plan_id`,
+        );
+        const toolUseCountRows = toolUseCountStmt.all(runId) as unknown as Array<{ planId: string; count: number }>;
+        const toolUseMap = new Map<string, number>();
+        for (const row of toolUseCountRows) {
+          toolUseMap.set(row.planId, row.count);
+        }
+
+        // Enrich failingPlan with toolUseCount from the tool-use map.
+        const failingPlanTuCount = toolUseMap.get(failingPlan.planId);
+        if (failingPlanTuCount !== undefined) {
+          failingPlan = { ...failingPlan, toolUseCount: failingPlanTuCount };
+        }
+
+        // Union of all plan IDs observed: plan:status:change ∪ plan:build:failed.
+        const allPlanIds = new Set<string>([...planStatusMap.keys(), ...planErrorMap.keys()]);
+        plans = [...allPlanIds].map(planId => {
+          const status = planStatusMap.get(planId) ?? 'failed';
+          const errEntry = planErrorMap.get(planId);
+          const mergeEntry = mergeCompleteMap.get(planId);
+          const testEntry = testCompleteMap.get(planId);
+
+          const planTuCount = toolUseMap.get(planId);
+          const statusTs = planStatusTimestampMap.get(planId);
+          return {
+            planId,
+            status,
+            ...(mergeEntry?.mergedAt ? { mergedAt: mergeEntry.mergedAt } : {}),
+            ...(errEntry?.error !== undefined ? { error: errEntry.error } : {}),
+            ...(errEntry?.terminalSubtype ? { terminalSubtype: errEntry.terminalSubtype } : {}),
+            ...(mergeEntry?.commitSha ? { commitSha: mergeEntry.commitSha } : {}),
+            ...(testEntry !== undefined ? { testPassed: testEntry.testPassed, testFailed: testEntry.testFailed } : {}),
+            ...(planTuCount !== undefined ? { toolUseCount: planTuCount } : {}),
+            ...(status === 'completed' && statusTs ? { completedAt: statusTs } : {}),
+          };
+        });
+
+        // Build failingPlans: deduplicated by planId (latest event per plan wins), with toolUseCount when available.
+        // allFailedEvents is ordered ASC by id, so iterating in order means the last write per planId wins.
+        const failingPlanMap = new Map<string, { planId: string; errorMessage?: string; terminalSubtype?: string; toolUseCount?: number }>();
+        for (const row of allFailedEvents) {
+          const planId = row.planId ?? 'unknown';
+          const parsed = parseEventData(row.data);
+          const err = typeof parsed.error === 'string' ? parsed.error : undefined;
+          const sub = typeof parsed.terminalSubtype === 'string'
+            ? parsed.terminalSubtype
+            : terminalSubtypeFromMessage(err);
+          const tuCount = toolUseMap.get(planId);
+
+          failingPlanMap.set(planId, {
+            planId,
+            ...(err !== undefined ? { errorMessage: err } : {}),
+            ...(sub ? { terminalSubtype: sub } : {}),
+            ...(tuCount !== undefined ? { toolUseCount: tuCount } : {}),
+          });
+        }
+        failingPlans = [...failingPlanMap.values()];
+      }
+      // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
+      else {
         // --- eforge:region plan-01-transport-resilience ---
         const phaseStmt = db.prepare(
           `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'phase:end' ORDER BY id DESC LIMIT 20`,
@@ -322,6 +469,9 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         baseBranch: 'main',
         plans,
         failingPlan,
+        // --- eforge:region plan-01-recovery-summary-reconstruction ---
+        ...(failingPlans !== undefined ? { failingPlans } : {}),
+        // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
         landedCommits: [] as LandedCommit[],
         diffStat: '',
         modelsUsed,

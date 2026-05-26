@@ -95,6 +95,20 @@ function buildMarkdown(
       `**⚠ Partial summary** — context was incomplete: ${verdict.recoveryError ?? 'some context was unavailable'}`,
       '',
     ] : []),
+    // --- eforge:region plan-02-deterministic-recovery-verdicts ---
+    ...(verdict.recommendationSource !== undefined ? [
+      `**Verdict Source:** ${verdict.recommendationSource}`,
+      '',
+    ] : []),
+    ...(verdict.verdictInvalidationReason !== undefined ? [
+      `**⚠ Analyst Verdict Rejected:** ${escapeTableCell(verdict.verdictInvalidationReason)}`,
+      '',
+    ] : []),
+    ...(verdict.recommendationRationale !== undefined && verdict.recommendationSource === 'deterministic' ? [
+      `**Deterministic Rationale:** ${escapeTableCell(verdict.recommendationRationale)}`,
+      '',
+    ] : []),
+    // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
     '## Rationale',
     '',
     verdict.rationale,
@@ -114,6 +128,20 @@ function buildMarkdown(
     lines.push(`**Error:** ${summary.failingPlan.errorMessage}`);
   }
   lines.push('');
+
+  // --- eforge:region plan-01-recovery-summary-reconstruction ---
+  if (summary.failingPlans && summary.failingPlans.length > 0) {
+    lines.push('## Failing Plans', '');
+    lines.push('| Plan | Error | Terminal Subtype |');
+    lines.push('|------|-------|-----------------|');
+    for (const fp of summary.failingPlans) {
+      const err = escapeTableCell(fp.errorMessage ?? '');
+      const sub = escapeTableCell(fp.terminalSubtype ?? '');
+      lines.push(`| ${escapeTableCell(fp.planId)} | ${err} | ${sub} |`);
+    }
+    lines.push('');
+  }
+  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
   if (summary.landedCommits.length > 0) {
     lines.push('## Landed Commits', '');

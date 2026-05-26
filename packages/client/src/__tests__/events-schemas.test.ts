@@ -16,7 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { isAlwaysYieldedAgentEvent, safeParseDaemonStreamSnapshot, safeParseEforgeEvent, StackLayerWireSchema } from '../events.schemas.js';
 import { DAEMON_EVENT_TYPES, eventRegistry, getEventSummary, isPersistedDaemonEventType } from '../event-registry.js';
-import type { EforgeEvent } from '../events.schemas.js';
+import type { EforgeEvent, BuildFailureSummary } from '../events.schemas.js';
 import { Value } from '@sinclair/typebox/value';
 
 // ---------------------------------------------------------------------------
@@ -3206,6 +3206,290 @@ describe('recovery:summary event — optional BuildFailureSummary fields', () =>
 // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 // --- eforge:endregion plan-01-validation-evidence-contract ---
 
+// --- eforge:region plan-01-recovery-summary-reconstruction ---
+describe('recovery:summary event — multi-plan optional fields', () => {
+  /**
+   * Base summary with one failed plan — used as the foundation for optional-field tests.
+   * Uses unknown cast because BuildFailureSummary / EforgeEvent types do not yet have
+   * the new fields (failingPlans, commitSha, testPassed, testFailed, completedAt,
+   * toolUseCount); the type definitions will be updated by this plan's implementation.
+   */
+  function makeBaseSummary() {
+    return {
+      prdId: 'prd-multi',
+      setName: 'multi-plan-set',
+      featureBranch: 'eforge/multi-plan-set',
+      baseBranch: 'main',
+      plans: [
+        { planId: 'plan-01', status: 'merged' },
+        { planId: 'plan-02', status: 'failed', error: 'API error 529: overloaded_error' },
+      ],
+      failingPlan: { planId: 'plan-02' },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: [],
+      failedAt: '2026-05-26T06:15:10.000Z',
+    };
+  }
+
+  it('accepts recovery:summary with failingPlans array containing multiple FailingPlanEntry items', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        failingPlans: [
+          { planId: 'plan-02', errorMessage: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport' },
+          { planId: 'plan-03', errorMessage: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport' },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with PlanSummaryEntry items containing commitSha', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        plans: [
+          { planId: 'plan-01', status: 'merged', commitSha: 'abc1234def5678901234567890abcdef12345678' },
+          { planId: 'plan-02', status: 'failed', error: 'API error 529: overloaded_error' },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with PlanSummaryEntry items containing testPassed and testFailed counts', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        plans: [
+          { planId: 'plan-01', status: 'merged', testPassed: 42, testFailed: 0 },
+          { planId: 'plan-02', status: 'failed', error: 'API error 529' },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with PlanSummaryEntry items containing completedAt timestamp', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        plans: [
+          { planId: 'plan-01', status: 'merged', completedAt: '2026-05-26T05:30:00.000Z' },
+          { planId: 'plan-02', status: 'failed', error: 'API error 529' },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with PlanSummaryEntry items containing toolUseCount', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        plans: [
+          { planId: 'plan-01', status: 'merged' },
+          { planId: 'plan-02', status: 'failed', error: 'API error 529', toolUseCount: 3 },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with failingPlans entries containing toolUseCount', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        failingPlans: [
+          { planId: 'plan-02', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport', toolUseCount: 5 },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with all new multi-plan optional fields combined', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi-full',
+      summary: {
+        prdId: 'prd-multi-full',
+        setName: 'multi-plan-set',
+        featureBranch: 'eforge/multi-plan-set',
+        baseBranch: 'main',
+        plans: [
+          {
+            planId: 'plan-01',
+            status: 'merged',
+            commitSha: 'abc1234def5678901234567890abcdef12345678',
+            completedAt: '2026-05-26T05:30:00.000Z',
+            testPassed: 20,
+            testFailed: 0,
+          },
+          {
+            planId: 'plan-02',
+            status: 'merged',
+            completedAt: '2026-05-26T05:45:00.000Z',
+          },
+          {
+            planId: 'plan-04',
+            status: 'failed',
+            error: 'API error 529: overloaded_error',
+            toolUseCount: 3,
+          },
+          {
+            planId: 'plan-06',
+            status: 'failed',
+            error: 'API error 529: overloaded_error',
+            toolUseCount: 0,
+          },
+        ] satisfies BuildFailureSummary['plans'],
+        failingPlan: { planId: 'plan-06' },
+        failingPlans: [
+          { planId: 'plan-04', errorMessage: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport', toolUseCount: 3 },
+          { planId: 'plan-06', errorMessage: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport', toolUseCount: 0 },
+        ],
+        landedCommits: [
+          { sha: 'abc1234def5678901234567890abcdef12345678', subject: 'feat: plan-01', author: 'Test', date: '2026-05-26T05:30:00.000Z' },
+        ],
+        diffStat: '10 files changed',
+        modelsUsed: ['claude-sonnet-4-6'],
+        failedAt: '2026-05-26T06:15:10.000Z',
+      },
+    } satisfies EforgeEvent;
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects recovery:summary when failingPlans is a string instead of an array', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        failingPlans: 'not-array',
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects PlanSummaryEntry when testPassed is a string instead of a number', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        plans: [
+          { planId: 'plan-01', status: 'merged', testPassed: '42' },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects PlanSummaryEntry when toolUseCount is a string instead of a number', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        plans: [
+          { planId: 'plan-01', status: 'failed', toolUseCount: 'three' },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects PlanSummaryEntry when commitSha is a number instead of a string', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        plans: [
+          { planId: 'plan-01', status: 'merged', commitSha: 12345 },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects FailingPlanEntry when toolUseCount is not a number', () => {
+    const event = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-multi',
+      summary: {
+        ...makeBaseSummary(),
+        failingPlans: [
+          { planId: 'plan-02', errorMessage: 'err', toolUseCount: 'five' },
+        ],
+      },
+    };
+    const result = safeParseEforgeEvent(event as unknown as EforgeEvent);
+    expect(result.success).toBe(false);
+  });
+
+  it('existing recovery:summary without new fields still validates (backward compatibility)', () => {
+    // Legacy sidecars without failingPlans, commitSha, testPassed, etc. must still parse cleanly.
+    const event: EforgeEvent = {
+      type: 'recovery:summary',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'prd-legacy',
+      summary: {
+        prdId: 'prd-legacy',
+        setName: 'legacy-set',
+        featureBranch: 'eforge/legacy-set',
+        baseBranch: 'main',
+        plans: [{ planId: 'plan-01', status: 'failed', error: 'Type error' }],
+        failingPlan: { planId: 'plan-01', errorMessage: 'Type error' },
+        landedCommits: [],
+        diffStat: '',
+        modelsUsed: [],
+        failedAt: '2026-05-26T06:15:10.000Z',
+      },
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+});
+// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
+
 // --- eforge:region plan-01-review-fixer-continuation ---
 
 // ---------------------------------------------------------------------------
@@ -3327,3 +3611,285 @@ describe('safeParseEforgeEvent — review-fixer agent:retry payload', () => {
 });
 
 // --- eforge:endregion plan-01-review-fixer-continuation ---
+
+// --- eforge:region plan-01-recovery-summary-reconstruction ---
+
+// ---------------------------------------------------------------------------
+// recovery:summary — multi-failure and enriched plan entry fields
+// ---------------------------------------------------------------------------
+
+describe('safeParseEforgeEvent — recovery:summary with multi-failure fields', () => {
+  const baseRecoverySummaryEvent = {
+    type: 'recovery:summary',
+    timestamp: '2026-05-26T06:15:10.000Z',
+    prdId: 'add-eforge-console-side-by-side',
+    summary: {
+      prdId: 'add-eforge-console-side-by-side',
+      setName: 'multi-plan-set',
+      featureBranch: 'eforge/multi-plan-set',
+      baseBranch: 'main',
+      plans: [
+        { planId: 'plan-01-console-shell', status: 'merged' },
+        { planId: 'plan-02-activity-audit-view', status: 'merged' },
+        { planId: 'plan-04-queue-view', status: 'failed', error: 'API error 529' },
+        { planId: 'plan-06-static-serving', status: 'failed', error: 'API error 529' },
+      ],
+      failingPlan: {
+        planId: 'plan-06-static-serving',
+        errorMessage: 'API error 529',
+        terminalSubtype: 'error_transient_transport',
+      },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: ['claude-sonnet-4-6'],
+      failedAt: '2026-05-26T06:15:10.000Z',
+    },
+  };
+
+  it('accepts recovery:summary without new optional fields (legacy)', () => {
+    const result = safeParseEforgeEvent(baseRecoverySummaryEvent);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with failingPlans array', () => {
+    const result = safeParseEforgeEvent({
+      ...baseRecoverySummaryEvent,
+      summary: {
+        ...baseRecoverySummaryEvent.summary,
+        failingPlans: [
+          {
+            planId: 'plan-04-queue-view',
+            errorMessage: 'API error 529',
+            terminalSubtype: 'error_transient_transport',
+            toolUseCount: 3,
+          },
+          {
+            planId: 'plan-06-static-serving',
+            errorMessage: 'API error 529',
+            terminalSubtype: 'error_transient_transport',
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with enriched plan entries (commitSha, testPassed, testFailed)', () => {
+    const result = safeParseEforgeEvent({
+      ...baseRecoverySummaryEvent,
+      summary: {
+        ...baseRecoverySummaryEvent.summary,
+        plans: [
+          {
+            planId: 'plan-01-console-shell',
+            status: 'merged',
+            mergedAt: '2026-05-26T05:05:00.000Z',
+            commitSha: 'abc1234def5678901234567890abcdef12345678',
+          },
+          {
+            planId: 'plan-02-activity-audit-view',
+            status: 'merged',
+            testPassed: 42,
+            testFailed: 0,
+          },
+          {
+            planId: 'plan-04-queue-view',
+            status: 'failed',
+            error: 'API error 529',
+            terminalSubtype: 'error_transient_transport',
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:summary with completedAt on plan entries', () => {
+    const result = safeParseEforgeEvent({
+      ...baseRecoverySummaryEvent,
+      summary: {
+        ...baseRecoverySummaryEvent.summary,
+        plans: [
+          {
+            planId: 'plan-01-console-shell',
+            status: 'merged',
+            completedAt: '2026-05-26T05:30:00.000Z',
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts failingPlan with toolUseCount', () => {
+    const result = safeParseEforgeEvent({
+      ...baseRecoverySummaryEvent,
+      summary: {
+        ...baseRecoverySummaryEvent.summary,
+        failingPlan: {
+          planId: 'plan-06-static-serving',
+          errorMessage: 'API error 529',
+          terminalSubtype: 'error_transient_transport',
+          toolUseCount: 0,
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('round-trips recovery:summary with all new optional fields through JSON', () => {
+    const event = {
+      ...baseRecoverySummaryEvent,
+      summary: {
+        ...baseRecoverySummaryEvent.summary,
+        plans: [
+          {
+            planId: 'plan-01-console-shell',
+            status: 'merged',
+            commitSha: 'abc1234',
+            testPassed: 10,
+            testFailed: 0,
+            completedAt: '2026-05-26T05:30:00.000Z',
+          },
+        ],
+        failingPlans: [
+          {
+            planId: 'plan-04-queue-view',
+            errorMessage: 'API error 529',
+            toolUseCount: 3,
+          },
+        ],
+      },
+    };
+    const parsed = JSON.parse(JSON.stringify(event));
+    expect(parsed).toEqual(event);
+    const result = safeParseEforgeEvent(parsed);
+    expect(result.success).toBe(true);
+  });
+});
+
+// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
+
+// --- eforge:region plan-02-deterministic-recovery-verdicts ---
+
+// ---------------------------------------------------------------------------
+// recovery:complete — optional verdict source metadata fields
+// ---------------------------------------------------------------------------
+
+describe('recovery:complete event — optional RecoveryVerdict metadata fields', () => {
+  /**
+   * Build a minimal valid recovery:complete event.
+   */
+  function makeBaseRecoveryCompleteEvent(verdictOverrides?: Record<string, unknown>) {
+    return {
+      type: 'recovery:complete',
+      timestamp: '2026-05-26T06:15:10.000Z',
+      prdId: 'test-prd',
+      verdict: {
+        verdict: 'retry',
+        confidence: 'high',
+        rationale: 'All failures were transient transport errors.',
+        completedWork: [],
+        remainingWork: [],
+        risks: [],
+        ...verdictOverrides,
+      },
+    };
+  }
+
+  it('accepts recovery:complete without new optional metadata fields (legacy compatibility)', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent());
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:complete with recommendationSource=deterministic', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      recommendationSource: 'deterministic',
+    }));
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:complete with recommendationSource=analyst', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      recommendationSource: 'analyst',
+    }));
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:complete with recommendationSource=manual-fallback', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      recommendationSource: 'manual-fallback',
+    }));
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:complete with recommendationRationale string', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      recommendationRationale: 'All 2 failed plans have terminalSubtype error_transient_transport with zero tool use.',
+    }));
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:complete with verdictInvalidationReason string', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      verdict: 'manual',
+      confidence: 'low',
+      rationale: 'Analyst verdict was rejected.',
+      verdictInvalidationReason: 'Analyst rationale did not mention plan-04-queue-view',
+    }));
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts recovery:complete with all three metadata fields combined', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      recommendationSource: 'deterministic',
+      recommendationRationale: 'All failed plans are transient; no completed work.',
+      verdictInvalidationReason: 'Analyst output omitted plan-04-queue-view from rationale.',
+    }));
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects recovery:complete when recommendationSource is not a known value', () => {
+    // If recommendationSource is a closed union, unknown values should be rejected
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      recommendationSource: 'llm-gut-feeling',
+    }));
+    // Closed union rejects unknown values; open string accepts any string.
+    // The plan says "use a closed union for source values if practical" — test for rejection.
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects recovery:complete when recommendationSource is a number instead of a string', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      recommendationSource: 42,
+    }));
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects recovery:complete when recommendationRationale is a number instead of a string', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      recommendationRationale: 999,
+    }));
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects recovery:complete when verdictInvalidationReason is a boolean instead of a string', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
+      verdictInvalidationReason: true,
+    }));
+    expect(result.success).toBe(false);
+  });
+
+  it('round-trips recovery:complete with all verdict metadata through JSON', () => {
+    const event = makeBaseRecoveryCompleteEvent({
+      recommendationSource: 'analyst',
+      recommendationRationale: 'Deterministic retry recommendation based on transient errors.',
+      verdictInvalidationReason: undefined, // analyst verdict was accepted
+    });
+    const parsed = JSON.parse(JSON.stringify(event));
+    const result = safeParseEforgeEvent(parsed);
+    expect(result.success).toBe(true);
+  });
+});
+
+// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
