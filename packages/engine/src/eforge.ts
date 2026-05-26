@@ -79,6 +79,10 @@ import type { CompletionRegistry } from './artifacts/completions.js';
 import { createProvider } from './stacking/provider.js';
 import type { StackProviderAdapter } from './stacking/provider.js';
 // --- eforge:endregion plan-02-stack-provider-runtime ---
+// --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+import { prepareTrunkSyncBase } from './trunk-sync.js';
+import { resolveTrunkBranch } from './branch-policy.js';
+// --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 // --- eforge:region plan-02-runtime-and-integration ---
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
@@ -94,6 +98,39 @@ import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.
 // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
 const exec = promisify(execFile);
+
+// --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+/**
+ * Collect the events produced by a `TrunkSyncResult` and the failure summary (if any).
+ *
+ * Returns an object with:
+ * - `events`        — diagnostic + warning events to yield to callers.
+ * - `failureSummary`— set when `result.outcome === 'failed'`; callers should fail the build.
+ *
+ * Extracting this avoids duplicating the event-emission and failed-outcome logic across the
+ * stacked-root and non-stacked queued-build code paths.
+ */
+function collectTrunkSyncEvents(
+  result: import('./trunk-sync.js').TrunkSyncResult,
+  planId: string,
+): { events: EforgeEvent[]; failureSummary?: string } {
+  const ts = new Date().toISOString();
+  const events: EforgeEvent[] = [];
+  for (const msg of result.diagnostics) {
+    events.push({ timestamp: ts, type: 'planning:progress', message: msg } as EforgeEvent);
+  }
+  for (const msg of result.warnings) {
+    events.push({ timestamp: ts, type: 'config:warning', message: msg, source: 'trunk-sync' } as EforgeEvent);
+  }
+  if (result.outcome === 'failed') {
+    const errMsg = result.warnings[0] ?? 'Trunk sync failed before compile';
+    events.push({ timestamp: ts, type: 'plan:status:change', planId, status: 'failed' } as EforgeEvent);
+    events.push({ timestamp: ts, type: 'plan:error:set', planId, error: errMsg } as EforgeEvent);
+    return { events, failureSummary: errMsg };
+  }
+  return { events };
+}
+// --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 
 export interface EforgeEngineOptions {
   /** Working directory (defaults to process.cwd()) */
@@ -411,7 +448,18 @@ export class EforgeEngine {
       const baseBranch = options.baseBranchOverride ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })).stdout.trim();
       // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       const worktreeBase = computeWorktreeBase(cwd, planSetName);
-      const mergeWorktreePath = await createMergeWorktree(cwd, worktreeBase, featureBranch, baseBranch);
+      // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+      // Use worktreeBaseRefOverride (fetched SHA) when provided; fall back to logical baseBranch.
+      // This keeps the commit SHA separate from the landing/orchestration base branch name.
+      const worktreeBaseRef = options.worktreeBaseRefOverride ?? baseBranch;
+      // diffBaseRef is the SHA used for diff/validation base computations. When trunk sync
+      // selected a fetched SHA, that SHA is the true divergence point for the worktree.
+      // baseBranch keeps the logical branch name for PR/merge targeting.
+      const diffBaseRef = options.worktreeBaseRefOverride !== undefined && options.worktreeBaseRefOverride !== baseBranch
+        ? options.worktreeBaseRefOverride
+        : undefined;
+      // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
+      const mergeWorktreePath = await createMergeWorktree(cwd, worktreeBase, featureBranch, worktreeBaseRef);
 
       // Default pipeline — the planner stage's composePipeline() call will update ctx.pipeline
       // with the actual composition before the planner agent runs.
@@ -431,6 +479,9 @@ export class EforgeEngine {
         cwd: mergeWorktreePath,
         planCommitCwd: mergeWorktreePath,
         baseBranch,
+        // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+        ...(diffBaseRef !== undefined && { diffBaseRef }),
+        // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
         planSetName,
         sourceContent,
         verbose: options.verbose,
@@ -865,7 +916,7 @@ export class EforgeEngine {
         // Build diff: per-file budgeted, no global truncation
         let built: Awaited<ReturnType<typeof buildPrdValidatorDiff>>;
         try {
-          built = await buildPrdValidatorDiff({ cwd: validatorCwd, baseRef: orchConfig.baseBranch });
+          built = await buildPrdValidatorDiff({ cwd: validatorCwd, baseRef: orchConfig.diffBaseRef ?? orchConfig.baseBranch });
         } catch {
           // --- eforge:region plan-02-final-validation-gates ---
           // Fail closed: emit events so the orchestrator marks the build as failed.
@@ -1300,6 +1351,78 @@ export class EforgeEngine {
       }
       // --- eforge:endregion plan-02-stack-provider-runtime ---
 
+      // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+      // Compute the worktree base ref via trunk sync, applying the gate only to
+      // root builds (stacked root or non-stacked on trunk). Child stacked PRDs
+      // and non-trunk feature branches skip the helper unchanged.
+      //
+      // IMPORTANT: trunk sync may resolve a fetched commit SHA (when remote is
+      // ahead of local). That SHA is passed as `worktreeBaseRefOverride` — used
+      // only by createMergeWorktree() — while `baseBranchOverride` always
+      // carries the logical trunk branch name so orchestration.yaml, PR creation,
+      // and mergeToBase() always receive a real branch name, not a SHA.
+      let compileWorktreeBaseRefOverride: string | undefined;
+      if (this.config.build.trunkSync.enabled && stackContext !== undefined && stackContext.parentPrdId === undefined) {
+        // Stacked root PRD: run trunk sync on the trunk base
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'planning:progress',
+          message: `Trunk sync: checking '${stackContext.baseBranch}' against remote before compile (PRD ${prd.id})`,
+        } as EforgeEvent;
+        const tsSyncResult = await prepareTrunkSyncBase({
+          cwd,
+          config: this.config,
+          candidateBase: stackContext.baseBranch,
+          parentPrdId: undefined,
+        });
+        const { events: tsEvents, failureSummary: tsFailure } = collectTrunkSyncEvents(tsSyncResult, prd.id);
+        for (const event of tsEvents) { yield event; }
+        if (tsFailure !== undefined) {
+          prdResult = { status: 'failed', summary: tsFailure };
+          return;
+        }
+        // Only set worktree ref override when trunk sync selected a different ref
+        // (e.g. a fetched SHA). The logical baseBranch stays as stackContext.baseBranch.
+        if (tsSyncResult.baseRef !== stackContext.baseBranch) {
+          compileWorktreeBaseRefOverride = tsSyncResult.baseRef;
+        }
+      } else if (this.config.build.trunkSync.enabled && stackContext === undefined) {
+        // Non-stacked queued build: apply trunk sync only when current HEAD is the trunk branch
+        const { stdout: currentBranchRaw } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
+        const currentBranch = currentBranchRaw.trim();
+        // Pass the configured trunk-sync remote so HEAD resolution uses the right remote in
+        // fork/upstream workflows (e.g. refs/remotes/upstream/HEAD instead of origin/HEAD).
+        const resolvedTrunk = await resolveTrunkBranch(this.config, cwd, this.config.build.trunkSync.remote);
+        if (currentBranch === resolvedTrunk) {
+          yield {
+            timestamp: new Date().toISOString(),
+            type: 'planning:progress',
+            message: `Trunk sync: checking '${resolvedTrunk}' against remote before compile (PRD ${prd.id})`,
+          } as EforgeEvent;
+          const tsSyncResult = await prepareTrunkSyncBase({
+            cwd,
+            config: this.config,
+            candidateBase: resolvedTrunk,
+            parentPrdId: undefined,
+          });
+          const { events: tsEvents, failureSummary: tsFailure } = collectTrunkSyncEvents(tsSyncResult, prd.id);
+          for (const event of tsEvents) { yield event; }
+          if (tsFailure !== undefined) {
+            prdResult = { status: 'failed', summary: tsFailure };
+            return;
+          }
+          // Only set worktree ref override when trunk sync selected a different ref
+          // (e.g. a fetched SHA). The logical baseBranch stays as resolvedTrunk.
+          if (tsSyncResult.baseRef !== resolvedTrunk) {
+            compileWorktreeBaseRefOverride = tsSyncResult.baseRef;
+          }
+        }
+        // Off-trunk feature branches: no override — compile() uses HEAD as base
+      }
+      // Stacked child PRDs (stackContext.parentPrdId !== undefined): no override
+      // here; the plan-02 region below passes stackContext.baseBranch unchanged.
+      // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
+
       for await (const event of withRunId(this.compile(prd.filePath, {
         name: planSetName,
         auto: options.auto,
@@ -1309,6 +1432,11 @@ export class EforgeEngine {
         // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
         ...(stackContext !== undefined && { baseBranchOverride: stackContext.baseBranch }),
         // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+        // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+        // Pass the fetched SHA as worktreeBaseRefOverride (for createMergeWorktree only),
+        // never as baseBranchOverride, so orchestration/landing always gets the branch name.
+        ...(compileWorktreeBaseRefOverride !== undefined && { worktreeBaseRefOverride: compileWorktreeBaseRefOverride }),
+        // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {

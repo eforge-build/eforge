@@ -481,6 +481,35 @@
           },
           "additionalProperties": false,
           "description": "Explicit validation waivers. Each waiver boolean requires a non-empty reason string."
+        },
+        "trunkSync": {
+          "description": "Pre-compile trunk freshness gate. Fetches remote trunk before compile and selects a reproducible base SHA when the remote is ahead of the local trunk.",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Enable pre-compile trunk freshness gate. When true (default), fetches remote trunk before compile and uses the fetched SHA as the compile base when remote is ahead. Set false to disable for offline or local-only workflows.",
+              "type": "boolean"
+            },
+            "remote": {
+              "description": "Git remote to fetch the trunk branch from. Default: \"origin\".",
+              "type": "string"
+            },
+            "strategy": {
+              "description": "Base selection strategy. Only \"fetchedRemoteRef\" is supported: use the exact fetched commit SHA so the compile base is reproducible if the remote branch moves during the run. Default: \"fetchedRemoteRef\".",
+              "type": "string",
+              "const": "fetchedRemoteRef"
+            },
+            "onDiverged": {
+              "description": "Policy when local and remote trunk have diverged (neither is an ancestor of the other). \"warn\": emit a diagnostic and fall back to local trunk (default). \"fail\": fail the build before compile. \"use-remote\": use the fetched remote SHA with a diagnostic.",
+              "type": "string",
+              "enum": [
+                "warn",
+                "fail",
+                "use-remote"
+              ]
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

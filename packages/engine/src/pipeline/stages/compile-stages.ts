@@ -99,7 +99,7 @@ async function* runPlannerAttempt(
         // fall through to yield the original unenriched plans on any failure.
         try {
           // Inject the pipeline composition (and correct baseBranch) into the planner-written orchestration.yaml.
-          await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch);
+          await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch, ctx.diffBaseRef);
 
           const orchConfig = await parseOrchestrationConfig(orchYamlPath);
           // Yield planning:warning events for any orchestration config warnings
@@ -594,7 +594,7 @@ registerCompileStage({
   // defaults for any module whose planner didn't emit a <build-config> block.
   // Without this, parseOrchestrationConfig rejects the file.
   const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
-  await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch);
+  await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch, ctx.diffBaseRef);
 
   // Parse the injected orchestration config to derive per-plan build + review for durable storage.
   let expeditionPlanConfigs: Array<{ id: string; build: BuildStageSpec[]; review: ReviewProfileConfig }> | undefined;

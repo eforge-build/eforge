@@ -403,6 +403,8 @@ const OrchestrationConfigSchema = Type.Object({
     Type.Literal('expedition'),
   ]),
   baseBranch: Type.String(),
+  /** When trunk sync selected a fetched commit SHA, this holds that SHA for diff/validation base computations. Landing/PR targeting always uses baseBranch. */
+  diffBaseRef: Type.Optional(Type.String()),
   pipeline: PipelineCompositionSchema,
   plans: Type.Array(
     Type.Object({

@@ -432,6 +432,53 @@ build:
 
 When `allowLocalMergeToTrunk` is `false` and you run interactively on trunk with `landing.action: merge`, the CLI prompts before enqueue and offers four alternatives: switch to `pr`, cancel, create or switch to a feature branch, or enable the solo-dev opt-in in `eforge/config.yaml`. With `--auto`, the engine rejects the build at runtime with a clear error message.
 
+## Pre-Compile Trunk Sync
+
+By default, eforge fetches the configured remote trunk before creating the merge worktree for a queued root build. This prevents stale-base builds when `origin/main` has advanced but the local branch has not been pulled.
+
+```yaml
+build:
+  trunkSync:
+    enabled: true             # default; set false for offline/local-only workflows
+    remote: origin            # remote to fetch trunk from
+    strategy: fetchedRemoteRef # only supported strategy in v1
+    onDiverged: warn          # warn | fail | use-remote
+```
+
+**What it does:** before compile, eforge runs `git fetch --no-tags origin main` (using your configured remote and trunk branch), resolves the fetched commit SHA, and compares it to the local trunk. When the remote is ahead or equal, the fetched SHA is used as the compile base. When local and remote have diverged, the `onDiverged` policy applies.
+
+**`onDiverged` options:**
+
+| Value | Behavior |
+|-------|----------|
+| `warn` (default) | Emit a `config:warning` diagnostic and fall back to the local trunk as the compile base. |
+| `fail` | Fail the build before compile begins. |
+| `use-remote` | Use the fetched remote SHA with a diagnostic. |
+
+**Fetch-unavailable fallback:** if the configured remote does not exist, the remote trunk branch is missing, the fetch fails, or FETCH_HEAD cannot be resolved, trunk sync is skipped. The build continues with the original candidate base and emits a `planning:progress` diagnostic. The `onDiverged` policy applies only to true local/remote divergence - not to network failures or unavailable remotes.
+
+**Validation and failure before compile:** the `remote` value is validated before the fetch runs. It must be a registered git remote name: non-empty, must not start with `-`, must contain no whitespace or control characters, and must not be a URL (containing `://`) or path (starting with `/`, `./`, or `../`). The resolved trunk branch must also be a valid git branch refname. Invalid values fail the build before compile - they do not fall back to the fetch-unavailable behavior. Use `enabled: false` to skip trunk sync for offline or local-only workflows.
+
+**What it does not do:** `trunkSync` only fetches and selects a base ref. It does not checkout, pull, reset, rebase, or move local branch refs or your working tree. Only FETCH_HEAD is updated as part of the fetch.
+
+**Scope:** only applies to queued root builds whose candidate base is the trunk branch. Child stacked PRDs use the parent artifact ref unchanged. Builds queued from a non-trunk feature branch are not retargeted.
+
+### Disabling trunk sync
+
+For offline workflows or repositories without a remote:
+
+```yaml
+build:
+  trunkSync:
+    enabled: false
+```
+
+### Distinction from stack sync
+
+`build.trunkSync` selects a fresh compile base before a build starts. It runs once, before the merge worktree is created, and does not affect the stack topology.
+
+`eforge stack sync` (git-spice) restacks the in-flight PR stack after trunk has been updated - a separate operation that modifies the stack structure. These two features are independent and address different points in the build lifecycle.
+
 ## Per-Role Tuning
 
 Fine-tune individual agent roles without reassigning them to a different tier:

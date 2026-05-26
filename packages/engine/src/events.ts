@@ -62,9 +62,18 @@ export interface CompileOptions {
   cwd?: string;
   abortController?: AbortController;
   // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-  /** Override the base ref used to create the compile/merge worktree. */
+  /** Override the logical/landing base branch (written to orchestration.yaml and used for PR/merge). */
   baseBranchOverride?: string;
   // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
+  // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+  /**
+   * Override the git ref used ONLY for `createMergeWorktree()`. When trunk sync
+   * selects a fetched commit SHA (remote-ahead case), pass it here rather than
+   * via `baseBranchOverride` so the logical/landing base branch stays as the
+   * trunk branch name in orchestration.yaml.
+   */
+  worktreeBaseRefOverride?: string;
+  // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 }
 
 export interface BuildOptions {
