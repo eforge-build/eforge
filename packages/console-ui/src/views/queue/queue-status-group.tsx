@@ -17,11 +17,11 @@ export function QueueStatusGroup({ group }: QueueStatusGroupProps) {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {group.label}
         </h2>
-        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+        <Badge variant="secondary" className="text-xs px-1.5 py-0">
           {group.items.length}
         </Badge>
         {!group.known && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+          <Badge variant="outline" className="text-xs px-1.5 py-0 text-muted-foreground">
             unknown status
           </Badge>
         )}

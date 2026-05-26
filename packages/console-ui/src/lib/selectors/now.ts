@@ -639,9 +639,12 @@ export function selectNowStatusSummary(
   const subscribers = hb?.payload.subscribers ?? state.liveness?.subscribers ?? null;
   const uptimeMs = hb?.payload.uptime ?? state.liveness?.uptime ?? null;
 
-  // Last update
-  const lastEventAt = state.lastEventAt ?? state.lastSnapshotAt;
-  const lastUpdateMsAgo = lastEventAt != null ? now - lastEventAt : null;
+  // Last update — use the newest non-null timestamp across event and snapshot
+  const lastUpdateTs =
+    state.lastEventAt != null || state.lastSnapshotAt != null
+      ? Math.max(state.lastEventAt ?? 0, state.lastSnapshotAt ?? 0)
+      : null;
+  const lastUpdateMsAgo = lastUpdateTs != null ? now - lastUpdateTs : null;
 
   return {
     connectionStatus: state.connectionStatus,

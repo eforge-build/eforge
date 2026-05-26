@@ -3,7 +3,6 @@ import type { ConsoleProjectState } from '@/lib/project-state';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
 import { selectNowDashboardModel } from '@/lib/selectors/now';
 import { NowStateBanner } from '@/components/now/now-state-banner';
-import { NowStatusOverview } from '@/components/now/now-status-overview';
 import { AttentionPanel } from '@/components/now/attention-panel';
 import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
 import { QueueSnapshotCard } from '@/components/now/queue-snapshot-card';
@@ -28,14 +27,11 @@ export function NowDashboard({ projectState, activeSessions }: NowDashboardProps
   const model = selectNowDashboardModel(projectState, activeSessions, now);
 
   return (
-    <div className="space-y-0">
+    <div className="space-y-4">
       {/* Connection/state banner */}
       {model.connectionBanner && (
         <NowStateBanner banner={model.connectionBanner} />
       )}
-
-      {/* Status overview row */}
-      <NowStatusOverview status={model.status} />
 
       {/* Attention section */}
       <AttentionPanel items={model.attention} hiddenCount={model.attentionHiddenCount} />

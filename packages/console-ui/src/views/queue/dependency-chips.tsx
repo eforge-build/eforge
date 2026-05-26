@@ -14,7 +14,7 @@ export function DependencyChips({ dependsOn }: DependencyChipsProps) {
   return (
     <div className="flex flex-wrap gap-1" aria-label="Dependencies">
       {dependsOn.map((depId) => (
-        <Badge key={depId} variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+        <Badge key={depId} variant="outline" className="text-xs px-1.5 py-0 font-mono">
           {depId}
         </Badge>
       ))}

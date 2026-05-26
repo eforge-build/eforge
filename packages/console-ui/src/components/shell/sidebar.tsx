@@ -16,7 +16,7 @@ function ConnectionDot({ status }: { status: ConnectionStatus }) {
     <span
       className={cn(
         'inline-block w-2 h-2 rounded-full flex-shrink-0',
-        status === 'connected' && 'bg-[#67f553]',
+        status === 'connected' && 'bg-green',
         status === 'connecting' && 'bg-yellow animate-pulse',
         status === 'disconnected' && 'bg-red',
       )}
@@ -66,7 +66,7 @@ export function Sidebar({ currentRoute, connectionStatus, onNavigate }: SidebarP
               className={cn(
                 'flex items-center px-2 py-1.5 rounded text-sm transition-colors',
                 isActive
-                  ? 'bg-[color:var(--color-console-accent-dim)] text-[#67f553] font-medium'
+                  ? 'bg-[color:var(--color-console-accent-dim)] text-green font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary',
               )}
               aria-current={isActive ? 'page' : undefined}
@@ -81,13 +81,11 @@ export function Sidebar({ currentRoute, connectionStatus, onNavigate }: SidebarP
       <div className="px-3 py-2 border-t border-border flex flex-col gap-2">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <ConnectionDot status={connectionStatus} />
-          <span>
-            {connectionStatus === 'connected'
-              ? 'Connected'
-              : connectionStatus === 'connecting'
-                ? 'Connecting...'
-                : 'Disconnected'}
-          </span>
+          {connectionStatus !== 'connected' && (
+            <span>
+              {connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+            </span>
+          )}
         </div>
         <a
           href="/"

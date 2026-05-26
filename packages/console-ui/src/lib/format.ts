@@ -52,6 +52,27 @@ export function formatTimestamp(ts: string | number): string {
 }
 
 /**
+ * Format a timestamp string or epoch ms to an absolute date+time locale string.
+ * Used where an unambiguous absolute timestamp is needed (e.g. status strip footer).
+ */
+export function formatAbsoluteTimestamp(ts: string | number): string {
+  try {
+    const d = typeof ts === 'number' ? new Date(ts) : new Date(ts);
+    if (isNaN(d.getTime())) return String(ts);
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return String(ts);
+  }
+}
+
+/**
  * Capitalize and lightly humanize a status string (e.g. "in_progress" -> "In progress").
  */
 export function formatStatusLabel(status: string): string {

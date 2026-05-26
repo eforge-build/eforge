@@ -10,7 +10,7 @@ function SummaryCard({ label, value }: SummaryCardProps) {
   return (
     <div className="flex flex-col gap-0.5 rounded-md border bg-card px-3 py-2 text-card-foreground shadow-sm">
       <span className="text-lg font-bold leading-none tabular-nums">{value}</span>
-      <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</span>
+      <span className="text-xs text-muted-foreground uppercase tracking-wide">{label}</span>
     </div>
   );
 }
@@ -20,8 +20,7 @@ interface QueueSummaryCardsProps {
 }
 
 /**
- * Summary count cards: total, running, pending, failed, waiting, with
- * dependencies, with recovery verdict, and recovery pending.
+ * Summary count cards: total, running, pending, and failed.
  */
 export function QueueSummaryCards({ summary }: QueueSummaryCardsProps) {
   return (
@@ -29,11 +28,7 @@ export function QueueSummaryCards({ summary }: QueueSummaryCardsProps) {
       <SummaryCard label="Total" value={summary.total} />
       <SummaryCard label="Running" value={summary.running} />
       <SummaryCard label="Pending" value={summary.pending} />
-      <SummaryCard label="Waiting" value={summary.waiting} />
       <SummaryCard label="Failed" value={summary.failed} />
-      <SummaryCard label="With deps" value={summary.withDependencies} />
-      <SummaryCard label="Recovery verdict" value={summary.withRecoveryVerdict} />
-      <SummaryCard label="Recovery pending" value={summary.recoveryPending} />
     </div>
   );
 }

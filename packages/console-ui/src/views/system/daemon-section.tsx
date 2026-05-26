@@ -1,15 +1,20 @@
 /**
- * Daemon section — health PID, API version, eforge package version, project cwd, git remote.
+ * Daemon section — health PID, API version, eforge package version, project cwd, git remote,
+ * and live telemetry (subscribers, uptime, scheduler limit) when project state is available.
  */
 import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { SystemSection } from './system-section';
 import type { Loadable, HealthResponse, VersionResponse, ProjectContext } from './system-types';
+import type { ConsoleProjectState } from '@/lib/project-state';
+import { selectNowStatusSummary } from '@/lib/selectors/now';
+import { formatDuration } from '@/lib/format';
 
 interface DaemonSectionProps {
   health: Loadable<HealthResponse>;
   version: Loadable<VersionResponse>;
   projectContext: Loadable<ProjectContext>;
+  projectState?: ConsoleProjectState;
 }
 
 function LoadableValue<T>({
@@ -39,7 +44,7 @@ function LoadableValue<T>({
   return <>{render(loadable.data)}</>;
 }
 
-export function DaemonSection({ health, version, projectContext }: DaemonSectionProps) {
+export function DaemonSection({ health, version, projectContext, projectState }: DaemonSectionProps) {
   const isLoading =
     health.status === 'loading' ||
     version.status === 'loading' ||
@@ -52,6 +57,10 @@ export function DaemonSection({ health, version, projectContext }: DaemonSection
         : projectContext.status === 'error'
           ? projectContext.error
           : undefined;
+
+  const summary = projectState != null
+    ? selectNowStatusSummary(projectState, {})
+    : null;
 
   return (
     <SystemSection
@@ -104,6 +113,27 @@ export function DaemonSection({ health, version, projectContext }: DaemonSection
             render={(c) => <span>{c.gitRemote ?? '-'}</span>}
           />
         </dd>
+
+        {summary?.subscribers != null && (
+          <>
+            <dt className="text-muted-foreground font-medium">Subscribers</dt>
+            <dd>{summary.subscribers}</dd>
+          </>
+        )}
+
+        {summary?.uptimeMs != null && (
+          <>
+            <dt className="text-muted-foreground font-medium">Uptime</dt>
+            <dd>{formatDuration(summary.uptimeMs)}</dd>
+          </>
+        )}
+
+        {summary?.schedulerLimit != null && (
+          <>
+            <dt className="text-muted-foreground font-medium">Scheduler limit</dt>
+            <dd>{summary.schedulerLimit}</dd>
+          </>
+        )}
       </dl>
     </SystemSection>
   );

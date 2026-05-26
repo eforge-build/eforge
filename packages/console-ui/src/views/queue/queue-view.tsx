@@ -18,14 +18,12 @@ import { useState } from 'react';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import {
   selectQueueSummary,
-  selectQueueAttentionItems,
   selectQueueStatusGroups,
 } from '@/lib/selectors/queue';
 import type { QueueStatusFilter } from './queue-status-filter';
 import { QueueStatusFilterBar } from './queue-status-filter';
 import { QueueSummaryCards } from './queue-summary-cards';
 import { QueueStatusGroup } from './queue-status-group';
-import { QueueItemRow } from './queue-item-row';
 import {
   QueueConnectingPanel,
   QueueEmptyPanel,
@@ -56,7 +54,6 @@ export function QueueView({ projectState }: QueueViewProps) {
 
   // Derived state
   const summary = selectQueueSummary(queue);
-  const attentionItems = selectQueueAttentionItems(queue);
   const allGroups = selectQueueStatusGroups(queue);
 
   // Filter groups by active status filter
@@ -83,7 +80,6 @@ export function QueueView({ projectState }: QueueViewProps) {
             {summary.total} {summary.total === 1 ? 'item' : 'items'}
           </span>
         )}
-        <span className="ml-auto text-[10px] text-muted-foreground">read-only view</span>
       </div>
 
       {/* Read-only boundary note */}
@@ -122,25 +118,6 @@ export function QueueView({ projectState }: QueueViewProps) {
                 activeFilter={statusFilter}
                 onFilterChange={setStatusFilter}
               />
-
-              {/* Attention section: failed items */}
-              {statusFilter === 'all' && attentionItems.length > 0 && (
-                <section aria-label="Attention items">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-destructive">
-                      Needs Attention
-                    </h2>
-                    <span className="text-[10px] text-destructive">
-                      {attentionItems.length}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    {attentionItems.map((item) => (
-                      <QueueItemRow key={item.id} item={item} />
-                    ))}
-                  </div>
-                </section>
-              )}
 
               {/* Status groups */}
               {visibleGroups.length > 0 && (

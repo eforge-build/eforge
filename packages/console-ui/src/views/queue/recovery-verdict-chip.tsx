@@ -30,7 +30,7 @@ export function RecoveryVerdictChip({ recoveryVerdict }: RecoveryVerdictChipProp
   return (
     <Badge
       variant="outline"
-      className={cn('text-[10px] px-1.5 py-0 gap-1', CONFIDENCE_CLASSES[confidence])}
+      className={cn('text-xs px-1.5 py-0 gap-1', CONFIDENCE_CLASSES[confidence])}
       aria-label={`Recovery verdict: ${verdict}, confidence: ${confidence}`}
     >
       {VERDICT_LABELS[verdict]}
