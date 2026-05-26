@@ -185,6 +185,15 @@ export async function performStackSync(
   const gsCommand = config.stacking.gitSpice?.command ?? 'git-spice';
   const provider = createProvider(config.stacking);
 
+  // Compute exclusion state up-front so dry-run and wet-run use the same logic.
+  const hasExcludedCandidates = allCandidates.length > restackCandidates.length;
+  // Restack only runs when there are candidates AND none were excluded (same condition as wet run).
+  const wouldRestack = restackCandidates.length > 0 && !hasExcludedCandidates;
+  const restackSkippedReason =
+    hasExcludedCandidates && restackCandidates.length > 0
+      ? 'stack restack skipped: active-build branches overlap the stack; restack cannot be scoped to exclude them'
+      : undefined;
+
   // Build the command list
   const syncRepoDryRecord: StackSyncProviderCommand = {
     command: gsCommand,
@@ -193,7 +202,7 @@ export async function performStackSync(
     ran: false,
   };
   const restackDryRecord: StackSyncProviderCommand | undefined =
-    restackCandidates.length > 0
+    wouldRestack
       ? {
           command: gsCommand,
           args: ['stack', 'restack'],
@@ -207,6 +216,7 @@ export async function performStackSync(
     if (restackDryRecord) providerCommands.push(restackDryRecord);
     return {
       outcome: 'complete',
+      ...(restackSkippedReason !== undefined && { reason: restackSkippedReason }),
       stackingActive: true,
       dryRun: true,
       localTrunkSha,
@@ -260,8 +270,7 @@ export async function performStackSync(
   // Wet run: execute stack restack (when candidates exist and no active-build branches
   // overlap the stack — global restack cannot be scoped to specific branches, so we must
   // skip it entirely when any candidate was excluded to avoid mutating active-build worktrees)
-  const hasExcludedCandidates = allCandidates.length > restackCandidates.length;
-  if (restackCandidates.length > 0 && !hasExcludedCandidates) {
+  if (wouldRestack) {
     try {
       const restackResult = await provider.restackStack(cwd);
       providerCommands.push(buildCommandRecord(restackResult, false));
@@ -290,11 +299,6 @@ export async function performStackSync(
       };
     }
   }
-
-  const restackSkippedReason =
-    hasExcludedCandidates && restackCandidates.length > 0
-      ? 'stack restack skipped: active-build branches overlap the stack; restack cannot be scoped to exclude them'
-      : undefined;
 
   return {
     outcome: 'complete',

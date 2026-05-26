@@ -172,6 +172,9 @@ export async function handleConfigCommand(
   sections.push("---\n");
   sections.push("Edit `eforge/config.yaml` directly to change settings.\n");
   sections.push("Use `/eforge:profile` to manage profiles.");
+  // --- eforge:region plan-02-pi-workflow-wizard-and-stack-sync ---
+  sections.push("Use `/eforge:workflow` to configure landing action, stacking, and PR settings.");
+  // --- eforge:endregion plan-02-pi-workflow-wizard-and-stack-sync ---
 
   await showInfoOverlay(ctx, "eforge - Configuration", sections.join("\n"));
 }
