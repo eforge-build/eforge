@@ -217,6 +217,19 @@ export type {
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 } from './events.js';
 
+// --- eforge:region system-configuration-view ---
+export type {
+  PlaybookScope,
+  PlaybookArtifactSource,
+  PlaybookMode,
+  PlaybookShadow,
+  PlaybookListEntry,
+  PlaybookData,
+  PlaybookListResponse,
+  PlaybookShowResponse,
+} from './api/playbook.js';
+// --- eforge:endregion system-configuration-view ---
+
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES, PlanningDecisionSchema,
   // --- eforge:region plan-01-validation-evidence-contract ---
   AcceptanceCriterionVerdictSchema,

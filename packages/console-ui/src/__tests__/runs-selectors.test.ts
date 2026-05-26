@@ -1,0 +1,320 @@
+import { describe, it, expect } from 'vitest';
+import {
+  selectRunGroups,
+  selectRunStatusRollup,
+  partitionRunGroups,
+  selectPlanStatusCounts,
+} from '@/lib/selectors/runs';
+import type { RunInfo, SessionMetadata } from '@eforge-build/client/browser';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeRun(overrides: Partial<RunInfo> = {}): RunInfo {
+  return {
+    id: 'run-1',
+    command: 'build',
+    status: 'running',
+    startedAt: '2024-01-01T10:00:00Z',
+    cwd: '/project',
+    planSet: 'my-plan-set',
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// selectRunStatusRollup
+// ---------------------------------------------------------------------------
+
+describe('selectRunStatusRollup', () => {
+  it('returns unknown for empty run list', () => {
+    expect(selectRunStatusRollup([])).toBe('unknown');
+  });
+
+  it('returns running when a run lacks completedAt and has non-terminal status', () => {
+    const runs = [makeRun({ status: 'running', completedAt: undefined })];
+    expect(selectRunStatusRollup(runs)).toBe('running');
+  });
+
+  it('returns running for pending status without completedAt', () => {
+    const runs = [makeRun({ status: 'pending', completedAt: undefined })];
+    expect(selectRunStatusRollup(runs)).toBe('running');
+  });
+
+  it('returns failed when any run has status failed', () => {
+    const runs = [
+      makeRun({ status: 'completed', completedAt: '2024-01-01T11:00:00Z' }),
+      makeRun({ id: 'run-2', status: 'failed', completedAt: '2024-01-01T11:30:00Z' }),
+    ];
+    expect(selectRunStatusRollup(runs)).toBe('failed');
+  });
+
+  it('returns failed for status error', () => {
+    const runs = [makeRun({ status: 'error', completedAt: '2024-01-01T11:00:00Z' })];
+    expect(selectRunStatusRollup(runs)).toBe('failed');
+  });
+
+  it('returns failed for status killed', () => {
+    const runs = [makeRun({ status: 'killed' })];
+    expect(selectRunStatusRollup(runs)).toBe('failed');
+  });
+
+  it('returns failed for status cancelled', () => {
+    const runs = [makeRun({ status: 'cancelled' })];
+    expect(selectRunStatusRollup(runs)).toBe('failed');
+  });
+
+  it('returns failed for status canceled', () => {
+    const runs = [makeRun({ status: 'canceled' })];
+    expect(selectRunStatusRollup(runs)).toBe('failed');
+  });
+
+  it('returns completed when all runs have success statuses and completedAt', () => {
+    const runs = [
+      makeRun({ status: 'completed', completedAt: '2024-01-01T11:00:00Z' }),
+      makeRun({
+        id: 'run-2',
+        status: 'success',
+        completedAt: '2024-01-01T11:30:00Z',
+      }),
+    ];
+    expect(selectRunStatusRollup(runs)).toBe('completed');
+  });
+
+  it('returns running (not completed) for success status without completedAt', () => {
+    const runs = [makeRun({ status: 'success', completedAt: undefined })];
+    expect(selectRunStatusRollup(runs)).toBe('running');
+  });
+
+  it('prioritises failed over running', () => {
+    const runs = [
+      makeRun({ status: 'running', completedAt: undefined }),
+      makeRun({ id: 'run-2', status: 'failed', completedAt: '2024-01-01T11:00:00Z' }),
+    ];
+    expect(selectRunStatusRollup(runs)).toBe('failed');
+  });
+
+  it('returns unknown for an unrecognized status with completedAt (terminal-looking but unknown)', () => {
+    const runs = [makeRun({ status: 'mystery-status', completedAt: '2024-01-01T11:00:00Z' })];
+    expect(selectRunStatusRollup(runs)).toBe('unknown');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectRunGroups – grouping
+// ---------------------------------------------------------------------------
+
+describe('selectRunGroups – grouping', () => {
+  it('groups two runs with the same sessionId into one session group', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: 'sess-a', startedAt: '2024-01-01T10:00:00Z' }),
+      makeRun({ id: 'r2', sessionId: 'sess-a', startedAt: '2024-01-01T10:01:00Z' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(1);
+    expect(groups[0].sessionId).toBe('sess-a');
+    expect(groups[0].runs).toHaveLength(2);
+  });
+
+  it('produces a session: key for runs with sessionId', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: 'sess-a' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups[0].key).toBe('session:sess-a');
+    expect(groups[0].isSession).toBe(true);
+  });
+
+  it('groups runs without sessionId by planSet:<name>', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: 'my-feature' }),
+      makeRun({ id: 'r2', sessionId: undefined, planSet: 'my-feature' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(1);
+    expect(groups[0].key).toBe('planSet:my-feature');
+    expect(groups[0].isSession).toBe(false);
+  });
+
+  it('uses run:<id> key when sessionId and planSet are absent', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: '' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups[0].key).toBe('run:r1');
+  });
+
+  it('creates separate groups for different sessionIds', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: 'sess-a', startedAt: '2024-01-01T10:00:00Z' }),
+      makeRun({ id: 'r2', sessionId: 'sess-b', startedAt: '2024-01-01T09:00:00Z' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(2);
+  });
+
+  it('creates separate groups for different planSets when no sessionId', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: 'feat-a' }),
+      makeRun({ id: 'r2', sessionId: undefined, planSet: 'feat-b' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectRunGroups – sorting
+// ---------------------------------------------------------------------------
+
+describe('selectRunGroups – sorting', () => {
+  it('sorts groups by newest startedAt descending', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: 'old', startedAt: '2024-01-01T08:00:00Z' }),
+      makeRun({ id: 'r2', sessionId: 'new', startedAt: '2024-01-01T10:00:00Z' }),
+      makeRun({ id: 'r3', sessionId: 'mid', startedAt: '2024-01-01T09:00:00Z' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups[0].sessionId).toBe('new');
+    expect(groups[1].sessionId).toBe('mid');
+    expect(groups[2].sessionId).toBe('old');
+  });
+
+  it('sorts runs within a group chronologically ascending', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r2', sessionId: 'sess', startedAt: '2024-01-01T10:02:00Z' }),
+      makeRun({ id: 'r1', sessionId: 'sess', startedAt: '2024-01-01T10:00:00Z' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups[0].runs[0].id).toBe('r1');
+    expect(groups[0].runs[1].id).toBe('r2');
+  });
+
+  it('tie-breaks runs within a second by canonical command order', () => {
+    const base = '2024-01-01T10:00:00Z';
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r-build', sessionId: 'sess', command: 'build', startedAt: base }),
+      makeRun({ id: 'r-enqueue', sessionId: 'sess', command: 'enqueue', startedAt: base }),
+      makeRun({ id: 'r-compile', sessionId: 'sess', command: 'compile', startedAt: base }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups[0].runs.map((r) => r.command)).toEqual(['enqueue', 'compile', 'build']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectRunGroups – metadata projection
+// ---------------------------------------------------------------------------
+
+describe('selectRunGroups – metadata projection', () => {
+  it('attaches SessionMetadata to matching session groups', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: 'sess-a' }),
+    ];
+    const metadata: Record<string, SessionMetadata> = {
+      'sess-a': { planCount: 5, baseProfile: 'expedition' },
+    };
+    const groups = selectRunGroups(runs, metadata);
+    expect(groups[0].metadata?.planCount).toBe(5);
+    expect(groups[0].metadata?.baseProfile).toBe('expedition');
+    expect(groups[0].planCountLabel).toBe('5 plans');
+    expect(groups[0].profileLabel).toBe('expedition');
+  });
+
+  it('does not attach metadata to non-session groups', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: 'feat' }),
+    ];
+    const metadata: Record<string, SessionMetadata> = {
+      'feat': { planCount: 3, baseProfile: 'errand' },
+    };
+    const groups = selectRunGroups(runs, metadata);
+    expect(groups[0].metadata).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// partitionRunGroups
+// ---------------------------------------------------------------------------
+
+describe('partitionRunGroups', () => {
+  it('classifies a session group as active when its sessionId is in activeSessionIds', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: 'active-a', startedAt: '2024-01-01T10:00:00Z' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    const { active, history } = partitionRunGroups(groups, ['active-a']);
+    expect(active).toHaveLength(1);
+    expect(history).toHaveLength(0);
+  });
+
+  it('classifies two active session ids into two active groups', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: 'sess-a', startedAt: '2024-01-01T10:00:00Z' }),
+      makeRun({ id: 'r2', sessionId: 'sess-b', startedAt: '2024-01-01T09:00:00Z' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    const { active, history } = partitionRunGroups(groups, ['sess-a', 'sess-b']);
+    expect(active).toHaveLength(2);
+    expect(history).toHaveLength(0);
+  });
+
+  it('does not classify non-session historical groups as active', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: 'feat' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    const { active, history } = partitionRunGroups(groups, ['feat']);
+    // planSet groups are never active even if key appears in activeSessionIds
+    expect(active).toHaveLength(0);
+    expect(history).toHaveLength(1);
+  });
+
+  it('leaves completed session groups in history when not in activeSessionIds', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: 'done', status: 'completed', completedAt: '2024-01-01T11:00:00Z' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    const { active, history } = partitionRunGroups(groups, []);
+    expect(active).toHaveLength(0);
+    expect(history).toHaveLength(1);
+  });
+
+  it('returns empty active and all history when no active session ids', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: 'sess-a' }),
+      makeRun({ id: 'r2', sessionId: 'sess-b' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    const { active, history } = partitionRunGroups(groups, []);
+    expect(active).toHaveLength(0);
+    expect(history).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectPlanStatusCounts
+// ---------------------------------------------------------------------------
+
+describe('selectPlanStatusCounts', () => {
+  it('counts each status category correctly', () => {
+    const plans = [
+      { id: 'p1', status: 'pending' as const },
+      { id: 'p2', status: 'running' as const },
+      { id: 'p3', status: 'running' as const },
+      { id: 'p4', status: 'completed' as const },
+      { id: 'p5', status: 'failed' as const },
+    ];
+    const counts = selectPlanStatusCounts(plans);
+    expect(counts.pending).toBe(1);
+    expect(counts.running).toBe(2);
+    expect(counts.completed).toBe(1);
+    expect(counts.failed).toBe(1);
+  });
+
+  it('returns all zeros for empty array', () => {
+    const counts = selectPlanStatusCounts([]);
+    expect(counts).toEqual({ pending: 0, running: 0, completed: 0, failed: 0 });
+  });
+});

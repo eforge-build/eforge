@@ -1,0 +1,67 @@
+name: add-eforge-console-side-by-side-with-legacy-monitor-ui
+description: Add a new project-local Eforge Console package served at /console/
+  beside the legacy monitor UI, grounded in current daemon/client APIs and
+  planned as an expedition across major Console views.
+created: 2026-05-26
+status: compiled
+compiled: "2026-05-26"
+mode: expedition
+validate:
+  - pnpm --filter @eforge-build/console-ui type-check
+  - pnpm --filter @eforge-build/monitor-ui type-check
+  - pnpm --filter @eforge-build/monitor type-check
+  - pnpm --filter @eforge-build/console-ui build
+  - pnpm --filter @eforge-build/monitor-ui build
+  - pnpm --filter @eforge-build/monitor build
+  - pnpm test
+architecture:
+  status: complete
+modules:
+  console-shell:
+    description: Create the new Console UI package foundation, visual shell, route
+      skeleton, shared live-data store, daemon SSE hook, active session
+      subscription manager, primitives, and guard tests.
+    depends_on: []
+    status: pending
+  now-dashboard:
+    description: Implement the Now dashboard with daemon status,
+      scheduler/auto-build summary, queue depth, concurrent active build cards,
+      attention items, stack summary, and recent activity preview.
+    depends_on:
+      - console-shell
+    status: pending
+  queue-view:
+    description: Implement the Queue view with queue summaries, status grouping,
+      dependencies, priority display, recovery verdict chips, and explicit
+      omission of unavailable editing controls.
+    depends_on:
+      - console-shell
+    status: pending
+  runs-build-entrypoints:
+    description: Implement Runs and build detail entry points with run history,
+      active session grouping, status rollups, and bounded use of live
+      active-session detail.
+    depends_on:
+      - console-shell
+    status: pending
+  system-configuration-view:
+    description: Implement the System configuration view for implemented
+      daemon/config/profile/extension/playbook/session-plan/model surfaces using
+      client browser route contracts.
+    depends_on:
+      - console-shell
+    status: pending
+  activity-audit-view:
+    description: Implement the Activity/audit view with live event log, recent
+      activity projection, filtering/grouping, event summaries, and raw event
+      debugging affordances.
+    depends_on:
+      - console-shell
+    status: pending
+  static-serving-package-integration:
+    description: Integrate Console into monitor packaging and static serving at
+      /console/, add side-by-side navigation links, build scripts/dependencies,
+      server tests, and modest docs.
+    depends_on:
+      - console-shell
+    status: pending
