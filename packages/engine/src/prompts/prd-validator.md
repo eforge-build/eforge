@@ -10,7 +10,7 @@ You are validating that a completed implementation satisfies the original PRD (P
 
 {{criteria}}
 
-When the list above is populated, you MUST produce a verdict entry in `acceptanceVerdicts` for **every** criterion listed. Do not skip or merge criteria.
+When the list above is populated, you MUST produce a verdict entry in `acceptanceVerdicts` for **every** criterion listed. Do not skip or merge criteria. Each line starts with a stable ID such as `ac-001`; set each verdict's `criterion` field to that exact ID rather than rewriting the criterion text.
 
 {{validationEvidence}}
 
@@ -28,7 +28,7 @@ Some files appear with a marker of the form `[summarized: ...]` instead of a ful
 4. **Ignore** minor wording differences, formatting choices, or implementation details that satisfy the spirit of the requirement
 5. **Ignore** requirements that are explicitly marked as out of scope
 6. If a requirement is partially implemented, note what's missing
-7. For each acceptance criterion (AC) in the PRD, produce a verdict:
+7. For each acceptance criterion (AC) in the PRD, produce a verdict. When the **Expected Acceptance Criteria** list provides `ac-###` IDs, use those IDs exactly in the `criterion` field:
    - `pass`: the diff clearly shows the AC is satisfied — include the specific evidence
    - `fail`: the diff clearly shows the AC is not satisfied — include what is missing
    - `unknown`: you cannot determine from the diff alone whether the AC is satisfied — explain why
@@ -52,7 +52,7 @@ If all requirements are satisfied:
   "gaps": [],
   "acceptanceVerdicts": [
     {
-      "criterion": "Brief text of the acceptance criterion from the PRD",
+      "criterion": "ac-001",
       "verdict": "pass",
       "evidence": "Specific evidence from the diff showing this criterion is satisfied"
     }
@@ -74,17 +74,17 @@ If there are gaps:
   ],
   "acceptanceVerdicts": [
     {
-      "criterion": "Brief text of the acceptance criterion from the PRD",
+      "criterion": "ac-001",
       "verdict": "pass",
       "evidence": "Specific evidence from the diff showing this criterion is satisfied"
     },
     {
-      "criterion": "Another acceptance criterion",
+      "criterion": "ac-002",
       "verdict": "fail",
       "evidence": "What is missing that prevents this criterion from being satisfied"
     },
     {
-      "criterion": "A criterion that cannot be determined from the diff",
+      "criterion": "ac-003",
       "verdict": "unknown",
       "evidence": "Why the diff is insufficient to verify this criterion"
     }
