@@ -3,8 +3,8 @@
 /** Display name for the Console application. */
 export const CONSOLE_NAME = 'Eforge Console';
 
-/** eforge logo URL — served from the Console's bundled public assets. */
-export const EFORGE_LOGO_URL = '/console/eforge-logo.svg';
+/** eforge logo URL — shared with the documentation site header. */
+export const EFORGE_LOGO_URL = 'https://avatars.githubusercontent.com/u/272340669?v=4';
 
 /** Accessible alt text for the eforge logo. */
 export const EFORGE_LOGO_ALT = 'eforge logo';

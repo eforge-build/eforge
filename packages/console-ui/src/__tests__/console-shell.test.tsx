@@ -5,6 +5,7 @@ import { StatusStrip } from '@/components/shell/status-strip';
 import { initialConsoleProjectState } from '@/lib/project-state';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import { formatAbsoluteTimestamp } from '@/lib/format';
+import { EFORGE_LOGO_URL } from '@/lib/brand';
 
 const stubState = {
   ...initialConsoleProjectState,
@@ -34,7 +35,7 @@ describe('ConsoleShell', () => {
     );
     const img = container.querySelector('img');
     expect(img).not.toBeNull();
-    expect(img!.src).toBeTruthy();
+    expect(img!.src).toBe(EFORGE_LOGO_URL);
     expect(img!.alt).toBeTruthy();
   });
 
