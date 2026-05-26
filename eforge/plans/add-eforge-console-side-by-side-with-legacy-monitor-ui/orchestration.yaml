@@ -1,0 +1,113 @@
+name: add-eforge-console-side-by-side-with-legacy-monitor-ui
+description: Add a new project-local Eforge Console package served at /console/
+  beside the legacy monitor UI, grounded in current daemon/client APIs and
+  planned as an expedition across major Console views.
+created: 2026-05-26
+compiled: 2026-05-26
+mode: expedition
+base_branch: main
+validate:
+  - pnpm --filter @eforge-build/console-ui type-check
+  - pnpm --filter @eforge-build/monitor-ui type-check
+  - pnpm --filter @eforge-build/monitor type-check
+  - pnpm --filter @eforge-build/console-ui build
+  - pnpm --filter @eforge-build/monitor-ui build
+  - pnpm --filter @eforge-build/monitor build
+  - pnpm test
+plans:
+  - id: plan-01-console-shell
+    name: Create the new Console UI package foundation, visual shell, route
+      skeleton, shared live-data store, daemon SSE hook, active session
+      subscription manager, primitives, and guard tests.
+    depends_on: []
+    branch: add-eforge-console-side-by-side-with-legacy-monitor-ui/console-shell
+    build: &a1
+      - - implement
+        - doc-author
+      - - test-write
+        - doc-sync
+      - review-cycle
+      - test-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - code
+        - verify
+      maxRounds: 3
+      evaluatorStrictness: standard
+  - id: plan-02-activity-audit-view
+    name: Implement the Activity/audit view with live event log, recent activity
+      projection, filtering/grouping, event summaries, and raw event debugging
+      affordances.
+    depends_on:
+      - plan-01-console-shell
+    branch: add-eforge-console-side-by-side-with-legacy-monitor-ui/activity-audit-view
+    build: *a1
+    review: *a2
+  - id: plan-03-now-dashboard
+    name: Implement the Now dashboard with daemon status, scheduler/auto-build
+      summary, queue depth, concurrent active build cards, attention items,
+      stack summary, and recent activity preview.
+    depends_on:
+      - plan-01-console-shell
+    branch: add-eforge-console-side-by-side-with-legacy-monitor-ui/now-dashboard
+    build: *a1
+    review: *a2
+  - id: plan-04-queue-view
+    name: Implement the Queue view with queue summaries, status grouping,
+      dependencies, priority display, recovery verdict chips, and explicit
+      omission of unavailable editing controls.
+    depends_on:
+      - plan-01-console-shell
+    branch: add-eforge-console-side-by-side-with-legacy-monitor-ui/queue-view
+    build: *a1
+    review: *a2
+  - id: plan-05-runs-build-entrypoints
+    name: Implement Runs and build detail entry points with run history, active
+      session grouping, status rollups, and bounded use of live active-session
+      detail.
+    depends_on:
+      - plan-01-console-shell
+    branch: add-eforge-console-side-by-side-with-legacy-monitor-ui/runs-build-entrypoints
+    build: *a1
+    review: *a2
+  - id: plan-06-static-serving-package-integration
+    name: Integrate Console into monitor packaging and static serving at /console/,
+      add side-by-side navigation links, build scripts/dependencies, server
+      tests, and modest docs.
+    depends_on:
+      - plan-01-console-shell
+    branch: add-eforge-console-side-by-side-with-legacy-monitor-ui/static-serving-package-integration
+    build: *a1
+    review: *a2
+  - id: plan-07-system-configuration-view
+    name: Implement the System configuration view for implemented
+      daemon/config/profile/extension/playbook/session-plan/model surfaces using
+      client browser route contracts.
+    depends_on:
+      - plan-01-console-shell
+    branch: add-eforge-console-side-by-side-with-legacy-monitor-ui/system-configuration-view
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This is expedition-scale because the PRD explicitly requires
+    delegated module planning across seven major areas: new console package,
+    multiple live-data views, SSE/session subscription architecture,
+    package/build integration, static serving, tests, and transitional legacy UI
+    integration. The compile pipeline uses architecture review, module planning,
+    cohesion review, and expedition compilation to ensure the independently
+    planned views stay consistent and grounded in implemented client APIs. The
+    build pipeline implements code and docs in parallel, then writes tests and
+    syncs existing docs before iterative review and final test validation.
+    Review uses code and verify perspectives because the work spans substantial
+    UI/server code plus package scripts, build config, Vite base paths, static
+    asset serving, and test/build validation requirements."

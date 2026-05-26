@@ -110,7 +110,7 @@ Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool f
 
 ### Monitor
 
-`packages/monitor/` provides the web dashboard. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves a React UI (`packages/monitor-ui/`) over SSE, runs as a detached process, and survives CLI exit. Playbook daemon routes import from `@eforge-build/input`; session-plan source paths are normalized via `normalizeBuildSource` from `@eforge-build/input` before reaching engine queue helpers.
+`packages/monitor/` provides the web dashboard. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves a React UI (`packages/monitor-ui/`) over SSE, runs as a detached process, and survives CLI exit. During this transitional period the daemon hosts two project-local SPAs on the same port: `packages/monitor-ui` at `/` (the legacy dashboard) and `packages/console-ui` at `/console/` (the Eforge Console preview). Playbook daemon routes import from `@eforge-build/input`; session-plan source paths are normalized via `normalizeBuildSource` from `@eforge-build/input` before reaching engine queue helpers.
 
 ### Plugin
 

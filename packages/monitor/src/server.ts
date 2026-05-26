@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, readdir, stat, realpath, lstat } from 'node:fs/promises';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { resolve, dirname, extname, join, basename, sep } from 'node:path';
+import { resolve, dirname, extname, join, basename, sep, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { isIP } from 'node:net';
@@ -125,6 +125,7 @@ function notifyQueueMutation(
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
+const CONSOLE_UI_DIR = resolve(__dirname, 'console-ui');
 
 /**
  * Parse and validate a DB event row into an EforgeEvent.
@@ -400,13 +401,28 @@ export function buildRunSummary(db: MonitorDB, sessionId: string): RunSummary {
   };
 }
 
+export interface StartServerOptions {
+  strictPort?: boolean;
+  cwd?: string;
+  queueDir?: string;
+  planOutputDir?: string;
+  workerTracker?: WorkerTracker;
+  daemonState?: DaemonState;
+  config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds'>;
+  /** Override UI root directories for testing. Defaults to built dist directories relative to __dirname. */
+  uiDirs?: { monitorUiDir?: string; consoleUiDir?: string };
+}
+
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds'> },
+  options?: StartServerOptions,
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
   const daemonSubscribers = new Set<DaemonSSESubscriber>();
+
+  const activeMonitorUiDir = options?.uiDirs?.monitorUiDir ?? UI_DIR;
+  const activeConsoleUiDir = options?.uiDirs?.consoleUiDir ?? CONSOLE_UI_DIR;
 
   // Resolve git remote once at startup
   const cwd = options?.cwd;
@@ -430,12 +446,26 @@ export async function startServer(
     }
   }
 
+  function redactGitRemote(remote: string | null): string | null {
+    if (!remote) return remote;
+    try {
+      const parsed = new URL(remote);
+      // Strip embedded credentials (username:password@ in HTTPS URLs)
+      parsed.username = '';
+      parsed.password = '';
+      return parsed.toString();
+    } catch {
+      // SSH or non-URL remotes (e.g. git@github.com:org/repo.git) carry no credentials
+      return remote;
+    }
+  }
+
   function serveProjectContext(_req: IncomingMessage, res: ServerResponse): void {
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
     });
-    res.end(JSON.stringify({ cwd: cwd ?? null, gitRemote: cachedGitRemote }));
+    res.end(JSON.stringify({ cwd: cwd ?? null, gitRemote: redactGitRemote(cachedGitRemote) }));
   }
 
   function resolveSessionId(id: string): string {
@@ -443,49 +473,118 @@ export async function startServer(
     return run?.sessionId ?? id;
   }
 
-  async function serveStaticFile(req: IncomingMessage, res: ServerResponse, urlPath: string): Promise<void> {
-    // Determine the file path
-    let filePath: string;
-    if (urlPath === '/' || urlPath === '/index.html') {
-      filePath = join(UI_DIR, 'index.html');
-    } else {
-      // Resolve and verify containment to prevent directory traversal
-      filePath = resolve(UI_DIR, '.' + urlPath);
-      if (!filePath.startsWith(UI_DIR + '/')) {
-        filePath = join(UI_DIR, 'index.html');
+  async function serveStaticFile(
+    _req: IncomingMessage,
+    res: ServerResponse,
+    urlPath: string,
+    rootDir: string,
+    basePath: string,
+  ): Promise<void> {
+    // Strip the base path prefix to get the path relative to this SPA root
+    const rawRelPath =
+      basePath.length > 0 && urlPath.startsWith(basePath)
+        ? urlPath.slice(basePath.length)
+        : urlPath;
+
+    // Percent-decode before resolving — never operate on raw percent sequences
+    let relPath: string;
+    try {
+      relPath = decodeURIComponent(rawRelPath);
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('Bad Request');
+      return;
+    }
+
+    // Normalize: empty path or bare '/' maps to index.html
+    const normalizedRel = !relPath || relPath === '/' ? '/index.html' : relPath;
+
+    // Asset requests (files under /assets/) use immutable caching and never fall back to SPA
+    const isAsset = normalizedRel.startsWith('/assets/');
+
+    // Resolve candidate path and verify containment to prevent directory traversal
+    const candidate = resolve(rootDir, '.' + normalizedRel);
+    const rel = relative(rootDir, candidate);
+    if (isAbsolute(rel) || rel.startsWith('..')) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not Found');
+      return;
+    }
+
+    // For asset requests, enforce that the resolved path is inside the assets
+    // subdirectory. A traversal like /assets/%2e%2e/index.html resolves inside
+    // the UI root but is NOT a real asset — return 404 rather than serving it
+    // with immutable asset caching.
+    if (isAsset) {
+      const assetsDir = resolve(rootDir, 'assets');
+      const assetRel = relative(assetsDir, candidate);
+      if (isAbsolute(assetRel) || assetRel.startsWith('..')) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+        return;
       }
     }
 
+    // Resolve the real root to handle any symlinks on the root path itself,
+    // then use lstat (does NOT follow symlinks) to detect symlinks in the tree.
+    let realRoot: string;
     try {
-      const fileStat = await stat(filePath);
-      if (!fileStat.isFile()) {
-        if (urlPath.startsWith('/assets/')) {
+      realRoot = await realpath(rootDir);
+    } catch {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Internal Server Error');
+      return;
+    }
+
+    let filePath = candidate;
+    try {
+      const fileLstat = await lstat(filePath);
+      // Reject symlinks — following them could escape the UI root.
+      if (fileLstat.isSymbolicLink()) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+        return;
+      }
+      if (!fileLstat.isFile()) {
+        if (isAsset) {
           res.writeHead(404, { 'Content-Type': 'text/plain' });
           res.end('Not Found');
           return;
         }
         // SPA fallback: serve index.html for non-file paths
-        filePath = join(UI_DIR, 'index.html');
+        filePath = join(rootDir, 'index.html');
       }
     } catch {
-      if (urlPath.startsWith('/assets/')) {
+      if (isAsset) {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');
         return;
       }
       // File not found — SPA fallback to index.html
-      filePath = join(UI_DIR, 'index.html');
+      filePath = join(rootDir, 'index.html');
+    }
+
+    // Verify the resolved real path of the file to serve stays inside realRoot.
+    // This catches edge cases where the fallback index.html itself is a symlink.
+    try {
+      const realFile = await realpath(filePath);
+      const realRel = relative(realRoot, realFile);
+      if (isAbsolute(realRel) || realRel.startsWith('..')) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+        return;
+      }
+    } catch {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not Found');
+      return;
     }
 
     try {
       const content = await readFile(filePath);
       const ext = extname(filePath).toLowerCase();
       const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-
-      // Cache hashed assets (files in assets/ directory) for 1 year
-      const cacheControl = urlPath.includes('/assets/')
-        ? 'public, max-age=31536000, immutable'
-        : 'no-cache';
+      const cacheControl = isAsset ? 'public, max-age=31536000, immutable' : 'no-cache';
 
       res.writeHead(200, {
         'Content-Type': contentType,
@@ -1472,6 +1571,37 @@ export async function startServer(
     res.end(JSON.stringify(data));
   }
 
+  /**
+   * Recursively mask values whose key matches known sensitive field names.
+   * Applied to config and profile payloads before they leave the daemon.
+   */
+  function redactSensitive(value: unknown): unknown {
+    const SENSITIVE_KEYS = new Set([
+      'apikey',
+      'token',
+      'secret',
+      'password',
+      'authorization',
+      'credential',
+      'credentials',
+    ]);
+    if (Array.isArray(value)) {
+      return value.map(redactSensitive);
+    }
+    if (value !== null && typeof value === 'object') {
+      const result: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (SENSITIVE_KEYS.has(k.toLowerCase())) {
+          result[k] = '[redacted]';
+        } else {
+          result[k] = redactSensitive(v);
+        }
+      }
+      return result;
+    }
+    return value;
+  }
+
   // Extension scaffold/reload mutates local filesystem/runtime state. The
   // daemon is otherwise browser-reachable (CORS preflight is allowed globally),
   // so require these new mutation routes to originate from the local machine and
@@ -1919,6 +2049,10 @@ export async function startServer(
 
   const server = createServer(async (req, res) => {
     const url = req.url ?? '/';
+    // Pathname strips the query string for static route matching and file
+    // resolution. API routes continue to use the full `url` string (which
+    // already handles query params via URLSearchParams where needed).
+    const pathname = url.split('?')[0];
 
     // Handle CORS preflight for all POST endpoints
     if (req.method === 'OPTIONS' && url.startsWith('/api/')) {
@@ -2442,7 +2576,7 @@ export async function startServer(
           const harness = result ? extractHarnessFromProfile(result.profile) : undefined;
           const profile = result ? result.profile : null;
           const metadata = profile ? extractProfileMetadata(profile) : undefined;
-          sendJson(res, { active: name, source: 'user-local', resolved: { harness, profile, scope: 'user', metadata } });
+          sendJson(res, { active: name, source: 'user-local', resolved: { harness, profile: redactSensitive(profile), scope: 'user', metadata } });
           return;
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
@@ -2469,7 +2603,7 @@ export async function startServer(
             profileMetadata = extractProfileMetadata(result.profile);
           }
         }
-        sendJson(res, { active: name, source, resolved: { harness, profile, scope: profileScope, metadata: profileMetadata } });
+        sendJson(res, { active: name, source, resolved: { harness, profile: redactSensitive(profile), scope: profileScope, metadata: profileMetadata } });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to show agent runtime profile');
       }
@@ -4399,7 +4533,7 @@ export async function startServer(
             fsAccess(userPath).then(() => true).catch(() => false),
           ]);
           sendJson(res, {
-            resolved,
+            resolved: redactSensitive(resolved),
             sources: {
               local: { path: localPath, found: localExists },
               project: { path: projectPath, found: projectExists },
@@ -4407,7 +4541,7 @@ export async function startServer(
             },
           });
         } else {
-          sendJson(res, resolved);
+          sendJson(res, redactSensitive(resolved));
         }
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load config');
@@ -4648,12 +4782,15 @@ export async function startServer(
         : undefined;
 
       serveDiff(req, res, resolvedSessionId, planIdParam, fileParam);
-    } else if (url.startsWith('/api/')) {
+    } else if (pathname.startsWith('/api/')) {
       // Unknown API route — return 404 rather than falling through to SPA static serving
-      sendJsonError(res, 404, `Unknown route: ${req.method} ${url}`);
+      sendJsonError(res, 404, `Unknown route: ${req.method} ${pathname}`);
+    } else if (pathname === '/console' || pathname === '/console/' || pathname.startsWith('/console/')) {
+      // Serve Eforge Console SPA (preview) from the console-ui dist root
+      await serveStaticFile(req, res, pathname, activeConsoleUiDir, '/console');
     } else {
-      // Serve static files (SPA)
-      await serveStaticFile(req, res, url);
+      // Serve legacy monitor UI SPA
+      await serveStaticFile(req, res, pathname, activeMonitorUiDir, '');
     }
   });
 

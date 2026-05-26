@@ -95,6 +95,12 @@ export function Header({ autoBuildState, autoBuildToggling, onSetAutoBuildEnable
         </span>
       )}
       <div className="ml-auto text-xs flex items-center gap-2">
+        <a
+          href="/console/"
+          className="text-text-dim hover:text-text-bright transition-colors"
+        >
+          Console
+        </a>
         <DaemonStatusPill daemonState={daemonState} />
         {autoBuildState !== null && autoBuildToggleCopy !== null && (
           <div
