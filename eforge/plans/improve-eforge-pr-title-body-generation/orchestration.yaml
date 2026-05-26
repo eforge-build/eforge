@@ -1,0 +1,48 @@
+name: improve-eforge-pr-title-body-generation
+description: Improve eforge PR title/body generation for direct and stacked PR landings
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-pr-metadata
+    name: Deterministic PR Metadata for Direct and Stacked Landings
+    depends_on: []
+    branch: improve-eforge-pr-title-body-generation/plan-01-pr-metadata
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive multi-file engine bugfix touching PR metadata
+    rendering, direct PR creation, stacked PR post-processing, and tests, so
+    excursion is appropriate. A plan review cycle is useful because behavior
+    must be threaded through several landing paths. The build includes
+    implementation, explicit test generation, iterative review, and test
+    execution because the PRD has detailed acceptance criteria around command
+    arguments, body-file contents, existing-PR fallback, and stacked PR editing.
+    Code and test review perspectives target the main risks without adding
+    unnecessary broader review scope.
