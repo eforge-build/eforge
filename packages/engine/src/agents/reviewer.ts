@@ -5,6 +5,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { getReviewIssueSchemaYaml } from '../schemas.js';
 
 const exec = promisify(execFile);
@@ -70,6 +71,8 @@ export interface ReviewerOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Override max conversation turns (default: review tier default) */
+  maxTurns?: number;
 }
 
 /**
@@ -406,7 +409,7 @@ export async function* runReview(
   let fullText = '';
 
   for await (const event of harness.run(
-    { prompt, cwd, maxTurns: 30, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
+    { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'reviewer',
     planId,
   )) {

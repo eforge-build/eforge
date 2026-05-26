@@ -7,6 +7,7 @@ import { pipelineCompositionSchema, getPipelineCompositionSchemaYaml } from '../
 import type { PipelineComposition } from '../schemas.js';
 import { formatStageRegistry, validatePipeline } from '../pipeline.js';
 import { REVIEW_PERSPECTIVES, parseWithSchema } from '@eforge-build/client';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 // --- eforge:region plan-01-validation-provider-runtime ---
 import type { ValidationProviderRegistration } from '../extensions/types.js';
 // --- eforge:endregion plan-01-validation-provider-runtime ---
@@ -25,6 +26,8 @@ export interface PipelineComposerOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Override max conversation turns (default: planning tier default). */
+  maxTurns?: number;
   // --- eforge:region plan-01-validation-provider-runtime ---
   /**
    * Validation provider registrations from loaded native extensions.
@@ -75,7 +78,7 @@ function extractJson(text: string): unknown {
  * Compose a pipeline from a PRD using text-based JSON extraction.
  *
  * Loads the pipeline-composer prompt with the stage registry and schema injected,
- * calls the backend with maxTurns: 1, extracts JSON from the text response,
+ * calls the backend with the planning tier maxTurns, extracts JSON from the text response,
  * validates it against the PipelineComposition schema, and yields a `plan:pipeline` event.
  * Retries up to 3 times on parse failure, feeding the error back to the model.
  *
@@ -139,7 +142,7 @@ export async function* composePipeline(
       {
         prompt: promptText,
         cwd,
-        maxTurns: 1,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning,
         tools: 'none',
         abortSignal: abortController?.signal,
         ...pickSdkOptions(options),

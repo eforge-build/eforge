@@ -2,6 +2,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 export interface DocAuthorOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -48,7 +49,7 @@ export async function* runDocAuthor(
       {
         prompt,
         cwd: options.cwd,
-        maxTurns: options.maxTurns ?? 20,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
         ...pickSdkOptions(options),

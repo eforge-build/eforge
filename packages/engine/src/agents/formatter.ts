@@ -2,6 +2,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 /**
  * Options for the formatter agent.
@@ -15,6 +16,8 @@ export interface FormatterOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Override max conversation turns (default: planning tier default). */
+  maxTurns?: number;
 }
 
 /**
@@ -49,7 +52,7 @@ export async function* runFormatter(
   let fullText = '';
 
   for await (const event of harness.run(
-    { prompt, cwd: process.cwd(), maxTurns: 1, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
+    { prompt, cwd: process.cwd(), maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'formatter',
   )) {
     // Always yield agent:result, agent:tool_use, agent:tool_result; gate agent:message on verbose

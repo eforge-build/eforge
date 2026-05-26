@@ -5,6 +5,7 @@ import { pickSdkOptions, PlannerSubmissionError } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
 import { parseClarificationBlocks, parseSkipBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { deriveNameFromSource, extractPlanTitle, parsePlanFile, writePlanSet, writeArchitecture } from '../plan.js';
 import {
   getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml,
@@ -21,7 +22,7 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
   scope?: string;
-  /** Override max conversation turns (default: 30) */
+  /** Override max conversation turns (default: planning tier default) */
   maxTurns?: number;
   /** Continuation context when restarting after hitting max turns or a dropped submission. */
   continuationContext?: { attempt: number; maxContinuations: number; existingPlans: string; reason: 'max_turns' | 'dropped_submission' };
@@ -281,7 +282,7 @@ ${existingPlans}`;
     let needsRestart = false;
 
     for await (const event of harness.run(
-      { prompt, cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal, customTools, ...pickSdkOptions(options) },
+      { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: options.abortController?.signal, customTools, ...pickSdkOptions(options) },
       'planner',
     )) {
       if (event.type === 'agent:message') {

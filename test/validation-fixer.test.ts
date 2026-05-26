@@ -3,6 +3,7 @@ import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { runValidationFixer } from '@eforge-build/engine/agents/validation-fixer';
+import { DEFAULT_TIER_MAX_TURNS } from '@eforge-build/engine/config';
 
 const FAILURES = [
   { command: 'pnpm type-check', exitCode: 1, output: 'error TS2345: Argument of type...' },
@@ -62,7 +63,7 @@ describe('runValidationFixer wiring', () => {
     await collectEvents(runValidationFixer({ harness: backend, ...BASE_OPTIONS }));
 
     expect(backend.calls).toHaveLength(1);
-    expect(backend.calls[0].maxTurns).toBe(30);
+    expect(backend.calls[0].maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
     expect(backend.calls[0].tools).toBe('coding');
   });
 

@@ -2,6 +2,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 /**
  * Summary of a queued PRD for dependency detection context.
@@ -36,6 +37,8 @@ export interface DependencyDetectorOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Override max conversation turns (default: implementation tier default). */
+  maxTurns?: number;
 }
 
 /**
@@ -51,7 +54,7 @@ export interface DependencyDetectorResult {
  *
  * Analyzes a new PRD against existing queue items and running builds
  * to produce a `depends_on` JSON array. Follows the formatter pattern:
- * maxTurns: 1, tools: 'none', parses JSON output.
+ * Uses the implementation tier maxTurns with tools disabled, then parses JSON output.
  *
  * Yields:
  * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
@@ -73,7 +76,7 @@ export async function* runDependencyDetector(
   let fullText = '';
 
   for await (const event of harness.run(
-    { prompt, cwd: process.cwd(), maxTurns: 1, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
+    { prompt, cwd: process.cwd(), maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'dependency-detector',
   )) {
     if (isAlwaysYieldedAgentEvent(event) || verbose) {

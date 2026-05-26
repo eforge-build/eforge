@@ -21,7 +21,7 @@ import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
 // --- eforge:region plan-02-engine-acceptance-gates ---
 import type { ExpectedAcceptanceCriterion } from '@eforge-build/engine/validation/acceptance-criteria';
 // --- eforge:endregion plan-02-engine-acceptance-gates ---
-import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig, AGENT_ROLE_DEFAULTS } from '@eforge-build/engine/pipeline';
+import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
 import { DEFAULT_CONFIG, resolveConfig, loadConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import { singletonRegistry, buildAgentRuntimeRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
@@ -1493,12 +1493,11 @@ describe('resolveAgentConfig per-plan override', () => {
     expect(result.thinkingSource).toBe('tier');
   });
 
-  it('uses a 60-turn built-in default for reviewer agents', () => {
+  it('uses the review tier maxTurns for reviewer agents', () => {
     const config = makeConfig({ maxTurns: 30 });
 
     const result = resolveAgentConfig('reviewer', config);
 
-    expect(AGENT_ROLE_DEFAULTS.reviewer?.maxTurns).toBe(60);
     expect(result.maxTurns).toBe(60);
   });
 });

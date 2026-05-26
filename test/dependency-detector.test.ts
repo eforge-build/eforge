@@ -3,7 +3,7 @@ import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubHarness } from './stub-harness.js';
 import { findEvent, filterEvents } from './test-events.js';
 import { runDependencyDetector, type DependencyDetectorResult } from '@eforge-build/engine/agents/dependency-detector';
-import { AGENT_ROLES, DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { AGENT_ROLES, DEFAULT_CONFIG, DEFAULT_TIER_MAX_TURNS } from '@eforge-build/engine/config';
 
 async function collectEventsAndResult(
   gen: AsyncGenerator<EforgeEvent, DependencyDetectorResult>,
@@ -148,7 +148,7 @@ describe('runDependencyDetector wiring', () => {
     expect(start!.agent).toBe('dependency-detector');
   });
 
-  it('uses tools: none and maxTurns: 1', async () => {
+  it('uses tools: none and implementation tier maxTurns', async () => {
     const backend = new StubHarness([{ text: '[]' }]);
 
     await collectEventsAndResult(
@@ -162,7 +162,7 @@ describe('runDependencyDetector wiring', () => {
 
     expect(backend.calls).toHaveLength(1);
     expect(backend.calls[0].tools).toBe('none');
-    expect(backend.calls[0].maxTurns).toBe(1);
+    expect(backend.calls[0].maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
   });
 
   it('passes prdContent and context to backend prompt', async () => {

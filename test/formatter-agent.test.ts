@@ -3,6 +3,7 @@ import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubHarness } from './stub-harness.js';
 import { findEvent, filterEvents } from './test-events.js';
 import { runFormatter } from '@eforge-build/engine/agents/formatter';
+import { DEFAULT_TIER_MAX_TURNS } from '@eforge-build/engine/config';
 
 async function collectEventsAndResult(
   gen: AsyncGenerator<EforgeEvent, { body: string }>,
@@ -60,7 +61,7 @@ describe('runFormatter wiring', () => {
     expect(backend.prompts[0]).toContain(sourceContent);
   });
 
-  it('uses tools: none and maxTurns: 1', async () => {
+  it('uses tools: none and planning tier maxTurns', async () => {
     const backend = new StubHarness([{ text: 'Formatted.' }]);
 
     await collectEventsAndResult(
@@ -69,7 +70,7 @@ describe('runFormatter wiring', () => {
 
     expect(backend.calls).toHaveLength(1);
     expect(backend.calls[0].tools).toBe('none');
-    expect(backend.calls[0].maxTurns).toBe(1);
+    expect(backend.calls[0].maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.planning);
   });
 
   it('suppresses agent:message when verbose is false', async () => {

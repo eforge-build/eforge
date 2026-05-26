@@ -4,6 +4,7 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import type { MergeConflictInfo } from '../worktree-ops.js';
 import { loadPrompt } from '../prompts.js';
 import { emitBuildDecisionForPlan } from '../decisions.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 export interface MergeConflictResolverOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -11,6 +12,8 @@ export interface MergeConflictResolverOptions extends SdkPassthroughConfig {
   conflict: MergeConflictInfo;
   verbose?: boolean;
   abortController?: AbortController;
+  /** Override max conversation turns (default: planning tier default). */
+  maxTurns?: number;
 }
 
 /**
@@ -39,7 +42,7 @@ export async function* runMergeConflictResolver(
       {
         prompt,
         cwd: options.cwd,
-        maxTurns: 30,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
         ...pickSdkOptions(options),

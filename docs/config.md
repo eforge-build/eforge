@@ -33,7 +33,7 @@ extensions:
   # paths:                    # Additional explicit extension files/directories
 
 agents:
-  maxTurns: 30                # Max agent turns before stopping
+  maxTurns: 50                # Global fallback max agent turns before stopping
   maxContinuations: 3         # Max continuation attempts after maxTurns hit
   permissionMode: bypass      # 'bypass' or 'default'
   settingSources:             # Which Claude Code settings to load
@@ -286,12 +286,12 @@ eforge uses four tiers as the single configuration axis for agent routing. Each 
 
 ### Built-in Tier Defaults
 
-| Tier | Default harness | Default model | Default effort |
-|------|----------------|---------------|----------------|
-| `planning` | `claude-sdk` | `claude-opus-4-7` | `high` |
-| `implementation` | `claude-sdk` | `claude-sonnet-4-6` | `medium` |
-| `review` | `claude-sdk` | `claude-opus-4-7` | `high` |
-| `evaluation` | `claude-sdk` | `claude-opus-4-7` | `high` |
+| Tier | Default harness | Default model | Default effort | Default max turns |
+|------|-----------------|---------------|----------------|-------------------|
+| `planning` | `claude-sdk` | `claude-opus-4-7` | `high` | `80` |
+| `implementation` | `claude-sdk` | `claude-sonnet-4-6` | `medium` | `80` |
+| `review` | `claude-sdk` | `claude-opus-4-7` | `high` | `60` |
+| `evaluation` | `claude-sdk` | `claude-opus-4-7` | `high` | `50` |
 
 Override any tier by specifying it under `agents.tiers` in `eforge/config.yaml`. The table above is the current engine compatibility fallback, not the recommended new-user setup. Pi is the recommended execution harness for new projects; if you want a Pi profile, list all four tiers explicitly because unspecified tiers keep the `claude-sdk` compatibility defaults.
 
@@ -307,7 +307,7 @@ agents:
       model: anthropic/claude-opus-4-6 # Required: plain string model identifier
       effort: high             # Required: 'low', 'medium', 'high', 'xhigh', 'max'
       thinking: true           # Optional: enable thinking; coerced to adaptive for adaptive-only models
-      maxTurns: 30             # Optional: max turns override for all roles in this tier
+      maxTurns: 80             # Optional: max turns override for all roles in this tier
       toolbelt: browser-ui     # Optional: named toolbelt from tools.toolbelts, or 'none' to pass no MCP servers
                                #   Omitting toolbelt (default) passes all discovered .mcp.json servers.
                                #   'none' passes no project MCP servers (engine-internal tools are unaffected).

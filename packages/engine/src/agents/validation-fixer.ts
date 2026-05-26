@@ -2,6 +2,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 export interface ValidationFixerOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -11,6 +12,8 @@ export interface ValidationFixerOptions extends SdkPassthroughConfig {
   maxAttempts: number;
   verbose?: boolean;
   abortController?: AbortController;
+  /** Override max conversation turns (default: implementation tier default) */
+  maxTurns?: number;
 }
 
 /**
@@ -40,7 +43,7 @@ export async function* runValidationFixer(
       {
         prompt,
         cwd: options.cwd,
-        maxTurns: 30,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation,
         tools: 'coding',
         abortSignal: options.abortController?.signal,
         ...pickSdkOptions(options),

@@ -19,6 +19,7 @@ import {
 import type { ModelTracker } from '../model-tracker.js';
 import { parseEvaluationBlock } from './common.js';
 import { mergeMutationDisallowedTools } from '../harnesses/tool-safety.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 const exec = promisify(execFile);
 
@@ -55,6 +56,8 @@ export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   modelTracker?: ModelTracker;
   /** Repository-relative directory prefix that all evaluator verdict paths must stay within. */
   allowedPathPrefix?: string;
+  /** Override max conversation turns (default: evaluation tier default). */
+  maxTurns?: number;
   /** Continuation context when retrying after maxTurns exhaustion */
   continuationContext?: {
     attempt: number;
@@ -88,6 +91,8 @@ export interface PlanEvaluatorOptions extends SdkPassthroughConfig {
   modelTracker?: ModelTracker;
   /** Repository-relative directory prefix that all evaluator verdict paths must stay within. */
   allowedPathPrefix?: string;
+  /** Override max conversation turns (default: evaluation tier default). */
+  maxTurns?: number;
   /** Continuation context when retrying after maxTurns exhaustion */
   continuationContext?: {
     attempt: number;
@@ -277,7 +282,7 @@ The previous evaluator run was interrupted before a final verdict submission was
       {
         prompt,
         cwd,
-        maxTurns: 30,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.evaluation,
         tools: 'coding',
         customTools,
         disallowedTools,

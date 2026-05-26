@@ -3,6 +3,7 @@ import type { MergeConflictInfo } from '@eforge-build/engine/worktree';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent } from './test-events.js';
 import { runMergeConflictResolver } from '@eforge-build/engine/agents/merge-conflict-resolver';
+import { DEFAULT_TIER_MAX_TURNS } from '@eforge-build/engine/config';
 
 function makeConflict(overrides?: Partial<MergeConflictInfo>): MergeConflictInfo {
   return {
@@ -83,7 +84,7 @@ describe('runMergeConflictResolver wiring', () => {
     expect(backend.calls).toHaveLength(1);
     const call = backend.calls[0];
     expect(call.tools).toBe('coding');
-    expect(call.maxTurns).toBe(30);
+    expect(call.maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.planning);
     expect(call.cwd).toBe('/tmp/test-repo');
   });
 

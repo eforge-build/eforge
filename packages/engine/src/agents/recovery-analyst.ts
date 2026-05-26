@@ -10,6 +10,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type BuildFailureSummary } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { getRecoveryVerdictSchemaYaml } from '../schemas.js';
 import { parseRecoveryVerdictBlock } from './common.js';
 
@@ -35,6 +36,8 @@ export interface RecoveryAnalystOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Override max conversation turns (default: implementation tier default). */
+  maxTurns?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +83,7 @@ export async function* runRecoveryAnalyst(
     {
       prompt,
       cwd,
-      maxTurns: 20,
+      maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation,
       tools: 'none',
       abortSignal: abortController?.signal,
       ...pickSdkOptions(options),

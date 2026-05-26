@@ -18,6 +18,7 @@ import {
   deriveProfileName,
   extractProfileMetadata,
   configYamlSchema,
+  DEFAULT_TIER_MAX_TURNS,
   type PartialEforgeConfig,
 } from '@eforge-build/engine/config';
 
@@ -564,7 +565,7 @@ describe('loadConfig integration with backend profiles', () => {
 
     const { config: cfg } = await loadConfig(projectDir);
     expect(cfg.agents.maxTurns).toBe(30);
-    expect(cfg.agents.tiers.implementation?.maxTurns).toBe(80);
+    expect(cfg.agents.tiers.implementation?.maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.implementation);
   });
 
   it('marker selects specific profile', async () => {

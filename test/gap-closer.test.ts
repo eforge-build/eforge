@@ -4,6 +4,7 @@ import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { runGapCloser, type GapCloserContext } from '@eforge-build/engine/agents/gap-closer';
+import { DEFAULT_TIER_MAX_TURNS } from '@eforge-build/engine/config';
 import type { BuildStageContext } from '@eforge-build/engine/pipeline';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 
@@ -20,10 +21,10 @@ function makePipelineContext(agentRegistryOverride?: ReturnType<typeof singleton
       agents: {
         maxTurns: 30,
         tiers: {
-          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
-          implementation: { harness: 'claude-sdk', model: 'claude-sonnet-4-6', effort: 'medium' },
-          review: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
-          evaluation: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high', maxTurns: DEFAULT_TIER_MAX_TURNS.planning },
+          implementation: { harness: 'claude-sdk', model: 'claude-sonnet-4-6', effort: 'medium', maxTurns: DEFAULT_TIER_MAX_TURNS.implementation },
+          review: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high', maxTurns: DEFAULT_TIER_MAX_TURNS.review },
+          evaluation: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high', maxTurns: DEFAULT_TIER_MAX_TURNS.evaluation },
         },
       },
     } as never,
@@ -93,16 +94,13 @@ describe('runGapCloser two-stage flow', () => {
     expect((start as { gapCount?: number }).gapCount).toBe(1);
   });
 
-  it('calls plan generation agent with maxTurns from AGENT_ROLE_DEFAULTS', async () => {
+  it('calls plan generation agent with maxTurns from the planning tier', async () => {
     const backend = new StubHarness([{ text: '## Overview\nFix it\n\n## Files\n- src/a.ts: change' }]);
 
     await collectEvents(runGapCloser(makeOptions(backend)));
 
     expect(backend.calls).toHaveLength(1);
-    // gap-closer role defaults to maxTurns: 20 in AGENT_ROLE_DEFAULTS
-    // But since we pass a stub config with maxTurns: 30 as global, and no per-role override,
-    // resolveAgentConfig will use the built-in per-role default of 20
-    expect(backend.calls[0].maxTurns).toBe(20);
+    expect(backend.calls[0].maxTurns).toBe(DEFAULT_TIER_MAX_TURNS.planning);
     expect(backend.calls[0].tools).toBe('coding');
   });
 

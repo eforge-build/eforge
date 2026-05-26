@@ -2,6 +2,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { getStalenessSchemaYaml } from '../schemas.js';
 import { parseStalenessBlock } from './common.js';
 
@@ -25,6 +26,8 @@ export interface StalenessAssessorOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Override max conversation turns (default: implementation tier default). */
+  maxTurns?: number;
 }
 
 /**
@@ -53,7 +56,7 @@ export async function* runStalenessAssessor(
   let fullText = '';
 
   for await (const event of harness.run(
-    { prompt, cwd, maxTurns: 20, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
+    { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'staleness-assessor',
   )) {
     // Always yield agent:result, agent:tool_use, agent:tool_result; gate agent:message on verbose
