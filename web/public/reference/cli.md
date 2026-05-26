@@ -443,6 +443,23 @@ Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; ret
 Run the MCP stdio proxy server (used by Claude Code plugin)
 
 
+### `stack`
+
+Stack management commands
+
+
+#### `sync`
+
+Sync the git-spice stack with remote and restack eligible branches
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Show what commands would run without executing them |
+| `--cwd <cwd>` | Working directory override |
+
 ## Global options
 
 **Options:**

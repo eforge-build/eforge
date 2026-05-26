@@ -58,6 +58,9 @@ import {
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
   buildPath,
+  // --- eforge:region plan-02-pi-workflow-wizard-and-stack-sync ---
+  apiStackSyncIfRunning,
+  // --- eforge:endregion plan-02-pi-workflow-wizard-and-stack-sync ---
 } from '@eforge-build/client';
 import { requireDaemon, piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
 import { deriveProfileName } from '@eforge-build/engine/config';
@@ -81,6 +84,10 @@ import { handlePlaybookCommand } from './playbook-commands';
 import { handlePlanCommand } from './plan-command';
 import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
+// --- eforge:region plan-02-pi-workflow-wizard-and-stack-sync ---
+import { handleWorkflowCommand, handleWorkflowInitCommand, handleWorkflowReconfigureCommand } from './workflow-wizard';
+import { handleStackSyncCommand } from './stack-sync-command';
+// --- eforge:endregion plan-02-pi-workflow-wizard-and-stack-sync ---
 import { showSelectPanel, type UIContext } from './ui-helpers';
 import {
   type LandingAction,
@@ -2468,4 +2475,68 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   });
 
   // --- eforge:endregion plan-04-skills-handheld-uis ---
+
+  // --- eforge:region plan-02-pi-workflow-wizard-and-stack-sync ---
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_stack_sync
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_stack_sync",
+    label: "eforge stack sync",
+    description:
+      "Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them.",
+    parameters: Type.Object({
+      dryRun: Type.Optional(
+        Type.Boolean({
+          description:
+            "When true, determine what sync commands would run but do not execute them. Default: false.",
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const dryRun = params.dryRun ?? false;
+      const result = await apiStackSyncIfRunning({ cwd: ctx.cwd, body: { dryRun } });
+      if (result === null) {
+        throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+      }
+      return jsonResult(result.data);
+    },
+  });
+
+  // ------------------------------------------------------------------
+  // Command: /eforge:stack:sync
+  // ------------------------------------------------------------------
+  pi.registerCommand("eforge:stack:sync", {
+    description: "Synchronize the git-spice stack (use --dry-run to preview)",
+    handler: async (args) => {
+      await handleStackSyncCommand(pi, _latestCtx, args ?? "");
+    },
+  });
+
+  // ------------------------------------------------------------------
+  // Commands: /eforge:workflow, /eforge:workflow:init, /eforge:workflow:reconfigure
+  // ------------------------------------------------------------------
+  pi.registerCommand("eforge:workflow", {
+    description: "Set up or reconfigure the eforge workflow (landing action, stacking, PR settings)",
+    handler: async (args) => {
+      await handleWorkflowCommand(pi, _latestCtx, args ?? "");
+    },
+  });
+
+  pi.registerCommand("eforge:workflow:init", {
+    description: "Run the workflow wizard for initial eforge project configuration",
+    handler: async (args) => {
+      await handleWorkflowInitCommand(pi, _latestCtx, args ?? "");
+    },
+  });
+
+  pi.registerCommand("eforge:workflow:reconfigure", {
+    description: "Reconfigure eforge workflow settings (shows current config before wizard)",
+    handler: async (args) => {
+      await handleWorkflowReconfigureCommand(pi, _latestCtx, args ?? "");
+    },
+  });
+
+  // --- eforge:endregion plan-02-pi-workflow-wizard-and-stack-sync ---
 }

@@ -195,6 +195,17 @@ export type { StackLayersResponse } from './routes.js';
 export { apiGetStackLayers, apiGetStackLayersIfRunning } from './api/stack.js';
 // --- eforge:endregion plan-03-stack-daemon-ui ---
 
+// --- eforge:region plan-01-stack-sync-daemon-cli ---
+export type {
+  StackSyncRequest,
+  StackSyncResponse,
+  StackSyncProviderCommandWire,
+  StackSyncActiveBuildSkipWire,
+  StackSyncOutcomeWire,
+} from './routes.js';
+export { apiStackSync, apiStackSyncIfRunning } from './api/stack.js';
+// --- eforge:endregion plan-01-stack-sync-daemon-cli ---
+
 export {
   apiSessionPlanList,
   apiSessionPlanListIfRunning,

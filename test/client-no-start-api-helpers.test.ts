@@ -32,6 +32,9 @@ import {
   apiEnqueueIfRunning,
   apiGetQueueIfRunning,
   apiShowConfigVerboseIfRunning,
+  // --- eforge:region plan-01-stack-sync-daemon-cli ---
+  apiStackSyncIfRunning,
+  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
@@ -119,6 +122,21 @@ function startTestServer(): Promise<TestServer> {
         res.end(JSON.stringify({ ok: true }));
         return;
       }
+
+      // --- eforge:region plan-01-stack-sync-daemon-cli ---
+      if (url === API_ROUTES.stackSync) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          outcome: 'skipped',
+          reason: 'Stacking is not enabled.',
+          stackingActive: false,
+          dryRun: true,
+          activeBuildSkips: [],
+          providerCommands: [],
+        }));
+        return;
+      }
+      // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Not Found');
@@ -211,6 +229,9 @@ const noStartRouteHelperCases: RouteHelperCase[] = [
   { name: 'apiReadRecoverySidecarIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1' }) },
   { name: 'apiApplyRecoveryIfRunning', opts: (cwd) => ({ cwd, body: { prdId: 'prd-1' } }) },
   { name: 'apiStopDaemonIfRunning', opts: (cwd) => ({ cwd, body: {} }) },
+  // --- eforge:region plan-01-stack-sync-daemon-cli ---
+  { name: 'apiStackSyncIfRunning', opts: (cwd) => ({ cwd, body: { dryRun: true } }) },
+  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 ];
 
 function invokeClientHelper(name: string, opts: Record<string, unknown>): Promise<unknown> {
@@ -431,4 +452,24 @@ describe('helper import discipline', () => {
       bodyText: '',
     });
   });
+
+  // --- eforge:region plan-01-stack-sync-daemon-cli ---
+  it('(6e) apiStackSyncIfRunning sends POST to API_ROUTES.stackSync with JSON body when live', async () => {
+    writeLockfile(tmpDir, {
+      pid: process.pid,
+      port: testServer.port,
+      startedAt: new Date().toISOString(),
+    });
+
+    const syncBody = { dryRun: true };
+    const result = await apiStackSyncIfRunning({ cwd: tmpDir, body: syncBody });
+    expect(result).not.toBeNull();
+    expect(result?.data.outcome).toBe('skipped');
+    expect(testServer.requests.at(-1)).toEqual({
+      method: 'POST',
+      url: API_ROUTES.stackSync,
+      bodyText: JSON.stringify(syncBody),
+    });
+  });
+  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 });

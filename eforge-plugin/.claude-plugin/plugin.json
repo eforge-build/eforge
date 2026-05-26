@@ -14,7 +14,9 @@
     "./skills/profile-new/profile-new.md",
     "./skills/plan/plan.md",
     "./skills/playbook/playbook.md",
-    "./skills/recover/recover.md"
+    "./skills/recover/recover.md",
+    "./skills/stack/stack.md",
+    "./skills/workflow/workflow.md"
   ],
   "author": {
     "name": "Mark Schaake"

@@ -106,17 +106,68 @@ With stacking enabled, the call sequence for a two-PRD stack looks like this:
 
 The stack state (artifact branch refs and PR URLs) is persisted to `.eforge/stacks/layers.json`. This file is gitignored - it is runtime state, not a committed artifact.
 
-## Restack and sync expectations
+## Manual stack sync
 
-When an upstream PR merges, GitHub updates the base branch of the downstream PR automatically. To update local branches after upstream merges, run:
+When an upstream PR merges, GitHub updates the base branch of the downstream PR automatically. To update local artifact branches after upstream merges, use `eforge stack sync`:
 
 ```bash
-git-spice stack restack
-# or, if you have the optional gs alias configured:
-# gs stack restack
+eforge stack sync
 ```
 
-eforge does not run restack or sync automatically after a PR merges - that step remains a developer action. Automated post-merge restack is tracked as future roadmap work.
+Use `--dry-run` to preview what commands would run without executing them:
+
+```bash
+eforge stack sync --dry-run
+```
+
+`eforge stack sync` calls the daemon's stack sync route, which runs `git-spice repo sync` to pull remote changes, then `git-spice stack restack` to update the full local stack. The restack step only runs when there are eligible artifact branches and none of them overlap with active-build worktrees - because git-spice stack restack operates globally, it cannot be scoped to a subset of branches. When active-build branches overlap the stack, sync is skipped until those builds finish. The command returns a structured report with the following fields:
+
+| Field | Description |
+|-------|-------------|
+| `outcome` | One of `skipped`, `complete`, `failed`, `conflict` |
+| `restackCandidates` | Artifact branches eligible for restack (after active-build exclusions); these branches were candidates, not necessarily all restacked if the restack step was skipped |
+| `activeBuildSkips` | Branches skipped because active eforge builds are using their worktrees and overlap the stack candidate set |
+| `providerCommands` | git-spice commands that ran (or would run in dry-run mode) |
+| `fastForward` | Whether local trunk is at or behind `origin/<trunk>` |
+| `error` | Error message when outcome is `failed` or `conflict` |
+
+### Opt-in sync configuration
+
+Stack sync is available via the CLI and MCP tool (`eforge_stack_sync`) when `stacking.enabled: true`. The sync operation requires git-spice initialized in the repository.
+
+To enable stack sync as an automatic post-merge step, add `eforge stack sync` to `build.postMergeCommands`:
+
+```yaml
+build:
+  postMergeCommands:
+    - "eforge stack sync"
+```
+
+This runs sync automatically after each build lands. Use the `/eforge:workflow` command to configure this through the workflow preset wizard without editing `eforge/config.yaml` manually.
+
+> **Note:** Daemon-level polling config (such as `stacking.sync.enabled`, `stacking.sync.mode`, or `stacking.sync.intervalSeconds`) is not currently implemented. The supported automatic sync mechanism is `build.postMergeCommands: ["eforge stack sync"]`, which runs sync after each build lands rather than on a daemon polling interval.
+
+### Active-build skip behavior
+
+When sync runs while active eforge builds are in progress, branches whose worktrees are in use by active builds are skipped. These branches are reported in `activeBuildSkips`. Re-run sync after the active builds complete to restack the skipped branches.
+
+### Pre-landing reconciliation
+
+Before a stacked build lands, eforge checks whether the parent artifact branch has moved (e.g. due to an upstream merge). If the parent has moved and the stack has diverged, sync should be run before landing to reconcile the stack and ensure each PR targets the correct base.
+
+### Conflict recovery
+
+When `eforge stack sync` returns `outcome: conflict`, a merge conflict occurred during the restack step. To recover:
+
+1. Run `git status` to see the conflicting files.
+2. Resolve the conflicts in the affected files.
+3. Run `git add <resolved-files>` to stage the resolved files.
+4. Run `git rebase --continue` (or the git-spice equivalent) to resume the restack.
+5. Once the restack finishes, run `eforge stack sync` again to sync remaining branches.
+
+### Fast-forward-only trunk policy
+
+Stack sync uses a fast-forward-only policy for trunk. It will not force-push or rebase trunk. When `fastForward` is `false`, the local trunk is ahead of `origin/<trunk>`. Push or align the local trunk with origin before running sync.
 
 After upstream merges, subsequent eforge builds that reference updated parent artifact branches will pick up the new commit shas from the persisted stack state.
 
