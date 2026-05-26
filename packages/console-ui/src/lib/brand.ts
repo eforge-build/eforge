@@ -3,8 +3,8 @@
 /** Display name for the Console application. */
 export const CONSOLE_NAME = 'Eforge Console';
 
-/** eforge logo URL — phase 1 uses the GitHub organization avatar. */
-export const EFORGE_LOGO_URL = 'https://avatars.githubusercontent.com/u/175493085?s=48&v=4';
+/** eforge logo URL — served from the Console's bundled public assets. */
+export const EFORGE_LOGO_URL = '/console/eforge-logo.svg';
 
 /** Accessible alt text for the eforge logo. */
 export const EFORGE_LOGO_ALT = 'eforge logo';

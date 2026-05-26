@@ -21,3 +21,7 @@ export * from './activity';
 // --- eforge:region plan-02-queue-view ---
 export * from './queue';
 // --- eforge:endregion plan-02-queue-view ---
+
+// --- eforge:region plan-01-branding-fonts-label-foundation ---
+export * from './labels';
+// --- eforge:endregion plan-01-branding-fonts-label-foundation ---

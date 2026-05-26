@@ -36,6 +36,16 @@
   --color-red: #f85149;
   --color-yellow: #d29922;
   --color-blue: #58a6ff;
+
+  /* Event-family color tokens — used by Activity view family chips and badges */
+  --color-event-family-daemon: #58a6ff;
+  --color-event-family-scheduler: #d29922;
+  --color-event-family-queue: #67f553;
+  --color-event-family-session: #a78bfa;
+  --color-event-family-agent: #38bdf8;
+  --color-event-family-extension: #fb923c;
+  --color-event-family-stack: #f85149;
+  --color-event-family-other: #8b949e;
 }
 
 @layer base {
