@@ -133,6 +133,45 @@ describe('selectActivityRows – rawJson', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Identifier extraction – normalization and rawJson preservation
+// ---------------------------------------------------------------------------
+
+describe('selectActivityRows – identifier normalization', () => {
+  it('normalizes a slug-like prdId to a display label in identifiers', () => {
+    const rawPrdId = 'add-mcp-server-support';
+    const activity = [makeEntry('e1', 'plan:build:start', { prdId: rawPrdId }, 1001)];
+    const rows = selectActivityRows(activity, FIXED_NOW);
+    const prdIdentifier = rows[0].identifiers.find((i) => i.label === 'PRD');
+    expect(prdIdentifier?.value).toBe('Add MCP Server Support');
+  });
+
+  it('preserves the raw event JSON even after prdId normalization', () => {
+    const rawPrdId = 'add-mcp-server-support';
+    const event = { type: 'plan:build:start', prdId: rawPrdId } as unknown as EforgeEvent;
+    const activity = [{ id: 'e1', event, receivedAt: 1001 }];
+    const rows = selectActivityRows(activity, FIXED_NOW);
+    expect(rows[0].rawJson).toBe(JSON.stringify(event, null, 2));
+    expect(rows[0].rawJson).toContain(rawPrdId);
+  });
+
+  it('includes a normalized planSet display label in identifiers', () => {
+    const rawPlanSet = 'refactor-ui-layout';
+    const activity = [makeEntry('e1', 'session:start', { planSet: rawPlanSet }, 1001)];
+    const rows = selectActivityRows(activity, FIXED_NOW);
+    const planSetIdentifier = rows[0].identifiers.find((i) => i.label === 'Plan Set');
+    expect(planSetIdentifier?.value).toBe('Refactor UI Layout');
+  });
+
+  it('preserves the raw planSet value in rawJson after normalization', () => {
+    const rawPlanSet = 'refactor-ui-layout';
+    const event = { type: 'session:start', planSet: rawPlanSet } as unknown as EforgeEvent;
+    const activity = [{ id: 'e1', event, receivedAt: 1001 }];
+    const rows = selectActivityRows(activity, FIXED_NOW);
+    expect(rows[0].rawJson).toContain(rawPlanSet);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Family classification
 // ---------------------------------------------------------------------------
 

@@ -4,6 +4,7 @@ import {
   selectQueueAttentionItems,
   selectQueueStatusGroups,
   sortQueueItems,
+  selectQueueItemDisplayLabel,
 } from '@/lib/selectors/queue';
 import type { QueueItem } from '@eforge-build/client/browser';
 
@@ -341,5 +342,31 @@ describe('selectQueueStatusGroups – recovery verdicts', () => {
     const items = [makeItem({ id: 'q-1', status: 'failed' })];
     const groups = selectQueueStatusGroups(items);
     expect(groups[0].items[0].recoveryVerdict).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectQueueItemDisplayLabel — normalised display labels
+// ---------------------------------------------------------------------------
+
+describe('selectQueueItemDisplayLabel', () => {
+  it('returns the item title when it is a clean non-markdown string', () => {
+    const item = makeItem({ id: 'q-1', title: 'Add MCP Server Support' });
+    expect(selectQueueItemDisplayLabel(item)).toBe('Add MCP Server Support');
+  });
+
+  it('derives a slug-based label when title is empty', () => {
+    const item = makeItem({ id: 'add-mcp-server', title: '' });
+    expect(selectQueueItemDisplayLabel(item)).toBe('Add MCP Server');
+  });
+
+  it('derives a slug-based label when title is markdown-shaped', () => {
+    const item = makeItem({ id: 'add-mcp-server', title: '# Add MCP Server' });
+    expect(selectQueueItemDisplayLabel(item)).toBe('Add MCP Server');
+  });
+
+  it('preserves known acronyms from the slug', () => {
+    const item = makeItem({ id: 'fix-api-auth', title: '' });
+    expect(selectQueueItemDisplayLabel(item)).toBe('Fix API Auth');
   });
 });

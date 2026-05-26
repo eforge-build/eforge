@@ -25,3 +25,8 @@ export * from './queue';
 // --- eforge:region plan-01-branding-fonts-label-foundation ---
 export * from './labels';
 // --- eforge:endregion plan-01-branding-fonts-label-foundation ---
+
+// --- eforge:region plan-02-selector-dedup-and-run-grouping ---
+// Selector deduplication, display labels, and run grouping exports are
+// covered by the wildcard re-exports above (now, queue, runs, activity).
+// --- eforge:endregion plan-02-selector-dedup-and-run-grouping ---

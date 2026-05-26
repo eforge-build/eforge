@@ -18,20 +18,29 @@ const PRESERVED_ACRONYMS = new Set(['PRD', 'UI', 'MCP', 'CLI', 'API']);
 // Markdown detection
 // ---------------------------------------------------------------------------
 
+/** Maximum character length before a title is considered a leaked markdown body. */
+const MAX_TITLE_LENGTH = 150;
+
 /**
  * Return true when `title` looks like a raw Markdown string rather than a
  * clean human-readable title.
  *
  * Rejects strings that:
- * - Start with one or more `#` heading markers (e.g. `# Title`)
+ * - Start with one or more `#` heading markers (e.g. `# Title` or `#Title`)
  * - Contain bold/italic markers (`**`, `__`, `*`, `_` followed by word chars)
  * - Contain inline code backticks
  * - Contain Markdown link syntax `[text](url)`
+ * - Contain newlines (leaked markdown body)
+ * - Exceed the maximum reasonable title length (leaked markdown body)
  */
 function isMarkdownShaped(title: string): boolean {
   const trimmed = title.trim();
-  // Heading: starts with one or more # characters
-  if (/^#+\s/.test(trimmed)) return true;
+  // Newline: multi-line content is a body, not a title
+  if (/\n/.test(trimmed)) return true;
+  // Overly long: treat as leaked markdown body
+  if (trimmed.length > MAX_TITLE_LENGTH) return true;
+  // Heading: starts with one or more # characters (with or without trailing space)
+  if (/^#+/.test(trimmed)) return true;
   // Bold / italic markers
   if (/\*\*|\*[^\s]|__/.test(trimmed)) return true;
   // Inline code
@@ -60,7 +69,10 @@ export function slugToDisplayLabel(slug: string): string {
   // Strip common file extensions
   const withoutExtension = withoutTimestamp.replace(/\.(md|txt|yaml|yml|json)$/i, '');
 
-  const words = withoutExtension.split(/[-_]+/).filter(Boolean);
+  // Split on hyphens, underscores, and whitespace so that already-spaced
+  // title-like values (e.g. "Feature X", "Add MCP Server") are tokenized the
+  // same way as slug variants.
+  const words = withoutExtension.split(/[-_\s]+/).filter(Boolean);
 
   return words
     .map((word) => {

@@ -1,5 +1,7 @@
 // --- eforge:region runs-build-entrypoints ---
 import type { RunInfo, SessionMetadata } from '@eforge-build/client/browser';
+import { pluralize } from '@/lib/format';
+import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 
 export type RunRollupStatus = 'running' | 'failed' | 'completed' | 'unknown';
 
@@ -58,6 +60,29 @@ function commandSortKey(command: string): number {
 }
 
 // ---------------------------------------------------------------------------
+// normalizePlanSetKey
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a stable, canonical key from a planSet slug or display title.
+ * Strips timestamp prefixes and file extensions, lowercases, replaces all
+ * non-alphanumeric characters (including whitespace) with hyphens, collapses
+ * consecutive hyphens, and trims leading/trailing hyphens so that both
+ * title variants ("Feature X") and slug variants ("feature-x") produce the
+ * same key.
+ */
+function normalizePlanSetKey(planSet: string): string {
+  if (!planSet) return '';
+  const trimmed = planSet.trim();
+  const withoutTimestamp = trimmed.replace(/^\d{4}[-_]\d{2}[-_]\d{2}[-_]/, '');
+  const withoutExtension = withoutTimestamp.replace(/\.(md|txt|yaml|yml|json)$/i, '');
+  return withoutExtension
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+// ---------------------------------------------------------------------------
 // selectRunStatusRollup
 // ---------------------------------------------------------------------------
 
@@ -104,120 +129,200 @@ export function selectRunStatusRollup(runs: RunInfo[]): RunRollupStatus {
 }
 
 // ---------------------------------------------------------------------------
-// selectRunGroups
+// buildRunGroup — internal helper
 // ---------------------------------------------------------------------------
 
 /**
- * Group runs by session id, plan set, or individual run id and return
- * `RunGroupViewModel[]` sorted by newest `startedAt` descending.
+ * Build a RunGroupViewModel from a set of runs that belong to the same group.
+ * Runs are sorted chronologically within the group (tie-broken by command order).
+ */
+function buildRunGroup(
+  key: string,
+  groupRuns: RunInfo[],
+  metadataMap: Record<string, SessionMetadata>,
+  isSession: boolean,
+): RunGroupViewModel {
+  // Sort runs within a group chronologically; tie-break by canonical command order
+  const sortedRuns = [...groupRuns].sort((a, b) => {
+    const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+    const bTime = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+    const diff = aTime - bTime;
+    if (Math.abs(diff) <= 1000) {
+      return commandSortKey(a.command) - commandSortKey(b.command);
+    }
+    return diff;
+  });
+
+  const firstRun = sortedRuns[0];
+  const sessionId = isSession ? firstRun.sessionId : undefined;
+
+  // Human-readable label: apply display label normalization to plan set slugs
+  const label = firstRun.planSet
+    ? selectPrdDisplayLabel(undefined, firstRun.planSet)
+    : sessionId || firstRun.id;
+
+  // Canonical detail identifier used for selection and REST fetches.
+  let detailId: string;
+  if (sessionId) {
+    detailId = sessionId;
+  } else {
+    detailId = firstRun.id;
+  }
+
+  // Start time: earliest run in the group
+  const startedAt = sortedRuns[0]?.startedAt ?? null;
+
+  // Completion time: latest completedAt across all runs
+  const latestCompleted = sortedRuns.reduce<string | null>((latest, r) => {
+    if (!r.completedAt) return latest;
+    if (!latest) return r.completedAt;
+    return new Date(r.completedAt).getTime() > new Date(latest).getTime()
+      ? r.completedAt
+      : latest;
+  }, null);
+  const completedAt = latestCompleted;
+
+  let durationSeconds: number | null = null;
+  if (startedAt && completedAt) {
+    durationSeconds =
+      (new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000;
+  }
+
+  // Deduplicated command list preserving chronological order
+  const commandSet = new Set<string>();
+  const commands: string[] = [];
+  for (const run of sortedRuns) {
+    if (!commandSet.has(run.command)) {
+      commandSet.add(run.command);
+      commands.push(run.command);
+    }
+  }
+
+  const cwd = firstRun.cwd ?? null;
+  const status = selectRunStatusRollup(sortedRuns);
+  const metadata = sessionId ? metadataMap[sessionId] : undefined;
+  const planCountLabel =
+    metadata?.planCount != null ? pluralize(metadata.planCount, 'plan') : undefined;
+  const profileLabel = metadata?.baseProfile ?? undefined;
+
+  return {
+    key,
+    detailId,
+    sessionId,
+    label,
+    isSession,
+    runs: sortedRuns,
+    status,
+    startedAt,
+    completedAt,
+    durationSeconds,
+    commands,
+    cwd,
+    metadata,
+    planCountLabel,
+    profileLabel,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// selectRunGroups
+// ---------------------------------------------------------------------------
+
+/** Five-minute window for coalescing plan-set runs (in milliseconds). */
+const PLAN_SET_COALESCE_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * Group runs by session id, normalised plan set, or individual run id, and
+ * return `RunGroupViewModel[]` sorted by newest `startedAt` descending.
+ *
+ * Non-session runs sharing a normalised plan-set slug are coalesced into a
+ * single group when their `startedAt` values are within a five-minute window.
+ * Runs further apart start a new group.
  */
 export function selectRunGroups(
   runs: RunInfo[],
   metadataMap: Record<string, SessionMetadata>,
 ): RunGroupViewModel[] {
-  const groupMap = new Map<string, RunInfo[]>();
+  // Phase 1: Separate runs into three buckets
+  const sessionBuckets = new Map<string, RunInfo[]>();
+  const planSetBuckets = new Map<string, RunInfo[]>(); // key: normalizePlanSetKey(planSet)
+  const soloRuns: RunInfo[] = [];
 
   for (const run of runs) {
-    let key: string;
     if (run.sessionId) {
-      key = `session:${run.sessionId}`;
+      const existing = sessionBuckets.get(run.sessionId);
+      if (existing) {
+        existing.push(run);
+      } else {
+        sessionBuckets.set(run.sessionId, [run]);
+      }
     } else if (run.planSet) {
-      key = `planSet:${run.planSet}`;
+      const normalizedKey = normalizePlanSetKey(run.planSet);
+      const existing = planSetBuckets.get(normalizedKey);
+      if (existing) {
+        existing.push(run);
+      } else {
+        planSetBuckets.set(normalizedKey, [run]);
+      }
     } else {
-      key = `run:${run.id}`;
-    }
-    const existing = groupMap.get(key);
-    if (existing) {
-      existing.push(run);
-    } else {
-      groupMap.set(key, [run]);
+      soloRuns.push(run);
     }
   }
 
   const groups: RunGroupViewModel[] = [];
 
-  for (const [key, groupRuns] of groupMap.entries()) {
-    // Sort runs within a group chronologically; tie-break by canonical command order
-    const sortedRuns = [...groupRuns].sort((a, b) => {
-      const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0;
-      const bTime = b.startedAt ? new Date(b.startedAt).getTime() : 0;
-      const diff = aTime - bTime;
-      if (Math.abs(diff) <= 1000) {
-        return commandSortKey(a.command) - commandSortKey(b.command);
-      }
-      return diff;
+  // Phase 2: Build session groups (one group per sessionId)
+  for (const [sessionId, sessionRuns] of sessionBuckets.entries()) {
+    groups.push(buildRunGroup(`session:${sessionId}`, sessionRuns, metadataMap, true));
+  }
+
+  // Phase 3: Build plan-set groups with five-minute time windowing
+  for (const [normalizedKey, planRuns] of planSetBuckets.entries()) {
+    // Sort runs by startedAt ascending to determine window boundaries
+    const sorted = [...planRuns].sort((a, b) => {
+      const at = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+      const bt = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+      return at - bt;
     });
 
-    const firstRun = sortedRuns[0];
-    const isSession = key.startsWith('session:');
-    const sessionId = isSession ? firstRun.sessionId : undefined;
+    // Split into time windows: a new window starts when the gap from the
+    // current window's first run exceeds PLAN_SET_COALESCE_WINDOW_MS.
+    let windowRuns: RunInfo[] = [];
+    let windowStart = 0;
+    let windowIdx = 0;
 
-    // Human-readable label: prefer plan set, then session id, then run id
-    const label = firstRun.planSet || sessionId || firstRun.id;
+    const emitWindow = (runsInWindow: RunInfo[], idx: number): void => {
+      // The first window uses the clean key; subsequent windows get a
+      // startedAt-based suffix to ensure unique keys.
+      const key =
+        idx === 0
+          ? `planSet:${normalizedKey}`
+          : `planSet:${normalizedKey}:${runsInWindow[0].startedAt ?? idx}`;
+      groups.push(buildRunGroup(key, runsInWindow, metadataMap, false));
+    };
 
-    // Canonical detail identifier used for selection and REST fetches.
-    // For multi-run plan-set groups we use the first run's id as a representative
-    // so that detail routes receive a valid run/session-style identifier.
-    let detailId: string;
-    if (sessionId) {
-      detailId = sessionId;
-    } else {
-      detailId = firstRun.id;
-    }
-
-    // Start time: earliest run in the group
-    const startedAt = sortedRuns[0]?.startedAt ?? null;
-
-    // Completion time: latest completedAt across all runs
-    const latestCompleted = sortedRuns.reduce<string | null>((latest, r) => {
-      if (!r.completedAt) return latest;
-      if (!latest) return r.completedAt;
-      return new Date(r.completedAt).getTime() > new Date(latest).getTime()
-        ? r.completedAt
-        : latest;
-    }, null);
-    const completedAt = latestCompleted;
-
-    let durationSeconds: number | null = null;
-    if (startedAt && completedAt) {
-      durationSeconds =
-        (new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000;
-    }
-
-    // Deduplicated command list preserving chronological order
-    const commandSet = new Set<string>();
-    const commands: string[] = [];
-    for (const run of sortedRuns) {
-      if (!commandSet.has(run.command)) {
-        commandSet.add(run.command);
-        commands.push(run.command);
+    for (const run of sorted) {
+      const t = run.startedAt ? new Date(run.startedAt).getTime() : 0;
+      if (windowRuns.length === 0) {
+        windowRuns = [run];
+        windowStart = t;
+      } else if (t - windowStart <= PLAN_SET_COALESCE_WINDOW_MS) {
+        windowRuns.push(run);
+      } else {
+        emitWindow(windowRuns, windowIdx);
+        windowIdx++;
+        windowRuns = [run];
+        windowStart = t;
       }
     }
+    if (windowRuns.length > 0) {
+      emitWindow(windowRuns, windowIdx);
+    }
+  }
 
-    const cwd = firstRun.cwd ?? null;
-    const status = selectRunStatusRollup(sortedRuns);
-    const metadata = sessionId ? metadataMap[sessionId] : undefined;
-    const planCountLabel =
-      metadata?.planCount != null ? `${metadata.planCount} plans` : undefined;
-    const profileLabel = metadata?.baseProfile ?? undefined;
-
-    groups.push({
-      key,
-      detailId,
-      sessionId,
-      label,
-      isSession,
-      runs: sortedRuns,
-      status,
-      startedAt,
-      completedAt,
-      durationSeconds,
-      commands,
-      cwd,
-      metadata,
-      planCountLabel,
-      profileLabel,
-    });
+  // Phase 4: Solo runs (no sessionId, no planSet)
+  for (const run of soloRuns) {
+    groups.push(buildRunGroup(`run:${run.id}`, [run], metadataMap, false));
   }
 
   // Sort groups newest first

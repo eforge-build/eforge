@@ -9,6 +9,7 @@ import type { EforgeEvent } from '@eforge-build/client/browser';
 import { getEventSummary, eventRegistry } from '@eforge-build/client/browser';
 import type { EventScope } from '@eforge-build/client/browser';
 import type { ConsoleActivityEntry } from '@/lib/types';
+import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,7 +49,7 @@ export interface ActivityEventRowModel {
   summary: string;
   timestampLabel: string;
   receivedLabel: string;
-  identifiers: Array<{ label: string; value: string }>;
+  identifiers: Array<{ label: string; value: string; rawValue?: string }>;
   source: string | null;
   attention: boolean;
   rawJson: string;
@@ -169,20 +170,30 @@ const IDENTIFIER_FIELDS: Array<[string, string]> = [
   ['runId', 'Run'],
   ['planId', 'Plan'],
   ['prdId', 'PRD'],
+  ['planSet', 'Plan Set'],
   ['queueId', 'Queue'],
   ['id', 'ID'],
   ['agent', 'Agent'],
   ['source', 'Source'],
 ];
 
-export function extractIdentifiers(event: EforgeEvent): Array<{ label: string; value: string }> {
+export function extractIdentifiers(event: EforgeEvent): Array<{ label: string; value: string; rawValue?: string }> {
   const e = event as unknown as Record<string, unknown>;
-  const identifiers: Array<{ label: string; value: string }> = [];
+  const identifiers: Array<{ label: string; value: string; rawValue?: string }> = [];
 
   for (const [field, label] of IDENTIFIER_FIELDS) {
     const val = e[field];
     if (typeof val === 'string' && val) {
-      identifiers.push({ label, value: val });
+      // PRD and plan-set identifiers are typically slug-like; normalise them to
+      // human-readable display labels while leaving other identifier fields raw.
+      if (field === 'prdId' || field === 'planSet') {
+        const displayValue = selectPrdDisplayLabel(undefined, val);
+        // Preserve the raw slug so identifier searches against the original
+        // value (e.g. "add-mcp-server-support") still match the row.
+        identifiers.push({ label, value: displayValue, rawValue: val });
+      } else {
+        identifiers.push({ label, value: val });
+      }
     }
   }
 
@@ -310,8 +321,10 @@ export function filterActivityRows(
     }
     if (filters.identifierQuery) {
       const q = filters.identifierQuery.toLowerCase();
+      // Include both normalized display values and raw slugs so that users can
+      // search by either the human-readable label or the original identifier.
       const searchable = row.identifiers
-        .map((i) => i.value)
+        .flatMap((i) => (i.rawValue ? [i.value, i.rawValue] : [i.value]))
         .join(' ')
         .toLowerCase();
       if (!searchable.includes(q)) return false;

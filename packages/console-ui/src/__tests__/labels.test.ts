@@ -88,6 +88,16 @@ describe('selectPrdDisplayLabel', () => {
         'Click Here',
       );
     });
+
+    it('falls back to slug when title contains a newline (markdown body leak)', () => {
+      const leakedBody = 'Add MCP Server\n\nThis PRD describes adding MCP server support.';
+      expect(selectPrdDisplayLabel(leakedBody, 'add-mcp-server')).toBe('Add MCP Server');
+    });
+
+    it('falls back to slug when title is an overly long string (markdown body leak)', () => {
+      const longTitle = 'A'.repeat(200);
+      expect(selectPrdDisplayLabel(longTitle, 'add-mcp-server')).toBe('Add MCP Server');
+    });
   });
 
   describe('slug title-casing fallback', () => {

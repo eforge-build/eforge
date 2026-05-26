@@ -19,6 +19,7 @@ import type { ActiveSessionDetail } from '@/hooks/use-active-session-streams';
 import type { ConnectionStatus, ConsoleActivityEntry } from '@/lib/types';
 import { isTerminalStatus } from '@/lib/selectors/active-builds';
 import { toConsolePath } from '@/lib/navigation';
+import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 
 // ---------------------------------------------------------------------------
 // View model types
@@ -169,6 +170,50 @@ function queueStatusOrder(status: string): number {
 }
 
 // ---------------------------------------------------------------------------
+// Attention severity merge helpers
+// ---------------------------------------------------------------------------
+
+const SEVERITY_ORDER: Record<NowAttentionSeverity, number> = {
+  critical: 3,
+  warning: 2,
+  info: 1,
+};
+
+/** Return the more-severe of two attention severities. */
+export function mergeSeverity(
+  a: NowAttentionSeverity,
+  b: NowAttentionSeverity,
+): NowAttentionSeverity {
+  return SEVERITY_ORDER[a] >= SEVERITY_ORDER[b] ? a : b;
+}
+
+/**
+ * Derive a stable deduplication key from a PRD or plan-set slug or display
+ * title.  Strips timestamp prefixes and file extensions, lowercases, replaces
+ * all non-alphanumeric characters (including whitespace) with hyphens,
+ * collapses consecutive hyphens, and trims leading/trailing hyphens so that
+ * title variants ("Feature X") and slug variants ("feature-x") resolve to the
+ * same key.
+ */
+function normalizePrdDedupKey(slug: string): string {
+  if (!slug) return '';
+  const trimmed = slug.trim();
+  const withoutTimestamp = trimmed.replace(/^\d{4}[-_]\d{2}[-_]\d{2}[-_]/, '');
+  const withoutExtension = withoutTimestamp.replace(/\.(md|txt|yaml|yml|json)$/i, '');
+  return withoutExtension
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/** Internal candidate shape used during attention-item collection. */
+interface AttentionCandidate {
+  item: NowAttentionItem;
+  /** Stable key; candidates sharing a key are merged (worst severity wins). */
+  dedupKey: string;
+}
+
+// ---------------------------------------------------------------------------
 // Freshness / stale detection
 // ---------------------------------------------------------------------------
 
@@ -238,7 +283,7 @@ export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
 
   const topItems: NowQueueItem[] = sorted.slice(0, MAX_QUEUE_ITEMS).map((item) => ({
     id: item.id,
-    title: item.title,
+    title: selectPrdDisplayLabel(item.title, item.id),
     status: item.status,
     priority: item.priority,
     created: item.created,
@@ -272,15 +317,18 @@ export function selectNowAttentionItems(
   activeDetails: Record<string, ActiveSessionDetail>,
   now: number = Date.now(),
 ): { items: NowAttentionItem[]; hiddenCount: number } {
-  const all: NowAttentionItem[] = [];
+  const candidates: AttentionCandidate[] = [];
 
   // 1. Stream disconnected/error
   if (state.connectionStatus === 'disconnected' && state.error) {
-    all.push({
-      id: 'stream-error',
-      severity: 'critical',
-      message: 'Daemon stream disconnected',
-      detail: state.error,
+    candidates.push({
+      item: {
+        id: 'stream-error',
+        severity: 'critical',
+        message: 'Daemon stream disconnected',
+        detail: state.error,
+      },
+      dedupKey: 'system:stream-error',
     });
   }
 
@@ -288,21 +336,27 @@ export function selectNowAttentionItems(
   if (state.connectionStatus === 'connected' && isLivenessStale(state, now)) {
     const msAgo = now - (state.latestHeartbeat?.at ?? state.lastSnapshotAt ?? 0);
     const secs = Math.round(msAgo / 1_000);
-    all.push({
-      id: 'stale-heartbeat',
-      severity: 'warning',
-      message: `No daemon heartbeat in ${secs}s`,
+    candidates.push({
+      item: {
+        id: 'stale-heartbeat',
+        severity: 'warning',
+        message: `No daemon heartbeat in ${secs}s`,
+      },
+      dedupKey: 'system:stale-heartbeat',
     });
   }
 
   // 3. Active session stream errors
   for (const detail of Object.values(activeDetails)) {
     if (detail.error) {
-      all.push({
-        id: `session-error-${detail.sessionId}`,
-        severity: 'warning',
-        message: `Session stream error: ${detail.sessionId}`,
-        detail: detail.error,
+      candidates.push({
+        item: {
+          id: `session-error-${detail.sessionId}`,
+          severity: 'warning',
+          message: `Session stream error: ${detail.sessionId}`,
+          detail: detail.error,
+        },
+        dedupKey: `session:${detail.sessionId}`,
       });
     }
   }
@@ -313,11 +367,15 @@ export function selectNowAttentionItems(
   );
   for (const item of failedWithVerdict) {
     const rv = item.recoveryVerdict!;
-    all.push({
-      id: `queue-failed-verdict-${item.id}`,
-      severity: 'warning',
-      message: `Failed: ${item.title}`,
-      detail: `${rv.verdict} / ${rv.confidence}`,
+    const label = selectPrdDisplayLabel(item.title, item.id);
+    candidates.push({
+      item: {
+        id: `queue-failed-verdict-${item.id}`,
+        severity: 'warning',
+        message: `Failed: ${label}`,
+        detail: `${rv.verdict} / ${rv.confidence}`,
+      },
+      dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });
   }
 
@@ -326,11 +384,15 @@ export function selectNowAttentionItems(
     (q) => q.status.toLowerCase() === 'failed' && q.recoveryVerdict == null,
   );
   for (const item of failedWithoutVerdict) {
-    all.push({
-      id: `queue-failed-${item.id}`,
-      severity: 'warning',
-      message: `Failed: ${item.title}`,
-      detail: 'recovery pending',
+    const label = selectPrdDisplayLabel(item.title, item.id);
+    candidates.push({
+      item: {
+        id: `queue-failed-${item.id}`,
+        severity: 'warning',
+        message: `Failed: ${label}`,
+        detail: 'recovery pending',
+      },
+      dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });
   }
 
@@ -343,11 +405,15 @@ export function selectNowAttentionItems(
       return 0;
     });
   for (const run of failedRuns.slice(0, 3)) {
-    all.push({
-      id: `run-failed-${run.id}`,
-      severity: 'info',
-      message: `Run failed: ${run.planSet}`,
-      detail: run.command,
+    const label = selectPrdDisplayLabel(undefined, run.planSet);
+    candidates.push({
+      item: {
+        id: `run-failed-${run.id}`,
+        severity: 'info',
+        message: `Run failed: ${label}`,
+        detail: run.command,
+      },
+      dedupKey: `prd:${normalizePrdDedupKey(run.planSet)}`,
     });
   }
 
@@ -356,16 +422,34 @@ export function selectNowAttentionItems(
     (q) => q.dependsOn && q.dependsOn.length > 0 && q.status.toLowerCase() !== 'failed' && q.status.toLowerCase() !== 'running',
   );
   for (const item of blocked) {
-    all.push({
-      id: `queue-blocked-${item.id}`,
-      severity: 'info',
-      message: `Waiting on dependencies: ${item.title}`,
-      detail: `depends on ${item.dependsOn!.length} item(s)`,
+    const label = selectPrdDisplayLabel(item.title, item.id);
+    candidates.push({
+      item: {
+        id: `queue-blocked-${item.id}`,
+        severity: 'info',
+        message: `Waiting on dependencies: ${label}`,
+        detail: `depends on ${item.dependsOn!.length} item(s)`,
+      },
+      dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });
   }
 
-  const items = all.slice(0, MAX_ATTENTION_ITEMS);
-  const hiddenCount = Math.max(0, all.length - MAX_ATTENTION_ITEMS);
+  // Deduplicate by dedupKey; when two candidates share a key the worst
+  // severity wins (critical > warning > info). The first candidate's
+  // message/detail is kept since it tends to carry the most context.
+  const seen = new Map<string, NowAttentionItem>();
+  for (const { item, dedupKey } of candidates) {
+    const existing = seen.get(dedupKey);
+    if (existing) {
+      existing.severity = mergeSeverity(existing.severity, item.severity);
+    } else {
+      seen.set(dedupKey, { ...item });
+    }
+  }
+
+  const deduped = Array.from(seen.values());
+  const items = deduped.slice(0, MAX_ATTENTION_ITEMS);
+  const hiddenCount = Math.max(0, deduped.length - MAX_ATTENTION_ITEMS);
   return { items, hiddenCount };
 }
 
@@ -486,7 +570,7 @@ export function selectNowActiveBuildCards(
     return {
       sessionId,
       runId: run.id,
-      planSet: run.planSet,
+      planSet: selectPrdDisplayLabel(undefined, run.planSet),
       command: run.command,
       status: run.status,
       startedAt: run.startedAt,
@@ -593,7 +677,7 @@ export function selectNowStackSummary(stackLayers: StackLayerWire[]): NowStackSu
   }
 
   const topRows: NowStackRow[] = stackLayers.slice(0, MAX_STACK_ROWS).map((layer) => ({
-    prdId: layer.prdId,
+    prdId: selectPrdDisplayLabel(undefined, layer.prdId),
     stackId: layer.stackId,
     provider: layer.provider,
     branch: layer.branch,
@@ -708,7 +792,7 @@ export function selectNowRecentRuns(runs: RunInfo[], now: number = Date.now()): 
     return {
       id: run.id,
       sessionId: run.sessionId,
-      planSet: run.planSet,
+      planSet: selectPrdDisplayLabel(undefined, run.planSet),
       command: run.command,
       status: run.status,
       startedAt: run.startedAt,

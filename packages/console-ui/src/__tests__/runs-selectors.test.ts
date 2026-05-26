@@ -165,6 +165,33 @@ describe('selectRunGroups – grouping', () => {
 });
 
 // ---------------------------------------------------------------------------
+// selectRunGroups – label normalization
+// ---------------------------------------------------------------------------
+
+describe('selectRunGroups – label normalization', () => {
+  it('produces a title-cased display label for a slug-like planSet with an acronym', () => {
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: 'add-mcp-server-support' }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups[0].label).toBe('Add MCP Server Support');
+  });
+
+  it('normalizes title-vs-slug planSet variants to the same display label', () => {
+    // Both variants should produce the same normalized display label.
+    const slugRuns: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: 'add-mcp-server' }),
+    ];
+    const titleRuns: RunInfo[] = [
+      makeRun({ id: 'r2', sessionId: undefined, planSet: 'Add MCP Server' }),
+    ];
+    const slugGroups = selectRunGroups(slugRuns, {});
+    const titleGroups = selectRunGroups(titleRuns, {});
+    expect(slugGroups[0].label).toBe(titleGroups[0].label);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // selectRunGroups – sorting
 // ---------------------------------------------------------------------------
 
@@ -231,6 +258,116 @@ describe('selectRunGroups – metadata projection', () => {
     };
     const groups = selectRunGroups(runs, metadata);
     expect(groups[0].metadata).toBeUndefined();
+  });
+
+  it('planCountLabel is "1 plan" when planCount is 1', () => {
+    const runs: RunInfo[] = [makeRun({ id: 'r1', sessionId: 'sess-a' })];
+    const metadata: Record<string, SessionMetadata> = {
+      'sess-a': { planCount: 1, baseProfile: null },
+    };
+    const groups = selectRunGroups(runs, metadata);
+    expect(groups[0].planCountLabel).toBe('1 plan');
+  });
+
+  it('planCountLabel is "2 plans" when planCount is 2', () => {
+    const runs: RunInfo[] = [makeRun({ id: 'r1', sessionId: 'sess-a' })];
+    const metadata: Record<string, SessionMetadata> = {
+      'sess-a': { planCount: 2, baseProfile: null },
+    };
+    const groups = selectRunGroups(runs, metadata);
+    expect(groups[0].planCountLabel).toBe('2 plans');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectRunGroups – planSet time-window coalescing
+// ---------------------------------------------------------------------------
+
+describe('selectRunGroups – planSet time-window coalescing', () => {
+  it('coalesces enqueue and build runs with matching planSet slug within 5 minutes', () => {
+    const base = '2024-01-01T10:00:00Z';
+    const twoMinLater = '2024-01-01T10:02:00Z';
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r-enqueue', sessionId: undefined, command: 'enqueue', planSet: 'feature-x', startedAt: base }),
+      makeRun({ id: 'r-build', sessionId: undefined, command: 'build', planSet: 'feature-x', startedAt: twoMinLater }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(1);
+    expect(groups[0].runs).toHaveLength(2);
+  });
+
+  it('does not coalesce runs with the same planSet when start times differ by more than 5 minutes', () => {
+    const base = '2024-01-01T10:00:00Z';
+    const sixMinLater = '2024-01-01T10:06:00Z';
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r-enqueue', sessionId: undefined, command: 'enqueue', planSet: 'feature-x', startedAt: base }),
+      makeRun({ id: 'r-build', sessionId: undefined, command: 'build', planSet: 'feature-x', startedAt: sixMinLater }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(2);
+  });
+
+  it('coalesces runs with normalised-equivalent planSet slugs within 5 minutes', () => {
+    const base = '2024-01-01T10:00:00Z';
+    const oneMinLater = '2024-01-01T10:01:00Z';
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: 'feature-x.md', startedAt: base }),
+      makeRun({ id: 'r2', sessionId: undefined, planSet: 'feature-x', startedAt: oneMinLater }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(1);
+    expect(groups[0].runs).toHaveLength(2);
+  });
+
+  it('coalesces runs whose planSet values differ only by title-vs-slug formatting (e.g. "Feature X" and "feature-x")', () => {
+    const base = '2024-01-01T10:00:00Z';
+    const oneMinLater = '2024-01-01T10:01:00Z';
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: 'Feature X', startedAt: base }),
+      makeRun({ id: 'r2', sessionId: undefined, planSet: 'feature-x', startedAt: oneMinLater }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(1);
+    expect(groups[0].runs).toHaveLength(2);
+  });
+
+  it('coalesces runs starting exactly five minutes apart (inclusive boundary)', () => {
+    const baseMs = new Date('2024-01-01T10:00:00Z').getTime();
+    const exactlyFiveMin = new Date(baseMs + 5 * 60 * 1000).toISOString();
+    const runs: RunInfo[] = [
+      makeRun({ id: 'r1', sessionId: undefined, planSet: 'feature-x', startedAt: '2024-01-01T10:00:00Z' }),
+      makeRun({ id: 'r2', sessionId: undefined, planSet: 'feature-x', startedAt: exactlyFiveMin }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(1);
+    expect(groups[0].runs).toHaveLength(2);
+  });
+
+  it('coalesced group containing a failed enqueue run has status failed', () => {
+    const base = '2024-01-01T10:00:00Z';
+    const twoMinLater = '2024-01-01T10:02:00Z';
+    const runs: RunInfo[] = [
+      makeRun({
+        id: 'r-enqueue',
+        sessionId: undefined,
+        command: 'enqueue',
+        planSet: 'feature-x',
+        startedAt: base,
+        status: 'failed',
+        completedAt: '2024-01-01T10:01:00Z',
+      }),
+      makeRun({
+        id: 'r-build',
+        sessionId: undefined,
+        command: 'build',
+        planSet: 'feature-x',
+        startedAt: twoMinLater,
+        status: 'running',
+      }),
+    ];
+    const groups = selectRunGroups(runs, {});
+    expect(groups).toHaveLength(1);
+    expect(groups[0].status).toBe('failed');
   });
 });
 
