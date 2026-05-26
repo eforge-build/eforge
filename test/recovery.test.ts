@@ -966,6 +966,349 @@ describe('buildFailureSummary', () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildFailureSummary multi-plan reconstruction
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-recovery-summary-reconstruction ---
+describe('buildFailureSummary multi-plan reconstruction', () => {
+  const makeTempDir = useTempDir('eforge-recovery-multi-plan-test-');
+
+  function seedGitRepo(dir: string): void {
+    const gitOpts = { cwd: dir };
+    execFileSync('git', ['init', '-b', 'main'], gitOpts);
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], gitOpts);
+    execFileSync('git', ['config', 'user.name', 'Test'], gitOpts);
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'chore: initial commit'], gitOpts);
+    execFileSync('git', ['checkout', '-b', 'eforge/multi-plan-set'], gitOpts);
+    for (let i = 1; i <= 5; i++) {
+      execFileSync('git', ['commit', '--allow-empty', '-m', `feat: plan-0${i} merged`], gitOpts);
+    }
+    execFileSync('git', ['checkout', 'main'], gitOpts);
+  }
+
+  /**
+   * Seed a monitor DB for multi-plan-set with:
+   *  - plan:status:change → merged for five plans
+   *  - plan:merge:complete for plan-01-console-shell (commitSha)
+   *  - plan:build:test:complete for plan-02-activity-audit-view (42 passed, 0 failed)
+   *  - 3 agent:tool_use events for plan-04-queue-view
+   *  - plan:status:change → failed + plan:build:failed for plan-04 (T1) and plan-06 (T2, later)
+   *
+   * This mirrors the real failed run from `03ea77d4` that proved the bug:
+   * old code returns only plan-06 in plans[], new code must return all 7.
+   */
+  function seedMultiPlanDb(dir: string): string {
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'monitor.db');
+    const db = openDatabase(dbPath);
+    const baseTs = new Date('2026-05-26T05:00:00.000Z').getTime();
+
+    db.insertRun({
+      id: 'run-multi-plan-01',
+      sessionId: 'session-multi-01',
+      planSet: 'multi-plan-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date(baseTs).toISOString(),
+      cwd: dir,
+      pid: 12345,
+    });
+
+    // 5 merged plans — each gets a plan:status:change event
+    const mergedPlanIds = [
+      'plan-01-console-shell',
+      'plan-02-activity-audit-view',
+      'plan-03-now-dashboard',
+      'plan-05-runs-build-entrypoints',
+      'plan-07-system-configuration-view',
+    ];
+    for (let i = 0; i < mergedPlanIds.length; i++) {
+      const planId = mergedPlanIds[i];
+      const ts = new Date(baseTs + (i + 1) * 60_000).toISOString();
+      db.insertEvent({
+        runId: 'run-multi-plan-01',
+        type: 'plan:status:change',
+        planId,
+        data: JSON.stringify({ type: 'plan:status:change', planId, status: 'merged' }),
+        timestamp: ts,
+      });
+    }
+
+    // plan:merge:complete for plan-01-console-shell with commitSha (for enrichment test)
+    db.insertEvent({
+      runId: 'run-multi-plan-01',
+      type: 'plan:merge:complete',
+      planId: 'plan-01-console-shell',
+      data: JSON.stringify({
+        type: 'plan:merge:complete',
+        planId: 'plan-01-console-shell',
+        commitSha: 'abc1234def5678901234567890abcdef12345678',
+      }),
+      timestamp: new Date(baseTs + 65_000).toISOString(),
+    });
+
+    // plan:build:test:complete for plan-02-activity-audit-view (for test count enrichment)
+    db.insertEvent({
+      runId: 'run-multi-plan-01',
+      type: 'plan:build:test:complete',
+      planId: 'plan-02-activity-audit-view',
+      data: JSON.stringify({
+        type: 'plan:build:test:complete',
+        planId: 'plan-02-activity-audit-view',
+        passed: 42,
+        failed: 0,
+        testBugsFixed: 0,
+        productionIssues: [],
+      }),
+      timestamp: new Date(baseTs + 125_000).toISOString(),
+    });
+
+    // 3 agent:tool_use events for plan-04-queue-view (for toolUseCount enrichment)
+    for (let i = 0; i < 3; i++) {
+      db.insertEvent({
+        runId: 'run-multi-plan-01',
+        type: 'agent:tool_use',
+        planId: 'plan-04-queue-view',
+        data: JSON.stringify({
+          type: 'agent:tool_use',
+          planId: 'plan-04-queue-view',
+          agentId: 'agent-builder-04',
+          agent: 'builder',
+          tool: 'Read',
+          toolUseId: `tu-04-${i}`,
+          input: {},
+        }),
+        timestamp: new Date(baseTs + 300_000 + i * 1000).toISOString(),
+      });
+    }
+
+    // plan-04 fails at T1 (06:15:04)
+    db.insertEvent({
+      runId: 'run-multi-plan-01',
+      type: 'plan:status:change',
+      planId: 'plan-04-queue-view',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-04-queue-view', status: 'failed' }),
+      timestamp: new Date('2026-05-26T06:15:04.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-multi-plan-01',
+      type: 'plan:build:failed',
+      planId: 'plan-04-queue-view',
+      data: JSON.stringify({
+        type: 'plan:build:failed',
+        planId: 'plan-04-queue-view',
+        error: 'API error 529: overloaded_error',
+        terminalSubtype: 'error_transient_transport',
+      }),
+      timestamp: new Date('2026-05-26T06:15:04.000Z').toISOString(),
+    });
+
+    // plan-06 fails at T2 (06:15:10) — later than plan-04; plan-06 is the latest failure
+    db.insertEvent({
+      runId: 'run-multi-plan-01',
+      type: 'plan:status:change',
+      planId: 'plan-06-static-serving-package-integration',
+      data: JSON.stringify({
+        type: 'plan:status:change',
+        planId: 'plan-06-static-serving-package-integration',
+        status: 'failed',
+      }),
+      timestamp: new Date('2026-05-26T06:15:10.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-multi-plan-01',
+      type: 'plan:build:failed',
+      planId: 'plan-06-static-serving-package-integration',
+      data: JSON.stringify({
+        type: 'plan:build:failed',
+        planId: 'plan-06-static-serving-package-integration',
+        error: 'API error 529: overloaded_error',
+        terminalSubtype: 'error_transient_transport',
+      }),
+      timestamp: new Date('2026-05-26T06:15:10.000Z').toISOString(),
+    });
+
+    db.close();
+    return dbPath;
+  }
+
+  it('[regression] summary.plans includes all 7 plans — not just the latest failure', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedMultiPlanDb(dir);
+
+    const summary = await buildFailureSummary({
+      setName: 'multi-plan-set',
+      prdId: 'multi-plan-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    // Old code: returns only 1 plan (the latest plan:build:failed row).
+    // After fix: returns all 7 plans via plan:status:change reconstruction.
+    expect(summary.plans).toHaveLength(7);
+
+    const planIds = summary.plans.map((p) => p.planId);
+    expect(planIds).toContain('plan-01-console-shell');
+    expect(planIds).toContain('plan-02-activity-audit-view');
+    expect(planIds).toContain('plan-03-now-dashboard');
+    expect(planIds).toContain('plan-05-runs-build-entrypoints');
+    expect(planIds).toContain('plan-07-system-configuration-view');
+    expect(planIds).toContain('plan-04-queue-view');
+    expect(planIds).toContain('plan-06-static-serving-package-integration');
+  });
+
+  it('[regression] summary.failingPlans contains both plan-04-queue-view and plan-06-static-serving-package-integration', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedMultiPlanDb(dir);
+
+    const summary = await buildFailureSummary({
+      setName: 'multi-plan-set',
+      prdId: 'multi-plan-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    // failingPlans is a new optional field listing all failed plans in the run.
+    // Old code: does not populate this field. After fix: populated from all plan:build:failed rows.
+    const failingPlans = (summary as unknown as { failingPlans?: Array<{ planId: string }> }).failingPlans;
+    expect(failingPlans).toBeDefined();
+    expect(failingPlans).toHaveLength(2);
+
+    const failingPlanIds = failingPlans!.map((p) => p.planId);
+    expect(failingPlanIds).toContain('plan-04-queue-view');
+    expect(failingPlanIds).toContain('plan-06-static-serving-package-integration');
+  });
+
+  it('summary.failingPlan.planId is the latest failed plan (plan-06) for backward compatibility', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedMultiPlanDb(dir);
+
+    const summary = await buildFailureSummary({
+      setName: 'multi-plan-set',
+      prdId: 'multi-plan-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    // plan-06 failed at 06:15:10; plan-04 at 06:15:04 — plan-06 has higher event id and is latest.
+    // summary.failingPlan must remain the latest failure for existing consumers.
+    expect(summary.failingPlan.planId).toBe('plan-06-static-serving-package-integration');
+  });
+
+  it('completed and failed plans have the correct status in summary.plans', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedMultiPlanDb(dir);
+
+    const summary = await buildFailureSummary({
+      setName: 'multi-plan-set',
+      prdId: 'multi-plan-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    const plan01 = summary.plans.find((p) => p.planId === 'plan-01-console-shell');
+    expect(plan01).toBeDefined();
+    expect(plan01!.status).toBe('merged');
+
+    const plan04 = summary.plans.find((p) => p.planId === 'plan-04-queue-view');
+    expect(plan04).toBeDefined();
+    expect(plan04!.status).toBe('failed');
+
+    const plan06 = summary.plans.find((p) => p.planId === 'plan-06-static-serving-package-integration');
+    expect(plan06).toBeDefined();
+    expect(plan06!.status).toBe('failed');
+  });
+
+  it('plan entry includes commitSha when plan:merge:complete event exists', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedMultiPlanDb(dir);
+
+    const summary = await buildFailureSummary({
+      setName: 'multi-plan-set',
+      prdId: 'multi-plan-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    const plan01 = summary.plans.find((p) => p.planId === 'plan-01-console-shell');
+    expect(plan01).toBeDefined();
+    // commitSha is a new optional field enriched from plan:merge:complete events
+    const commitSha = (plan01 as unknown as { commitSha?: string }).commitSha;
+    expect(commitSha).toBe('abc1234def5678901234567890abcdef12345678');
+  });
+
+  it('plan entry includes testPassed and testFailed when plan:build:test:complete event exists', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedMultiPlanDb(dir);
+
+    const summary = await buildFailureSummary({
+      setName: 'multi-plan-set',
+      prdId: 'multi-plan-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    const plan02 = summary.plans.find((p) => p.planId === 'plan-02-activity-audit-view');
+    expect(plan02).toBeDefined();
+    // testPassed and testFailed are new optional fields enriched from plan:build:test:complete events
+    const enriched = plan02 as unknown as { testPassed?: number; testFailed?: number };
+    expect(enriched.testPassed).toBe(42);
+    expect(enriched.testFailed).toBe(0);
+  });
+
+  it('failed plan entry in failingPlans includes toolUseCount from agent:tool_use events', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedMultiPlanDb(dir);
+
+    const summary = await buildFailureSummary({
+      setName: 'multi-plan-set',
+      prdId: 'multi-plan-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    const failingPlans = (summary as unknown as {
+      failingPlans?: Array<{ planId: string; toolUseCount?: number }>;
+    }).failingPlans;
+    expect(failingPlans).toBeDefined();
+
+    // plan-04 had 3 agent:tool_use events in the fixture
+    const plan04Failing = failingPlans!.find((p) => p.planId === 'plan-04-queue-view');
+    expect(plan04Failing).toBeDefined();
+    expect(plan04Failing!.toolUseCount).toBe(3);
+
+    // plan-06 had no agent:tool_use events — count should be 0 or absent
+    const plan06Failing = failingPlans!.find((p) => p.planId === 'plan-06-static-serving-package-integration');
+    expect(plan06Failing).toBeDefined();
+    expect(plan06Failing!.toolUseCount ?? 0).toBe(0);
+  });
+
+  it('does not set partial:true when multi-plan DB events exist', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedMultiPlanDb(dir);
+
+    const summary = await buildFailureSummary({
+      setName: 'multi-plan-set',
+      prdId: 'multi-plan-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    expect(summary.partial).toBeUndefined();
+  });
+});
+// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
+
+// ---------------------------------------------------------------------------
 // runRecoveryAnalyst (agent wiring)
 // ---------------------------------------------------------------------------
 
@@ -1200,6 +1543,37 @@ describe('runRecoveryAnalyst wiring', () => {
     const complete = findEvent(events, 'recovery:complete');
     expect(complete!.verdict.verdict).toBe('manual');
   });
+
+  // --- eforge:region plan-01-recovery-summary-reconstruction ---
+  it('parses recovery block from agent:result.resultText when no agent:message content is emitted', async () => {
+    // StubHarness constructed with { resultText } only (no text field) emits agent:result
+    // with resultText but does NOT emit any agent:message events.
+    // The current implementation accumulates only agent:message content and will produce
+    // a recovery:error. After the fix, resultText is used as a fallback parse buffer.
+    const backend = new StubHarness([{ resultText: SPLIT_OUTPUT }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runRecoveryAnalyst({
+      harness: backend,
+      prdId: 'test-prd',
+      prdContent: '# PRD',
+      summary: makeSummary(),
+      cwd,
+    }));
+
+    // The stub emits no agent:message — verify the test isolation is correct
+    expect(filterEvents(events, 'agent:message')).toHaveLength(0);
+
+    // Should successfully parse the split verdict from resultText
+    const complete = findEvent(events, 'recovery:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.verdict.verdict).toBe('split');
+    expect(complete!.prdId).toBe('test-prd');
+
+    // No recovery:error should be emitted when resultText fallback succeeds
+    expect(findEvent(events, 'recovery:error')).toBeUndefined();
+  });
+  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
 // ---------------------------------------------------------------------------

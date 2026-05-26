@@ -483,6 +483,186 @@ describe('EforgeEngine.recover() with no state.json + populated event db', () =>
 });
 
 // ---------------------------------------------------------------------------
+// Multi-plan sidecar content (fallback/manual verdict)
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-recovery-summary-reconstruction ---
+describe('multi-plan sidecar content when verdict is fallback manual', () => {
+  const makeTestDir = useTempDir('eforge-multi-plan-sidecar-test-');
+
+  /**
+   * Construct a BuildFailureSummary that mirrors the real failed run:
+   * 5 merged plans and 2 failed plans, with failingPlans listing both failures.
+   * Cast as unknown because BuildFailureSummary does not have failingPlans yet;
+   * the field will be added by this plan's implementation.
+   */
+  function makeMultiPlanSummary() {
+    return {
+      prdId: 'add-eforge-console-side-by-side-with-legacy-monitor-ui',
+      setName: 'multi-plan-set',
+      featureBranch: 'eforge/multi-plan-set',
+      baseBranch: 'main',
+      plans: [
+        { planId: 'plan-01-console-shell', status: 'merged' },
+        { planId: 'plan-02-activity-audit-view', status: 'merged' },
+        { planId: 'plan-03-now-dashboard', status: 'merged' },
+        { planId: 'plan-05-runs-build-entrypoints', status: 'merged' },
+        { planId: 'plan-07-system-configuration-view', status: 'merged' },
+        { planId: 'plan-04-queue-view', status: 'failed', error: 'API error 529: overloaded_error' },
+        { planId: 'plan-06-static-serving-package-integration', status: 'failed', error: 'API error 529: overloaded_error' },
+      ],
+      failingPlan: {
+        planId: 'plan-06-static-serving-package-integration',
+        errorMessage: 'API error 529: overloaded_error',
+        terminalSubtype: 'error_transient_transport',
+      },
+      // failingPlans is the new multi-failure field; not yet in the TypeScript type
+      failingPlans: [
+        { planId: 'plan-04-queue-view', errorMessage: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport' },
+        { planId: 'plan-06-static-serving-package-integration', errorMessage: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport' },
+      ],
+      landedCommits: [
+        { sha: 'abc1234def5678901234567890abcdef12345678', subject: 'feat: plan-01-console-shell implementation', author: 'Test', date: '2026-05-26T05:30:00.000Z' },
+        { sha: 'def5678901234567890abcdef12345678abc1234', subject: 'feat: plan-02-activity-audit-view', author: 'Test', date: '2026-05-26T05:45:00.000Z' },
+      ],
+      diffStat: '42 files changed, 1337 insertions(+)',
+      modelsUsed: ['claude-sonnet-4-6'],
+      failedAt: '2026-05-26T06:15:10.000Z',
+    };
+  }
+
+  const fallbackManualVerdict = {
+    verdict: 'manual' as const,
+    confidence: 'low' as const,
+    rationale: 'Recovery analyst failed or timed out.',
+    completedWork: [],
+    remainingWork: [],
+    risks: [],
+    recoveryError: 'Recovery analyst timed out after 90000ms',
+  };
+
+  it('Markdown sidecar lists all 5 merged plans when verdict is fallback manual', async () => {
+    const { writeRecoverySidecar } = await import('@eforge-build/engine/recovery/sidecar');
+    const dir = makeTestDir();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const summary = makeMultiPlanSummary() as any;
+
+    const { mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'add-eforge-console-side-by-side-with-legacy-monitor-ui',
+      summary,
+      verdict: fallbackManualVerdict,
+    });
+
+    const md = await readFile(mdPath, 'utf-8');
+
+    // All merged plans must appear in the Markdown sidecar
+    expect(md).toContain('plan-01-console-shell');
+    expect(md).toContain('plan-02-activity-audit-view');
+    expect(md).toContain('plan-03-now-dashboard');
+    expect(md).toContain('plan-05-runs-build-entrypoints');
+    expect(md).toContain('plan-07-system-configuration-view');
+  });
+
+  it('Markdown sidecar lists both failed plan IDs even when verdict is fallback manual', async () => {
+    const { writeRecoverySidecar } = await import('@eforge-build/engine/recovery/sidecar');
+    const dir = makeTestDir();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const summary = makeMultiPlanSummary() as any;
+
+    const { mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'add-eforge-console-side-by-side-with-legacy-monitor-ui',
+      summary,
+      verdict: fallbackManualVerdict,
+    });
+
+    const md = await readFile(mdPath, 'utf-8');
+
+    // Both failed plans must appear in the plans table or failed-plans section
+    expect(md).toContain('plan-04-queue-view');
+    expect(md).toContain('plan-06-static-serving-package-integration');
+  });
+
+  it('JSON sidecar preserves failingPlans array with both failed plan IDs', async () => {
+    const { writeRecoverySidecar } = await import('@eforge-build/engine/recovery/sidecar');
+    const dir = makeTestDir();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const summary = makeMultiPlanSummary() as any;
+
+    const { jsonPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'add-eforge-console-side-by-side-with-legacy-monitor-ui',
+      summary,
+      verdict: fallbackManualVerdict,
+    });
+
+    const raw = await readFile(jsonPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+
+    // The JSON sidecar must serialise summary.failingPlans
+    expect(parsed.summary.failingPlans).toBeDefined();
+    expect(Array.isArray(parsed.summary.failingPlans)).toBe(true);
+    expect(parsed.summary.failingPlans).toHaveLength(2);
+
+    const failingPlanIds = parsed.summary.failingPlans.map((p: { planId: string }) => p.planId);
+    expect(failingPlanIds).toContain('plan-04-queue-view');
+    expect(failingPlanIds).toContain('plan-06-static-serving-package-integration');
+  });
+
+  it('JSON sidecar contains all 7 plans in summary.plans when verdict is fallback manual', async () => {
+    const { writeRecoverySidecar } = await import('@eforge-build/engine/recovery/sidecar');
+    const dir = makeTestDir();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const summary = makeMultiPlanSummary() as any;
+
+    const { jsonPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'add-eforge-console-side-by-side-with-legacy-monitor-ui',
+      summary,
+      verdict: fallbackManualVerdict,
+    });
+
+    const raw = await readFile(jsonPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+
+    expect(parsed.summary.plans).toHaveLength(7);
+    const planIds = parsed.summary.plans.map((p: { planId: string }) => p.planId);
+    expect(planIds).toContain('plan-01-console-shell');
+    expect(planIds).toContain('plan-04-queue-view');
+    expect(planIds).toContain('plan-06-static-serving-package-integration');
+  });
+
+  it('JSON sidecar schemaVersion is 2 and verdict is manual for fallback path', async () => {
+    const { writeRecoverySidecar } = await import('@eforge-build/engine/recovery/sidecar');
+    const dir = makeTestDir();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const summary = makeMultiPlanSummary() as any;
+
+    const { jsonPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'add-eforge-console-side-by-side-with-legacy-monitor-ui',
+      summary,
+      verdict: fallbackManualVerdict,
+    });
+
+    const raw = await readFile(jsonPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+
+    expect(parsed.schemaVersion).toBe(2);
+    expect(parsed.verdict.verdict).toBe('manual');
+    // failingPlan backward-compat field is still populated
+    expect(parsed.summary.failingPlan.planId).toBe('plan-06-static-serving-package-integration');
+  });
+});
+// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
+
+// ---------------------------------------------------------------------------
 // 5. EforgeEngine.recover() with no state.json AND no event db
 // ---------------------------------------------------------------------------
 
