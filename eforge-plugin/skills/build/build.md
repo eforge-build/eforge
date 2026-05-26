@@ -95,6 +95,18 @@ Ask about **missing sections only**. Use the question lookup table below to form
 
 After the user responds, incorporate their answers into the working source and proceed to **Step 4**.
 
+<!-- parity-skip-start -->
+### Step 3.5: Select Profile
+
+Claude Code has no native TUI profile picker, so emulate the profile selection conversationally before confirmation/enqueue.
+
+- If `$ARGUMENTS` already contains `--profile <name>`, keep that override and do not ask again.
+- Otherwise call `mcp__eforge__eforge_profile` with `{ action: "list", scope: "all" }` and present these choices:
+  - **Use active profile (no override)** — default; if the response reports an active profile, name it.
+  - One entry per returned profile, showing profile name, scope, harness, and description when available.
+- Ask the user which profile to use. If they choose active/no override, remember that no `profile` key should be sent in the enqueue call. If they choose a named profile, remember it as an explicit profile override and include `profile: "<name>"` in the eventual `mcp__eforge__eforge_build` call.
+- If the list is empty or unavailable, explain that the build will use the active/default profile unless they provide `--profile <name>` or run `/eforge:profile-new`.
+<!-- parity-skip-end -->
 ### Step 4: Confirm Source Preview
 
 #### Landing selection
