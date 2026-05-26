@@ -3,23 +3,31 @@ import * as React from 'react';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/common/empty-state';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
-import { selectRunGroups, partitionRunGroups } from '@/lib/selectors/runs';
+import {
+  selectRunGroups,
+  partitionRunGroups,
+  filterRunGroups,
+  bucketRunGroupsByDay,
+  projectBasename,
+} from '@/lib/selectors/runs';
+import type { RunFilterState } from '@/lib/selectors/runs';
 import { useRunDetail } from '@/hooks/use-run-detail';
 import { toConsolePath } from '@/lib/navigation';
 import { ActiveRunsPanel } from './active-runs-panel';
-import { RunHistoryTable } from './run-history-table';
 import { RunDetailPanel } from './run-detail-panel';
+import { RunsFilterBar } from './runs-filter-bar';
+import { RunsDayGroups } from './runs-day-groups';
 
 interface RunsViewProps {
   projectState: ConsoleProjectState;
   activeSessionStreams: UseActiveSessionStreamsResult;
+  /** Injected for deterministic tests; defaults to `new Date()` inside the selector. */
+  now?: Date;
 }
 
 function getSelectedSessionFromSearch(): string | null {
@@ -27,11 +35,17 @@ function getSelectedSessionFromSearch(): string | null {
   return new URLSearchParams(window.location.search).get('session');
 }
 
+const DEFAULT_FILTER: RunFilterState = {
+  status: 'all',
+  command: 'all',
+  search: '',
+};
+
 /**
  * Route component for `/console/runs`.
  * Answers: "What has run recently and where can I inspect active or historical build details?"
  */
-export function RunsView({ projectState, activeSessionStreams }: RunsViewProps) {
+export function RunsView({ projectState, activeSessionStreams, now }: RunsViewProps) {
   const {
     runs,
     sessionMetadata,
@@ -45,6 +59,8 @@ export function RunsView({ projectState, activeSessionStreams }: RunsViewProps) 
   const [selectedId, setSelectedId] = React.useState<string | null>(
     () => getSelectedSessionFromSearch(),
   );
+
+  const [filter, setFilter] = React.useState<RunFilterState>(DEFAULT_FILTER);
 
   const handleSelect = React.useCallback((detailId: string) => {
     setSelectedId(detailId);
@@ -76,11 +92,31 @@ export function RunsView({ projectState, activeSessionStreams }: RunsViewProps) 
     [allGroups, activeSessionIds],
   );
 
+  const filteredHistoryGroups = React.useMemo(
+    () => filterRunGroups(historyGroups, filter),
+    [historyGroups, filter],
+  );
+
+  const dayGroupedHistory = React.useMemo(
+    () => bucketRunGroupsByDay(filteredHistoryGroups, now),
+    [filteredHistoryGroups, now],
+  );
+
+  const projectName = React.useMemo(
+    () => projectBasename(allGroups.find((g) => g.cwd)?.cwd ?? null),
+    [allGroups],
+  );
+
+  const selectedGroup = React.useMemo(
+    () => allGroups.find((g) => g.detailId === selectedId) ?? null,
+    [allGroups, selectedId],
+  );
+
   // Connecting state
   if (connectionStatus === 'connecting') {
     return (
-      <div className="flex flex-col gap-4 p-4">
-        <RunsHeader />
+      <div className="flex flex-col gap-4">
+        <RunsHeader projectName={null} />
         <Card>
           <CardContent className="py-8 text-center">
             <p className="text-sm text-muted-foreground">
@@ -95,8 +131,8 @@ export function RunsView({ projectState, activeSessionStreams }: RunsViewProps) 
   // Disconnected state
   if (connectionStatus === 'disconnected') {
     return (
-      <div className="flex flex-col gap-4 p-4">
-        <RunsHeader />
+      <div className="flex flex-col gap-4">
+        <RunsHeader projectName={null} />
         <Card className="border-destructive">
           <CardContent className="py-4 space-y-2">
             <p className="text-sm font-medium text-destructive">
@@ -124,8 +160,8 @@ export function RunsView({ projectState, activeSessionStreams }: RunsViewProps) 
   // Empty state (connected but no runs)
   if (runs.length === 0) {
     return (
-      <div className="flex flex-col gap-4 p-4">
-        <RunsHeader />
+      <div className="flex flex-col gap-4">
+        <RunsHeader projectName={null} />
         <EmptyState
           title="No runs recorded for this project daemon yet"
           description="Queued work appears in the Queue view. Once builds start, they will appear here."
@@ -135,9 +171,10 @@ export function RunsView({ projectState, activeSessionStreams }: RunsViewProps) 
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <RunsHeader />
-      <div className="flex gap-4">
+    <div className="flex flex-col gap-4">
+      <RunsHeader projectName={projectName} />
+      <RunsFilterBar filter={filter} onChange={setFilter} />
+      <div className="flex flex-col lg:flex-row gap-4">
         <div className="flex-1 min-w-0 space-y-4">
           {activeGroups.length > 0 && (
             <section>
@@ -150,38 +187,46 @@ export function RunsView({ projectState, activeSessionStreams }: RunsViewProps) 
               />
             </section>
           )}
-          {historyGroups.length > 0 && (
+          {filteredHistoryGroups.length > 0 && (
             <section>
               <h2 className="text-sm font-semibold mb-2">Run history</h2>
-              <RunHistoryTable
-                groups={historyGroups}
+              <RunsDayGroups
+                dayGroups={dayGroupedHistory}
                 selectedId={selectedId}
                 onSelect={handleSelect}
               />
             </section>
           )}
         </div>
-        <div className="w-80 shrink-0 hidden lg:block">
-          <RunDetailPanel selectedId={selectedId} detail={detail} />
+        <div className="w-full lg:w-80 shrink-0">
+          <RunDetailPanel
+            selectedId={selectedId}
+            detail={detail}
+            profileLabel={selectedGroup?.profileLabel}
+          />
         </div>
-      </div>
-      <div className="lg:hidden">
-        <RunDetailPanel selectedId={selectedId} detail={detail} />
       </div>
     </div>
   );
 }
 
-function RunsHeader() {
+interface RunsHeaderProps {
+  projectName: string | null;
+}
+
+function RunsHeader({ projectName }: RunsHeaderProps) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold">Runs</CardTitle>
-        <CardDescription className="text-xs">
-          Recent build sessions and detail entry points
-        </CardDescription>
-      </CardHeader>
-    </Card>
+    <div>
+      <div className="flex items-center gap-2">
+        <h1 className="text-sm font-semibold">Runs</h1>
+        {projectName && (
+          <Badge variant="secondary">{projectName}</Badge>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Recent build sessions and detail entry points
+      </p>
+    </div>
   );
 }
 // --- eforge:endregion runs-build-entrypoints ---

@@ -64,8 +64,8 @@ function isMarkdownShaped(title: string): boolean {
  *   "refactor-ui-layout"      -> "Refactor UI Layout"
  */
 export function slugToDisplayLabel(slug: string): string {
-  // Strip a leading timestamp prefix like "20240101-" or "2024-01-01-"
-  const withoutTimestamp = slug.replace(/^\d{4}[-_]\d{2}[-_]\d{2}[-_]/, '');
+  // Strip a leading timestamp prefix like "20240101-", "2024-01-01-", or "2024_01_01_"
+  const withoutTimestamp = slug.replace(/^\d{4}[-_]\d{2}[-_]\d{2}[-_]|^\d{8}[-_]/, '');
   // Strip common file extensions
   const withoutExtension = withoutTimestamp.replace(/\.(md|txt|yaml|yml|json)$/i, '');
 

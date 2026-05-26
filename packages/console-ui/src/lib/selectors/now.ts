@@ -198,7 +198,7 @@ export function mergeSeverity(
 function normalizePrdDedupKey(slug: string): string {
   if (!slug) return '';
   const trimmed = slug.trim();
-  const withoutTimestamp = trimmed.replace(/^\d{4}[-_]\d{2}[-_]\d{2}[-_]/, '');
+  const withoutTimestamp = trimmed.replace(/^\d{4}[-_]\d{2}[-_]\d{2}[-_]|^\d{8}[-_]/, '');
   const withoutExtension = withoutTimestamp.replace(/\.(md|txt|yaml|yml|json)$/i, '');
   return withoutExtension
     .toLowerCase()
@@ -462,7 +462,7 @@ function extractCurrentPhase(events: EforgeEvent[]): string | null {
     const e = events[i];
     if (e.type === 'phase:start') {
       const pe = e as Extract<EforgeEvent, { type: 'phase:start' }>;
-      return `${pe.planSet} / ${pe.command}`;
+      return `${selectPrdDisplayLabel(undefined, pe.planSet)} / ${pe.command}`;
     }
     if (e.type === 'phase:end') {
       return null;

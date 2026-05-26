@@ -74,7 +74,7 @@ function commandSortKey(command: string): number {
 function normalizePlanSetKey(planSet: string): string {
   if (!planSet) return '';
   const trimmed = planSet.trim();
-  const withoutTimestamp = trimmed.replace(/^\d{4}[-_]\d{2}[-_]\d{2}[-_]/, '');
+  const withoutTimestamp = trimmed.replace(/^\d{4}[-_]\d{2}[-_]\d{2}[-_]|^\d{8}[-_]/, '');
   const withoutExtension = withoutTimestamp.replace(/\.(md|txt|yaml|yml|json)$/i, '');
   return withoutExtension
     .toLowerCase()
@@ -378,5 +378,135 @@ export function selectPlanStatusCounts(
     }
   }
   return counts;
+}
+
+// ---------------------------------------------------------------------------
+// Filter types, constants, and filterRunGroups
+// ---------------------------------------------------------------------------
+
+export type RunStatusFilter = 'all' | 'running' | 'failed' | 'completed';
+export type RunCommandFilter = 'all' | 'enqueue' | 'compile' | 'build';
+
+export interface RunFilterState {
+  status: RunStatusFilter;
+  command: RunCommandFilter;
+  search: string;
+}
+
+export const STATUS_CHIP_OPTIONS: readonly RunStatusFilter[] = [
+  'all',
+  'running',
+  'failed',
+  'completed',
+] as const;
+
+export const COMMAND_CHIP_OPTIONS: readonly RunCommandFilter[] = [
+  'all',
+  'enqueue',
+  'compile',
+  'build',
+] as const;
+
+/**
+ * Filter a list of RunGroupViewModels by status, command, and search text.
+ * Returns a new array — does not mutate the input.
+ */
+export function filterRunGroups(
+  groups: RunGroupViewModel[],
+  filter: RunFilterState,
+): RunGroupViewModel[] {
+  return groups.filter((group) => {
+    if (filter.status !== 'all' && group.status !== filter.status) {
+      return false;
+    }
+    if (filter.command !== 'all' && !group.commands.includes(filter.command)) {
+      return false;
+    }
+    const q = filter.search.trim().toLowerCase();
+    if (q) {
+      const labelMatch = group.label.toLowerCase().includes(q);
+      const sessionMatch = group.sessionId?.toLowerCase().includes(q) ?? false;
+      if (!labelMatch && !sessionMatch) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Day bucketing — bucketRunGroupsByDay
+// ---------------------------------------------------------------------------
+
+export type DayBucket = 'Today' | 'Yesterday' | 'Older';
+
+export interface DayGroupedRuns {
+  bucket: DayBucket;
+  groups: RunGroupViewModel[];
+}
+
+function isSameCalendarDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/**
+ * Bucket a sorted list of RunGroupViewModels into Today / Yesterday / Older
+ * day sections.  Pass `now` for deterministic tests; defaults to `new Date()`.
+ * Only non-empty buckets are included in the result.
+ */
+export function bucketRunGroupsByDay(
+  groups: RunGroupViewModel[],
+  now: Date = new Date(),
+): DayGroupedRuns[] {
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const todayGroups: RunGroupViewModel[] = [];
+  const yesterdayGroups: RunGroupViewModel[] = [];
+  const olderGroups: RunGroupViewModel[] = [];
+
+  for (const group of groups) {
+    if (!group.startedAt) {
+      olderGroups.push(group);
+      continue;
+    }
+    const d = new Date(group.startedAt);
+    if (isSameCalendarDay(d, now)) {
+      todayGroups.push(group);
+    } else if (isSameCalendarDay(d, yesterday)) {
+      yesterdayGroups.push(group);
+    } else {
+      olderGroups.push(group);
+    }
+  }
+
+  const result: DayGroupedRuns[] = [];
+  if (todayGroups.length > 0) result.push({ bucket: 'Today', groups: todayGroups });
+  if (yesterdayGroups.length > 0) result.push({ bucket: 'Yesterday', groups: yesterdayGroups });
+  if (olderGroups.length > 0) result.push({ bucket: 'Older', groups: olderGroups });
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// projectBasename — extract directory name from cwd path
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the last path segment of a cwd string (equivalent to `basename`).
+ * Works with both Unix and Windows path separators.
+ * Returns `null` for empty or null input.
+ */
+export function projectBasename(cwd: string | null): string | null {
+  if (!cwd) return null;
+  const trimmed = cwd.replace(/[/\\]+$/, '');
+  const lastSlash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  if (lastSlash === -1) return trimmed || null;
+  const base = trimmed.slice(lastSlash + 1);
+  return base || null;
 }
 // --- eforge:endregion runs-build-entrypoints ---

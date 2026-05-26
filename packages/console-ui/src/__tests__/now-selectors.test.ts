@@ -407,7 +407,7 @@ describe('selectNowActiveBuildCards', () => {
       liveEvents: [phaseEvent],
     });
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
-    expect(cards[0].currentPhase).toBe('my-plans / build');
+    expect(cards[0].currentPhase).toBe('My Plans / build');
   });
 
   it('derives latest agent from an agent:start event', () => {

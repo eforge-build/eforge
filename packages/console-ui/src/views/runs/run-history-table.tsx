@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/common/empty-state';
 import type { RunGroupViewModel } from '@/lib/selectors/runs';
+import { truncateId } from '@/lib/format';
 import { StatusPill } from './status-pill';
 import { formatAbsolute, formatDuration } from './time-format';
 
@@ -62,9 +63,6 @@ function RunHistoryRow({ group, isSelected, onSelect }: RunHistoryRowProps) {
         {group.planCountLabel && (
           <span className="text-muted-foreground">{group.planCountLabel}</span>
         )}
-        {group.profileLabel && (
-          <span className="text-muted-foreground">profile:{group.profileLabel}</span>
-        )}
       </div>
       <div className="flex items-center gap-3 text-muted-foreground flex-wrap">
         {group.startedAt && (
@@ -76,11 +74,8 @@ function RunHistoryRow({ group, isSelected, onSelect }: RunHistoryRowProps) {
         {group.durationSeconds != null && (
           <span>duration: {formatDuration(group.durationSeconds)}</span>
         )}
-        {group.cwd && (
-          <span className="font-mono truncate max-w-xs">{group.cwd}</span>
-        )}
         {group.sessionId && (
-          <span className="font-mono text-xs">session:{group.sessionId}</span>
+          <span className="font-mono text-xs">session:{truncateId(group.sessionId, 12)}</span>
         )}
       </div>
       <div className="flex justify-end">

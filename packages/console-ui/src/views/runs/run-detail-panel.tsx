@@ -9,16 +9,17 @@ import { RunEventsPreview } from './run-events-preview';
 interface RunDetailPanelProps {
   selectedId: string | null;
   detail: RunDetailResult;
+  profileLabel?: string;
 }
 
 /**
  * Selected-detail panel rendering independent loading/error/partial-success
  * states for summary, state, and plans resources.
  */
-export function RunDetailPanel({ selectedId, detail }: RunDetailPanelProps) {
+export function RunDetailPanel({ selectedId, detail, profileLabel }: RunDetailPanelProps) {
   if (!selectedId) {
     return (
-      <Card className="h-full">
+      <Card data-testid="run-detail-panel" className="h-full">
         <CardContent className="flex items-center justify-center h-full pt-6">
           <p className="text-sm text-muted-foreground">Select a run to inspect details.</p>
         </CardContent>
@@ -29,11 +30,16 @@ export function RunDetailPanel({ selectedId, detail }: RunDetailPanelProps) {
   const { summary, state, plans } = detail;
 
   return (
-    <Card className="h-full overflow-auto">
+    <Card data-testid="run-detail-panel" className="h-full overflow-auto">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold">
           Run detail: {selectedId}
         </CardTitle>
+        {profileLabel && (
+          <p className="text-xs text-muted-foreground">
+            Profile: <span className="font-mono">{profileLabel}</span>
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Summary section */}

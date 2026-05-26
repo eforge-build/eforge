@@ -4,7 +4,11 @@ import {
   selectRunStatusRollup,
   partitionRunGroups,
   selectPlanStatusCounts,
+  filterRunGroups,
+  bucketRunGroupsByDay,
+  projectBasename,
 } from '@/lib/selectors/runs';
+import type { RunGroupViewModel } from '@/lib/selectors/runs';
 import type { RunInfo, SessionMetadata } from '@eforge-build/client/browser';
 
 // ---------------------------------------------------------------------------
@@ -19,6 +23,27 @@ function makeRun(overrides: Partial<RunInfo> = {}): RunInfo {
     startedAt: '2024-01-01T10:00:00Z',
     cwd: '/project',
     planSet: 'my-plan-set',
+    ...overrides,
+  };
+}
+
+function makeGroup(overrides: Partial<RunGroupViewModel> = {}): RunGroupViewModel {
+  return {
+    key: 'test-key',
+    detailId: 'test-detail',
+    sessionId: undefined,
+    label: 'Test Label',
+    isSession: false,
+    runs: [],
+    status: 'completed',
+    startedAt: '2024-01-15T10:00:00Z',
+    completedAt: '2024-01-15T11:00:00Z',
+    durationSeconds: 3600,
+    commands: ['build'],
+    cwd: '/project',
+    metadata: undefined,
+    planCountLabel: undefined,
+    profileLabel: undefined,
     ...overrides,
   };
 }
@@ -453,5 +478,201 @@ describe('selectPlanStatusCounts', () => {
   it('returns all zeros for empty array', () => {
     const counts = selectPlanStatusCounts([]);
     expect(counts).toEqual({ pending: 0, running: 0, completed: 0, failed: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bucketRunGroupsByDay
+// ---------------------------------------------------------------------------
+
+describe('bucketRunGroupsByDay', () => {
+  // Use local-time constructors so calendar-day comparisons in bucketRunGroupsByDay
+  // (which uses getDate/getMonth/getFullYear) are stable in any test timezone.
+  const NOW = new Date(2024, 0, 15, 12); // local Jan 15, noon
+
+  it('groups two current-day runs under a Today header', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', startedAt: new Date(2024, 0, 15, 9).toISOString() }),
+      makeGroup({ key: 'g2', startedAt: new Date(2024, 0, 15, 10).toISOString() }),
+    ];
+    const result = bucketRunGroupsByDay(groups, NOW);
+    expect(result).toHaveLength(1);
+    expect(result[0].bucket).toBe('Today');
+    expect(result[0].groups).toHaveLength(2);
+  });
+
+  it('groups a yesterday run under a Yesterday header', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', startedAt: new Date(2024, 0, 14, 10).toISOString() }),
+    ];
+    const result = bucketRunGroupsByDay(groups, NOW);
+    expect(result).toHaveLength(1);
+    expect(result[0].bucket).toBe('Yesterday');
+    expect(result[0].groups).toHaveLength(1);
+  });
+
+  it('groups an older run under an Older header', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', startedAt: new Date(2024, 0, 10, 10).toISOString() }),
+    ];
+    const result = bucketRunGroupsByDay(groups, NOW);
+    expect(result).toHaveLength(1);
+    expect(result[0].bucket).toBe('Older');
+    expect(result[0].groups).toHaveLength(1);
+  });
+
+  it('renders Yesterday and Older headers when fixtures include those timestamps', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', startedAt: new Date(2024, 0, 14, 10).toISOString() }),
+      makeGroup({ key: 'g2', startedAt: new Date(2024, 0, 10, 10).toISOString() }),
+    ];
+    const result = bucketRunGroupsByDay(groups, NOW);
+    const yesterdayBucket = result.find((b) => b.bucket === 'Yesterday');
+    const olderBucket = result.find((b) => b.bucket === 'Older');
+    expect(yesterdayBucket?.groups).toHaveLength(1);
+    expect(olderBucket?.groups).toHaveLength(1);
+  });
+
+  it('returns all three buckets when fixtures span today, yesterday, and older', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'today', startedAt: new Date(2024, 0, 15, 8).toISOString() }),
+      makeGroup({ key: 'yesterday', startedAt: new Date(2024, 0, 14, 8).toISOString() }),
+      makeGroup({ key: 'older', startedAt: new Date(2024, 0, 1, 8).toISOString() }),
+    ];
+    const result = bucketRunGroupsByDay(groups, NOW);
+    expect(result).toHaveLength(3);
+    expect(result[0].bucket).toBe('Today');
+    expect(result[1].bucket).toBe('Yesterday');
+    expect(result[2].bucket).toBe('Older');
+  });
+
+  it('places a group with null startedAt into Older', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', startedAt: null }),
+    ];
+    const result = bucketRunGroupsByDay(groups, NOW);
+    expect(result).toHaveLength(1);
+    expect(result[0].bucket).toBe('Older');
+  });
+
+  it('returns an empty array when given no groups', () => {
+    expect(bucketRunGroupsByDay([], NOW)).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// filterRunGroups
+// ---------------------------------------------------------------------------
+
+describe('filterRunGroups', () => {
+  it('returns all groups when filter is the default all/all/empty', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', status: 'completed' }),
+      makeGroup({ key: 'g2', status: 'failed' }),
+      makeGroup({ key: 'g3', status: 'running' }),
+    ];
+    const result = filterRunGroups(groups, { status: 'all', command: 'all', search: '' });
+    expect(result).toHaveLength(3);
+  });
+
+  it('filters to only failed groups when status is failed', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', status: 'completed' }),
+      makeGroup({ key: 'g2', status: 'failed' }),
+      makeGroup({ key: 'g3', status: 'running' }),
+    ];
+    const result = filterRunGroups(groups, { status: 'failed', command: 'all', search: '' });
+    expect(result).toHaveLength(1);
+    expect(result[0].key).toBe('g2');
+  });
+
+  it('filters to only running groups when status is running', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', status: 'completed' }),
+      makeGroup({ key: 'g2', status: 'running' }),
+    ];
+    const result = filterRunGroups(groups, { status: 'running', command: 'all', search: '' });
+    expect(result).toHaveLength(1);
+    expect(result[0].key).toBe('g2');
+  });
+
+  it('filters by command: only groups that include the specified command', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', commands: ['build'] }),
+      makeGroup({ key: 'g2', commands: ['enqueue', 'build'] }),
+      makeGroup({ key: 'g3', commands: ['compile'] }),
+    ];
+    const result = filterRunGroups(groups, { status: 'all', command: 'enqueue', search: '' });
+    expect(result).toHaveLength(1);
+    expect(result[0].key).toBe('g2');
+  });
+
+  it('filters by search: matches label case-insensitively', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', label: 'Add OAuth Support' }),
+      makeGroup({ key: 'g2', label: 'Fix Database Bug' }),
+    ];
+    const result = filterRunGroups(groups, { status: 'all', command: 'all', search: 'oauth' });
+    expect(result).toHaveLength(1);
+    expect(result[0].key).toBe('g1');
+  });
+
+  it('filters by search: matches sessionId case-insensitively', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', label: 'Run A', sessionId: 'session-abc' }),
+      makeGroup({ key: 'g2', label: 'Run B', sessionId: 'session-xyz' }),
+    ];
+    const result = filterRunGroups(groups, { status: 'all', command: 'all', search: 'ABC' });
+    expect(result).toHaveLength(1);
+    expect(result[0].key).toBe('g1');
+  });
+
+  it('combines status and command filters', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', status: 'failed', commands: ['build'] }),
+      makeGroup({ key: 'g2', status: 'failed', commands: ['compile'] }),
+      makeGroup({ key: 'g3', status: 'completed', commands: ['build'] }),
+    ];
+    const result = filterRunGroups(groups, { status: 'failed', command: 'build', search: '' });
+    expect(result).toHaveLength(1);
+    expect(result[0].key).toBe('g1');
+  });
+
+  it('returns empty array when no groups match', () => {
+    const groups: RunGroupViewModel[] = [
+      makeGroup({ key: 'g1', status: 'completed' }),
+    ];
+    const result = filterRunGroups(groups, { status: 'failed', command: 'all', search: '' });
+    expect(result).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// projectBasename
+// ---------------------------------------------------------------------------
+
+describe('projectBasename', () => {
+  it('returns the last path segment of a Unix path', () => {
+    expect(projectBasename('/home/user/my-project')).toBe('my-project');
+  });
+
+  it('returns the directory name for a root-level path', () => {
+    expect(projectBasename('/project')).toBe('project');
+  });
+
+  it('handles trailing slashes', () => {
+    expect(projectBasename('/home/user/my-project/')).toBe('my-project');
+  });
+
+  it('returns null for null input', () => {
+    expect(projectBasename(null)).toBeNull();
+  });
+
+  it('returns null for empty string', () => {
+    expect(projectBasename('')).toBeNull();
+  });
+
+  it('returns the segment itself when there is no slash', () => {
+    expect(projectBasename('my-project')).toBe('my-project');
   });
 });
