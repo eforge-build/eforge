@@ -1,0 +1,50 @@
+name: restack-git-spice-branches-before-stacked-pr-submit
+description: Restack the current git-spice artifact branch after stacked PR
+  cleanup and before branch submit, preserving landing failure semantics and
+  event logging.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm exec vitest run test/stack-runtime-landing.test.ts
+    test/stack-landing-cleanup.test.ts test/git-spice-provider.test.ts
+  - pnpm type-check
+plans:
+  - id: plan-01-restack-before-stacked-pr-submit
+    name: Restack Before Stacked PR Submit
+    depends_on: []
+    branch: restack-git-spice-branches-before-stacked-pr-submit/plan-01-restack-before-stacked-pr-submit
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused but non-trivial engine bugfix touching stacked PR
+    landing behavior and targeted tests, so excursion is appropriate. Planning
+    plus plan review is enough; expedition module planning would be excessive.
+    The build pipeline implements the restack sequencing change, writes/updates
+    targeted tests, runs an iterative test cycle for the specified failure and
+    ordering cases, then runs a code/test review cycle to verify landing
+    semantics, provider command events, and regression coverage.
