@@ -551,9 +551,9 @@ export function selectNowStatusSummary(
   const autoBuildDesired = ab?.desired ?? null;
 
   // Subscribers and uptime
+  // The monitor server emits uptime as milliseconds (Date.now() - instanceStartedAt).
   const subscribers = hb?.payload.subscribers ?? state.liveness?.subscribers ?? null;
-  const uptimeSeconds = hb?.payload.uptime ?? state.liveness?.uptime ?? null;
-  const uptimeMs = uptimeSeconds != null ? uptimeSeconds * 1_000 : null;
+  const uptimeMs = hb?.payload.uptime ?? state.liveness?.uptime ?? null;
 
   // Last update
   const lastEventAt = state.lastEventAt ?? state.lastSnapshotAt;

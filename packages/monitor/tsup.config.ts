@@ -41,9 +41,13 @@ export default defineConfig({
         await writeFile(path, content.replace(/from "sqlite"/g, 'from "node:sqlite"'));
       }
     }
-    // Copy monitor-ui dist into monitor's dist for serving
-    if (existsSync("../monitor-ui/dist")) {
-      await cp("../monitor-ui/dist", "dist/monitor-ui", { recursive: true });
+    // Copy UI dist directories into monitor's dist for serving (only when present)
+    async function copyUiDist(source: string, target: string): Promise<void> {
+      if (existsSync(source)) {
+        await cp(source, target, { recursive: true });
+      }
     }
+    await copyUiDist("../monitor-ui/dist", "dist/monitor-ui");
+    await copyUiDist("../console-ui/dist", "dist/console-ui");
   },
 });

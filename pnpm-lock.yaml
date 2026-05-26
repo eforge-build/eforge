@@ -364,6 +364,9 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
     devDependencies:
+      '@eforge-build/console-ui':
+        specifier: workspace:*
+        version: link:../console-ui
       '@eforge-build/monitor-ui':
         specifier: workspace:*
         version: link:../monitor-ui

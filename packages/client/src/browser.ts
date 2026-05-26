@@ -170,7 +170,10 @@ export type {
   ProjectableState,
 } from './event-registry.js';
 
-export { DAEMON_API_VERSION, verifyApiVersion, clearApiVersionCache } from './api-version.js';
+// Only the numeric constant is browser-safe; verifyApiVersion and
+// clearApiVersionCache depend on Node-only lockfile/fs modules and are
+// available on the main (Node) entrypoint only.
+export { DAEMON_API_VERSION } from './api-version-const.js';
 
 export type {
   EforgeEvent,

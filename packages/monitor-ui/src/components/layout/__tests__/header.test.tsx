@@ -176,6 +176,25 @@ describe('Header auto-build switch — disabling is immediate', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Console link
+// ---------------------------------------------------------------------------
+
+describe('Header — Console link', () => {
+  it('renders a link with accessible name matching /Console/i', () => {
+    renderHeader(makeAutoBuildState({ enabled: true }), vi.fn());
+
+    expect(screen.getByRole('link', { name: /Console/i })).toBeTruthy();
+  });
+
+  it('Console link href is /console/', () => {
+    renderHeader(makeAutoBuildState({ enabled: true }), vi.fn());
+
+    const link = screen.getByRole('link', { name: /Console/i });
+    expect((link as HTMLAnchorElement).getAttribute('href')).toBe('/console/');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // No native label wrapper — status text is not a switch activation target
 // ---------------------------------------------------------------------------
 
