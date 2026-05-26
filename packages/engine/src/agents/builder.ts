@@ -34,11 +34,18 @@ export interface BuilderOptions extends SdkPassthroughConfig {
   /** Verification scope: 'full' runs all checks, 'build-only' skips tests (handled by test stages) */
   verificationScope?: 'full' | 'build-only';
   /** Continuation context when retrying after maxTurns exhaustion */
-  continuationContext?: {
-    attempt: number;
-    maxContinuations: number;
-    completedDiff: string;
-  };
+  continuationContext?:
+    | { attempt: number; maxContinuations: number; handoffMode: 'checkpointed-diff'; completedDiff: string }
+    | {
+        attempt: number;
+        maxContinuations: number;
+        handoffMode: 'discovery-only';
+        filesInspected: string[];
+        searches: string[];
+        commands: string[];
+        recentMessages: string[];
+        toolResultSnippets: string[];
+      };
   /** Evaluator continuation context when retrying evaluator after maxTurns exhaustion */
   evaluatorContinuationContext?: {
     attempt: number;
@@ -183,8 +190,10 @@ export async function* builderImplement(
 
   let continuationContextText = '';
   if (options.continuationContext) {
-    const { attempt, maxContinuations, completedDiff } = options.continuationContext;
-    continuationContextText = `## Continuation Context
+    const { attempt, maxContinuations } = options.continuationContext;
+    if (options.continuationContext.handoffMode === 'checkpointed-diff') {
+      const { completedDiff } = options.continuationContext;
+      continuationContextText = `## Continuation Context
 
 **This is continuation attempt ${attempt} of ${maxContinuations}.**
 
@@ -198,6 +207,43 @@ The previous builder run exhausted its turn budget. All prior progress has been 
 <completed_diff>
 ${completedDiff}
 </completed_diff>`;
+    } else {
+      // discovery-only handoff: no checkpoint commit was created
+      const { filesInspected, searches, commands, recentMessages, toolResultSnippets } = options.continuationContext;
+      const hasAnyDiscovery = filesInspected.length > 0 || searches.length > 0 || commands.length > 0 || recentMessages.length > 0 || toolResultSnippets.length > 0;
+      const formatList = (items: string[], bullet = '-') =>
+        items.length > 0 ? items.map((item) => `${bullet} ${item}`).join('\n') : '(none)';
+
+      continuationContextText = `## Continuation Context
+
+**This is continuation attempt ${attempt} of ${maxContinuations}.**
+
+The previous builder run exhausted its turn budget. No checkpoint commit was created — the worktree had no changes to save at the time of the handoff.
+
+${hasAnyDiscovery
+  ? `Use the discovery context below to resume without restarting codebase exploration from scratch.
+
+**Files inspected:**
+${formatList(filesInspected)}
+
+**Searches and globs run:**
+${formatList(searches)}
+
+**Shell commands run:**
+${formatList(commands)}
+
+**Recent agent messages:**
+${formatList(recentMessages, '*')}
+
+**Tool result snippets:**
+${formatList(toolResultSnippets)}`
+  : 'No discovery events were captured from the previous attempt.'}
+
+**Budget discipline for this attempt:**
+- Do NOT re-explore the codebase from scratch. Use the discovery context above as your starting point.
+- Batch remaining file reads and edits into single responses (see rule 8 above).
+- Jump straight to the remaining plan items — skim the plan and act.`;
+    }
   }
 
   const prompt = await loadPrompt('builder', {

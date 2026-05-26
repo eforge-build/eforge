@@ -87,7 +87,7 @@ describe('builderImplement without continuation', () => {
 describe('builderImplement with continuation context', () => {
   const makeTempDir = useTempDir('eforge-continuation-ctx-test-');
 
-  it('includes continuation context in prompt when provided', async () => {
+  it('includes continuation context in prompt when provided (checkpointed-diff)', async () => {
     const backend = new StubHarness([{ text: 'Continued implementation.' }]);
     const cwd = makeTempDir();
     const plan = makePlanFile();
@@ -98,6 +98,7 @@ describe('builderImplement with continuation context', () => {
       continuationContext: {
         attempt: 1,
         maxContinuations: 3,
+        handoffMode: 'checkpointed-diff',
         completedDiff: 'diff --git a/foo.ts b/foo.ts\n+added line',
       },
     }));
@@ -108,6 +109,75 @@ describe('builderImplement with continuation context', () => {
     expect(prompt).toContain('continuation attempt 1 of 3');
     expect(prompt).toContain('diff --git a/foo.ts b/foo.ts');
     expect(prompt).toContain('Do NOT redo any of the completed work');
+    expect(prompt).toContain('All prior progress has been committed');
+  });
+
+  it('discovery-only continuation: prompt contains discovery sections and omits committed-progress statement', async () => {
+    const backend = new StubHarness([{ text: 'Continued implementation.' }]);
+    const cwd = makeTempDir();
+    const plan = makePlanFile();
+
+    await collectEvents(builderImplement(plan, {
+      harness: backend,
+      cwd,
+      continuationContext: {
+        attempt: 2,
+        maxContinuations: 3,
+        handoffMode: 'discovery-only',
+        filesInspected: ['src/engine.ts', 'src/retry.ts'],
+        searches: ['grep: withRetry in packages'],
+        commands: ['pnpm type-check'],
+        recentMessages: ['Inspected the retry module.'],
+        toolResultSnippets: ['[Read] export async function* withRetry'],
+      },
+    }));
+
+    expect(backend.prompts).toHaveLength(1);
+    const prompt = backend.prompts[0];
+    expect(prompt).toContain('Continuation Context');
+    expect(prompt).toContain('continuation attempt 2 of 3');
+    // Discovery sections present
+    expect(prompt).toContain('Files inspected');
+    expect(prompt).toContain('src/engine.ts');
+    expect(prompt).toContain('Searches and globs run');
+    expect(prompt).toContain('grep: withRetry');
+    expect(prompt).toContain('Shell commands run');
+    expect(prompt).toContain('pnpm type-check');
+    expect(prompt).toContain('Recent agent messages');
+    expect(prompt).toContain('Inspected the retry module.');
+    expect(prompt).toContain('Tool result snippets');
+    expect(prompt).toContain('withRetry');
+    // Must NOT contain committed-progress statement
+    expect(prompt).not.toContain('All prior progress has been committed');
+    // Must contain the no-checkpoint handoff distinction
+    expect(prompt).toContain('No checkpoint commit was created');
+  });
+
+  it('discovery-only continuation with all empty lists renders a fallback message', async () => {
+    const backend = new StubHarness([{ text: 'Continued implementation.' }]);
+    const cwd = makeTempDir();
+    const plan = makePlanFile();
+
+    await collectEvents(builderImplement(plan, {
+      harness: backend,
+      cwd,
+      continuationContext: {
+        attempt: 1,
+        maxContinuations: 2,
+        handoffMode: 'discovery-only',
+        filesInspected: [],
+        searches: [],
+        commands: [],
+        recentMessages: [],
+        toolResultSnippets: [],
+      },
+    }));
+
+    const prompt = backend.prompts[0];
+    expect(prompt).toContain('Continuation Context');
+    // Falls back to the "no discovery events" message
+    expect(prompt).toContain('No discovery events were captured');
+    expect(prompt).not.toContain('All prior progress has been committed');
   });
 
   it('does not include continuation context when not provided', async () => {

@@ -363,53 +363,80 @@ export async function buildPlannerContinuationInput(
 }
 
 /**
+ * Discriminated union describing how a builder continuation handoff was prepared.
+ *
+ * - `checkpointed-diff`: the worktree had changes; they were staged and committed.
+ *   The `completedDiff` contains the cumulative diff from the base branch.
+ * - `discovery-only`: the worktree was clean; no commit was made. The discovery
+ *   fields capture what the previous attempt explored so the next attempt can
+ *   resume without cold-starting codebase exploration.
+ */
+export type BuilderContinuationContext =
+  | { attempt: number; maxContinuations: number; handoffMode: 'checkpointed-diff'; completedDiff: string }
+  | {
+      attempt: number;
+      maxContinuations: number;
+      handoffMode: 'discovery-only';
+      filesInspected: string[];
+      searches: string[];
+      commands: string[];
+      recentMessages: string[];
+      toolResultSnippets: string[];
+    };
+
+/**
  * Shape of the builder input the continuation builder must be able to
- * augment with the completed-diff continuation context.
+ * augment with the continuation context.
  */
 export interface BuilderContinuationInput {
   worktreePath: string;
   baseBranch: string;
   planId: string;
   builderOptions: Record<string, unknown> & {
-    continuationContext?: {
-      attempt: number;
-      maxContinuations: number;
-      completedDiff: string;
-    };
+    continuationContext?: BuilderContinuationContext;
   };
 }
 
 /**
  * Build the next builder attempt's input:
- * - Abort (fail) if the worktree has no changes worth checkpointing.
- * - Stage all and checkpoint commit (side effect).
- * - Capture a completed diff summary and splice it into builder options as
- *   `continuationContext`.
- *
- * If the worktree has no changes, return `{ kind: 'abort-success' }` is NOT
- * right — the semantic is "no progress, fail the build". We still return
- * `retry` with a synthetic empty diff; the pipeline can decide to hard-fail
- * when no changes are present via a wrapper check. To preserve prior
- * behavior (hard-fail when no changes), we use a sentinel `abort-fail` style
- * by throwing — but the `ContinuationDecision` type has no such variant, so
- * callers that need that semantic implement the check themselves in a
- * pre-retry guard.
+ * - If the worktree has changes: stage all, checkpoint commit, capture a completed diff,
+ *   and return a `checkpointed-diff` continuation.
+ * - If the worktree is clean (no changes): extract bounded discovery context from
+ *   builder events in the attempt and return a `discovery-only` continuation without
+ *   committing anything.
  */
 export async function buildBuilderContinuationInput(
   info: RetryAttemptInfo<BuilderContinuationInput>,
 ): Promise<ContinuationDecision<BuilderContinuationInput>> {
   const { worktreePath, baseBranch, planId, builderOptions } = info.prevInput;
 
-  // If the worktree has no changes at all, there's nothing to build on —
-  // propagate the failure by rethrowing the captured error via abort-fail.
-  // We signal this by throwing a descriptive Error; withRetry surfaces it
-  // to the caller.
   const hasChanges = await hasAnyChanges(worktreePath);
+
   if (!hasChanges) {
-    throw new Error(`Builder continuation aborted: no changes to checkpoint (planId=${planId})`);
+    // No worktree changes — build a discovery-only handoff from the attempt's events.
+    const discovery = extractBuilderDiscoveryContext(info.events);
+    const nextInput: BuilderContinuationInput = {
+      worktreePath,
+      baseBranch,
+      planId,
+      builderOptions: {
+        ...builderOptions,
+        continuationContext: {
+          attempt: info.attempt,
+          maxContinuations: info.maxAttempts - 1,
+          handoffMode: 'discovery-only',
+          filesInspected: discovery.filesInspected,
+          searches: discovery.searches,
+          commands: discovery.commands,
+          recentMessages: discovery.recentMessages,
+          toolResultSnippets: discovery.toolResultSnippets,
+        },
+      },
+    };
+    return { kind: 'retry', input: nextInput };
   }
 
-  // Stage all and commit checkpoint.
+  // Worktree has changes — stage all, commit checkpoint, and build a diff handoff.
   await exec('git', ['add', '-A'], { cwd: worktreePath });
   await forgeCommit(
     worktreePath,
@@ -432,6 +459,7 @@ export async function buildBuilderContinuationInput(
       continuationContext: {
         attempt: info.attempt,
         maxContinuations: info.maxAttempts - 1,
+        handoffMode: 'checkpointed-diff',
         completedDiff,
       },
     },
@@ -468,8 +496,9 @@ function fileMatchesShardScope(file: string, shardScope: ShardScope): boolean {
 }
 
 /**
- * Check whether any files in the working tree match a shard's scope.
- * Used by buildShardedBuilderContinuationInput to decide whether to stash.
+ * Check whether any files with index or working-tree changes match a shard's scope.
+ * Returns true when ANY scoped status entry exists — staged, unstaged, or untracked.
+ * Used by buildShardedBuilderContinuationInput to decide whether to stash or go discovery-only.
  */
 async function hasShardScopeChanges(cwd: string, shardScope: ShardScope): Promise<boolean> {
   try {
@@ -478,10 +507,28 @@ async function hasShardScopeChanges(cwd: string, shardScope: ShardScope): Promis
     for (const line of lines) {
       // Each line: XY <file> (status is 2 chars + space)
       const file = line.slice(3).trim().replace(/^"(.*)"$/, '$1');
-      // Check if it's a working-tree change (second character is not space)
-      const wtStatus = line[1];
-      if (wtStatus === ' ' || wtStatus === undefined) continue;
+      if (fileMatchesShardScope(file, shardScope)) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
+/**
+ * Check whether any files in the *working tree* (unstaged or untracked) match a shard's scope.
+ * This is the narrower check used to decide whether to stash: staged-only changes cannot be
+ * stashed with --keep-index and require a different code path.
+ */
+async function hasShardScopeWorktreeChanges(cwd: string, shardScope: ShardScope): Promise<boolean> {
+  try {
+    const { stdout } = await exec('git', ['status', '--porcelain'], { cwd });
+    const lines = stdout.trim().split('\n').filter(Boolean);
+    for (const line of lines) {
+      const file = line.slice(3).trim().replace(/^"(.*)"$/, '$1');
+      const wtStatus = line[1];
+      // Working-tree column is non-space for modified/deleted/untracked working-tree entries.
+      if (wtStatus === ' ' || wtStatus === undefined) continue;
       if (fileMatchesShardScope(file, shardScope)) return true;
     }
     return false;
@@ -516,25 +563,86 @@ async function stageUntrackedFilesInScope(cwd: string, shardScope: ShardScope): 
 
 /**
  * Build the next shard-builder attempt's input:
- * - Abort (throw) if the shard's scope has no working-tree changes to stash.
- * - git stash push --keep-index -m "eforge-shard-<id>-attempt-<N>" -- <scope-paths>
- *   This stashes working-tree changes in the shard's scope while keeping staged changes staged.
- * - Build a completedDiff from the stash to give the next attempt context.
- * - Splice continuationContext into builder options.
+ * - When the shard's scope has **no** status entries at all (clean): returns a
+ *   discovery-only retry using exploration context from the failed attempt's events.
+ * - When the shard's scope has **staged-only** changes (no working-tree changes):
+ *   builds a `checkpointed-diff` continuation using `git diff --cached` so the
+ *   staged diff is preserved in the next attempt's context without stashing.
+ * - When the shard's scope has working-tree changes: stashes them with
+ *   `git stash push --keep-index -m "eforge-shard-<id>-attempt-<N>" -- <scope-paths>`,
+ *   builds a completedDiff from the stash, and returns a `checkpointed-diff` continuation.
  */
 export async function buildShardedBuilderContinuationInput(
   info: RetryAttemptInfo<BuilderShardContinuationInput>,
 ): Promise<ContinuationDecision<BuilderShardContinuationInput>> {
   const { worktreePath, baseBranch, planId, shardId, shardScope, builderOptions } = info.prevInput;
 
-  // Check if there are working-tree changes in the shard's scope
+  // Check if there are any scoped status entries (index or working-tree).
   const hasScopeChanges = await hasShardScopeChanges(worktreePath, shardScope);
   if (!hasScopeChanges) {
-    // No scope changes to stash — treat as a hard fail (cannot build continuation)
-    throw new Error(
-      `Shard continuation aborted: no working-tree changes in shard "${shardId}" scope (planId=${planId}). ` +
-      `The shard either made no progress or already staged all changes.`,
-    );
+    // No scoped status entries at all — build a discovery-only handoff from the attempt's events.
+    const discovery = extractBuilderDiscoveryContext(info.events);
+    const nextInput: BuilderShardContinuationInput = {
+      worktreePath,
+      baseBranch,
+      planId,
+      shardId,
+      shardScope,
+      builderOptions: {
+        ...builderOptions,
+        continuationContext: {
+          attempt: info.attempt,
+          maxContinuations: info.maxAttempts - 1,
+          handoffMode: 'discovery-only',
+          filesInspected: discovery.filesInspected,
+          searches: discovery.searches,
+          commands: discovery.commands,
+          recentMessages: discovery.recentMessages,
+          toolResultSnippets: discovery.toolResultSnippets,
+        },
+      },
+    };
+    return { kind: 'retry', input: nextInput };
+  }
+
+  // Check if the scoped changes are working-tree changes (stashable) or staged-only.
+  const hasWorktreeScopeChanges = await hasShardScopeWorktreeChanges(worktreePath, shardScope);
+  if (!hasWorktreeScopeChanges) {
+    // Staged-only scoped changes — cannot stash with --keep-index without losing nothing.
+    // Build a continuation context from the staged diff so the next attempt has context.
+    const scopePaths: string[] = [
+      ...(shardScope.roots ?? []),
+      ...(shardScope.files ?? []),
+    ];
+    let completedDiff: string;
+    try {
+      const diffArgs = ['diff', '--cached'];
+      if (scopePaths.length > 0) diffArgs.push('--', ...scopePaths);
+      const { stdout: stagedDiff } = await exec('git', diffArgs, { cwd: worktreePath });
+      const DIFF_CHAR_LIMIT = 50_000;
+      completedDiff = stagedDiff.length <= DIFF_CHAR_LIMIT
+        ? stagedDiff
+        : `[Diff too large (${stagedDiff.length} chars) — showing partial]\n${stagedDiff.slice(0, DIFF_CHAR_LIMIT)}`;
+    } catch {
+      completedDiff = '[Unable to generate staged diff]';
+    }
+    const nextInput: BuilderShardContinuationInput = {
+      worktreePath,
+      baseBranch,
+      planId,
+      shardId,
+      shardScope,
+      builderOptions: {
+        ...builderOptions,
+        continuationContext: {
+          attempt: info.attempt,
+          maxContinuations: info.maxAttempts - 1,
+          handoffMode: 'checkpointed-diff',
+          completedDiff,
+        },
+      },
+    };
+    return { kind: 'retry', input: nextInput };
   }
 
   // Build the list of scope paths for the stash
@@ -578,6 +686,7 @@ export async function buildShardedBuilderContinuationInput(
       continuationContext: {
         attempt: info.attempt,
         maxContinuations: info.maxAttempts - 1,
+        handoffMode: 'checkpointed-diff',
         completedDiff,
       },
     },
@@ -669,7 +778,7 @@ const MAX_RECENT_MESSAGE_LENGTH = 2_000;
 /** Maximum character length for a single search/glob summary string. */
 const MAX_SEARCH_SUMMARY_LENGTH = 300;
 
-interface DiscoveryContext {
+export interface DiscoveryContext {
   filesInspected: string[];
   searches: string[];
   commands: string[];
@@ -678,15 +787,15 @@ interface DiscoveryContext {
 }
 
 /**
- * Derive bounded discovery context from a failed review-fixer attempt's events.
+ * Derive bounded discovery context from a failed agent's events, filtered by agent name.
  *
- * - Filters to events where `agent === 'review-fixer'`.
+ * - Filters to events where `agent === agentName`.
  * - Processes `agent:tool_use` for Read, Grep, Glob, and Bash tool names.
  * - Pairs `agent:tool_result` with prior tool uses via `toolUseId` for snippets.
  * - Collects `agent:message` content as recent messages.
  * - Deduplicates file/search/command summaries; truncates snippet content.
  */
-export function extractReviewFixerDiscoveryContext(events: readonly EforgeEvent[]): DiscoveryContext {
+export function extractAgentDiscoveryContext(events: readonly EforgeEvent[], agentName: string): DiscoveryContext {
   const filesInspectedSet = new Set<string>();
   const searchesSet = new Set<string>();
   const commandsSet = new Set<string>();
@@ -697,8 +806,8 @@ export function extractReviewFixerDiscoveryContext(events: readonly EforgeEvent[
   const toolUseIndex = new Map<string, { tool: string }>();
 
   for (const ev of events) {
-    // Filter to review-fixer agent events only
-    if (!('agent' in ev) || (ev as { agent?: string }).agent !== 'review-fixer') continue;
+    // Filter to the specified agent's events only
+    if (!('agent' in ev) || (ev as { agent?: string }).agent !== agentName) continue;
 
     if (ev.type === 'agent:tool_use') {
       const tool = ev.tool as string;
@@ -756,6 +865,22 @@ export function extractReviewFixerDiscoveryContext(events: readonly EforgeEvent[
     recentMessages: recentMessages.slice(-MAX_RECENT_MESSAGES),
     toolResultSnippets: toolResultSnippets.slice(-MAX_TOOL_RESULT_SNIPPETS),
   };
+}
+
+/**
+ * Derive bounded discovery context from a failed review-fixer attempt's events.
+ * Wrapper around `extractAgentDiscoveryContext` filtered to the `review-fixer` agent.
+ */
+export function extractReviewFixerDiscoveryContext(events: readonly EforgeEvent[]): DiscoveryContext {
+  return extractAgentDiscoveryContext(events, 'review-fixer');
+}
+
+/**
+ * Derive bounded discovery context from a failed builder attempt's events.
+ * Wrapper around `extractAgentDiscoveryContext` filtered to the `builder` agent.
+ */
+export function extractBuilderDiscoveryContext(events: readonly EforgeEvent[]): DiscoveryContext {
+  return extractAgentDiscoveryContext(events, 'builder');
 }
 
 /**

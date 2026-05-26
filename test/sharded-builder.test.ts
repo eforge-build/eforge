@@ -15,10 +15,13 @@ import { promisify } from 'node:util';
 import { formatShardScopeNotice } from '@eforge-build/engine/agents/builder';
 import { enforceShardScope } from '@eforge-build/engine/pipeline/stages/build-stages';
 import {
+  withRetry,
   buildShardedBuilderContinuationInput,
+  buildShardPolicy,
   type BuilderShardContinuationInput,
   type RetryAttemptInfo,
 } from '@eforge-build/engine/retry';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { ShardScope } from '@eforge-build/engine/schemas';
 
 const exec = promisify(execFile);
@@ -196,6 +199,7 @@ describe('buildShardedBuilderContinuationInput', () => {
     attempt: number,
     shardScope: ShardScope,
     overrides?: Partial<BuilderShardContinuationInput>,
+    events: EforgeEvent[] = [],
   ): RetryAttemptInfo<BuilderShardContinuationInput> {
     const input: BuilderShardContinuationInput = {
       worktreePath: tmpDir,
@@ -210,7 +214,7 @@ describe('buildShardedBuilderContinuationInput', () => {
       attempt,
       maxAttempts: 4,
       subtype: 'error_max_turns',
-      events: [],
+      events,
       prevInput: input,
       error: undefined,
     };
@@ -257,21 +261,77 @@ describe('buildShardedBuilderContinuationInput', () => {
 
     expect(result.kind).toBe('retry');
     if (result.kind === 'retry') {
-      const diff = result.input.builderOptions.continuationContext?.completedDiff;
-      expect(diff).toBeDefined();
-      expect(diff).not.toBe('[Unable to generate stash diff]');
+      const ctx = result.input.builderOptions.continuationContext;
+      expect(ctx).toBeDefined();
+      expect(ctx?.handoffMode).toBe('checkpointed-diff');
+      if (ctx?.handoffMode === 'checkpointed-diff') {
+        expect(ctx.completedDiff).not.toBe('[Unable to generate stash diff]');
+        expect(ctx.completedDiff).toContain('test/my.test.ts');
+        expect(ctx.completedDiff).toContain('describe("foo", () => {});');
+      }
     }
   });
 
-  it('throws when the shard scope has no working-tree changes', async () => {
+  it('handles staged-only changes: checkpointed-diff without creating a stash', async () => {
+    const shard: ShardScope = { id: 'shard-staged-only', roots: ['src/'] };
+
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(tmpDir, 'src'), { recursive: true });
+    await writeFile(join(tmpDir, 'src', 'staged-only.ts'), 'export const staged = 42;\n');
+    // Stage the file but leave no unstaged changes
+    await exec('git', ['add', 'src/staged-only.ts'], { cwd: tmpDir });
+
+    const info = makeInfo(1, shard);
+    const result = await buildShardedBuilderContinuationInput(info);
+
+    expect(result.kind).toBe('retry');
+    if (result.kind === 'retry') {
+      const ctx = result.input.builderOptions.continuationContext;
+      expect(ctx).toBeDefined();
+      expect(ctx?.handoffMode).toBe('checkpointed-diff');
+      if (ctx?.handoffMode === 'checkpointed-diff') {
+        expect(ctx.completedDiff).toContain('src/staged-only.ts');
+        expect(ctx.completedDiff).toContain('staged = 42');
+      }
+    }
+
+    // No stash should have been created (staged-only path skips stash)
+    const { stdout: stashList } = await exec('git', ['stash', 'list'], { cwd: tmpDir });
+    expect(stashList).not.toContain('eforge-shard-shard-staged-only-attempt-1');
+
+    // File should still be staged
+    const { stdout: staged } = await exec('git', ['diff', '--cached', '--name-only'], { cwd: tmpDir });
+    expect(staged).toContain('src/staged-only.ts');
+  });
+
+  it('returns discovery-only retry when the shard scope has no working-tree changes', async () => {
     const shard: ShardScope = { id: 'shard-empty', roots: ['nonexistent-dir/'] };
 
-    // No files created in the scope
-    const info = makeInfo(1, shard);
+    // Supply builder discovery events that should appear in the handoff
+    const events: EforgeEvent[] = [
+      {
+        timestamp: new Date().toISOString(), type: 'agent:tool_use', agentId: 'b1', agent: 'builder',
+        tool: 'Read', toolUseId: 'tu-1', input: { file_path: 'src/engine.ts' },
+      },
+      {
+        timestamp: new Date().toISOString(), type: 'agent:tool_result', agentId: 'b1', agent: 'builder',
+        tool: 'Read', toolUseId: 'tu-1', output: 'export const ENGINE = 1;',
+      },
+    ];
 
-    await expect(buildShardedBuilderContinuationInput(info)).rejects.toThrow(
-      /Shard continuation aborted/,
-    );
+    // No files created in the scope
+    const info = makeInfo(1, shard, {}, events);
+    const result = await buildShardedBuilderContinuationInput(info);
+
+    expect(result.kind).toBe('retry');
+    if (result.kind === 'retry') {
+      const ctx = result.input.builderOptions.continuationContext;
+      expect(ctx?.handoffMode).toBe('discovery-only');
+      if (ctx?.handoffMode === 'discovery-only') {
+        expect(ctx.filesInspected).toContain('src/engine.ts');
+        expect(ctx.toolResultSnippets.some((s) => s.includes('ENGINE'))).toBe(true);
+      }
+    }
   });
 
   it('keeps staged changes staged after stashing (--keep-index)', async () => {
@@ -309,5 +369,73 @@ describe('buildShardedBuilderContinuationInput', () => {
 
     const { stdout: stashList } = await exec('git', ['stash', 'list'], { cwd: tmpDir });
     expect(stashList).toContain('eforge-shard-shard-retry-attempt-3');
+  });
+
+  it('withRetry + shard policy: no-diff shard emits agent:retry and plan:build:implement:continuation', async () => {
+    const shard: ShardScope = { id: 'shard-nodiff', roots: ['lib/'] };
+    const policy = buildShardPolicy(shard.id, 2);
+
+    // Shard tool events that should surface in discovery context
+    const toolEvents: EforgeEvent[] = [
+      {
+        timestamp: new Date().toISOString(), type: 'agent:tool_use', agentId: 'b1', agent: 'builder',
+        tool: 'Read', toolUseId: 'tu-shard-1', input: { file_path: 'lib/api.ts' },
+      },
+      {
+        timestamp: new Date().toISOString(), type: 'agent:tool_result', agentId: 'b1', agent: 'builder',
+        tool: 'Read', toolUseId: 'tu-shard-1', output: 'export const api = {};',
+      },
+    ];
+
+    let secondInput: BuilderShardContinuationInput | undefined;
+    const attempts = [
+      async function* (_input: BuilderShardContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+        for (const ev of toolEvents) yield ev;
+        yield {
+          timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: 'plan-01-test',
+          error: 'Reached maximum number of turns', terminalSubtype: 'error_max_turns',
+        };
+      },
+      async function* (input: BuilderShardContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+        secondInput = input;
+        yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: 'plan-01-test' };
+      },
+    ];
+    let idx = 0;
+    const runShard = (input: BuilderShardContinuationInput) => attempts[idx++](input);
+
+    const initial: BuilderShardContinuationInput = {
+      worktreePath: tmpDir,
+      baseBranch: 'main',
+      planId: 'plan-01-test',
+      shardId: shard.id,
+      shardScope: shard,
+      builderOptions: {},
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(runShard, policy, initial)) {
+      out.push(ev);
+    }
+
+    // agent:retry emitted between attempts
+    const retries = out.filter((e) => e.type === 'agent:retry') as Array<Extract<EforgeEvent, { type: 'agent:retry' }>>;
+    expect(retries).toHaveLength(1);
+    expect(retries[0].agent).toBe('builder');
+    expect(retries[0].subtype).toBe('error_max_turns');
+
+    // plan:build:implement:continuation emitted
+    const continuations = out.filter((e) => e.type === 'plan:build:implement:continuation') as Array<Extract<EforgeEvent, { type: 'plan:build:implement:continuation' }>>;
+    expect(continuations).toHaveLength(1);
+    expect(continuations[0].planId).toBe('plan-01-test');
+
+    // Second input has discovery-only context with builder events from first attempt
+    expect(secondInput).toBeDefined();
+    const ctx = secondInput?.builderOptions.continuationContext;
+    expect(ctx?.handoffMode).toBe('discovery-only');
+    if (ctx?.handoffMode === 'discovery-only') {
+      expect(ctx.filesInspected).toContain('lib/api.ts');
+      expect(ctx.toolResultSnippets.some((s) => s.includes('api'))).toBe(true);
+    }
   });
 });
