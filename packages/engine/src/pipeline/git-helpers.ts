@@ -113,11 +113,12 @@ export async function* withPeriodicFileCheck(
       if (result.kind === 'tick') {
         // Timer fired — check for file changes
         try {
-          const { stdout } = await exec('git', ['diff', '--name-only', ctx.orchConfig.baseBranch], { cwd: ctx.worktreePath });
+          const diffBase = ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch;
+          const { stdout } = await exec('git', ['diff', '--name-only', diffBase], { cwd: ctx.worktreePath });
           const files = stdout.trim().split('\n').filter(Boolean).sort();
           if (files.length > 0 && !arraysEqual(files, lastFiles)) {
             lastFiles = files;
-            const diffs = await captureFileDiffs(ctx.worktreePath, ctx.orchConfig.baseBranch);
+            const diffs = await captureFileDiffs(ctx.worktreePath, diffBase);
             yield { timestamp: new Date().toISOString(), type: 'plan:build:files_changed', planId: ctx.planId, files, diffs, baseBranch: ctx.orchConfig.baseBranch };
           }
         } catch {
@@ -146,10 +147,11 @@ export async function* withPeriodicFileCheck(
  */
 export async function* emitFilesChanged(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
   try {
-    const { stdout } = await exec('git', ['diff', '--name-only', ctx.orchConfig.baseBranch], { cwd: ctx.worktreePath });
+    const diffBase = ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch;
+    const { stdout } = await exec('git', ['diff', '--name-only', diffBase], { cwd: ctx.worktreePath });
     const files = stdout.trim().split('\n').filter(Boolean);
     if (files.length > 0) {
-      const diffs = await captureFileDiffs(ctx.worktreePath, ctx.orchConfig.baseBranch);
+      const diffs = await captureFileDiffs(ctx.worktreePath, diffBase);
       yield { timestamp: new Date().toISOString(), type: 'plan:build:files_changed', planId: ctx.planId, files, diffs, baseBranch: ctx.orchConfig.baseBranch };
     }
   } catch {

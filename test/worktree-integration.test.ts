@@ -597,4 +597,42 @@ describe('worktree integration', () => {
     const { stdout: status } = await exec('git', ['status', '--porcelain'], { cwd: repoRoot });
     expect(status.trim()).toBe('');
   });
+
+  // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+  it('createMergeWorktree with a commit SHA base creates the merge worktree on the feature branch', async () => {
+    // Regression: when trunk sync selects a fetched SHA as the compile base,
+    // createMergeWorktree must accept a commit SHA (not just a branch name) as
+    // the `baseBranch` parameter and successfully create the merge worktree.
+    const baseDir = makeTempDir();
+    const { repoRoot } = await setupRepo(baseDir);
+    const worktreeBase = join(baseDir, 'worktrees');
+    const featureBranch = 'eforge/sha-base-feature';
+
+    // Resolve the current HEAD SHA — simulates a fetched remote SHA from trunk sync
+    const { stdout: headShaRaw } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
+    const headSha = headShaRaw.trim();
+
+    // createMergeWorktree should accept a commit SHA as baseBranch
+    const mergeWorktreePath = await createMergeWorktree(
+      repoRoot,
+      worktreeBase,
+      featureBranch,
+      headSha,   // SHA instead of branch name
+    );
+
+    expect(existsSync(mergeWorktreePath)).toBe(true);
+
+    // The merge worktree must be on the requested feature branch
+    const { stdout: currentBranch } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: mergeWorktreePath,
+    });
+    expect(currentBranch.trim()).toBe(featureBranch);
+
+    // The worktree must start from the provided SHA
+    const { stdout: worktreeShaRaw } = await exec('git', ['rev-parse', 'HEAD'], {
+      cwd: mergeWorktreePath,
+    });
+    expect(worktreeShaRaw.trim()).toBe(headSha);
+  });
+  // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 });

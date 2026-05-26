@@ -37,6 +37,14 @@ export interface PipelineContext {
    *  `git rev-parse --abbrev-ref HEAD` returns the feature branch, not the real base. */
   baseBranch?: string;
 
+  /**
+   * When trunk sync selected a fetched commit SHA (remote was ahead of local), this holds
+   * that SHA for diff/validation base computations. Distinct from baseBranch, which is always
+   * the logical landing branch name used for PR creation and merge targeting.
+   * When undefined, diff computations fall back to baseBranch.
+   */
+  diffBaseRef?: string;
+
   /** Accumulates model IDs from agent:start events during this pipeline run. Used for Models-Used: commit trailer. */
   modelTracker: ModelTracker;
 

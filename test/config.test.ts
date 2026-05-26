@@ -160,6 +160,67 @@ describe('resolveConfig', () => {
     expect(Object.isFrozen(config)).toBe(true);
     expect(Object.isFrozen(config.agents)).toBe(true);
   });
+
+  // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+  describe('build.trunkSync defaults', () => {
+    it('resolveConfig({}) returns default trunkSync values', () => {
+      const config = resolveConfig({}, {});
+      expect(config.build.trunkSync).toEqual({
+        enabled: true,
+        remote: 'origin',
+        strategy: 'fetchedRemoteRef',
+        onDiverged: 'warn',
+      });
+    });
+
+    it('partial trunkSync config retains defaults for omitted fields', () => {
+      const config = resolveConfig(
+        { build: { trunkSync: { enabled: false } } },
+        {},
+      );
+      expect(config.build.trunkSync.enabled).toBe(false);
+      expect(config.build.trunkSync.remote).toBe('origin');
+      expect(config.build.trunkSync.strategy).toBe('fetchedRemoteRef');
+      expect(config.build.trunkSync.onDiverged).toBe('warn');
+    });
+
+    it('full trunkSync block is parsed correctly', () => {
+      const config = resolveConfig(
+        {
+          build: {
+            trunkSync: {
+              enabled: true,
+              remote: 'upstream',
+              strategy: 'fetchedRemoteRef',
+              onDiverged: 'fail',
+            },
+          },
+        },
+        {},
+      );
+      expect(config.build.trunkSync).toEqual({
+        enabled: true,
+        remote: 'upstream',
+        strategy: 'fetchedRemoteRef',
+        onDiverged: 'fail',
+      });
+    });
+
+    it('postMergeCommands are unaffected by trunkSync resolution', () => {
+      const config = resolveConfig(
+        {
+          build: {
+            postMergeCommands: ['pnpm install', 'pnpm build', 'pnpm type-check', 'pnpm test'],
+            trunkSync: { enabled: false },
+          },
+        },
+        {},
+      );
+      expect(config.build.postMergeCommands).toEqual(['pnpm install', 'pnpm build', 'pnpm type-check', 'pnpm test']);
+      expect(config.build.trunkSync.enabled).toBe(false);
+    });
+  });
+  // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 });
 
 describe('getUserConfigPath', () => {

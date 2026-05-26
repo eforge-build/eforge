@@ -343,6 +343,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     created: (data.created as string) ?? '',
     mode: (data.mode as OrchestrationConfig['mode']) ?? 'errand',
     baseBranch: (data.base_branch as string) ?? 'main',
+    ...(typeof data.diff_base_ref === 'string' && data.diff_base_ref ? { diffBaseRef: data.diff_base_ref } : {}),
     pipeline: pipelineResult.data,
     plans: transitiveReduce(plans),
     ...(validate && validate.length > 0 && { validate }),
@@ -1028,6 +1029,7 @@ export async function injectPipelineIntoOrchestrationYaml(
   orchestrationYamlPath: string,
   pipeline: PipelineComposition,
   baseBranch?: string,
+  diffBaseRef?: string,
 ): Promise<void> {
   const absPath = resolve(orchestrationYamlPath);
   const raw = await readFile(absPath, 'utf-8');
@@ -1035,6 +1037,9 @@ export async function injectPipelineIntoOrchestrationYaml(
   data.pipeline = pipeline;
   if (baseBranch) {
     data.base_branch = baseBranch;
+  }
+  if (diffBaseRef) {
+    data.diff_base_ref = diffBaseRef;
   }
   // Backfill per-plan build/review from pipeline defaults for any plan that
   // omitted them. Planner submissions may now include per-plan build/review

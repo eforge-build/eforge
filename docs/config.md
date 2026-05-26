@@ -90,6 +90,13 @@ build:
   # trunkBranch: main         # Trunk branch name (default: detected from origin/HEAD, fallback: main)
   # allowLocalMergeToTrunk: false # Allow landing.action: merge to land directly on trunk without a PR
   #                           #   Default false; set to true only for solo/unprotected projects
+  # trunkSync:                  # Pre-compile trunk freshness gate (queued root builds only)
+  #   enabled: true             # Default true; set false for offline or local-only workflows
+  #   remote: origin            # Remote to fetch trunk from (default: origin)
+  #   strategy: fetchedRemoteRef # 'fetchedRemoteRef' is the only supported strategy in v1
+  #   onDiverged: warn          # warn: diagnostic + fallback to local trunk (default)
+  #                             # fail: fail the build before compile
+  #                             # use-remote: use fetched SHA with a diagnostic
   # worktreeDir: /custom/path # Override worktree base directory
   # postMergeCommandTimeoutMs: 300000  # Per-command timeout (ms) for postMerge/validate commands (default: 300000, floor: 10000)
   # postMergeCommands:        # Extra validation commands
@@ -191,6 +198,56 @@ Run `/eforge:workflow --reconfigure` (Claude Code) or `/eforge:workflow:reconfig
 `build.allowLocalMergeToTrunk` controls whether `landing.action: merge` is permitted to land directly on trunk without opening a pull request. The default is `false`, which is appropriate for team projects with branch protection rules. Set to `true` only for solo projects or repositories where direct trunk commits are acceptable.
 
 When `allowLocalMergeToTrunk` is `false` and the current branch is trunk, the interactive CLI prompts before enqueue and offers four alternatives: switch to `pr`, cancel, create a feature branch, or enable the solo-dev opt-in. With `--auto`, the engine rejects the build at runtime with a clear error message rather than prompting.
+
+## Pre-compile trunk sync
+
+Before creating the merge worktree for a queued root build, eforge fetches the configured remote trunk and uses the fetched commit SHA as the compile base instead of the local trunk ref. This prevents stale-base builds when `origin/main` has advanced but the local branch has not been pulled.
+
+Child stacked PRDs continue using the parent artifact ref from the stack context and are not affected by this gate.
+
+### `build.trunkSync`
+
+```yaml
+build:
+  trunkSync:
+    enabled: true             # Default. Set to false for offline or local-only workflows.
+    remote: origin            # Remote to fetch trunk from (default: origin).
+    strategy: fetchedRemoteRef # Only 'fetchedRemoteRef' is supported in v1.
+    onDiverged: warn          # Divergence policy when local and remote have diverged.
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `build.trunkSync.enabled` | `true` | Enables the pre-compile fetch. Set to `false` for offline or local-only workflows. |
+| `build.trunkSync.remote` | `'origin'` | Remote name to fetch the trunk branch from. Must be a configured git remote name - not a URL or path. Must be non-empty, must not start with `-`, and must contain no whitespace or control characters. Invalid values fail the build before compile rather than falling back to the fetch-unavailable behavior. |
+| `build.trunkSync.strategy` | `'fetchedRemoteRef'` | Base selection strategy. Only `'fetchedRemoteRef'` is supported in v1. |
+| `build.trunkSync.onDiverged` | `'warn'` | Policy when local trunk and remote trunk have diverged (neither is an ancestor of the other). |
+
+**`onDiverged` values:**
+
+| Value | Behavior |
+|-------|----------|
+| `warn` (default) | Emit a `config:warning` diagnostic and fall back to the local trunk ref as the compile base. |
+| `fail` | Fail the build before compile with a `plan:error:set` event. |
+| `use-remote` | Use the fetched remote SHA as the compile base and emit a diagnostic. |
+
+**Remote-ahead and equal cases** always use the fetched remote SHA, regardless of `onDiverged`.
+
+**Local-ahead-only** cases (local trunk has commits the remote does not yet have) emit a diagnostic and use the local trunk ref, since the local trunk is not stale relative to the remote.
+
+**Feature-branch builds** (queued from a non-trunk branch) and **child stacked PRDs** are never retargeted to remote trunk. `trunkSync` only applies to queued root builds whose candidate base is the trunk branch.
+
+**Fetch-unavailable fallback:** when the configured remote is missing, the remote trunk branch does not exist on the remote, the fetch fails for any reason, or FETCH_HEAD cannot be resolved after the fetch, trunk sync is skipped. The build continues with the original candidate base and emits a `planning:progress` diagnostic. The `onDiverged` policy applies only to true local/remote divergence - not to network failures or unavailable remotes.
+
+**Validation and failure before compile:** `build.trunkSync.remote` is validated before the fetch. The value must be a registered git remote name: non-empty, must not start with `-`, must contain no whitespace or control characters, and must not be a URL (containing `://`) or path (starting with `/`, `./`, or `../`). The resolved trunk branch must also be a valid git branch refname. Invalid values cause the build to fail before compile with an error - they do not fall back to the fetch-unavailable behavior. Use `build.trunkSync.enabled: false` to skip trunk sync entirely for offline or local-only workflows.
+
+### Relationship to stack sync and post-merge commands
+
+`build.trunkSync` is a pre-compile freshness gate. It fetches the remote trunk and selects a fresh base before the merge worktree is created. It does not checkout, pull, reset, rebase, or move local branch refs or the working tree — only FETCH_HEAD is updated as part of the fetch.
+
+`build.postMergeCommands` runs after all plans merge and handles validation (type-check, tests, etc.). These two settings are independent.
+
+Stack restacking (`eforge stack sync`) updates the in-flight stack topology after a trunk has been updated — that is a separate concern from selecting a fresh compile base before a build begins.
 
 ## Validation waivers
 

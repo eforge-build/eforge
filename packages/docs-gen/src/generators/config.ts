@@ -207,6 +207,48 @@ export async function generateConfig(opts: {
   lines.push('| `stack_id` | Logical stack name shared by all PRDs in the stack. Optional; inferred from root PRD id. |');
   lines.push('| `stack_parent` | Parent PRD id. Optional for single-dependency PRDs (inferred from `depends_on`); required for multi-dependency PRDs. |');
   lines.push('');
+  lines.push('## Pre-Compile Trunk Sync');
+  lines.push('');
+  lines.push(
+    '`build.trunkSync` controls the pre-compile trunk freshness gate that runs before the merge worktree is created for queued root builds. It fetches the configured remote trunk, resolves the fetched commit SHA, and compares it to the local trunk ref to select the best compile base.',
+  );
+  lines.push('');
+  lines.push('```yaml');
+  lines.push('build:');
+  lines.push('  trunkSync:');
+  lines.push("    enabled: true             # Default. Set to false for offline/local-only workflows.");
+  lines.push("    remote: origin            # Remote to fetch trunk from (default: origin).");
+  lines.push("    strategy: fetchedRemoteRef # Only 'fetchedRemoteRef' is supported in v1.");
+  lines.push("    onDiverged: warn          # warn | fail | use-remote");
+  lines.push('```');
+  lines.push('');
+  lines.push('| Field | Default | Description |');
+  lines.push('|-------|---------|-------------|');
+  lines.push(
+    '| `build.trunkSync.enabled` | `true` | Enables the pre-compile fetch. Set to `false` for offline or local-only workflows. |',
+  );
+  lines.push(
+    '| `build.trunkSync.remote` | `"origin"` | Remote name to fetch the trunk branch from. Must be a configured git remote name - not a URL or path. Must be non-empty, must not start with `-`, and must contain no whitespace or control characters. Invalid values fail the build before compile rather than falling back to the fetch-unavailable behavior. |',
+  );
+  lines.push(
+    '| `build.trunkSync.strategy` | `"fetchedRemoteRef"` | Base selection strategy. Only `"fetchedRemoteRef"` is supported in v1. |',
+  );
+  lines.push(
+    '| `build.trunkSync.onDiverged` | `"warn"` | Policy applied when local trunk and remote trunk have diverged. Values: `warn` emits a diagnostic and falls back to local trunk; `fail` fails the build before compile; `use-remote` uses the fetched SHA with a diagnostic. |',
+  );
+  lines.push('');
+  lines.push(
+    'Remote-ahead and equal cases always use the fetched remote SHA. Local-ahead-only cases use the local trunk ref with a diagnostic. Child stacked PRDs and feature-branch builds are not retargeted.',
+  );
+  lines.push('');
+  lines.push(
+    'When the configured remote is missing, the remote trunk branch does not exist, the fetch fails, or FETCH_HEAD cannot be resolved after the fetch, trunk sync is skipped. The build continues with the original candidate base and emits a planning diagnostic. The `onDiverged` policy applies only to true local/remote divergence, not to fetch failures or unavailable remotes.',
+  );
+  lines.push('');
+  lines.push(
+    'The `remote` value is validated before the fetch. Invalid values (URL, path, starts with `-`, whitespace/control characters) and invalid trunk branch refnames fail the build before compile - they do not fall back to the fetch-unavailable behavior. Use `enabled: false` to skip trunk sync for offline or local-only workflows.',
+  );
+  lines.push('');
   lines.push('## JSON Schema');
   lines.push('');
   lines.push(

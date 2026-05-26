@@ -474,6 +474,14 @@ const eforgeConfigBaseSchema = z.object({
     // --- eforge:region plan-02-final-validation-gates ---
     validation: validationWaiverConfigSchema.optional(),
     // --- eforge:endregion plan-02-final-validation-gates ---
+    // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+    trunkSync: z.object({
+      enabled: z.boolean().optional().describe('Enable pre-compile trunk freshness gate. When true (default), fetches remote trunk before compile and uses the fetched SHA as the compile base when remote is ahead. Set false to disable for offline or local-only workflows.'),
+      remote: z.string().optional().describe('Git remote to fetch the trunk branch from. Default: "origin".'),
+      strategy: z.literal('fetchedRemoteRef').optional().describe('Base selection strategy. Only "fetchedRemoteRef" is supported: use the exact fetched commit SHA so the compile base is reproducible if the remote branch moves during the run. Default: "fetchedRemoteRef".'),
+      onDiverged: z.enum(['warn', 'fail', 'use-remote']).optional().describe('Policy when local and remote trunk have diverged (neither is an ancestor of the other). "warn": emit a diagnostic and fall back to local trunk (default). "fail": fail the build before compile. "use-remote": use the fetched remote SHA with a diagnostic.'),
+    }).optional().describe('Pre-compile trunk freshness gate. Fetches remote trunk before compile and selects a reproducible base SHA when the remote is ahead of the local trunk.'),
+    // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
   }).optional(),
   plan: z.object({
     outputDir: z.string().optional(),
@@ -571,6 +579,16 @@ export interface LandingConfig {
   };
   // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }
+
+// --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+/** Resolved pre-compile trunk sync gate config. */
+export interface TrunkSyncConfig {
+  enabled: boolean;
+  remote: string;
+  strategy: 'fetchedRemoteRef';
+  onDiverged: 'warn' | 'fail' | 'use-remote';
+}
+// --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 
 // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
@@ -684,6 +702,9 @@ export interface EforgeConfig {
     // --- eforge:region plan-02-final-validation-gates ---
     validation: ValidationConfig;
     // --- eforge:endregion plan-02-final-validation-gates ---
+    // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+    trunkSync: TrunkSyncConfig;
+    // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
   };
   // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: { outputDir: string };
@@ -892,6 +913,14 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
       // --- eforge:endregion plan-01-acceptance-evidence-model ---
     } as ValidationConfig),
     // --- eforge:endregion plan-02-final-validation-gates ---
+    // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+    trunkSync: Object.freeze({
+      enabled: true,
+      remote: 'origin',
+      strategy: 'fetchedRemoteRef' as const,
+      onDiverged: 'warn' as const,
+    } as TrunkSyncConfig),
+    // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
   }),
   // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
@@ -1039,6 +1068,14 @@ export function resolveConfig(
         // --- eforge:endregion plan-01-acceptance-evidence-model ---
       } as ValidationConfig),
       // --- eforge:endregion plan-02-final-validation-gates ---
+      // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+      trunkSync: Object.freeze({
+        enabled: fileConfig.build?.trunkSync?.enabled ?? DEFAULT_CONFIG.build.trunkSync.enabled,
+        remote: fileConfig.build?.trunkSync?.remote ?? DEFAULT_CONFIG.build.trunkSync.remote,
+        strategy: (fileConfig.build?.trunkSync?.strategy ?? DEFAULT_CONFIG.build.trunkSync.strategy) as 'fetchedRemoteRef',
+        onDiverged: (fileConfig.build?.trunkSync?.onDiverged ?? DEFAULT_CONFIG.build.trunkSync.onDiverged) as 'warn' | 'fail' | 'use-remote',
+      } as TrunkSyncConfig),
+      // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
     }),
     plan: Object.freeze({
       outputDir: fileConfig.plan?.outputDir ?? DEFAULT_CONFIG.plan.outputDir,
@@ -1341,10 +1378,18 @@ export function mergePartialConfigs(
     const mergedValidation = (global.build?.validation || project.build?.validation)
       ? { ...global.build?.validation, ...project.build?.validation }
       : undefined;
+    // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+    const mergedTrunkSync = (global.build?.trunkSync || project.build?.trunkSync)
+      ? { ...global.build?.trunkSync, ...project.build?.trunkSync }
+      : undefined;
+    // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
     result.build = {
       ...global.build,
       ...project.build,
       ...(mergedValidation !== undefined ? { validation: mergedValidation } : {}),
+      // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+      ...(mergedTrunkSync !== undefined ? { trunkSync: mergedTrunkSync } : {}),
+      // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
     };
   }
   if (global.plan || project.plan) {

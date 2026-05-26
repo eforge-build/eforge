@@ -405,6 +405,64 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
     const config = await parseOrchestrationConfig(yamlPath);
     expect(config.baseBranch).toBe('main');
   });
+
+  // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
+
+  it('propagates diffBaseRef separately from baseBranch when trunk sync selects a fetched SHA', async () => {
+    // Simulates the scenario where local main is stale and trunk sync resolved a fetched commit SHA.
+    // The fetched SHA must flow through injectPipelineIntoOrchestrationYaml -> parseOrchestrationConfig
+    // so downstream diff/validation base computations use the fetched SHA, not the stale local branch.
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+
+    const staleLocalBranch = 'main';
+    const fetchedRemoteSha = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'stale-main-test',
+      description: 'Remote is ahead of local main',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: staleLocalBranch,
+      plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
+    }));
+
+    // Inject with both baseBranch (logical landing target) and diffBaseRef (fetched SHA for diff/validation).
+    await injectPipelineIntoOrchestrationYaml(yamlPath, ERRAND_PIPELINE, staleLocalBranch, fetchedRemoteSha);
+
+    const config = await parseOrchestrationConfig(yamlPath);
+
+    // baseBranch must stay as the logical branch name for PR/merge targeting.
+    expect(config.baseBranch).toBe(staleLocalBranch);
+
+    // diffBaseRef must carry the fetched SHA so diff/validation does NOT use the stale local ref.
+    expect(config.diffBaseRef).toBe(fetchedRemoteSha);
+  });
+
+  it('diffBaseRef is absent when trunk sync did not select a fetched SHA', async () => {
+    // When local main is already up-to-date (or trunk sync is skipped), diffBaseRef should
+    // not be set in the parsed config so diff computations fall back to baseBranch.
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'no-diff-base-test',
+      description: 'No fetched SHA override',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
+    }));
+
+    // No diffBaseRef argument - simulates trunk sync not changing the base (equal/local-ahead/skipped).
+    await injectPipelineIntoOrchestrationYaml(yamlPath, ERRAND_PIPELINE, 'main');
+
+    const config = await parseOrchestrationConfig(yamlPath);
+    expect(config.baseBranch).toBe('main');
+    expect(config.diffBaseRef).toBeUndefined();
+  });
+
+  // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 });
 
 // --- Per-plan agents tuning ---

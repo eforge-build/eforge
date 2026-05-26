@@ -281,7 +281,7 @@ async function* reviewStageInner(
 
   // Emit review-strategy decision before dispatching to the reviewer
   if (strategy === 'auto') {
-    const snapshot = await computeReviewThresholdSnapshot(ctx.worktreePath, ctx.orchConfig.baseBranch);
+    const snapshot = await computeReviewThresholdSnapshot(ctx.worktreePath, ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch);
     yield emitBuildDecision(ctx, {
       kind: 'review-strategy',
       rationale: `Auto-threshold: ${snapshot.changedFiles.length} files, ${snapshot.changedLines} changed lines (threshold: ${snapshot.threshold.files} files or ${snapshot.threshold.lines} lines)`,
@@ -339,7 +339,7 @@ async function* reviewStageInner(
   try {
     for await (const event of runParallelReview({
       planContent: ctx.planFile.body,
-      baseBranch: ctx.orchConfig.baseBranch,
+      baseBranch: ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch,
       planId: ctx.planId,
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
@@ -854,7 +854,7 @@ async function* runShardAttempt(
 
   const initialInput: BuilderShardContinuationInput = {
     worktreePath: ctx.worktreePath,
-    baseBranch: ctx.orchConfig.baseBranch,
+    baseBranch: ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch,
     planId: ctx.planId,
     shardId: shard.id,
     shardScope: shard,
@@ -908,7 +908,7 @@ registerBuildStage({
     // -----------------------------------------------------------------------
     const initialInput: BuilderContinuationInput = {
       worktreePath: ctx.worktreePath,
-      baseBranch: ctx.orchConfig.baseBranch,
+      baseBranch: ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch,
       planId: ctx.planId,
       builderOptions: {},
     };
@@ -1445,7 +1445,7 @@ registerBuildStage({
   // Get implementation diff for post-implementation context
   let implementationContext = '';
   try {
-    const { stdout } = await exec('git', ['diff', `${ctx.orchConfig.baseBranch}...HEAD`], { cwd: ctx.worktreePath });
+    const { stdout } = await exec('git', ['diff', `${ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch}...HEAD`], { cwd: ctx.worktreePath });
     implementationContext = stdout;
   } catch {
     // No diff available (TDD mode) — that's fine
