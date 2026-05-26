@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import { ActivityAuditView } from '@/views/activity';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import type { ConsoleActivityEntry } from '@/lib/types';
@@ -121,10 +121,32 @@ describe('ActivityAuditView – populated state', () => {
     );
     expect(getByText('sess-xyz')).toBeDefined();
   });
+});
 
-  it('renders a raw JSON panel with pre element', () => {
-    const event = { type: 'session:start', sessionId: 's1' } as unknown as EforgeEvent;
+// ---------------------------------------------------------------------------
+// Row click opens raw event panel
+// ---------------------------------------------------------------------------
+
+describe('ActivityAuditView – raw event panel', () => {
+  it('contains no inline <details> element labeled "Raw event JSON"', () => {
     const { container } = render(
+      <ActivityAuditView
+        projectState={makeState({
+          recentActivity: [makeEntry('e1', 'session:start', { sessionId: 's1' }, 1001)],
+        })}
+        now={FIXED_NOW}
+      />,
+    );
+    const details = container.querySelectorAll('details');
+    for (const el of Array.from(details)) {
+      const summary = el.querySelector('summary');
+      expect(summary?.textContent).not.toMatch(/raw event json/i);
+    }
+  });
+
+  it('clicking an event row opens a panel containing pretty-printed JSON', () => {
+    const event = { type: 'session:start', sessionId: 's1' } as unknown as EforgeEvent;
+    render(
       <ActivityAuditView
         projectState={makeState({
           recentActivity: [{ id: 'e1', event, receivedAt: 1001 }],
@@ -132,9 +154,92 @@ describe('ActivityAuditView – populated state', () => {
         now={FIXED_NOW}
       />,
     );
-    const pre = container.querySelector('pre');
+
+    // Click the row (role="button" on the row div)
+    const row = screen.getByRole('button', { name: /session:start/i });
+    fireEvent.click(row);
+
+    // Panel should now be visible — Radix Dialog portals into document.body
+    const pre = document.querySelector('pre');
     expect(pre).not.toBeNull();
     expect(pre!.textContent).toBe(JSON.stringify(event, null, 2));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Event row structure
+// ---------------------------------------------------------------------------
+
+describe('ActivityAuditView – event row structure', () => {
+  it('event rows do not render visible text "family:"', () => {
+    const { queryByText } = render(
+      <ActivityAuditView
+        projectState={makeState({
+          recentActivity: [makeEntry('e1', 'session:start', {}, 1001)],
+        })}
+        now={FIXED_NOW}
+      />,
+    );
+    // "family:" should not appear as visible text
+    expect(queryByText(/family:/i)).toBeNull();
+  });
+
+  it('event rows do not render visible text "scope:"', () => {
+    const { queryByText } = render(
+      <ActivityAuditView
+        projectState={makeState({
+          recentActivity: [makeEntry('e1', 'session:start', {}, 1001)],
+        })}
+        now={FIXED_NOW}
+      />,
+    );
+    expect(queryByText(/scope:/i)).toBeNull();
+  });
+
+  it('event rows render a colored dot whose aria-label includes the family name', () => {
+    const { container } = render(
+      <ActivityAuditView
+        projectState={makeState({
+          recentActivity: [makeEntry('e1', 'session:start', {}, 1001)],
+        })}
+        now={FIXED_NOW}
+      />,
+    );
+    const dot = container.querySelector('[aria-label*="family:"]');
+    expect(dot).not.toBeNull();
+    expect(dot!.getAttribute('aria-label')).toMatch(/family:\s*session/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Toolbar structure
+// ---------------------------------------------------------------------------
+
+describe('ActivityAuditView – toolbar structure', () => {
+  it('renders no checkbox labeled "Attention only"', () => {
+    const { container } = render(
+      <ActivityAuditView
+        projectState={makeState({
+          recentActivity: [makeEntry('e1', 'session:start', {}, 1001)],
+        })}
+        now={FIXED_NOW}
+      />,
+    );
+    const checkbox = container.querySelector('input[type="checkbox"]');
+    expect(checkbox).toBeNull();
+  });
+
+  it('renders exactly one text input in the toolbar', () => {
+    const { container } = render(
+      <ActivityAuditView
+        projectState={makeState({
+          recentActivity: [makeEntry('e1', 'session:start', {}, 1001)],
+        })}
+        now={FIXED_NOW}
+      />,
+    );
+    const inputs = container.querySelectorAll('input[type="text"]');
+    expect(inputs.length).toBe(1);
   });
 });
 
@@ -194,41 +299,11 @@ describe('ActivityAuditView – family chip filtering', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Attention-only filter
+// Search filter
 // ---------------------------------------------------------------------------
 
-describe('ActivityAuditView – attention-only filter', () => {
-  it('hides non-attention events when attention-only is enabled', () => {
-    const { container, getByText } = render(
-      <ActivityAuditView
-        projectState={makeState({
-          recentActivity: [
-            makeEntry('e1', 'session:start', {}, 1001),
-            makeEntry('e2', 'daemon:error', { source: 'daemon' }, 1002),
-            makeEntry('e3', 'plan:build:failed', {}, 1003),
-          ],
-        })}
-        now={FIXED_NOW}
-      />,
-    );
-
-    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
-    fireEvent.click(checkbox);
-
-    // Attention events should remain
-    expect(getByText('daemon:error')).toBeDefined();
-    expect(getByText('plan:build:failed')).toBeDefined();
-    // Non-attention event should be hidden
-    expect(() => getByText('session:start')).toThrow();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Event type filter
-// ---------------------------------------------------------------------------
-
-describe('ActivityAuditView – event type filter', () => {
-  it('typing in the event type filter updates visible rows', () => {
+describe('ActivityAuditView – search filter', () => {
+  it('typing in the search input filters by event type', () => {
     const { container, getByText } = render(
       <ActivityAuditView
         projectState={makeState({
@@ -242,25 +317,19 @@ describe('ActivityAuditView – event type filter', () => {
       />,
     );
 
-    const typeInput = container.querySelector(
-      'input[aria-label="Search event type"]',
+    const searchInput = container.querySelector(
+      'input[aria-label="Search activity"]',
     ) as HTMLInputElement;
 
-    fireEvent.change(typeInput, { target: { value: 'session:' } });
+    fireEvent.change(searchInput, { target: { value: 'session:' } });
 
     // session:start and session:end should remain; agent:start should be gone
     expect(getByText('session:start')).toBeDefined();
     expect(getByText('session:end')).toBeDefined();
     expect(() => getByText('agent:start')).toThrow();
   });
-});
 
-// ---------------------------------------------------------------------------
-// Identifier filter
-// ---------------------------------------------------------------------------
-
-describe('ActivityAuditView – identifier filter', () => {
-  it('typing in the identifier filter matches rows by sessionId', () => {
+  it('typing in the search input filters by identifier (sessionId)', () => {
     const { container, getByText } = render(
       <ActivityAuditView
         projectState={makeState({
@@ -273,17 +342,17 @@ describe('ActivityAuditView – identifier filter', () => {
       />,
     );
 
-    const idInput = container.querySelector(
-      'input[aria-label="Search identifiers"]',
+    const searchInput = container.querySelector(
+      'input[aria-label="Search activity"]',
     ) as HTMLInputElement;
 
-    fireEvent.change(idInput, { target: { value: 'sess-abc' } });
+    fireEvent.change(searchInput, { target: { value: 'sess-abc' } });
 
     expect(getByText('sess-abc')).toBeDefined();
     expect(() => getByText('sess-xyz')).toThrow();
   });
 
-  it('typing in the identifier filter matches rows by planId', () => {
+  it('typing in the search input filters by identifier (planId)', () => {
     const { container, getByText } = render(
       <ActivityAuditView
         projectState={makeState({
@@ -296,11 +365,11 @@ describe('ActivityAuditView – identifier filter', () => {
       />,
     );
 
-    const idInput = container.querySelector(
-      'input[aria-label="Search identifiers"]',
+    const searchInput = container.querySelector(
+      'input[aria-label="Search activity"]',
     ) as HTMLInputElement;
 
-    fireEvent.change(idInput, { target: { value: 'plan-01' } });
+    fireEvent.change(searchInput, { target: { value: 'plan-01' } });
 
     expect(getByText('plan-01')).toBeDefined();
     expect(() => getByText('plan-02')).toThrow();
@@ -400,11 +469,11 @@ describe('ActivityAuditView – filtered-empty state', () => {
       />,
     );
 
-    const typeInput = container.querySelector(
-      'input[aria-label="Search event type"]',
+    const searchInput = container.querySelector(
+      'input[aria-label="Search activity"]',
     ) as HTMLInputElement;
 
-    fireEvent.change(typeInput, { target: { value: 'nonexistent:event:xyz' } });
+    fireEvent.change(searchInput, { target: { value: 'nonexistent:event:xyz' } });
 
     expect(getByText('No activity matches the current filters.')).toBeDefined();
   });
@@ -420,10 +489,10 @@ describe('ActivityAuditView – filtered-empty state', () => {
     );
 
     // Apply a filter that hides everything
-    const typeInput = container.querySelector(
-      'input[aria-label="Search event type"]',
+    const searchInput = container.querySelector(
+      'input[aria-label="Search activity"]',
     ) as HTMLInputElement;
-    fireEvent.change(typeInput, { target: { value: 'nonexistent:event:xyz' } });
+    fireEvent.change(searchInput, { target: { value: 'nonexistent:event:xyz' } });
     expect(getByText('No activity matches the current filters.')).toBeDefined();
 
     // Click reset

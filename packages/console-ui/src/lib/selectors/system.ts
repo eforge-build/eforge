@@ -162,3 +162,26 @@ export function selectModelTotals(models: ModelInfo[]): ModelTotals {
   }
   return { total: models.length, deprecated, byProvider };
 }
+
+export interface ModelsByProvider {
+  provider: string;
+  models: ModelInfo[];
+}
+
+/**
+ * Group a flat model list by provider. Order is insertion-stable: providers
+ * appear in the order their first model is encountered.
+ */
+export function selectModelsByProvider(models: ModelInfo[]): ModelsByProvider[] {
+  const map = new Map<string, ModelInfo[]>();
+  for (const m of models) {
+    const provider = m.provider ?? 'unknown';
+    const bucket = map.get(provider);
+    if (bucket) {
+      bucket.push(m);
+    } else {
+      map.set(provider, [m]);
+    }
+  }
+  return Array.from(map.entries()).map(([provider, ms]) => ({ provider, models: ms }));
+}

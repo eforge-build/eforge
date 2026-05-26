@@ -9,6 +9,7 @@ import type { EforgeEvent } from '@eforge-build/client/browser';
 import { getEventSummary, eventRegistry } from '@eforge-build/client/browser';
 import type { EventScope } from '@eforge-build/client/browser';
 import type { ConsoleActivityEntry } from '@/lib/types';
+import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,16 +28,13 @@ export type ActivityFamily =
 
 export interface ActivityFilterState {
   family: ActivityFamily;
-  attentionOnly: boolean;
-  typeQuery: string;
-  identifierQuery: string;
+  /** Single query string searched against event type and identifier values. */
+  query: string;
 }
 
 export const defaultActivityFilters: ActivityFilterState = {
   family: 'all',
-  attentionOnly: false,
-  typeQuery: '',
-  identifierQuery: '',
+  query: '',
 };
 
 export interface ActivityEventRowModel {
@@ -48,7 +46,7 @@ export interface ActivityEventRowModel {
   summary: string;
   timestampLabel: string;
   receivedLabel: string;
-  identifiers: Array<{ label: string; value: string }>;
+  identifiers: Array<{ label: string; value: string; rawValue?: string }>;
   source: string | null;
   attention: boolean;
   rawJson: string;
@@ -169,20 +167,30 @@ const IDENTIFIER_FIELDS: Array<[string, string]> = [
   ['runId', 'Run'],
   ['planId', 'Plan'],
   ['prdId', 'PRD'],
+  ['planSet', 'Plan Set'],
   ['queueId', 'Queue'],
   ['id', 'ID'],
   ['agent', 'Agent'],
   ['source', 'Source'],
 ];
 
-export function extractIdentifiers(event: EforgeEvent): Array<{ label: string; value: string }> {
+export function extractIdentifiers(event: EforgeEvent): Array<{ label: string; value: string; rawValue?: string }> {
   const e = event as unknown as Record<string, unknown>;
-  const identifiers: Array<{ label: string; value: string }> = [];
+  const identifiers: Array<{ label: string; value: string; rawValue?: string }> = [];
 
   for (const [field, label] of IDENTIFIER_FIELDS) {
     const val = e[field];
     if (typeof val === 'string' && val) {
-      identifiers.push({ label, value: val });
+      // PRD and plan-set identifiers are typically slug-like; normalise them to
+      // human-readable display labels while leaving other identifier fields raw.
+      if (field === 'prdId' || field === 'planSet') {
+        const displayValue = selectPrdDisplayLabel(undefined, val);
+        // Preserve the raw slug so identifier searches against the original
+        // value (e.g. "add-mcp-server-support") still match the row.
+        identifiers.push({ label, value: displayValue, rawValue: val });
+      } else {
+        identifiers.push({ label, value: val });
+      }
     }
   }
 
@@ -296,6 +304,9 @@ export function selectActivityRows(
 /**
  * Apply client-side filters to a set of activity rows.
  * Returns a new array containing only rows that pass all active filters.
+ *
+ * The `query` field is searched against both the event type and identifier
+ * values (display labels and raw slugs). A row is included if either matches.
  */
 export function filterActivityRows(
   rows: ActivityEventRowModel[],
@@ -303,18 +314,17 @@ export function filterActivityRows(
 ): ActivityEventRowModel[] {
   return rows.filter((row) => {
     if (filters.family !== 'all' && row.family !== filters.family) return false;
-    if (filters.attentionOnly && !row.attention) return false;
-    if (filters.typeQuery) {
-      const q = filters.typeQuery.toLowerCase();
-      if (!row.eventType.toLowerCase().includes(q)) return false;
-    }
-    if (filters.identifierQuery) {
-      const q = filters.identifierQuery.toLowerCase();
+    if (filters.query) {
+      const q = filters.query.toLowerCase();
+      if (row.eventType.toLowerCase().includes(q)) return true;
+      // Include both normalized display values and raw slugs so that users can
+      // search by either the human-readable label or the original identifier.
       const searchable = row.identifiers
-        .map((i) => i.value)
+        .flatMap((i) => (i.rawValue ? [i.value, i.rawValue] : [i.value]))
         .join(' ')
         .toLowerCase();
-      if (!searchable.includes(q)) return false;
+      if (searchable.includes(q)) return true;
+      return false;
     }
     return true;
   });

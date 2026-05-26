@@ -11,6 +11,8 @@ import {
   selectNowStatusSummary,
   selectNowStackSummary,
   selectNowRecentActivity,
+  selectNowRecentRuns,
+  mergeSeverity,
   isLivenessStale,
 } from '@/lib/selectors/now';
 import { initialConsoleProjectState } from '@/lib/project-state';
@@ -131,6 +133,45 @@ describe('selectNowQueueSummary', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Queue summary – label normalization
+// ---------------------------------------------------------------------------
+
+describe('selectNowQueueSummary – label normalization', () => {
+  it('falls back to slug-derived label when queue item title is markdown-shaped', () => {
+    const queue = makeQueue([{ id: 'my-feature', title: '## My Feature' }]);
+    const summary = selectNowQueueSummary(queue);
+    // '## My Feature' is markdown-shaped → fall back to slugToDisplayLabel('my-feature')
+    expect(summary.topItems[0].title).toBe('My Feature');
+  });
+
+  it('uses clean title as-is when it is not markdown-shaped', () => {
+    const queue = makeQueue([{ id: 'my-feature', title: 'My Feature' }]);
+    const summary = selectNowQueueSummary(queue);
+    expect(summary.topItems[0].title).toBe('My Feature');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recent runs – label normalization
+// ---------------------------------------------------------------------------
+
+describe('selectNowRecentRuns – label normalization', () => {
+  const now = Date.now();
+
+  it('normalizes a slug-like planSet to a title-cased display label', () => {
+    const runs = [makeRun({ id: 'r1', planSet: 'add-mcp-server-support' })];
+    const result = selectNowRecentRuns(runs, now);
+    expect(result[0].planSet).toBe('Add MCP Server Support');
+  });
+
+  it('normalizes an acronym-containing slug preserving known uppercase acronyms', () => {
+    const runs = [makeRun({ id: 'r1', planSet: 'refactor-ui-layout' })];
+    const result = selectNowRecentRuns(runs, now);
+    expect(result[0].planSet).toBe('Refactor UI Layout');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Attention items tests
 // ---------------------------------------------------------------------------
 
@@ -210,6 +251,92 @@ describe('selectNowAttentionItems', () => {
     expect(item).toBeDefined();
     expect(item!.detail).toBe('recovery pending');
   });
+
+  it('deduplicates failed queue and run attention items sharing the same PRD key to one item', () => {
+    const state = {
+      ...baseState,
+      queue: makeQueue([
+        // queue item with verdict — normalised dedup key: prd:my-prd
+        { id: 'my-prd', status: 'failed', recoveryVerdict: { verdict: 'retry', confidence: 'high' } },
+        // duplicate failed queue candidate for the same PRD (via extension normalization)
+        { id: 'my-prd.md', status: 'failed' },
+      ]),
+      runs: [
+        // failed run for the same PRD
+        makeRun({
+          id: 'run-prd-1',
+          sessionId: undefined,
+          planSet: 'my-prd',
+          status: 'failed',
+          completedAt: new Date().toISOString(),
+        }),
+      ],
+    };
+    const { items } = selectNowAttentionItems(state, {}, now);
+    // All three candidates share dedupKey 'prd:my-prd' → one attention item
+    expect(items).toHaveLength(1);
+  });
+
+  it('hiddenCount reflects deduplicated candidate count, not raw candidate count', () => {
+    // 12 raw attention candidates that deduplicate to 6 unique PRD keys.
+    // With dedup: hiddenCount = max(0, 6 - 5) = 1.
+    // Without dedup (bug): hiddenCount would be max(0, 12 - 5) = 7.
+    const state = {
+      ...baseState,
+      queue: makeQueue([
+        { id: 'prd-a',    status: 'failed', recoveryVerdict: { verdict: 'retry', confidence: 'high' } },
+        { id: 'prd-a.md', status: 'failed' },
+        { id: 'prd-b',    status: 'failed', recoveryVerdict: { verdict: 'retry', confidence: 'high' } },
+        { id: 'prd-b.md', status: 'failed' },
+        { id: 'prd-c',    status: 'failed', recoveryVerdict: { verdict: 'retry', confidence: 'high' } },
+        { id: 'prd-c.md', status: 'failed' },
+        { id: 'prd-d',    status: 'failed', recoveryVerdict: { verdict: 'retry', confidence: 'high' } },
+        { id: 'prd-d.md', status: 'failed' },
+        { id: 'prd-e',    status: 'failed', recoveryVerdict: { verdict: 'retry', confidence: 'high' } },
+        { id: 'prd-e.md', status: 'failed' },
+        { id: 'prd-f',    status: 'failed', recoveryVerdict: { verdict: 'retry', confidence: 'high' } },
+        { id: 'prd-f.md', status: 'failed' },
+      ]),
+    };
+    const { items, hiddenCount } = selectNowAttentionItems(state, {}, now);
+    // 6 unique deduplicated items; 5 visible, 1 hidden
+    expect(items).toHaveLength(5);
+    expect(hiddenCount).toBe(1);
+  });
+
+  it('severity ordering: critical > warning > info via mergeSeverity helper', () => {
+    expect(mergeSeverity('critical', 'warning')).toBe('critical');
+    expect(mergeSeverity('warning', 'critical')).toBe('critical');
+    expect(mergeSeverity('critical', 'info')).toBe('critical');
+    expect(mergeSeverity('info', 'critical')).toBe('critical');
+    expect(mergeSeverity('warning', 'info')).toBe('warning');
+    expect(mergeSeverity('info', 'warning')).toBe('warning');
+  });
+
+  it('merges severity to worst when deduplicating attention items: warning beats info', () => {
+    const state = {
+      ...baseState,
+      queue: makeQueue([
+        // warning severity — no recovery verdict
+        { id: 'feat', status: 'failed' },
+      ]),
+      runs: [
+        // info severity for the same PRD
+        makeRun({
+          id: 'run-feat',
+          sessionId: undefined,
+          planSet: 'feat',
+          status: 'failed',
+          completedAt: new Date().toISOString(),
+        }),
+      ],
+    };
+    const { items } = selectNowAttentionItems(state, {}, now);
+    // 'warning' (queue) beats 'info' (run) — worst severity wins
+    const item = items.find((i) => i.id === 'queue-failed-feat');
+    expect(item).toBeDefined();
+    expect(item!.severity).toBe('warning');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -280,7 +407,7 @@ describe('selectNowActiveBuildCards', () => {
       liveEvents: [phaseEvent],
     });
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
-    expect(cards[0].currentPhase).toBe('my-plans / build');
+    expect(cards[0].currentPhase).toBe('My Plans / build');
   });
 
   it('derives latest agent from an agent:start event', () => {

@@ -1,6 +1,7 @@
 // --- eforge:region runs-build-entrypoints ---
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { RunGroupViewModel } from '@/lib/selectors/runs';
 import type { ActiveSessionDetail } from '@/hooks/use-active-session-streams';
@@ -86,16 +87,10 @@ function ActiveRunCard({
           {group.planCountLabel && (
             <span className="text-muted-foreground">{group.planCountLabel}</span>
           )}
-          {group.profileLabel && (
-            <span className="text-muted-foreground">profile:{group.profileLabel}</span>
-          )}
         </div>
         <div className="flex items-center gap-3 text-muted-foreground flex-wrap">
           {group.startedAt && (
             <span>started: {formatAbsolute(group.startedAt)}</span>
-          )}
-          {group.cwd && (
-            <span className="font-mono truncate max-w-xs">{group.cwd}</span>
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -126,18 +121,16 @@ interface StreamStatusBadgeProps {
 }
 
 function StreamStatusBadge({ status }: StreamStatusBadgeProps) {
-  let colorClass: string;
-  if (status === 'connected') {
-    colorClass = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-  } else if (status === 'disconnected') {
-    colorClass = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-  } else {
-    colorClass = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-  }
+  const variant =
+    status === 'connected'
+      ? 'secondary'
+      : status === 'disconnected'
+        ? 'destructive'
+        : 'outline';
   return (
-    <span className={`text-xs font-mono px-1 rounded ${colorClass}`}>
+    <Badge variant={variant} className="font-mono text-xs">
       stream:{status}
-    </span>
+    </Badge>
   );
 }
 

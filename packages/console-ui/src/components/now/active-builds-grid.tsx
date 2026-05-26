@@ -7,18 +7,13 @@ interface ActiveBuildsGridProps {
 }
 
 export function ActiveBuildsGrid({ cards }: ActiveBuildsGridProps) {
+  if (cards.length === 0) return null;
+
   return (
-    <section className="mb-4">
-      <h2 className="text-sm font-semibold text-foreground mb-2">Active builds</h2>
-      {cards.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No active builds</p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {cards.map((card) => (
-            <ActiveBuildCard key={card.sessionId} card={card} />
-          ))}
-        </div>
-      )}
-    </section>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {cards.map((card) => (
+        <ActiveBuildCard key={card.sessionId} card={card} />
+      ))}
+    </div>
   );
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, within } from '@testing-library/react';
 import { QueueView } from '@/views/queue';
+import { QueueSummaryCards } from '@/views/queue/queue-summary-cards';
 import { App } from '@/app';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import type { QueueItem } from '@eforge-build/client/browser';
@@ -203,6 +204,20 @@ describe('QueueView – populated rows', () => {
     expect(getByText('My feature build')).toBeDefined();
   });
 
+  it('renders normalized label for markdown-shaped title', () => {
+    const { getByText, queryByText } = render(
+      <QueueView
+        projectState={makeState({
+          queue: [makeItem({ id: 'add-mcp-server', title: '# Add MCP Server' })],
+        })}
+      />,
+    );
+    // Normalized label strips the markdown heading marker
+    expect(getByText('Add MCP Server')).toBeDefined();
+    // Raw markdown-shaped title must not leak into the row
+    expect(queryByText('# Add MCP Server')).toBeNull();
+  });
+
   it('renders item id in queue rows', () => {
     const { getByText } = render(
       <QueueView
@@ -255,9 +270,48 @@ describe('QueueView – dependency chips', () => {
 // Summary cards
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// QueueSummaryCards isolated tests
+// ---------------------------------------------------------------------------
+
+describe('QueueSummaryCards', () => {
+  it('renders exactly four summary card labels: Total, Running, Pending, Failed', () => {
+    const { getByText, queryByText, container } = render(
+      <QueueSummaryCards
+        summary={{
+          total: 6,
+          running: 1,
+          pending: 2,
+          failed: 2,
+          waiting: 1,
+          withDependencies: 1,
+          withRecoveryVerdict: 1,
+          recoveryPending: 0,
+        }}
+      />,
+    );
+
+    // All four summary card labels are present
+    expect(getByText('Total')).toBeDefined();
+    expect(getByText('Running')).toBeDefined();
+    expect(getByText('Pending')).toBeDefined();
+    expect(getByText('Failed')).toBeDefined();
+
+    // Exactly four cards rendered
+    const cards = container.querySelectorAll('.rounded-md');
+    expect(cards).toHaveLength(4);
+
+    // Removed summary card labels must be absent
+    expect(queryByText('Waiting')).toBeNull();
+    expect(queryByText('With deps')).toBeNull();
+    expect(queryByText('Recovery verdict')).toBeNull();
+    expect(queryByText('Recovery pending')).toBeNull();
+  });
+});
+
 describe('QueueView – summary cards', () => {
-  it('renders summary cards with correct derived counts', () => {
-    const { getByText } = render(
+  it('renders exactly four summary cards: Total, Running, Pending, Failed', () => {
+    const { getByText, getAllByText, queryByText } = render(
       <QueueView
         projectState={makeState({
           queue: [
@@ -272,27 +326,36 @@ describe('QueueView – summary cards', () => {
       />,
     );
 
-    // Labels unique to QueueSummaryCards must be present
-    const withDepsLabel = getByText('With deps');
-    expect(withDepsLabel).toBeDefined();
+    // The four summary card labels must be present.
+    // Total only appears in the summary card area.
+    expect(getByText('Total')).toBeDefined();
+    // Running, Pending, Failed also appear in status group headings — use getAllByText.
+    expect(getAllByText('Running').length).toBeGreaterThanOrEqual(1);
+    expect(getAllByText('Pending').length).toBeGreaterThanOrEqual(1);
+    expect(getAllByText('Failed').length).toBeGreaterThanOrEqual(1);
 
-    const recoveryVerdictLabel = getByText('Recovery verdict');
-    expect(recoveryVerdictLabel).toBeDefined();
+    // Waiting is a status but not a summary card label.
+    // It may appear in the status group heading — query for the exact summary card label text.
+    // The summary cards container only renders Total/Running/Pending/Failed.
+    expect(queryByText('With deps')).toBeNull();
+    expect(queryByText('Recovery verdict')).toBeNull();
+    // "Recovery pending" (capital R) is the summary card label; item rows use lowercase "recovery pending"
+    expect(queryByText('Recovery pending')).toBeNull();
+  });
 
-    const recoveryPendingLabel = getByText('Recovery pending');
-    expect(recoveryPendingLabel).toBeDefined();
+  it('renders no Needs Attention heading in queue view', () => {
+    const { queryByText } = render(
+      <QueueView
+        projectState={makeState({
+          queue: [
+            makeItem({ id: 'q-1', status: 'failed' }),
+          ],
+        })}
+      />,
+    );
 
-    // Count for "With deps" should be 1
-    const withDepsCount = withDepsLabel.previousElementSibling;
-    expect(withDepsCount?.textContent).toBe('1');
-
-    // Count for "Recovery verdict" should be 1
-    const recoveryVerdictCount = recoveryVerdictLabel.previousElementSibling;
-    expect(recoveryVerdictCount?.textContent).toBe('1');
-
-    // Count for "Recovery pending" should be 1
-    const recoveryPendingCount = recoveryPendingLabel.previousElementSibling;
-    expect(recoveryPendingCount?.textContent).toBe('1');
+    expect(queryByText('Needs Attention')).toBeNull();
+    expect(queryByText(/Attention/)).toBeNull();
   });
 });
 
@@ -302,7 +365,7 @@ describe('QueueView – summary cards', () => {
 
 describe('QueueView – recovery verdict chip', () => {
   it('renders recovery verdict for failed item with verdict', () => {
-    const { getAllByText } = render(
+    const { getByLabelText } = render(
       <QueueView
         projectState={makeState({
           queue: [
@@ -315,12 +378,10 @@ describe('QueueView – recovery verdict chip', () => {
         })}
       />,
     );
-    // Failed item appears in attention section + status group – may match multiple times
-    const verdictNodes = getAllByText('retry');
-    expect(verdictNodes.length).toBeGreaterThan(0);
-    // Confidence must also be rendered alongside the verdict
-    const confidenceNodes = getAllByText('high');
-    expect(confidenceNodes.length).toBeGreaterThan(0);
+    // Scope assertions to the failed queue row to verify the chip renders inline there
+    const row = getByLabelText('Queue item q-1');
+    expect(within(row).getByText('retry')).toBeDefined();
+    expect(within(row).getByText('high')).toBeDefined();
   });
 });
 
@@ -337,7 +398,7 @@ describe('QueueView – recovery-pending text', () => {
         })}
       />,
     );
-    // May appear multiple times (attention section + status group)
+    // Appears in the status group item row
     const nodes = getAllByText('recovery pending');
     expect(nodes.length).toBeGreaterThan(0);
   });
@@ -447,6 +508,8 @@ describe('App – /console/queue route', () => {
     expect(
       getByText('This is a read-only view. Queue operations are not available in the Console.'),
     ).toBeDefined();
+    // The old header chip with exact text "read-only view" must be absent
+    expect(queryByText('read-only view', { exact: true })).toBeNull();
     // RoutePlaceholder fallback description for the queue route must be absent
     expect(queryByText(/Inspect and manage the build queue\./)).toBeNull();
   });

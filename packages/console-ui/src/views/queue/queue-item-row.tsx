@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { DependencyChips } from './dependency-chips';
 import { RecoveryVerdictChip } from './recovery-verdict-chip';
+import { selectQueueItemDisplayLabel } from '@/lib/selectors/queue';
 
 interface QueueItemRowProps {
   item: QueueItem;
@@ -40,6 +41,7 @@ function formatCreated(created: string): string {
  */
 export function QueueItemRow({ item }: QueueItemRowProps) {
   const isFailed = item.status.toLowerCase() === 'failed';
+  const displayLabel = selectQueueItemDisplayLabel(item);
 
   return (
     <div
@@ -51,30 +53,30 @@ export function QueueItemRow({ item }: QueueItemRowProps) {
     >
       {/* Top row: id + status + priority */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[10px] text-muted-foreground shrink-0">{item.id}</span>
+        <span className="font-mono text-xs text-muted-foreground shrink-0">{item.id}</span>
 
         <Badge
           variant="outline"
-          className={cn('text-[10px] px-1.5 py-0', getStatusBadgeClass(item.status))}
+          className={cn('text-xs px-1.5 py-0', getStatusBadgeClass(item.status))}
         >
           {item.status}
         </Badge>
 
         {item.priority != null && (
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {`Priority ${item.priority}`}
           </span>
         )}
 
         {item.created && (
-          <span className="ml-auto text-[10px] text-muted-foreground">
+          <span className="ml-auto text-xs text-muted-foreground">
             {formatCreated(item.created)}
           </span>
         )}
       </div>
 
       {/* Title */}
-      <p className="text-sm font-medium leading-tight text-foreground">{item.title}</p>
+      <p className="text-sm font-medium leading-tight text-foreground">{displayLabel}</p>
 
       {/* Dependencies */}
       {item.dependsOn && item.dependsOn.length > 0 && (
@@ -84,11 +86,11 @@ export function QueueItemRow({ item }: QueueItemRowProps) {
       {/* Recovery state (only for failed items) */}
       {isFailed && (
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground">Recovery:</span>
+          <span className="text-xs text-muted-foreground">Recovery:</span>
           {item.recoveryVerdict ? (
             <RecoveryVerdictChip recoveryVerdict={item.recoveryVerdict} />
           ) : (
-            <span className="text-[10px] text-muted-foreground italic">recovery pending</span>
+            <span className="text-xs text-muted-foreground italic">recovery pending</span>
           )}
         </div>
       )}

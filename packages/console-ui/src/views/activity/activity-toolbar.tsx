@@ -3,12 +3,9 @@
  *
  * Renders:
  *  - Family count chips (all, daemon, scheduler, queue, session, agent, extension, stack, other)
- *  - Attention-only toggle
- *  - Event type text search
- *  - Identifier text search
+ *  - Single search input (searches event type and identifiers)
  */
 import * as React from 'react';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ActivityFamily, ActivityFilterState, ActivityGroupCounts } from '@/lib/selectors/activity';
 
@@ -35,16 +32,8 @@ export function ActivityToolbar({ filters, groupCounts, onFiltersChange }: Activ
     onFiltersChange({ ...filters, family });
   };
 
-  const handleAttentionToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onFiltersChange({ ...filters, attentionOnly: e.target.checked });
-  };
-
-  const handleTypeQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onFiltersChange({ ...filters, typeQuery: e.target.value });
-  };
-
-  const handleIdentifierQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onFiltersChange({ ...filters, identifierQuery: e.target.value });
+  const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onFiltersChange({ ...filters, query: e.target.value });
   };
 
   return (
@@ -70,7 +59,7 @@ export function ActivityToolbar({ filters, groupCounts, onFiltersChange }: Activ
               {label}
               <span
                 className={cn(
-                  'rounded-full px-1 text-[10px] font-semibold tabular-nums',
+                  'rounded-full px-1 text-xs font-semibold tabular-nums',
                   isActive ? 'bg-primary-foreground/20 text-primary-foreground' : 'text-muted-foreground',
                 )}
               >
@@ -81,48 +70,19 @@ export function ActivityToolbar({ filters, groupCounts, onFiltersChange }: Activ
         })}
       </div>
 
-      {/* Filter controls */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Attention only toggle */}
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={filters.attentionOnly}
-            onChange={handleAttentionToggle}
-            className="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
-            aria-label="Attention only"
-          />
-          Attention only
-        </label>
-
-        {/* Event type search */}
-        <input
-          type="text"
-          value={filters.typeQuery}
-          onChange={handleTypeQueryChange}
-          placeholder="Search event type…"
-          className={cn(
-            'h-7 min-w-[140px] flex-1 rounded-md border border-input bg-background px-2.5 py-1',
-            'text-xs text-foreground placeholder:text-muted-foreground',
-            'focus:outline-none focus:ring-1 focus:ring-ring',
-          )}
-          aria-label="Search event type"
-        />
-
-        {/* Identifier search */}
-        <input
-          type="text"
-          value={filters.identifierQuery}
-          onChange={handleIdentifierQueryChange}
-          placeholder="Search session, plan, run…"
-          className={cn(
-            'h-7 min-w-[160px] flex-1 rounded-md border border-input bg-background px-2.5 py-1',
-            'text-xs text-foreground placeholder:text-muted-foreground',
-            'focus:outline-none focus:ring-1 focus:ring-ring',
-          )}
-          aria-label="Search identifiers"
-        />
-      </div>
+      {/* Search input */}
+      <input
+        type="text"
+        value={filters.query}
+        onChange={handleQueryChange}
+        placeholder="Search event type or identifier…"
+        className={cn(
+          'h-7 w-full rounded-md border border-input bg-background px-2.5 py-1',
+          'text-xs text-foreground placeholder:text-muted-foreground',
+          'focus:outline-none focus:ring-1 focus:ring-ring',
+        )}
+        aria-label="Search activity"
+      />
     </div>
   );
 }

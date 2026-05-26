@@ -52,6 +52,27 @@ export function formatTimestamp(ts: string | number): string {
 }
 
 /**
+ * Format a timestamp string or epoch ms to an absolute date+time locale string.
+ * Used where an unambiguous absolute timestamp is needed (e.g. status strip footer).
+ */
+export function formatAbsoluteTimestamp(ts: string | number): string {
+  try {
+    const d = typeof ts === 'number' ? new Date(ts) : new Date(ts);
+    if (isNaN(d.getTime())) return String(ts);
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return String(ts);
+  }
+}
+
+/**
  * Capitalize and lightly humanize a status string (e.g. "in_progress" -> "In progress").
  */
 export function formatStatusLabel(status: string): string {
@@ -67,4 +88,22 @@ export function formatStatusLabel(status: string): string {
 export function truncateId(id: string, length = 8): string {
   if (!id) return '';
   return id.length > length ? id.slice(0, length) : id;
+}
+
+/**
+ * Return a count string with the correct singular or plural form.
+ *
+ * @param n        - The count to display.
+ * @param singular - The singular noun (e.g. "run").
+ * @param plural   - Optional plural form; defaults to `singular + "s"`.
+ *
+ * @example
+ * pluralize(1, 'run')       // "1 run"
+ * pluralize(3, 'run')       // "3 runs"
+ * pluralize(1, 'activity')  // "1 activity"
+ * pluralize(2, 'activity', 'activities') // "2 activities"
+ */
+export function pluralize(n: number, singular: string, plural?: string): string {
+  const form = n === 1 ? singular : (plural ?? `${singular}s`);
+  return `${n} ${form}`;
 }

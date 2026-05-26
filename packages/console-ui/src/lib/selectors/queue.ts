@@ -6,6 +6,7 @@
  * All imports come from browser-safe client exports only.
  */
 import type { QueueItem } from '@eforge-build/client/browser';
+import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 
 // ---------------------------------------------------------------------------
 // UI-derived types
@@ -185,5 +186,19 @@ export function selectQueueStatusGroups(items: QueueItem[]): QueueStatusGroup[] 
   }
 
   return groups;
+}
+// ---------------------------------------------------------------------------
+// selectQueueItemDisplayLabel
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a normalised display label for a QueueItem.
+ *
+ * Resolution order (via `selectPrdDisplayLabel`):
+ * 1. `item.title` if present and not markdown-shaped.
+ * 2. Slug-derived label from `item.id`.
+ */
+export function selectQueueItemDisplayLabel(item: QueueItem): string {
+  return selectPrdDisplayLabel(item.title, item.id);
 }
 // --- eforge:endregion plan-02-queue-view ---

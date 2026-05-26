@@ -12,13 +12,15 @@ import { PlaybooksSection } from './playbooks-section';
 import { SessionPlansSection } from './session-plans-section';
 import { ModelsSection } from './models-section';
 import type { SystemSurfacesState } from './system-types';
+import type { ConsoleProjectState } from '@/lib/project-state';
 
 interface SystemViewContentProps {
   state: SystemSurfacesState;
   onRefresh: () => void;
+  projectState?: ConsoleProjectState;
 }
 
-export function SystemViewContent({ state, onRefresh }: SystemViewContentProps) {
+export function SystemViewContent({ state, onRefresh, projectState }: SystemViewContentProps) {
   return (
     <div className="flex flex-col h-full overflow-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b">
@@ -43,6 +45,7 @@ export function SystemViewContent({ state, onRefresh }: SystemViewContentProps) 
           health={state.daemon.health}
           version={state.daemon.version}
           projectContext={state.daemon.projectContext}
+          projectState={projectState}
         />
 
         <ConfigSection

@@ -11,8 +11,8 @@ interface SystemConfigurationViewProps {
   projectState: ConsoleProjectState;
 }
 
-export function SystemConfigurationView({ projectState: _projectState }: SystemConfigurationViewProps) {
+export function SystemConfigurationView({ projectState }: SystemConfigurationViewProps) {
   const { state, refresh } = useSystemSurfaces();
 
-  return <SystemViewContent state={state} onRefresh={refresh} />;
+  return <SystemViewContent state={state} projectState={projectState} onRefresh={refresh} />;
 }

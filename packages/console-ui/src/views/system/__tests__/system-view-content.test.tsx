@@ -1,7 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, fireEvent } from '@testing-library/react';
 import { SystemViewContent } from '../system-view-content';
+import { SystemConfigurationView } from '../system-configuration-view';
 import type { SystemSurfacesState } from '../system-types';
+import { initialConsoleProjectState } from '@/lib/project-state';
+import type { ConsoleProjectState } from '@/lib/project-state';
 
 // ---------------------------------------------------------------------------
 // Fixture builders
@@ -290,10 +293,14 @@ describe('SystemViewContent', () => {
     expect(getByText('Add new feature')).toBeDefined();
   });
 
-  it('renders model id', () => {
-    const { getByText } = render(
+  it('renders model id after expanding provider', () => {
+    const { container, getByText } = render(
       <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
     );
+    // Providers are collapsed by default; click the first summary to expand it.
+    const summaries = container.querySelectorAll('details > summary');
+    expect(summaries.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(summaries[summaries.length - 1]!);
     expect(getByText('claude-3-5-sonnet-20241022')).toBeDefined();
   });
 
@@ -312,9 +319,7 @@ describe('SystemViewContent', () => {
     const { getAllByText } = render(
       <SystemViewContent state={makeEmptyState()} onRefresh={() => {}} />,
     );
-    // Both harnesses should show "No providers reported" and "No models reported"
-    const noProviders = getAllByText('No providers reported');
-    expect(noProviders.length).toBeGreaterThanOrEqual(1);
+    // Both harnesses should show "No models reported" when empty
     const noModels = getAllByText('No models reported');
     expect(noModels.length).toBeGreaterThanOrEqual(1);
   });
@@ -462,5 +467,221 @@ describe('SystemViewContent', () => {
     );
     expect(queryByRole('button', { name: /sync stack/i })).toBeNull();
     expect(queryByRole('link', { name: /sync stack/i })).toBeNull();
+  });
+
+  // --- eforge:region plan-05-system-activity-progressive-disclosure-and-guards ---
+  it('Models section renders at least one <details> per provider in the loaded state', () => {
+    const { container } = render(
+      <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
+    );
+    // makeLoadedState has models for pi (anthropic) and claude-sdk (anthropic)
+    // Each harness should have one provider <details>
+    const details = container.querySelectorAll('details');
+    expect(details.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('Models section provider <details> elements are closed on initial render', () => {
+    const { container } = render(
+      <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
+    );
+    const details = container.querySelectorAll('details');
+    for (const el of Array.from(details)) {
+      expect(el.hasAttribute('open')).toBe(false);
+    }
+  });
+
+  it('Models section renders zero <li> elements while all providers are collapsed', () => {
+    const { container } = render(
+      <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
+    );
+    // Scope to the Models section only — other sections (profiles, extensions, etc.) use <li> elements
+    const modelsSection = container.querySelector('section[aria-label="Models"]');
+    expect(modelsSection).not.toBeNull();
+    const listItems = modelsSection!.querySelectorAll('li');
+    expect(listItems.length).toBe(0);
+  });
+
+  it('Models section renders a text input with an accessible name for model search', () => {
+    const { container } = render(
+      <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
+    );
+    const searchInput = container.querySelector('input[type="text"][aria-label]');
+    expect(searchInput).not.toBeNull();
+    const label = searchInput!.getAttribute('aria-label') ?? '';
+    expect(label.toLowerCase()).toMatch(/model/i);
+  });
+  // --- eforge:endregion plan-05-system-activity-progressive-disclosure-and-guards ---
+});
+
+// ---------------------------------------------------------------------------
+// Daemon telemetry rows from project state
+// ---------------------------------------------------------------------------
+
+describe('SystemViewContent – daemon telemetry from project state', () => {
+  function makeProjectStateWithTelemetry(): ConsoleProjectState {
+    return {
+      ...initialConsoleProjectState,
+      connectionStatus: 'connected',
+      latestHeartbeat: {
+        at: Date.now(),
+        payload: {
+          uptime: 65_000,
+          queueDepth: 3,
+          runningBuilds: 1,
+          autoBuild: {
+            enabled: true,
+            paused: false,
+            scheduler: { alive: true, paused: false, runningCount: 1, limit: 5 },
+          },
+          subscribers: 4,
+        },
+      },
+    };
+  }
+
+  it('renders Subscribers row when project state has subscriber count', () => {
+    const { getByText } = render(
+      <SystemViewContent
+        state={makeLoadedState()}
+        projectState={makeProjectStateWithTelemetry()}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(getByText('Subscribers')).toBeDefined();
+    expect(getByText('4')).toBeDefined();
+  });
+
+  it('renders Uptime row when project state has uptime', () => {
+    const { getByText } = render(
+      <SystemViewContent
+        state={makeLoadedState()}
+        projectState={makeProjectStateWithTelemetry()}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(getByText('Uptime')).toBeDefined();
+    // 65000ms = 1m 5s
+    expect(getByText('1m 5s')).toBeDefined();
+  });
+
+  it('renders Scheduler limit row when project state has scheduler limit', () => {
+    const { getByText } = render(
+      <SystemViewContent
+        state={makeLoadedState()}
+        projectState={makeProjectStateWithTelemetry()}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(getByText('Scheduler limit')).toBeDefined();
+    expect(getByText('5')).toBeDefined();
+  });
+
+  it('does not render telemetry rows when project state is absent', () => {
+    const { queryByText } = render(
+      <SystemViewContent state={makeLoadedState()} onRefresh={() => {}} />,
+    );
+    expect(queryByText('Subscribers')).toBeNull();
+    expect(queryByText('Uptime')).toBeNull();
+    expect(queryByText('Scheduler limit')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SystemConfigurationView — route wrapper passes projectState into content
+// ---------------------------------------------------------------------------
+
+vi.mock('../use-system-surfaces', () => ({
+  useSystemSurfaces: vi.fn(() => ({
+    state: {
+      daemon: {
+        health: { status: 'success', data: { status: 'ok', pid: 1 }, updatedAt: 1 },
+        version: { status: 'success', data: { version: 1, eforgeVersion: '1.0.0' }, updatedAt: 1 },
+        projectContext: { status: 'success', data: { cwd: '/project', gitRemote: null }, updatedAt: 1 },
+      },
+      config: {
+        show: {
+          status: 'success',
+          data: {
+            resolved: { concurrency: 2 },
+            sources: {
+              local: { path: '/project/.eforge/config.yaml', found: true },
+              user: { path: '/home/user/.config/eforge/config.yaml', found: false },
+            },
+          },
+          updatedAt: 1,
+        },
+        validate: { status: 'success', data: { configFound: true, valid: true }, updatedAt: 1 },
+      },
+      profiles: {
+        list: {
+          status: 'empty',
+          data: { profiles: [], active: null, source: 'none' },
+          updatedAt: 1,
+        },
+        active: {
+          status: 'success',
+          data: { active: null, source: 'none', resolved: { harness: undefined, profile: null } },
+          updatedAt: 1,
+        },
+      },
+      extensions: {
+        list: { status: 'empty', data: { extensions: [], diagnostics: [], totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0 } }, updatedAt: 1 },
+        validate: { status: 'success', data: { valid: true, extensions: [], diagnostics: [] }, updatedAt: 1 },
+      },
+      playbooks: {
+        list: { status: 'empty', data: { playbooks: [], warnings: [] }, updatedAt: 1 },
+      },
+      sessionPlans: {
+        list: { status: 'empty', data: { plans: [] }, updatedAt: 1 },
+      },
+      models: {
+        catalogs: {
+          pi: {
+            providers: { status: 'success', data: { providers: ['anthropic'] }, updatedAt: 1 },
+            models: { status: 'success', data: { models: [] }, updatedAt: 1 },
+          },
+          'claude-sdk': {
+            providers: { status: 'success', data: { providers: ['anthropic'] }, updatedAt: 1 },
+            models: { status: 'success', data: { models: [] }, updatedAt: 1 },
+          },
+        },
+      },
+    } as SystemSurfacesState,
+    refresh: vi.fn(),
+  })),
+}));
+
+describe('SystemConfigurationView – route wrapper passes projectState into content', () => {
+  function makeProjectStateWithTelemetry(): ConsoleProjectState {
+    return {
+      ...initialConsoleProjectState,
+      connectionStatus: 'connected',
+      latestHeartbeat: {
+        at: Date.now(),
+        payload: {
+          uptime: 65_000,
+          queueDepth: 3,
+          runningBuilds: 1,
+          autoBuild: {
+            enabled: true,
+            paused: false,
+            scheduler: { alive: true, paused: false, runningCount: 1, limit: 5 },
+          },
+          subscribers: 4,
+        },
+      },
+    };
+  }
+
+  it('renders Subscribers, Uptime, and Scheduler limit from projectState in the Daemon section', () => {
+    const { getByText } = render(
+      <SystemConfigurationView projectState={makeProjectStateWithTelemetry()} />,
+    );
+    expect(getByText('Subscribers')).toBeDefined();
+    expect(getByText('4')).toBeDefined();
+    expect(getByText('Uptime')).toBeDefined();
+    expect(getByText('1m 5s')).toBeDefined();
+    expect(getByText('Scheduler limit')).toBeDefined();
+    expect(getByText('5')).toBeDefined();
   });
 });

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import * as React from 'react';
 import { NowDashboard } from '@/views/now-dashboard';
+import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
 import { initialConsoleProjectState } from '@/lib/project-state';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
@@ -53,7 +54,7 @@ function connectedState(overrides: Partial<ConsoleProjectState> = {}): ConsolePr
 // ---------------------------------------------------------------------------
 
 describe('NowDashboard - populated state', () => {
-  it('renders Attention, Active builds, Queue, Recent runs, Stack layers, Recent activity sections when data exists', () => {
+  it('renders Attention, Queue, Recent runs, Stack layers, Recent activity sections when data exists', () => {
     const state = connectedState({
       runs: [makeRun()],
       queue: [makeQueue({ status: 'failed' })],
@@ -87,8 +88,6 @@ describe('NowDashboard - populated state', () => {
     expect(screen.getByText('Stack layers')).toBeDefined();
     // Recent activity section
     expect(screen.getByText('Recent activity')).toBeDefined();
-    // Active builds section heading (may appear multiple times due to metric card)
-    expect(screen.getAllByText('Active builds').length).toBeGreaterThanOrEqual(1);
     // Queue card heading
     expect(screen.getByText('Queue')).toBeDefined();
     // Recent runs card heading
@@ -128,8 +127,10 @@ describe('NowDashboard - populated state', () => {
 
     render(<NowDashboard projectState={state} activeSessions={activeSessions} />);
 
-    // Both plan sets appear as card titles
-    expect(screen.getAllByText(/plans-alpha|plans-beta/).length).toBeGreaterThanOrEqual(2);
+    // Both plan sets appear as card titles.
+    // selectPrdDisplayLabel title-cases slugs ("plans-alpha" -> "Plans Alpha"),
+    // so the regex must be case-insensitive.
+    expect(screen.getAllByText(/plans[\s-]alpha|plans[\s-]beta/i).length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -138,7 +139,7 @@ describe('NowDashboard - populated state', () => {
 // ---------------------------------------------------------------------------
 
 describe('NowDashboard - empty connected state', () => {
-  it('shows Queue is empty, No active builds, and No recent activity in the daemon snapshot', () => {
+  it('shows Queue is empty and No recent activity in the daemon snapshot', () => {
     const state = connectedState({
       queue: [],
       runs: [],
@@ -149,8 +150,38 @@ describe('NowDashboard - empty connected state', () => {
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
 
     expect(screen.getByText('Queue is empty')).toBeDefined();
-    expect(screen.getByText('No active builds')).toBeDefined();
     expect(screen.getByText('No recent activity in the daemon snapshot')).toBeDefined();
+  });
+
+  it('renders no active builds section when there are no active builds', () => {
+    const state = connectedState({
+      runs: [],
+      queue: [],
+    });
+
+    const { container } = render(
+      <NowDashboard projectState={state} activeSessions={emptyActiveSessions} />,
+    );
+
+    // ActiveBuildsGrid returns null for empty cards — no section heading or "No active builds" text
+    expect(screen.queryByText('Active builds')).toBeNull();
+    expect(screen.queryByText('No active builds')).toBeNull();
+    // The grid container itself should not be in the DOM
+    const grids = container.querySelectorAll('.grid');
+    // There should be no active-builds grid (the queue/runs card grid is a different grid)
+    const activeBuildsText = container.textContent ?? '';
+    expect(activeBuildsText).not.toContain('Active builds');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ActiveBuildsGrid - isolated empty render
+// ---------------------------------------------------------------------------
+
+describe('ActiveBuildsGrid', () => {
+  it('renders nothing when cards is an empty array', () => {
+    const { container } = render(<ActiveBuildsGrid cards={[]} />);
+    expect(container.firstChild).toBeNull();
   });
 });
 
