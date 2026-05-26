@@ -1,0 +1,103 @@
+name: improve-recovery-sidecar-accuracy-and-robustness
+description: Improve recovery sidecar accuracy and robustness by reconstructing
+  all failed-run plan facts from monitor.db, adding complete multi-failure
+  recovery summary fields, rendering deterministic facts in sidecars, and
+  introducing deterministic recovery verdict selection with analyst invariant
+  validation.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- recovery
+plans:
+  - id: plan-01-recovery-summary-reconstruction
+    name: Recovery Summary Multi-Plan Reconstruction
+    depends_on: []
+    branch: improve-recovery-sidecar-accuracy-and-robustness/plan-01-recovery-summary-reconstruction
+    build:
+      - test-write
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Run-level event synthesis needs careful SQLite querying,
+          backward-compatible shared wire shape extensions, and sidecar
+          rendering changes across engine and client types.
+      reviewer:
+        effort: high
+        rationale: Review must verify compatibility of optional schema fields and
+          preservation of terminal failure fallback paths.
+      test-writer:
+        effort: high
+        rationale: Regression tests need real monitor DB fixtures that fail against the
+          current latest-failure-only query.
+  - id: plan-02-deterministic-recovery-verdicts
+    name: Deterministic Recovery Verdicts and Analyst Validation
+    depends_on:
+      - plan-01-recovery-summary-reconstruction
+    branch: improve-recovery-sidecar-accuracy-and-robustness/plan-02-deterministic-recovery-verdicts
+    build:
+      - test-write
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan adds a new policy layer, invariant validation, prompt
+          changes, and recovery flow integration without changing apply-recovery
+          semantics.
+      reviewer:
+        effort: high
+        rationale: Review must verify verdict precedence, source metadata, and
+          conservative transient-failure classification.
+      test-writer:
+        effort: high
+        rationale: Tests need to cover deterministic policy, analyst parse fallbacks,
+          invariant rejection, and integration sidecars.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - test-write
+      - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: This is a cohesive cross-cutting bugfix touching recovery synthesis,
+    shared wire schemas, sidecar rendering, deterministic verdict policy,
+    analyst parsing, prompts, and tests, but a single planner can enumerate the
+    work, so excursion is appropriate. A plan review gate is included because
+    the change spans multiple recovery/client surfaces and has compatibility
+    risks. The build pipeline writes regression tests and syncs docs/prompts
+    after implementation, then runs an iterative code/API review cycle and a
+    final test cycle to verify the recovery behavior and schema compatibility.
+    Strict review is warranted because recovery decisions and shared client
+    schemas must remain accurate and backward compatible.
