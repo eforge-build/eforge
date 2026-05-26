@@ -1860,6 +1860,7 @@ export function createProgram(abortController?: AbortController, version?: strin
               dryRun,
               activeBuildSkips: [],
               providerCommands: [],
+              restackCandidates: [],
             };
             renderStackSyncReport(skippedReport, dryRun);
             return;
