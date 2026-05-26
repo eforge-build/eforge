@@ -142,9 +142,11 @@ async function discoverPrUrlViaGh(cwd: string, branch: string): Promise<string |
  * For `landingAction === 'pr'`:
  *   1. Emits `stack:landing:update` started
  *   2. Calls `provider.trackBranch` → emits `stack:provider:command`
- *   3. Calls `provider.submitBranch` → emits `stack:provider:command`
- *   4. Discovers PR URL from submit output (or via `gh pr view` fallback)
- *   5. Persists landing state and emits `stack:landing:update` complete/failed
+ *   3. Runs optional cleanup (non-fatal)
+ *   4. Calls `provider.restackBranch` → emits `stack:provider:command`
+ *   5. Calls `provider.submitBranch` → emits `stack:provider:command`
+ *   6. Discovers PR URL from submit output (or via `gh pr view` fallback)
+ *   7. Persists landing state and emits `stack:landing:update` complete/failed
  *
  * For non-pr actions (`merge`, `leave`) or when stacked landing is not
  * applicable, emits `stack:landing:update` skipped and returns.
@@ -255,7 +257,39 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   }
   // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
-  // Step 3: Submit the branch as a PR
+  // --- eforge:region plan-01-restack-before-stacked-pr-submit ---
+  // Step 3: Restack branch so it sits atop the latest base tip before submit
+  let restackResult: ProviderCommandResult;
+  try {
+    restackResult = await provider.restackBranch(mergeWorktreePath);
+    yield stackProviderCommandEvent(providerName, branch, restackResult);
+  } catch (err) {
+    const commandEvent = stackProviderCommandEventFromError(providerName, branch, err);
+    if (commandEvent) yield commandEvent;
+    const reason = redactProviderMessage(err instanceof Error ? err.message : String(err));
+    const failedAt = ts();
+    await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
+      action: landingAction,
+      status: 'failed',
+      reason,
+      startedAt,
+      completedAt: failedAt,
+    });
+    yield {
+      timestamp: failedAt,
+      type: 'stack:landing:update',
+      prdId,
+      stackId,
+      action: landingAction,
+      branch,
+      status: 'failed',
+      reason,
+    } as EforgeEvent;
+    return;
+  }
+  // --- eforge:endregion plan-01-restack-before-stacked-pr-submit ---
+
+  // Step 4: Submit the branch as a PR
   let submitResult: ProviderCommandResult;
   try {
     submitResult = await provider.submitBranch(mergeWorktreePath);
@@ -287,12 +321,12 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     return;
   }
 
-  // Step 4: Discover PR URL — parse from submit output, then gh fallback
+  // Step 5: Discover PR URL — parse from submit output, then gh fallback
   const prUrl =
     parseGitSpicePrUrl(submitResult.stdout) ??
     (await discoverPrUrlViaGh(mergeWorktreePath, branch));
 
-  // Step 5: Persist complete landing state with layer status transition to 'landed'
+  // Step 6: Persist complete landing state with layer status transition to 'landed'
   const completedAt = ts();
   // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
   await updateStackLayerStatusAndLanding(cwd, prdId, 'landed', {
@@ -316,7 +350,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   } as EforgeEvent;
 
   // --- eforge:region plan-01-core-engine-auto-merge ---
-  // Step 6: Attempt PR auto-merge (non-fatal) after successful PR landing.
+  // Step 7: Attempt PR auto-merge (non-fatal) after successful PR landing.
   const shouldAutoMerge = resolvePrAutoMergeIntent(prAutoMergePolicy, landingAutoMerge);
   if (shouldAutoMerge) {
     if (prUrl === undefined) {

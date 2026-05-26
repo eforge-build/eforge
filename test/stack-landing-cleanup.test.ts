@@ -83,10 +83,10 @@ async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEv
 // ---------------------------------------------------------------------------
 
 describe('executeStackLanding — cleanup before submit', () => {
-  it('emits a planning:progress cleanup event before the submitBranch provider:command event when shouldCleanup is true', async () => {
+  it('emits cleanup progress after track, restack after cleanup, and submit after restack when shouldCleanup is true', async () => {
     // The temp dir is not a git repo, so git checkout inside runCleanup will fail.
     // runCleanup catches the error non-fatally and emits a planning:progress event.
-    // That event must appear before the submit stack:provider:command.
+    // Order must be: trackBranch provider:command → planning:progress → restackBranch provider:command → submitBranch provider:command
     const provider = makeStubProvider();
     const opts: StackLandingOptions = {
       cwd,
@@ -101,7 +101,17 @@ describe('executeStackLanding — cleanup before submit', () => {
 
     const events = await collectEvents(executeStackLanding(opts));
 
+    const trackIdx = events.findIndex(
+      (e) =>
+        e.type === 'stack:provider:command' &&
+        ((e as Record<string, unknown>).args as string[]).includes('track'),
+    );
     const progressIdx = events.findIndex((e) => e.type === 'planning:progress');
+    const restackIdx = events.findIndex(
+      (e) =>
+        e.type === 'stack:provider:command' &&
+        ((e as Record<string, unknown>).args as string[]).includes('restack'),
+    );
     const submitIdx = events.findIndex(
       (e) =>
         e.type === 'stack:provider:command' &&
@@ -109,9 +119,14 @@ describe('executeStackLanding — cleanup before submit', () => {
         ((e as Record<string, unknown>).args as string[]).includes('submit'),
     );
 
+    expect(trackIdx).toBeGreaterThanOrEqual(0);
     expect(progressIdx).toBeGreaterThanOrEqual(0);
+    expect(restackIdx).toBeGreaterThanOrEqual(0);
     expect(submitIdx).toBeGreaterThanOrEqual(0);
-    expect(progressIdx).toBeLessThan(submitIdx);
+    // Ordering: track → cleanup(progress) → restack → submit
+    expect(trackIdx).toBeLessThan(progressIdx);
+    expect(progressIdx).toBeLessThan(restackIdx);
+    expect(restackIdx).toBeLessThan(submitIdx);
   });
 
   it('does not emit planning:progress cleanup events when shouldCleanup is false', async () => {
