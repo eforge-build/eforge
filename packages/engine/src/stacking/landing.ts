@@ -25,6 +25,10 @@ import { runCleanup } from '../landing.js';
 import { resolvePrAutoMergeIntent } from '../config.js';
 import { enablePullRequestAutoMerge } from '../worktree-ops.js';
 // --- eforge:endregion plan-01-core-engine-auto-merge ---
+// --- eforge:region plan-01-pr-metadata ---
+import { editPullRequest } from '../worktree-ops.js';
+import type { PullRequestMetadata } from '../pr-metadata.js';
+// --- eforge:endregion plan-01-pr-metadata ---
 
 const execFileAsync = promisify(execFile);
 
@@ -106,6 +110,10 @@ export interface StackLandingOptions {
   /** Per-run PR auto-merge intent (from landingAutoMerge option). */
   landingAutoMerge?: boolean;
   // --- eforge:endregion plan-01-core-engine-auto-merge ---
+  // --- eforge:region plan-01-pr-metadata ---
+  /** Optional deterministic PR metadata to apply via `gh pr edit` after URL discovery. */
+  metadata?: PullRequestMetadata;
+  // --- eforge:endregion plan-01-pr-metadata ---
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +167,9 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   // --- eforge:region plan-01-core-engine-auto-merge ---
   const { prAutoMergePolicy = 'ask', landingAutoMerge } = opts;
   // --- eforge:endregion plan-01-core-engine-auto-merge ---
+  // --- eforge:region plan-01-pr-metadata ---
+  const { metadata } = opts;
+  // --- eforge:endregion plan-01-pr-metadata ---
   const { prdId, stackId, branch, baseBranch, provider: providerName } = stackContext;
 
   const ts = (): string => new Date().toISOString();
@@ -325,6 +336,21 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   const prUrl =
     parseGitSpicePrUrl(submitResult.stdout) ??
     (await discoverPrUrlViaGh(mergeWorktreePath, branch));
+
+  // --- eforge:region plan-01-pr-metadata ---
+  // Step 5a: Apply deterministic PR metadata via gh pr edit (non-fatal).
+  if (prUrl !== undefined && metadata !== undefined) {
+    try {
+      await editPullRequest(mergeWorktreePath, prUrl, metadata);
+    } catch (editErr) {
+      yield {
+        timestamp: ts(),
+        type: 'planning:progress',
+        message: `PR metadata update failed (non-fatal): ${(editErr as Error).message}`,
+      } as EforgeEvent;
+    }
+  }
+  // --- eforge:endregion plan-01-pr-metadata ---
 
   // Step 6: Persist complete landing state with layer status transition to 'landed'
   const completedAt = ts();

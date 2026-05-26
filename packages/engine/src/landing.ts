@@ -30,6 +30,9 @@ import type { WorktreeManager } from './worktree-manager.js';
 import type { MergeResolver } from './worktree-ops.js';
 import type { ModelTracker } from './model-tracker.js';
 import { cleanupPlanFiles } from './cleanup.js';
+// --- eforge:region plan-01-pr-metadata ---
+import { renderPullRequestMetadata } from './pr-metadata.js';
+// --- eforge:endregion plan-01-pr-metadata ---
 // --- eforge:region plan-03-branch-aware-landing ---
 import { resolveTrunkBranch, isTrunkBranch } from './branch-policy.js';
 import type { EforgeConfig } from './config.js';
@@ -370,7 +373,15 @@ export async function* executeLandingAction(
 
     try {
       // Direct PR workflow: always publish featureBranch -> baseBranch
-      const prResult = await worktreeManager.issuePr({ baseBranch });
+      // --- eforge:region plan-01-pr-metadata ---
+      const prMetadata = renderPullRequestMetadata({
+        config: opts.config,
+        featureBranch,
+        baseBranch,
+        modelTracker: opts.modelTracker,
+      });
+      // --- eforge:endregion plan-01-pr-metadata ---
+      const prResult = await worktreeManager.issuePr({ baseBranch, metadata: prMetadata });
       const url = prResult.url;
 
       yield {
