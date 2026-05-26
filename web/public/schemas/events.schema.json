@@ -7909,6 +7909,21 @@
                       },
                       "terminalSubtype": {
                         "type": "string"
+                      },
+                      "commitSha": {
+                        "type": "string"
+                      },
+                      "testPassed": {
+                        "type": "number"
+                      },
+                      "testFailed": {
+                        "type": "number"
+                      },
+                      "completedAt": {
+                        "type": "string"
+                      },
+                      "toolUseCount": {
+                        "type": "number"
                       }
                     }
                   }
@@ -7933,6 +7948,9 @@
                     },
                     "terminalSubtype": {
                       "type": "string"
+                    },
+                    "toolUseCount": {
+                      "type": "number"
                     }
                   }
                 },
@@ -8100,6 +8118,35 @@
                     },
                     "reason": {
                       "type": "string"
+                    }
+                  }
+                },
+                "failingPlans": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "planId"
+                    ],
+                    "properties": {
+                      "planId": {
+                        "type": "string"
+                      },
+                      "agentId": {
+                        "type": "string"
+                      },
+                      "agentRole": {
+                        "type": "string"
+                      },
+                      "errorMessage": {
+                        "type": "string"
+                      },
+                      "terminalSubtype": {
+                        "type": "string"
+                      },
+                      "toolUseCount": {
+                        "type": "number"
+                      }
                     }
                   }
                 }

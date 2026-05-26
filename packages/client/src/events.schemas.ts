@@ -510,6 +510,13 @@ const PlanSummaryEntrySchema = Type.Object({
   mergedAt: Type.Optional(Type.String()),
   error: Type.Optional(Type.String()),
   terminalSubtype: Type.Optional(Type.String()),
+  // --- eforge:region plan-01-recovery-summary-reconstruction ---
+  commitSha: Type.Optional(Type.String()),
+  testPassed: Type.Optional(Type.Integer({ minimum: 0 })),
+  testFailed: Type.Optional(Type.Integer({ minimum: 0 })),
+  completedAt: Type.Optional(Type.String()),
+  toolUseCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
 const FailingPlanEntrySchema = Type.Object({
@@ -518,6 +525,9 @@ const FailingPlanEntrySchema = Type.Object({
   agentRole: Type.Optional(Type.String()),
   errorMessage: Type.Optional(Type.String()),
   terminalSubtype: Type.Optional(Type.String()),
+  // --- eforge:region plan-01-recovery-summary-reconstruction ---
+  toolUseCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
 const BuildFailureSummarySchema = Type.Object({
@@ -559,6 +569,9 @@ const BuildFailureSummarySchema = Type.Object({
     reason: Type.Optional(Type.String()),
   })),
   // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
+  // --- eforge:region plan-01-recovery-summary-reconstruction ---
+  failingPlans: Type.Optional(Type.Array(FailingPlanEntrySchema)),
+  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
 // --- eforge:region plan-01-supervisor-foundation ---

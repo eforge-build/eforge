@@ -97,6 +97,9 @@ export async function* runRecoveryAnalyst(
     if (event.type === 'agent:message' && event.content) {
       fullText += event.content;
     }
+    if (event.type === 'agent:result' && event.result.resultText && !fullText.includes(event.result.resultText)) {
+      fullText += event.result.resultText;
+    }
   }
 
   // Parse recovery verdict from accumulated text

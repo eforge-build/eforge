@@ -115,6 +115,20 @@ function buildMarkdown(
   }
   lines.push('');
 
+  // --- eforge:region plan-01-recovery-summary-reconstruction ---
+  if (summary.failingPlans && summary.failingPlans.length > 0) {
+    lines.push('## Failing Plans', '');
+    lines.push('| Plan | Error | Terminal Subtype |');
+    lines.push('|------|-------|-----------------|');
+    for (const fp of summary.failingPlans) {
+      const err = escapeTableCell(fp.errorMessage ?? '');
+      const sub = escapeTableCell(fp.terminalSubtype ?? '');
+      lines.push(`| ${escapeTableCell(fp.planId)} | ${err} | ${sub} |`);
+    }
+    lines.push('');
+  }
+  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
+
   if (summary.landedCommits.length > 0) {
     lines.push('## Landed Commits', '');
     lines.push('| SHA | Subject | Author | Date |');

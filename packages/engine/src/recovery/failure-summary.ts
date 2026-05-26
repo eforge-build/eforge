@@ -133,6 +133,9 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
 
   const failingPlan: FailingPlanEntry = eventFragment?.failingPlan ?? { planId: 'unknown' };
   const plans: PlanSummaryEntry[] = eventFragment?.plans ?? [];
+  // --- eforge:region plan-01-recovery-summary-reconstruction ---
+  const failingPlans = eventFragment?.failingPlans;
+  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
   // failedAt derivation (Decision #11):
   // - If monitor DB has events → use the event timestamp
@@ -166,6 +169,9 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
     ...(eventFragment?.validationCommands !== undefined ? { validationCommands: eventFragment.validationCommands } : {}),
     ...(eventFragment?.landing !== undefined ? { landing: eventFragment.landing } : {}),
     // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
+    // --- eforge:region plan-01-recovery-summary-reconstruction ---
+    ...(failingPlans !== undefined ? { failingPlans } : {}),
+    // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
   };
 
   // Only set partial: true when no monitor DB events were found

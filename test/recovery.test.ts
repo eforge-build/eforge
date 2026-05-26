@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import type { EforgeEvent, BuildFailureSummary } from '@eforge-build/engine/events';
 import { parseRecoveryVerdictBlock } from '@eforge-build/engine/agents/common';
 import { recoveryVerdictSchema, getRecoveryVerdictSchemaYaml } from '@eforge-build/engine/schemas';
-import { safeParseWithSchema } from '@eforge-build/client';
+import { safeParseWithSchema, safeParseEforgeEvent } from '@eforge-build/client';
 import { runRecoveryAnalyst } from '@eforge-build/engine/agents/recovery-analyst';
 import { writeRecoverySidecar } from '@eforge-build/engine/recovery/sidecar';
 import { buildFailureSummary } from '@eforge-build/engine/recovery/failure-summary';
@@ -1173,13 +1173,35 @@ describe('buildFailureSummary multi-plan reconstruction', () => {
 
     // failingPlans is a new optional field listing all failed plans in the run.
     // Old code: does not populate this field. After fix: populated from all plan:build:failed rows.
-    const failingPlans = (summary as unknown as { failingPlans?: Array<{ planId: string }> }).failingPlans;
+    const failingPlans = (summary as unknown as {
+      failingPlans?: Array<{ planId: string; errorMessage?: string; terminalSubtype?: string }>;
+    }).failingPlans;
     expect(failingPlans).toBeDefined();
     expect(failingPlans).toHaveLength(2);
 
     const failingPlanIds = failingPlans!.map((p) => p.planId);
     expect(failingPlanIds).toContain('plan-04-queue-view');
     expect(failingPlanIds).toContain('plan-06-static-serving-package-integration');
+
+    // Both failed plans must retain errorMessage and terminalSubtype from plan:build:failed events.
+    const plan04Entry = failingPlans!.find((p) => p.planId === 'plan-04-queue-view');
+    expect(plan04Entry!.errorMessage).toBe('API error 529: overloaded_error');
+    expect(plan04Entry!.terminalSubtype).toBe('error_transient_transport');
+
+    const plan06Entry = failingPlans!.find((p) => p.planId === 'plan-06-static-serving-package-integration');
+    expect(plan06Entry!.errorMessage).toBe('API error 529: overloaded_error');
+    expect(plan06Entry!.terminalSubtype).toBe('error_transient_transport');
+
+    // The matching summary.plans entries must also include error and terminalSubtype.
+    const plan04PlanEntry = summary.plans.find((p) => p.planId === 'plan-04-queue-view');
+    expect(plan04PlanEntry).toBeDefined();
+    expect(plan04PlanEntry!.error).toBe('API error 529: overloaded_error');
+    expect(plan04PlanEntry!.terminalSubtype).toBe('error_transient_transport');
+
+    const plan06PlanEntry = summary.plans.find((p) => p.planId === 'plan-06-static-serving-package-integration');
+    expect(plan06PlanEntry).toBeDefined();
+    expect(plan06PlanEntry!.error).toBe('API error 529: overloaded_error');
+    expect(plan06PlanEntry!.terminalSubtype).toBe('error_transient_transport');
   });
 
   it('summary.failingPlan.planId is the latest failed plan (plan-06) for backward compatibility', async () => {
@@ -1241,6 +1263,8 @@ describe('buildFailureSummary multi-plan reconstruction', () => {
     // commitSha is a new optional field enriched from plan:merge:complete events
     const commitSha = (plan01 as unknown as { commitSha?: string }).commitSha;
     expect(commitSha).toBe('abc1234def5678901234567890abcdef12345678');
+    // mergedAt must also be present — a regression dropping it while retaining commitSha would pass without this assertion
+    expect(plan01!.mergedAt).toBe(new Date(new Date('2026-05-26T05:00:00.000Z').getTime() + 65_000).toISOString());
   });
 
   it('plan entry includes testPassed and testFailed when plan:build:test:complete event exists', async () => {
@@ -1291,6 +1315,31 @@ describe('buildFailureSummary multi-plan reconstruction', () => {
     expect(plan06Failing!.toolUseCount ?? 0).toBe(0);
   });
 
+  it('summary.plans entry for plan-04-queue-view includes toolUseCount: 3; plans without tool use omit toolUseCount', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    const dbPath = seedMultiPlanDb(dir);
+
+    const summary = await buildFailureSummary({
+      setName: 'multi-plan-set',
+      prdId: 'multi-plan-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    // plan-04 had 3 agent:tool_use events — toolUseCount must appear in summary.plans
+    const plan04 = (summary.plans as unknown as Array<{ planId: string; toolUseCount?: number }>)
+      .find((p) => p.planId === 'plan-04-queue-view');
+    expect(plan04).toBeDefined();
+    expect(plan04!.toolUseCount).toBe(3);
+
+    // plan-01 had no agent:tool_use events — toolUseCount should be absent
+    const plan01 = (summary.plans as unknown as Array<{ planId: string; toolUseCount?: number }>)
+      .find((p) => p.planId === 'plan-01-console-shell');
+    expect(plan01).toBeDefined();
+    expect(plan01!.toolUseCount).toBeUndefined();
+  });
+
   it('does not set partial:true when multi-plan DB events exist', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
@@ -1304,6 +1353,201 @@ describe('buildFailureSummary multi-plan reconstruction', () => {
     });
 
     expect(summary.partial).toBeUndefined();
+  });
+
+  it('plan:error:set enriches summary.plans error when no plan:build:failed row exists for the plan', async () => {
+    // Regression guard: plan:error:set rows must be used as a fallback error source.
+    // A plan that only has plan:error:set (no plan:build:failed) must still appear
+    // in summary.plans with its error detail.
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'error-set-test.db');
+    const db = openDatabase(dbPath);
+    const baseTs = new Date('2026-06-01T10:00:00.000Z').getTime();
+
+    db.insertRun({
+      id: 'run-error-set-01',
+      sessionId: 'session-es-01',
+      planSet: 'error-set-test',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date(baseTs).toISOString(),
+      cwd: dir,
+      pid: 99999,
+    });
+
+    // Plan A: status changed to failed, error set via plan:error:set (no plan:build:failed)
+    db.insertEvent({
+      runId: 'run-error-set-01',
+      type: 'plan:status:change',
+      planId: 'plan-A',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-A', status: 'failed' }),
+      timestamp: new Date(baseTs + 1_000).toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-error-set-01',
+      type: 'plan:error:set',
+      planId: 'plan-A',
+      data: JSON.stringify({
+        type: 'plan:error:set',
+        planId: 'plan-A',
+        error: 'Context window exceeded',
+        terminalSubtype: 'error_context_limit',
+      }),
+      timestamp: new Date(baseTs + 2_000).toISOString(),
+    });
+
+    // Plan B: has both plan:error:set AND plan:build:failed — build:failed error takes precedence
+    db.insertEvent({
+      runId: 'run-error-set-01',
+      type: 'plan:status:change',
+      planId: 'plan-B',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-B', status: 'failed' }),
+      timestamp: new Date(baseTs + 3_000).toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-error-set-01',
+      type: 'plan:error:set',
+      planId: 'plan-B',
+      data: JSON.stringify({
+        type: 'plan:error:set',
+        planId: 'plan-B',
+        error: 'Error from plan:error:set',
+      }),
+      timestamp: new Date(baseTs + 4_000).toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-error-set-01',
+      type: 'plan:build:failed',
+      planId: 'plan-B',
+      data: JSON.stringify({
+        type: 'plan:build:failed',
+        planId: 'plan-B',
+        error: 'Error from plan:build:failed',
+        terminalSubtype: 'error_transient_transport',
+      }),
+      timestamp: new Date(baseTs + 5_000).toISOString(),
+    });
+
+    db.close();
+
+    const summary = await buildFailureSummary({
+      setName: 'error-set-test',
+      prdId: 'error-set-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    // Plan A: error should come from plan:error:set (no plan:build:failed exists)
+    const planA = summary.plans.find((p) => p.planId === 'plan-A');
+    expect(planA).toBeDefined();
+    expect(planA!.error).toBe('Context window exceeded');
+    expect(planA!.terminalSubtype).toBe('error_context_limit');
+
+    // Plan B: plan:build:failed error must not be overwritten by plan:error:set
+    const planB = summary.plans.find((p) => p.planId === 'plan-B');
+    expect(planB).toBeDefined();
+    expect(planB!.error).toBe('Error from plan:build:failed');
+    expect(planB!.terminalSubtype).toBe('error_transient_transport');
+  });
+
+  it('events from unrelated runs do not bleed into summary, and latest status per plan wins', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'run-scoping-test.db');
+    const db = openDatabase(dbPath);
+    const baseTs = new Date('2026-06-01T10:00:00.000Z').getTime();
+
+    // Run under test: run-scope-target
+    db.insertRun({
+      id: 'run-scope-target',
+      sessionId: 'session-scope-01',
+      planSet: 'run-scope-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date(baseTs).toISOString(),
+      cwd: dir,
+      pid: 11111,
+    });
+
+    // Unrelated run that must not leak into results
+    db.insertRun({
+      id: 'run-scope-other',
+      sessionId: 'session-scope-02',
+      planSet: 'other-plan-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date(baseTs - 100_000).toISOString(),
+      cwd: dir,
+      pid: 22222,
+    });
+
+    // plan-X in unrelated run: should NOT appear in target run's summary
+    db.insertEvent({
+      runId: 'run-scope-other',
+      type: 'plan:status:change',
+      planId: 'plan-X-unrelated',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-X-unrelated', status: 'merged' }),
+      timestamp: new Date(baseTs - 50_000).toISOString(),
+    });
+
+    // plan-alpha: goes pending → building → completed (latest status should be completed)
+    for (const status of ['pending', 'building', 'completed'] as const) {
+      db.insertEvent({
+        runId: 'run-scope-target',
+        type: 'plan:status:change',
+        planId: 'plan-alpha',
+        data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-alpha', status }),
+        timestamp: new Date(baseTs + 1_000 + ['pending', 'building', 'completed'].indexOf(status) * 1_000).toISOString(),
+      });
+    }
+
+    // plan-beta: fails
+    db.insertEvent({
+      runId: 'run-scope-target',
+      type: 'plan:status:change',
+      planId: 'plan-beta',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-beta', status: 'failed' }),
+      timestamp: new Date(baseTs + 4_000).toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-scope-target',
+      type: 'plan:build:failed',
+      planId: 'plan-beta',
+      data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-beta', error: 'Timed out' }),
+      timestamp: new Date(baseTs + 5_000).toISOString(),
+    });
+
+    db.close();
+
+    const summary = await buildFailureSummary({
+      setName: 'run-scope-set',
+      prdId: 'run-scope-prd',
+      cwd: dir,
+      dbPath,
+    });
+
+    // Only plans from run-scope-target must appear
+    const planIds = summary.plans.map((p) => p.planId);
+    expect(planIds).not.toContain('plan-X-unrelated');
+    expect(planIds).toContain('plan-alpha');
+    expect(planIds).toContain('plan-beta');
+
+    // Latest status for plan-alpha is 'completed' (pending → building → completed)
+    const planAlpha = summary.plans.find((p) => p.planId === 'plan-alpha');
+    expect(planAlpha).toBeDefined();
+    expect(planAlpha!.status).toBe('completed');
+
+    // plan-beta status is 'failed'
+    const planBeta = summary.plans.find((p) => p.planId === 'plan-beta');
+    expect(planBeta).toBeDefined();
+    expect(planBeta!.status).toBe('failed');
   });
 });
 // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
@@ -1771,5 +2015,124 @@ describe('EforgeEngine.recover', () => {
     // PRD file unchanged
     const prdContentAfter = await readFile(prdPath, 'utf-8');
     expect(prdContentAfter).toBe(prdContentBefore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Schema validation: count fields reject negative and fractional values
+// ---------------------------------------------------------------------------
+
+describe('BuildFailureSummary schema: count fields reject negative and fractional values', () => {
+  const validBaseSummary = {
+    prdId: 'test-prd',
+    setName: 'test-set',
+    featureBranch: 'eforge/test-set',
+    baseBranch: 'main',
+    plans: [{ planId: 'plan-01', status: 'failed' }],
+    failingPlan: { planId: 'plan-01' },
+    landedCommits: [],
+    diffStat: '',
+    modelsUsed: [],
+    failedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  function makeRecoverySummaryEvent(overridePlans: unknown[], overrideFailingPlan?: unknown) {
+    return {
+      type: 'recovery:summary' as const,
+      timestamp: new Date().toISOString(),
+      prdId: 'test-prd',
+      summary: {
+        ...validBaseSummary,
+        plans: overridePlans,
+        failingPlan: overrideFailingPlan ?? validBaseSummary.failingPlan,
+      },
+    };
+  }
+
+  it('accepts PlanSummaryEntry with valid zero testPassed and testFailed', () => {
+    const event = makeRecoverySummaryEvent([
+      { planId: 'plan-01', status: 'failed', testPassed: 0, testFailed: 0 },
+    ]);
+    expect(safeParseEforgeEvent(event).success).toBe(true);
+  });
+
+  it('accepts PlanSummaryEntry with valid positive testPassed and testFailed', () => {
+    const event = makeRecoverySummaryEvent([
+      { planId: 'plan-01', status: 'merged', testPassed: 42, testFailed: 3 },
+    ]);
+    expect(safeParseEforgeEvent(event).success).toBe(true);
+  });
+
+  it('rejects PlanSummaryEntry with negative testPassed', () => {
+    const event = makeRecoverySummaryEvent([
+      { planId: 'plan-01', status: 'merged', testPassed: -1, testFailed: 0 },
+    ]);
+    expect(safeParseEforgeEvent(event).success).toBe(false);
+  });
+
+  it('rejects PlanSummaryEntry with negative testFailed', () => {
+    const event = makeRecoverySummaryEvent([
+      { planId: 'plan-01', status: 'merged', testPassed: 5, testFailed: -2 },
+    ]);
+    expect(safeParseEforgeEvent(event).success).toBe(false);
+  });
+
+  it('rejects PlanSummaryEntry with fractional testPassed', () => {
+    const event = makeRecoverySummaryEvent([
+      { planId: 'plan-01', status: 'merged', testPassed: 1.5, testFailed: 0 },
+    ]);
+    expect(safeParseEforgeEvent(event).success).toBe(false);
+  });
+
+  it('rejects PlanSummaryEntry with fractional testFailed', () => {
+    const event = makeRecoverySummaryEvent([
+      { planId: 'plan-01', status: 'merged', testPassed: 10, testFailed: 0.7 },
+    ]);
+    expect(safeParseEforgeEvent(event).success).toBe(false);
+  });
+
+  it('accepts PlanSummaryEntry with valid zero toolUseCount', () => {
+    const event = makeRecoverySummaryEvent([
+      { planId: 'plan-01', status: 'failed', toolUseCount: 0 },
+    ]);
+    expect(safeParseEforgeEvent(event).success).toBe(true);
+  });
+
+  it('rejects PlanSummaryEntry with negative toolUseCount', () => {
+    const event = makeRecoverySummaryEvent([
+      { planId: 'plan-01', status: 'failed', toolUseCount: -5 },
+    ]);
+    expect(safeParseEforgeEvent(event).success).toBe(false);
+  });
+
+  it('rejects PlanSummaryEntry with fractional toolUseCount', () => {
+    const event = makeRecoverySummaryEvent([
+      { planId: 'plan-01', status: 'failed', toolUseCount: 2.5 },
+    ]);
+    expect(safeParseEforgeEvent(event).success).toBe(false);
+  });
+
+  it('accepts FailingPlanEntry with valid toolUseCount', () => {
+    const event = makeRecoverySummaryEvent(
+      [{ planId: 'plan-01', status: 'failed' }],
+      { planId: 'plan-01', toolUseCount: 7 },
+    );
+    expect(safeParseEforgeEvent(event).success).toBe(true);
+  });
+
+  it('rejects FailingPlanEntry with negative toolUseCount', () => {
+    const event = makeRecoverySummaryEvent(
+      [{ planId: 'plan-01', status: 'failed' }],
+      { planId: 'plan-01', toolUseCount: -1 },
+    );
+    expect(safeParseEforgeEvent(event).success).toBe(false);
+  });
+
+  it('rejects FailingPlanEntry with fractional toolUseCount', () => {
+    const event = makeRecoverySummaryEvent(
+      [{ planId: 'plan-01', status: 'failed' }],
+      { planId: 'plan-01', toolUseCount: 0.5 },
+    );
+    expect(safeParseEforgeEvent(event).success).toBe(false);
   });
 });

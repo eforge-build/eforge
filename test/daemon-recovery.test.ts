@@ -22,6 +22,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir, readFile } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
@@ -581,9 +582,16 @@ describe('multi-plan sidecar content when verdict is fallback manual', () => {
 
     const md = await readFile(mdPath, 'utf-8');
 
-    // Both failed plans must appear in the plans table or failed-plans section
+    // The dedicated ## Failing Plans section must exist — not just IDs appearing elsewhere
+    expect(md).toContain('## Failing Plans');
+
+    // Both failed plan IDs must appear as rows in the ## Failing Plans table
+    // with their error and terminalSubtype values
     expect(md).toContain('plan-04-queue-view');
     expect(md).toContain('plan-06-static-serving-package-integration');
+    // Verify the table rows include the error and subtype from the fixture
+    expect(md).toContain('API error 529: overloaded_error');
+    expect(md).toContain('error_transient_transport');
   });
 
   it('JSON sidecar preserves failingPlans array with both failed plan IDs', async () => {
@@ -658,6 +666,160 @@ describe('multi-plan sidecar content when verdict is fallback manual', () => {
     expect(parsed.verdict.verdict).toBe('manual');
     // failingPlan backward-compat field is still populated
     expect(parsed.summary.failingPlan.planId).toBe('plan-06-static-serving-package-integration');
+  });
+});
+// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
+
+// ---------------------------------------------------------------------------
+// EforgeEngine.recover() fallback: multi-plan DB + unparsable analyst output
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-recovery-summary-reconstruction ---
+describe('EforgeEngine.recover() fallback: multi-plan DB + unparsable analyst output', () => {
+  const makeTestDir = useTempDir('eforge-recover-fallback-multiplan-');
+
+  /**
+   * Seed a monitor DB that mirrors a real multi-plan failed run:
+   * 5 merged plans, 2 failed plans (plan-04 and plan-06).
+   */
+  function seedMultiPlanDb(dir: string, dbPath: string): void {
+    const db = openDatabase(dbPath);
+    const baseTs = new Date('2026-05-26T05:00:00.000Z').getTime();
+
+    db.insertRun({
+      id: 'run-fallback-multi-01',
+      sessionId: 'session-fallback-01',
+      planSet: 'fallback-multi-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date(baseTs).toISOString(),
+      cwd: dir,
+      pid: 11111,
+    });
+
+    const mergedPlanIds = [
+      'plan-01-console-shell',
+      'plan-02-activity-audit-view',
+      'plan-03-now-dashboard',
+      'plan-05-runs-build-entrypoints',
+      'plan-07-system-configuration-view',
+    ];
+    for (let i = 0; i < mergedPlanIds.length; i++) {
+      const planId = mergedPlanIds[i]!;
+      const ts = new Date(baseTs + (i + 1) * 60_000).toISOString();
+      db.insertEvent({
+        runId: 'run-fallback-multi-01',
+        type: 'plan:status:change',
+        planId,
+        data: JSON.stringify({ type: 'plan:status:change', planId, status: 'merged' }),
+        timestamp: ts,
+      });
+    }
+
+    db.insertEvent({
+      runId: 'run-fallback-multi-01',
+      type: 'plan:status:change',
+      planId: 'plan-04-queue-view',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-04-queue-view', status: 'failed' }),
+      timestamp: new Date('2026-05-26T06:15:04.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-fallback-multi-01',
+      type: 'plan:build:failed',
+      planId: 'plan-04-queue-view',
+      data: JSON.stringify({
+        type: 'plan:build:failed',
+        planId: 'plan-04-queue-view',
+        error: 'API error 529: overloaded_error',
+        terminalSubtype: 'error_transient_transport',
+      }),
+      timestamp: new Date('2026-05-26T06:15:04.000Z').toISOString(),
+    });
+
+    db.insertEvent({
+      runId: 'run-fallback-multi-01',
+      type: 'plan:status:change',
+      planId: 'plan-06-static-serving',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-06-static-serving', status: 'failed' }),
+      timestamp: new Date('2026-05-26T06:15:10.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-fallback-multi-01',
+      type: 'plan:build:failed',
+      planId: 'plan-06-static-serving',
+      data: JSON.stringify({
+        type: 'plan:build:failed',
+        planId: 'plan-06-static-serving',
+        error: 'API error 529: overloaded_error',
+        terminalSubtype: 'error_transient_transport',
+      }),
+      timestamp: new Date('2026-05-26T06:15:10.000Z').toISOString(),
+    });
+
+    db.close();
+  }
+
+  it('fallback sidecar contains all reconstructed plans and both failed plans from DB when analyst output is unparsable', async () => {
+    const dir = makeTestDir();
+    initGitRepo(dir);
+
+    // Create failed PRD (no state.json)
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'fallback-multi-prd.md'), '# Fallback Multi PRD\n\nTest.', 'utf-8');
+
+    // Seed monitor DB with multi-plan run
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const monitorDbPath = join(dbDir, 'monitor.db');
+    seedMultiPlanDb(dir, monitorDbPath);
+
+    // Stub returns garbage — forces fallback manual verdict
+    const stub = new StubHarness([{ text: 'This is completely unparseable output with no XML.' }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.recover('fallback-multi-set', 'fallback-multi-prd')) {
+      events.push(event);
+    }
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+    expect(complete!.sidecarMdPath).toBeDefined();
+
+    const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+
+    // Fallback verdict is manual due to unparsable analyst output
+    expect(sidecarContent.verdict.verdict).toBe('manual');
+    expect(sidecarContent.verdict.recoveryError).toBeTruthy();
+
+    // Summary must contain all 7 plans reconstructed from DB — exact set, no duplicates
+    expect(sidecarContent.summary.plans).toHaveLength(7);
+    const planIds: string[] = sidecarContent.summary.plans.map((p: { planId: string }) => p.planId);
+    const expectedPlanIds = [
+      'plan-01-console-shell',
+      'plan-02-activity-audit-view',
+      'plan-03-now-dashboard',
+      'plan-04-queue-view',
+      'plan-05-runs-build-entrypoints',
+      'plan-06-static-serving',
+      'plan-07-system-configuration-view',
+    ];
+    expect(new Set(planIds)).toEqual(new Set(expectedPlanIds));
+
+    // failingPlans must list exactly the two expected failed plans — no duplicates
+    expect(sidecarContent.summary.failingPlans).toBeDefined();
+    expect(Array.isArray(sidecarContent.summary.failingPlans)).toBe(true);
+    expect(sidecarContent.summary.failingPlans).toHaveLength(2);
+    const failingIds: string[] = sidecarContent.summary.failingPlans.map((p: { planId: string }) => p.planId);
+    expect(new Set(failingIds)).toEqual(new Set(['plan-04-queue-view', 'plan-06-static-serving']));
+
+    // Markdown must contain the ## Failing Plans section with both failed plan IDs and their statuses
+    const md = await readFile(complete!.sidecarMdPath!, 'utf-8');
+    expect(md).toContain('## Failing Plans');
+    expect(md).toContain('plan-04-queue-view');
+    expect(md).toContain('plan-06-static-serving');
   });
 });
 // --- eforge:endregion plan-01-recovery-summary-reconstruction ---

@@ -6,6 +6,9 @@
 // --- eforge:region plan-03-stack-daemon-ui ---
 import type { StackLayerWire } from './events.js';
 // --- eforge:endregion plan-03-stack-daemon-ui ---
+// --- eforge:region plan-01-recovery-summary-reconstruction ---
+import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
+// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
 /** POST /api/enqueue */
 export interface EnqueueRequest {
@@ -51,32 +54,21 @@ export interface ReadSidecarRequest {
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
  * Mirrors the shape produced by `writeRecoverySidecar` in the engine (schemaVersion: 1).
+ *
+ * `summary` and `verdict` use the shared wire types from @eforge-build/client so
+ * new optional fields (e.g. failingPlans, commitSha, testPassed) are automatically
+ * reflected here without requiring separate maintenance of this interface.
+ * Legacy sidecars without the new optional fields still parse because all added
+ * fields are optional.
  */
+// --- eforge:region plan-01-recovery-summary-reconstruction ---
 export interface RecoveryVerdictSidecar {
   schemaVersion: number;
   generatedAt: string;
-  summary: {
-    prdId: string;
-    setName: string;
-    featureBranch: string;
-    baseBranch: string;
-    plans: Array<{ planId: string; status: string; mergedAt?: string; error?: string; terminalSubtype?: string }>;
-    failingPlan: { planId: string; agentId?: string; agentRole?: string; errorMessage?: string; terminalSubtype?: string };
-    landedCommits: Array<{ sha: string; subject: string; author: string; date: string }>;
-    diffStat: string;
-    modelsUsed: string[];
-    failedAt: string;
-  };
-  verdict: {
-    verdict: 'retry' | 'split' | 'abandon' | 'manual';
-    confidence: 'low' | 'medium' | 'high';
-    rationale: string;
-    completedWork: string[];
-    remainingWork: string[];
-    risks: string[];
-    suggestedSuccessorPrd?: string;
-  };
+  summary: BuildFailureSummary;
+  verdict: RecoveryVerdict;
 }
+// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
 /** Response for GET /api/recovery/sidecar */
 export interface ReadSidecarResponse {
