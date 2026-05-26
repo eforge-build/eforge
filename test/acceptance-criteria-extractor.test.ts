@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   extractExpectedAcceptanceCriteria,
   normalizeCriterionText,
+  normalizeCriterionMatchText,
   matchVerdictsToExpected,
   synthesizeMissingVerdicts,
   analyzeAcceptanceCriteriaItem,
@@ -451,6 +452,18 @@ describe('extractExpectedAcceptanceCriteria — grouped parent bullets', () => {
 });
 
 // ---------------------------------------------------------------------------
+// normalizeCriterionMatchText
+// ---------------------------------------------------------------------------
+
+describe('normalizeCriterionMatchText', () => {
+  it('ignores harmless inline Markdown formatting for verdict matching', () => {
+    expect(normalizeCriterionMatchText('- `/eforge:plan` skill guidance')).toBe('/eforge:plan skill guidance');
+    expect(normalizeCriterionMatchText('**Formatter prompt** documents rules')).toBe('Formatter prompt documents rules');
+    expect(normalizeCriterionMatchText('[CLI docs](docs/cli.md) mention status')).toBe('CLI docs mention status');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // matchVerdictsToExpected
 // ---------------------------------------------------------------------------
 
@@ -483,6 +496,32 @@ describe('matchVerdictsToExpected', () => {
     const matched = matchVerdictsToExpected(expected, verdicts);
     expect(matched.get('ac-001')).toEqual(verdicts[0]);
     expect(matched.get('ac-002')).toEqual(verdicts[1]);
+  });
+
+  it('matches verdict to expected criterion by ID-prefixed criterion field', () => {
+    const expected = extractExpectedAcceptanceCriteria(`
+## Acceptance Criteria
+
+- Add login page
+`.trim());
+    const verdicts = [
+      { criterion: 'ac-001: Add login page', verdict: 'pass' as const, evidence: 'Login page implemented.' },
+    ];
+    const matched = matchVerdictsToExpected(expected, verdicts);
+    expect(matched.get('ac-001')).toEqual(verdicts[0]);
+  });
+
+  it('matches verdict text when harmless inline Markdown was dropped by the validator', () => {
+    const expected = extractExpectedAcceptanceCriteria(`
+## Acceptance Criteria
+
+- \`/eforge:plan\` skill guidance constrains planned acceptance criteria to valid AC shape.
+`.trim());
+    const verdicts = [
+      { criterion: '/eforge:plan skill guidance constrains planned acceptance criteria to valid AC shape.', verdict: 'pass' as const, evidence: 'Skill docs updated.' },
+    ];
+    const matched = matchVerdictsToExpected(expected, verdicts);
+    expect(matched.get('ac-001')).toEqual(verdicts[0]);
   });
 
   it('returns undefined for unmatched expected criteria', () => {

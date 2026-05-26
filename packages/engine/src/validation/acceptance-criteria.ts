@@ -10,7 +10,8 @@
  *   extraction call but not across edits. Callers must not persist IDs across PRD
  *   revisions.
  * - Normalization is lossy-but-deterministic: bullet style changes (-, *, 1., [ ])
- *   do not affect criterion identity.
+ *   do not affect criterion identity. Verdict matching also ignores harmless
+ *   inline Markdown formatting so validator prose does not create false misses.
  * - Blank, placeholder, and sentinel lines are rejected at extraction time.
  */
 
@@ -243,6 +244,24 @@ export function normalizeCriterionText(raw: string): string {
 }
 
 /**
+ * Normalize text for matching validator verdicts back to expected criteria.
+ *
+ * This intentionally goes a little further than `normalizeCriterionText`: an
+ * LLM may preserve the criterion wording while dropping harmless inline
+ * Markdown (for example `` `/eforge:plan` `` → `/eforge:plan`). Treat those as
+ * the same criterion without relaxing into semantic/fuzzy matching.
+ */
+export function normalizeCriterionMatchText(raw: string): string {
+  return normalizeCriterionText(raw)
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Returns true when the normalized text is a placeholder or blank sentinel
  * that should not produce an expected criterion.
  */
@@ -459,19 +478,27 @@ export function matchVerdictsToExpected(
   const result = new Map<string, AcceptanceCriterionVerdict | undefined>();
   const consumed = new Set<number>();
 
-  // Pass 1: exact criterion ID matches
+  // Pass 1: criterion ID matches. Accept either a bare ID (`ac-001`) or an
+  // ID-prefixed field (`ac-001: original criterion text`) so the validator can
+  // be prompted with stable IDs without exact output formatting becoming brittle.
   for (const criterion of expected) {
-    const idx = verdicts.findIndex((v, i) => !consumed.has(i) && v.criterion.trim() === criterion.id);
+    const idx = verdicts.findIndex((v, i) => {
+      if (consumed.has(i)) return false;
+      const trimmed = v.criterion.trim();
+      return trimmed === criterion.id || trimmed.startsWith(`${criterion.id}:`);
+    });
     if (idx !== -1) {
       result.set(criterion.id, verdicts[idx]);
       consumed.add(idx);
     }
   }
 
-  // Pass 2: normalized text matches for criteria not yet matched
+  // Pass 2: normalized text matches for criteria not yet matched. Ignore only
+  // harmless Markdown formatting; do not use semantic or substring matching.
   for (const criterion of expected) {
     if (result.has(criterion.id)) continue;
-    const idx = verdicts.findIndex((v, i) => !consumed.has(i) && normalizeCriterionText(v.criterion) === criterion.text);
+    const expectedText = normalizeCriterionMatchText(criterion.text);
+    const idx = verdicts.findIndex((v, i) => !consumed.has(i) && normalizeCriterionMatchText(v.criterion) === expectedText);
     if (idx !== -1) {
       result.set(criterion.id, verdicts[idx]);
       consumed.add(idx);

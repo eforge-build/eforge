@@ -35,7 +35,7 @@ export async function* runPrdValidator(
 
   // --- eforge:region plan-02-engine-acceptance-gates ---
   const criteriaText = options.expectedAcceptanceCriteria && options.expectedAcceptanceCriteria.length > 0
-    ? options.expectedAcceptanceCriteria.map((c, i) => `${i + 1}. ${c.text}`).join('\n')
+    ? options.expectedAcceptanceCriteria.map((c) => `${c.id}: ${c.text}`).join('\n')
     : '';
   // --- eforge:endregion plan-02-engine-acceptance-gates ---
   // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
