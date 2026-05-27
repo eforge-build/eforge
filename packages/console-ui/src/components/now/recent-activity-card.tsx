@@ -2,8 +2,6 @@ import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { NowActivityPreviewItem } from '@/lib/selectors/now';
 import { formatRelativeTime } from '@/lib/format';
-import { toConsolePath } from '@/lib/navigation';
-
 interface RecentActivityCardProps {
   items: NowActivityPreviewItem[];
   hiddenCount: number;
@@ -11,7 +9,6 @@ interface RecentActivityCardProps {
 }
 
 export function RecentActivityCard({ items, hiddenCount, now }: RecentActivityCardProps) {
-  const activityHref = toConsolePath('activity');
   const currentNow = now ?? Date.now();
 
   return (
@@ -19,12 +16,6 @@ export function RecentActivityCard({ items, hiddenCount, now }: RecentActivityCa
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold">Recent activity</CardTitle>
-          <a
-            href={activityHref}
-            className="text-xs text-primary hover:underline"
-          >
-            View all
-          </a>
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4">

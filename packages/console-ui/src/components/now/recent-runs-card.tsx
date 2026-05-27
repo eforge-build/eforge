@@ -3,8 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { NowRecentRunItem } from '@/lib/selectors/now';
 import { formatDuration } from '@/lib/format';
-import { toConsolePath } from '@/lib/navigation';
-
 interface RecentRunsCardProps {
   runs: NowRecentRunItem[];
 }
@@ -19,19 +17,11 @@ function runBadgeVariant(
 }
 
 export function RecentRunsCard({ runs }: RecentRunsCardProps) {
-  const runsHref = toConsolePath('runs');
-
   return (
     <Card className="mb-4">
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold">Recent runs</CardTitle>
-          <a
-            href={runsHref}
-            className="text-xs text-primary hover:underline"
-          >
-            View all
-          </a>
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4">

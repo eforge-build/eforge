@@ -11,18 +11,9 @@ import type { ConsoleRouteId } from '@/lib/navigation';
 // --- eforge:region now-dashboard ---
 import { NowDashboard } from './views/now-dashboard';
 // --- eforge:endregion now-dashboard ---
-// --- eforge:region runs-build-entrypoints ---
-import { RunsView } from '@/views/runs';
-// --- eforge:endregion runs-build-entrypoints ---
 // --- eforge:region system-configuration-view ---
 import { SystemConfigurationView } from '@/views/system';
 // --- eforge:endregion system-configuration-view ---
-// --- eforge:region activity-audit-view ---
-import { ActivityAuditView } from '@/views/activity';
-// --- eforge:endregion activity-audit-view ---
-// --- eforge:region plan-02-queue-view ---
-import { QueueView } from '@/views/queue';
-// --- eforge:endregion plan-02-queue-view ---
 
 function getInitialRoute(): ConsoleRouteId {
   if (typeof window !== 'undefined') {
@@ -68,38 +59,16 @@ export function App() {
     }
     // --- eforge:endregion now-dashboard ---
 
-    // --- eforge:region runs-build-entrypoints ---
-    if (currentRoute === 'runs') {
-      return (
-        <RunsView
-          projectState={projectState}
-          activeSessionStreams={activeSessionStreams}
-        />
-      );
-    }
-    // --- eforge:endregion runs-build-entrypoints ---
-
     // --- eforge:region system-configuration-view ---
     if (currentRoute === 'system') {
       return <SystemConfigurationView projectState={projectState} />;
     }
     // --- eforge:endregion system-configuration-view ---
 
-    // --- eforge:region activity-audit-view ---
-    if (currentRoute === 'activity') {
-      return <ActivityAuditView projectState={projectState} />;
-    }
-    // --- eforge:endregion activity-audit-view ---
-
-    // --- eforge:region plan-02-queue-view ---
-    if (currentRoute === 'queue') {
-      return <QueueView projectState={projectState} />;
-    }
-    // --- eforge:endregion plan-02-queue-view ---
-
+    // Run detail placeholder — full BuildDetailView lands in plan-06
     return (
       <RoutePlaceholder
-        routeId={currentRoute}
+        routeId="runDetail"
         connectionStatus={projectState.connectionStatus}
       />
     );
@@ -107,7 +76,6 @@ export function App() {
 
   return (
     <ConsoleShell
-      currentRoute={currentRoute}
       projectState={projectState}
       onNavigate={handleNavigate}
     >

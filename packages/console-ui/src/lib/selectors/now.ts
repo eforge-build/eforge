@@ -608,7 +608,7 @@ export function selectNowActiveBuildCards(
       latestAgent,
       latestProgress,
       latestError,
-      href: toConsolePath('runs'),
+      href: toConsolePath({ id: 'runDetail', detailId: sessionId }),
     };
   });
 }

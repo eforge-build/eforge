@@ -2,26 +2,16 @@ import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { NowQueueSummary } from '@/lib/selectors/now';
-import { toConsolePath } from '@/lib/navigation';
-
 interface QueueSnapshotCardProps {
   summary: NowQueueSummary;
 }
 
 export function QueueSnapshotCard({ summary }: QueueSnapshotCardProps) {
-  const queueHref = toConsolePath('queue');
-
   return (
     <Card className="mb-4">
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold">Queue</CardTitle>
-          <a
-            href={queueHref}
-            className="text-xs text-primary hover:underline"
-          >
-            View all
-          </a>
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4">
