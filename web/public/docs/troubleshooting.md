@@ -86,7 +86,8 @@ Use the report's `outcome`, `reason`, `activeBuildSkips`, `fastForward`, and `pr
 - **Skipped sync because stacking is disabled**: enable a stacked workflow with `/eforge:workflow`, or set `stacking.enabled: true` and `landing.action: pr` in `eforge/config.yaml`, then rerun sync.
 - **git-spice missing or uninitialized**: install git-spice, verify `git-spice --version`, run `git-spice repo init` once in the repository, and set `stacking.gitSpice.command` if the binary is not on `$PATH`.
 - **Local trunk not fast-forwardable**: when `fastForward` is `false`, push or otherwise align your local trunk with `origin/<trunk>`; eforge will not force-push, reset, or rebase trunk for you.
-- **Active-build skips**: wait for the listed active eforge builds to finish, then run `eforge stack sync` again. The sync command avoids mutating worktrees that active builds are using.
+- **Active-build skips**: wait for the listed active eforge builds to finish, then run `eforge stack sync` again. The manual sync command uses skip semantics by default to avoid mutating worktrees that active builds are using.
+- **After-build sync keeps deferring**: confirm `stacking.sync.afterBuild: true` is set (or choose the `stacked-pr-autosync` preset in `/eforge:workflow`). Daemon-owned after-build sync uses `activeBuildPolicy: "defer"`; overlapping active builds produce a `deferred` outcome and the daemon retries after later terminal queue events.
 - **Conflict recovery**: when `outcome` is `conflict`, run `git status`, resolve the conflicted files, `git add <resolved-files>`, continue the rebase/restack with `git rebase --continue` or the git-spice equivalent, then rerun `/eforge:stack` or `/eforge:stack:sync` to finish remaining branches.
 
 If `outcome` is `failed` without a conflict, inspect the failed `providerCommands`, run the same git-spice command manually for more context, fix the repository state, and rerun with `--dry-run` before applying changes.
