@@ -56,6 +56,8 @@ All eforge workflows are available as slash commands:
 | `/eforge:extend` | Manage native extensions |
 | `/eforge:update` | Check for and install eforge updates |
 
+Use `/eforge:workflow` to choose one of the workflow presets. The stacked preset with automatic sync is `stacked-pr-autosync`; it writes `landing.action: pr`, `stacking.enabled: true`, and `stacking.sync.afterBuild: true` so the daemon owns stack sync instead of relying on a post-merge shell command. When after-build sync is enabled, overlapping active builds produce a `deferred` stack sync outcome and the daemon retries after later terminal queue events.
+
 ## Pi extension
 
 The Pi extension provides the same capabilities as the Claude Code plugin through Pi's native command system and interactive TUI surfaces.
