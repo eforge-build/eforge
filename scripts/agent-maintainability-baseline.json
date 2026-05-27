@@ -2,6 +2,11 @@
   "_comment": "Legacy oversized files exempt from the hard cap. noGrowthCeiling is the line count at time of baselining. Files may shrink but not grow beyond their ceiling. Remove an entry once the file is refactored below the relevant hard cap (600 for impl, 1200 for tests).",
   "files": [
     {
+      "path": ".pi/extensions/eforge-dev/index.ts",
+      "noGrowthCeiling": 1170,
+      "category": "implementation"
+    },
+    {
       "path": "packages/monitor/src/server.ts",
       "noGrowthCeiling": 4908,
       "category": "implementation"

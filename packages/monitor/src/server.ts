@@ -4494,72 +4494,40 @@ export async function startServer(
     return false;
   }
   // --- eforge:endregion plan-05-playbook-session-plan-routes ---
-  const server = createServer(async (req, res) => {
-    const url = req.url ?? '/';
-    // Pathname strips the query string for static route matching and file
-    // resolution. API routes continue to use the full `url` string (which
-    // already handles query params via URLSearchParams where needed).
-    const pathname = url.split('?')[0];
-
-    if (handleCorsPreflightRoute(req, res)) return;
-    if (handleKeepAliveRoute(req, res)) return;
-
-    if (await handleControlPlaneRoutes(req, res, url)) return;
-
-    if (await handleProfileRoutes(req, res, url)) return;
-
-    // --- eforge:region plan-04-extension-routes ---
-    if (await handleExtensionRoutes(req, res, url)) return;
-    // --- eforge:endregion plan-04-extension-routes ---
-
-    if (await handlePlaybookContentRoutes(req, res, url)) return;
-    if (await handlePlaybookManagementRoutes(req, res, url)) return;
-    if (await handleSessionPlanRoutes(req, res, url)) return;
-
-    if (req.method === 'GET' && url.startsWith(API_ROUTES.modelProviders)) {
+  async function handleModelRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
+    if (req.method === 'GET' && (url === API_ROUTES.modelProviders || url.startsWith(`${API_ROUTES.modelProviders}?`))) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
-      const params = new URLSearchParams(queryString);
-      const harness = params.get('harness');
-      if (harness !== 'pi' && harness !== 'claude-sdk') {
-        sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")');
-        return;
-      }
+      const harness = new URLSearchParams(queryString).get('harness');
+      if (harness !== 'pi' && harness !== 'claude-sdk') { sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")'); return true; }
       try {
         const { listProviders } = await import('@eforge-build/engine/models');
-        const providers = await listProviders(harness);
-        sendJson(res, { providers });
+        sendJson(res, { providers: await listProviders(harness) });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list providers');
       }
-      return;
+      return true;
     }
-
-    if (req.method === 'GET' && url.startsWith(API_ROUTES.modelList)) {
+    if (req.method === 'GET' && (url === API_ROUTES.modelList || url.startsWith(`${API_ROUTES.modelList}?`))) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);
       const harness = params.get('harness');
       const provider = params.get('provider') ?? undefined;
-      if (harness !== 'pi' && harness !== 'claude-sdk') {
-        sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")');
-        return;
-      }
+      if (harness !== 'pi' && harness !== 'claude-sdk') { sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")'); return true; }
       try {
         const { listModels } = await import('@eforge-build/engine/models');
-        const models = await listModels(harness, provider);
-        sendJson(res, { models });
+        sendJson(res, { models: await listModels(harness, provider) });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list models');
       }
-      return;
+      return true;
     }
-
-    if (url === API_ROUTES.projectContext) {
-      serveProjectContext(req, res);
-    } else if (url === API_ROUTES.health) {
-      serveHealth(req, res);
-    } else if (req.method === 'GET' && url === API_ROUTES.version) {
-      sendJson(res, { version: DAEMON_API_VERSION, eforgeVersion: EFORGE_VERSION });
-    } else if (url === API_ROUTES.configShow || (req.method === 'GET' && url.startsWith(`${API_ROUTES.configShow}?`))) {
+    return false;
+  }
+  async function handleConfigContextRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
+    if (url === API_ROUTES.projectContext) { serveProjectContext(req, res); return true; }
+    if (url === API_ROUTES.health) { serveHealth(req, res); return true; }
+    if (req.method === 'GET' && url === API_ROUTES.version) { sendJson(res, { version: DAEMON_API_VERSION, eforgeVersion: EFORGE_VERSION }); return true; }
+    if (url === API_ROUTES.configShow || (req.method === 'GET' && url.startsWith(`${API_ROUTES.configShow}?`))) {
       try {
         const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
         const qParams = new URLSearchParams(queryString);
@@ -4602,39 +4570,29 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load config');
       }
-    } else if (url === API_ROUTES.configValidate) {
+      return true;
+    }
+    if (url === API_ROUTES.configValidate) {
       try {
         const { validateConfigFile } = await import('@eforge-build/engine/config');
-        const result = await validateConfigFile(options?.cwd);
-        sendJson(res, result);
+        sendJson(res, await validateConfigFile(options?.cwd));
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to validate config');
       }
+      return true;
+    }
     // --- eforge:region plan-03-daemon-mcp-pi ---
-    } else if (req.method === 'GET' && url.startsWith(RECOVERY_SIDECAR_BASE)) {
-      if (!cwd) {
-        sendJsonError(res, 503, 'Working directory not configured');
-        return;
-      }
+    if (req.method === 'GET' && (url === RECOVERY_SIDECAR_BASE || url.startsWith(`${RECOVERY_SIDECAR_BASE}?`))) {
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       const prdQueueDir = options?.config?.prdQueue?.dir ?? '.eforge/queue';
       const failedPrdDir = resolve(cwd, prdQueueDir, 'failed');
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
-      const params = new URLSearchParams(queryString);
-      const prdId = params.get('prdId');
-      if (!prdId) {
-        sendJsonError(res, 400, 'Missing required query param: prdId');
-        return;
-      }
-      if (!isValidPathSegment(prdId)) {
-        sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
-        return;
-      }
+      const prdId = new URLSearchParams(queryString).get('prdId');
+      if (!prdId) { sendJsonError(res, 400, 'Missing required query param: prdId'); return true; }
+      if (!isValidPathSegment(prdId)) { sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences'); return true; }
       const mdPath = resolve(failedPrdDir, `${prdId}.recovery.md`);
       const jsonPath = resolve(failedPrdDir, `${prdId}.recovery.json`);
-      if (!isWithinDir(mdPath, failedPrdDir) || !isWithinDir(jsonPath, failedPrdDir)) {
-        sendJsonError(res, 400, 'Invalid prdId: resolved path escapes failed PRD directory');
-        return;
-      }
+      if (!isWithinDir(mdPath, failedPrdDir) || !isWithinDir(jsonPath, failedPrdDir)) { sendJsonError(res, 400, 'Invalid prdId: resolved path escapes failed PRD directory'); return true; }
       let mdContent: string;
       let jsonContent: string;
       try {
@@ -4644,73 +4602,58 @@ export async function startServer(
         ]);
       } catch {
         sendJsonError(res, 404, 'Recovery sidecar not found');
-        return;
+        return true;
       }
       try {
         sendJson(res, { markdown: mdContent, json: JSON.parse(jsonContent) });
       } catch (err) {
         sendJsonError(res, 500, `Recovery sidecar JSON is malformed: ${err instanceof Error ? err.message : String(err)} (file: ${jsonPath})`);
       }
+      return true;
+    }
     // --- eforge:endregion plan-03-daemon-mcp-pi ---
+    return false;
+  }
+  async function handleStackRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-03-stack-daemon-ui ---
-    } else if (req.method === 'GET' && url === API_ROUTES.stackLayers) {
-      const cwd = options?.cwd;
-      const layers = cwd ? stackLayersToWire(cwd) : [];
-      sendJson(res, { layers });
+    if (req.method === 'GET' && url === API_ROUTES.stackLayers) { sendJson(res, { layers: cwd ? stackLayersToWire(cwd) : [] }); return true; }
     // --- eforge:endregion plan-03-stack-daemon-ui ---
     // --- eforge:region plan-01-stack-sync-daemon-cli ---
-    } else if (req.method === 'GET' && url === API_ROUTES.stackSyncStatus) {
+    if (req.method === 'GET' && url === API_ROUTES.stackSyncStatus) {
       const syncCwd = options?.cwd;
-      if (!syncCwd) {
-        sendJson(res, { version: 1 });
-        return;
-      }
+      if (!syncCwd) { sendJson(res, { version: 1 }); return true; }
       try {
         const statusFile = await loadSyncStatusForRoute(syncCwd);
         sendJson(res, { last: statusFile.last, current: statusFile.current });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load stack sync status');
       }
-    } else if (req.method === 'POST' && url === API_ROUTES.stackSync) {
-      if (rejectUnsafeExtensionMutationRequest(req, res, 'Stack sync mutations')) return;
+      return true;
+    }
+    if (req.method === 'POST' && url === API_ROUTES.stackSync) {
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Stack sync mutations')) return true;
       const syncCwd = options?.cwd;
-      if (!syncCwd) {
-        sendJsonError(res, 503, 'Working directory not configured');
-        return;
-      }
+      if (!syncCwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let rawBody: unknown;
       try {
         rawBody = await parseJsonBody(req);
       } catch {
         sendJsonError(res, 400, 'Invalid JSON request body');
-        return;
+        return true;
       }
-      if (rawBody !== null && (typeof rawBody !== 'object' || Array.isArray(rawBody))) {
-        sendJsonError(res, 400, 'Request body must be a JSON object');
-        return;
-      }
+      if (rawBody !== null && (typeof rawBody !== 'object' || Array.isArray(rawBody))) { sendJsonError(res, 400, 'Request body must be a JSON object'); return true; }
       const rawBodyObj = (rawBody ?? {}) as Record<string, unknown>;
       const rawDryRun = rawBodyObj.dryRun;
-      if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') {
-        sendJsonError(res, 400, 'dryRun must be a boolean when present');
-        return;
-      }
+      if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') { sendJsonError(res, 400, 'dryRun must be a boolean when present'); return true; }
       const rawTrigger = rawBodyObj.trigger;
-      if (rawTrigger !== undefined && rawTrigger !== 'manual' && rawTrigger !== 'after-build' && rawTrigger !== 'scheduled' && rawTrigger !== 'retry-deferred') {
-        sendJsonError(res, 400, 'trigger must be "manual", "after-build", "scheduled", or "retry-deferred" when present');
-        return;
-      }
+      if (rawTrigger !== undefined && rawTrigger !== 'manual' && rawTrigger !== 'after-build' && rawTrigger !== 'scheduled' && rawTrigger !== 'retry-deferred') { sendJsonError(res, 400, 'trigger must be "manual", "after-build", "scheduled", or "retry-deferred" when present'); return true; }
       const rawActiveBuildPolicy = rawBodyObj.activeBuildPolicy;
-      if (rawActiveBuildPolicy !== undefined && rawActiveBuildPolicy !== 'skip' && rawActiveBuildPolicy !== 'defer') {
-        sendJsonError(res, 400, 'activeBuildPolicy must be "skip" or "defer" when present');
-        return;
-      }
+      if (rawActiveBuildPolicy !== undefined && rawActiveBuildPolicy !== 'skip' && rawActiveBuildPolicy !== 'defer') { sendJsonError(res, 400, 'activeBuildPolicy must be "skip" or "defer" when present'); return true; }
       try {
         const { loadConfig } = await import('@eforge-build/engine/config');
         const { config } = await loadConfig(syncCwd);
-
         if (!config.stacking.enabled) {
-          const resp = {
+          sendJson(res, {
             outcome: 'skipped' as const,
             reason: 'Stacking is not enabled. Set stacking.enabled: true in eforge/config.yaml to activate.',
             stackingActive: false,
@@ -4718,62 +4661,43 @@ export async function startServer(
             restackCandidates: [],
             activeBuildSkips: [],
             providerCommands: [],
-          };
-          sendJson(res, resp);
-          return;
+          });
+          return true;
         }
-
         const request = {
           dryRun: rawDryRun === true,
           ...(rawTrigger !== undefined && { trigger: rawTrigger as 'manual' | 'after-build' | 'scheduled' | 'retry-deferred' }),
           ...(rawActiveBuildPolicy !== undefined && { activeBuildPolicy: rawActiveBuildPolicy as 'skip' | 'defer' }),
         };
-
-        const response = await runStackSync({
-          db,
-          config,
-          cwd: syncCwd,
-          request,
-        });
-
-        sendJson(res, response);
+        sendJson(res, await runStackSync({ db, config, cwd: syncCwd, request }));
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Stack sync failed');
       }
+      return true;
+    }
     // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
-    } else if (url === API_ROUTES.queue) {
-      await serveQueue(req, res);
-    } else if (url === API_ROUTES.sessionMetadata) {
-      const metadata = db.getSessionMetadataBatch();
-      sendJson(res, metadata);
-    } else if (url === API_ROUTES.runs) {
-      serveRuns(req, res);
-    } else if (url === API_ROUTES.daemonEvents) {
-      serveDaemonEventsSSE(req, res);
-    } else if (url.startsWith(`${EVENTS_BASE}/`)) {
+    return false;
+  }
+  async function handleMonitorDataRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
+    if (url === API_ROUTES.queue) { await serveQueue(req, res); return true; }
+    if (url === API_ROUTES.sessionMetadata) { sendJson(res, db.getSessionMetadataBatch()); return true; }
+    if (url === API_ROUTES.runs) { serveRuns(req, res); return true; }
+    if (url === API_ROUTES.daemonEvents) { serveDaemonEventsSSE(req, res); return true; }
+    if (url.startsWith(`${EVENTS_BASE}/`)) {
       const runId = url.slice(`${EVENTS_BASE}/`.length);
-      if (!runId || !/^[\w-]+$/.test(runId)) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid runId');
-        return;
-      }
+      if (!runId || !/^[\w-]+$/.test(runId)) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Invalid runId'); return true; }
       serveSSE(req, res, runId);
-    } else if (url.startsWith(`${RUN_SUMMARY_BASE}/`)) {
+      return true;
+    }
+    if (url.startsWith(`${RUN_SUMMARY_BASE}/`)) {
       const id = url.slice(`${RUN_SUMMARY_BASE}/`.length);
-      if (!id || !/^[\w-]+$/.test(id)) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid id');
-        return;
-      }
-      const sessionId = resolveSessionId(id);
-      sendJson(res, buildRunSummary(db, sessionId));
-    } else if (url.startsWith(`${RUN_STATE_BASE}/`)) {
+      if (!id || !/^[\w-]+$/.test(id)) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Invalid id'); return true; }
+      sendJson(res, buildRunSummary(db, resolveSessionId(id)));
+      return true;
+    }
+    if (url.startsWith(`${RUN_STATE_BASE}/`)) {
       const id = url.slice(`${RUN_STATE_BASE}/`.length);
-      if (!id || !/^[\w-]+$/.test(id)) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid id');
-        return;
-      }
+      if (!id || !/^[\w-]+$/.test(id)) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Invalid id'); return true; }
       const sessionId = resolveSessionId(id);
       const events = db.getEventsBySession(sessionId);
       const sessionRuns = db.getSessionRuns(sessionId);
@@ -4788,45 +4712,66 @@ export async function startServer(
       } else {
         status = 'completed';
       }
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       const hydratedEvents = events.flatMap((evt) => {
         const parsed = parseEventRow(evt.data, evt.timestamp, evt.type, evt.id);
         if (!parsed) return [];
         return [{ ...evt, data: JSON.stringify(parsed) }];
       });
       res.end(JSON.stringify({ status, events: hydratedEvents }));
-    } else if (url.startsWith(`${PLANS_BASE}/`)) {
+      return true;
+    }
+    if (url.startsWith(`${PLANS_BASE}/`)) {
       const runId = url.slice(`${PLANS_BASE}/`.length).split('?')[0];
-      if (!runId || !/^[\w-]+$/.test(runId)) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid runId');
-        return;
-      }
+      if (!runId || !/^[\w-]+$/.test(runId)) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Invalid runId'); return true; }
       await servePlans(req, res, runId);
-    } else if (url.startsWith(`${DIFF_BASE}/`)) {
+      return true;
+    }
+    if (url.startsWith(`${DIFF_BASE}/`)) {
       // Route: /api/diff/:sessionId/:planId?file=path
       const pathPart = url.slice(`${DIFF_BASE}/`.length);
       const [routePath, queryString] = pathPart.split('?');
       const segments = routePath.split('/');
       const sessionIdParam = segments[0];
       const planIdParam = segments[1];
-
       if (!sessionIdParam || !planIdParam || !/^[\w-]+$/.test(sessionIdParam) || !/^[\w-]+$/.test(planIdParam)) {
-        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Invalid sessionId or planId' }));
-        return;
+        sendJsonError(res, 400, 'Invalid sessionId or planId');
+        return true;
       }
+      const fileParam = queryString ? new URLSearchParams(queryString).get('file') ?? undefined : undefined;
+      serveDiff(req, res, resolveSessionId(sessionIdParam), planIdParam, fileParam);
+      return true;
+    }
+    return false;
+  }
+  const server = createServer(async (req, res) => {
+    const url = req.url ?? '/';
+    // Pathname strips the query string for static route matching and file
+    // resolution. API routes continue to use the full `url` string (which
+    // already handles query params via URLSearchParams where needed).
+    const pathname = url.split('?')[0];
 
-      const resolvedSessionId = resolveSessionId(sessionIdParam);
-      const fileParam = queryString
-        ? new URLSearchParams(queryString).get('file') ?? undefined
-        : undefined;
+    if (handleCorsPreflightRoute(req, res)) return;
+    if (handleKeepAliveRoute(req, res)) return;
 
-      serveDiff(req, res, resolvedSessionId, planIdParam, fileParam);
-    } else if (!handleUnknownApiRoute(req, res, pathname)) {
+    if (await handleControlPlaneRoutes(req, res, url)) return;
+
+    if (await handleProfileRoutes(req, res, url)) return;
+
+    // --- eforge:region plan-04-extension-routes ---
+    if (await handleExtensionRoutes(req, res, url)) return;
+    // --- eforge:endregion plan-04-extension-routes ---
+
+    if (await handlePlaybookContentRoutes(req, res, url)) return;
+    if (await handlePlaybookManagementRoutes(req, res, url)) return;
+    if (await handleSessionPlanRoutes(req, res, url)) return;
+
+    if (await handleModelRoutes(req, res, url)) return;
+    if (await handleConfigContextRoutes(req, res, url)) return;
+    if (await handleStackRoutes(req, res, url)) return;
+    if (await handleMonitorDataRoutes(req, res, url)) return;
+
+    if (!handleUnknownApiRoute(req, res, pathname)) {
       await handleStaticFallbackRoute(req, res, pathname);
     }
   });
