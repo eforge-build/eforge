@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import * as React from 'react';
 import { NowDashboard } from '@/views/now-dashboard';
@@ -50,12 +50,21 @@ function connectedState(overrides: Partial<ConsoleProjectState> = {}): ConsolePr
   };
 }
 
+// Suppress replaceState calls from ActivityDrawer
+let replaceStateSpy: ReturnType<typeof vi.spyOn>;
+beforeEach(() => {
+  replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+});
+afterEach(() => {
+  replaceStateSpy.mockRestore();
+});
+
 // ---------------------------------------------------------------------------
 // Populated render
 // ---------------------------------------------------------------------------
 
 describe('NowDashboard - populated state', () => {
-  it('renders Attention, Queue, Recent runs, Stack layers, Recent activity sections when data exists', () => {
+  it('renders Attention, Queue, Stack layers, and Activity sections when data exists', () => {
     const state = connectedState({
       runs: [makeRun()],
       queue: [makeQueue({ status: 'failed' })],
@@ -87,12 +96,12 @@ describe('NowDashboard - populated state', () => {
 
     // Stack layers section should be present
     expect(screen.getByText('Stack layers')).toBeDefined();
-    // Recent activity section
-    expect(screen.getByText('Recent activity')).toBeDefined();
     // Queue card heading
     expect(screen.getByText('Queue')).toBeDefined();
-    // Recent runs card heading
-    expect(screen.getByText('Recent runs')).toBeDefined();
+    // Run history card heading
+    expect(screen.getByText('Run history')).toBeDefined();
+    // Activity launcher
+    expect(screen.getByText('Activity')).toBeDefined();
   });
 
   it('renders two active build cards for two active sessions', () => {
@@ -127,9 +136,28 @@ describe('NowDashboard - populated state', () => {
     render(<NowDashboard projectState={state} activeSessions={activeSessions} />);
 
     // Both plan sets appear as card titles.
-    // selectPrdDisplayLabel title-cases slugs ("plans-alpha" -> "Plans Alpha"),
-    // so the regex must be case-insensitive.
     expect(screen.getAllByText(/plans[\s-]alpha|plans[\s-]beta/i).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('renders Inspect → affordance on active build cards', () => {
+    const run = makeRun({ sessionId: 'sess-X' });
+    const state = connectedState({ runs: [run] });
+    const activeSessions: UseActiveSessionStreamsResult = {
+      sessions: {
+        'sess-X': {
+          sessionId: 'sess-X',
+          connectionStatus: 'connected',
+          status: 'running',
+          runState: createInitialRunState(),
+          lastEventAt: Date.now(),
+          error: null,
+        },
+      },
+      activeSessionIds: ['sess-X'],
+      subscriptionCount: 1,
+    };
+    render(<NowDashboard projectState={state} activeSessions={activeSessions} />);
+    expect(screen.getByText('Inspect →')).toBeDefined();
   });
 });
 
@@ -138,7 +166,7 @@ describe('NowDashboard - populated state', () => {
 // ---------------------------------------------------------------------------
 
 describe('NowDashboard - empty connected state', () => {
-  it('shows Queue is empty and No recent activity in the daemon snapshot', () => {
+  it('shows Queue is empty when queue is empty', () => {
     const state = connectedState({
       queue: [],
       runs: [],
@@ -147,9 +175,19 @@ describe('NowDashboard - empty connected state', () => {
     });
 
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
-
     expect(screen.getByText('Queue is empty')).toBeDefined();
-    expect(screen.getByText('No recent activity in the daemon snapshot')).toBeDefined();
+  });
+
+  it('shows No recent activity in activity launcher when no activity', () => {
+    const state = connectedState({
+      queue: [],
+      runs: [],
+      stackLayers: [],
+      recentActivity: [],
+    });
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+    expect(screen.getByText('No recent activity')).toBeDefined();
   });
 
   it('renders no active builds section when there are no active builds', () => {
@@ -162,14 +200,48 @@ describe('NowDashboard - empty connected state', () => {
       <NowDashboard projectState={state} activeSessions={emptyActiveSessions} />,
     );
 
-    // ActiveBuildsGrid returns null for empty cards — no section heading or "No active builds" text
+    // ActiveBuildsGrid returns null for empty cards
     expect(screen.queryByText('Active builds')).toBeNull();
     expect(screen.queryByText('No active builds')).toBeNull();
-    // The grid container itself should not be in the DOM
-    const grids = container.querySelectorAll('.grid');
-    // There should be no active-builds grid (the queue/runs card grid is a different grid)
     const activeBuildsText = container.textContent ?? '';
     expect(activeBuildsText).not.toContain('Active builds');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Section order: Attention → Active builds → Queue → Stack+Activity → RunHistory
+// ---------------------------------------------------------------------------
+
+describe('NowDashboard - section order', () => {
+  it('renders Queue before Run history in the DOM', () => {
+    const state = connectedState({
+      queue: [makeQueue()],
+      runs: [makeRun({ completedAt: new Date().toISOString(), status: 'completed' })],
+    });
+
+    const { container } = render(
+      <NowDashboard projectState={state} activeSessions={emptyActiveSessions} />,
+    );
+
+    const text = container.textContent ?? '';
+    const queueIdx = text.indexOf('Queue');
+    const runHistoryIdx = text.indexOf('Run history');
+    expect(queueIdx).toBeGreaterThan(-1);
+    expect(runHistoryIdx).toBeGreaterThan(-1);
+    expect(queueIdx).toBeLessThan(runHistoryIdx);
+  });
+
+  it('Activity launcher appears alongside Stack summary section', () => {
+    const state = connectedState({
+      queue: [],
+      runs: [],
+      recentActivity: [],
+    });
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+    // Both Activity and Run history should be present
+    expect(screen.getByText('Activity')).toBeDefined();
+    expect(screen.getByText('Run history')).toBeDefined();
   });
 });
 
@@ -197,7 +269,6 @@ describe('NowDashboard - connecting state', () => {
     };
 
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
-
     expect(screen.getByText('Connecting to daemon stream')).toBeDefined();
   });
 });
@@ -263,7 +334,6 @@ describe('NowDashboard - stack summary', () => {
     const state = connectedState({ stackLayers: [] });
 
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
-
     expect(screen.queryByText('Stack layers')).toBeNull();
   });
 });

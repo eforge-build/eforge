@@ -13,7 +13,7 @@
  */
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import type { ActivityEventRowModel, ActivityFamily } from '@/lib/selectors/activity';
+import type { ActivityEventRowModel, ActivityFamily } from './selectors';
 
 // ---------------------------------------------------------------------------
 // Family dot colour mapping (CSS variables from globals.css)

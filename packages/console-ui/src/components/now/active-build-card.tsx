@@ -3,9 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { NowActiveBuildCard as NowActiveBuildCardModel } from '@/lib/selectors/now';
 import { formatDuration, truncateId } from '@/lib/format';
+import { BuildPipelineStrip } from './build-pipeline-strip';
+import { cn } from '@/lib/utils';
 
 interface ActiveBuildCardProps {
   card: NowActiveBuildCardModel;
+  onNavigate?: (href: string) => void;
 }
 
 const STREAM_STATUS_BADGE: Record<
@@ -17,7 +20,7 @@ const STREAM_STATUS_BADGE: Record<
   disconnected: 'destructive',
 };
 
-export function ActiveBuildCard({ card }: ActiveBuildCardProps) {
+export function ActiveBuildCard({ card, onNavigate }: ActiveBuildCardProps) {
   const durationLabel = formatDuration(card.durationMs);
   const streamBadgeVariant = STREAM_STATUS_BADGE[card.streamStatus] ?? 'outline';
 
@@ -31,8 +34,29 @@ export function ActiveBuildCard({ card }: ActiveBuildCardProps) {
   const cacheLabel =
     card.cachePercent > 0 ? `${Math.round(card.cachePercent)}% cache` : null;
 
+  const handleClick = () => onNavigate?.(card.href);
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') handleClick();
+  };
+
   return (
-    <Card className="flex flex-col">
+    <Card
+      role={onNavigate ? 'button' : undefined}
+      tabIndex={onNavigate ? 0 : undefined}
+      onClick={onNavigate ? handleClick : undefined}
+      onKeyDown={onNavigate ? handleKeyDown : undefined}
+      className={cn(
+        'flex flex-col',
+        onNavigate && [
+          'cursor-pointer',
+          'transition-transform duration-150',
+          'hover:ring-1 hover:ring-primary/40',
+          'focus:outline-none focus:ring-2 focus:ring-ring',
+          'motion-safe:hover:-translate-y-0.5',
+        ],
+      )}
+      style={onNavigate ? { willChange: 'transform' } : undefined}
+    >
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-sm font-semibold truncate">
@@ -98,6 +122,12 @@ export function ActiveBuildCard({ card }: ActiveBuildCardProps) {
           </p>
         )}
 
+        {/* Mini-Gantt pipeline strip */}
+        <BuildPipelineStrip
+          rows={card.miniGanttRows}
+          hasPlanningRow={card.hasPlanningRow}
+        />
+
         {/* Stats row: plan progress, tokens, cost, cache, duration */}
         <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t">
           <span className="flex gap-2">
@@ -109,13 +139,14 @@ export function ActiveBuildCard({ card }: ActiveBuildCardProps) {
           <span>{durationLabel}</span>
         </div>
 
-        {/* Link to runs */}
-        <a
-          href={card.href}
-          className="text-xs text-primary hover:underline"
-        >
-          View runs
-        </a>
+        {/* Inspect affordance — only shown when navigation is available */}
+        {onNavigate && (
+          <div className="flex items-center justify-end">
+            <span className="text-xs text-primary font-medium">
+              Inspect →
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

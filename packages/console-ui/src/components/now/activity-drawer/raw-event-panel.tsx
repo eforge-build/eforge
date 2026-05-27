@@ -10,7 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import type { ActivityEventRowModel } from '@/lib/selectors/activity';
+import type { ActivityEventRowModel } from './selectors';
 
 interface RawEventPanelProps {
   /** The selected activity event row, or null when no row is selected. */

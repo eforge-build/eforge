@@ -7,7 +7,7 @@
  */
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import type { ActivityFamily, ActivityFilterState, ActivityGroupCounts } from '@/lib/selectors/activity';
+import type { ActivityFamily, ActivityFilterState, ActivityGroupCounts } from './selectors';
 
 const FAMILY_LABELS: Array<{ family: ActivityFamily; label: string }> = [
   { family: 'all', label: 'All' },

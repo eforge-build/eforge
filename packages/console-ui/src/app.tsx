@@ -55,7 +55,7 @@ export function App() {
   const routeContent = (() => {
     // --- eforge:region now-dashboard ---
     if (currentRoute === 'now') {
-      return <NowDashboard projectState={projectState} activeSessions={activeSessionStreams} />;
+      return <NowDashboard projectState={projectState} activeSessions={activeSessionStreams} onNavigate={handleNavigate} />;
     }
     // --- eforge:endregion now-dashboard ---
 

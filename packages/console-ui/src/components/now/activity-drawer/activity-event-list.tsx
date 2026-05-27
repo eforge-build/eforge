@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { ActivityEventRow } from './activity-event-row';
-import type { ActivityEventRowModel } from '@/lib/selectors/activity';
+import type { ActivityEventRowModel } from './selectors';
 
 interface ActivityEventListProps {
   /** Rows that have passed all active filters. */
