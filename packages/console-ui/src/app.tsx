@@ -1,13 +1,17 @@
 // --- eforge:region console-shell ---
 import * as React from 'react';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { ConsoleShell } from '@/components/shell/console-shell';
-import { RoutePlaceholder } from '@/components/shell/route-placeholder';
 import { useDaemonEvents } from '@/hooks/use-daemon-events';
 import { useActiveSessionStreams } from '@/hooks/use-active-session-streams';
 import { selectActiveSessionIds } from '@/lib/selectors';
 import { parseConsoleRoute, toConsolePath } from '@/lib/navigation';
 import type { ConsoleRouteId } from '@/lib/navigation';
+// --- eforge:region plan-06-build-detail-base ---
+const RunDetailView = lazy(() =>
+  import('@/views/run-detail').then((m) => ({ default: m.RunDetailView })),
+);
+// --- eforge:endregion plan-06-build-detail-base ---
 // --- eforge:region now-dashboard ---
 import { NowDashboard } from './views/now-dashboard';
 // --- eforge:endregion now-dashboard ---
@@ -65,13 +69,26 @@ export function App() {
     }
     // --- eforge:endregion system-configuration-view ---
 
-    // Run detail placeholder — full BuildDetailView lands in plan-06
-    return (
-      <RoutePlaceholder
-        routeId="runDetail"
-        connectionStatus={projectState.connectionStatus}
-      />
-    );
+    // --- eforge:region plan-06-build-detail-base ---
+    if (typeof currentRoute === 'object' && currentRoute.id === 'runDetail') {
+      const { detailId } = currentRoute;
+      const isLive = activeSessionIds.includes(detailId);
+      const liveRunState = isLive
+        ? activeSessionStreams.sessions[detailId]?.runState
+        : undefined;
+      return (
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-text-dim text-sm">Loading...</div>}>
+          <RunDetailView
+            detailId={detailId}
+            isLive={isLive}
+            liveRunState={liveRunState}
+            onBack={() => handleNavigate('/console/')}
+          />
+        </Suspense>
+      );
+    }
+    // --- eforge:endregion plan-06-build-detail-base ---
+    return null;
   })();
 
   return (

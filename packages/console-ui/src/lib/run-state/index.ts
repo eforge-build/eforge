@@ -26,6 +26,15 @@ export type {
   SessionProfile,
   ValidationCommandSpan,
   ValidationCommandStatus,
+  // Re-exported client types (so pipeline/timeline components can import from @/lib/run-state)
+  EforgeEvent,
+  AgentRole,
+  BuildStageSpec,
+  OrchestrationConfig,
+  ReviewIssue,
+  BuildDecision,
+  PlanningDecision,
+  ReviewProfileConfig,
 } from './types';
 
 // Selectors

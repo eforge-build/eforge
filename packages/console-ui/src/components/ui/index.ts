@@ -20,3 +20,7 @@ export * from './switch';
 export * from './table';
 export * from './tooltip';
 // --- eforge:endregion plan-02-deps-and-shadcn ---
+
+// --- eforge:region plan-06-build-detail-base ---
+export * from './resizable';
+// --- eforge:endregion plan-06-build-detail-base ---
