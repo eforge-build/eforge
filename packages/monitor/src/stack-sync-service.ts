@@ -21,7 +21,7 @@ import type { MonitorDB } from './db.js';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { StackSyncRequest, StackSyncResponse } from '@eforge-build/client';
 import { isPersistedDaemonEventType } from '@eforge-build/client';
-import { redactProviderMessage } from '@eforge-build/engine/stacking/git-spice';
+import { redactProviderMessage } from '@eforge-build/engine/stacking/index';
 import {
   setCurrentSyncStatus,
   completeCurrentSyncStatus,

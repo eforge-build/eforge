@@ -154,7 +154,7 @@ Use `/eforge:workflow` to configure this through the workflow preset wizard with
 When sync runs while active eforge builds are in progress, branches whose worktrees are in use by active builds are excluded. These branches are reported in `activeBuildSkips`. When all eligible candidates are excluded by active builds, the outcome depends on the `activeBuildPolicy`:
 
 - **`skip` (default for manual sync)** — the sync returns a `skipped` outcome immediately without mutating any branch state. Re-run `eforge stack sync` manually after the active builds complete.
-- **`defer` (used by the after-build trigger)** — the sync returns a `deferred` outcome, recording that candidates were available but blocked. When `stacking.sync.afterBuild: true` is configured, the daemon fires another sync attempt after each build reaches a terminal state, which will proceed if the stack is no longer blocked.
+- **`defer` (used by the after-build trigger)** — the sync returns a `deferred` outcome, recording that candidates were available but blocked. When `stacking.sync.afterBuild: true` is configured, the daemon fires another sync attempt after each build reaches a terminal state to retry deferred syncs, which will proceed if the stack is no longer blocked.
 
 ### Pre-landing reconciliation
 

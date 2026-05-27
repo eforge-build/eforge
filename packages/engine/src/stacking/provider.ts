@@ -95,6 +95,16 @@ export interface StackProviderAdapter {
   commandPreview(argv: string[]): { command: string; args: string[] };
 
   /**
+   * Return the dry-run command preview for `repo sync` without executing it.
+   */
+  syncRepoPreview(): { command: string; args: string[] };
+
+  /**
+   * Return the dry-run command preview for `stack restack` without executing it.
+   */
+  restackStackPreview(): { command: string; args: string[] };
+
+  /**
    * Extract a PR URL from the provider's stdout output.
    *
    * Returns the first URL found in stdout, or undefined when none is present.

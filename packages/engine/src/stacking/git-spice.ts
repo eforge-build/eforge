@@ -217,6 +217,20 @@ export class GitSpiceAdapter {
   }
 
   /**
+   * Return the dry-run command preview for `repo sync` without executing it.
+   */
+  syncRepoPreview(): { command: string; args: string[] } {
+    return { command: this.command, args: ['repo', 'sync'] };
+  }
+
+  /**
+   * Return the dry-run command preview for `stack restack` without executing it.
+   */
+  restackStackPreview(): { command: string; args: string[] } {
+    return { command: this.command, args: ['stack', 'restack'] };
+  }
+
+  /**
    * Extract a GitHub PR URL from git-spice stdout output.
    */
   parsePrUrl(stdout: string): string | undefined {

@@ -217,8 +217,8 @@ export async function performStackSync(
   // --- eforge:region plan-01-core-daemon-stack-sync ---
   // Use provider for command previews (no hard-coded argv outside the adapter)
   const provider = createProvider(config.stacking);
-  const syncRepoPreview = provider.commandPreview(['repo', 'sync']);
-  const restackStackPreview = provider.commandPreview(['stack', 'restack']);
+  const syncRepoPreview = provider.syncRepoPreview();
+  const restackStackPreview = provider.restackStackPreview();
   // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
   // Compute exclusion state up-front so dry-run and wet-run use the same logic.
@@ -317,7 +317,7 @@ export async function performStackSync(
     providerCommands.push(buildCommandRecord(syncResult, false, provider.redactMessage.bind(provider)));
   } catch (err) {
     const errorMsg = provider.redactMessage(err instanceof Error ? err.message : String(err));
-    const failedPreview = provider.commandPreview(['repo', 'sync']);
+    const failedPreview = provider.syncRepoPreview();
     providerCommands.push({
       command: failedPreview.command,
       args: failedPreview.args,
@@ -364,7 +364,7 @@ export async function performStackSync(
     } catch (err) {
       const errorMsg = provider.redactMessage(err instanceof Error ? err.message : String(err));
       const isConflict = /conflict/i.test(errorMsg);
-      const failedPreview = provider.commandPreview(['stack', 'restack']);
+      const failedPreview = provider.restackStackPreview();
       providerCommands.push({
         command: failedPreview.command,
         args: failedPreview.args,

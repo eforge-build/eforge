@@ -49,6 +49,7 @@ export {
   GitSpiceCommandError,
   createGitSpiceAdapter,
   parseGitSpicePrUrl,
+  redactProviderMessage,
 } from './git-spice.js';
 // --- eforge:endregion plan-02-git-spice-provider-and-git-primitives ---
 

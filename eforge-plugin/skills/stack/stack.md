@@ -45,7 +45,7 @@ The tool returns a structured sync report. Interpret each field:
 
 **`complete`** - All eligible artifact branches were restacked onto the latest trunk. Show the list of `providerCommands` that ran and the `restackCandidates` that were processed.
 
-**`deferred`** - Active builds are running and their worktrees overlap the stack candidate set. The restack step was skipped to avoid conflicting with in-flight builds. Show `activeBuildSkips` and `reason`. The `activeBuildPolicy` field will be `"defer"` when a deferred outcome was explicitly requested. If `stacking.sync.afterBuild: true` is configured, the daemon will fire another sync attempt after each build completes — no manual action is needed. Otherwise, suggest waiting for active builds to complete and then running `/eforge:stack` again.
+**`deferred`** - Active builds are running and their worktrees overlap the stack candidate set. The restack step was skipped to avoid conflicting with in-flight builds. Show `activeBuildSkips` and `reason`. The `activeBuildPolicy` field will be `"defer"` when a deferred outcome was explicitly requested. If `stacking.sync.afterBuild: true` is configured, the daemon will retry deferred syncs after each build completes — no manual action is needed. Otherwise, suggest waiting for active builds to complete and then running `/eforge:stack` again.
 
 **`failed`** - The sync command exited with a non-zero code. Show `error` and the failed `providerCommands`. Suggest running `git-spice` manually to investigate, then re-running sync after resolving the issue.
 

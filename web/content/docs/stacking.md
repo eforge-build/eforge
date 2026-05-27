@@ -138,62 +138,6 @@ When sync returns `outcome: conflict`, a merge conflict occurred during restack.
 
 Sync uses a fast-forward-only policy for trunk. When `fastForward` is `false`, the local trunk is ahead of `origin/<trunk>`. Push or align the local trunk with origin before running sync.
 
-```bash
-eforge stack sync --dry-run
-```
-
-<<<<<<< HEAD
-A sync report shows the provider commands, restack candidates, active-build skips, local/origin trunk SHAs, and whether the local trunk is fast-forward eligible. If active eforge builds overlap the stack, eforge reports the skipped branches and defers the restack for the whole stack because restack cannot be scoped safely. Run sync again after those builds complete.
-
-For automatic sync, use `/eforge:workflow` and choose `stacked-pr-autosync`, or add `eforge stack sync` to `build.postMergeCommands` yourself. This adds stack sync to eforge's post-merge validation commands, so it runs during future eforge builds after plan merges into the merge worktree and before landing/PR publication—not automatically when an upstream PR merges outside eforge.
-=======
-`eforge stack sync` calls the daemon's stack sync route, which runs `git-spice repo sync` followed by `git-spice stack restack` to update the full local stack. The sync executes from the project root and returns a structured report:
-
-| Field | Description |
-|-------|-------------|
-| `outcome` | One of `skipped`, `complete`, `deferred`, `failed`, `conflict` |
-| `restackCandidates` | Artifact branches eligible for restack |
-| `activeBuildSkips` | Branches excluded because active builds are using their worktrees |
-| `providerCommands` | git-spice commands that ran (or would run in dry-run mode) |
-| `fastForward` | Whether local trunk is at or behind `origin/<trunk>` |
-| `error` | Error message when outcome is `failed` or `conflict` |
-
-### Automatic after-build sync
-
-To run stack sync automatically after every build lands, set `stacking.sync.afterBuild: true` in `eforge/config.yaml`:
-
-```yaml
-stacking:
-  sync:
-    afterBuild: true
-```
-
-When enabled, the daemon triggers a sync from the project root after each build reaches a terminal state (completed, failed, or skipped). The after-build path uses `activeBuildPolicy: "defer"` — if other active builds still overlap the stack candidates, the sync records a `deferred` outcome rather than running.
-
-> **Avoid `build.postMergeCommands: ["eforge stack sync"]` for automatic sync.** That path bypasses active-build overlap detection. Use `stacking.sync.afterBuild: true` instead.
-
-### Active-build deferral
-
-When sync runs while active builds are in progress, branches whose worktrees overlap active builds are excluded and reported in `activeBuildSkips`. The outcome depends on the `activeBuildPolicy` in the request:
-
-- **`skip` (default for manual sync)** — returns `skipped` immediately without mutating any branch state. Re-run `eforge stack sync` manually after active builds complete.
-- **`defer` (used by the after-build trigger)** — returns `deferred`, recording that candidates were blocked. When `stacking.sync.afterBuild: true` is configured, the daemon fires another sync attempt after each build reaches a terminal state, which proceeds if the stack is no longer blocked.
-
-### Conflict recovery
-
-When sync returns `outcome: conflict`, a merge conflict occurred during restack. To recover:
-
-1. Run `git status` to see the conflicting files.
-2. Resolve the conflicts in the affected files.
-3. Run `git add <resolved-files>` to stage the resolved files.
-4. Run `git rebase --continue` (or the git-spice equivalent) to resume the restack.
-5. Once the restack finishes, run `eforge stack sync` again to sync remaining branches.
-
-### Fast-forward-only trunk policy
-
-Sync uses a fast-forward-only policy for trunk. When `fastForward` is `false`, the local trunk is ahead of `origin/<trunk>`. Push or align the local trunk with origin before running sync.
->>>>>>> 9f26c38b (feat(plan-03-docs-and-workflow-guidance): Documentation and Workflow Guidance)
-
 ## Note on GitHub inline comments
 
 When a PR's base branch changes after an upstream PR merges, GitHub marks existing inline review comments as "outdated". This is a known GitHub limitation. The comment content remains accessible in the PR timeline.
