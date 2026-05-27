@@ -45,7 +45,7 @@ When a PRD has multiple `depends_on` entries, eforge cannot infer the stack pare
 
 ## Enable stacking
 
-The guided path is `/eforge:workflow`. Choose a stacked workflow preset to write the required `landing.action: pr` and `stacking.enabled: true` keys to `eforge/config.yaml`. The `stacked-pr-autosync` preset also appends `eforge stack sync` to `build.postMergeCommands`.
+The guided path is `/eforge:workflow`. Choose a stacked workflow preset to write the required `landing.action: pr` and `stacking.enabled: true` keys to `eforge/config.yaml`. The `stacked-pr-autosync` preset also writes `stacking.sync.afterBuild: true` for daemon-owned automatic stack sync.
 
 To configure the same settings by hand, add these fields to `eforge/config.yaml`:
 

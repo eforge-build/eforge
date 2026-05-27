@@ -167,7 +167,7 @@ describe('loadDocPage', () => {
       'solo-pr': ['landing.action: pr', 'landing.pr.autoMerge: always', 'stacking.enabled: false'],
       'team-pr': ['landing.action: pr', 'landing.pr.autoMerge: ask', 'stacking.enabled: false'],
       'stacked-pr': ['landing.action: pr', 'stacking.enabled: true'],
-      'stacked-pr-autosync': ['landing.action: pr', 'stacking.enabled: true', 'build.postMergeCommands'],
+      'stacked-pr-autosync': ['landing.action: pr', 'stacking.enabled: true', 'stacking.sync.afterBuild: true'],
     };
 
     for (const [preset, configKeys] of Object.entries(presetConfigMappings)) {

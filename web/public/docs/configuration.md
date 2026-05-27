@@ -35,7 +35,7 @@ Use `/eforge:workflow` after initialization when you want a guided choice for la
 | `solo-pr` | `landing.action: pr`, `landing.pr.autoMerge: always`, `stacking.enabled: false` |
 | `team-pr` | `landing.action: pr`, `landing.pr.autoMerge: ask`, `stacking.enabled: false` |
 | `stacked-pr` | `landing.action: pr`, `stacking.enabled: true` |
-| `stacked-pr-autosync` | `landing.action: pr`, `stacking.enabled: true`, appends `eforge stack sync` to `build.postMergeCommands` |
+| `stacked-pr-autosync` | `landing.action: pr`, `stacking.enabled: true`, `stacking.sync.afterBuild: true` |
 
 For stacking presets, the wizard also writes `stacking.gitSpice.command` when you provide a custom git-spice path. Use `/eforge:config --edit` for fine-grained changes after applying a preset.
 
