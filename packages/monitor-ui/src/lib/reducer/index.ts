@@ -373,6 +373,11 @@ export const IGNORED_EVENT_TYPES = [
   'stack:sync:failed',
   'stack:sync:deferred',
   // --- eforge:endregion plan-01-core-daemon-stack-sync ---
+  // --- eforge:region plan-03-docs-and-workflow-guidance ---
+  // stack:sync:skipped — emitted when sync is skipped (stacking disabled or no candidates).
+  // Daemon-scoped; handled by daemonHandlerRegistry, not per-session eforgeReducer.
+  'stack:sync:skipped',
+  // --- eforge:endregion plan-03-docs-and-workflow-guidance ---
 ] as const;
 
 // ---------------------------------------------------------------------------

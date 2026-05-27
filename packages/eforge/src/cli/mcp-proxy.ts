@@ -1210,7 +1210,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_stack_sync
   createDaemonTool(server, cwd, {
     name: 'eforge_stack_sync',
-    description: "Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml. When active builds are running, check the outcome field: 'skipped' means no sync was performed, 'deferred' means the caller should retry later.",
+    description: "Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml. When active builds are running, check the outcome field: 'skipped' means no sync was performed (default activeBuildPolicy), 'deferred' means the sync was blocked by active builds and recorded for potential retry (requires activeBuildPolicy: 'defer').",
     schema: {
       dryRun: z
         .boolean()
@@ -1219,7 +1219,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       activeBuildPolicy: z
         .enum(['skip', 'defer'])
         .optional()
-        .describe("How to handle concurrent active builds. 'skip' returns a deferred outcome immediately (default). 'defer' queues the sync to run after active builds complete."),
+        .describe("How to handle concurrent active builds. 'skip' (default) returns a skipped outcome without mutating branch state when active builds overlap. 'defer' returns a deferred outcome, which the daemon after-build trigger uses to retry when the stack is no longer blocked."),
     },
     handler: async ({ dryRun, activeBuildPolicy }, { cwd: toolCwd }) => {
       const body: { dryRun: boolean; trigger: 'manual'; activeBuildPolicy?: 'skip' | 'defer' } = {

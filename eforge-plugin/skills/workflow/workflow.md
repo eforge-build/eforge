@@ -22,7 +22,7 @@ If `--reconfigure` is passed, call `mcp__eforge__eforge_config` with `{ action: 
 - `landing.pr.autoMerge`
 - `build.allowLocalMergeToTrunk`
 - `stacking.enabled`
-- `build.postMergeCommands` (any `eforge stack sync` entries)
+- `stacking.sync.afterBuild`
 
 Then proceed to the interview.
 
@@ -63,9 +63,9 @@ Store as `stacking: "none" | "git-spice"` and optionally `gitSpiceCommand: "<pat
 
 ### Question 4: Automatic stack sync (only when stacking = "git-spice")
 
-> **Automatically sync the stack after every merge?**
+> **Automatically sync the stack after every build?**
 >
-> - **Yes** — adds `eforge stack sync` as a post-merge command so stacks are restacked automatically when a build lands.
+> - **Yes** — enables daemon-owned after-build sync (`stacking.sync.afterBuild: true`). After each build completes, the daemon runs `eforge stack sync` automatically from the project root. When active builds are running, sync is deferred until those builds complete.
 > - **No** — run `/eforge:stack` manually when you want to sync the stack.
 
 Store as `autoSync: "yes" | "no"`.
@@ -92,7 +92,7 @@ Present the config changes to the user before writing:
 | `solo-pr` | `landing.action: pr`, `landing.pr.autoMerge: always`, `stacking.enabled: false` |
 | `team-pr` | `landing.action: pr`, `landing.pr.autoMerge: ask`, `stacking.enabled: false` |
 | `stacked-pr` | `landing.action: pr`, `stacking.enabled: true` |
-| `stacked-pr-autosync` | `landing.action: pr`, `stacking.enabled: true`, `build.postMergeCommands: [eforge stack sync]` |
+| `stacked-pr-autosync` | `landing.action: pr`, `stacking.enabled: true`, `stacking.sync.afterBuild: true` |
 
 For stacking presets, if the user provided a custom git-spice path, also write `stacking.gitSpice.command: "<path>"`.
 
@@ -148,7 +148,7 @@ Optionally include `"gitSpiceCommand": "<path>"` if the user provided one.
   "force": true
 }
 ```
-Optionally include `"gitSpiceCommand": "<path>"`. After `eforge_init` returns, inform the user that `eforge stack sync` will be added to `build.postMergeCommands` - this requires a direct edit to `eforge/config.yaml` since `eforge_init` does not manage `postMergeCommands` for stacked-pr-autosync. Read the current `eforge/config.yaml`, add `eforge stack sync` to `build.postMergeCommands` if not already present, and write it back. Then call `mcp__eforge__eforge_config` with `{ action: "validate" }`.
+Optionally include `"gitSpiceCommand": "<path>"`. After `eforge_init` returns, inform the user that daemon-owned after-build sync will be enabled via `stacking.sync.afterBuild: true` — this requires a direct edit to `eforge/config.yaml` since `eforge_init` does not expose that field. Read the current `eforge/config.yaml`, set `stacking.sync.afterBuild: true` under the `stacking.sync` block if not already present, and write it back. Then call `mcp__eforge__eforge_config` with `{ action: "validate" }`.
 
 ## Validate
 

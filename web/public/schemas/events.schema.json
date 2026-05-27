@@ -10315,6 +10315,64 @@
               }
             }
           }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "syncId",
+            "dryRun",
+            "reason",
+            "restackCandidates",
+            "excludedCandidates"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:sync:skipped",
+              "type": "string"
+            },
+            "syncId": {
+              "type": "string"
+            },
+            "trigger": {
+              "anyOf": [
+                {
+                  "const": "manual",
+                  "type": "string"
+                },
+                {
+                  "const": "after-build",
+                  "type": "string"
+                },
+                {
+                  "const": "scheduled",
+                  "type": "string"
+                },
+                {
+                  "const": "retry-deferred",
+                  "type": "string"
+                }
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "restackCandidates": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "excludedCandidates": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         }
       ]
     }

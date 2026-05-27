@@ -78,6 +78,18 @@ describe('eforge-plugin/skills/stack/stack.md — eforge_stack_sync coverage', (
   it('documents fast-forward trunk policy', () => {
     expect(raw).toMatch(/fast.?forward/i);
   });
+
+  it('documents deferred outcome for active-build conflicts', () => {
+    expect(raw).toContain('deferred');
+  });
+
+  it('documents retryDeferred field for automatic retry', () => {
+    expect(raw).toMatch(/retry.?[Dd]eferred|retryDeferred/i);
+  });
+
+  it('documents daemon-owned execution from project root', () => {
+    expect(raw).toMatch(/daemon.?owned|daemon.*project root|project root.*daemon/i);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -103,7 +115,7 @@ describe('eforge-plugin/skills/workflow/workflow.md — four wizard dimensions',
 
   it('covers automatic stack sync dimension', () => {
     expect(raw).toMatch(/auto.*sync|autoSync/i);
-    expect(raw).toContain('eforge stack sync');
+    expect(raw).toContain('stacking.sync.afterBuild');
   });
 
   it('documents all five preset names', () => {
@@ -119,7 +131,14 @@ describe('eforge-plugin/skills/workflow/workflow.md — four wizard dimensions',
     expect(raw).toContain('landing.pr.autoMerge');
     expect(raw).toContain('build.allowLocalMergeToTrunk');
     expect(raw).toContain('stacking.enabled');
-    expect(raw).toContain('build.postMergeCommands');
+    expect(raw).toContain('stacking.sync.afterBuild');
+  });
+
+  it('maps stacked-pr-autosync to stacking.sync.afterBuild, not build.postMergeCommands', () => {
+    // Automatic stack sync is now daemon-owned via stacking.sync.afterBuild;
+    // the old guidance that added eforge stack sync to build.postMergeCommands is removed
+    expect(raw).toContain('stacking.sync.afterBuild');
+    expect(raw).not.toMatch(/stacked-pr-autosync[\s\S]{0,300}build\.postMergeCommands/);
   });
 
   it('notes Claude Code lacks native select overlays (technical limitation vs Pi)', () => {
@@ -146,6 +165,10 @@ describe('docs/stacking.md — stack sync documentation', () => {
     expect(raw).toMatch(/active.?build|skip.*active|active.*skip/i);
   });
 
+  it('documents activeBuildSkips response field', () => {
+    expect(raw).toContain('activeBuildSkips');
+  });
+
   it('documents pre-landing reconciliation', () => {
     expect(raw).toMatch(/pre.?landing|reconcili/i);
   });
@@ -156,6 +179,26 @@ describe('docs/stacking.md — stack sync documentation', () => {
 
   it('documents fast-forward-only trunk policy', () => {
     expect(raw).toMatch(/fast.?forward/i);
+  });
+
+  it('documents deferred outcome for active-build conflicts', () => {
+    expect(raw).toContain('deferred');
+  });
+
+  it('documents retry behavior for deferred syncs', () => {
+    expect(raw).toMatch(/retry.?deferred|retryDeferred|retry.*deferred/i);
+  });
+
+  it('documents stacking.sync.afterBuild for daemon-owned after-build sync', () => {
+    expect(raw).toContain('stacking.sync.afterBuild');
+  });
+
+  it('does not promote build.postMergeCommands as the recommended auto-sync mechanism', () => {
+    // The old guidance promoted: "add `eforge stack sync` to `build.postMergeCommands`"
+    // The new guidance uses stacking.sync.afterBuild: true for daemon-owned after-build sync
+    // Note: the new docs may warn *against* using postMergeCommands — that is fine.
+    // Using single-line matching so we only flag the recommendation pattern, not warning prose.
+    expect(raw).not.toMatch(/add.*eforge stack sync.*postMergeCommands|To enable.*postMergeCommands.*eforge stack sync/i);
   });
 });
 
@@ -188,6 +231,10 @@ describe('docs/config.md — workflow presets section', () => {
 
   it('documents stacking.enabled config key for presets', () => {
     expect(raw).toContain('stacking.enabled');
+  });
+
+  it('documents stacking.sync.afterBuild config field', () => {
+    expect(raw).toContain('stacking.sync.afterBuild');
   });
 });
 
@@ -228,6 +275,11 @@ describe('plugin <-> Pi skill parity for stack and workflow', () => {
     expect(piStack).toMatch(/conflict.*recov|recov.*conflict/is);
   });
 
+  it('both stack skills document deferred outcome', () => {
+    expect(pluginStack).toContain('deferred');
+    expect(piStack).toContain('deferred');
+  });
+
   it('both workflow skills document all five presets', () => {
     for (const raw of [pluginWorkflow, piWorkflow]) {
       expect(raw).toContain('solo-merge');
@@ -245,6 +297,11 @@ describe('plugin <-> Pi skill parity for stack and workflow', () => {
       expect(raw).toMatch(/stacked? PR|git.?spice/i);
       expect(raw).toMatch(/auto.*sync|autoSync/i);
     }
+  });
+
+  it('both workflow skills map stacked-pr-autosync to stacking.sync.afterBuild', () => {
+    expect(pluginWorkflow).toContain('stacking.sync.afterBuild');
+    expect(piWorkflow).toContain('stacking.sync.afterBuild');
   });
 
   it('Pi workflow skill does not use mcp__eforge__ prefix (Pi convention)', () => {

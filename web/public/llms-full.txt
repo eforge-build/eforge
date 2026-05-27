@@ -577,7 +577,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 205
+Total variants: 206
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -786,6 +786,7 @@ Total variants: 205
 | `stack:sync:complete` | `dryRun`, `excludedCandidates`, `fastForward`, `localTrunkSha`, `originTrunkSha`, `reason`, `restackCandidates`, `syncId`, `trigger` |
 | `stack:sync:failed` | `dryRun`, `error`, `outcome`, `reason`, `syncId`, `trigger` |
 | `stack:sync:deferred` | `excludedCandidates`, `reason`, `syncId`, `trigger` |
+| `stack:sync:skipped` | `dryRun`, `excludedCandidates`, `reason`, `restackCandidates`, `syncId`, `trigger` |
 
 ## JSON Schema
 
@@ -942,6 +943,17 @@ landing:
 | `stacking.enabled` | Enable stacking. Default `false`. |
 | `stacking.provider` | Stack provider. Only `"git-spice"` is supported in v1. |
 | `stacking.gitSpice.command` | Path or name of the git-spice executable. Default: `"git-spice"`. |
+| `stacking.sync.afterBuild` | Trigger daemon-owned stack sync after every build. Default `false`. When enabled, the daemon automatically runs `git-spice stack restack` after each build completes. When active builds are running, sync is deferred until those builds finish (`outcome: deferred`). |
+
+**Stack sync outcomes:**
+
+| Outcome | Description |
+|---------|-------------|
+| `complete` | All eligible artifact branches were restacked onto the latest trunk. |
+| `skipped` | Stacking is not enabled or no eligible branches found. |
+| `deferred` | Active builds are running whose worktrees overlap the stack candidate set. Sync was deferred; the daemon retries automatically after those builds complete. |
+| `failed` | The sync command exited with a non-zero code. |
+| `conflict` | A restack step hit a merge conflict requiring manual resolution. |
 
 **PRD frontmatter stacking fields:**
 
@@ -949,6 +961,20 @@ landing:
 |-------|-------------|
 | `stack_id` | Logical stack name shared by all PRDs in the stack. Optional; inferred from root PRD id. |
 | `stack_parent` | Parent PRD id. Optional for single-dependency PRDs (inferred from `depends_on`); required for multi-dependency PRDs. |
+
+## Workflow Presets
+
+Workflow presets bundle landing action, stacking, and PR settings into a named preset. Use `/eforge:workflow` (Claude Code) or `/eforge:workflow` (Pi) to configure interactively without editing `eforge/config.yaml` manually.
+
+| Preset | When selected | Config keys written |
+|--------|--------------|---------------------|
+| `solo-merge` | Solo developer, direct merge to trunk | `landing.action: merge`, `build.allowLocalMergeToTrunk: true`, `stacking.enabled: false` |
+| `solo-pr` | Solo developer, PR workflow, no stacking | `landing.action: pr`, `landing.pr.autoMerge: always`, `stacking.enabled: false` |
+| `team-pr` | Team project, PR workflow, no stacking | `landing.action: pr`, `landing.pr.autoMerge: ask`, `stacking.enabled: false` |
+| `stacked-pr` | git-spice stacking, manual sync | `landing.action: pr`, `stacking.enabled: true` |
+| `stacked-pr-autosync` | git-spice stacking, daemon-owned after-build sync | `landing.action: pr`, `stacking.enabled: true`, `stacking.sync.afterBuild: true` |
+
+For stacking presets where the user provides a non-default git-spice path, `stacking.gitSpice.command` is also written.
 
 ## Pre-Compile Trunk Sync
 
@@ -1015,7 +1041,7 @@ Total tools: 16
 | `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon). |
 | `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook's frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require an interactive agent session (returns { kind: "requires-agent", mode: "planning", name, message }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback. |
 | `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook's content (requires playbook_name) — for a full interactive planning session use /eforge:playbook run <name> or /eforge:plan instead. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued. |
-| `eforge_stack_sync` | Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml. When active builds are running, the sync may be deferred — check the outcome field in the response and use activeBuildPolicy: 'defer' to queue rather than skip. |
+| `eforge_stack_sync` | Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml. When active builds are running, check the outcome field: 'skipped' means no sync was performed, 'deferred' means the caller should retry later. |
 
 ## Native tools (Pi extension)
 

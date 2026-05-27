@@ -678,10 +678,11 @@ async function main(): Promise<void> {
           // --- eforge:endregion plan-01-types-and-daemon-emission ---
           // --- eforge:region plan-01-core-daemon-stack-sync ---
           // Trigger daemon-owned after-build sync when configured and a build
-          // session completes successfully (completed status, not failed).
+          // session reaches any terminal state (completed, failed, or skipped).
+          // This ensures deferred syncs are retried after any blocking build ends,
+          // not only after successful completions.
           if (
             event.type === 'queue:prd:complete' &&
-            event.status === 'completed' &&
             config?.stacking?.enabled === true &&
             config?.stacking?.sync?.afterBuild === true &&
             cwd

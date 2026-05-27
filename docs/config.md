@@ -144,6 +144,11 @@ build:
 #   gitSpice:
 #     command: git-spice      # Optional path to git-spice binary (default: "git-spice" on PATH).
 #                             # Set to "gs" if you use the short alias.
+#   sync:
+#     afterBuild: false       # Default false. Set to true to enable daemon-owned after-build sync.
+#                             # When true, the daemon triggers stack sync after each build lands,
+#                             # with automatic deferred retry when active builds overlap the stack.
+#                             # Prefer this over build.postMergeCommands: ["eforge stack sync"].
 #
 # Stack frontmatter in PRD files (set automatically or via /eforge:build):
 #   stack_id: <logical-stack-name>   # Shared name for all PRDs in the same stack. Optional;
@@ -185,7 +190,7 @@ The wizard asks four questions - solo vs team, direct merge vs PR, stacked PRs, 
 | `solo-pr` | Solo developer, PR workflow, no stacking | `landing.action: pr`, `landing.pr.autoMerge: always`, `stacking.enabled: false` |
 | `team-pr` | Team project, PR workflow, no stacking | `landing.action: pr`, `landing.pr.autoMerge: ask`, `stacking.enabled: false` |
 | `stacked-pr` | git-spice stacking, manual sync | `landing.action: pr`, `stacking.enabled: true` |
-| `stacked-pr-autosync` | git-spice stacking, automatic post-merge sync | `landing.action: pr`, `stacking.enabled: true`, `build.postMergeCommands: [eforge stack sync]` |
+| `stacked-pr-autosync` | git-spice stacking, daemon-owned after-build sync | `landing.action: pr`, `stacking.enabled: true`, `stacking.sync.afterBuild: true` |
 
 For stacking presets where the user provides a non-default git-spice path, `stacking.gitSpice.command` is also written.
 
