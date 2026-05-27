@@ -2083,36 +2083,28 @@ export async function startServer(
     return true;
   }
   // --- eforge:endregion monitor-route-dispatch ---
-  const server = createServer(async (req, res) => {
-    const url = req.url ?? '/';
-    // Pathname strips the query string for static route matching and file
-    // resolution. API routes continue to use the full `url` string (which
-    // already handles query params via URLSearchParams where needed).
-    const pathname = url.split('?')[0];
-
-    if (handleCorsPreflightRoute(req, res)) return;
-    if (handleKeepAliveRoute(req, res)) return;
-
+  // --- eforge:region plan-03-control-plane-profile-routes ---
+  async function handleControlPlaneRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- Control-plane POST routes (daemon mode) ---
     if (req.method === 'POST' && url === API_ROUTES.enqueue) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       if (options.config && (!options.config.agents?.tiers || Object.keys(options.config.agents.tiers).length === 0)) {
         sendJsonError(res, 422, 'No agent tiers configured. Add agents.tiers entries (each with harness + model + effort) to eforge/config.yaml');
-        return;
+        return true;
       }
       try {
         const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; landingAction?: string; onSuccess?: unknown; landingAutoMerge?: unknown };
         if (!body.source || typeof body.source !== 'string') {
           sendJsonError(res, 400, 'Missing required field: source');
-          return;
+          return true;
         }
         // Reject legacy onSuccess with a migration pointer.
         if (body.onSuccess !== undefined) {
           sendJsonError(res, 400, 'Field "onSuccess" is no longer supported. Use "landingAction: pr|merge|leave" instead.');
-          return;
+          return true;
         }
         // Validate landingAction override before any other work.
         const VALID_LANDING_ACTIONS = ['pr', 'merge', 'leave'] as const;
@@ -2121,7 +2113,7 @@ export async function startServer(
         if (body.landingAction !== undefined) {
           if (typeof body.landingAction !== 'string' || !(VALID_LANDING_ACTIONS as readonly string[]).includes(body.landingAction)) {
             sendJsonError(res, 400, `Invalid field: landingAction must be one of: ${VALID_LANDING_ACTIONS.join(', ')}`);
-            return;
+            return true;
           }
           explicitLandingAction = body.landingAction as LandingActionValue;
         }
@@ -2130,7 +2122,7 @@ export async function startServer(
         if (body.landingAutoMerge !== undefined) {
           if (typeof body.landingAutoMerge !== 'boolean') {
             sendJsonError(res, 400, 'Invalid field: landingAutoMerge must be a boolean');
-            return;
+            return true;
           }
           if (body.landingAutoMerge === true) {
             if (cwd) {
@@ -2141,20 +2133,20 @@ export async function startServer(
                 const effectiveLandingAction = explicitLandingAction ?? cfgTyped.landing?.action ?? 'merge';
                 if (effectiveLandingAction !== 'pr') {
                   sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when the effective landing action is 'pr' (got '${effectiveLandingAction}')`);
-                  return;
+                  return true;
                 }
                 const policy = cfgTyped.landing?.pr?.autoMerge;
                 if (policy === 'never') {
                   sendJsonError(res, 400, "landingAutoMerge: true is not allowed when landing.pr.autoMerge is 'never' in project config");
-                  return;
+                  return true;
                 }
               } catch (configErr) {
                 sendJsonError(res, 500, `Failed to load project config: ${configErr instanceof Error ? configErr.message : String(configErr)}`);
-                return;
+                return true;
               }
             } else if (explicitLandingAction !== undefined && explicitLandingAction !== 'pr') {
               sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when landingAction is 'pr' (got '${explicitLandingAction}')`);
-              return;
+              return true;
             }
           }
           explicitLandingAutoMerge = body.landingAutoMerge;
@@ -2166,7 +2158,7 @@ export async function startServer(
         if (body.profile !== undefined) {
           if (typeof body.profile !== 'string' || body.profile.trim().length === 0) {
             sendJsonError(res, 400, 'Invalid field: profile must be a non-empty string');
-            return;
+            return true;
           }
           explicitProfileName = body.profile;
           const { getConfigDir, getConventionalConfigDir, loadProfile } = await import('@eforge-build/engine/config');
@@ -2175,7 +2167,7 @@ export async function startServer(
           const profileResult = await loadProfile(configDir, explicitProfileName, cwd);
           if (!profileResult) {
             sendJsonError(res, 400, `Profile '${explicitProfileName}' not found`);
-            return;
+            return true;
           }
         }
         // --- eforge:endregion plan-01-per-build-profile-override ---
@@ -2210,7 +2202,7 @@ export async function startServer(
             } catch (parseErr) {
               // Session-plan parse failure — surface as a client error.
               sendJsonError(res, 400, parseErr instanceof Error ? parseErr.message : 'Failed to parse source');
-              return;
+              return true;
             }
           }
         }
@@ -2224,7 +2216,7 @@ export async function startServer(
           const profileResult = await loadProfile(configDir, inheritedAgentProfile, cwd);
           if (!profileResult) {
             sendJsonError(res, 400, `Inherited agent profile '${inheritedAgentProfile}' not found`);
-            return;
+            return true;
           }
         }
         // --- eforge:endregion plan-01-core-profile-propagation ---
@@ -2292,18 +2284,18 @@ export async function startServer(
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url.startsWith(`${CANCEL_BASE}/`)) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       const sessionId = url.slice(`${CANCEL_BASE}/`.length);
       if (!sessionId || !/^[\w-]+$/.test(sessionId)) {
         sendJsonError(res, 400, 'Invalid sessionId');
-        return;
+        return true;
       }
       const cancelled = options.workerTracker.cancelWorker(sessionId);
       if (cancelled) {
@@ -2311,33 +2303,33 @@ export async function startServer(
       } else {
         sendJsonError(res, 404, `No active worker found for sessionId: ${sessionId}`);
       }
-      return;
+      return true;
     }
 
     // --- eforge:region plan-03-daemon-mcp-pi ---
     if (req.method === 'POST' && url === API_ROUTES.recover) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       let body: { setName?: unknown; prdId?: unknown };
       try {
         body = await parseJsonBody(req) as { setName?: unknown; prdId?: unknown };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.setName || typeof body.setName !== 'string') {
         sendJsonError(res, 400, 'Missing required field: setName');
-        return;
+        return true;
       }
       if (!body.prdId || typeof body.prdId !== 'string') {
         sendJsonError(res, 400, 'Missing required field: prdId');
-        return;
+        return true;
       }
       if (!isValidPathSegment(body.setName) || !isValidPathSegment(body.prdId)) {
         sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
-        return;
+        return true;
       }
       // NOTE: The daemon's recovery polling loop (which called broadcast('recovery:start', ...))
       // was intentionally removed in favour of inline recovery in the queue parent. The monitor
@@ -2354,7 +2346,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to spawn recovery worker');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
@@ -2362,27 +2354,27 @@ export async function startServer(
     if (req.method === 'POST' && url === API_ROUTES.applyRecovery) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       const cwd = options?.cwd;
       if (!cwd) {
         sendJsonError(res, 503, 'No working directory configured');
-        return;
+        return true;
       }
       let body: { prdId?: unknown };
       try {
         body = await parseJsonBody(req) as { prdId?: unknown };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.prdId || typeof body.prdId !== 'string') {
         sendJsonError(res, 400, 'Missing required field: prdId');
-        return;
+        return true;
       }
       if (!isValidPathSegment(body.prdId)) {
         sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
-        return;
+        return true;
       }
       const prdId = body.prdId;
       const queueDir = resolve(cwd, options?.queueDir ?? '.eforge/queue');
@@ -2401,7 +2393,7 @@ export async function startServer(
           } else {
             sendJsonError(res, 400, `Failed to read recovery sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
           }
-          return;
+          return true;
         }
 
         let sidecarJson: unknown;
@@ -2409,23 +2401,23 @@ export async function startServer(
           sidecarJson = JSON.parse(sidecarRaw);
         } catch {
           sendJsonError(res, 400, `Malformed recovery sidecar JSON for ${prdId}`);
-          return;
+          return true;
         }
 
         if (typeof sidecarJson !== 'object' || sidecarJson === null || !('verdict' in sidecarJson)) {
           sendJsonError(res, 400, `Recovery sidecar for ${prdId} is missing the verdict field`);
-          return;
+          return true;
         }
 
         try {
           verdictData = parseWithSchema(recoveryVerdictSchema, (sidecarJson as Record<string, unknown>).verdict);
         } catch (err) {
           sendJsonError(res, 400, `Invalid recovery verdict in sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
-          return;
+          return true;
         }
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Unexpected error reading sidecar');
-        return;
+        return true;
       }
 
       const helperOptions = { cwd, prdId, queueDir };
@@ -2464,7 +2456,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to apply recovery verdict');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-01-fix-recovery-ux ---
 
@@ -2472,14 +2464,14 @@ export async function startServer(
     if (req.method === 'POST' && url === API_ROUTES.daemonStop) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       try {
         const body = await parseJsonBody(req) as { force?: boolean };
         const force = body.force === true;
         if (!options.daemonState.onShutdown) {
           sendJsonError(res, 500, 'Shutdown handler not configured');
-          return;
+          return true;
         }
         sendJson(res, { status: 'stopping', force });
         // Trigger shutdown asynchronously after responding
@@ -2487,33 +2479,33 @@ export async function startServer(
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && url === API_ROUTES.autoBuildGet) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       sendJson(res, autoBuildStateToWire(options.daemonState));
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.autoBuildSet) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       let body: { enabled?: boolean };
       try {
         body = await parseJsonBody(req) as { enabled?: boolean };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (typeof body.enabled !== 'boolean') {
         sendJsonError(res, 400, 'Missing required field: enabled (boolean)');
-        return;
+        return true;
       }
       try {
         const { autoBuildController: controller } = options.daemonState;
@@ -2526,20 +2518,24 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to update auto-build');
       }
-      return;
+      return true;
     }
 
     // --- Scheduler kick route ---
     if (req.method === 'POST' && url === API_ROUTES.schedulerKick) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       notifyQueueMutation(options.daemonState, 'external');
       sendJson(res, { ok: true });
-      return;
+      return true;
     }
 
+    return false;
+  }
+
+  async function handleProfileRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- Agent runtime profile management ---
     if (req.method === 'GET' && (url === API_ROUTES.profileList || url.startsWith(`${API_ROUTES.profileList}?`))) {
       try {
@@ -2573,7 +2569,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list agent runtime profiles');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && url === API_ROUTES.profileShow) {
@@ -2588,14 +2584,14 @@ export async function startServer(
           }
           if (name === null) {
             sendJson(res, { active: null, source: 'none', resolved: { harness: undefined, profile: null } });
-            return;
+            return true;
           }
           const result = await loadUserProfile(name);
           const harness = result ? extractHarnessFromProfile(result.profile) : undefined;
           const profile = result ? result.profile : null;
           const metadata = profile ? extractProfileMetadata(profile) : undefined;
           sendJson(res, { active: name, source: 'user-local', resolved: { harness, profile: redactSensitive(profile), scope: 'user', metadata } });
-          return;
+          return true;
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
         const userConfig = await loadUserConfig();
@@ -2625,7 +2621,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to show agent runtime profile');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.profileUse) {
@@ -2633,7 +2629,7 @@ export async function startServer(
         const body = await parseJsonBody(req) as { name?: unknown; scope?: unknown };
         if (!body.name || typeof body.name !== 'string') {
           sendJsonError(res, 400, 'Missing required field: name (string)');
-          return;
+          return true;
         }
         const scopeVal = body.scope === 'local' || body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
         const { getConfigDir, setActiveProfile } =
@@ -2641,7 +2637,7 @@ export async function startServer(
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         try {
           await setActiveProfile(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined, options?.cwd);
@@ -2657,7 +2653,7 @@ export async function startServer(
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.profileCreate) {
@@ -2671,7 +2667,7 @@ export async function startServer(
         };
         if (!body.name || typeof body.name !== 'string') {
           sendJsonError(res, 400, 'Missing required field: name (string)');
-          return;
+          return true;
         }
         const scopeVal = body.scope === 'local' || body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
         const { getConfigDir, createAgentRuntimeProfile } =
@@ -2679,7 +2675,7 @@ export async function startServer(
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         try {
           // Single shape: profile carries `agents` (with tier recipes under
@@ -2706,14 +2702,14 @@ export async function startServer(
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'DELETE' && url.startsWith(`${PROFILE_BASE}/`)) {
       const name = url.slice(`${PROFILE_BASE}/`.length);
       if (!name || !/^[A-Za-z0-9._-]+$/.test(name)) {
         sendJsonError(res, 400, 'Invalid agent runtime profile name');
-        return;
+        return true;
       }
       try {
         let force = false;
@@ -2732,7 +2728,7 @@ export async function startServer(
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         try {
           await deleteAgentRuntimeProfile(configDir, name, force, scopeVal, options?.cwd);
@@ -2752,8 +2748,25 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to delete agent runtime profile');
       }
-      return;
+      return true;
     }
+
+    return false;
+  }
+  // --- eforge:endregion plan-03-control-plane-profile-routes ---
+  const server = createServer(async (req, res) => {
+    const url = req.url ?? '/';
+    // Pathname strips the query string for static route matching and file
+    // resolution. API routes continue to use the full `url` string (which
+    // already handles query params via URLSearchParams where needed).
+    const pathname = url.split('?')[0];
+
+    if (handleCorsPreflightRoute(req, res)) return;
+    if (handleKeepAliveRoute(req, res)) return;
+
+    if (await handleControlPlaneRoutes(req, res, url)) return;
+
+    if (await handleProfileRoutes(req, res, url)) return;
 
     // --- eforge:region plan-02-extension-tooling-surfaces ---
     // --- eforge:region plan-01-extension-management-api ---
