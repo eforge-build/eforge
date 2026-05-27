@@ -79,7 +79,7 @@ function makeStackLayer(overrides: Partial<StackLayerWire> = {}): StackLayerWire
 // ---------------------------------------------------------------------------
 
 describe('selectNowQueueSummary', () => {
-  it('counts running, pending, waiting, and failed items', () => {
+  it('counts running, pending, waiting, and failed items; total excludes running (queue card is pending-only)', () => {
     const queue = makeQueue([
       { status: 'running' },
       { status: 'running' },
@@ -88,7 +88,8 @@ describe('selectNowQueueSummary', () => {
       { status: 'failed' },
     ]);
     const summary = selectNowQueueSummary(queue);
-    expect(summary.total).toBe(5);
+    // total reflects what the queue card displays — running items are surfaced above as active build cards
+    expect(summary.total).toBe(3);
     expect(summary.runningCount).toBe(2);
     expect(summary.pendingCount).toBe(1);
     expect(summary.waitingCount).toBe(1);
@@ -118,7 +119,7 @@ describe('selectNowQueueSummary', () => {
     expect(summary.withRecoveryVerdictCount).toBe(1);
   });
 
-  it('orders top items: failed before running, waiting, pending', () => {
+  it('orders top items: failed before waiting before pending; running excluded', () => {
     const queue = makeQueue([
       { id: 'p1', status: 'pending' },
       { id: 'r1', status: 'running' },
@@ -127,8 +128,8 @@ describe('selectNowQueueSummary', () => {
     ]);
     const summary = selectNowQueueSummary(queue);
     const statuses = summary.topItems.map((i) => i.status.toLowerCase());
-    expect(statuses.indexOf('failed')).toBeLessThan(statuses.indexOf('running'));
-    expect(statuses.indexOf('running')).toBeLessThan(statuses.indexOf('waiting'));
+    expect(statuses).not.toContain('running');
+    expect(statuses.indexOf('failed')).toBeLessThan(statuses.indexOf('waiting'));
     expect(statuses.indexOf('waiting')).toBeLessThan(statuses.indexOf('pending'));
   });
 });
@@ -253,7 +254,7 @@ describe('selectNowAttentionItems', () => {
     expect(item!.detail).toBe('recovery pending');
   });
 
-  it('deduplicates failed queue and run attention items sharing the same PRD key to one item', () => {
+  it('deduplicates failed queue items sharing the same PRD key (extension-normalized) to one item', () => {
     const state = {
       ...baseState,
       queue: makeQueue([
@@ -262,19 +263,8 @@ describe('selectNowAttentionItems', () => {
         // duplicate failed queue candidate for the same PRD (via extension normalization)
         { id: 'my-prd.md', status: 'failed' },
       ]),
-      runs: [
-        // failed run for the same PRD
-        makeRun({
-          id: 'run-prd-1',
-          sessionId: undefined,
-          planSet: 'my-prd',
-          status: 'failed',
-          completedAt: new Date().toISOString(),
-        }),
-      ],
     };
     const { items } = selectNowAttentionItems(state, {}, now);
-    // All three candidates share dedupKey 'prd:my-prd' → one attention item
     expect(items).toHaveLength(1);
   });
 
@@ -314,29 +304,23 @@ describe('selectNowAttentionItems', () => {
     expect(mergeSeverity('info', 'warning')).toBe('warning');
   });
 
-  it('merges severity to worst when deduplicating attention items: warning beats info', () => {
+  it('does not surface failed runs whose queue file has been deleted', () => {
+    // Historical failed run, but the queue file was removed — no queue entry remains.
     const state = {
       ...baseState,
-      queue: makeQueue([
-        // warning severity — no recovery verdict
-        { id: 'feat', status: 'failed' },
-      ]),
+      queue: makeQueue([]),
       runs: [
-        // info severity for the same PRD
         makeRun({
-          id: 'run-feat',
+          id: 'run-orphan',
           sessionId: undefined,
-          planSet: 'feat',
+          planSet: 'cleaned-up-prd',
           status: 'failed',
           completedAt: new Date().toISOString(),
         }),
       ],
     };
     const { items } = selectNowAttentionItems(state, {}, now);
-    // 'warning' (queue) beats 'info' (run) — worst severity wins
-    const item = items.find((i) => i.id === 'queue-failed-feat');
-    expect(item).toBeDefined();
-    expect(item!.severity).toBe('warning');
+    expect(items).toHaveLength(0);
   });
 });
 
@@ -450,6 +434,26 @@ describe('selectNowActiveBuildCards', () => {
     expect(cards[0].latestError).toBe('TypeScript compilation failed');
   });
 
+  it('derives gap-close lifecycle after PRD validation discovers gaps', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    const events: EforgeEvent[] = [
+      { type: 'planning:complete', plans: [{ id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: '' }] } as unknown as EforgeEvent,
+      { type: 'plan:status:change', planId: 'plan-01', status: 'completed' } as unknown as EforgeEvent,
+      { type: 'prd_validation:start' } as unknown as EforgeEvent,
+      { type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'Document gaps', explanation: 'Missing detail' }] } as unknown as EforgeEvent,
+      { type: 'gap_close:start', gapCount: 1 } as unknown as EforgeEvent,
+    ];
+    let rs = createInitialRunState();
+    events.forEach((event, i) => {
+      rs = eforgeReducer(rs, { type: 'ADD_EVENT', event, eventId: String(i + 1) });
+    });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
+    expect(cards[0].lifecycle.phase).toBe('gap-close');
+    expect(cards[0].lifecycle.prdValidationComplete).toBe(true);
+    expect(cards[0].lifecycle.gapCloseObserved).toBe(true);
+  });
+
   it('preserves a card when active detail is missing (streamStatus: connecting)', () => {
     const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
     const cards = selectNowActiveBuildCards(runs, {}, {}, now);
@@ -504,8 +508,8 @@ describe('selectNowActiveBuildCards', () => {
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
     expect(cards[0].tokens).toBe(200);
     expect(cards[0].cost).toBeCloseTo(0.005);
-    // cachePercent = cacheRead / (tokensIn + cacheRead) * 100 = 50 / (200 + 50) * 100 = 20
-    expect(cards[0].cachePercent).toBeCloseTo(20);
+    // cachePercent = cacheRead / tokensIn * 100 = 50 / 200 * 100 = 25
+    expect(cards[0].cachePercent).toBeCloseTo(25);
   });
 });
 

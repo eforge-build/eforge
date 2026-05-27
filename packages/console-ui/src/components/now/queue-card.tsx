@@ -37,13 +37,8 @@ export function QueueCard({ summary }: QueueCardProps) {
           <p className="text-sm text-muted-foreground">Queue is empty</p>
         ) : (
           <>
-            {/* Summary counts */}
+            {/* Summary counts — running items are shown above as active build cards */}
             <div className="flex flex-wrap gap-2 mb-3">
-              {summary.runningCount > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  Running: <span className="font-medium text-foreground">{summary.runningCount}</span>
-                </span>
-              )}
               {summary.pendingCount > 0 && (
                 <span className="text-xs text-muted-foreground">
                   Pending: <span className="font-medium text-foreground">{summary.pendingCount}</span>

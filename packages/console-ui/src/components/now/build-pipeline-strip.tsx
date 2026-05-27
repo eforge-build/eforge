@@ -1,88 +1,121 @@
 /**
- * BuildPipelineStrip — mini-Gantt pipeline visualization for an active build card.
+ * BuildPipelineStrip — compact plan-lane visualization for active build cards.
  *
- * Renders one row per plan from RunState, plus an optional PRD row when planning
- * events exist. Each row shows the plan name alongside a horizontal strip of
- * stage-colored segments indicating progress through the build pipeline.
- *
- * Exported for reuse in plan-06 build-detail route.
+ * The dashboard version is intentionally higher-signal than the full run-detail
+ * timeline: it shows one small rail per plan, active worker counts, and a small
+ * amount of overflow summarization so multi-plan / parallel builds remain
+ * glanceable.
  */
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import type { MiniGanttRow, PipelineStage } from '@/lib/run-state';
 
 // ---------------------------------------------------------------------------
-// Stage ordering and color tokens
+// Stage ordering and labels
 // ---------------------------------------------------------------------------
 
-/** Ordered pipeline stages (excluding terminal states). */
-const PIPELINE_STAGES: PipelineStage[] = [
-  'plan',
-  'implement',
-  'doc-author',
-  'doc-sync',
-  'test',
-  'review',
-  'evaluate',
-];
+const STAGE_LABELS: Partial<Record<PipelineStage, string>> = {
+  plan: 'waiting',
+  implement: 'implement',
+  'doc-author': 'docs',
+  'doc-sync': 'doc sync',
+  test: 'test',
+  review: 'review',
+  evaluate: 'evaluate',
+  complete: 'done',
+  failed: 'failed',
+};
 
-/** Map stage to its CSS background color class. */
-function stageSegmentClass(
-  segStage: PipelineStage,
-  currentStage: PipelineStage | undefined,
-  isComplete: boolean,
-  isFailed: boolean,
-): string {
-  if (isFailed) {
-    // All segments muted; last one red to indicate failure
-    const segIdx = PIPELINE_STAGES.indexOf(segStage);
-    const currentIdx = currentStage ? PIPELINE_STAGES.indexOf(currentStage) : -1;
-    if (segIdx === currentIdx) return 'bg-destructive/80';
-    if (segIdx < currentIdx) return 'bg-primary/30';
-    return 'bg-muted/20';
-  }
-  if (isComplete) {
-    return 'bg-primary/70';
-  }
-  if (!currentStage) {
-    return 'bg-muted/20';
-  }
-  const segIdx = PIPELINE_STAGES.indexOf(segStage);
-  const currentIdx = PIPELINE_STAGES.indexOf(currentStage);
+function stageLabel(stage: PipelineStage | undefined): string {
+  return stage ? STAGE_LABELS[stage] ?? stage : 'waiting';
+}
 
-  if (segIdx < currentIdx) return 'bg-primary/40';
-  if (segIdx === currentIdx) return 'bg-primary';
-  return 'bg-muted/20';
+function rowTone(row: MiniGanttRow): string {
+  if (row.isFailed) return 'text-destructive border-destructive/25 bg-destructive/10';
+  if (row.isComplete) return 'text-primary border-primary/20 bg-primary/10';
+  if (row.stage && row.stage !== 'plan') return 'text-blue border-blue/25 bg-blue/10';
+  return 'text-muted-foreground border-border bg-muted/15';
 }
 
 // ---------------------------------------------------------------------------
 // Row component
 // ---------------------------------------------------------------------------
 
-function PlanRow({ row }: { row: MiniGanttRow }) {
+function shortPlanLabel(row: MiniGanttRow): string {
+  const planMatch = row.planId.match(/^plan-(\d+)/i);
+  if (!planMatch) return row.planName;
+  const planNumber = planMatch[1].padStart(2, '0');
+  return `Plan ${planNumber} · ${row.planName}`;
+}
+
+function PlanActivityTrack({ row, isActive }: { row: MiniGanttRow; isActive: boolean }) {
+  const title = isActive
+    ? 'Active work indicator — not a percentage estimate'
+    : row.isComplete
+      ? 'Plan complete'
+      : row.isFailed
+        ? 'Plan failed'
+        : 'Plan waiting';
+
   return (
-    <div className="flex items-center gap-2 min-w-0" data-plan-id={row.planId}>
-      <span className="shrink-0 w-24 truncate text-xs text-muted-foreground leading-none">
-        {row.planName}
-      </span>
-      <div className="flex flex-1 gap-px h-1.5">
-        {PIPELINE_STAGES.map((stage) => (
-          <div
-            key={stage}
-            title={stage}
-            className={cn(
-              'flex-1 rounded-sm transition-colors',
-              stageSegmentClass(stage, row.stage, row.isComplete, row.isFailed),
-            )}
-          />
-        ))}
+    <div className="col-span-2 h-1.5 overflow-hidden rounded-full bg-muted/25" title={title}>
+      {row.isComplete && <div className="h-full w-full rounded-full bg-primary/70" />}
+      {row.isFailed && <div className="h-full w-full rounded-full bg-destructive/80" />}
+      {isActive && (
+        <div className="h-full w-full rounded-full bg-blue/40 motion-safe:animate-pulse" />
+      )}
+    </div>
+  );
+}
+
+function PlanRow({ row }: { row: MiniGanttRow }) {
+  const activeWorkers = row.activeWorkerCount ?? 0;
+  const stage = stageLabel(row.stage);
+  const workerTitle = row.activeAgents?.length
+    ? `Active workers: ${row.activeAgents.join(', ')}`
+    : undefined;
+  const planLabel = shortPlanLabel(row);
+
+  const isActive = row.stage != null && row.stage !== 'plan' && !row.isComplete && !row.isFailed;
+
+  return (
+    <div
+      className={cn(
+        'grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 rounded-md border border-border/60 bg-muted/5 px-2 py-1.5 transition-colors',
+        isActive && 'border-blue/35 bg-blue/5 shadow-sm shadow-blue/10',
+      )}
+      data-plan-id={row.planId}
+    >
+      <div className="min-w-0 flex items-center gap-2">
+        <span className="truncate text-xs font-medium text-foreground" title={row.planName}>
+          {planLabel}
+        </span>
+        {activeWorkers > 1 && (
+          <span
+            className="shrink-0 rounded-full bg-blue/15 px-1.5 py-0.5 text-xs font-medium text-blue"
+            title={workerTitle}
+          >
+            {activeWorkers} workers
+          </span>
+        )}
+        {activeWorkers === 1 && row.activeAgents?.[0] && (
+          <span
+            className="shrink-0 rounded-full bg-blue/10 px-1.5 py-0.5 text-xs text-blue"
+            title={workerTitle}
+          >
+            {row.activeAgents[0]}
+          </span>
+        )}
       </div>
-      {row.isFailed && (
-        <span className="shrink-0 text-xs text-destructive leading-none">failed</span>
-      )}
-      {row.isComplete && (
-        <span className="shrink-0 text-xs text-primary leading-none">done</span>
-      )}
+      <span
+        className={cn(
+          'row-span-2 self-center shrink-0 rounded-full border px-1.5 py-0.5 text-xs font-medium leading-none',
+          rowTone(row),
+        )}
+      >
+        {stage}
+      </span>
+      <PlanActivityTrack row={row} isActive={isActive} />
     </div>
   );
 }
@@ -93,17 +126,9 @@ function PlanRow({ row }: { row: MiniGanttRow }) {
 
 function PrdRow() {
   return (
-    <div className="flex items-center gap-2 min-w-0">
-      <span className="shrink-0 w-24 truncate text-xs text-muted-foreground italic leading-none">
-        PRD planning
-      </span>
-      <div className="flex flex-1 gap-px h-1.5">
-        <div
-          className="flex-1 rounded-sm"
-          style={{ backgroundColor: 'var(--color-blue)', opacity: 0.6 }}
-          title="planning"
-        />
-      </div>
+    <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/5 px-2 py-1 text-xs text-muted-foreground">
+      <span className="truncate italic">PRD planning</span>
+      <span className="shrink-0 text-primary">✓ done</span>
     </div>
   );
 }
@@ -117,10 +142,15 @@ export interface BuildPipelineStripProps {
   rows: MiniGanttRow[];
   /** True when planning events exist in the run state. */
   hasPlanningRow: boolean;
+  /** Maximum number of plan rows to show before summarizing overflow. */
+  maxRows?: number;
 }
 
-export function BuildPipelineStrip({ rows, hasPlanningRow }: BuildPipelineStripProps) {
+export function BuildPipelineStrip({ rows, hasPlanningRow, maxRows = 4 }: BuildPipelineStripProps) {
   if (rows.length === 0 && !hasPlanningRow) return null;
+
+  const visibleRows = rows.slice(0, maxRows);
+  const hiddenCount = Math.max(0, rows.length - visibleRows.length);
 
   return (
     <div
@@ -128,9 +158,14 @@ export function BuildPipelineStrip({ rows, hasPlanningRow }: BuildPipelineStripP
       data-testid="build-pipeline-strip"
     >
       {hasPlanningRow && <PrdRow />}
-      {rows.map((row) => (
+      {visibleRows.map((row) => (
         <PlanRow key={row.planId} row={row} />
       ))}
+      {hiddenCount > 0 && (
+        <div className="rounded-md border border-dashed border-border/70 px-2 py-1 text-xs text-muted-foreground">
+          + {hiddenCount} more plan{hiddenCount === 1 ? '' : 's'}
+        </div>
+      )}
     </div>
   );
 }

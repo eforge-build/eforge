@@ -185,6 +185,21 @@ describe('selectMiniGanttRows', () => {
     expect(rows[0].dependsOn).toEqual([]);
     expect(rows[0].planName).toBe('plan-01');
   });
+
+  it('counts active worker threads per plan', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'implement' },
+      agentThreads: [
+        { planId: 'plan-01', agent: 'builder', endedAt: null },
+        { planId: 'plan-01', agent: 'tester', endedAt: null },
+        { planId: 'plan-01', agent: 'reviewer', endedAt: '2026-05-24T10:00:00.000Z' },
+        { agent: 'planner', endedAt: null },
+      ] as RunState['agentThreads'],
+    });
+    const rows = selectMiniGanttRows(state);
+    expect(rows[0].activeWorkerCount).toBe(2);
+    expect(rows[0].activeAgents).toEqual(['builder', 'tester']);
+  });
 });
 
 // ---------------------------------------------------------------------------

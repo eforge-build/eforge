@@ -43,6 +43,23 @@ export interface NowAttentionItem {
   detail?: string;
 }
 
+export type NowBuildLifecyclePhase =
+  | 'prd'
+  | 'plans'
+  | 'prd-validation'
+  | 'gap-close'
+  | 'final-validation'
+  | 'landing'
+  | 'idle';
+
+export interface NowBuildLifecycle {
+  phase: NowBuildLifecyclePhase;
+  prdValidationComplete: boolean;
+  gapCloseComplete: boolean;
+  finalValidationComplete: boolean;
+  gapCloseObserved: boolean;
+}
+
 export interface NowActiveBuildCard {
   sessionId: string;
   runId: string;
@@ -59,13 +76,15 @@ export interface NowActiveBuildCard {
   latestAgent: string | null;
   latestProgress: string | null;
   latestError: string | null;
+  /** High-level build lifecycle derived from plan, PRD validation, and gap-close events. */
+  lifecycle: NowBuildLifecycle;
   /** Plan status counts derived from reduced RunState. */
   planProgress: PlanStatusCounts;
   /** Total input tokens accumulated across all agent:result events (including live overlay). */
   tokens: number;
   /** Total cost in USD accumulated across all agent:result events (including live overlay). */
   cost: number;
-  /** Cache hit percentage: cacheRead / (tokensIn + cacheRead) * 100, or 0 when no usage. */
+  /** Cache hit percentage: cacheRead / tokensIn * 100, or 0 when no input usage. */
   cachePercent: number;
   href: string;
   /** Mini-Gantt rows derived from RunState for the pipeline strip. */
@@ -302,8 +321,11 @@ export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
     if (item.recoveryVerdict) withRecoveryVerdictCount++;
   }
 
-  // Sort items by attention order
-  const sorted = [...queue].sort((a, b) => {
+  // The queue card surfaces work that hasn't started yet — running builds
+  // are already displayed prominently as active build cards above.
+  const displayable = queue.filter((item) => item.status.toLowerCase() !== 'running');
+
+  const sorted = [...displayable].sort((a, b) => {
     const orderDiff = queueStatusOrder(a.status) - queueStatusOrder(b.status);
     if (orderDiff !== 0) return orderDiff;
     // Tie-break: higher priority first (higher number = more urgent)
@@ -329,7 +351,7 @@ export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
   }));
 
   return {
-    total: queue.length,
+    total: displayable.length,
     byStatus,
     runningCount,
     pendingCount,
@@ -338,7 +360,7 @@ export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
     withDependenciesCount,
     withRecoveryVerdictCount,
     topItems,
-    hiddenCount: Math.max(0, queue.length - MAX_QUEUE_ITEMS),
+    hiddenCount: Math.max(0, displayable.length - MAX_QUEUE_ITEMS),
   };
 }
 
@@ -433,28 +455,7 @@ export function selectNowAttentionItems(
     });
   }
 
-  // 6. Recent failed runs, newest first
-  const failedRuns = [...state.runs]
-    .filter((r) => isTerminalStatus(r.status) && r.status.toLowerCase() !== 'completed' && r.status.toLowerCase() !== 'complete' && r.status.toLowerCase() !== 'success' && r.status.toLowerCase() !== 'succeeded')
-    .sort((a, b) => {
-      if (a.startedAt > b.startedAt) return -1;
-      if (a.startedAt < b.startedAt) return 1;
-      return 0;
-    });
-  for (const run of failedRuns.slice(0, 3)) {
-    const label = selectPrdDisplayLabel(undefined, run.planSet);
-    candidates.push({
-      item: {
-        id: `run-failed-${run.id}`,
-        severity: 'info',
-        message: `Run failed: ${label}`,
-        detail: run.command,
-      },
-      dedupKey: `prd:${normalizePrdDedupKey(run.planSet)}`,
-    });
-  }
-
-  // 7. Queue items blocked by dependencies
+  // 6. Queue items blocked by dependencies
   const blocked = state.queue.filter(
     (q) => q.dependsOn && q.dependsOn.length > 0 && q.status.toLowerCase() !== 'failed' && q.status.toLowerCase() !== 'running',
   );
@@ -550,6 +551,69 @@ function extractLatestErrorFromRunState(sessionError: string | null, runState: R
   return null;
 }
 
+const EMPTY_LIFECYCLE: NowBuildLifecycle = {
+  phase: 'idle',
+  prdValidationComplete: false,
+  gapCloseComplete: false,
+  finalValidationComplete: false,
+  gapCloseObserved: false,
+};
+
+function extractBuildLifecycle(runState: RunState): NowBuildLifecycle {
+  let phase: NowBuildLifecyclePhase = 'idle';
+  let prdValidationComplete = false;
+  let gapCloseComplete = false;
+  let finalValidationComplete = false;
+  let gapCloseObserved = false;
+  let afterGapClose = false;
+
+  if (runState.earlyOrchestration || runState.events.some((e) => e.event.type.startsWith('planning:'))) {
+    phase = 'prd';
+  }
+
+  if (Object.keys(runState.planStatuses).length > 0) {
+    phase = 'plans';
+  }
+
+  for (const { event } of runState.events) {
+    switch (event.type) {
+      case 'prd_validation:start':
+        phase = afterGapClose ? 'final-validation' : 'prd-validation';
+        break;
+      case 'prd_validation:complete':
+        if (afterGapClose) {
+          finalValidationComplete = true;
+          phase = 'landing';
+        } else {
+          prdValidationComplete = true;
+          phase = 'prd-validation';
+        }
+        break;
+      case 'gap_close:start':
+      case 'gap_close:plan_ready':
+        gapCloseObserved = true;
+        phase = 'gap-close';
+        break;
+      case 'gap_close:complete':
+        gapCloseObserved = true;
+        gapCloseComplete = true;
+        afterGapClose = true;
+        phase = 'final-validation';
+        break;
+      default:
+        break;
+    }
+  }
+
+  return {
+    phase,
+    prdValidationComplete,
+    gapCloseComplete,
+    finalValidationComplete,
+    gapCloseObserved,
+  };
+}
+
 export function selectNowActiveBuildCards(
   runs: RunInfo[],
   sessionMetadata: Record<string, { planCount: number | null; baseProfile: string | null }>,
@@ -590,6 +654,7 @@ export function selectNowActiveBuildCards(
     let latestAgent: string | null = null;
     let latestProgress: string | null = null;
     let latestError: string | null = null;
+    let lifecycle: NowBuildLifecycle = EMPTY_LIFECYCLE;
     let planProgress: PlanStatusCounts = EMPTY_PLAN_PROGRESS;
     let tokens = 0;
     let cost = 0;
@@ -604,12 +669,12 @@ export function selectNowActiveBuildCards(
       latestAgent = extractLatestAgentFromRunState(rs);
       latestProgress = extractLatestProgressFromRunState(rs);
       latestError = extractLatestErrorFromRunState(detail.error, rs);
+      lifecycle = extractBuildLifecycle(rs);
       planProgress = selectPlanStatusCounts(rs);
       const stats = getSummaryStats(rs);
       tokens = stats.tokensIn;
       cost = stats.totalCost;
-      const totalInput = stats.tokensIn + stats.cacheRead;
-      cachePercent = totalInput > 0 ? (stats.cacheRead / totalInput) * 100 : 0;
+      cachePercent = stats.tokensIn > 0 ? (stats.cacheRead / stats.tokensIn) * 100 : 0;
       miniGanttRows = selectMiniGanttRows(rs);
       hasPlanningRow =
         rs.earlyOrchestration != null ||
@@ -632,6 +697,7 @@ export function selectNowActiveBuildCards(
       latestAgent,
       latestProgress,
       latestError,
+      lifecycle,
       planProgress,
       tokens,
       cost,

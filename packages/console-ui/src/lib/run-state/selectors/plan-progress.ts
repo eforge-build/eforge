@@ -65,6 +65,10 @@ export interface MiniGanttRow {
   dependsOn: string[];
   isComplete: boolean;
   isFailed: boolean;
+  /** Number of currently running agent threads for this plan. */
+  activeWorkerCount: number;
+  /** Agent role labels for currently running threads on this plan. */
+  activeAgents: string[];
 }
 
 /**
@@ -74,31 +78,37 @@ export interface MiniGanttRow {
 export function selectMiniGanttRows(state: RunState): MiniGanttRow[] {
   const orchPlans = state.earlyOrchestration?.plans ?? [];
   const allIds = selectAllPlanIds(state);
+  const activeAgentsByPlan = new Map<string, string[]>();
+
+  for (const thread of state.agentThreads) {
+    if (!thread.planId || thread.endedAt !== null) continue;
+    const agents = activeAgentsByPlan.get(thread.planId);
+    if (agents) {
+      agents.push(thread.agent);
+    } else {
+      activeAgentsByPlan.set(thread.planId, [thread.agent]);
+    }
+  }
+
+  function makeRow(planId: string, planName: string, dependsOn: string[] = []): MiniGanttRow {
+    const stage = state.planStatuses[planId];
+    const activeAgents = activeAgentsByPlan.get(planId) ?? [];
+    return {
+      planId,
+      planName,
+      stage,
+      dependsOn,
+      isComplete: stage === 'complete',
+      isFailed: stage === 'failed',
+      activeWorkerCount: activeAgents.length,
+      activeAgents,
+    };
+  }
 
   if (orchPlans.length > 0) {
-    return orchPlans.map((plan) => {
-      const stage = state.planStatuses[plan.id];
-      return {
-        planId: plan.id,
-        planName: plan.name,
-        stage,
-        dependsOn: plan.dependsOn ?? [],
-        isComplete: stage === 'complete',
-        isFailed: stage === 'failed',
-      };
-    });
+    return orchPlans.map((plan) => makeRow(plan.id, plan.name, plan.dependsOn ?? []));
   }
 
   // Fallback: no orchestration — use planStatuses keys
-  return Array.from(allIds).sort().map((id) => {
-    const stage = state.planStatuses[id];
-    return {
-      planId: id,
-      planName: id,
-      stage,
-      dependsOn: [],
-      isComplete: stage === 'complete',
-      isFailed: stage === 'failed',
-    };
-  });
+  return Array.from(allIds).sort().map((id) => makeRow(id, id));
 }
