@@ -21,6 +21,16 @@ export function ActiveBuildCard({ card }: ActiveBuildCardProps) {
   const durationLabel = formatDuration(card.durationMs);
   const streamBadgeVariant = STREAM_STATUS_BADGE[card.streamStatus] ?? 'outline';
 
+  const plansLabel =
+    card.planProgress.total > 0
+      ? `${card.planProgress.complete}/${card.planProgress.total} plans`
+      : null;
+
+  const tokensLabel = card.tokens > 0 ? `${card.tokens.toLocaleString()} tok` : null;
+  const costLabel = card.cost > 0 ? `$${card.cost.toFixed(4)}` : null;
+  const cacheLabel =
+    card.cachePercent > 0 ? `${Math.round(card.cachePercent)}% cache` : null;
+
   return (
     <Card className="flex flex-col">
       <CardHeader className="pb-2 pt-4 px-4">
@@ -88,11 +98,13 @@ export function ActiveBuildCard({ card }: ActiveBuildCardProps) {
           </p>
         )}
 
-        {/* Event counts and duration */}
+        {/* Stats row: plan progress, tokens, cost, cache, duration */}
         <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t">
-          <span>
-            {card.snapshotEventCount + card.liveEventCount} events
-            {card.liveEventCount > 0 && ` (${card.liveEventCount} live)`}
+          <span className="flex gap-2">
+            {plansLabel && <span>{plansLabel}</span>}
+            {tokensLabel && <span>{tokensLabel}</span>}
+            {costLabel && <span>{costLabel}</span>}
+            {cacheLabel && <span>{cacheLabel}</span>}
           </span>
           <span>{durationLabel}</span>
         </div>

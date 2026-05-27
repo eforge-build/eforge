@@ -7,6 +7,7 @@ import { initialConsoleProjectState } from '@/lib/project-state';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
 import type { RunInfo, QueueItem } from '@eforge-build/client/browser';
+import { createInitialRunState } from '@/lib/run-state';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -106,8 +107,7 @@ describe('NowDashboard - populated state', () => {
           sessionId: 'sess-A',
           connectionStatus: 'connected',
           status: 'running',
-          snapshotEvents: [],
-          liveEvents: [],
+          runState: createInitialRunState(),
           lastEventAt: Date.now(),
           error: null,
         },
@@ -115,8 +115,7 @@ describe('NowDashboard - populated state', () => {
           sessionId: 'sess-B',
           connectionStatus: 'connected',
           status: 'running',
-          snapshotEvents: [],
-          liveEvents: [],
+          runState: createInitialRunState(),
           lastEventAt: Date.now(),
           error: null,
         },

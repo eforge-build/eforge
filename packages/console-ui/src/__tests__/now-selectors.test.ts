@@ -17,6 +17,7 @@ import {
   isLivenessStale,
 } from '@/lib/selectors/now';
 import { initialConsoleProjectState } from '@/lib/project-state';
+import { eforgeReducer, createInitialRunState } from '@/lib/run-state';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -52,8 +53,7 @@ function makeActiveDetail(
     sessionId,
     connectionStatus: 'connected',
     status: 'running',
-    snapshotEvents: [],
-    liveEvents: [],
+    runState: createInitialRunState(),
     lastEventAt: Date.now(),
     error: null,
     ...overrides,
@@ -404,9 +404,8 @@ describe('selectNowActiveBuildCards', () => {
       planSet: 'my-plans',
       command: 'build',
     } as unknown as EforgeEvent;
-    const detail = makeActiveDetail('s1', {
-      liveEvents: [phaseEvent],
-    });
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: phaseEvent, eventId: '1' });
+    const detail = makeActiveDetail('s1', { runState: rs });
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
     expect(cards[0].currentPhase).toBe('My Plans / build');
   });
@@ -419,9 +418,8 @@ describe('selectNowActiveBuildCards', () => {
       agent: 'implementor',
       planId: 'plan-1',
     } as unknown as EforgeEvent;
-    const detail = makeActiveDetail('s1', {
-      liveEvents: [agentEvent],
-    });
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: agentEvent, eventId: '1' });
+    const detail = makeActiveDetail('s1', { runState: rs });
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
     expect(cards[0].latestAgent).toBe('implementor');
   });
@@ -433,7 +431,8 @@ describe('selectNowActiveBuildCards', () => {
       planId: 'plan-1',
       message: 'Implementing feature X',
     } as unknown as EforgeEvent;
-    const detail = makeActiveDetail('s1', { liveEvents: [progressEvent] });
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: progressEvent, eventId: '1' });
+    const detail = makeActiveDetail('s1', { runState: rs });
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
     expect(cards[0].latestProgress).toBe('Implementing feature X');
   });
@@ -445,7 +444,8 @@ describe('selectNowActiveBuildCards', () => {
       planId: 'plan-1',
       error: 'TypeScript compilation failed',
     } as unknown as EforgeEvent;
-    const detail = makeActiveDetail('s1', { liveEvents: [failEvent] });
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: failEvent, eventId: '1' });
+    const detail = makeActiveDetail('s1', { runState: rs });
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
     expect(cards[0].latestError).toBe('TypeScript compilation failed');
   });
@@ -455,8 +455,57 @@ describe('selectNowActiveBuildCards', () => {
     const cards = selectNowActiveBuildCards(runs, {}, {}, now);
     expect(cards).toHaveLength(1);
     expect(cards[0].streamStatus).toBe('connecting');
-    expect(cards[0].snapshotEventCount).toBe(0);
-    expect(cards[0].liveEventCount).toBe(0);
+    expect(cards[0].planProgress.total).toBe(0);
+    expect(cards[0].tokens).toBe(0);
+    expect(cards[0].cost).toBe(0);
+    expect(cards[0].cachePercent).toBe(0);
+  });
+
+  it('exposes planProgress counts from reduced RunState', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    // Simulate a planning:complete event so plan IDs are known
+    const orchEvent: EforgeEvent = {
+      type: 'planning:complete',
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: '' },
+        { id: 'plan-b', name: 'Plan B', dependsOn: [], branch: '' },
+      ],
+    } as unknown as EforgeEvent;
+    let rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: orchEvent, eventId: '1' });
+    // Complete plan-a
+    const completeEvent: EforgeEvent = {
+      type: 'plan:status:change',
+      planId: 'plan-a',
+      status: 'completed',
+    } as unknown as EforgeEvent;
+    rs = eforgeReducer(rs, { type: 'ADD_EVENT', event: completeEvent, eventId: '2' });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
+    expect(cards[0].planProgress.total).toBe(2);
+    expect(cards[0].planProgress.complete).toBe(1);
+  });
+
+  it('exposes tokens and cost from agent:result events in RunState', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    const agentResultEvent: EforgeEvent = {
+      type: 'agent:result',
+      agent: 'implementor',
+      result: {
+        durationMs: 1000,
+        durationApiMs: 900,
+        numTurns: 1,
+        totalCostUsd: 0.005,
+        usage: { input: 200, output: 100, total: 300, cacheRead: 50, cacheCreation: 0 },
+        modelUsage: {},
+      },
+    } as unknown as EforgeEvent;
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: agentResultEvent, eventId: '1' });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
+    expect(cards[0].tokens).toBe(200);
+    expect(cards[0].cost).toBeCloseTo(0.005);
+    // cachePercent = cacheRead / (tokensIn + cacheRead) * 100 = 50 / (200 + 50) * 100 = 20
+    expect(cards[0].cachePercent).toBeCloseTo(20);
   });
 });
 

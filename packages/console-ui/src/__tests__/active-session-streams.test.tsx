@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, act, waitFor } from '@testing-library/react';
+import { render, act, waitFor, renderHook } from '@testing-library/react';
 import { useState } from 'react';
 import { useActiveSessionStreams } from '@/hooks/use-active-session-streams';
 import type { SubscribeFn } from '@/hooks/use-active-session-streams';
 import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
+import type { EforgeEvent } from '@eforge-build/client/browser';
 
 // ---------------------------------------------------------------------------
 // Fake subscribe generator factory
@@ -193,6 +194,114 @@ describe('useActiveSessionStreams', () => {
       const call = capturedCalls.find((c) => c.url === url);
       expect(call).toBeDefined();
       expect(call!.signal.aborted).toBe(true);
+    });
+
+    unmount();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Snapshot replay does not double-count tokens
+  // ---------------------------------------------------------------------------
+
+  it('two consecutive stream:hello snapshots produce identical runState.tokensIn (no double-counting)', async () => {
+    const sessionId = 'session-reconnect';
+    const url = buildPath(API_ROUTES.events, { runId: sessionId });
+
+    // An agent:result event with 100 input tokens encoded as a snapshot event
+    const agentResultEvent: EforgeEvent = {
+      type: 'agent:result',
+      agent: 'implementor',
+      result: {
+        durationMs: 1000,
+        durationApiMs: 900,
+        numTurns: 1,
+        totalCostUsd: 0.001,
+        usage: { input: 100, output: 50, total: 150, cacheRead: 0, cacheCreation: 0 },
+        modelUsage: {},
+      },
+    } as unknown as EforgeEvent;
+
+    const snapshotEvent = { id: 1, data: JSON.stringify(agentResultEvent) };
+
+    // First snapshot frame
+    const snapshot1: FakeFrame = {
+      kind: 'snapshot',
+      snapshot: { cursor: 1, status: 'running', events: [snapshotEvent] },
+    };
+    // Second snapshot frame with the same events (reconnect scenario)
+    const snapshot2: FakeFrame = {
+      kind: 'snapshot',
+      snapshot: { cursor: 1, status: 'running', events: [snapshotEvent] },
+    };
+
+    const channels: ChannelMap = new Map();
+    const fakeSub = makeFakeSubscribeFn(channels, {
+      [url]: [snapshot1, snapshot2],
+    });
+
+    const { result, unmount } = renderHook(
+      () => useActiveSessionStreams([sessionId], fakeSub),
+    );
+
+    // After both snapshots are processed, tokensIn should equal 100 (not 200)
+    await waitFor(() => {
+      const detail = result.current.sessions[sessionId];
+      expect(detail).toBeDefined();
+      // Both snapshot frames carry the same events; reset-then-replay ensures
+      // we never double-count — tokensIn must stay at 100 regardless of how
+      // many snapshot frames arrive.
+      expect(detail.runState.tokensIn).toBe(100);
+    });
+
+    unmount();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Live agent:result event updates tokens accumulator
+  // ---------------------------------------------------------------------------
+
+  it('an agent:result event on the live channel updates runState.tokensIn', async () => {
+    const sessionId = 'session-live-tokens';
+    const url = buildPath(API_ROUTES.events, { runId: sessionId });
+
+    const agentResultEvent: EforgeEvent = {
+      type: 'agent:result',
+      agent: 'implementor',
+      result: {
+        durationMs: 500,
+        durationApiMs: 450,
+        numTurns: 1,
+        totalCostUsd: 0.002,
+        usage: { input: 75, output: 25, total: 100, cacheRead: 0, cacheCreation: 0 },
+        modelUsage: {},
+      },
+    } as unknown as EforgeEvent;
+
+    // Start with an empty snapshot, then emit the live agent:result event
+    const snapshotFrame: FakeFrame = {
+      kind: 'snapshot',
+      snapshot: { cursor: 0, status: 'running', events: [] },
+    };
+    const liveFrame: FakeFrame = {
+      kind: 'event',
+      event: agentResultEvent,
+      eventId: '42',
+    };
+
+    const channels: ChannelMap = new Map();
+    const fakeSub = makeFakeSubscribeFn(channels, {
+      [url]: [snapshotFrame, liveFrame],
+    });
+
+    const { result, unmount } = renderHook(
+      () => useActiveSessionStreams([sessionId], fakeSub),
+    );
+
+    // After the live agent:result event, tokensIn should be 75
+    await waitFor(() => {
+      const detail = result.current.sessions[sessionId];
+      expect(detail).toBeDefined();
+      expect(detail.runState.tokensIn).toBe(75);
     });
 
     unmount();
