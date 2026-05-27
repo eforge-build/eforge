@@ -2058,54 +2058,53 @@ export async function startServer(
     }
   }
 
-  const server = createServer(async (req, res) => {
-    const url = req.url ?? '/';
-    // Pathname strips the query string for static route matching and file
-    // resolution. API routes continue to use the full `url` string (which
-    // already handles query params via URLSearchParams where needed).
-    const pathname = url.split('?')[0];
-
-    // Handle CORS preflight for all POST endpoints
-    if (req.method === 'OPTIONS' && url.startsWith('/api/')) {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      });
-      res.end();
-      return;
+  // --- eforge:region monitor-route-dispatch ---
+  function handleCorsPreflightRoute(req: IncomingMessage, res: ServerResponse): boolean {
+    if (req.method !== 'OPTIONS' || !(req.url ?? '/').startsWith('/api/')) return false;
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
+    res.end(); return true;
+  }
+  function handleKeepAliveRoute(req: IncomingMessage, res: ServerResponse): boolean {
+    if (req.method !== 'POST' || (req.url ?? '/') !== API_ROUTES.keepAlive) return false;
+    if (keepAliveCallback) keepAliveCallback();
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ status: 'ok' })); return true;
+  }
+  function handleUnknownApiRoute(req: IncomingMessage, res: ServerResponse, pathname: string): boolean {
+    if (!pathname.startsWith('/api/')) return false;
+    sendJsonError(res, 404, `Unknown route: ${req.method} ${pathname}`); return true;
+  }
+  async function handleStaticFallbackRoute(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
+    if (pathname === '/console' || pathname === '/console/' || pathname.startsWith('/console/')) {
+      await serveStaticFile(req, res, pathname, activeConsoleUiDir, '/console');
+      return true;
     }
-
-    if (req.method === 'POST' && url === API_ROUTES.keepAlive) {
-      if (keepAliveCallback) keepAliveCallback();
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      });
-      res.end(JSON.stringify({ status: 'ok' }));
-      return;
-    }
-
+    await serveStaticFile(req, res, pathname, activeMonitorUiDir, '');
+    return true;
+  }
+  // --- eforge:endregion monitor-route-dispatch ---
+  // --- eforge:region plan-03-control-plane-profile-routes ---
+  async function handleControlPlaneRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- Control-plane POST routes (daemon mode) ---
     if (req.method === 'POST' && url === API_ROUTES.enqueue) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       if (options.config && (!options.config.agents?.tiers || Object.keys(options.config.agents.tiers).length === 0)) {
         sendJsonError(res, 422, 'No agent tiers configured. Add agents.tiers entries (each with harness + model + effort) to eforge/config.yaml');
-        return;
+        return true;
       }
       try {
         const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; landingAction?: string; onSuccess?: unknown; landingAutoMerge?: unknown };
         if (!body.source || typeof body.source !== 'string') {
           sendJsonError(res, 400, 'Missing required field: source');
-          return;
+          return true;
         }
         // Reject legacy onSuccess with a migration pointer.
         if (body.onSuccess !== undefined) {
           sendJsonError(res, 400, 'Field "onSuccess" is no longer supported. Use "landingAction: pr|merge|leave" instead.');
-          return;
+          return true;
         }
         // Validate landingAction override before any other work.
         const VALID_LANDING_ACTIONS = ['pr', 'merge', 'leave'] as const;
@@ -2114,7 +2113,7 @@ export async function startServer(
         if (body.landingAction !== undefined) {
           if (typeof body.landingAction !== 'string' || !(VALID_LANDING_ACTIONS as readonly string[]).includes(body.landingAction)) {
             sendJsonError(res, 400, `Invalid field: landingAction must be one of: ${VALID_LANDING_ACTIONS.join(', ')}`);
-            return;
+            return true;
           }
           explicitLandingAction = body.landingAction as LandingActionValue;
         }
@@ -2123,7 +2122,7 @@ export async function startServer(
         if (body.landingAutoMerge !== undefined) {
           if (typeof body.landingAutoMerge !== 'boolean') {
             sendJsonError(res, 400, 'Invalid field: landingAutoMerge must be a boolean');
-            return;
+            return true;
           }
           if (body.landingAutoMerge === true) {
             if (cwd) {
@@ -2134,20 +2133,20 @@ export async function startServer(
                 const effectiveLandingAction = explicitLandingAction ?? cfgTyped.landing?.action ?? 'merge';
                 if (effectiveLandingAction !== 'pr') {
                   sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when the effective landing action is 'pr' (got '${effectiveLandingAction}')`);
-                  return;
+                  return true;
                 }
                 const policy = cfgTyped.landing?.pr?.autoMerge;
                 if (policy === 'never') {
                   sendJsonError(res, 400, "landingAutoMerge: true is not allowed when landing.pr.autoMerge is 'never' in project config");
-                  return;
+                  return true;
                 }
               } catch (configErr) {
                 sendJsonError(res, 500, `Failed to load project config: ${configErr instanceof Error ? configErr.message : String(configErr)}`);
-                return;
+                return true;
               }
             } else if (explicitLandingAction !== undefined && explicitLandingAction !== 'pr') {
               sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when landingAction is 'pr' (got '${explicitLandingAction}')`);
-              return;
+              return true;
             }
           }
           explicitLandingAutoMerge = body.landingAutoMerge;
@@ -2159,7 +2158,7 @@ export async function startServer(
         if (body.profile !== undefined) {
           if (typeof body.profile !== 'string' || body.profile.trim().length === 0) {
             sendJsonError(res, 400, 'Invalid field: profile must be a non-empty string');
-            return;
+            return true;
           }
           explicitProfileName = body.profile;
           const { getConfigDir, getConventionalConfigDir, loadProfile } = await import('@eforge-build/engine/config');
@@ -2168,7 +2167,7 @@ export async function startServer(
           const profileResult = await loadProfile(configDir, explicitProfileName, cwd);
           if (!profileResult) {
             sendJsonError(res, 400, `Profile '${explicitProfileName}' not found`);
-            return;
+            return true;
           }
         }
         // --- eforge:endregion plan-01-per-build-profile-override ---
@@ -2203,7 +2202,7 @@ export async function startServer(
             } catch (parseErr) {
               // Session-plan parse failure — surface as a client error.
               sendJsonError(res, 400, parseErr instanceof Error ? parseErr.message : 'Failed to parse source');
-              return;
+              return true;
             }
           }
         }
@@ -2217,7 +2216,7 @@ export async function startServer(
           const profileResult = await loadProfile(configDir, inheritedAgentProfile, cwd);
           if (!profileResult) {
             sendJsonError(res, 400, `Inherited agent profile '${inheritedAgentProfile}' not found`);
-            return;
+            return true;
           }
         }
         // --- eforge:endregion plan-01-core-profile-propagation ---
@@ -2285,18 +2284,18 @@ export async function startServer(
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url.startsWith(`${CANCEL_BASE}/`)) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       const sessionId = url.slice(`${CANCEL_BASE}/`.length);
       if (!sessionId || !/^[\w-]+$/.test(sessionId)) {
         sendJsonError(res, 400, 'Invalid sessionId');
-        return;
+        return true;
       }
       const cancelled = options.workerTracker.cancelWorker(sessionId);
       if (cancelled) {
@@ -2304,33 +2303,33 @@ export async function startServer(
       } else {
         sendJsonError(res, 404, `No active worker found for sessionId: ${sessionId}`);
       }
-      return;
+      return true;
     }
 
     // --- eforge:region plan-03-daemon-mcp-pi ---
     if (req.method === 'POST' && url === API_ROUTES.recover) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       let body: { setName?: unknown; prdId?: unknown };
       try {
         body = await parseJsonBody(req) as { setName?: unknown; prdId?: unknown };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.setName || typeof body.setName !== 'string') {
         sendJsonError(res, 400, 'Missing required field: setName');
-        return;
+        return true;
       }
       if (!body.prdId || typeof body.prdId !== 'string') {
         sendJsonError(res, 400, 'Missing required field: prdId');
-        return;
+        return true;
       }
       if (!isValidPathSegment(body.setName) || !isValidPathSegment(body.prdId)) {
         sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
-        return;
+        return true;
       }
       // NOTE: The daemon's recovery polling loop (which called broadcast('recovery:start', ...))
       // was intentionally removed in favour of inline recovery in the queue parent. The monitor
@@ -2347,7 +2346,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to spawn recovery worker');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
@@ -2355,27 +2354,27 @@ export async function startServer(
     if (req.method === 'POST' && url === API_ROUTES.applyRecovery) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       const cwd = options?.cwd;
       if (!cwd) {
         sendJsonError(res, 503, 'No working directory configured');
-        return;
+        return true;
       }
       let body: { prdId?: unknown };
       try {
         body = await parseJsonBody(req) as { prdId?: unknown };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.prdId || typeof body.prdId !== 'string') {
         sendJsonError(res, 400, 'Missing required field: prdId');
-        return;
+        return true;
       }
       if (!isValidPathSegment(body.prdId)) {
         sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
-        return;
+        return true;
       }
       const prdId = body.prdId;
       const queueDir = resolve(cwd, options?.queueDir ?? '.eforge/queue');
@@ -2394,7 +2393,7 @@ export async function startServer(
           } else {
             sendJsonError(res, 400, `Failed to read recovery sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
           }
-          return;
+          return true;
         }
 
         let sidecarJson: unknown;
@@ -2402,23 +2401,23 @@ export async function startServer(
           sidecarJson = JSON.parse(sidecarRaw);
         } catch {
           sendJsonError(res, 400, `Malformed recovery sidecar JSON for ${prdId}`);
-          return;
+          return true;
         }
 
         if (typeof sidecarJson !== 'object' || sidecarJson === null || !('verdict' in sidecarJson)) {
           sendJsonError(res, 400, `Recovery sidecar for ${prdId} is missing the verdict field`);
-          return;
+          return true;
         }
 
         try {
           verdictData = parseWithSchema(recoveryVerdictSchema, (sidecarJson as Record<string, unknown>).verdict);
         } catch (err) {
           sendJsonError(res, 400, `Invalid recovery verdict in sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
-          return;
+          return true;
         }
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Unexpected error reading sidecar');
-        return;
+        return true;
       }
 
       const helperOptions = { cwd, prdId, queueDir };
@@ -2457,7 +2456,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to apply recovery verdict');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-01-fix-recovery-ux ---
 
@@ -2465,14 +2464,14 @@ export async function startServer(
     if (req.method === 'POST' && url === API_ROUTES.daemonStop) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       try {
         const body = await parseJsonBody(req) as { force?: boolean };
         const force = body.force === true;
         if (!options.daemonState.onShutdown) {
           sendJsonError(res, 500, 'Shutdown handler not configured');
-          return;
+          return true;
         }
         sendJson(res, { status: 'stopping', force });
         // Trigger shutdown asynchronously after responding
@@ -2480,33 +2479,33 @@ export async function startServer(
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && url === API_ROUTES.autoBuildGet) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       sendJson(res, autoBuildStateToWire(options.daemonState));
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.autoBuildSet) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       let body: { enabled?: boolean };
       try {
         body = await parseJsonBody(req) as { enabled?: boolean };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (typeof body.enabled !== 'boolean') {
         sendJsonError(res, 400, 'Missing required field: enabled (boolean)');
-        return;
+        return true;
       }
       try {
         const { autoBuildController: controller } = options.daemonState;
@@ -2519,20 +2518,24 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to update auto-build');
       }
-      return;
+      return true;
     }
 
     // --- Scheduler kick route ---
     if (req.method === 'POST' && url === API_ROUTES.schedulerKick) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
-        return;
+        return true;
       }
       notifyQueueMutation(options.daemonState, 'external');
       sendJson(res, { ok: true });
-      return;
+      return true;
     }
 
+    return false;
+  }
+
+  async function handleProfileRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- Agent runtime profile management ---
     if (req.method === 'GET' && (url === API_ROUTES.profileList || url.startsWith(`${API_ROUTES.profileList}?`))) {
       try {
@@ -2566,7 +2569,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list agent runtime profiles');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && url === API_ROUTES.profileShow) {
@@ -2581,14 +2584,14 @@ export async function startServer(
           }
           if (name === null) {
             sendJson(res, { active: null, source: 'none', resolved: { harness: undefined, profile: null } });
-            return;
+            return true;
           }
           const result = await loadUserProfile(name);
           const harness = result ? extractHarnessFromProfile(result.profile) : undefined;
           const profile = result ? result.profile : null;
           const metadata = profile ? extractProfileMetadata(profile) : undefined;
           sendJson(res, { active: name, source: 'user-local', resolved: { harness, profile: redactSensitive(profile), scope: 'user', metadata } });
-          return;
+          return true;
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
         const userConfig = await loadUserConfig();
@@ -2618,7 +2621,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to show agent runtime profile');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.profileUse) {
@@ -2626,7 +2629,7 @@ export async function startServer(
         const body = await parseJsonBody(req) as { name?: unknown; scope?: unknown };
         if (!body.name || typeof body.name !== 'string') {
           sendJsonError(res, 400, 'Missing required field: name (string)');
-          return;
+          return true;
         }
         const scopeVal = body.scope === 'local' || body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
         const { getConfigDir, setActiveProfile } =
@@ -2634,7 +2637,7 @@ export async function startServer(
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         try {
           await setActiveProfile(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined, options?.cwd);
@@ -2650,7 +2653,7 @@ export async function startServer(
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.profileCreate) {
@@ -2664,7 +2667,7 @@ export async function startServer(
         };
         if (!body.name || typeof body.name !== 'string') {
           sendJsonError(res, 400, 'Missing required field: name (string)');
-          return;
+          return true;
         }
         const scopeVal = body.scope === 'local' || body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
         const { getConfigDir, createAgentRuntimeProfile } =
@@ -2672,7 +2675,7 @@ export async function startServer(
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         try {
           // Single shape: profile carries `agents` (with tier recipes under
@@ -2699,14 +2702,14 @@ export async function startServer(
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'DELETE' && url.startsWith(`${PROFILE_BASE}/`)) {
       const name = url.slice(`${PROFILE_BASE}/`.length);
       if (!name || !/^[A-Za-z0-9._-]+$/.test(name)) {
         sendJsonError(res, 400, 'Invalid agent runtime profile name');
-        return;
+        return true;
       }
       try {
         let force = false;
@@ -2725,7 +2728,7 @@ export async function startServer(
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         try {
           await deleteAgentRuntimeProfile(configDir, name, force, scopeVal, options?.cwd);
@@ -2745,44 +2748,47 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to delete agent runtime profile');
       }
-      return;
+      return true;
     }
 
-    // --- eforge:region plan-02-extension-tooling-surfaces ---
+    return false;
+  }
+  // --- eforge:endregion plan-03-control-plane-profile-routes ---
+  async function handleExtensionManagementRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-01-extension-management-api ---
     if (req.method === 'POST' && url === API_ROUTES.extensionNew) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: ExtensionNewRequest;
       try {
         const bodyRaw = await parseJsonBody(req);
         if (typeof bodyRaw !== 'object' || bodyRaw === null || Array.isArray(bodyRaw)) {
           sendJsonError(res, 400, 'Invalid JSON body');
-          return;
+          return true;
         }
         body = bodyRaw as ExtensionNewRequest;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.name || typeof body.name !== 'string') {
         sendJsonError(res, 400, 'Missing required field: name');
-        return;
+        return true;
       }
       if (body.scope !== undefined && body.scope !== 'local' && body.scope !== 'project' && body.scope !== 'user') {
         sendJsonError(res, 400, 'Invalid extension scope. Supported scopes: local, project, user');
-        return;
+        return true;
       }
       if (body.template !== undefined && body.template !== 'event-logger' && body.template !== 'blank') {
         sendJsonError(res, 400, 'Unknown extension template. Supported templates: event-logger, blank');
-        return;
+        return true;
       }
       if (body.force !== undefined && typeof body.force !== 'boolean') {
         sendJsonError(res, 400, 'Invalid field: force must be boolean');
-        return;
+        return true;
       }
       try {
         const { scaffoldNativeExtension } = await import('@eforge-build/engine/extensions/index');
@@ -2800,11 +2806,11 @@ export async function startServer(
           : 500;
         sendJsonError(res, status, err instanceof Error ? err.message : 'Failed to scaffold extension');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionReload) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       try {
         const data = await loadExtensionResponse();
         const watcher = await reloadAutoBuildExtensions(options?.daemonState);
@@ -2812,16 +2818,19 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to reload extensions');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-01-extension-management-api ---
+    return false;
+  }
 
+  async function handleExtensionReplayRoute(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-01-engine-daemon-extension-replay ---
     if (req.method === 'POST' && url === API_ROUTES.extensionTest) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
 
       let body: ExtensionTestRequest;
@@ -2830,12 +2839,12 @@ export async function startServer(
         const validation = validateExtensionTestRequestBody(rawBody);
         if (typeof validation === 'string') {
           sendJsonError(res, 400, validation);
-          return;
+          return true;
         }
         body = validation;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
 
       let extensionPath: string | undefined;
@@ -2843,7 +2852,7 @@ export async function startServer(
         extensionPath = await validateExtensionQueryPath(body.path) ?? undefined;
         if (!extensionPath) {
           sendJsonError(res, 400, 'Invalid extension path');
-          return;
+          return true;
         }
       }
       let fixturePath: string | undefined;
@@ -2851,7 +2860,7 @@ export async function startServer(
         fixturePath = await validateExtensionQueryPath(body.fixture) ?? undefined;
         if (!fixturePath) {
           sendJsonError(res, 400, 'Invalid fixture path');
-          return;
+          return true;
         }
       }
 
@@ -2914,10 +2923,13 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to test extensions');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
+    return false;
+  }
 
+  async function handleExtensionReadRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     if (req.method === 'GET' && (url === API_ROUTES.extensionList || url.startsWith(`${API_ROUTES.extensionList}?`))) {
       try {
         const data = await loadExtensionResponse();
@@ -2925,7 +2937,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to list extensions');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && (url === API_ROUTES.extensionShow || url.startsWith(`${API_ROUTES.extensionShow}?`))) {
@@ -2934,24 +2946,24 @@ export async function startServer(
       const name = qParams.get('name');
       if (!name) {
         sendJsonError(res, 400, 'Missing required query param: name');
-        return;
+        return true;
       }
       if (!EXTENSION_NAME_RE.test(name)) {
         sendJsonError(res, 400, 'Invalid extension name');
-        return;
+        return true;
       }
       try {
         const data = await loadExtensionResponse();
         const extension = selectExtensionByName(data.extensions, name);
         if (!extension) {
           sendJsonError(res, 404, `Extension not found: ${name}`);
-          return;
+          return true;
         }
         sendJson(res, { extension });
       } catch (err) {
         sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to show extension');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && (url === API_ROUTES.extensionValidate || url.startsWith(`${API_ROUTES.extensionValidate}?`))) {
@@ -2963,23 +2975,23 @@ export async function startServer(
       const rawPath = hasPath ? qParams.get('path') ?? '' : undefined;
       if (hasName && hasPath) {
         sendJsonError(res, 400, 'Specify only one of name or path');
-        return;
+        return true;
       }
       if (hasName && (!name || !EXTENSION_NAME_RE.test(name))) {
         sendJsonError(res, 400, 'Invalid extension name');
-        return;
+        return true;
       }
       const validatedPath = hasPath ? await validateExtensionQueryPath(rawPath ?? '') : undefined;
       if (hasPath && !validatedPath) {
         sendJsonError(res, 400, 'Invalid extension path');
-        return;
+        return true;
       }
       try {
         const data = await loadExtensionResponse(validatedPath ? { path: validatedPath } : undefined);
         const extensions = name ? data.extensions.filter((entry) => entry.name === name) : data.extensions;
         if (name && extensions.length === 0) {
           sendJsonError(res, 404, `Extension not found: ${name}`);
-          return;
+          return true;
         }
         const selectedKeys = name
           ? new Set(extensions.flatMap((entry) => [entry.name, entry.path]))
@@ -3002,49 +3014,52 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to validate extensions');
       }
-      return;
+      return true;
     }
+    return false;
+  }
 
+  async function handleExtensionTrustRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-02-management-surfaces ---
     if (req.method === 'POST' && url === API_ROUTES.extensionTrust) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let trustBody: { name?: unknown; path?: unknown; trustedBy?: unknown };
       try {
         const rawBody = await parseJsonBody(req);
         if (typeof rawBody !== 'object' || rawBody === null || Array.isArray(rawBody)) {
           sendJsonError(res, 400, 'Invalid JSON body');
-          return;
+          return true;
         }
         trustBody = rawBody as { name?: unknown; path?: unknown; trustedBy?: unknown };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       const trustHasName = trustBody.name !== undefined;
       const trustHasPath = trustBody.path !== undefined;
       if (!trustHasName && !trustHasPath) {
         sendJsonError(res, 400, 'Missing required field: name or path');
-        return;
+        return true;
       }
       if (trustHasName && trustHasPath) {
         sendJsonError(res, 400, 'Specify only one of name or path');
-        return;
+        return true;
       }
       if (trustHasName && (typeof trustBody.name !== 'string' || !EXTENSION_NAME_RE.test(trustBody.name))) {
         sendJsonError(res, 400, 'Invalid extension name');
-        return;
+        return true;
       }
       if (trustHasPath && typeof trustBody.path !== 'string') {
         sendJsonError(res, 400, 'Invalid extension path');
-        return;
+        return true;
       }
       if (trustBody.trustedBy !== undefined && typeof trustBody.trustedBy !== 'string') {
         sendJsonError(res, 400, 'Invalid trustedBy: must be a string');
-        return;
+        return true;
       }
       const trustName = trustHasName ? (trustBody.name as string) : undefined;
       const trustRawPath = trustHasPath ? (trustBody.path as string) : undefined;
@@ -3073,31 +3088,31 @@ export async function startServer(
             .filter((c): c is typeof discovery.candidates[number] => c !== undefined);
           if (teamCandidates.length === 0) {
             sendJsonError(res, 404, `No project-team extension found with name: ${trustName}`);
-            return;
+            return true;
           }
           if (teamCandidates.length > 1) {
             sendJsonError(res, 409, `Ambiguous: multiple project-team extensions found with name: ${trustName}`);
-            return;
+            return true;
           }
           trustCandidate = teamCandidates[0];
         } else if (trustRawPath !== undefined) {
           const resolvedTrustPath = resolve(cwd, trustRawPath);
           if (!await isProjectTeamExtensionPath(trustRawPath, configDir)) {
             sendJsonError(res, 400, 'Path must resolve to a project-team extension within eforge/extensions/');
-            return;
+            return true;
           }
           trustCandidate = discovery.candidates.find(
             (c) => c.scope === 'project-team' && c.path === resolvedTrustPath,
           );
           if (!trustCandidate) {
             sendJsonError(res, 404, `No project-team extension found at path: ${trustRawPath}`);
-            return;
+            return true;
           }
         }
 
         if (!trustCandidate) {
           sendJsonError(res, 404, 'Extension not found');
-          return;
+          return true;
         }
 
         let trustHash: string;
@@ -3108,11 +3123,11 @@ export async function startServer(
             trustHash = await hashExtensionFile(trustCandidate.entrypoint);
           } else {
             sendJsonError(res, 400, 'Cannot hash extension: no entrypoint resolved');
-            return;
+            return true;
           }
         } catch (err) {
           sendJsonError(res, 500, `Failed to hash extension: ${err instanceof Error ? err.message : String(err)}`);
-          return;
+          return true;
         }
 
         await upsertTrustRecord(eforgeDir, trustCandidate.name, trustHash, trustedBy);
@@ -3157,48 +3172,48 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to trust extension');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionUntrust) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let untrustBody: { name?: unknown; path?: unknown; trustedBy?: unknown };
       try {
         const rawBody = await parseJsonBody(req);
         if (typeof rawBody !== 'object' || rawBody === null || Array.isArray(rawBody)) {
           sendJsonError(res, 400, 'Invalid JSON body');
-          return;
+          return true;
         }
         untrustBody = rawBody as { name?: unknown; path?: unknown; trustedBy?: unknown };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (untrustBody.trustedBy !== undefined) {
         sendJsonError(res, 400, 'trustedBy is not accepted for untrust requests');
-        return;
+        return true;
       }
       const untrustHasName = untrustBody.name !== undefined;
       const untrustHasPath = untrustBody.path !== undefined;
       if (!untrustHasName && !untrustHasPath) {
         sendJsonError(res, 400, 'Missing required field: name or path');
-        return;
+        return true;
       }
       if (untrustHasName && untrustHasPath) {
         sendJsonError(res, 400, 'Specify only one of name or path');
-        return;
+        return true;
       }
       if (untrustHasName && (typeof untrustBody.name !== 'string' || !EXTENSION_NAME_RE.test(untrustBody.name))) {
         sendJsonError(res, 400, 'Invalid extension name');
-        return;
+        return true;
       }
       if (untrustHasPath && typeof untrustBody.path !== 'string') {
         sendJsonError(res, 400, 'Invalid extension path');
-        return;
+        return true;
       }
       const untrustName = untrustHasName ? (untrustBody.name as string) : undefined;
       const untrustRawPath = untrustHasPath ? (untrustBody.path as string) : undefined;
@@ -3226,31 +3241,31 @@ export async function startServer(
             .filter((c): c is typeof discovery.candidates[number] => c !== undefined);
           if (teamCandidates.length === 0) {
             sendJsonError(res, 404, `No project-team extension found with name: ${untrustName}`);
-            return;
+            return true;
           }
           if (teamCandidates.length > 1) {
             sendJsonError(res, 409, `Ambiguous: multiple project-team extensions found with name: ${untrustName}`);
-            return;
+            return true;
           }
           untrustCandidate = teamCandidates[0];
         } else if (untrustRawPath !== undefined) {
           const resolvedUntrustPath = resolve(cwd, untrustRawPath);
           if (!await isProjectTeamExtensionPath(untrustRawPath, configDir)) {
             sendJsonError(res, 400, 'Path must resolve to a project-team extension within eforge/extensions/');
-            return;
+            return true;
           }
           untrustCandidate = discovery.candidates.find(
             (c) => c.scope === 'project-team' && c.path === resolvedUntrustPath,
           );
           if (!untrustCandidate) {
             sendJsonError(res, 404, `No project-team extension found at path: ${untrustRawPath}`);
-            return;
+            return true;
           }
         }
 
         if (!untrustCandidate) {
           sendJsonError(res, 404, 'Extension not found');
-          return;
+          return true;
         }
 
         await removeTrustRecord(eforgeDir, untrustCandidate.name);
@@ -3300,22 +3315,25 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to untrust extension');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-02-management-surfaces ---
+    return false;
+  }
 
+  async function handleExtensionPackageRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-02-extension-package-daemon-operations ---
     if (req.method === 'POST' && url === API_ROUTES.extensionInstall) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let installBody: ExtensionInstallRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         installBody = rawBody as unknown as ExtensionInstallRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       if (typeof installBody.source !== 'string' || installBody.source.length === 0) {
-        sendJsonError(res, 400, 'Missing required field: source'); return;
+        sendJsonError(res, 400, 'Missing required field: source'); return true;
       }
       if (
         installBody.scope !== undefined &&
@@ -3323,20 +3341,20 @@ export async function startServer(
         installBody.scope !== 'project' &&
         installBody.scope !== 'user'
       ) {
-        sendJsonError(res, 400, 'Invalid scope. Supported: local, project, user'); return;
+        sendJsonError(res, 400, 'Invalid scope. Supported: local, project, user'); return true;
       }
       if (
         installBody.name !== undefined &&
         (typeof installBody.name !== 'string' || !EXTENSION_NAME_RE.test(installBody.name))
       ) {
-        sendJsonError(res, 400, 'Invalid extension name'); return;
+        sendJsonError(res, 400, 'Invalid extension name'); return true;
       }
       for (const fieldError of [
         validateBooleanField(installBody as unknown as Record<string, unknown>, 'force'),
         validateBooleanField(installBody as unknown as Record<string, unknown>, 'trust'),
         validateStringField(installBody as unknown as Record<string, unknown>, 'trustedBy'),
       ]) {
-        if (fieldError) { sendJsonError(res, 400, fieldError); return; }
+        if (fieldError) { sendJsonError(res, 400, fieldError); return true; }
       }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
@@ -3348,7 +3366,7 @@ export async function startServer(
         const extension =
           listData.extensions.find((e) => e.path === result.targetPath) ??
           selectExtensionByName(listData.extensions, result.name);
-        if (!extension) { sendJsonError(res, 500, 'Extension installed but not found in discovery'); return; }
+        if (!extension) { sendJsonError(res, 500, 'Extension installed but not found in discovery'); return true; }
         const needsTrust = result.scope === 'project' && (!installBody.trust);
         sendJson(res, {
           extension,
@@ -3360,23 +3378,23 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to install extension'); }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionUpdate) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let updateBody: ExtensionUpdateRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         updateBody = rawBody as unknown as ExtensionUpdateRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       const updateValidationError = validateExtensionPackageTargetBody(updateBody as unknown as Record<string, unknown>, {
         allowTrust: true,
         allowVersion: true,
       });
-      if (updateValidationError) { sendJsonError(res, 400, updateValidationError); return; }
+      if (updateValidationError) { sendJsonError(res, 400, updateValidationError); return true; }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
         const { config, warnings } = await loadConfig(cwd);
@@ -3387,7 +3405,7 @@ export async function startServer(
         const extension =
           listData.extensions.find((e) => e.path === result.targetPath) ??
           selectExtensionByName(listData.extensions, result.name);
-        if (!extension) { sendJsonError(res, 500, 'Extension updated but not found in discovery'); return; }
+        if (!extension) { sendJsonError(res, 500, 'Extension updated but not found in discovery'); return true; }
         const needsTrust = result.scope === 'project' && (!updateBody.trust);
         sendJson(res, {
           extension,
@@ -3400,22 +3418,22 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to update extension'); }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionRemove) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let removeBody: ExtensionRemoveRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         removeBody = rawBody as unknown as ExtensionRemoveRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       const removeValidationError = validateExtensionPackageTargetBody(removeBody as unknown as Record<string, unknown>, {
         allowForce: true,
       });
-      if (removeValidationError) { sendJsonError(res, 400, removeValidationError); return; }
+      if (removeValidationError) { sendJsonError(res, 400, removeValidationError); return true; }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
         const { config, warnings } = await loadConfig(cwd);
@@ -3427,23 +3445,23 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to remove extension'); }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionPromote) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let promoteBody: ExtensionPromoteRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         promoteBody = rawBody as unknown as ExtensionPromoteRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       const promoteValidationError = validateExtensionPackageTargetBody(promoteBody as unknown as Record<string, unknown>, {
         allowForce: true,
         allowTrust: true,
       });
-      if (promoteValidationError) { sendJsonError(res, 400, promoteValidationError); return; }
+      if (promoteValidationError) { sendJsonError(res, 400, promoteValidationError); return true; }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
         const { config, warnings } = await loadConfig(cwd);
@@ -3454,7 +3472,7 @@ export async function startServer(
         const extension =
           listData.extensions.find((e) => e.path === result.targetPath) ??
           selectExtensionByName(listData.extensions, result.name);
-        if (!extension) { sendJsonError(res, 500, 'Extension promoted but not found in discovery'); return; }
+        if (!extension) { sendJsonError(res, 500, 'Extension promoted but not found in discovery'); return true; }
         const needsTrust = !promoteBody.trust;
         sendJson(res, {
           extension,
@@ -3466,22 +3484,22 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to promote extension'); }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionDemote) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let demoteBody: ExtensionDemoteRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         demoteBody = rawBody as unknown as ExtensionDemoteRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       const demoteValidationError = validateExtensionPackageTargetBody(demoteBody as unknown as Record<string, unknown>, {
         allowForce: true,
       });
-      if (demoteValidationError) { sendJsonError(res, 400, demoteValidationError); return; }
+      if (demoteValidationError) { sendJsonError(res, 400, demoteValidationError); return true; }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
         const { config, warnings } = await loadConfig(cwd);
@@ -3492,7 +3510,7 @@ export async function startServer(
         const extension =
           listData.extensions.find((e) => e.path === result.targetPath) ??
           selectExtensionByName(listData.extensions, result.name);
-        if (!extension) { sendJsonError(res, 500, 'Extension demoted but not found in discovery'); return; }
+        if (!extension) { sendJsonError(res, 500, 'Extension demoted but not found in discovery'); return true; }
         sendJson(res, {
           extension,
           message: `Extension "${result.name}" demoted to project-local scope.`,
@@ -3501,23 +3519,30 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to demote extension'); }
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-02-extension-package-daemon-operations ---
+    return false;
+  }
 
+  async function handleExtensionRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
+    // --- eforge:region plan-02-extension-tooling-surfaces ---
+    if (await handleExtensionManagementRoutes(req, res, url)) return true;
+    if (await handleExtensionReplayRoute(req, res, url)) return true;
+    if (await handleExtensionReadRoutes(req, res, url)) return true;
+    if (await handleExtensionTrustRoutes(req, res, url)) return true;
+    if (await handleExtensionPackageRoutes(req, res, url)) return true;
     // --- eforge:endregion plan-02-extension-tooling-surfaces ---
-
-    // --- eforge:region plan-02-daemon-http-and-mcp-tool ---
-    // Playbook names must be kebab-case (mirrors `playbookFrontmatterSchema.name`).
-    // The route `name` parameter is interpolated into a filesystem path by
-    // `loadSetArtifact`/`movePlaybook`, so anything outside this character class
-    // would permit path traversal (e.g. `name=../../etc/passwd`). Validate at the
-    // edge before passing to the engine.
-    const PLAYBOOK_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    return false;
+  }
+  // --- eforge:region plan-05-playbook-session-plan-routes ---
+  const PLAYBOOK_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+  const SESSION_PLAN_ID_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+  async function handlePlaybookContentRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     if (req.method === 'GET' && (url === API_ROUTES.playbookList || url.startsWith(`${API_ROUTES.playbookList}?`))) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
@@ -3531,24 +3556,24 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list playbooks');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && (url === API_ROUTES.playbookShow || url.startsWith(`${API_ROUTES.playbookShow}?`))) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const qParams = new URLSearchParams(queryString);
       const name = qParams.get('name');
       if (!name) {
         sendJsonError(res, 400, 'Missing required query param: name');
-        return;
+        return true;
       }
       if (!PLAYBOOK_NAME_RE.test(name)) {
         sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
-        return;
+        return true;
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
@@ -3556,7 +3581,7 @@ export async function startServer(
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         const result = await loadPlaybook({ configDir, cwd, name });
         sendJson(res, result);
@@ -3568,28 +3593,28 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.playbookSave) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { scope?: unknown; playbook?: { frontmatter?: unknown; body?: unknown } };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (body.scope !== 'user' && body.scope !== 'project-team' && body.scope !== 'project-local') {
         sendJsonError(res, 400, 'Missing or invalid field: scope (must be "user", "project-team", or "project-local")');
-        return;
+        return true;
       }
       if (!body.playbook || typeof body.playbook !== 'object') {
         sendJsonError(res, 400, 'Missing required field: playbook');
-        return;
+        return true;
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
@@ -3605,13 +3630,13 @@ export async function startServer(
           });
           res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
           res.end(JSON.stringify({ error: 'Playbook validation failed', errors }));
-          return;
+          return true;
         }
         // Validate body
         if (!bd || typeof (bd as Record<string, unknown>).goal !== 'string' || !(bd as Record<string, unknown>).goal) {
           res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
           res.end(JSON.stringify({ error: 'Playbook validation failed', errors: ['Missing required section: ## Goal'] }));
-          return;
+          return true;
         }
         const bdTyped = bd as { goal?: string; outOfScope?: string; acceptanceCriteria?: string; plannerNotes?: string };
         const playbook = {
@@ -3627,34 +3652,34 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to save playbook');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.playbookRun) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { name?: unknown; afterQueueId?: unknown; landingAction?: unknown; onSuccess?: unknown; landingAutoMerge?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.name || typeof body.name !== 'string') {
         sendJsonError(res, 400, 'Missing required field: name (string)');
-        return;
+        return true;
       }
       if (!PLAYBOOK_NAME_RE.test(body.name)) {
         sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
-        return;
+        return true;
       }
       const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
       // Reject legacy onSuccess with a migration pointer.
       if (body.onSuccess !== undefined) {
         sendJsonError(res, 400, 'Field "onSuccess" is no longer supported. Use "landingAction: pr|merge|leave" instead.');
-        return;
+        return true;
       }
       const VALID_PLAYBOOK_LANDING_ACTIONS = ['pr', 'merge', 'leave'] as const;
       type PlaybookLandingActionValue = (typeof VALID_PLAYBOOK_LANDING_ACTIONS)[number];
@@ -3662,7 +3687,7 @@ export async function startServer(
       if (body.landingAction !== undefined) {
         if (typeof body.landingAction !== 'string' || !(VALID_PLAYBOOK_LANDING_ACTIONS as readonly string[]).includes(body.landingAction)) {
           sendJsonError(res, 400, `Invalid landingAction value: must be one of ${VALID_PLAYBOOK_LANDING_ACTIONS.join(', ')}`);
-          return;
+          return true;
         }
         playbookLandingAction = body.landingAction as PlaybookLandingActionValue;
       }
@@ -3671,7 +3696,7 @@ export async function startServer(
       if (body.landingAutoMerge !== undefined) {
         if (typeof body.landingAutoMerge !== 'boolean') {
           sendJsonError(res, 400, 'Invalid field: landingAutoMerge must be a boolean');
-          return;
+          return true;
         }
         playbookLandingAutoMerge = body.landingAutoMerge;
       }
@@ -3686,20 +3711,20 @@ export async function startServer(
             const effectiveLandingAction = playbookLandingAction ?? cfgTyped.landing?.action ?? 'merge';
             if (effectiveLandingAction !== 'pr') {
               sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when the effective landing action is 'pr' (got '${effectiveLandingAction}')`);
-              return;
+              return true;
             }
             const policy = cfgTyped.landing?.pr?.autoMerge;
             if (policy === 'never') {
               sendJsonError(res, 400, "landingAutoMerge: true is not allowed when landing.pr.autoMerge is 'never' in project config");
-              return;
+              return true;
             }
           } catch (configErr) {
             sendJsonError(res, 500, `Failed to load project config: ${configErr instanceof Error ? configErr.message : String(configErr)}`);
-            return;
+            return true;
           }
         } else if (playbookLandingAction !== undefined && playbookLandingAction !== 'pr') {
           sendJsonError(res, 400, `Invalid field: landingAutoMerge can only be true when landingAction is 'pr' (got '${playbookLandingAction}')`);
-          return;
+          return true;
         }
       }
       // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
@@ -3709,7 +3734,7 @@ export async function startServer(
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         const { playbook } = await loadPlaybook({ configDir, cwd, name: body.name });
 
@@ -3734,7 +3759,7 @@ export async function startServer(
             const playbookProfileResult = await loadProfile(playbookConfigDir, playbook.profile, cwd);
             if (!playbookProfileResult) {
               sendJsonError(res, 400, `Playbook profile '${playbook.profile}' not found`);
-              return;
+              return true;
             }
           }
           // --- eforge:endregion plan-01-core-profile-propagation ---
@@ -3753,7 +3778,7 @@ export async function startServer(
             } catch (validationErr) {
               const msg = validationErr instanceof Error ? validationErr.message : 'Invalid afterQueueId';
               sendJsonError(res, 404, msg);
-              return;
+              return true;
             }
           }
           // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
@@ -3788,28 +3813,27 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
-
     if (req.method === 'POST' && url === API_ROUTES.sessionPlanCreateFromPlaybook) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { playbook_name?: unknown; session?: unknown; topic?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.playbook_name || typeof body.playbook_name !== 'string') {
         sendJsonError(res, 400, 'Missing required field: playbook_name (string)');
-        return;
+        return true;
       }
       if (!PLAYBOOK_NAME_RE.test(body.playbook_name)) {
         sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
-        return;
+        return true;
       }
       const sessionOverride = typeof body.session === 'string' ? body.session : undefined;
       const topicOverride = typeof body.topic === 'string' ? body.topic : undefined;
@@ -3819,12 +3843,12 @@ export async function startServer(
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         const { playbook } = await loadPlaybook({ configDir, cwd, name: body.playbook_name });
         if (playbook.mode !== 'planning') {
           sendJsonError(res, 400, `Playbook "${body.playbook_name}" is autonomous — use POST /api/playbook/run to enqueue it`);
-          return;
+          return true;
         }
         const plan = createSessionPlanFromPlaybookSeed({
           playbook,
@@ -3846,7 +3870,7 @@ export async function startServer(
         }
         if (exists) {
           sendJsonError(res, 409, `Session plan already exists: ${plan.session}`);
-          return;
+          return true;
         }
         await writeSessionPlan({ cwd, plan });
         sendJson(res, { session: plan.session, path: planPath });
@@ -3860,28 +3884,30 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
-
+    return false;
+  }
+  async function handlePlaybookManagementRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     if (req.method === 'POST' && url === API_ROUTES.playbookPromote) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { name?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.name || typeof body.name !== 'string') {
         sendJsonError(res, 400, 'Missing required field: name (string)');
-        return;
+        return true;
       }
       if (!PLAYBOOK_NAME_RE.test(body.name)) {
         sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
-        return;
+        return true;
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
@@ -3889,7 +3915,7 @@ export async function startServer(
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         const result = await movePlaybook({ configDir, cwd, name: body.name, fromScope: 'project-local', toScope: 'project-team' });
         sendJson(res, { path: result.path });
@@ -3901,28 +3927,28 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.playbookDemote) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { name?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.name || typeof body.name !== 'string') {
         sendJsonError(res, 400, 'Missing required field: name (string)');
-        return;
+        return true;
       }
       if (!PLAYBOOK_NAME_RE.test(body.name)) {
         sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
-        return;
+        return true;
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
@@ -3930,7 +3956,7 @@ export async function startServer(
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         const result = await movePlaybook({ configDir, cwd, name: body.name, fromScope: 'project-team', toScope: 'project-local' });
         sendJson(res, { path: result.path });
@@ -3942,7 +3968,7 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.playbookValidate) {
@@ -3951,11 +3977,11 @@ export async function startServer(
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.raw || typeof body.raw !== 'string') {
         sendJsonError(res, 400, 'Missing required field: raw (string)');
-        return;
+        return true;
       }
       try {
         const { validatePlaybook } = await import('@eforge-build/input');
@@ -3968,33 +3994,33 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to validate playbook');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.playbookCopy) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { name?: unknown; targetScope?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.name || typeof body.name !== 'string') {
         sendJsonError(res, 400, 'Missing required field: name (string)');
-        return;
+        return true;
       }
       if (!PLAYBOOK_NAME_RE.test(body.name)) {
         sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
-        return;
+        return true;
       }
       const validScopes = ['project-local', 'project-team', 'user'] as const;
       if (!body.targetScope || !validScopes.includes(body.targetScope as typeof validScopes[number])) {
         sendJsonError(res, 400, 'Missing or invalid field: targetScope (must be "project-local", "project-team", or "user")');
-        return;
+        return true;
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
@@ -4002,7 +4028,7 @@ export async function startServer(
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
-          return;
+          return true;
         }
         const result = await copyPlaybookToScope({
           configDir,
@@ -4019,19 +4045,15 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
-    // --- eforge:endregion plan-02-daemon-http-and-mcp-tool ---
-
-    // --- eforge:region plan-02-daemon-routes ---
-    // Session plan ids follow the YYYY-MM-DD-{slug} shape. Validate to prevent
-    // path traversal attempts via the `session` parameter.
-    const SESSION_PLAN_ID_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
+    return false;
+  }
+  async function handleSessionPlanRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     if (req.method === 'GET' && (url === API_ROUTES.sessionPlanList || url.startsWith(`${API_ROUTES.sessionPlanList}?`))) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       try {
         const { listActiveSessionPlans, loadSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
@@ -4068,24 +4090,24 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list session plans');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && (url === API_ROUTES.sessionPlanShow || url.startsWith(`${API_ROUTES.sessionPlanShow}?`))) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const qParams = new URLSearchParams(queryString);
       const session = qParams.get('session');
       if (!session) {
         sendJsonError(res, 400, 'Missing required query param: session');
-        return;
+        return true;
       }
       if (!SESSION_PLAN_ID_RE.test(session)) {
         sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
-        return;
+        return true;
       }
       try {
         const { loadSessionPlan, getReadinessDetail, resolveSessionPlanPath } = await import('@eforge-build/input');
@@ -4102,32 +4124,32 @@ export async function startServer(
           sendJsonError(res, 400, msg);
         }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.sessionPlanCreate) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { session?: unknown; topic?: unknown; planning_type?: unknown; planning_depth?: unknown; profile?: unknown; agent_profile?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.session || typeof body.session !== 'string') {
         sendJsonError(res, 400, 'Missing required field: session (string)');
-        return;
+        return true;
       }
       if (!SESSION_PLAN_ID_RE.test(body.session)) {
         sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
-        return;
+        return true;
       }
       if (!body.topic || typeof body.topic !== 'string') {
         sendJsonError(res, 400, 'Missing required field: topic (string)');
-        return;
+        return true;
       }
       // Validate enum fields up-front: createSessionPlan does not validate
       // them, so an invalid value would otherwise be persisted to disk in a
@@ -4137,20 +4159,20 @@ export async function startServer(
       const VALID_PROFILES = ['errand', 'excursion', 'expedition'] as const;
       if (body.planning_type !== undefined && (typeof body.planning_type !== 'string' || !VALID_PLANNING_TYPES.includes(body.planning_type as typeof VALID_PLANNING_TYPES[number]))) {
         sendJsonError(res, 400, `Invalid planning_type (must be one of: ${VALID_PLANNING_TYPES.join(', ')})`);
-        return;
+        return true;
       }
       if (body.planning_depth !== undefined && (typeof body.planning_depth !== 'string' || !VALID_PLANNING_DEPTHS.includes(body.planning_depth as typeof VALID_PLANNING_DEPTHS[number]))) {
         sendJsonError(res, 400, `Invalid planning_depth (must be one of: ${VALID_PLANNING_DEPTHS.join(', ')})`);
-        return;
+        return true;
       }
       if (body.profile !== undefined && body.profile !== null && (typeof body.profile !== 'string' || !VALID_PROFILES.includes(body.profile as typeof VALID_PROFILES[number]))) {
         sendJsonError(res, 400, `Invalid profile (must be null or one of: ${VALID_PROFILES.join(', ')})`);
-        return;
+        return true;
       }
       // agent_profile is accepted as-is (no existence validation at create time)
       if (body.agent_profile !== undefined && typeof body.agent_profile !== 'string') {
         sendJsonError(res, 400, 'Invalid agent_profile (must be a string)');
-        return;
+        return true;
       }
       try {
         const { createSessionPlan, writeSessionPlan, resolveSessionPlanPath } = await import('@eforge-build/input');
@@ -4170,36 +4192,36 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to create session plan');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.sessionPlanSetSection) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { session?: unknown; dimension?: unknown; content?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.session || typeof body.session !== 'string') {
         sendJsonError(res, 400, 'Missing required field: session (string)');
-        return;
+        return true;
       }
       if (!SESSION_PLAN_ID_RE.test(body.session)) {
         sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
-        return;
+        return true;
       }
       if (!body.dimension || typeof body.dimension !== 'string') {
         sendJsonError(res, 400, 'Missing required field: dimension (string)');
-        return;
+        return true;
       }
       if (typeof body.content !== 'string') {
         sendJsonError(res, 400, 'Missing required field: content (string)');
-        return;
+        return true;
       }
       try {
         const { loadSessionPlan, setSessionPlanSection, writeSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
@@ -4218,36 +4240,36 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.sessionPlanSkipDimension) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { session?: unknown; dimension?: unknown; reason?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.session || typeof body.session !== 'string') {
         sendJsonError(res, 400, 'Missing required field: session (string)');
-        return;
+        return true;
       }
       if (!SESSION_PLAN_ID_RE.test(body.session)) {
         sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
-        return;
+        return true;
       }
       if (!body.dimension || typeof body.dimension !== 'string') {
         sendJsonError(res, 400, 'Missing required field: dimension (string)');
-        return;
+        return true;
       }
       if (!body.reason || typeof body.reason !== 'string') {
         sendJsonError(res, 400, 'Missing required field: reason (string)');
-        return;
+        return true;
       }
       try {
         const { loadSessionPlan, skipDimension, writeSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
@@ -4264,41 +4286,41 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.sessionPlanSetStatus) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { session?: unknown; status?: unknown; eforge_session?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.session || typeof body.session !== 'string') {
         sendJsonError(res, 400, 'Missing required field: session (string)');
-        return;
+        return true;
       }
       if (!SESSION_PLAN_ID_RE.test(body.session)) {
         sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
-        return;
+        return true;
       }
       if (!body.status || typeof body.status !== 'string') {
         sendJsonError(res, 400, 'Missing required field: status (string)');
-        return;
+        return true;
       }
       const validStatuses = ['planning', 'ready', 'abandoned', 'submitted'] as const;
       if (!validStatuses.includes(body.status as typeof validStatuses[number])) {
         sendJsonError(res, 400, 'Invalid status (must be "planning", "ready", "abandoned", or "submitted")');
-        return;
+        return true;
       }
       if (body.status === 'submitted' && (!body.eforge_session || typeof body.eforge_session !== 'string')) {
         sendJsonError(res, 400, 'eforge_session is required when status is "submitted"');
-        return;
+        return true;
       }
       try {
         const { loadSessionPlan, setSessionPlanStatus, writeSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
@@ -4315,7 +4337,7 @@ export async function startServer(
             const errorMsg = `Cannot mark session plan ready: acceptance criteria quality issues: ${issueMsg}`;
             res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
             res.end(JSON.stringify({ error: errorMsg, readiness }));
-            return;
+            return true;
           }
         }
 
@@ -4336,39 +4358,39 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.sessionPlanSelectDimensions) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { session?: unknown; planning_type?: unknown; planning_depth?: unknown; overwrite?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.session || typeof body.session !== 'string') {
         sendJsonError(res, 400, 'Missing required field: session (string)');
-        return;
+        return true;
       }
       if (!SESSION_PLAN_ID_RE.test(body.session)) {
         sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
-        return;
+        return true;
       }
       // Validate enum fields up-front to keep invalid values out of disk.
       const SD_VALID_PLANNING_TYPES = ['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown'] as const;
       const SD_VALID_PLANNING_DEPTHS = ['quick', 'focused', 'deep'] as const;
       if (body.planning_type !== undefined && (typeof body.planning_type !== 'string' || !SD_VALID_PLANNING_TYPES.includes(body.planning_type as typeof SD_VALID_PLANNING_TYPES[number]))) {
         sendJsonError(res, 400, `Invalid planning_type (must be one of: ${SD_VALID_PLANNING_TYPES.join(', ')})`);
-        return;
+        return true;
       }
       if (body.planning_depth !== undefined && (typeof body.planning_depth !== 'string' || !SD_VALID_PLANNING_DEPTHS.includes(body.planning_depth as typeof SD_VALID_PLANNING_DEPTHS[number]))) {
         sendJsonError(res, 400, `Invalid planning_depth (must be one of: ${SD_VALID_PLANNING_DEPTHS.join(', ')})`);
-        return;
+        return true;
       }
       try {
         const { loadSessionPlan, setSessionPlanDimensions, writeSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
@@ -4394,24 +4416,24 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && (url === API_ROUTES.sessionPlanReadiness || url.startsWith(`${API_ROUTES.sessionPlanReadiness}?`))) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const qParams = new URLSearchParams(queryString);
       const session = qParams.get('session');
       if (!session) {
         sendJsonError(res, 400, 'Missing required query param: session');
-        return;
+        return true;
       }
       if (!SESSION_PLAN_ID_RE.test(session)) {
         sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
-        return;
+        return true;
       }
       try {
         const { loadSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
@@ -4427,28 +4449,28 @@ export async function startServer(
           sendJsonError(res, 400, msg);
         }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.sessionPlanMigrateLegacy) {
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: { session?: unknown };
       try {
         body = await parseJsonBody(req) as typeof body;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.session || typeof body.session !== 'string') {
         sendJsonError(res, 400, 'Missing required field: session (string)');
-        return;
+        return true;
       }
       if (!SESSION_PLAN_ID_RE.test(body.session)) {
         sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
-        return;
+        return true;
       }
       try {
         const { loadSessionPlan, migrateBooleanDimensions, writeSessionPlan } = await import('@eforge-build/input');
@@ -4467,54 +4489,45 @@ export async function startServer(
           sendJsonError(res, 500, msg);
         }
       }
-      return;
+      return true;
     }
-    // --- eforge:endregion plan-02-daemon-routes ---
-
-    if (req.method === 'GET' && url.startsWith(API_ROUTES.modelProviders)) {
+    return false;
+  }
+  // --- eforge:endregion plan-05-playbook-session-plan-routes ---
+  async function handleModelRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
+    if (req.method === 'GET' && (url === API_ROUTES.modelProviders || url.startsWith(`${API_ROUTES.modelProviders}?`))) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
-      const params = new URLSearchParams(queryString);
-      const harness = params.get('harness');
-      if (harness !== 'pi' && harness !== 'claude-sdk') {
-        sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")');
-        return;
-      }
+      const harness = new URLSearchParams(queryString).get('harness');
+      if (harness !== 'pi' && harness !== 'claude-sdk') { sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")'); return true; }
       try {
         const { listProviders } = await import('@eforge-build/engine/models');
-        const providers = await listProviders(harness);
-        sendJson(res, { providers });
+        sendJson(res, { providers: await listProviders(harness) });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list providers');
       }
-      return;
+      return true;
     }
-
-    if (req.method === 'GET' && url.startsWith(API_ROUTES.modelList)) {
+    if (req.method === 'GET' && (url === API_ROUTES.modelList || url.startsWith(`${API_ROUTES.modelList}?`))) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);
       const harness = params.get('harness');
       const provider = params.get('provider') ?? undefined;
-      if (harness !== 'pi' && harness !== 'claude-sdk') {
-        sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")');
-        return;
-      }
+      if (harness !== 'pi' && harness !== 'claude-sdk') { sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")'); return true; }
       try {
         const { listModels } = await import('@eforge-build/engine/models');
-        const models = await listModels(harness, provider);
-        sendJson(res, { models });
+        sendJson(res, { models: await listModels(harness, provider) });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list models');
       }
-      return;
+      return true;
     }
-
-    if (url === API_ROUTES.projectContext) {
-      serveProjectContext(req, res);
-    } else if (url === API_ROUTES.health) {
-      serveHealth(req, res);
-    } else if (req.method === 'GET' && url === API_ROUTES.version) {
-      sendJson(res, { version: DAEMON_API_VERSION, eforgeVersion: EFORGE_VERSION });
-    } else if (url === API_ROUTES.configShow || (req.method === 'GET' && url.startsWith(`${API_ROUTES.configShow}?`))) {
+    return false;
+  }
+  async function handleConfigContextRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
+    if (url === API_ROUTES.projectContext) { serveProjectContext(req, res); return true; }
+    if (url === API_ROUTES.health) { serveHealth(req, res); return true; }
+    if (req.method === 'GET' && url === API_ROUTES.version) { sendJson(res, { version: DAEMON_API_VERSION, eforgeVersion: EFORGE_VERSION }); return true; }
+    if (url === API_ROUTES.configShow || (req.method === 'GET' && url.startsWith(`${API_ROUTES.configShow}?`))) {
       try {
         const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
         const qParams = new URLSearchParams(queryString);
@@ -4557,39 +4570,29 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load config');
       }
-    } else if (url === API_ROUTES.configValidate) {
+      return true;
+    }
+    if (url === API_ROUTES.configValidate) {
       try {
         const { validateConfigFile } = await import('@eforge-build/engine/config');
-        const result = await validateConfigFile(options?.cwd);
-        sendJson(res, result);
+        sendJson(res, await validateConfigFile(options?.cwd));
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to validate config');
       }
+      return true;
+    }
     // --- eforge:region plan-03-daemon-mcp-pi ---
-    } else if (req.method === 'GET' && url.startsWith(RECOVERY_SIDECAR_BASE)) {
-      if (!cwd) {
-        sendJsonError(res, 503, 'Working directory not configured');
-        return;
-      }
+    if (req.method === 'GET' && (url === RECOVERY_SIDECAR_BASE || url.startsWith(`${RECOVERY_SIDECAR_BASE}?`))) {
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       const prdQueueDir = options?.config?.prdQueue?.dir ?? '.eforge/queue';
       const failedPrdDir = resolve(cwd, prdQueueDir, 'failed');
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
-      const params = new URLSearchParams(queryString);
-      const prdId = params.get('prdId');
-      if (!prdId) {
-        sendJsonError(res, 400, 'Missing required query param: prdId');
-        return;
-      }
-      if (!isValidPathSegment(prdId)) {
-        sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
-        return;
-      }
+      const prdId = new URLSearchParams(queryString).get('prdId');
+      if (!prdId) { sendJsonError(res, 400, 'Missing required query param: prdId'); return true; }
+      if (!isValidPathSegment(prdId)) { sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences'); return true; }
       const mdPath = resolve(failedPrdDir, `${prdId}.recovery.md`);
       const jsonPath = resolve(failedPrdDir, `${prdId}.recovery.json`);
-      if (!isWithinDir(mdPath, failedPrdDir) || !isWithinDir(jsonPath, failedPrdDir)) {
-        sendJsonError(res, 400, 'Invalid prdId: resolved path escapes failed PRD directory');
-        return;
-      }
+      if (!isWithinDir(mdPath, failedPrdDir) || !isWithinDir(jsonPath, failedPrdDir)) { sendJsonError(res, 400, 'Invalid prdId: resolved path escapes failed PRD directory'); return true; }
       let mdContent: string;
       let jsonContent: string;
       try {
@@ -4599,73 +4602,58 @@ export async function startServer(
         ]);
       } catch {
         sendJsonError(res, 404, 'Recovery sidecar not found');
-        return;
+        return true;
       }
       try {
         sendJson(res, { markdown: mdContent, json: JSON.parse(jsonContent) });
       } catch (err) {
         sendJsonError(res, 500, `Recovery sidecar JSON is malformed: ${err instanceof Error ? err.message : String(err)} (file: ${jsonPath})`);
       }
+      return true;
+    }
     // --- eforge:endregion plan-03-daemon-mcp-pi ---
+    return false;
+  }
+  async function handleStackRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-03-stack-daemon-ui ---
-    } else if (req.method === 'GET' && url === API_ROUTES.stackLayers) {
-      const cwd = options?.cwd;
-      const layers = cwd ? stackLayersToWire(cwd) : [];
-      sendJson(res, { layers });
+    if (req.method === 'GET' && url === API_ROUTES.stackLayers) { sendJson(res, { layers: cwd ? stackLayersToWire(cwd) : [] }); return true; }
     // --- eforge:endregion plan-03-stack-daemon-ui ---
     // --- eforge:region plan-01-stack-sync-daemon-cli ---
-    } else if (req.method === 'GET' && url === API_ROUTES.stackSyncStatus) {
+    if (req.method === 'GET' && url === API_ROUTES.stackSyncStatus) {
       const syncCwd = options?.cwd;
-      if (!syncCwd) {
-        sendJson(res, { version: 1 });
-        return;
-      }
+      if (!syncCwd) { sendJson(res, { version: 1 }); return true; }
       try {
         const statusFile = await loadSyncStatusForRoute(syncCwd);
         sendJson(res, { last: statusFile.last, current: statusFile.current });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load stack sync status');
       }
-    } else if (req.method === 'POST' && url === API_ROUTES.stackSync) {
-      if (rejectUnsafeExtensionMutationRequest(req, res, 'Stack sync mutations')) return;
+      return true;
+    }
+    if (req.method === 'POST' && url === API_ROUTES.stackSync) {
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Stack sync mutations')) return true;
       const syncCwd = options?.cwd;
-      if (!syncCwd) {
-        sendJsonError(res, 503, 'Working directory not configured');
-        return;
-      }
+      if (!syncCwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let rawBody: unknown;
       try {
         rawBody = await parseJsonBody(req);
       } catch {
         sendJsonError(res, 400, 'Invalid JSON request body');
-        return;
+        return true;
       }
-      if (rawBody !== null && (typeof rawBody !== 'object' || Array.isArray(rawBody))) {
-        sendJsonError(res, 400, 'Request body must be a JSON object');
-        return;
-      }
+      if (rawBody !== null && (typeof rawBody !== 'object' || Array.isArray(rawBody))) { sendJsonError(res, 400, 'Request body must be a JSON object'); return true; }
       const rawBodyObj = (rawBody ?? {}) as Record<string, unknown>;
       const rawDryRun = rawBodyObj.dryRun;
-      if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') {
-        sendJsonError(res, 400, 'dryRun must be a boolean when present');
-        return;
-      }
+      if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') { sendJsonError(res, 400, 'dryRun must be a boolean when present'); return true; }
       const rawTrigger = rawBodyObj.trigger;
-      if (rawTrigger !== undefined && rawTrigger !== 'manual' && rawTrigger !== 'after-build' && rawTrigger !== 'scheduled' && rawTrigger !== 'retry-deferred') {
-        sendJsonError(res, 400, 'trigger must be "manual", "after-build", "scheduled", or "retry-deferred" when present');
-        return;
-      }
+      if (rawTrigger !== undefined && rawTrigger !== 'manual' && rawTrigger !== 'after-build' && rawTrigger !== 'scheduled' && rawTrigger !== 'retry-deferred') { sendJsonError(res, 400, 'trigger must be "manual", "after-build", "scheduled", or "retry-deferred" when present'); return true; }
       const rawActiveBuildPolicy = rawBodyObj.activeBuildPolicy;
-      if (rawActiveBuildPolicy !== undefined && rawActiveBuildPolicy !== 'skip' && rawActiveBuildPolicy !== 'defer') {
-        sendJsonError(res, 400, 'activeBuildPolicy must be "skip" or "defer" when present');
-        return;
-      }
+      if (rawActiveBuildPolicy !== undefined && rawActiveBuildPolicy !== 'skip' && rawActiveBuildPolicy !== 'defer') { sendJsonError(res, 400, 'activeBuildPolicy must be "skip" or "defer" when present'); return true; }
       try {
         const { loadConfig } = await import('@eforge-build/engine/config');
         const { config } = await loadConfig(syncCwd);
-
         if (!config.stacking.enabled) {
-          const resp = {
+          sendJson(res, {
             outcome: 'skipped' as const,
             reason: 'Stacking is not enabled. Set stacking.enabled: true in eforge/config.yaml to activate.',
             stackingActive: false,
@@ -4673,62 +4661,43 @@ export async function startServer(
             restackCandidates: [],
             activeBuildSkips: [],
             providerCommands: [],
-          };
-          sendJson(res, resp);
-          return;
+          });
+          return true;
         }
-
         const request = {
           dryRun: rawDryRun === true,
           ...(rawTrigger !== undefined && { trigger: rawTrigger as 'manual' | 'after-build' | 'scheduled' | 'retry-deferred' }),
           ...(rawActiveBuildPolicy !== undefined && { activeBuildPolicy: rawActiveBuildPolicy as 'skip' | 'defer' }),
         };
-
-        const response = await runStackSync({
-          db,
-          config,
-          cwd: syncCwd,
-          request,
-        });
-
-        sendJson(res, response);
+        sendJson(res, await runStackSync({ db, config, cwd: syncCwd, request }));
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Stack sync failed');
       }
+      return true;
+    }
     // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
-    } else if (url === API_ROUTES.queue) {
-      await serveQueue(req, res);
-    } else if (url === API_ROUTES.sessionMetadata) {
-      const metadata = db.getSessionMetadataBatch();
-      sendJson(res, metadata);
-    } else if (url === API_ROUTES.runs) {
-      serveRuns(req, res);
-    } else if (url === API_ROUTES.daemonEvents) {
-      serveDaemonEventsSSE(req, res);
-    } else if (url.startsWith(`${EVENTS_BASE}/`)) {
+    return false;
+  }
+  async function handleMonitorDataRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
+    if (url === API_ROUTES.queue) { await serveQueue(req, res); return true; }
+    if (url === API_ROUTES.sessionMetadata) { sendJson(res, db.getSessionMetadataBatch()); return true; }
+    if (url === API_ROUTES.runs) { serveRuns(req, res); return true; }
+    if (url === API_ROUTES.daemonEvents) { serveDaemonEventsSSE(req, res); return true; }
+    if (url.startsWith(`${EVENTS_BASE}/`)) {
       const runId = url.slice(`${EVENTS_BASE}/`.length);
-      if (!runId || !/^[\w-]+$/.test(runId)) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid runId');
-        return;
-      }
+      if (!runId || !/^[\w-]+$/.test(runId)) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Invalid runId'); return true; }
       serveSSE(req, res, runId);
-    } else if (url.startsWith(`${RUN_SUMMARY_BASE}/`)) {
+      return true;
+    }
+    if (url.startsWith(`${RUN_SUMMARY_BASE}/`)) {
       const id = url.slice(`${RUN_SUMMARY_BASE}/`.length);
-      if (!id || !/^[\w-]+$/.test(id)) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid id');
-        return;
-      }
-      const sessionId = resolveSessionId(id);
-      sendJson(res, buildRunSummary(db, sessionId));
-    } else if (url.startsWith(`${RUN_STATE_BASE}/`)) {
+      if (!id || !/^[\w-]+$/.test(id)) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Invalid id'); return true; }
+      sendJson(res, buildRunSummary(db, resolveSessionId(id)));
+      return true;
+    }
+    if (url.startsWith(`${RUN_STATE_BASE}/`)) {
       const id = url.slice(`${RUN_STATE_BASE}/`.length);
-      if (!id || !/^[\w-]+$/.test(id)) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid id');
-        return;
-      }
+      if (!id || !/^[\w-]+$/.test(id)) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Invalid id'); return true; }
       const sessionId = resolveSessionId(id);
       const events = db.getEventsBySession(sessionId);
       const sessionRuns = db.getSessionRuns(sessionId);
@@ -4743,53 +4712,67 @@ export async function startServer(
       } else {
         status = 'completed';
       }
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       const hydratedEvents = events.flatMap((evt) => {
         const parsed = parseEventRow(evt.data, evt.timestamp, evt.type, evt.id);
         if (!parsed) return [];
         return [{ ...evt, data: JSON.stringify(parsed) }];
       });
       res.end(JSON.stringify({ status, events: hydratedEvents }));
-    } else if (url.startsWith(`${PLANS_BASE}/`)) {
+      return true;
+    }
+    if (url.startsWith(`${PLANS_BASE}/`)) {
       const runId = url.slice(`${PLANS_BASE}/`.length).split('?')[0];
-      if (!runId || !/^[\w-]+$/.test(runId)) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid runId');
-        return;
-      }
+      if (!runId || !/^[\w-]+$/.test(runId)) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Invalid runId'); return true; }
       await servePlans(req, res, runId);
-    } else if (url.startsWith(`${DIFF_BASE}/`)) {
+      return true;
+    }
+    if (url.startsWith(`${DIFF_BASE}/`)) {
       // Route: /api/diff/:sessionId/:planId?file=path
       const pathPart = url.slice(`${DIFF_BASE}/`.length);
       const [routePath, queryString] = pathPart.split('?');
       const segments = routePath.split('/');
       const sessionIdParam = segments[0];
       const planIdParam = segments[1];
-
       if (!sessionIdParam || !planIdParam || !/^[\w-]+$/.test(sessionIdParam) || !/^[\w-]+$/.test(planIdParam)) {
-        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Invalid sessionId or planId' }));
-        return;
+        sendJsonError(res, 400, 'Invalid sessionId or planId');
+        return true;
       }
+      const fileParam = queryString ? new URLSearchParams(queryString).get('file') ?? undefined : undefined;
+      serveDiff(req, res, resolveSessionId(sessionIdParam), planIdParam, fileParam);
+      return true;
+    }
+    return false;
+  }
+  const server = createServer(async (req, res) => {
+    const url = req.url ?? '/';
+    // Pathname strips the query string for static route matching and file
+    // resolution. API routes continue to use the full `url` string (which
+    // already handles query params via URLSearchParams where needed).
+    const pathname = url.split('?')[0];
 
-      const resolvedSessionId = resolveSessionId(sessionIdParam);
-      const fileParam = queryString
-        ? new URLSearchParams(queryString).get('file') ?? undefined
-        : undefined;
+    if (handleCorsPreflightRoute(req, res)) return;
+    if (handleKeepAliveRoute(req, res)) return;
 
-      serveDiff(req, res, resolvedSessionId, planIdParam, fileParam);
-    } else if (pathname.startsWith('/api/')) {
-      // Unknown API route — return 404 rather than falling through to SPA static serving
-      sendJsonError(res, 404, `Unknown route: ${req.method} ${pathname}`);
-    } else if (pathname === '/console' || pathname === '/console/' || pathname.startsWith('/console/')) {
-      // Serve Eforge Console SPA (preview) from the console-ui dist root
-      await serveStaticFile(req, res, pathname, activeConsoleUiDir, '/console');
-    } else {
-      // Serve legacy monitor UI SPA
-      await serveStaticFile(req, res, pathname, activeMonitorUiDir, '');
+    if (await handleControlPlaneRoutes(req, res, url)) return;
+
+    if (await handleProfileRoutes(req, res, url)) return;
+
+    // --- eforge:region plan-04-extension-routes ---
+    if (await handleExtensionRoutes(req, res, url)) return;
+    // --- eforge:endregion plan-04-extension-routes ---
+
+    if (await handlePlaybookContentRoutes(req, res, url)) return;
+    if (await handlePlaybookManagementRoutes(req, res, url)) return;
+    if (await handleSessionPlanRoutes(req, res, url)) return;
+
+    if (await handleModelRoutes(req, res, url)) return;
+    if (await handleConfigContextRoutes(req, res, url)) return;
+    if (await handleStackRoutes(req, res, url)) return;
+    if (await handleMonitorDataRoutes(req, res, url)) return;
+
+    if (!handleUnknownApiRoute(req, res, pathname)) {
+      await handleStaticFallbackRoute(req, res, pathname);
     }
   });
 

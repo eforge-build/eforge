@@ -28,7 +28,8 @@
     "docs:check": "pnpm --filter @eforge-build/docs-gen... --workspace-concurrency=1 build && node packages/docs-gen/dist/cli.js check",
     "docs:dev": "pnpm docs:generate && pnpm --filter @eforge-build/web dev",
     "docs:build": "pnpm docs:generate && pnpm --filter @eforge-build/web build",
-    "complexity:scan": "node scripts/scan-complexity.mjs"
+    "complexity:scan": "node scripts/scan-complexity.mjs",
+    "maintainability:check": "node scripts/check-agent-maintainability.mjs"
   },
   "packageManager": "pnpm@10.26.0",
   "pnpm": {

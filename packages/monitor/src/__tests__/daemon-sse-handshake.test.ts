@@ -575,4 +575,3 @@ describe('serveDaemonEventsSSE — stream:hello.stackSyncStatus', () => {
   });
 });
 // --- eforge:endregion plan-01-core-daemon-stack-sync ---
-// --- eforge:endregion plan-03-stack-daemon-ui ---
