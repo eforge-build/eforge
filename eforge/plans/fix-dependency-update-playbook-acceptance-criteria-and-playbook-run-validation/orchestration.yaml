@@ -1,0 +1,53 @@
+name: fix-dependency-update-playbook-acceptance-criteria-and-playbook-run-validation
+description: Fix the bundled dependency-update playbook acceptance criteria and
+  enforce acceptance-criteria quality validation in daemon playbook save/run
+  routes.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+plans:
+  - id: plan-01-playbook-ac-quality-gates
+    name: Dependency-Update Playbook AC Quality Gates
+    depends_on: []
+    branch: fix-dependency-update-playbook-acceptance-criteria-and-playbook-run-validation/plan-01-playbook-ac-quality-gates
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive multi-file bugfix touching bundled playbook
+    content, daemon routes, input validation reuse, and regression tests, so
+    excursion is appropriate. A planner plus plan-review cycle should catch
+    route-side mutation and validation-order requirements before implementation.
+    The build runs implementation, adds required tests, then performs an
+    iterative review cycle followed by a test cycle to validate the route and
+    bundled-playbook regressions. Code and test perspectives focus review on
+    correctness of validation behavior and regression coverage without
+    over-broad review scope.
+diff_base_ref: b71a22dc9e6679872a3c9358bce4388ff05a2139
