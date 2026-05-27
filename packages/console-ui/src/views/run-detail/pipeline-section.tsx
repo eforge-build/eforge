@@ -19,6 +19,15 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
     return plans.map((p) => ({ id: p.id, name: p.name, body: p.body }));
   }, [plans]);
 
+  const prdSource = useMemo(() => {
+    for (const { event } of runState.events) {
+      if (event.type === 'planning:start') {
+        return { label: event.label ?? 'Build PRD', content: event.source };
+      }
+    }
+    return null;
+  }, [runState.events]);
+
   const buildFailures = useMemo(() => {
     const failures: Array<{ planId: string; error: string }> = [];
     for (const { event } of runState.events) {
@@ -51,6 +60,7 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
         reviewIssues={runState.reviewIssues}
         events={runState.events}
         orchestration={runState.earlyOrchestration}
+        prdSource={prdSource}
         planArtifacts={planArtifacts}
         validationCommands={runState.validationCommands}
         perspectiveErrors={runState.perspectiveErrors}

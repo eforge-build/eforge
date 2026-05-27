@@ -12,6 +12,8 @@ function makeRow(planId: string, overrides: Partial<MiniGanttRow> = {}): MiniGan
     dependsOn: [],
     isComplete: false,
     isFailed: false,
+    activeWorkerCount: 0,
+    activeAgents: [],
     ...overrides,
   };
 }
