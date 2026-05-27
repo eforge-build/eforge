@@ -1,0 +1,174 @@
+name: add-llm-friendly-code-rules-and-incrementally-refactor-monitor-server-routes
+description: Add project-wide LLM-friendly code rules with an executable ratchet
+  and incrementally refactor the monitor daemon server route callback into
+  bounded route-group helpers without changing daemon HTTP behavior.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm complexity:scan
+  - pnpm vitest run test/playbook-api.test.ts
+    test/extension-tooling-routes.test.ts
+    test/daemon-session-plan-routes.test.ts test/stack-sync-route.test.ts
+    test/daemon-events-stream.test.ts
+    packages/monitor/src/__tests__/auto-build-route.test.ts
+    packages/monitor/src/__tests__/static-ui-serving.test.ts
+  - pnpm test
+plans:
+  - id: plan-01-agent-maintainability-policy
+    name: Add LLM-Friendly Code Policy and Ratchet
+    depends_on: []
+    branch: add-llm-friendly-code-rules-and-incrementally-refactor-monitor-server-routes/plan-01-agent-maintainability-policy
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-02-monitor-dispatcher-skeleton
+    name: Extract Monitor Dispatcher Skeleton and Fallback Routes
+    depends_on:
+      - plan-01-agent-maintainability-policy
+    branch: add-llm-friendly-code-rules-and-incrementally-refactor-monitor-server-routes/plan-02-monitor-dispatcher-skeleton
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This is the first bounded edit to a 4,869-line server file and must
+          preserve route fallthrough behavior.
+  - id: plan-03-control-plane-profile-routes
+    name: Extract Control-Plane and Profile Route Groups
+    depends_on:
+      - plan-02-monitor-dispatcher-skeleton
+    branch: add-llm-friendly-code-rules-and-incrementally-refactor-monitor-server-routes/plan-03-control-plane-profile-routes
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The enqueue/recovery/profile routes are stateful and require careful
+          return-value conversion when moved into helpers.
+  - id: plan-04-extension-routes
+    name: Extract Extension Route Group
+    depends_on:
+      - plan-03-control-plane-profile-routes
+    branch: add-llm-friendly-code-rules-and-incrementally-refactor-monitor-server-routes/plan-04-extension-routes
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Extension routes include local-origin safety checks and package
+          operations; extraction must preserve security-sensitive guards.
+  - id: plan-05-playbook-session-plan-routes
+    name: Extract Playbook and Session-Plan Route Groups
+    depends_on:
+      - plan-04-extension-routes
+    branch: add-llm-friendly-code-rules-and-incrementally-refactor-monitor-server-routes/plan-05-playbook-session-plan-routes
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Playbook and session-plan routes share queue/session-plan behavior
+          and include many request-validation branches.
+  - id: plan-06-model-config-monitor-data-routes
+    name: Extract Model, Config, Stack, and Monitor Data Routes
+    depends_on:
+      - plan-05-playbook-session-plan-routes
+    branch: add-llm-friendly-code-rules-and-incrementally-refactor-monitor-server-routes/plan-06-model-config-monitor-data-routes
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan completes the dispatcher refactor and must reduce the
+          createServer callback hotspot while preserving SSE/static/API
+          fallthrough order.
+      tester:
+        effort: high
+        rationale: Final validation spans type checking, complexity, maintainability
+          ratchet, route tests, and the full test suite.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: "This is best handled as an excursion: the work is cross-cutting and
+    quality-sensitive, but the PRD already defines a sequential set of small
+    plans that a single planner can enumerate without delegated expedition
+    module planning. A plan-review cycle is included to ensure the generated
+    plans preserve the bounded-edit constraints and route-order dependencies.
+    The build pipeline runs documentation authoring alongside implementation,
+    then syncs docs and adds tests before iterative test and review cycles.
+    Review is strict with code and API perspectives because the refactor must
+    preserve daemon route behavior, wire contracts, helper semantics, and
+    maintainability guardrails."
+diff_base_ref: ff850b34d8402fce755371e9ad42932817313bf8
