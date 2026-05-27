@@ -13,7 +13,21 @@ pnpm docs:generate # Build the docs generator and regenerate all reference artif
 pnpm docs:dev     # Regenerate reference docs then start the Next.js dev server for the public docs site (http://localhost:3000).
 pnpm docs:build   # Regenerate reference docs then build the Next.js site
 pnpm docs:check   # Drift gate: fails if generated reference docs are out of date
+pnpm maintainability:check  # File-size ratchet and region-marker balance check (exits non-zero on violations)
 ```
+
+## LLM-Friendly Code Policy
+
+See [`docs/llm-friendly-code.md`](docs/llm-friendly-code.md) for the full policy. Key rules for agents:
+
+- **New implementation files** must be <= 600 lines. New test files must be <= 1,200 lines.
+- **Legacy oversized files** are listed in `scripts/agent-maintainability-baseline.json` with a `noGrowthCeiling`. They may shrink but not grow.
+- **Files over 1,000 lines** must be edited with bounded exact edits (smallest diff). Do not rewrite the full file.
+- **New/moved functions** must have Cognitive Complexity <= 30 (measured by `eslint-plugin-sonarjs`). Justify higher complexity inline.
+- **Large files** (> 300 lines) must use `// --- eforge:region <slug> ---` / `// --- eforge:endregion <slug> ---` markers. Every marker must be balanced.
+- **Route constants and daemon wire shapes** are owned by `@eforge-build/client`. Do not inline `/api/...` path literals or re-declare wire-shape interfaces in monitor packages.
+
+Run `pnpm maintainability:check` to validate file sizes and marker balance before committing.
 
 ## Key principles
 
