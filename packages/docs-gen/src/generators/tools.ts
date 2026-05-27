@@ -34,13 +34,17 @@ interface SkillPair {
   piDescription: string;
 }
 
-// Explicit parity pairs from scripts/check-skill-parity.mjs
+// Explicit public skill pairs surfaced in generated docs.
 const SKILL_PAIRS_CONFIG = [
   { plugin: 'profile', pi: 'eforge-profile' },
   { plugin: 'profile-new', pi: 'eforge-profile-new' },
   { plugin: 'build', pi: 'eforge-build' },
   { plugin: 'config', pi: 'eforge-config' },
   { plugin: 'init', pi: 'eforge-init' },
+  // --- eforge:region plan-01-public-docs-audit-refresh ---
+  { plugin: 'workflow', pi: 'eforge-workflow' },
+  { plugin: 'stack', pi: 'eforge-stack' },
+  // --- eforge:endregion plan-01-public-docs-audit-refresh ---
   { plugin: 'plan', pi: 'eforge-plan' },
   // --- eforge:region plan-01-extend-authoring-ux ---
   { plugin: 'extend', pi: 'eforge-extend' },
@@ -287,7 +291,8 @@ export async function generateTools(opts: {
   lines.push('');
   lines.push(
     'Slash-command skills for Claude Code (plugin) and Pi are kept in parity.',
-    'Source of truth: `scripts/check-skill-parity.mjs`.',
+    'Rows are generated from the docs generator skill-pair map and frontmatter in `eforge-plugin/skills/` and `packages/pi-eforge/skills/`.',
+    '`scripts/check-skill-parity.mjs` verifies narrative parity for its checked skill subset.',
   );
   lines.push('');
   lines.push('| Skill (Claude Code `/eforge:<name>`) | Skill (Pi `eforge:<name>`) | Description |');
