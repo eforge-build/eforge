@@ -5,19 +5,14 @@ import { API_ROUTES } from '@eforge-build/client/browser';
 import type { SessionStreamSnapshot, EforgeEvent } from '@eforge-build/client/browser';
 import type { ConnectionStatus } from '@/lib/types';
 import { isTerminalStatus } from '@/lib/selectors/active-builds';
-
-/** Maximum number of recent live events retained in memory per session. */
-const MAX_RETAINED_LIVE_EVENTS = 50;
+import { eforgeReducer, createInitialRunState } from '@/lib/run-state';
+import type { RunState } from '@/lib/run-state';
 
 export interface ActiveSessionDetail {
   sessionId: string;
   connectionStatus: ConnectionStatus;
   status: SessionStreamSnapshot['status'] | 'connecting' | 'disconnected';
-  snapshotEvents: SessionStreamSnapshot['events'];
-  /** Most recent live events (capped to last MAX_RETAINED_LIVE_EVENTS). */
-  liveEvents: EforgeEvent[];
-  /** Total count of live events received (not capped). */
-  liveEventCount: number;
+  runState: RunState;
   lastEventAt: number | null;
   error: string | null;
 }
@@ -85,9 +80,7 @@ export function useActiveSessionStreams(
           sessionId,
           connectionStatus: 'connecting',
           status: 'connecting',
-          snapshotEvents: [],
-          liveEvents: [],
-          liveEventCount: 0,
+          runState: createInitialRunState(),
           lastEventAt: null,
           error: null,
         },
@@ -101,15 +94,30 @@ export function useActiveSessionStreams(
           )) {
             if (frame.kind === 'snapshot') {
               const snapshot = frame.snapshot;
+              // Parse snapshot events from wire format { id, data } into { event, eventId }.
+              // Reset-then-replay semantics: always start from createInitialRunState() so
+              // that reconnect snapshots never double-count tokens or cost.
+              const parsedEvents: Array<{ event: EforgeEvent; eventId: string }> = [];
+              for (const ev of snapshot.events) {
+                try {
+                  parsedEvents.push({
+                    event: JSON.parse(ev.data) as EforgeEvent,
+                    eventId: String(ev.id),
+                  });
+                } catch { /* skip unparseable events */ }
+              }
+              const newRunState = eforgeReducer(createInitialRunState(), {
+                type: 'BATCH_LOAD',
+                events: parsedEvents,
+                serverStatus: snapshot.status,
+              });
               setSessions((prev) => ({
                 ...prev,
                 [sessionId]: {
                   ...prev[sessionId],
                   connectionStatus: 'connected',
                   status: snapshot.status,
-                  snapshotEvents: snapshot.events,
-                  liveEvents: [],
-                  liveEventCount: 0,
+                  runState: newRunState,
                   lastEventAt: Date.now(),
                   error: null,
                 },
@@ -122,16 +130,20 @@ export function useActiveSessionStreams(
               }
             } else if (frame.kind === 'event') {
               const event = frame.event;
+              const eventId = frame.eventId ?? '';
               setSessions((prev) => {
                 const detail = prev[sessionId];
                 if (!detail) return prev;
-                const newLiveEvents = [...detail.liveEvents, event].slice(-MAX_RETAINED_LIVE_EVENTS);
+                const newRunState = eforgeReducer(detail.runState, {
+                  type: 'ADD_EVENT',
+                  event,
+                  eventId,
+                });
                 return {
                   ...prev,
                   [sessionId]: {
                     ...detail,
-                    liveEvents: newLiveEvents,
-                    liveEventCount: detail.liveEventCount + 1,
+                    runState: newRunState,
                     lastEventAt: Date.now(),
                   },
                 };
@@ -142,13 +154,16 @@ export function useActiveSessionStreams(
                   event.type === 'session:end' && event.result.status === 'failed'
                     ? 'failed'
                     : 'completed';
-                setSessions((prev) => ({
-                  ...prev,
-                  [sessionId]: {
-                    ...prev[sessionId],
-                    status: terminalStatus,
-                  },
-                }));
+                setSessions((prev) => {
+                  if (!prev[sessionId]) return prev;
+                  return {
+                    ...prev,
+                    [sessionId]: {
+                      ...prev[sessionId],
+                      status: terminalStatus,
+                    },
+                  };
+                });
                 ctrl.abort();
                 controllersRef.current.delete(sessionId);
                 break;

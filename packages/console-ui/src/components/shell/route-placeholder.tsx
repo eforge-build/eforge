@@ -1,40 +1,33 @@
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/common/empty-state';
-import type { ConsoleRouteId } from '@/lib/navigation';
 import type { ConnectionStatus } from '@/lib/types';
 
-const ROUTE_DESCRIPTIONS: Record<ConsoleRouteId, { title: string; description: string }> = {
+const ROUTE_DESCRIPTIONS: Record<string, { title: string; description: string }> = {
   now: {
     title: 'Now',
     description:
       'Live dashboard showing current active builds, queue head, and daemon status.',
   },
-  queue: {
-    title: 'Queue',
-    description: 'Inspect and manage the build queue.',
-  },
-  runs: {
-    title: 'Runs',
-    description: 'Browse completed and active build runs.',
+  runDetail: {
+    title: 'Build Detail',
+    description: 'Detailed view of a build session. Full view coming in a future update.',
   },
   system: {
     title: 'System',
     description: 'Daemon configuration, extensions, and runtime settings.',
   },
-  activity: {
-    title: 'Activity',
-    description: 'Audit log and event stream for the daemon.',
-  },
 };
 
+const FALLBACK_DESCRIPTION = { title: 'Loading', description: 'Content will appear shortly.' };
+
 interface RoutePlaceholderProps {
-  routeId: ConsoleRouteId;
+  routeId: string;
   connectionStatus: ConnectionStatus;
 }
 
 export function RoutePlaceholder({ routeId, connectionStatus }: RoutePlaceholderProps) {
-  const { title, description } = ROUTE_DESCRIPTIONS[routeId];
+  const { title, description } = ROUTE_DESCRIPTIONS[routeId] ?? FALLBACK_DESCRIPTION;
 
   let statusNote: string | undefined;
   if (connectionStatus === 'connecting') {

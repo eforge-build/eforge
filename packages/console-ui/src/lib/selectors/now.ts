@@ -20,6 +20,8 @@ import type { ConnectionStatus, ConsoleActivityEntry } from '@/lib/types';
 import { isTerminalStatus } from '@/lib/selectors/active-builds';
 import { toConsolePath } from '@/lib/navigation';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
+import { selectPlanStatusCounts, getSummaryStats, selectMiniGanttRows } from '@/lib/run-state';
+import type { RunState, PlanStatusCounts, MiniGanttRow } from '@/lib/run-state';
 
 // ---------------------------------------------------------------------------
 // View model types
@@ -53,13 +55,23 @@ export interface NowActiveBuildCard {
   profile: string | null;
   planCount: number | null;
   streamStatus: ConnectionStatus | 'connecting';
-  snapshotEventCount: number;
-  liveEventCount: number;
   currentPhase: string | null;
   latestAgent: string | null;
   latestProgress: string | null;
   latestError: string | null;
+  /** Plan status counts derived from reduced RunState. */
+  planProgress: PlanStatusCounts;
+  /** Total input tokens accumulated across all agent:result events (including live overlay). */
+  tokens: number;
+  /** Total cost in USD accumulated across all agent:result events (including live overlay). */
+  cost: number;
+  /** Cache hit percentage: cacheRead / (tokensIn + cacheRead) * 100, or 0 when no usage. */
+  cachePercent: number;
   href: string;
+  /** Mini-Gantt rows derived from RunState for the pipeline strip. */
+  miniGanttRows: MiniGanttRow[];
+  /** True when planning events exist in the run state (shows PRD row in pipeline strip). */
+  hasPlanningRow: boolean;
 }
 
 export interface NowQueueItem {
@@ -166,6 +178,8 @@ export interface NowDashboardModel {
   activeBuilds: NowActiveBuildCard[];
   queue: NowQueueSummary;
   recentRuns: NowRecentRunItem[];
+  /** All runs sorted newest first (no limit), for the expandable RunHistoryCard. */
+  allRuns: NowRecentRunItem[];
   stack: NowStackSummary | null;
   stackSync: NowStackSyncViewModel | null;
   activity: NowActivityPreviewItem[];
@@ -480,9 +494,11 @@ export function selectNowAttentionItems(
 // Active build cards selector
 // ---------------------------------------------------------------------------
 
-function extractCurrentPhase(events: EforgeEvent[]): string | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i];
+const EMPTY_PLAN_PROGRESS: PlanStatusCounts = { pending: 0, running: 0, complete: 0, failed: 0, total: 0 };
+
+function extractCurrentPhaseFromRunState(runState: RunState): string | null {
+  for (let i = runState.events.length - 1; i >= 0; i--) {
+    const e = runState.events[i].event;
     if (e.type === 'phase:start') {
       const pe = e as Extract<EforgeEvent, { type: 'phase:start' }>;
       return `${selectPrdDisplayLabel(undefined, pe.planSet)} / ${pe.command}`;
@@ -494,21 +510,22 @@ function extractCurrentPhase(events: EforgeEvent[]): string | null {
   return null;
 }
 
-function extractLatestAgent(events: EforgeEvent[]): string | null {
-  const agentEventTypes = new Set(['agent:start', 'agent:activity', 'agent:result', 'agent:stop']);
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i];
-    if (agentEventTypes.has(e.type)) {
-      const ae = e as { type: string; agent: string; planId?: string };
-      return ae.agent ?? null;
-    }
+function extractLatestAgentFromRunState(runState: RunState): string | null {
+  // Prefer the last in-flight agent thread (no endedAt)
+  for (let i = runState.agentThreads.length - 1; i >= 0; i--) {
+    const thread = runState.agentThreads[i];
+    if (!thread.endedAt) return thread.agent;
+  }
+  // Fall back to the last thread overall
+  if (runState.agentThreads.length > 0) {
+    return runState.agentThreads[runState.agentThreads.length - 1].agent;
   }
   return null;
 }
 
-function extractLatestProgress(events: EforgeEvent[]): string | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i];
+function extractLatestProgressFromRunState(runState: RunState): string | null {
+  for (let i = runState.events.length - 1; i >= 0; i--) {
+    const e = runState.events[i].event;
     if (e.type === 'plan:build:progress') {
       const pe = e as Extract<EforgeEvent, { type: 'plan:build:progress' }>;
       return pe.message;
@@ -517,12 +534,10 @@ function extractLatestProgress(events: EforgeEvent[]): string | null {
   return null;
 }
 
-function extractLatestError(events: EforgeEvent[], detail: ActiveSessionDetail): string | null {
-  // First check session detail error
-  if (detail.error) return detail.error;
-  // Then look for plan:build:failed in live events
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i];
+function extractLatestErrorFromRunState(sessionError: string | null, runState: RunState): string | null {
+  if (sessionError) return sessionError;
+  for (let i = runState.events.length - 1; i >= 0; i--) {
+    const e = runState.events[i].event;
     if (e.type === 'plan:build:failed') {
       const pe = e as Extract<EforgeEvent, { type: 'plan:build:failed' }>;
       return pe.error;
@@ -571,23 +586,34 @@ export function selectNowActiveBuildCards(
     const durationMs = isNaN(startMs) ? 0 : now - startMs;
 
     let streamStatus: NowActiveBuildCard['streamStatus'] = 'connecting';
-    let snapshotEventCount = 0;
-    let liveEventCount = 0;
     let currentPhase: string | null = null;
     let latestAgent: string | null = null;
     let latestProgress: string | null = null;
     let latestError: string | null = null;
+    let planProgress: PlanStatusCounts = EMPTY_PLAN_PROGRESS;
+    let tokens = 0;
+    let cost = 0;
+    let cachePercent = 0;
+    let miniGanttRows: MiniGanttRow[] = [];
+    let hasPlanningRow = false;
 
     if (detail) {
       streamStatus = detail.connectionStatus;
-      snapshotEventCount = detail.snapshotEvents.length;
-      liveEventCount = detail.liveEvents.length;
-      // Phase/agent/progress/error are extracted from live events only.
-      // Snapshot events are raw {id, data} strings used only for counting.
-      currentPhase = extractCurrentPhase(detail.liveEvents);
-      latestAgent = extractLatestAgent(detail.liveEvents);
-      latestProgress = extractLatestProgress(detail.liveEvents);
-      latestError = extractLatestError(detail.liveEvents, detail);
+      const rs = detail.runState;
+      currentPhase = extractCurrentPhaseFromRunState(rs);
+      latestAgent = extractLatestAgentFromRunState(rs);
+      latestProgress = extractLatestProgressFromRunState(rs);
+      latestError = extractLatestErrorFromRunState(detail.error, rs);
+      planProgress = selectPlanStatusCounts(rs);
+      const stats = getSummaryStats(rs);
+      tokens = stats.tokensIn;
+      cost = stats.totalCost;
+      const totalInput = stats.tokensIn + stats.cacheRead;
+      cachePercent = totalInput > 0 ? (stats.cacheRead / totalInput) * 100 : 0;
+      miniGanttRows = selectMiniGanttRows(rs);
+      hasPlanningRow =
+        rs.earlyOrchestration != null ||
+        rs.events.some((e) => e.event.type.startsWith('planning:'));
     }
 
     return {
@@ -602,13 +628,17 @@ export function selectNowActiveBuildCards(
       profile: meta?.baseProfile ?? null,
       planCount: meta?.planCount ?? null,
       streamStatus,
-      snapshotEventCount,
-      liveEventCount,
       currentPhase,
       latestAgent,
       latestProgress,
       latestError,
-      href: toConsolePath('runs'),
+      planProgress,
+      tokens,
+      cost,
+      cachePercent,
+      href: toConsolePath({ id: 'runDetail', detailId: sessionId }),
+      miniGanttRows,
+      hasPlanningRow,
     };
   });
 }
@@ -828,6 +858,38 @@ export function selectNowRecentRuns(runs: RunInfo[], now: number = Date.now()): 
 }
 
 // ---------------------------------------------------------------------------
+// All runs selector (no limit — used by RunHistoryCard)
+// ---------------------------------------------------------------------------
+
+export function selectAllNowRunItems(runs: RunInfo[], now: number = Date.now()): NowRecentRunItem[] {
+  const sorted = [...runs].sort((a, b) => {
+    if (a.startedAt > b.startedAt) return -1;
+    if (a.startedAt < b.startedAt) return 1;
+    return 0;
+  });
+  return sorted.map((run) => {
+    let durationMs: number | null = null;
+    if (run.completedAt) {
+      const start = new Date(run.startedAt).getTime();
+      const end = new Date(run.completedAt).getTime();
+      if (!isNaN(start) && !isNaN(end)) durationMs = end - start;
+    } else {
+      const start = new Date(run.startedAt).getTime();
+      if (!isNaN(start)) durationMs = now - start;
+    }
+    return {
+      id: run.id,
+      sessionId: run.sessionId,
+      planSet: selectPrdDisplayLabel(undefined, run.planSet),
+      command: run.command,
+      status: run.status,
+      startedAt: run.startedAt,
+      durationMs,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Stack sync status selector
 // ---------------------------------------------------------------------------
 
@@ -878,6 +940,7 @@ export function selectNowDashboardModel(
   );
   const queue = selectNowQueueSummary(state.queue);
   const recentRuns = selectNowRecentRuns(state.runs, now);
+  const allRuns = selectAllNowRunItems(state.runs, now);
   const stack = selectNowStackSummary(state.stackLayers);
   const stackSync = selectNowStackSyncStatus(state.stackSync);
   const { items: activity, hiddenCount: activityHiddenCount } = selectNowRecentActivity(
@@ -892,6 +955,7 @@ export function selectNowDashboardModel(
     activeBuilds,
     queue,
     recentRuns,
+    allRuns,
     stack,
     stackSync,
     activity,

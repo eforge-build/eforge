@@ -1,28 +1,23 @@
 // --- eforge:region console-shell ---
 import * as React from 'react';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { ConsoleShell } from '@/components/shell/console-shell';
-import { RoutePlaceholder } from '@/components/shell/route-placeholder';
 import { useDaemonEvents } from '@/hooks/use-daemon-events';
 import { useActiveSessionStreams } from '@/hooks/use-active-session-streams';
 import { selectActiveSessionIds } from '@/lib/selectors';
 import { parseConsoleRoute, toConsolePath } from '@/lib/navigation';
 import type { ConsoleRouteId } from '@/lib/navigation';
+// --- eforge:region plan-06-build-detail-base ---
+const RunDetailView = lazy(() =>
+  import('@/views/run-detail').then((m) => ({ default: m.RunDetailView })),
+);
+// --- eforge:endregion plan-06-build-detail-base ---
 // --- eforge:region now-dashboard ---
 import { NowDashboard } from './views/now-dashboard';
 // --- eforge:endregion now-dashboard ---
-// --- eforge:region runs-build-entrypoints ---
-import { RunsView } from '@/views/runs';
-// --- eforge:endregion runs-build-entrypoints ---
 // --- eforge:region system-configuration-view ---
 import { SystemConfigurationView } from '@/views/system';
 // --- eforge:endregion system-configuration-view ---
-// --- eforge:region activity-audit-view ---
-import { ActivityAuditView } from '@/views/activity';
-// --- eforge:endregion activity-audit-view ---
-// --- eforge:region plan-02-queue-view ---
-import { QueueView } from '@/views/queue';
-// --- eforge:endregion plan-02-queue-view ---
 
 function getInitialRoute(): ConsoleRouteId {
   if (typeof window !== 'undefined') {
@@ -64,20 +59,9 @@ export function App() {
   const routeContent = (() => {
     // --- eforge:region now-dashboard ---
     if (currentRoute === 'now') {
-      return <NowDashboard projectState={projectState} activeSessions={activeSessionStreams} />;
+      return <NowDashboard projectState={projectState} activeSessions={activeSessionStreams} onNavigate={handleNavigate} />;
     }
     // --- eforge:endregion now-dashboard ---
-
-    // --- eforge:region runs-build-entrypoints ---
-    if (currentRoute === 'runs') {
-      return (
-        <RunsView
-          projectState={projectState}
-          activeSessionStreams={activeSessionStreams}
-        />
-      );
-    }
-    // --- eforge:endregion runs-build-entrypoints ---
 
     // --- eforge:region system-configuration-view ---
     if (currentRoute === 'system') {
@@ -85,29 +69,30 @@ export function App() {
     }
     // --- eforge:endregion system-configuration-view ---
 
-    // --- eforge:region activity-audit-view ---
-    if (currentRoute === 'activity') {
-      return <ActivityAuditView projectState={projectState} />;
+    // --- eforge:region plan-06-build-detail-base ---
+    if (typeof currentRoute === 'object' && currentRoute.id === 'runDetail') {
+      const { detailId } = currentRoute;
+      const isLive = activeSessionIds.includes(detailId);
+      const liveRunState = isLive
+        ? activeSessionStreams.sessions[detailId]?.runState
+        : undefined;
+      return (
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-text-dim text-sm">Loading...</div>}>
+          <RunDetailView
+            detailId={detailId}
+            isLive={isLive}
+            liveRunState={liveRunState}
+            onBack={() => handleNavigate('/console/')}
+          />
+        </Suspense>
+      );
     }
-    // --- eforge:endregion activity-audit-view ---
-
-    // --- eforge:region plan-02-queue-view ---
-    if (currentRoute === 'queue') {
-      return <QueueView projectState={projectState} />;
-    }
-    // --- eforge:endregion plan-02-queue-view ---
-
-    return (
-      <RoutePlaceholder
-        routeId={currentRoute}
-        connectionStatus={projectState.connectionStatus}
-      />
-    );
+    // --- eforge:endregion plan-06-build-detail-base ---
+    return null;
   })();
 
   return (
     <ConsoleShell
-      currentRoute={currentRoute}
       projectState={projectState}
       onNavigate={handleNavigate}
     >
