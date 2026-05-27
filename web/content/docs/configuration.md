@@ -25,6 +25,20 @@ The fastest way to set up config is `/eforge:init` in Claude Code or Pi. It scaf
 
 To edit config interactively after initialization: `/eforge:config --edit`.
 
+## Workflow Presets
+
+Use `/eforge:workflow` after initialization when you want a guided choice for landing action, pull-request auto-merge, and stacking. Pi also exposes `/eforge:workflow:init` and `/eforge:workflow:reconfigure`; Claude Code uses `/eforge:workflow` and `/eforge:workflow --reconfigure`.
+
+| Preset | Config keys written |
+|--------|---------------------|
+| `solo-merge` | `landing.action: merge`, `build.allowLocalMergeToTrunk: true`, `stacking.enabled: false` |
+| `solo-pr` | `landing.action: pr`, `landing.pr.autoMerge: always`, `stacking.enabled: false` |
+| `team-pr` | `landing.action: pr`, `landing.pr.autoMerge: ask`, `stacking.enabled: false` |
+| `stacked-pr` | `landing.action: pr`, `stacking.enabled: true` |
+| `stacked-pr-autosync` | `landing.action: pr`, `stacking.enabled: true`, appends `eforge stack sync` to `build.postMergeCommands` |
+
+For stacking presets, the wizard also writes `stacking.gitSpice.command` when you provide a custom git-spice path. Use `/eforge:config --edit` for fine-grained changes after applying a preset.
+
 ## Agent Tiers
 
 Tiers are the primary configuration axis. Each tier is a self-contained recipe: `harness + model + effort`.

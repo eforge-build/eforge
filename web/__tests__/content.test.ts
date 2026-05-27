@@ -20,9 +20,15 @@ const expectedDocSlugs = [
 const newGuideSlugs = ['profiles', 'playbooks', 'integrations', 'stacking', 'troubleshooting'];
 const docsContentDir = join(process.cwd(), 'web/content/docs');
 const publicDocsDir = join(process.cwd(), 'web/public/docs');
+const referenceContentDir = join(process.cwd(), 'web/content/reference');
+const publicReferenceDir = join(process.cwd(), 'web/public/reference');
 
 function readGuide(slug: string): string {
   return readFileSync(join(docsContentDir, `${slug}.md`), 'utf-8');
+}
+
+function readReference(slug: string): string {
+  return readFileSync(join(referenceContentDir, `${slug}.md`), 'utf-8');
 }
 
 function stripFencedCodeBlocks(markdown: string): string {
@@ -111,13 +117,35 @@ describe('loadDocPage', () => {
     const journeySnippets: Record<string, string[]> = {
       'getting-started': ['Pi package', 'Claude Code plugin', 'npx @eforge-build/eforge build', '--profile <name>'],
       concepts: ['build source', 'agent runtime profile', 'queue', 'artifact branch', '/reference/cli.md'],
-      configuration: ['~/.config/eforge/config.yaml', 'eforge/config.yaml', '.eforge/config.yaml', 'Guided Toolbelt Presets'],
+      configuration: [
+        '~/.config/eforge/config.yaml',
+        'eforge/config.yaml',
+        '.eforge/config.yaml',
+        'Workflow Presets',
+        'Guided Toolbelt Presets',
+      ],
       profiles: ['.eforge/profiles/', 'eforge/profiles/', '~/.config/eforge/profiles/', 'eforge build --profile'],
       playbooks: ['mode: autonomous', 'mode: planning', 'eforge playbook run', 'eforge playbook promote'],
       extensions: ['eforge extension install', 'trust', 'onEvent', 'registerInputSource', 'not sandboxed'],
       'extensions-api': ['defineExtension', 'EventPattern', 'defineExtensionTool', 'Runtime support status'],
-      integrations: ['Claude Code plugin', 'Pi extension', 'standalone CLI', 'daemon HTTP API', 'Langfuse'],
-      troubleshooting: ['eforge daemon status', 'pnpm docs:check', 'auto-build', 'recovery', 'extension:policy:decision'],
+      integrations: [
+        'Claude Code plugin',
+        'Pi extension',
+        'standalone CLI',
+        '/eforge:workflow',
+        '/eforge:stack:sync',
+        'daemon HTTP API',
+        'Langfuse',
+      ],
+      stacking: ['/eforge:workflow', '/eforge:stack', '/eforge:stack:sync', 'eforge stack sync', '--dry-run'],
+      troubleshooting: [
+        'eforge daemon status',
+        'pnpm docs:check',
+        'auto-build',
+        'Stack sync',
+        'recovery',
+        'extension:policy:decision',
+      ],
     };
 
     for (const [slug, snippets] of Object.entries(journeySnippets)) {
@@ -125,6 +153,54 @@ describe('loadDocPage', () => {
       for (const snippet of snippets) {
         expect(raw, `Expected ${slug} guide to cover ${snippet}`).toContain(snippet.toLowerCase());
       }
+    }
+  });
+
+  it('documents workflow presets and stack sync host surfaces', () => {
+    const configuration = readGuide('configuration');
+    const integrations = readGuide('integrations');
+    const stacking = readGuide('stacking');
+    const troubleshooting = readGuide('troubleshooting');
+
+    const presetConfigMappings: Record<string, string[]> = {
+      'solo-merge': ['landing.action: merge', 'build.allowLocalMergeToTrunk: true', 'stacking.enabled: false'],
+      'solo-pr': ['landing.action: pr', 'landing.pr.autoMerge: always', 'stacking.enabled: false'],
+      'team-pr': ['landing.action: pr', 'landing.pr.autoMerge: ask', 'stacking.enabled: false'],
+      'stacked-pr': ['landing.action: pr', 'stacking.enabled: true'],
+      'stacked-pr-autosync': ['landing.action: pr', 'stacking.enabled: true', 'build.postMergeCommands'],
+    };
+
+    for (const [preset, configKeys] of Object.entries(presetConfigMappings)) {
+      expect(configuration, `Expected configuration guide to mention workflow preset ${preset}`).toContain(preset);
+      for (const configKey of configKeys) {
+        expect(configuration, `Expected workflow preset ${preset} to map to ${configKey}`).toContain(configKey);
+      }
+    }
+
+    for (const command of [
+      '/eforge:workflow',
+      '/eforge:stack',
+      '/eforge:workflow:init',
+      '/eforge:workflow:reconfigure',
+      '/eforge:stack:sync',
+      'eforge stack sync',
+      'eforge stack sync --dry-run',
+    ]) {
+      expect(integrations, `Expected integrations guide to mention ${command}`).toContain(command);
+    }
+
+    for (const snippet of ['/eforge:workflow', '/eforge:stack', '/eforge:stack:sync', 'eforge stack sync', '--dry-run']) {
+      expect(stacking, `Expected stacking guide to mention ${snippet}`).toContain(snippet);
+    }
+
+    for (const snippet of [
+      'Skipped sync because stacking is disabled',
+      'git-spice missing or uninitialized',
+      'Local trunk not fast-forwardable',
+      'Active-build skips',
+      'Conflict recovery',
+    ]) {
+      expect(troubleshooting, `Expected troubleshooting guide to cover ${snippet}`).toContain(snippet);
     }
   });
 
@@ -146,6 +222,16 @@ describe('loadDocPage', () => {
       'maxValidationRetries',
       'require-approval',
       'extension:policy:decision',
+      'eforge stack sync --dry-run',
+      'fastForward',
+      'git-spice --version',
+      'git-spice repo init',
+      'stacking.gitSpice.command',
+      'git status',
+      'git add <resolved-files>',
+      'git rebase --continue',
+      'git-spice equivalent',
+      'Conflict recovery',
     ];
     for (const snippet of expectedSnippets) {
       expect(raw, `Expected troubleshooting remedy to mention ${snippet}`).toContain(snippet);
@@ -216,5 +302,16 @@ describe('loadReferencePage', () => {
     const page = await loadReferencePage('config');
     expect(page.html).toContain('id="toolbelts"');
     expect(page.html).toContain('id="hooks"');
+  });
+
+  it('exposes workflow and stack skills in generated tools references', () => {
+    const expectedRows = ['| `workflow` | `eforge-workflow` |', '| `stack` | `eforge-stack` |'];
+    const contentTools = readReference('tools');
+    const publicTools = readFileSync(join(publicReferenceDir, 'tools.md'), 'utf-8');
+
+    for (const row of expectedRows) {
+      expect(contentTools, `Expected content tools reference to include ${row}`).toContain(row);
+      expect(publicTools, `Expected public tools reference to include ${row}`).toContain(row);
+    }
   });
 });

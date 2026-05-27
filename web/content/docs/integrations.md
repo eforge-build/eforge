@@ -46,6 +46,8 @@ All eforge workflows are available as slash commands:
 | `/eforge:playbook` | Create, run, list, edit, promote, or demote playbooks |
 | `/eforge:profile` | Inspect and switch agent runtime profiles |
 | `/eforge:profile-new` | Create a new profile through a guided wizard |
+| `/eforge:workflow` | Choose or reconfigure landing action, PR auto-merge policy, stacking, and automatic stack sync |
+| `/eforge:stack` | Synchronize a git-spice stack; accepts `--dry-run` |
 | `/eforge:recover` | Inspect a failed build's recovery verdict and apply it |
 | `/eforge:restart` | Safely restart the daemon |
 | `/eforge:status` | Show current build queue and daemon status |
@@ -73,6 +75,15 @@ pi install -l npm:@eforge-build/pi-eforge
 
 The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_session_plan`, `eforge_playbook`, and `eforge_extension`.
 
+### Pi commands
+
+| Command | Purpose |
+|---------|---------|
+| `/eforge:workflow` | Open the workflow setup/reconfigure chooser |
+| `/eforge:workflow:init` | Run the full workflow preset wizard from scratch |
+| `/eforge:workflow:reconfigure` | Show current workflow config, then run the preset wizard |
+| `/eforge:stack:sync` | Synchronize a git-spice stack; accepts `--dry-run` |
+
 ## Standalone CLI
 
 For shell-based workflows or CI environments where a host is not available:
@@ -98,6 +109,8 @@ eforge daemon status
 eforge daemon start
 eforge daemon stop
 eforge extension list
+eforge stack sync
+eforge stack sync --dry-run
 ```
 
 For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands.

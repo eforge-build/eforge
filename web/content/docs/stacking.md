@@ -45,7 +45,9 @@ When a PRD has multiple `depends_on` entries, eforge cannot infer the stack pare
 
 ## Enable stacking
 
-Add these fields to `eforge/config.yaml`:
+The guided path is `/eforge:workflow`. Choose a stacked workflow preset to write the required `landing.action: pr` and `stacking.enabled: true` keys to `eforge/config.yaml`. The `stacked-pr-autosync` preset also appends `eforge stack sync` to `build.postMergeCommands`.
+
+To configure the same settings by hand, add these fields to `eforge/config.yaml`:
 
 ```yaml
 stacking:
@@ -74,9 +76,25 @@ git-spice repo init
 
 This writes a local tracking file that git-spice uses to maintain branch relationships. If git-spice is not available, eforge fails the build with a clear error message.
 
-## Restack after upstream merges
+## Sync stacks after upstream merges
 
-When an upstream PR merges, GitHub updates the base of the downstream PR automatically. Local branches do not update automatically - run `git-spice stack restack` (or `git-spice branch sync`) after upstream PRs merge to keep local branches current. eforge does not run restack or sync automatically. Automated post-merge restack is tracked as future roadmap work.
+When an upstream PR merges, GitHub updates downstream PR bases, but your local stack still needs to sync and restack. Use one of these task surfaces:
+
+| Surface | Command |
+|---------|---------|
+| Claude Code | `/eforge:stack` |
+| Pi | `/eforge:stack:sync` |
+| Standalone CLI | `eforge stack sync` |
+
+Add `--dry-run` to preview the git-spice commands without mutating branches:
+
+```bash
+eforge stack sync --dry-run
+```
+
+A sync report shows the provider commands, restack candidates, active-build skips, local/origin trunk SHAs, and whether the local trunk is fast-forward eligible. If active eforge builds overlap the stack, eforge reports the skipped branches and defers the restack for the whole stack because restack cannot be scoped safely. Run sync again after those builds complete.
+
+For automatic sync, use `/eforge:workflow` and choose `stacked-pr-autosync`, or add `eforge stack sync` to `build.postMergeCommands` yourself. This adds stack sync to eforge's post-merge validation commands, so it runs during future eforge builds after plan merges into the merge worktree and before landing/PR publication—not automatically when an upstream PR merges outside eforge.
 
 ## Note on GitHub inline comments
 

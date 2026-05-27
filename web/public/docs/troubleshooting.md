@@ -72,6 +72,25 @@ If a PRD is queued but does not start, check whether daemon auto-build is disabl
 
 For persistent defaults, set `prdQueue.autoBuild: true` in `eforge/config.yaml`. If the watcher is slow to notice new PRDs, tune `prdQueue.watchPollIntervalMs` rather than manually editing queue files.
 
+## Stack sync skipped, failed, or conflicted
+
+Run stack sync from your host (`/eforge:stack` in Claude Code, `/eforge:stack:sync` in Pi) or from the CLI:
+
+```bash
+eforge stack sync --dry-run
+eforge stack sync
+```
+
+Use the report's `outcome`, `reason`, `activeBuildSkips`, `fastForward`, and `providerCommands` fields to choose the fix:
+
+- **Skipped sync because stacking is disabled**: enable a stacked workflow with `/eforge:workflow`, or set `stacking.enabled: true` and `landing.action: pr` in `eforge/config.yaml`, then rerun sync.
+- **git-spice missing or uninitialized**: install git-spice, verify `git-spice --version`, run `git-spice repo init` once in the repository, and set `stacking.gitSpice.command` if the binary is not on `$PATH`.
+- **Local trunk not fast-forwardable**: when `fastForward` is `false`, push or otherwise align your local trunk with `origin/<trunk>`; eforge will not force-push, reset, or rebase trunk for you.
+- **Active-build skips**: wait for the listed active eforge builds to finish, then run `eforge stack sync` again. The sync command avoids mutating worktrees that active builds are using.
+- **Conflict recovery**: when `outcome` is `conflict`, run `git status`, resolve the conflicted files, `git add <resolved-files>`, continue the rebase/restack with `git rebase --continue` or the git-spice equivalent, then rerun `/eforge:stack` or `/eforge:stack:sync` to finish remaining branches.
+
+If `outcome` is `failed` without a conflict, inspect the failed `providerCommands`, run the same git-spice command manually for more context, fix the repository state, and rerun with `--dry-run` before applying changes.
+
 ## Recover from a failed build
 
 When a queued build fails, auto-build pauses and the PRD is marked `failed` in the queue. Do not re-enqueue manually; use the recovery workflow instead.
