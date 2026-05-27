@@ -422,7 +422,7 @@ PRD frontmatter fields control the stack topology:
 
 For single-dependency builds (`depends_on` has one entry), `stack_parent` is inferred automatically. For multi-dependency builds, set `stack_parent` explicitly to indicate the direct parent layer.
 
-Set `stacking.sync.afterBuild: true` to have the daemon automatically sync the stack after each build lands. When active builds overlap the stack candidates, sync is `deferred` and the daemon retries automatically. Prefer this over `build.postMergeCommands: ["eforge stack sync"]` for automatic sync.
+Set `stacking.sync.afterBuild: true` to have the daemon automatically sync the stack after each queued build reaches a terminal state. When active builds overlap the stack candidates, sync is `deferred` and the daemon retries automatically. Prefer this over `build.postMergeCommands: ["eforge stack sync"]` for automatic sync.
 
 See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup, stack sync, deferred retry, and conflict recovery.
 

@@ -105,7 +105,7 @@ eforge stack sync --dry-run
 
 ### Automatic after-build sync
 
-To run stack sync automatically after every build lands, set `stacking.sync.afterBuild: true` in `eforge/config.yaml`:
+To run stack sync automatically after every queued build reaches a terminal state, set `stacking.sync.afterBuild: true` in `eforge/config.yaml`:
 
 ```yaml
 stacking:
