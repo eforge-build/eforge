@@ -50,6 +50,15 @@ export type {
   // --- eforge:region plan-03-stack-daemon-ui ---
   StackLayersResponse,
   // --- eforge:endregion plan-03-stack-daemon-ui ---
+  // --- eforge:region plan-02-client-surfaces-and-console ---
+  StackSyncRequest,
+  StackSyncResponse,
+  StackSyncOutcomeWire,
+  StackSyncActiveBuildSkipWire,
+  StackSyncProviderCommandWire,
+  StackSyncStatusWire,
+  StackSyncStatusResponse,
+  // --- eforge:endregion plan-02-client-surfaces-and-console ---
 } from './routes.js';
 
 export type {

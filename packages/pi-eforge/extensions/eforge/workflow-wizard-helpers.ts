@@ -84,7 +84,7 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
     id: 'stacked-pr-autosync',
     label: 'Stacked PRs with auto sync',
     description:
-      'Stacked-PR workflow with automatic stack sync after every merge (runs `eforge stack sync` as a post-merge command).',
+      'Stacked-PR workflow with automatic stack sync after every merge (daemon-owned: runs stack sync after each build completes).',
   },
 ];
 
@@ -112,6 +112,9 @@ export interface WorkflowConfigDelta {
     gitSpice?: {
       command?: string;
     };
+    sync?: {
+      afterBuild?: boolean;
+    };
   };
 }
 
@@ -136,8 +139,7 @@ const PRESET_CONFIG_DELTAS: Record<WorkflowPresetId, WorkflowConfigDelta> = {
   },
   'stacked-pr-autosync': {
     landing: { action: 'pr' },
-    stacking: { enabled: true },
-    build: { postMergeCommands: ['eforge stack sync'] },
+    stacking: { enabled: true, sync: { afterBuild: true } },
   },
 };
 
@@ -244,6 +246,14 @@ export function buildConfigChangeSummary(presetId: WorkflowPresetId): ConfigChan
       key: 'stacking.gitSpice.command',
       value: delta.stacking.gitSpice.command,
       description: `git-spice command: \`${delta.stacking.gitSpice.command}\``,
+    });
+  }
+
+  if (delta.stacking?.sync?.afterBuild !== undefined) {
+    items.push({
+      key: 'stacking.sync.afterBuild',
+      value: String(delta.stacking.sync.afterBuild),
+      description: `Auto stack sync after build: **${delta.stacking.sync.afterBuild ? 'enabled' : 'disabled'}** (daemon-owned)`,
     });
   }
 
@@ -431,6 +441,17 @@ export function applyDeltaToConfig(
         newGs.command = delta.stacking.gitSpice.command;
       }
       newStacking.gitSpice = newGs;
+    }
+
+    if (delta.stacking.sync !== undefined) {
+      const existingSync = (newStacking.sync != null && typeof newStacking.sync === 'object' && !Array.isArray(newStacking.sync))
+        ? (newStacking.sync as Record<string, unknown>)
+        : {};
+      const newSync: Record<string, unknown> = { ...existingSync };
+      if (delta.stacking.sync.afterBuild !== undefined) {
+        newSync.afterBuild = delta.stacking.sync.afterBuild;
+      }
+      newStacking.sync = newSync;
     }
 
     result.stacking = newStacking;

@@ -621,3 +621,95 @@ describe('stream:hello queue parity with live queue:prd:discovered projection', 
 });
 
 // --- eforge:endregion plan-01-durable-daemon-event-persistence ---
+
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+
+describe('stream:hello stackSyncStatus parity with GET /api/stack/sync/status', () => {
+  it('stackSyncStatus absent from stream:hello when no sync-status.json exists', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+    const base = `http://127.0.0.1:${server.port}`;
+
+    // Fetch stream:hello snapshot
+    const raw = await fetchSseFirstChunk(`${base}/api/daemon-events`, 1, 2000);
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+    const helloDataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    expect(helloDataLine).toBeDefined();
+    const helloData = JSON.parse(helloDataLine!.slice('data: '.length)) as Record<string, unknown>;
+
+    // Fetch the REST status route
+    const statusData = await fetchJson(`${base}/api/stack/sync/status`) as Record<string, unknown>;
+
+    // Both should have no last/current sync
+    expect(helloData.stackSyncStatus).toBeUndefined();
+    expect(statusData.last).toBeUndefined();
+    expect(statusData.current).toBeUndefined();
+
+    await server.stop();
+    db.close();
+  });
+
+  it('stackSyncStatus.last in stream:hello deep-equals GET /api/stack/sync/status.last', async () => {
+    const cwd = makeTmpCwd();
+    mkdirSync(join(cwd, '.eforge', 'stacks'), { recursive: true });
+
+    const lastSync = {
+      id: 'sync-parity-001',
+      trigger: 'manual' as const,
+      startedAt: '2025-06-01T10:00:00.000Z',
+      completedAt: '2025-06-01T10:00:05.000Z',
+      outcome: 'complete',
+      dryRun: false,
+      restackCandidates: ['eforge/feat-a'],
+    };
+
+    writeFileSync(
+      join(cwd, '.eforge', 'stacks', 'sync-status.json'),
+      JSON.stringify({ version: 1, last: lastSync }),
+      'utf-8',
+    );
+
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+    const base = `http://127.0.0.1:${server.port}`;
+
+    // Fetch stream:hello snapshot
+    const raw = await fetchSseFirstChunk(`${base}/api/daemon-events`, 1, 2000);
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+    const helloDataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    expect(helloDataLine).toBeDefined();
+    const helloData = JSON.parse(helloDataLine!.slice('data: '.length)) as {
+      stackSyncStatus?: { last?: Record<string, unknown>; current?: Record<string, unknown> };
+    };
+
+    // Fetch the REST status route
+    const statusData = await fetchJson(`${base}/api/stack/sync/status`) as {
+      last?: Record<string, unknown>;
+      current?: Record<string, unknown>;
+    };
+
+    // Both must include stackSyncStatus.last
+    expect(helloData.stackSyncStatus).toBeDefined();
+    expect(helloData.stackSyncStatus!.last).toBeDefined();
+    expect(statusData.last).toBeDefined();
+
+    // Parity: stream:hello.stackSyncStatus.last === REST .last
+    expect(helloData.stackSyncStatus!.last).toEqual(statusData.last);
+
+    // Spot-check key fields
+    expect(helloData.stackSyncStatus!.last!.id).toBe('sync-parity-001');
+    expect(helloData.stackSyncStatus!.last!.outcome).toBe('complete');
+
+    await server.stop();
+    db.close();
+  });
+});
+
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---

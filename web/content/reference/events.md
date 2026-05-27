@@ -11,7 +11,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 201
+Total variants: 206
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -216,6 +216,11 @@ Total variants: 201
 | `stack:layer:recorded` | `artifact`, `baseBranch`, `branch`, `landingAction`, `parentPrdId`, `prdId`, `provider`, `stackId`, `status` |
 | `stack:provider:command` | `args`, `branch`, `command`, `exitCode`, `provider` |
 | `stack:landing:update` | `action`, `branch`, `prUrl`, `prdId`, `reason`, `stackId`, `status` |
+| `stack:sync:start` | `dryRun`, `syncId`, `trigger` |
+| `stack:sync:complete` | `dryRun`, `excludedCandidates`, `fastForward`, `localTrunkSha`, `originTrunkSha`, `reason`, `restackCandidates`, `syncId`, `trigger` |
+| `stack:sync:failed` | `dryRun`, `error`, `outcome`, `reason`, `syncId`, `trigger` |
+| `stack:sync:deferred` | `excludedCandidates`, `reason`, `syncId`, `trigger` |
+| `stack:sync:skipped` | `dryRun`, `excludedCandidates`, `reason`, `restackCandidates`, `syncId`, `trigger` |
 
 ## JSON Schema
 

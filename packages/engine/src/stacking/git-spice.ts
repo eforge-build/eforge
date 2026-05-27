@@ -204,6 +204,54 @@ export class GitSpiceAdapter {
   async upstackOnto(cwd: string, target: string): Promise<ProviderCommandResult> {
     return this.run(cwd, ['upstack', 'onto', target]);
   }
+
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  /**
+   * Return the dry-run command preview for the given argv.
+   *
+   * Returns the command (the configured git-spice path) and the given args,
+   * without executing anything. Used by sync.ts for dry-run records.
+   */
+  commandPreview(argv: string[]): { command: string; args: string[] } {
+    return { command: this.command, args: argv };
+  }
+
+  /**
+   * Return the dry-run command preview for `repo sync` without executing it.
+   */
+  syncRepoPreview(): { command: string; args: string[] } {
+    return { command: this.command, args: ['repo', 'sync'] };
+  }
+
+  /**
+   * Return the dry-run command preview for `stack restack` without executing it.
+   */
+  restackStackPreview(): { command: string; args: string[] } {
+    return { command: this.command, args: ['stack', 'restack'] };
+  }
+
+  /**
+   * Extract a GitHub PR URL from git-spice stdout output.
+   */
+  parsePrUrl(stdout: string): string | undefined {
+    return parseGitSpicePrUrl(stdout);
+  }
+
+  /**
+   * Returns true when the given string is an exact GitHub pull-request URL.
+   */
+  isValidPrUrl(url: string): boolean {
+    return isGitHubPullRequestUrl(url);
+  }
+
+  /**
+   * Redact common secret shapes from a provider message before persisting or
+   * displaying it.
+   */
+  redactMessage(message: string): string {
+    return redactProviderMessage(message);
+  }
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 // ---------------------------------------------------------------------------

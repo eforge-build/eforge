@@ -257,7 +257,7 @@ async function runWorkflowWizard(
         {
           value: 'yes',
           label: 'Automatic stack sync',
-          description: 'Add `eforge stack sync` as a post-merge command so the stack syncs after every build',
+          description: 'Enable daemon-owned after-build stack sync (sets stacking.sync.afterBuild: true — no post-merge command needed)',
         },
       ],
     );

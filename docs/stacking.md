@@ -124,32 +124,37 @@ eforge stack sync --dry-run
 
 | Field | Description |
 |-------|-------------|
-| `outcome` | One of `skipped`, `complete`, `failed`, `conflict` |
+| `outcome` | One of `skipped`, `complete`, `deferred`, `failed`, `conflict` |
 | `restackCandidates` | Artifact branches eligible for restack (after active-build exclusions); these branches were candidates, not necessarily all restacked if the restack step was skipped |
 | `activeBuildSkips` | Branches skipped because active eforge builds are using their worktrees and overlap the stack candidate set |
 | `providerCommands` | git-spice commands that ran (or would run in dry-run mode) |
 | `fastForward` | Whether local trunk is at or behind `origin/<trunk>` |
 | `error` | Error message when outcome is `failed` or `conflict` |
 
-### Opt-in sync configuration
+### Manual and automatic sync
 
-Stack sync is available via the CLI and MCP tool (`eforge_stack_sync`) when `stacking.enabled: true`. The sync operation requires git-spice initialized in the repository.
+Stack sync is available on demand via the CLI and MCP tool (`eforge_stack_sync`) when `stacking.enabled: true`. The sync operation executes from the project root and requires git-spice initialized in the repository.
 
-To enable stack sync as an automatic post-merge step, add `eforge stack sync` to `build.postMergeCommands`:
+To run stack sync automatically after every build lands, enable daemon-owned after-build sync in `eforge/config.yaml`:
 
 ```yaml
-build:
-  postMergeCommands:
-    - "eforge stack sync"
+stacking:
+  sync:
+    afterBuild: true
 ```
 
-This runs sync automatically after each build lands. Use the `/eforge:workflow` command to configure this through the workflow preset wizard without editing `eforge/config.yaml` manually.
+When `stacking.sync.afterBuild: true` is set, the daemon triggers a stack sync from the project root after each build reaches a terminal state (completed, failed, or skipped). The after-build path uses `activeBuildPolicy: "defer"` — if other active builds still overlap the stack candidates at that point, the sync records a `deferred` outcome rather than running.
 
-> **Note:** Daemon-level polling config (such as `stacking.sync.enabled`, `stacking.sync.mode`, or `stacking.sync.intervalSeconds`) is not currently implemented. The supported automatic sync mechanism is `build.postMergeCommands: ["eforge stack sync"]`, which runs sync after each build lands rather than on a daemon polling interval.
+> **Avoid running `eforge stack sync` via `build.postMergeCommands` for automatic sync.** That path executes outside the daemon context, bypasses deferral and retry semantics, and can produce incomplete syncs when concurrent builds are running. Use `stacking.sync.afterBuild: true` instead.
 
-### Active-build skip behavior
+Use `/eforge:workflow` to configure this through the workflow preset wizard without editing `eforge/config.yaml` manually.
 
-When sync runs while active eforge builds are in progress, branches whose worktrees are in use by active builds are skipped. These branches are reported in `activeBuildSkips`. Re-run sync after the active builds complete to restack the skipped branches.
+### Active-build deferral
+
+When sync runs while active eforge builds are in progress, branches whose worktrees are in use by active builds are excluded. These branches are reported in `activeBuildSkips`. When all eligible candidates are excluded by active builds, the outcome depends on the `activeBuildPolicy`:
+
+- **`skip` (default for manual sync)** — the sync returns a `skipped` outcome immediately without mutating any branch state. Re-run `eforge stack sync` manually after the active builds complete.
+- **`defer` (used by the after-build trigger)** — the sync returns a `deferred` outcome, recording that candidates were available but blocked. When `stacking.sync.afterBuild: true` is configured, the daemon fires another sync attempt after each build reaches a terminal state to retry deferred syncs, which will proceed if the stack is no longer blocked.
 
 ### Pre-landing reconciliation
 
@@ -178,6 +183,17 @@ When a PR's base branch changes (because an upstream PR merged), GitHub marks al
 ## Stack state visibility
 
 The monitor UI shows per-build stacking metadata - stack id, parent PRD id, and PR URL - in the build detail panel when stacking is active. The `git-spice stack status` command (or `gs stack status` if you have the optional alias) shows the full local stack state.
+
+### Stack sync status
+
+The console UI includes a stack sync status card that shows the current or last sync operation in real time:
+
+- **Current sync**: trigger, start time, and in-progress indicator while a wet sync is running.
+- **Last sync outcome**: one of `complete`, `deferred`, `failed`, `conflict`, or `skipped`, with the reason, timestamp, and active-build skip details.
+- **Active-build skips**: branches and worktrees that were excluded because active eforge builds were using them.
+- **Provider commands**: the git-spice commands that ran (or would have run in dry-run mode).
+
+The durable sync state is available via the REST API at `GET /api/stack/sync/status`, which returns both the `current` (in-progress) and `last` (most recently completed) sync records. The same data is included in the `stream:hello` SSE snapshot under `stackSyncStatus`, so clients receive the full state on (re)connect without an additional round-trip.
 
 ## Migration: landing.action vs build.onSuccess
 

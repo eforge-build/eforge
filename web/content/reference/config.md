@@ -145,6 +145,17 @@ landing:
 | `stacking.enabled` | Enable stacking. Default `false`. |
 | `stacking.provider` | Stack provider. Only `"git-spice"` is supported in v1. |
 | `stacking.gitSpice.command` | Path or name of the git-spice executable. Default: `"git-spice"`. |
+| `stacking.sync.afterBuild` | Trigger daemon-owned stack sync after every build. Default `false`. When enabled, the daemon automatically runs `git-spice stack restack` after each build completes. When active builds are running, sync is deferred until those builds finish (`outcome: deferred`). |
+
+**Stack sync outcomes:**
+
+| Outcome | Description |
+|---------|-------------|
+| `complete` | All eligible artifact branches were restacked onto the latest trunk. |
+| `skipped` | Stacking is not enabled or no eligible branches found. |
+| `deferred` | Active builds are running whose worktrees overlap the stack candidate set. Sync was deferred; the daemon retries automatically after those builds complete. |
+| `failed` | The sync command exited with a non-zero code. |
+| `conflict` | A restack step hit a merge conflict requiring manual resolution. |
 
 **PRD frontmatter stacking fields:**
 
@@ -152,6 +163,20 @@ landing:
 |-------|-------------|
 | `stack_id` | Logical stack name shared by all PRDs in the stack. Optional; inferred from root PRD id. |
 | `stack_parent` | Parent PRD id. Optional for single-dependency PRDs (inferred from `depends_on`); required for multi-dependency PRDs. |
+
+## Workflow Presets
+
+Workflow presets bundle landing action, stacking, and PR settings into a named preset. Use `/eforge:workflow` (Claude Code) or `/eforge:workflow` (Pi) to configure interactively without editing `eforge/config.yaml` manually.
+
+| Preset | When selected | Config keys written |
+|--------|--------------|---------------------|
+| `solo-merge` | Solo developer, direct merge to trunk | `landing.action: merge`, `build.allowLocalMergeToTrunk: true`, `stacking.enabled: false` |
+| `solo-pr` | Solo developer, PR workflow, no stacking | `landing.action: pr`, `landing.pr.autoMerge: always`, `stacking.enabled: false` |
+| `team-pr` | Team project, PR workflow, no stacking | `landing.action: pr`, `landing.pr.autoMerge: ask`, `stacking.enabled: false` |
+| `stacked-pr` | git-spice stacking, manual sync | `landing.action: pr`, `stacking.enabled: true` |
+| `stacked-pr-autosync` | git-spice stacking, daemon-owned after-build sync | `landing.action: pr`, `stacking.enabled: true`, `stacking.sync.afterBuild: true` |
+
+For stacking presets where the user provides a non-default git-spice path, `stacking.gitSpice.command` is also written.
 
 ## Pre-Compile Trunk Sync
 

@@ -8,8 +8,11 @@
 import { readLockfile, isServerAlive } from './lockfile.js';
 import { verifyApiVersion } from './api-version.js';
 import { API_ROUTES } from './routes.js';
-import { spawn } from 'node:child_process';
-import { basename, resolve } from 'node:path';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { basename, resolve, dirname } from 'node:path';
+
+const execFileAsync = promisify(execFile);
 
 export const DAEMON_START_TIMEOUT_MS = 15_000;
 export const DAEMON_POLL_INTERVAL_MS = 500;
@@ -26,8 +29,18 @@ export function sleep(ms: number): Promise<void> {
  * which is gitignored and not committed into worktrees.
  */
 export function isAgentWorktreeCwd(cwd: string): boolean {
-  if (basename(cwd) === '__merge__') return true;
-  return /-worktrees$/.test(basename(resolve(cwd, '..')));
+  // Walk upward from cwd so that nested paths inside __merge__ or a module
+  // worktree (e.g. running from a subdirectory) are also detected.
+  let dir = cwd;
+  while (true) {
+    const name = basename(dir);
+    if (name === '__merge__') return true;
+    const parent = dirname(dir);
+    if (parent === dir) break; // filesystem root
+    if (/-worktrees$/.test(basename(parent))) return true;
+    dir = parent;
+  }
+  return false;
 }
 
 export class DaemonInWorktreeError extends Error {
@@ -42,6 +55,79 @@ export class DaemonInWorktreeError extends Error {
     this.cwd = cwd;
   }
 }
+
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+
+/**
+ * Error thrown when a wet stack sync is attempted from an agent worktree
+ * and no project-root daemon can be discovered via git common dir.
+ *
+ * Unlike DaemonInWorktreeError (which covers arbitrary daemon spawn attempts),
+ * this is specific to the wet sync path where we tried discovery and failed.
+ */
+export class DaemonNotDiscoverableError extends Error {
+  readonly cwd: string;
+  constructor(cwd: string, reason: string) {
+    super(
+      `Cannot perform wet stack sync from agent worktree ${cwd}: ${reason}. ` +
+      `Start the eforge daemon from the project root first, then retry.`,
+    );
+    this.name = 'DaemonNotDiscoverableError';
+    this.cwd = cwd;
+  }
+}
+
+/**
+ * Discover the project root cwd for a git worktree by reading the git common
+ * dir. For a main working tree, the common dir is the `.git` directory
+ * (relative), and resolving it then taking `dirname` yields the project root.
+ * For a linked worktree, the common dir is an absolute path to the main
+ * repo's `.git/`; taking `dirname` of that also yields the project root.
+ *
+ * Example (linked worktree at /proj/set-worktrees/plan-01):
+ *   gitCommonDir = /proj/.git
+ *   dirname(/proj/.git) = /proj  ← project root
+ *
+ * Example (main worktree at /proj):
+ *   gitCommonDir = .git  (relative)
+ *   resolve(/proj, .git) = /proj/.git
+ *   dirname(/proj/.git) = /proj  ← project root
+ *
+ * Returns null when git is unavailable, the directory is not a git repo, or
+ * the common dir output is empty.
+ */
+export async function discoverProjectRootCwd(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--git-common-dir'], { cwd });
+    const gitCommonDir = stdout.trim();
+    if (!gitCommonDir) return null;
+    const resolvedCommonDir = resolve(cwd, gitCommonDir);
+    return dirname(resolvedCommonDir);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Like daemonRequestIfRunning, but for an agent worktree: discovers the project
+ * root daemon via git common dir and routes the request there.
+ *
+ * Returns null when no live daemon is found at the discovered project root.
+ * Throws DaemonNotDiscoverableError when an active discovery attempt fails
+ * and the worktree cannot fall back to local execution.
+ */
+export async function daemonRequestFromWorktree<T = unknown>(
+  cwd: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ data: T; port: number } | null> {
+  const projectRoot = await discoverProjectRootCwd(cwd);
+  if (!projectRoot) return null;
+  return daemonRequestIfRunning<T>(projectRoot, method, path, body);
+}
+
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
 export async function ensureDaemon(cwd: string): Promise<number> {
   const existing = readLockfile(cwd);

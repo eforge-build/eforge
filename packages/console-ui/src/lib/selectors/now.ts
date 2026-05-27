@@ -120,6 +120,28 @@ export interface NowActivityPreviewItem {
   receivedAt: number;
 }
 
+export interface NowStackSyncViewModel {
+  lastOutcome: 'complete' | 'failed' | 'conflict' | 'deferred' | 'skipped' | null;
+  lastTrigger: 'manual' | 'after-build' | 'scheduled' | 'retry-deferred' | null;
+  lastCompletedAt: string | null;
+  lastStartedAt: string | null;
+  lastReason: string | null;
+  lastError: string | null;
+  lastDryRun: boolean;
+  lastRestackCandidateCount: number;
+  lastActiveBuildSkips: Array<{ branch: string; worktree?: string; reason: string }>;
+  lastProviderCommands: Array<{
+    command: string;
+    args: string[];
+    dryRun: boolean;
+    ran: boolean;
+    stdout?: string;
+    stderr?: string;
+    exitCode?: number;
+  }>;
+  inProgress: boolean;
+}
+
 export interface NowStatusSummary {
   connectionStatus: ConnectionStatus;
   isConnected: boolean;
@@ -145,6 +167,7 @@ export interface NowDashboardModel {
   queue: NowQueueSummary;
   recentRuns: NowRecentRunItem[];
   stack: NowStackSummary | null;
+  stackSync: NowStackSyncViewModel | null;
   activity: NowActivityPreviewItem[];
   activityHiddenCount: number;
   hasSnapshot: boolean;
@@ -805,6 +828,32 @@ export function selectNowRecentRuns(runs: RunInfo[], now: number = Date.now()): 
 }
 
 // ---------------------------------------------------------------------------
+// Stack sync status selector
+// ---------------------------------------------------------------------------
+
+export function selectNowStackSyncStatus(
+  stackSync: ConsoleProjectState['stackSync'],
+): NowStackSyncViewModel | null {
+  if (stackSync == null) return null;
+  const { last, current } = stackSync;
+  // Return null when there is no last record and no in-progress sync
+  if (!last && !current) return null;
+  return {
+    lastOutcome: last?.outcome ?? null,
+    lastTrigger: last?.trigger ?? null,
+    lastCompletedAt: last?.completedAt ?? null,
+    lastStartedAt: last?.startedAt ?? null,
+    lastReason: last?.reason ?? null,
+    lastError: last?.error ?? null,
+    lastDryRun: last?.dryRun ?? false,
+    lastRestackCandidateCount: last?.restackCandidates?.length ?? 0,
+    lastActiveBuildSkips: last?.activeBuildSkips ?? [],
+    lastProviderCommands: last?.providerCommands ?? [],
+    inProgress: current != null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main dashboard model selector
 // ---------------------------------------------------------------------------
 
@@ -830,6 +879,7 @@ export function selectNowDashboardModel(
   const queue = selectNowQueueSummary(state.queue);
   const recentRuns = selectNowRecentRuns(state.runs, now);
   const stack = selectNowStackSummary(state.stackLayers);
+  const stackSync = selectNowStackSyncStatus(state.stackSync);
   const { items: activity, hiddenCount: activityHiddenCount } = selectNowRecentActivity(
     state.recentActivity,
   );
@@ -843,6 +893,7 @@ export function selectNowDashboardModel(
     queue,
     recentRuns,
     stack,
+    stackSync,
     activity,
     activityHiddenCount,
     hasSnapshot,

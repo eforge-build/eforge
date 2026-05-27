@@ -7,6 +7,8 @@ argument-hint: "[--dry-run]"
 
 Manually synchronize the git-spice stack for this project. Use `--dry-run` to preview what commands would run without executing them.
 
+Stack sync is a daemon-owned operation that runs from the project root. The daemon calls `git-spice repo sync` followed by `git-spice stack restack`. Triggers include: this command (`/eforge:stack`), the CLI (`eforge stack sync`), the `eforge_stack_sync` MCP tool, and — when `stacking.sync.afterBuild: true` is configured — automatically after each build completes.
+
 ## Requirements
 
 Stack sync requires `stacking.enabled: true` in `eforge/config.yaml` and git-spice initialized in the repository (`git-spice repo init`). If stacking is not enabled the daemon returns `outcome: "skipped"` with a reason.
@@ -25,15 +27,15 @@ The tool returns a structured sync report. Interpret each field:
 
 | Field | Meaning |
 |-------|---------|
-| `outcome` | One of `"skipped"`, `"complete"`, `"failed"`, `"conflict"` |
-| `reason` | Human-readable reason (always present for skipped/failed/conflict) |
+| `outcome` | One of `"skipped"`, `"complete"`, `"deferred"`, `"failed"`, `"conflict"` |
+| `reason` | Human-readable reason (always present for skipped/deferred/failed/conflict) |
 | `stackingActive` | Whether stacking is enabled and active for this project |
 | `dryRun` | Whether this was a preview-only run |
 | `localTrunkSha` | SHA of the local trunk branch |
 | `originTrunkSha` | SHA of `origin/<trunk>` |
 | `fastForward` | True when local trunk is at or behind origin (fast-forward eligible) |
 | `restackCandidates` | Artifact branches eligible for restack |
-| `activeBuildSkips` | Branches/worktrees skipped because active builds are using them |
+| `activeBuildSkips` | Branches/worktrees skipped because active builds are using their worktrees and overlap the stack candidate set |
 | `providerCommands` | git-spice commands that ran (or would run in dry-run) |
 | `error` | Error message when outcome is `"failed"` or `"conflict"` |
 
@@ -43,13 +45,15 @@ The tool returns a structured sync report. Interpret each field:
 
 **`complete`** - All eligible artifact branches were restacked onto the latest trunk. Show the list of `providerCommands` that ran and the `restackCandidates` that were processed.
 
+**`deferred`** - Active builds are running and their worktrees overlap the stack candidate set. The restack step was skipped to avoid conflicting with in-flight builds. Show `activeBuildSkips` and `reason`. The `activeBuildPolicy` field will be `"defer"` when a deferred outcome was explicitly requested. If `stacking.sync.afterBuild: true` is configured, the daemon will retry deferred syncs after each build completes — no manual action is needed. Otherwise, suggest waiting for active builds to complete and then running `/eforge:stack` again.
+
 **`failed`** - The sync command exited with a non-zero code. Show `error` and the failed `providerCommands`. Suggest running `git-spice` manually to investigate, then re-running sync after resolving the issue.
 
 **`conflict`** - A restack step hit a merge conflict. Show `error` and the `providerCommands` list. Proceed with the conflict recovery flow below.
 
 ### Active-build skips
 
-When `activeBuildSkips` is non-empty, report which branches were excluded and why. These branches were left unchanged because active eforge builds are using their worktrees. Re-run sync after the active builds complete.
+When `activeBuildSkips` is non-empty, report which branches were excluded and why. These branches were left unchanged because active eforge builds are using their worktrees. When `outcome` is `"deferred"`, the entire restack step was skipped; when `outcome` is `"complete"`, only the listed branches were skipped and the rest were restacked. Re-run sync after the active builds complete to restack the skipped branches.
 
 ### Fast-forward check
 

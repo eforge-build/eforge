@@ -17,7 +17,10 @@ import type { ProviderCommandResult, StackProviderAdapter } from './provider.js'
 import type { StackBaseContext } from './base-resolver.js';
 import type { LandingPublicationAction, StackLayer } from './types.js';
 import { updateStackLayerLanding, updateStackLayerStatusAndLanding } from './state.js';
-import { isGitHubPullRequestUrl, parseGitSpicePrUrl, redactProviderMessage } from './git-spice.js';
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+// PR URL parsing and redaction are delegated to provider helpers (parsePrUrl, isValidPrUrl, redactMessage)
+// to avoid direct git-spice imports in orchestration code.
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
 import { runCleanup } from '../landing.js';
 // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
@@ -42,13 +45,14 @@ function stackProviderCommandEvent(
   providerName: StackBaseContext['provider'],
   branch: string,
   result: ProviderCommandResult,
+  redact: (msg: string) => string,
 ): EforgeEvent {
   return {
     timestamp: new Date().toISOString(),
     type: 'stack:provider:command',
     provider: providerName,
-    command: redactProviderMessage(result.command),
-    args: result.args.map((arg) => redactProviderMessage(arg)),
+    command: redact(result.command),
+    args: result.args.map((arg) => redact(arg)),
     exitCode: result.exitCode,
     branch,
   } as EforgeEvent;
@@ -58,6 +62,7 @@ function stackProviderCommandEventFromError(
   providerName: StackBaseContext['provider'],
   branch: string,
   err: unknown,
+  redact: (msg: string) => string,
 ): EforgeEvent | undefined {
   if (err === null || typeof err !== 'object') return undefined;
   const candidate = err as ProviderCommandErrorLike;
@@ -76,7 +81,7 @@ function stackProviderCommandEventFromError(
     stdout: '',
     stderr: '',
     exitCode: candidate.exitCode,
-  });
+  }, redact);
 }
 
 // ---------------------------------------------------------------------------
@@ -123,10 +128,14 @@ export interface StackLandingOptions {
 /**
  * Best-effort PR URL discovery via `gh pr view`.
  *
- * Used as a fallback when the git-spice submit output does not contain a
+ * Used as a fallback when the provider submit output does not contain a
  * parseable PR URL. Never throws — returns `undefined` on any error.
  */
-async function discoverPrUrlViaGh(cwd: string, branch: string): Promise<string | undefined> {
+async function discoverPrUrlViaGh(
+  cwd: string,
+  branch: string,
+  isValidPrUrl: (url: string) => boolean,
+): Promise<string | undefined> {
   try {
     const { stdout } = await execFileAsync(
       'gh',
@@ -134,7 +143,7 @@ async function discoverPrUrlViaGh(cwd: string, branch: string): Promise<string |
       { cwd },
     );
     const url = stdout.trim();
-    return url && isGitHubPullRequestUrl(url) ? url : undefined;
+    return url && isValidPrUrl(url) ? url : undefined;
   } catch {
     return undefined;
   }
@@ -171,6 +180,11 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   const { metadata } = opts;
   // --- eforge:endregion plan-01-pr-metadata ---
   const { prdId, stackId, branch, baseBranch, provider: providerName } = stackContext;
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  // Use provider-level helpers for redaction, PR URL parsing, and validation
+  // to avoid direct git-spice imports in orchestration code.
+  const redact = provider.redactMessage.bind(provider);
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
   const ts = (): string => new Date().toISOString();
   const startedAt = ts();
@@ -224,11 +238,11 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   let trackResult: ProviderCommandResult;
   try {
     trackResult = await provider.trackBranch(mergeWorktreePath, resolvedBase);
-    yield stackProviderCommandEvent(providerName, branch, trackResult);
+    yield stackProviderCommandEvent(providerName, branch, trackResult, redact);
   } catch (err) {
-    const commandEvent = stackProviderCommandEventFromError(providerName, branch, err);
+    const commandEvent = stackProviderCommandEventFromError(providerName, branch, err, redact);
     if (commandEvent) yield commandEvent;
-    const reason = redactProviderMessage(err instanceof Error ? err.message : String(err));
+    const reason = redact(err instanceof Error ? err.message : String(err));
     const failedAt = ts();
     // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
     await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
@@ -273,11 +287,11 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   let restackResult: ProviderCommandResult;
   try {
     restackResult = await provider.restackBranch(mergeWorktreePath);
-    yield stackProviderCommandEvent(providerName, branch, restackResult);
+    yield stackProviderCommandEvent(providerName, branch, restackResult, redact);
   } catch (err) {
-    const commandEvent = stackProviderCommandEventFromError(providerName, branch, err);
+    const commandEvent = stackProviderCommandEventFromError(providerName, branch, err, redact);
     if (commandEvent) yield commandEvent;
-    const reason = redactProviderMessage(err instanceof Error ? err.message : String(err));
+    const reason = redact(err instanceof Error ? err.message : String(err));
     const failedAt = ts();
     await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
       action: landingAction,
@@ -304,11 +318,11 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   let submitResult: ProviderCommandResult;
   try {
     submitResult = await provider.submitBranch(mergeWorktreePath);
-    yield stackProviderCommandEvent(providerName, branch, submitResult);
+    yield stackProviderCommandEvent(providerName, branch, submitResult, redact);
   } catch (err) {
-    const commandEvent = stackProviderCommandEventFromError(providerName, branch, err);
+    const commandEvent = stackProviderCommandEventFromError(providerName, branch, err, redact);
     if (commandEvent) yield commandEvent;
-    const reason = redactProviderMessage(err instanceof Error ? err.message : String(err));
+    const reason = redact(err instanceof Error ? err.message : String(err));
     const failedAt = ts();
     // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
     await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
@@ -333,9 +347,11 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   }
 
   // Step 5: Discover PR URL — parse from submit output, then gh fallback
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
   const prUrl =
-    parseGitSpicePrUrl(submitResult.stdout) ??
-    (await discoverPrUrlViaGh(mergeWorktreePath, branch));
+    provider.parsePrUrl(submitResult.stdout) ??
+    (await discoverPrUrlViaGh(mergeWorktreePath, branch, provider.isValidPrUrl.bind(provider)));
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
   // --- eforge:region plan-01-pr-metadata ---
   // Step 5a: Apply deterministic PR metadata via gh pr edit (non-fatal).

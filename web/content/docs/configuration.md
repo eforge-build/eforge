@@ -408,6 +408,8 @@ stacking:
   enabled: true                # Default false
   gitSpice:
     command: git-spice         # Default. Set to 'gs' if you use the short alias.
+  sync:
+    afterBuild: false          # Default false. Set to true for daemon-owned after-build sync.
 
 landing:
   action: pr                   # Required for stacking
@@ -420,7 +422,9 @@ PRD frontmatter fields control the stack topology:
 
 For single-dependency builds (`depends_on` has one entry), `stack_parent` is inferred automatically. For multi-dependency builds, set `stack_parent` explicitly to indicate the direct parent layer.
 
-See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup and restack expectations.
+Set `stacking.sync.afterBuild: true` to have the daemon automatically sync the stack after each build lands. When active builds overlap the stack candidates, sync is `deferred` and the daemon retries automatically. Prefer this over `build.postMergeCommands: ["eforge stack sync"]` for automatic sync.
+
+See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup, stack sync, deferred retry, and conflict recovery.
 
 ## Trunk Branch Policy
 

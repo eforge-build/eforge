@@ -14,7 +14,9 @@ import { resolveTrunkBranch } from '../branch-policy.js';
 import { createProvider } from './provider.js';
 import { loadStackState } from './state.js';
 import type { ProviderCommandResult } from './provider.js';
-import { redactProviderMessage } from './git-spice.js';
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+import type { StackSyncTrigger, StackSyncActiveBuildPolicy } from './sync-state.js';
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
 const execFileAsync = promisify(execFile);
 
@@ -41,13 +43,13 @@ export interface StackSyncProviderCommand {
 }
 
 /** Outcome of a stack sync operation. */
-export type StackSyncOutcome = 'skipped' | 'complete' | 'failed' | 'conflict';
+export type StackSyncOutcome = 'skipped' | 'complete' | 'failed' | 'conflict' | 'deferred';
 
 /** Report returned by `performStackSync`. */
 export interface StackSyncReport {
   /** Overall outcome. */
   outcome: StackSyncOutcome;
-  /** Human-readable reason (always present for 'skipped', 'failed', 'conflict'). */
+  /** Human-readable reason (always present for 'skipped', 'failed', 'conflict', 'deferred'). */
   reason?: string;
   /** True when stacking is active (always true for non-skipped outcomes). */
   stackingActive: boolean;
@@ -67,6 +69,12 @@ export interface StackSyncReport {
   providerCommands: StackSyncProviderCommand[];
   /** Error message when outcome is 'failed' or 'conflict'. */
   error?: string;
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  /** The trigger that initiated this sync, when set by the caller. */
+  trigger?: StackSyncTrigger;
+  /** The active-build policy used, when set by the caller. */
+  activeBuildPolicy?: StackSyncActiveBuildPolicy;
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 /** Options for `performStackSync`. */
@@ -81,6 +89,20 @@ export interface StackSyncOptions {
    * `<prefix>/` for any entry in this list.
    */
   excludedBranchPrefixes?: string[];
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  /** The trigger that initiated this sync (propagated to the report). */
+  trigger?: StackSyncTrigger;
+  /**
+   * How to handle active-build overlap in wet mode.
+   *
+   * 'skip' (default) — return 'skipped' outcome when excluded candidates exist.
+   * 'defer'          — return 'deferred' outcome instead, indicating the sync
+   *                    should be retried when active builds complete.
+   *
+   * Dry-runs always use 'skip' semantics since they do not execute commands.
+   */
+  activeBuildPolicy?: StackSyncActiveBuildPolicy;
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 // ---------------------------------------------------------------------------
@@ -116,14 +138,15 @@ async function isAncestor(
 function buildCommandRecord(
   result: ProviderCommandResult,
   dryRun: boolean,
+  redact: (message: string) => string,
 ): StackSyncProviderCommand {
   return {
     command: result.command,
     args: result.args,
     dryRun,
     ran: !dryRun,
-    ...(result.stdout !== undefined && { stdout: redactProviderMessage(result.stdout) }),
-    ...(result.stderr !== undefined && { stderr: redactProviderMessage(result.stderr) }),
+    ...(result.stdout !== undefined && { stdout: redact(result.stdout) }),
+    ...(result.stderr !== undefined && { stderr: redact(result.stderr) }),
     exitCode: result.exitCode,
   };
 }
@@ -153,7 +176,9 @@ export async function performStackSync(
   config: EforgeConfig,
   opts: StackSyncOptions,
 ): Promise<StackSyncReport> {
-  const { cwd, dryRun = false, excludedBranchPrefixes = [] } = opts;
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  const { cwd, dryRun = false, excludedBranchPrefixes = [], trigger, activeBuildPolicy = 'skip' } = opts;
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
   const providerCommands: StackSyncProviderCommand[] = [];
 
   // Resolve trunk branch and get SHAs for fast-forward reporting
@@ -189,9 +214,12 @@ export async function performStackSync(
       ),
   );
 
-  // Determine the provider command name (for dry-run records)
-  const gsCommand = config.stacking.gitSpice?.command ?? 'git-spice';
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  // Use provider for command previews (no hard-coded argv outside the adapter)
   const provider = createProvider(config.stacking);
+  const syncRepoPreview = provider.syncRepoPreview();
+  const restackStackPreview = provider.restackStackPreview();
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
   // Compute exclusion state up-front so dry-run and wet-run use the same logic.
   const hasExcludedCandidates = allCandidates.length > restackCandidates.length;
@@ -202,18 +230,26 @@ export async function performStackSync(
       ? 'stack restack skipped: active-build branches overlap the stack; restack cannot be scoped to exclude them'
       : undefined;
 
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  // Common metadata fields to spread into every return value.
+  const metaFields = {
+    ...(trigger !== undefined && { trigger }),
+    ...(activeBuildPolicy !== 'skip' && { activeBuildPolicy }),
+  };
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
+
   // Build the command list
   const syncRepoDryRecord: StackSyncProviderCommand = {
-    command: gsCommand,
-    args: ['repo', 'sync'],
+    command: syncRepoPreview.command,
+    args: syncRepoPreview.args,
     dryRun: true,
     ran: false,
   };
   const restackDryRecord: StackSyncProviderCommand | undefined =
     wouldRestack
       ? {
-          command: gsCommand,
-          args: ['stack', 'restack'],
+          command: restackStackPreview.command,
+          args: restackStackPreview.args,
           dryRun: true,
           ran: false,
         }
@@ -233,18 +269,58 @@ export async function performStackSync(
       restackCandidates,
       excludedCandidates,
       providerCommands,
+      ...metaFields,
     };
   }
+
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  // Wet sync: short-circuit before any provider mutation when active-build
+  // branches overlap the stack candidates.
+  if (hasExcludedCandidates) {
+    if (activeBuildPolicy === 'defer') {
+      return {
+        outcome: 'deferred',
+        reason: 'stack sync deferred: active builds overlap the stack; retry when builds complete',
+        stackingActive: true,
+        dryRun: false,
+        localTrunkSha,
+        originTrunkSha,
+        fastForward,
+        restackCandidates,
+        excludedCandidates,
+        providerCommands: [],
+        ...metaFields,
+      };
+    } else {
+      // activeBuildPolicy === 'skip' (default): skip the sync entirely rather
+      // than executing repo sync which could mutate stack branches mid-build.
+      return {
+        outcome: 'skipped',
+        reason: 'stack sync skipped: active builds overlap the stack; skipping to avoid mutation during build',
+        stackingActive: true,
+        dryRun: false,
+        localTrunkSha,
+        originTrunkSha,
+        fastForward,
+        restackCandidates,
+        excludedCandidates,
+        providerCommands: [],
+        ...metaFields,
+      };
+    }
+  }
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
   // Wet run: execute repo sync
   try {
     const syncResult = await provider.syncRepo(cwd);
-    providerCommands.push(buildCommandRecord(syncResult, false));
+    providerCommands.push(buildCommandRecord(syncResult, false, provider.redactMessage.bind(provider)));
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errorMsg = provider.redactMessage(err instanceof Error ? err.message : String(err));
+    const failedPreview = provider.syncRepoPreview();
     providerCommands.push({
-      command: gsCommand,
-      args: ['repo', 'sync'],
+      command: failedPreview.command,
+      args: failedPreview.args,
       dryRun: false,
       ran: true,
       stderr: errorMsg,
@@ -262,6 +338,7 @@ export async function performStackSync(
       excludedCandidates,
       providerCommands,
       error: errorMsg,
+      ...metaFields,
     };
   }
 
@@ -283,13 +360,14 @@ export async function performStackSync(
   if (wouldRestack) {
     try {
       const restackResult = await provider.restackStack(cwd);
-      providerCommands.push(buildCommandRecord(restackResult, false));
+      providerCommands.push(buildCommandRecord(restackResult, false, provider.redactMessage.bind(provider)));
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorMsg = provider.redactMessage(err instanceof Error ? err.message : String(err));
       const isConflict = /conflict/i.test(errorMsg);
+      const failedPreview = provider.restackStackPreview();
       providerCommands.push({
-        command: gsCommand,
-        args: ['stack', 'restack'],
+        command: failedPreview.command,
+        args: failedPreview.args,
         dryRun: false,
         ran: true,
         stderr: errorMsg,
@@ -307,6 +385,7 @@ export async function performStackSync(
         excludedCandidates,
         providerCommands,
         error: errorMsg,
+        ...metaFields,
       };
     }
   }
@@ -322,5 +401,6 @@ export async function performStackSync(
     restackCandidates,
     excludedCandidates,
     providerCommands,
+    ...metaFields,
   };
 }

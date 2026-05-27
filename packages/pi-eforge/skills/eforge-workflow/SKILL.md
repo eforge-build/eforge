@@ -39,7 +39,7 @@ When stacking is selected, the wizard checks whether `git-spice` is available. I
 
 ### 4. Automatic stack sync (only when stacking enabled)
 
-- **Yes** — adds `eforge stack sync` as a post-merge command for automatic restack after every merge
+- **Yes** — enables daemon-owned after-build sync (`stacking.sync.afterBuild: true`). After each build completes, the daemon runs `eforge stack sync` automatically from the project root. When active builds are running, sync is deferred until those builds complete.
 - **No** — sync the stack manually with `/eforge:stack:sync`
 
 ## Five workflow presets
@@ -62,7 +62,7 @@ The four dimensions map to one of five presets:
 | `solo-pr` | `landing.action: pr`, `landing.pr.autoMerge: always`, `stacking.enabled: false` |
 | `team-pr` | `landing.action: pr`, `landing.pr.autoMerge: ask`, `stacking.enabled: false` |
 | `stacked-pr` | `landing.action: pr`, `stacking.enabled: true` |
-| `stacked-pr-autosync` | `landing.action: pr`, `stacking.enabled: true`, `build.postMergeCommands: [eforge stack sync]` |
+| `stacked-pr-autosync` | `landing.action: pr`, `stacking.enabled: true`, `stacking.sync.afterBuild: true` |
 
 For stacking presets where the user provides a custom git-spice path, `stacking.gitSpice.command` is also written.
 

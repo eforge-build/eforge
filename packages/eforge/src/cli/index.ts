@@ -58,9 +58,15 @@ import {
   type ExtensionDemoteResponse,
   // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
   // --- eforge:region plan-01-stack-sync-daemon-cli ---
+  apiStackSync,
   apiStackSyncIfRunning,
   type StackSyncResponse,
   // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  daemonRequestFromWorktree,
+  DaemonNotDiscoverableError,
+  API_ROUTES,
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 } from '@eforge-build/client';
 import { runOrDelegate } from './run-or-delegate.js';
 import { formatCliError } from './errors.js';
@@ -423,8 +429,8 @@ function renderStackSyncReport(report: StackSyncResponse, _dryRun: boolean): voi
   const outcomeColor =
     report.outcome === 'complete'
       ? chalk.green
-      : report.outcome === 'skipped'
-        ? chalk.dim
+      : report.outcome === 'skipped' || report.outcome === 'deferred'
+        ? chalk.yellow
         : chalk.red;
 
   console.log(outcomeColor(`Stack sync outcome: ${report.outcome}`));
@@ -1837,10 +1843,48 @@ export function createProgram(abortController?: AbortController, version?: strin
       .action(async (options: { dryRun?: boolean; cwd?: string }) => {
         const cwd = options.cwd ? resolve(options.cwd) : process.cwd();
         const dryRun = options.dryRun === true;
+        const inWorktree = isAgentWorktreeCwd(cwd);
 
         try {
-          // Prefer daemon when live
-          const daemonResult = await apiStackSyncIfRunning({ cwd, body: { dryRun } });
+          // --- eforge:region plan-01-core-daemon-stack-sync ---
+          // Wet sync always requires the daemon — never run local mutation
+          // from agent worktrees, and auto-start the daemon for normal roots.
+          if (!dryRun) {
+            if (inWorktree) {
+              // Agent worktree: discover project-root daemon via git common dir.
+              const worktreeResult = await daemonRequestFromWorktree<StackSyncResponse>(
+                cwd,
+                'POST',
+                API_ROUTES.stackSync,
+                { trigger: 'manual' },
+              );
+              if (worktreeResult !== null) {
+                renderStackSyncReport(worktreeResult.data, dryRun);
+                const { outcome } = worktreeResult.data;
+                process.exit(outcome === 'failed' || outcome === 'conflict' ? 1 : 0);
+                return;
+              }
+              // No discoverable daemon for this worktree
+              throw new DaemonNotDiscoverableError(
+                cwd,
+                'no running daemon found at the project root; start eforge daemon from the project root first',
+              );
+            } else {
+              // Normal project root: auto-start daemon and run through it.
+              const daemonResult = await apiStackSync({ cwd, body: { trigger: 'manual' } });
+              renderStackSyncReport(daemonResult.data, dryRun);
+              const { outcome } = daemonResult.data;
+              process.exit(outcome === 'failed' || outcome === 'conflict' ? 1 : 0);
+              return;
+            }
+          }
+          // --- eforge:endregion plan-01-core-daemon-stack-sync ---
+
+          // Dry-run path: prefer live daemon, fall back to local (without
+          // active-build knowledge when daemon is not running).
+          const daemonResult = await (inWorktree
+            ? daemonRequestFromWorktree<StackSyncResponse>(cwd, 'POST', API_ROUTES.stackSync, { dryRun: true })
+            : apiStackSyncIfRunning({ cwd, body: { dryRun: true } }));
 
           if (daemonResult !== null) {
             renderStackSyncReport(daemonResult.data, dryRun);
@@ -1848,7 +1892,12 @@ export function createProgram(abortController?: AbortController, version?: strin
             return;
           }
 
-          // Local in-process fallback
+          if (inWorktree) {
+            // Agent worktree with no daemon: dry-run is safe locally but lacks active-build knowledge.
+            console.log(chalk.yellow('Note: running dry-run locally (no daemon found via git common dir) — active-build exclusions are not available.'));
+          }
+
+          // Local in-process dry-run fallback (non-worktree or worktree with no daemon).
           const { loadConfig } = await import('@eforge-build/engine/config');
           const { config } = await loadConfig(cwd);
 
@@ -1872,6 +1921,11 @@ export function createProgram(abortController?: AbortController, version?: strin
           renderStackSyncReport(fullReport, dryRun);
           process.exit(report.outcome === 'failed' || report.outcome === 'conflict' ? 1 : 0);
         } catch (err) {
+          if (err instanceof DaemonNotDiscoverableError) {
+            console.error(chalk.red(`Error: ${err.message}`));
+            process.exit(1);
+            return;
+          }
           const { message, exitCode } = formatCliError(err);
           console.error(chalk.red(`Error: ${message}`));
           process.exit(exitCode);

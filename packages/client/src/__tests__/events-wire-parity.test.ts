@@ -2061,3 +2061,142 @@ describe('events-wire-parity — invalid payloads (unknown discriminant)', () =>
     expect(result.success).toBe(false);
   });
 });
+
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+describe('events-wire-parity — stack sync lifecycle events', () => {
+  const ts = '2025-06-01T12:00:00.000Z';
+
+  it('accepts stack:sync:start with required fields only', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:start',
+      timestamp: ts,
+      syncId: 'sync-abc',
+      dryRun: false,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts stack:sync:start with optional trigger field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:start',
+      timestamp: ts,
+      syncId: 'sync-def',
+      trigger: 'after-build',
+      dryRun: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts stack:sync:complete with all fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:complete',
+      timestamp: ts,
+      syncId: 'sync-abc',
+      trigger: 'manual',
+      dryRun: false,
+      restackCandidates: ['eforge/feat-a'],
+      excludedCandidates: [],
+      localTrunkSha: 'abc1234',
+      originTrunkSha: 'abc1234',
+      fastForward: true,
+      reason: 'sync complete',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts stack:sync:complete with only required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:complete',
+      timestamp: ts,
+      syncId: 'sync-xyz',
+      dryRun: false,
+      restackCandidates: [],
+      excludedCandidates: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts stack:sync:failed with outcome: failed', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:failed',
+      timestamp: ts,
+      syncId: 'sync-001',
+      dryRun: false,
+      outcome: 'failed',
+      reason: 'repo sync failed',
+      error: 'exit code 1',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts stack:sync:failed with outcome: conflict', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:failed',
+      timestamp: ts,
+      syncId: 'sync-002',
+      dryRun: false,
+      outcome: 'conflict',
+      reason: 'merge conflict during restack',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts stack:sync:deferred with excludedCandidates', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:deferred',
+      timestamp: ts,
+      syncId: 'sync-003',
+      trigger: 'after-build',
+      reason: 'Active builds overlap with stack candidates',
+      excludedCandidates: ['eforge/feat-a'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('round-trips stack:sync:start through JSON', () => {
+    const event = {
+      type: 'stack:sync:start',
+      timestamp: ts,
+      syncId: 'sync-roundtrip',
+      trigger: 'scheduled',
+      dryRun: false,
+    };
+    const result = safeParseEforgeEvent(JSON.parse(JSON.stringify(event)));
+    expect(result.success).toBe(true);
+  });
+
+  it('round-trips stack:sync:deferred through JSON', () => {
+    const event = {
+      type: 'stack:sync:deferred',
+      timestamp: ts,
+      syncId: 'sync-roundtrip-deferred',
+      reason: 'builds running',
+      excludedCandidates: ['eforge/feat-x', 'eforge/feat-y'],
+    };
+    const result = safeParseEforgeEvent(JSON.parse(JSON.stringify(event)));
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects stack:sync:start with dryRun as string', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:start',
+      timestamp: ts,
+      syncId: 'sync-001',
+      dryRun: 'yes',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects stack:sync:failed with outcome: skipped (wrong event type for that value)', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:failed',
+      timestamp: ts,
+      syncId: 'sync-001',
+      dryRun: false,
+      outcome: 'skipped',
+      reason: 'wrong outcome for this event type',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---

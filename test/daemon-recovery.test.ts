@@ -125,7 +125,11 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 42', () => {
+  it('is 43', () => {
+    // v43: stack sync `retry-deferred` trigger added to route validation and event schemas;
+    // `stack:sync:failed` no longer emitted for skipped outcomes; `deferred` added to closed
+    // `StackSyncResponse.outcome` union; `activeBuildSkips` and `providerCommands` fields added to
+    // `StackSyncStatusWire`; `current.outcome` made optional in daemon stream snapshot schema.
     // v42: `plan:build:review:fix:continuation` event variant added; review-fixer now has a retry
     // policy with turn-budget continuation support.
     // v41: `landing:auto-merge:start`, `landing:auto-merge:complete`, `landing:auto-merge:skipped`
@@ -142,7 +146,7 @@ describe('DAEMON_API_VERSION', () => {
     // v38: `landing:start` wire event removes `feature-pr-after-local-merge` workflow literal
     // and replaces it with `feature-pr`; older clients that validated the event against the
     // previous schema union will reject events emitted by the new daemon.
-    expect(DAEMON_API_VERSION).toBe(42);
+    expect(DAEMON_API_VERSION).toBe(43);
   });
 });
 

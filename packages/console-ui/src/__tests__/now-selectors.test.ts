@@ -12,6 +12,7 @@ import {
   selectNowStackSummary,
   selectNowRecentActivity,
   selectNowRecentRuns,
+  selectNowStackSyncStatus,
   mergeSeverity,
   isLivenessStale,
 } from '@/lib/selectors/now';
@@ -573,6 +574,136 @@ describe('selectNowRecentActivity', () => {
     const { items, hiddenCount } = selectNowRecentActivity(entries);
     expect(items).toHaveLength(6);
     expect(hiddenCount).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stack sync status selector tests
+// ---------------------------------------------------------------------------
+
+describe('selectNowStackSyncStatus', () => {
+  it('returns null for null input', () => {
+    expect(selectNowStackSyncStatus(null)).toBeNull();
+  });
+
+  it('returns null when stackSync has neither last nor current', () => {
+    expect(selectNowStackSyncStatus({} as never)).toBeNull();
+    expect(selectNowStackSyncStatus({ last: undefined, current: undefined } as never)).toBeNull();
+  });
+
+  it('returns view model for complete outcome', () => {
+    const stackSync = {
+      last: {
+        id: 'sync-1',
+        trigger: 'manual' as const,
+        startedAt: '2024-01-01T00:00:00Z',
+        completedAt: '2024-01-01T00:00:01Z',
+        outcome: 'complete' as const,
+        dryRun: false,
+        restackCandidates: ['feat/a', 'feat/b'],
+      },
+    };
+    const vm = selectNowStackSyncStatus(stackSync as never);
+    expect(vm).not.toBeNull();
+    expect(vm!.lastOutcome).toBe('complete');
+    expect(vm!.lastTrigger).toBe('manual');
+    expect(vm!.lastRestackCandidateCount).toBe(2);
+    expect(vm!.lastDryRun).toBe(false);
+    expect(vm!.inProgress).toBe(false);
+  });
+
+  it('returns view model for deferred outcome', () => {
+    const stackSync = {
+      last: {
+        id: 'sync-deferred',
+        trigger: 'after-build' as const,
+        startedAt: '2024-01-01T00:00:00Z',
+        completedAt: '2024-01-01T00:00:01Z',
+        outcome: 'deferred' as const,
+        dryRun: false,
+        restackCandidates: [],
+        reason: 'active build in progress',
+      },
+    };
+    const vm = selectNowStackSyncStatus(stackSync as never);
+    expect(vm!.lastOutcome).toBe('deferred');
+    expect(vm!.lastReason).toBe('active build in progress');
+    expect(vm!.inProgress).toBe(false);
+  });
+
+  it('returns view model for failed outcome with error', () => {
+    const stackSync = {
+      last: {
+        id: 'sync-failed',
+        trigger: 'manual' as const,
+        startedAt: '2024-01-01T00:00:00Z',
+        completedAt: '2024-01-01T00:00:02Z',
+        outcome: 'failed' as const,
+        dryRun: false,
+        restackCandidates: [],
+        reason: 'provider command failed',
+        error: 'git exited with code 1',
+      },
+    };
+    const vm = selectNowStackSyncStatus(stackSync as never);
+    expect(vm!.lastOutcome).toBe('failed');
+    expect(vm!.lastError).toBe('git exited with code 1');
+    expect(vm!.lastReason).toBe('provider command failed');
+  });
+
+  it('returns view model for conflict outcome', () => {
+    const stackSync = {
+      last: {
+        id: 'sync-conflict',
+        startedAt: '2024-01-01T00:00:00Z',
+        completedAt: '2024-01-01T00:00:02Z',
+        outcome: 'conflict' as const,
+        dryRun: false,
+        restackCandidates: [],
+        reason: 'merge conflict on feat/a',
+      },
+    };
+    const vm = selectNowStackSyncStatus(stackSync as never);
+    expect(vm!.lastOutcome).toBe('conflict');
+    expect(vm!.lastReason).toBe('merge conflict on feat/a');
+  });
+
+  it('marks inProgress when current is present', () => {
+    const stackSync = {
+      last: {
+        id: 'sync-prev',
+        startedAt: '2024-01-01T00:00:00Z',
+        completedAt: '2024-01-01T00:00:01Z',
+        outcome: 'complete' as const,
+        dryRun: false,
+        restackCandidates: [],
+      },
+      current: {
+        id: 'sync-current',
+        startedAt: '2024-01-01T00:01:00Z',
+        dryRun: false,
+        restackCandidates: [],
+      },
+    };
+    const vm = selectNowStackSyncStatus(stackSync as never);
+    expect(vm!.inProgress).toBe(true);
+    // last fields still come from last record
+    expect(vm!.lastOutcome).toBe('complete');
+  });
+
+  it('returns non-null when only current is present (no previous sync)', () => {
+    const stackSync = {
+      current: {
+        id: 'sync-only-current',
+        startedAt: '2024-01-01T00:00:00Z',
+        dryRun: false,
+        restackCandidates: [],
+      },
+    };
+    const vm = selectNowStackSyncStatus(stackSync as never);
+    expect(vm).not.toBeNull();
+    expect(vm!.inProgress).toBe(true);
+    expect(vm!.lastOutcome).toBeNull();
   });
 });
 

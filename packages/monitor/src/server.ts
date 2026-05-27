@@ -73,6 +73,9 @@ import {
   demoteExtensionPackage,
 } from './extension-package-management.js';
 // --- eforge:endregion plan-02-extension-package-daemon-operations ---
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+import { runStackSync, loadSyncStatusForRoute, loadSyncStatusForRouteSync } from './stack-sync-service.js';
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -806,6 +809,9 @@ export async function startServer(
     const snapshotCwd = options?.cwd;
     const snapshotQueueDir = snapshotCwd ? resolve(snapshotCwd, options?.queueDir ?? '.eforge/queue') : '';
     const snapshotLockDir = snapshotCwd ? resolve(snapshotCwd, '.eforge', 'queue-locks') : '';
+    // --- eforge:region plan-01-core-daemon-stack-sync ---
+    const stackSyncStatusSnapshot = snapshotCwd ? loadSyncStatusForRouteSync(snapshotCwd) : { version: 1 as const };
+    // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     const daemonSnapshot = {
       liveness: buildHeartbeatObject(),
       recentActivity,
@@ -816,6 +822,11 @@ export async function startServer(
       // --- eforge:region plan-03-stack-daemon-ui ---
       stackLayers: snapshotCwd ? stackLayersToWire(snapshotCwd) : [],
       // --- eforge:endregion plan-03-stack-daemon-ui ---
+      // --- eforge:region plan-01-core-daemon-stack-sync ---
+      ...(stackSyncStatusSnapshot.last !== undefined || stackSyncStatusSnapshot.current !== undefined
+        ? { stackSyncStatus: { last: stackSyncStatusSnapshot.last, current: stackSyncStatusSnapshot.current } }
+        : {}),
+      // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     };
     writeHello(res, helloCursor, daemonSnapshot);
     // --- eforge:endregion plan-01-handshake-primitive-additive ---
@@ -4603,6 +4614,18 @@ export async function startServer(
       sendJson(res, { layers });
     // --- eforge:endregion plan-03-stack-daemon-ui ---
     // --- eforge:region plan-01-stack-sync-daemon-cli ---
+    } else if (req.method === 'GET' && url === API_ROUTES.stackSyncStatus) {
+      const syncCwd = options?.cwd;
+      if (!syncCwd) {
+        sendJson(res, { version: 1 });
+        return;
+      }
+      try {
+        const statusFile = await loadSyncStatusForRoute(syncCwd);
+        sendJson(res, { last: statusFile.last, current: statusFile.current });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load stack sync status');
+      }
     } else if (req.method === 'POST' && url === API_ROUTES.stackSync) {
       if (rejectUnsafeExtensionMutationRequest(req, res, 'Stack sync mutations')) return;
       const syncCwd = options?.cwd;
@@ -4621,15 +4644,22 @@ export async function startServer(
         sendJsonError(res, 400, 'Request body must be a JSON object');
         return;
       }
-      const rawDryRun =
-        rawBody !== null
-          ? (rawBody as Record<string, unknown>).dryRun
-          : undefined;
+      const rawBodyObj = (rawBody ?? {}) as Record<string, unknown>;
+      const rawDryRun = rawBodyObj.dryRun;
       if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') {
         sendJsonError(res, 400, 'dryRun must be a boolean when present');
         return;
       }
-      const dryRun = rawDryRun === true;
+      const rawTrigger = rawBodyObj.trigger;
+      if (rawTrigger !== undefined && rawTrigger !== 'manual' && rawTrigger !== 'after-build' && rawTrigger !== 'scheduled' && rawTrigger !== 'retry-deferred') {
+        sendJsonError(res, 400, 'trigger must be "manual", "after-build", "scheduled", or "retry-deferred" when present');
+        return;
+      }
+      const rawActiveBuildPolicy = rawBodyObj.activeBuildPolicy;
+      if (rawActiveBuildPolicy !== undefined && rawActiveBuildPolicy !== 'skip' && rawActiveBuildPolicy !== 'defer') {
+        sendJsonError(res, 400, 'activeBuildPolicy must be "skip" or "defer" when present');
+        return;
+      }
       try {
         const { loadConfig } = await import('@eforge-build/engine/config');
         const { config } = await loadConfig(syncCwd);
@@ -4639,7 +4669,7 @@ export async function startServer(
             outcome: 'skipped' as const,
             reason: 'Stacking is not enabled. Set stacking.enabled: true in eforge/config.yaml to activate.',
             stackingActive: false,
-            dryRun,
+            dryRun: rawDryRun === true,
             restackCandidates: [],
             activeBuildSkips: [],
             providerCommands: [],
@@ -4648,51 +4678,20 @@ export async function startServer(
           return;
         }
 
-        // Collect active-build exclusions from running DB runs
-        const runningRuns = db.getRunningRuns();
-        const { computeWorktreeBase } = await import('@eforge-build/engine/worktree-ops');
-        const activeBuildSkips: Array<{ branch: string; worktree?: string; reason: string }> = [];
-        const excludedBranchPrefixes: string[] = [];
+        const request = {
+          dryRun: rawDryRun === true,
+          ...(rawTrigger !== undefined && { trigger: rawTrigger as 'manual' | 'after-build' | 'scheduled' | 'retry-deferred' }),
+          ...(rawActiveBuildPolicy !== undefined && { activeBuildPolicy: rawActiveBuildPolicy as 'skip' | 'defer' }),
+        };
 
-        for (const run of runningRuns) {
-          const branchPrefix = `eforge/${run.planSet}`;
-          const worktreeBase = computeWorktreeBase(syncCwd, run.planSet);
-          activeBuildSkips.push({
-            branch: branchPrefix,
-            worktree: run.cwd,
-            reason: `Active build: run ${run.id} (planSet: ${run.planSet}, cwd: ${run.cwd})`,
-          });
-          // Also record the deterministic worktree base path as a separate skip entry
-          if (worktreeBase !== run.cwd) {
-            activeBuildSkips.push({
-              branch: branchPrefix,
-              worktree: worktreeBase,
-              reason: `Active build worktree base: run ${run.id} (planSet: ${run.planSet})`,
-            });
-          }
-          if (!excludedBranchPrefixes.includes(branchPrefix)) {
-            excludedBranchPrefixes.push(branchPrefix);
-          }
-        }
-
-        const { performStackSync } = await import('@eforge-build/engine/stacking/sync');
-        const report = await performStackSync(config, {
+        const response = await runStackSync({
+          db,
+          config,
           cwd: syncCwd,
-          dryRun,
-          excludedBranchPrefixes,
+          request,
         });
 
-        // Filter activeBuildSkips to only include running builds whose branches actually
-        // matched and were excluded from restack candidates. This prevents reporting
-        // unrelated active builds as stack sync skips.
-        const { excludedCandidates, ...reportForResponse } = report;
-        const filteredActiveBuildSkips = activeBuildSkips.filter((skip) =>
-          excludedCandidates.some(
-            (candidate) => candidate === skip.branch || candidate.startsWith(`${skip.branch}/`),
-          ),
-        );
-
-        sendJson(res, { ...reportForResponse, activeBuildSkips: filteredActiveBuildSkips });
+        sendJson(res, response);
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Stack sync failed');
       }
