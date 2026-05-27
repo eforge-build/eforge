@@ -29,6 +29,12 @@ const SKIP_DIRS = new Set([
   // Plan artifact directories and worktree scratch dirs are ephemeral.
   '__merge__',
   '__prd__',
+  // Generated/build output directories that should not be linted.
+  '.next',
+  'coverage',
+  '.turbo',
+  'out',
+  'build',
 ]);
 
 // File extensions considered TypeScript/JavaScript implementation or test files.

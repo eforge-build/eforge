@@ -2058,6 +2058,31 @@ export async function startServer(
     }
   }
 
+  // --- eforge:region monitor-route-dispatch ---
+  function handleCorsPreflightRoute(req: IncomingMessage, res: ServerResponse): boolean {
+    if (req.method !== 'OPTIONS' || !(req.url ?? '/').startsWith('/api/')) return false;
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
+    res.end(); return true;
+  }
+  function handleKeepAliveRoute(req: IncomingMessage, res: ServerResponse): boolean {
+    if (req.method !== 'POST' || (req.url ?? '/') !== API_ROUTES.keepAlive) return false;
+    if (keepAliveCallback) keepAliveCallback();
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ status: 'ok' })); return true;
+  }
+  function handleUnknownApiRoute(req: IncomingMessage, res: ServerResponse, pathname: string): boolean {
+    if (!pathname.startsWith('/api/')) return false;
+    sendJsonError(res, 404, `Unknown route: ${req.method} ${pathname}`); return true;
+  }
+  async function handleStaticFallbackRoute(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
+    if (pathname === '/console' || pathname === '/console/' || pathname.startsWith('/console/')) {
+      await serveStaticFile(req, res, pathname, activeConsoleUiDir, '/console');
+      return true;
+    }
+    await serveStaticFile(req, res, pathname, activeMonitorUiDir, '');
+    return true;
+  }
+  // --- eforge:endregion monitor-route-dispatch ---
   const server = createServer(async (req, res) => {
     const url = req.url ?? '/';
     // Pathname strips the query string for static route matching and file
@@ -2065,26 +2090,8 @@ export async function startServer(
     // already handles query params via URLSearchParams where needed).
     const pathname = url.split('?')[0];
 
-    // Handle CORS preflight for all POST endpoints
-    if (req.method === 'OPTIONS' && url.startsWith('/api/')) {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      });
-      res.end();
-      return;
-    }
-
-    if (req.method === 'POST' && url === API_ROUTES.keepAlive) {
-      if (keepAliveCallback) keepAliveCallback();
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      });
-      res.end(JSON.stringify({ status: 'ok' }));
-      return;
-    }
+    if (handleCorsPreflightRoute(req, res)) return;
+    if (handleKeepAliveRoute(req, res)) return;
 
     // --- Control-plane POST routes (daemon mode) ---
     if (req.method === 'POST' && url === API_ROUTES.enqueue) {
@@ -4781,15 +4788,8 @@ export async function startServer(
         : undefined;
 
       serveDiff(req, res, resolvedSessionId, planIdParam, fileParam);
-    } else if (pathname.startsWith('/api/')) {
-      // Unknown API route — return 404 rather than falling through to SPA static serving
-      sendJsonError(res, 404, `Unknown route: ${req.method} ${pathname}`);
-    } else if (pathname === '/console' || pathname === '/console/' || pathname.startsWith('/console/')) {
-      // Serve Eforge Console SPA (preview) from the console-ui dist root
-      await serveStaticFile(req, res, pathname, activeConsoleUiDir, '/console');
-    } else {
-      // Serve legacy monitor UI SPA
-      await serveStaticFile(req, res, pathname, activeMonitorUiDir, '');
+    } else if (!handleUnknownApiRoute(req, res, pathname)) {
+      await handleStaticFallbackRoute(req, res, pathname);
     }
   });
 
