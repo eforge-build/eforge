@@ -1,12 +1,17 @@
 // --- eforge:region plan-06-build-detail-base ---
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { ConsolePanel } from '@/components/console/console-panel';
 import type { LowerTab } from '@/components/console/console-panel';
 import { Timeline } from '@/components/timeline/timeline';
 import { PipelineSection } from './pipeline-section';
-import type { RunState } from '@/lib/run-state';
+import type { RunState, EforgeEvent } from '@/lib/run-state';
 import type { PlanInfo } from '@eforge-build/client/browser';
+// --- eforge:region plan-07-build-detail-tabs ---
+import { FileHeatmap } from '@/components/heatmap';
+import { DependencyGraph } from '@/components/graph';
+import { PlanTab } from '@/components/console/plan-tab';
+// --- eforge:endregion plan-07-build-detail-tabs ---
 
 // PlansResponse is PlanInfo[]
 type PlansResponse = PlanInfo[];
@@ -14,6 +19,8 @@ type PlansResponse = PlanInfo[];
 interface BottomTabPanelProps {
   runState: RunState;
   plans: PlansResponse | null;
+  /** The session/run ID — passed to FileHeatmap for diff loading. */
+  detailId: string;
 }
 
 const DEFAULT_LAYOUT = [65, 35];
@@ -23,7 +30,7 @@ function hasOrchestrationEdges(runState: RunState): boolean {
   return runState.earlyOrchestration.plans.some((p) => p.dependsOn.length > 0);
 }
 
-export function BottomTabPanel({ runState, plans }: BottomTabPanelProps) {
+export function BottomTabPanel({ runState, plans, detailId }: BottomTabPanelProps) {
   const [lowerTab, setLowerTab] = useState<LowerTab>('log');
   const [showVerbose, setShowVerbose] = useState(false);
   const [consoleCollapsed, setConsoleCollapsed] = useState(false);
@@ -67,6 +74,25 @@ export function BottomTabPanel({ runState, plans }: BottomTabPanelProps) {
   const graphEnabled = hasOrchestrationEdges(runState);
   const planEnabled = runState.earlyOrchestration !== null;
 
+  // --- eforge:region plan-07-build-detail-tabs ---
+  // Merged plan IDs: plans whose mergeCommit has been recorded
+  const mergedPlanIds = useMemo(
+    () => new Set(Object.keys(runState.mergeCommits)),
+    [runState.mergeCommits],
+  );
+
+  // Find most recent planning:pipeline event for PlanTab
+  const pipelineEvent = useMemo(() => {
+    for (let i = runState.events.length - 1; i >= 0; i--) {
+      const e = runState.events[i].event;
+      if (e.type === 'planning:pipeline') {
+        return e as EforgeEvent & { type: 'planning:pipeline' };
+      }
+    }
+    return null;
+  }, [runState.events]);
+  // --- eforge:endregion plan-07-build-detail-tabs ---
+
   const pipelineDefaultSize = consoleCollapsed ? 92 : DEFAULT_LAYOUT[0];
   const consoleDefaultSize = consoleCollapsed ? 8 : DEFAULT_LAYOUT[1];
 
@@ -80,15 +106,36 @@ export function BottomTabPanel({ runState, plans }: BottomTabPanelProps) {
         />
       );
     }
+    // --- eforge:region plan-07-build-detail-tabs ---
     if (lowerTab === 'changes') {
-      return <div className="text-xs text-text-dim italic">Loading...</div>;
+      if (runState.fileChanges.size === 0) {
+        return (
+          <div className="flex items-center justify-center h-full text-xs text-text-dim italic">
+            No file changes recorded yet.
+          </div>
+        );
+      }
+      return <FileHeatmap runState={runState} sessionId={detailId} />;
     }
     if (lowerTab === 'graph') {
-      return <div className="text-xs text-text-dim italic">Graph view coming soon.</div>;
+      return (
+        <DependencyGraph
+          orchestration={runState.earlyOrchestration}
+          planStatuses={runState.planStatuses}
+          mergedPlanIds={mergedPlanIds}
+        />
+      );
     }
     if (lowerTab === 'plan') {
-      return <div className="text-xs text-text-dim italic">Plan view coming soon.</div>;
+      return (
+        <PlanTab
+          orchestration={runState.earlyOrchestration}
+          pipelineEvent={pipelineEvent}
+          profile={runState.profile}
+        />
+      );
     }
+    // --- eforge:endregion plan-07-build-detail-tabs ---
     return null;
   })();
 

@@ -156,7 +156,7 @@ describe('NowDashboard - populated state', () => {
       activeSessionIds: ['sess-X'],
       subscriptionCount: 1,
     };
-    render(<NowDashboard projectState={state} activeSessions={activeSessions} />);
+    render(<NowDashboard projectState={state} activeSessions={activeSessions} onNavigate={vi.fn()} />);
     expect(screen.getByText('Inspect →')).toBeDefined();
   });
 });
