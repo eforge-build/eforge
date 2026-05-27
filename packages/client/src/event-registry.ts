@@ -1815,6 +1815,12 @@ const eventRegistry = {
     persist: true,
     summary: (e) => `Stack sync deferred: ${e.reason}`,
   },
+
+  'stack:sync:skipped': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Stack sync skipped: ${e.reason}`,
+  },
   // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 } satisfies EventRegistryShape;
 

@@ -291,3 +291,129 @@ describe('NowDashboard - deferred controls', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stack sync status card
+// ---------------------------------------------------------------------------
+
+function makeStackSyncStatus(
+  overrides: Partial<import('@eforge-build/client/browser').StackSyncStatusResponse> = {},
+): import('@eforge-build/client/browser').StackSyncStatusResponse {
+  return {
+    last: {
+      id: 'sync-1',
+      trigger: 'manual',
+      startedAt: new Date(Date.now() - 5000).toISOString(),
+      completedAt: new Date(Date.now() - 4000).toISOString(),
+      outcome: 'complete',
+      dryRun: false,
+      restackCandidates: ['feat/a'],
+    },
+    ...overrides,
+  } as unknown as import('@eforge-build/client/browser').StackSyncStatusResponse;
+}
+
+function stateWithStack(
+  syncOverrides?: Partial<import('@eforge-build/client/browser').StackSyncStatusResponse>,
+): import('@/lib/project-state').ConsoleProjectState {
+  return connectedState({
+    stackLayers: [
+      {
+        prdId: 'prd-1',
+        stackId: 'stack-a',
+        provider: 'git-spice',
+        branch: 'feat/x',
+        baseBranch: 'main',
+        status: 'building',
+        recordedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+    stackSync: syncOverrides !== undefined ? makeStackSyncStatus(syncOverrides) : null,
+  });
+}
+
+describe('NowDashboard - stack sync card', () => {
+  it('renders "Stack sync" heading when stack layers exist', () => {
+    const state = stateWithStack();
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    expect(screen.getByText('Stack sync')).toBeDefined();
+  });
+
+  it('renders "Sync now" and "Dry run" buttons when stack layers exist', () => {
+    const state = stateWithStack();
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    expect(screen.getByRole('button', { name: /sync.*now/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /dry run/i })).toBeDefined();
+  });
+
+  it('renders "Retry" button when last outcome is deferred', () => {
+    const state = stateWithStack({
+      last: {
+        id: 'sync-deferred',
+        trigger: 'after-build',
+        startedAt: new Date(Date.now() - 3000).toISOString(),
+        completedAt: new Date(Date.now() - 2000).toISOString(),
+        outcome: 'deferred',
+        dryRun: false,
+        restackCandidates: [],
+        reason: 'active build in progress',
+      },
+    } as unknown as Partial<import('@eforge-build/client/browser').StackSyncStatusResponse>);
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    expect(screen.getByRole('button', { name: /retry/i })).toBeDefined();
+  });
+
+  it('does not render "Retry" button when last outcome is complete', () => {
+    const state = stateWithStack();
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+  });
+
+  it('renders last outcome badge when sync status is present', () => {
+    const state = stateWithStack();
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    // Badge renders the outcome text
+    const badges = screen.getAllByText(/complete/i);
+    expect(badges.length).toBeGreaterThan(0);
+  });
+
+  it('renders failure reason when last outcome is failed', () => {
+    const state = stateWithStack({
+      last: {
+        id: 'sync-failed',
+        trigger: 'manual',
+        startedAt: new Date(Date.now() - 3000).toISOString(),
+        completedAt: new Date(Date.now() - 2000).toISOString(),
+        outcome: 'failed',
+        dryRun: false,
+        restackCandidates: [],
+        reason: 'provider command failed',
+        error: 'git exited with code 1',
+      },
+    } as unknown as Partial<import('@eforge-build/client/browser').StackSyncStatusResponse>);
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    const text = screen.getByText(/provider command failed/i);
+    expect(text).toBeDefined();
+  });
+
+  it('does not render stack sync card when there are no stack layers', () => {
+    const state = connectedState({ stackLayers: [], stackSync: null });
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    expect(screen.queryByText('Stack sync')).toBeNull();
+  });
+});

@@ -473,7 +473,7 @@ export interface StackSyncRequest {
    */
   dryRun?: boolean;
   /** The trigger that initiated this sync (propagated to the durable status record). */
-  trigger?: 'manual' | 'after-build' | 'scheduled';
+  trigger?: 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
   /**
    * How to handle active-build overlap in wet mode.
    * 'skip' (default) — return 'skipped' outcome when excluded candidates exist.
@@ -514,6 +514,10 @@ export interface StackSyncStatusWire {
   fastForward?: boolean;
   /** Artifact branches eligible for restack after exclusion filtering. */
   restackCandidates: string[];
+  /** Branches and worktrees skipped because active builds are using them (present on terminal records). */
+  activeBuildSkips?: StackSyncActiveBuildSkipWire[];
+  /** Provider commands that were executed or would be executed in dry-run mode (present on terminal records). */
+  providerCommands?: StackSyncProviderCommandWire[];
 }
 
 /** Response for GET /api/stack/sync/status */
@@ -551,7 +555,7 @@ export interface StackSyncResponse {
   /** Unique sync operation ID (present when routed through the daemon service). */
   syncId?: string;
   /** The trigger that initiated this sync (present when supplied in the request). */
-  trigger?: 'manual' | 'after-build' | 'scheduled';
+  trigger?: 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
   /** Active-build policy used (present when supplied in the request). */
   activeBuildPolicy?: 'skip' | 'defer';
   /** ISO timestamp when the sync started (present when routed through the daemon service). */

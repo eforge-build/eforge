@@ -2485,7 +2485,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_stack_sync",
     label: "eforge stack sync",
     description:
-      "Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them.",
+      "Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. When active builds are running, the sync may be deferred — check the outcome field in the response and retry when active builds complete, or use activeBuildPolicy: 'defer' to get a retryable deferred result instead of skipping.",
     parameters: Type.Object({
       dryRun: Type.Optional(
         Type.Boolean({
@@ -2493,10 +2493,21 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             "When true, determine what sync commands would run but do not execute them. Default: false.",
         }),
       ),
+      activeBuildPolicy: Type.Optional(
+        Type.Union([Type.Literal("skip"), Type.Literal("defer")], {
+          description:
+            "How to handle concurrent active builds. 'skip' returns a skipped outcome immediately (default). 'defer' returns a deferred outcome that can be retried when active builds complete.",
+        }),
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const dryRun = params.dryRun ?? false;
-      const result = await apiStackSyncIfRunning({ cwd: ctx.cwd, body: { dryRun } });
+      const body: { dryRun: boolean; trigger: 'manual'; activeBuildPolicy?: 'skip' | 'defer' } = {
+        dryRun,
+        trigger: 'manual',
+      };
+      if (params.activeBuildPolicy !== undefined) body.activeBuildPolicy = params.activeBuildPolicy;
+      const result = await apiStackSyncIfRunning({ cwd: ctx.cwd, body });
       if (result === null) {
         throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
       }

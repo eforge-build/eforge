@@ -4651,8 +4651,8 @@ export async function startServer(
         return;
       }
       const rawTrigger = rawBodyObj.trigger;
-      if (rawTrigger !== undefined && rawTrigger !== 'manual' && rawTrigger !== 'after-build' && rawTrigger !== 'scheduled') {
-        sendJsonError(res, 400, 'trigger must be "manual", "after-build", or "scheduled" when present');
+      if (rawTrigger !== undefined && rawTrigger !== 'manual' && rawTrigger !== 'after-build' && rawTrigger !== 'scheduled' && rawTrigger !== 'retry-deferred') {
+        sendJsonError(res, 400, 'trigger must be "manual", "after-build", "scheduled", or "retry-deferred" when present');
         return;
       }
       const rawActiveBuildPolicy = rawBodyObj.activeBuildPolicy;
@@ -4680,7 +4680,7 @@ export async function startServer(
 
         const request = {
           dryRun: rawDryRun === true,
-          ...(rawTrigger !== undefined && { trigger: rawTrigger as 'manual' | 'after-build' | 'scheduled' }),
+          ...(rawTrigger !== undefined && { trigger: rawTrigger as 'manual' | 'after-build' | 'scheduled' | 'retry-deferred' }),
           ...(rawActiveBuildPolicy !== undefined && { activeBuildPolicy: rawActiveBuildPolicy as 'skip' | 'defer' }),
         };
 

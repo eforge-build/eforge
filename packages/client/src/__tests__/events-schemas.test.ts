@@ -4063,6 +4063,7 @@ describe('stack sync lifecycle event schema coverage', () => {
     expect(persistedTypes.has('stack:sync:complete')).toBe(true);
     expect(persistedTypes.has('stack:sync:failed')).toBe(true);
     expect(persistedTypes.has('stack:sync:deferred')).toBe(true);
+    expect(persistedTypes.has('stack:sync:skipped')).toBe(true);
   });
 
   it('isPersistedDaemonEventType returns true for stack:sync:* events', () => {
@@ -4070,6 +4071,7 @@ describe('stack sync lifecycle event schema coverage', () => {
     expect(isPersistedDaemonEventType('stack:sync:complete')).toBe(true);
     expect(isPersistedDaemonEventType('stack:sync:failed')).toBe(true);
     expect(isPersistedDaemonEventType('stack:sync:deferred')).toBe(true);
+    expect(isPersistedDaemonEventType('stack:sync:skipped')).toBe(true);
   });
 });
 // --- eforge:endregion plan-01-core-daemon-stack-sync ---

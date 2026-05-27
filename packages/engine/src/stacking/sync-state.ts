@@ -22,7 +22,7 @@ import type { StackSyncOutcome } from './sync.js';
 // ---------------------------------------------------------------------------
 
 /** Trigger that initiated the stack sync. */
-export type StackSyncTrigger = 'manual' | 'after-build' | 'scheduled';
+export type StackSyncTrigger = 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
 
 /** Policy for handling active-build overlap during wet sync. */
 export type StackSyncActiveBuildPolicy = 'skip' | 'defer';
@@ -58,6 +58,10 @@ export interface StackSyncStatus {
   fastForward?: boolean;
   /** Artifact branches eligible for restack after exclusion filtering. */
   restackCandidates: string[];
+  /** Branches and worktrees skipped because active builds are using them (present on terminal records). */
+  activeBuildSkips?: Array<{ branch: string; worktree?: string; reason: string }>;
+  /** Provider commands that were executed or would be executed in dry-run mode (present on terminal records). */
+  providerCommands?: Array<{ command: string; args: string[]; dryRun: boolean; ran: boolean; stdout?: string; stderr?: string; exitCode?: number }>;
 }
 
 /** The shape of the sync-status.json file. */

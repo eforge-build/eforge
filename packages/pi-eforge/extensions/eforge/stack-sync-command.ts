@@ -27,7 +27,9 @@ export function formatStackSyncReport(report: StackSyncResponse): string {
         ? '⊘ skipped'
         : report.outcome === 'conflict'
           ? '⚠ conflict'
-          : '✗ failed';
+          : report.outcome === 'deferred'
+            ? '⏸ deferred'
+            : '✗ failed';
 
   const dryRunLabel = report.dryRun ? ' (dry-run)' : '';
   lines.push(`## Stack Sync${dryRunLabel}: ${outcomeLabel}`);
@@ -35,6 +37,11 @@ export function formatStackSyncReport(report: StackSyncResponse): string {
 
   if (report.reason) {
     lines.push(`**Reason:** ${report.reason}`);
+    lines.push('');
+  }
+
+  if (report.outcome === 'deferred') {
+    lines.push('*Stack sync was deferred because active builds are running. Retry when builds complete using the `retry-deferred` trigger, or use `activeBuildPolicy: "defer"` to get a retryable deferred result rather than skipping.*');
     lines.push('');
   }
 
@@ -136,7 +143,7 @@ export async function handleStackSyncCommand(
 
   let report: StackSyncResponse;
   try {
-    const result = await apiStackSyncIfRunning({ cwd: ctx.cwd, body: { dryRun } });
+    const result = await apiStackSyncIfRunning({ cwd: ctx.cwd, body: { dryRun, trigger: 'manual' } });
     if (result === null) {
       await showInfoPanel(
         ctx,

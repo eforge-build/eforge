@@ -451,3 +451,179 @@ describe('consoleProjectReducer – EVENT_RECEIVED (daemon:heartbeat)', () => {
     expect(next.latestHeartbeat?.at).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// SNAPSHOT_RECEIVED – stack sync seeding
+// ---------------------------------------------------------------------------
+
+describe('consoleProjectReducer – SNAPSHOT_RECEIVED (stackSync)', () => {
+  it('seeds stackSync from snapshot stackSyncStatus', () => {
+    const stackSyncStatus = {
+      last: {
+        id: 'sync-1',
+        trigger: 'after-build' as const,
+        startedAt: '2024-01-01T00:00:00Z',
+        completedAt: '2024-01-01T00:00:01Z',
+        outcome: 'complete' as const,
+        dryRun: false,
+        restackCandidates: ['feat/a', 'feat/b'],
+      },
+    };
+    const snapshot = makeSnapshot({
+      stackSyncStatus: stackSyncStatus as unknown as DaemonStreamSnapshot['stackSyncStatus'],
+    });
+    const next = consoleProjectReducer(initialConsoleProjectState, {
+      type: 'SNAPSHOT_RECEIVED',
+      snapshot,
+      receivedAt: 1000,
+    });
+    expect(next.stackSync).not.toBeNull();
+    expect(next.stackSync?.last?.id).toBe('sync-1');
+    expect(next.stackSync?.last?.outcome).toBe('complete');
+  });
+
+  it('sets stackSync to null when snapshot has no stackSyncStatus', () => {
+    const snapshot = makeSnapshot();
+    const next = consoleProjectReducer(initialConsoleProjectState, {
+      type: 'SNAPSHOT_RECEIVED',
+      snapshot,
+      receivedAt: 1000,
+    });
+    expect(next.stackSync).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EVENT_RECEIVED – stack sync event projection
+// ---------------------------------------------------------------------------
+
+describe('consoleProjectReducer – EVENT_RECEIVED (stack:sync:complete)', () => {
+  it('updates stackSync.last with complete outcome', () => {
+    const event = {
+      type: 'stack:sync:complete',
+      syncId: 'sync-complete-1',
+      trigger: 'manual' as const,
+      dryRun: false,
+      restackCandidates: ['feat/x'],
+      localTrunkSha: 'abc123',
+      originTrunkSha: 'abc123',
+      fastForward: true,
+    } as unknown as EforgeEvent;
+    const next = consoleProjectReducer(initialConsoleProjectState, {
+      type: 'EVENT_RECEIVED',
+      event,
+      eventId: 'ev-sync-1',
+      receivedAt: 2000,
+    });
+    expect(next.stackSync?.last?.id).toBe('sync-complete-1');
+    expect(next.stackSync?.last?.outcome).toBe('complete');
+    expect(next.stackSync?.last?.trigger).toBe('manual');
+    expect(next.stackSync?.last?.dryRun).toBe(false);
+    expect(next.stackSync?.last?.restackCandidates).toEqual(['feat/x']);
+    expect(next.stackSync?.current).toBeUndefined();
+  });
+});
+
+describe('consoleProjectReducer – EVENT_RECEIVED (stack:sync:failed)', () => {
+  it('updates stackSync.last with failed outcome', () => {
+    const event = {
+      type: 'stack:sync:failed',
+      syncId: 'sync-failed-1',
+      trigger: 'after-build' as const,
+      dryRun: false,
+      outcome: 'failed' as const,
+      reason: 'provider command failed',
+      error: 'git command exited with code 1',
+    } as unknown as EforgeEvent;
+    const next = consoleProjectReducer(initialConsoleProjectState, {
+      type: 'EVENT_RECEIVED',
+      event,
+      eventId: 'ev-sync-2',
+      receivedAt: 3000,
+    });
+    expect(next.stackSync?.last?.id).toBe('sync-failed-1');
+    expect(next.stackSync?.last?.outcome).toBe('failed');
+    expect(next.stackSync?.last?.reason).toBe('provider command failed');
+    expect(next.stackSync?.last?.error).toBe('git command exited with code 1');
+    expect(next.stackSync?.current).toBeUndefined();
+  });
+
+  it('updates stackSync.last with conflict outcome', () => {
+    const event = {
+      type: 'stack:sync:failed',
+      syncId: 'sync-conflict-1',
+      trigger: 'manual' as const,
+      dryRun: false,
+      outcome: 'conflict' as const,
+      reason: 'merge conflict on feat/a',
+    } as unknown as EforgeEvent;
+    const next = consoleProjectReducer(initialConsoleProjectState, {
+      type: 'EVENT_RECEIVED',
+      event,
+      eventId: 'ev-sync-3',
+      receivedAt: 4000,
+    });
+    expect(next.stackSync?.last?.outcome).toBe('conflict');
+    expect(next.stackSync?.last?.reason).toBe('merge conflict on feat/a');
+  });
+});
+
+describe('consoleProjectReducer – EVENT_RECEIVED (stack:sync:deferred)', () => {
+  it('updates stackSync.last with deferred outcome', () => {
+    const event = {
+      type: 'stack:sync:deferred',
+      syncId: 'sync-deferred-1',
+      trigger: 'after-build' as const,
+      reason: 'active build in progress',
+    } as unknown as EforgeEvent;
+    const next = consoleProjectReducer(initialConsoleProjectState, {
+      type: 'EVENT_RECEIVED',
+      event,
+      eventId: 'ev-sync-4',
+      receivedAt: 5000,
+    });
+    expect(next.stackSync?.last?.id).toBe('sync-deferred-1');
+    expect(next.stackSync?.last?.outcome).toBe('deferred');
+    expect(next.stackSync?.last?.reason).toBe('active build in progress');
+    expect(next.stackSync?.last?.dryRun).toBe(false);
+    expect(next.stackSync?.current).toBeUndefined();
+  });
+});
+
+describe('consoleProjectReducer – EVENT_RECEIVED (stack:sync:skipped)', () => {
+  it('updates stackSync.last with skipped outcome and clears current', () => {
+    const startEvent = {
+      type: 'stack:sync:start',
+      syncId: 'sync-skipped-1',
+      trigger: 'manual' as const,
+      dryRun: false,
+      timestamp: new Date(4000).toISOString(),
+    } as unknown as EforgeEvent;
+    const stateWithCurrent = consoleProjectReducer(initialConsoleProjectState, {
+      type: 'EVENT_RECEIVED',
+      event: startEvent,
+      eventId: 'ev-sync-start',
+      receivedAt: 4000,
+    });
+    const event = {
+      type: 'stack:sync:skipped',
+      syncId: 'sync-skipped-1',
+      trigger: 'manual' as const,
+      dryRun: false,
+      reason: 'no candidates to restack after active-build exclusions',
+      restackCandidates: [],
+      timestamp: new Date(5000).toISOString(),
+    } as unknown as EforgeEvent;
+    const next = consoleProjectReducer(stateWithCurrent, {
+      type: 'EVENT_RECEIVED',
+      event,
+      eventId: 'ev-sync-skipped',
+      receivedAt: 5000,
+    });
+    expect(next.stackSync?.last?.id).toBe('sync-skipped-1');
+    expect(next.stackSync?.last?.outcome).toBe('skipped');
+    expect(next.stackSync?.last?.reason).toBe('no candidates to restack after active-build exclusions');
+    expect(next.stackSync?.last?.dryRun).toBe(false);
+    expect(next.stackSync?.current).toBeUndefined();
+  });
+});

@@ -37,6 +37,7 @@ export interface ConsoleProjectState {
   latestHeartbeat: ProjectableState['latestHeartbeat'];
   recentActivity: ConsoleActivityEntry[];
   stackLayers: StackLayerWire[];
+  stackSync: DaemonStreamSnapshot['stackSyncStatus'] | null;
   connectionStatus: ConnectionStatus;
   lastSnapshotAt: number | null;
   lastEventAt: number | null;
@@ -52,6 +53,7 @@ export const initialConsoleProjectState: ConsoleProjectState = {
   latestHeartbeat: null,
   recentActivity: [],
   stackLayers: [],
+  stackSync: null,
   connectionStatus: 'connecting',
   lastSnapshotAt: null,
   lastEventAt: null,
@@ -146,6 +148,7 @@ export function consoleProjectReducer(
           },
         },
         stackLayers: snapshot.stackLayers ?? state.stackLayers,
+        stackSync: snapshot.stackSyncStatus ?? null,
         recentActivity,
         connectionStatus: 'connected',
         lastSnapshotAt: receivedAt,
@@ -189,6 +192,142 @@ export function consoleProjectReducer(
         }
       }
 
+      // Update stackSync from stack sync events (no project() functions in registry)
+      let updatedStackSync = state.stackSync;
+      if (event.type === 'stack:sync:start') {
+        const e = event as {
+          type: 'stack:sync:start';
+          syncId: string;
+          trigger?: 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
+          dryRun: boolean;
+          timestamp: string;
+        };
+        updatedStackSync = {
+          ...state.stackSync,
+          current: {
+            id: e.syncId,
+            trigger: e.trigger,
+            startedAt: e.timestamp,
+            dryRun: e.dryRun,
+            restackCandidates: [],
+          },
+        };
+      } else if (event.type === 'stack:sync:complete') {
+        const e = event as {
+          type: 'stack:sync:complete';
+          syncId: string;
+          trigger?: 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
+          dryRun: boolean;
+          restackCandidates: string[];
+          localTrunkSha?: string;
+          originTrunkSha?: string;
+          fastForward?: boolean;
+          reason?: string;
+          timestamp: string;
+        };
+        const startedAt = state.stackSync?.current?.id === e.syncId
+          ? (state.stackSync.current.startedAt ?? e.timestamp)
+          : e.timestamp;
+        updatedStackSync = {
+          ...state.stackSync,
+          last: {
+            id: e.syncId,
+            trigger: e.trigger,
+            startedAt,
+            completedAt: e.timestamp,
+            outcome: 'complete',
+            dryRun: e.dryRun,
+            restackCandidates: e.restackCandidates,
+            localTrunkSha: e.localTrunkSha,
+            originTrunkSha: e.originTrunkSha,
+            fastForward: e.fastForward,
+            reason: e.reason,
+          },
+          current: undefined,
+        };
+      } else if (event.type === 'stack:sync:failed') {
+        const e = event as {
+          type: 'stack:sync:failed';
+          syncId: string;
+          trigger?: 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
+          dryRun: boolean;
+          outcome: 'failed' | 'conflict';
+          reason: string;
+          error?: string;
+          timestamp: string;
+        };
+        const startedAt = state.stackSync?.current?.id === e.syncId
+          ? (state.stackSync.current.startedAt ?? e.timestamp)
+          : e.timestamp;
+        updatedStackSync = {
+          ...state.stackSync,
+          last: {
+            id: e.syncId,
+            trigger: e.trigger,
+            startedAt,
+            completedAt: e.timestamp,
+            outcome: e.outcome,
+            dryRun: e.dryRun,
+            restackCandidates: [],
+            reason: e.reason,
+            error: e.error,
+          },
+          current: undefined,
+        };
+      } else if (event.type === 'stack:sync:deferred') {
+        const e = event as {
+          type: 'stack:sync:deferred';
+          syncId: string;
+          trigger?: 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
+          reason: string;
+          timestamp: string;
+        };
+        const startedAt = state.stackSync?.current?.id === e.syncId
+          ? (state.stackSync.current.startedAt ?? e.timestamp)
+          : e.timestamp;
+        updatedStackSync = {
+          ...state.stackSync,
+          last: {
+            id: e.syncId,
+            trigger: e.trigger,
+            startedAt,
+            completedAt: e.timestamp,
+            outcome: 'deferred',
+            dryRun: false,
+            restackCandidates: [],
+            reason: e.reason,
+          },
+          current: undefined,
+        };
+      } else if (event.type === 'stack:sync:skipped') {
+        const e = event as {
+          type: 'stack:sync:skipped';
+          syncId: string;
+          trigger?: 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
+          dryRun: boolean;
+          reason: string;
+          restackCandidates: string[];
+          timestamp: string;
+        };
+        const startedAt = state.stackSync?.current?.id === e.syncId
+          ? (state.stackSync.current.startedAt ?? e.timestamp)
+          : e.timestamp;
+        updatedStackSync = {
+          ...state.stackSync,
+          last: {
+            id: e.syncId,
+            trigger: e.trigger,
+            startedAt,
+            completedAt: e.timestamp,
+            outcome: 'skipped',
+            dryRun: e.dryRun,
+            restackCandidates: e.restackCandidates,
+            reason: e.reason,
+          },
+          current: undefined,
+        };
+      }
+
       if (!isHeartbeat) {
         // Append to activity ring buffer
         // Guard against empty eventId (SSE frames where id is absent): generate a
@@ -203,6 +342,7 @@ export function consoleProjectReducer(
         return {
           ...state,
           ...delta,
+          stackSync: updatedStackSync,
           recentActivity,
           lastEventAt: receivedAt,
           latestHeartbeat: updatedHeartbeat,
@@ -210,10 +350,11 @@ export function consoleProjectReducer(
       }
 
       // Heartbeat: only apply delta + heartbeat update, no activity append
-      if (!delta && updatedHeartbeat === state.latestHeartbeat) return state;
+      if (!delta && updatedHeartbeat === state.latestHeartbeat && updatedStackSync === state.stackSync) return state;
       return {
         ...state,
         ...delta,
+        stackSync: updatedStackSync,
         latestHeartbeat: updatedHeartbeat,
         lastEventAt: receivedAt,
       };

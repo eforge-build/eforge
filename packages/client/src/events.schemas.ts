@@ -2208,6 +2208,7 @@ const EforgeEventVariantsSchema = Type.Union([
       Type.Literal('manual'),
       Type.Literal('after-build'),
       Type.Literal('scheduled'),
+      Type.Literal('retry-deferred'),
     ])),
     dryRun: Type.Boolean(),
   }),
@@ -2218,6 +2219,7 @@ const EforgeEventVariantsSchema = Type.Union([
       Type.Literal('manual'),
       Type.Literal('after-build'),
       Type.Literal('scheduled'),
+      Type.Literal('retry-deferred'),
     ])),
     dryRun: Type.Boolean(),
     restackCandidates: Type.Array(Type.String()),
@@ -2234,6 +2236,7 @@ const EforgeEventVariantsSchema = Type.Union([
       Type.Literal('manual'),
       Type.Literal('after-build'),
       Type.Literal('scheduled'),
+      Type.Literal('retry-deferred'),
     ])),
     dryRun: Type.Boolean(),
     outcome: Type.Union([Type.Literal('failed'), Type.Literal('conflict')]),
@@ -2247,8 +2250,23 @@ const EforgeEventVariantsSchema = Type.Union([
       Type.Literal('manual'),
       Type.Literal('after-build'),
       Type.Literal('scheduled'),
+      Type.Literal('retry-deferred'),
     ])),
     reason: Type.String(),
+    excludedCandidates: Type.Array(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('stack:sync:skipped'),
+    syncId: Type.String(),
+    trigger: Type.Optional(Type.Union([
+      Type.Literal('manual'),
+      Type.Literal('after-build'),
+      Type.Literal('scheduled'),
+      Type.Literal('retry-deferred'),
+    ])),
+    dryRun: Type.Boolean(),
+    reason: Type.String(),
+    restackCandidates: Type.Array(Type.String()),
     excludedCandidates: Type.Array(Type.String()),
   }),
   // --- eforge:endregion plan-01-core-daemon-stack-sync ---
@@ -2329,7 +2347,7 @@ export type StackArtifactRef = Static<typeof StackArtifactRefSchema>;
 export type StackLayerWire = Static<typeof StackLayerWireSchema>;
 // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 // --- eforge:region plan-01-core-daemon-stack-sync ---
-export type StackSyncTriggerWire = 'manual' | 'after-build' | 'scheduled';
+export type StackSyncTriggerWire = 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
 export type StackSyncActiveBuildPolicyWire = 'skip' | 'defer';
 export type StackSyncOutcomeWire = 'skipped' | 'complete' | 'failed' | 'conflict' | 'deferred';
 /** Wire shape of a stack sync status record (matches StackSyncStatus from engine). */
@@ -2339,7 +2357,8 @@ export interface StackSyncStatusWire {
   activeBuildPolicy?: StackSyncActiveBuildPolicyWire;
   startedAt: string;
   completedAt?: string;
-  outcome: StackSyncOutcomeWire;
+  /** Overall outcome. Absent for in-progress (current) records that have not yet completed. */
+  outcome?: StackSyncOutcomeWire;
   reason?: string;
   error?: string;
   dryRun: boolean;
@@ -2347,6 +2366,18 @@ export interface StackSyncStatusWire {
   originTrunkSha?: string;
   fastForward?: boolean;
   restackCandidates: string[];
+  /** Branches and worktrees skipped because active builds are using them (present on terminal records). */
+  activeBuildSkips?: Array<{ branch: string; worktree?: string; reason: string }>;
+  /** Provider commands that were executed or would be executed in dry-run mode (present on terminal records). */
+  providerCommands?: Array<{
+    command: string;
+    args: string[];
+    dryRun: boolean;
+    ran: boolean;
+    stdout?: string;
+    stderr?: string;
+    exitCode?: number;
+  }>;
 }
 // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
@@ -2495,6 +2526,7 @@ export const DaemonStreamSnapshotSchema = Type.Object({
         Type.Literal('manual'),
         Type.Literal('after-build'),
         Type.Literal('scheduled'),
+        Type.Literal('retry-deferred'),
       ])),
       activeBuildPolicy: Type.Optional(Type.Union([
         Type.Literal('skip'),
@@ -2516,6 +2548,20 @@ export const DaemonStreamSnapshotSchema = Type.Object({
       originTrunkSha: Type.Optional(Type.String()),
       fastForward: Type.Optional(Type.Boolean()),
       restackCandidates: Type.Array(Type.String()),
+      activeBuildSkips: Type.Optional(Type.Array(Type.Object({
+        branch: Type.String(),
+        worktree: Type.Optional(Type.String()),
+        reason: Type.String(),
+      }))),
+      providerCommands: Type.Optional(Type.Array(Type.Object({
+        command: Type.String(),
+        args: Type.Array(Type.String()),
+        dryRun: Type.Boolean(),
+        ran: Type.Boolean(),
+        stdout: Type.Optional(Type.String()),
+        stderr: Type.Optional(Type.String()),
+        exitCode: Type.Optional(Type.Number()),
+      }))),
     })),
     current: Type.Optional(Type.Object({
       id: Type.String(),
@@ -2523,6 +2569,7 @@ export const DaemonStreamSnapshotSchema = Type.Object({
         Type.Literal('manual'),
         Type.Literal('after-build'),
         Type.Literal('scheduled'),
+        Type.Literal('retry-deferred'),
       ])),
       activeBuildPolicy: Type.Optional(Type.Union([
         Type.Literal('skip'),
@@ -2530,13 +2577,13 @@ export const DaemonStreamSnapshotSchema = Type.Object({
       ])),
       startedAt: Type.String(),
       completedAt: Type.Optional(Type.String()),
-      outcome: Type.Union([
+      outcome: Type.Optional(Type.Union([
         Type.Literal('skipped'),
         Type.Literal('complete'),
         Type.Literal('failed'),
         Type.Literal('conflict'),
         Type.Literal('deferred'),
-      ]),
+      ])),
       reason: Type.Optional(Type.String()),
       error: Type.Optional(Type.String()),
       dryRun: Type.Boolean(),
@@ -2544,6 +2591,20 @@ export const DaemonStreamSnapshotSchema = Type.Object({
       originTrunkSha: Type.Optional(Type.String()),
       fastForward: Type.Optional(Type.Boolean()),
       restackCandidates: Type.Array(Type.String()),
+      activeBuildSkips: Type.Optional(Type.Array(Type.Object({
+        branch: Type.String(),
+        worktree: Type.Optional(Type.String()),
+        reason: Type.String(),
+      }))),
+      providerCommands: Type.Optional(Type.Array(Type.Object({
+        command: Type.String(),
+        args: Type.Array(Type.String()),
+        dryRun: Type.Boolean(),
+        ran: Type.Boolean(),
+        stdout: Type.Optional(Type.String()),
+        stderr: Type.Optional(Type.String()),
+        exitCode: Type.Optional(Type.Number()),
+      }))),
     })),
   })),
   // --- eforge:endregion plan-01-core-daemon-stack-sync ---

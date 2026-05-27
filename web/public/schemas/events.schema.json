@@ -10131,6 +10131,10 @@
                 {
                   "const": "scheduled",
                   "type": "string"
+                },
+                {
+                  "const": "retry-deferred",
+                  "type": "string"
                 }
               ]
             },
@@ -10168,6 +10172,10 @@
                 },
                 {
                   "const": "scheduled",
+                  "type": "string"
+                },
+                {
+                  "const": "retry-deferred",
                   "type": "string"
                 }
               ]
@@ -10231,6 +10239,10 @@
                 {
                   "const": "scheduled",
                   "type": "string"
+                },
+                {
+                  "const": "retry-deferred",
+                  "type": "string"
                 }
               ]
             },
@@ -10285,6 +10297,10 @@
                 },
                 {
                   "const": "scheduled",
+                  "type": "string"
+                },
+                {
+                  "const": "retry-deferred",
                   "type": "string"
                 }
               ]

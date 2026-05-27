@@ -8,6 +8,7 @@ import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
 import { QueueSnapshotCard } from '@/components/now/queue-snapshot-card';
 import { RecentRunsCard } from '@/components/now/recent-runs-card';
 import { StackSummaryCard } from '@/components/now/stack-summary-card';
+import { StackSyncStatusCard } from '@/components/now/stack-sync-status-card';
 import { RecentActivityCard } from '@/components/now/recent-activity-card';
 
 interface NowDashboardProps {
@@ -47,6 +48,9 @@ export function NowDashboard({ projectState, activeSessions }: NowDashboardProps
 
       {/* Stack summary (only when stack layers exist) */}
       {model.stack && <StackSummaryCard summary={model.stack} />}
+
+      {/* Stack sync status and controls (when stacking is configured) */}
+      {model.stack && <StackSyncStatusCard sync={model.stackSync} />}
 
       {/* Recent activity preview */}
       <RecentActivityCard items={model.activity} hiddenCount={model.activityHiddenCount} now={now} />

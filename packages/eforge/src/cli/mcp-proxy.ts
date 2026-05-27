@@ -1210,15 +1210,24 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_stack_sync
   createDaemonTool(server, cwd, {
     name: 'eforge_stack_sync',
-    description: 'Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml.',
+    description: "Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml. When active builds are running, check the outcome field: 'skipped' means no sync was performed, 'deferred' means the caller should retry later.",
     schema: {
       dryRun: z
         .boolean()
         .optional()
         .describe('When true, determine what sync commands would run but do not execute them. Default: false.'),
+      activeBuildPolicy: z
+        .enum(['skip', 'defer'])
+        .optional()
+        .describe("How to handle concurrent active builds. 'skip' returns a deferred outcome immediately (default). 'defer' queues the sync to run after active builds complete."),
     },
-    handler: async ({ dryRun }, { cwd: toolCwd }) => {
-      const { data } = await apiStackSync({ cwd: toolCwd, body: { dryRun: dryRun ?? false } });
+    handler: async ({ dryRun, activeBuildPolicy }, { cwd: toolCwd }) => {
+      const body: { dryRun: boolean; trigger: 'manual'; activeBuildPolicy?: 'skip' | 'defer' } = {
+        dryRun: dryRun ?? false,
+        trigger: 'manual',
+      };
+      if (activeBuildPolicy !== undefined) body.activeBuildPolicy = activeBuildPolicy;
+      const { data } = await apiStackSync({ cwd: toolCwd, body });
       return data;
     },
   });

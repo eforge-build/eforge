@@ -300,6 +300,8 @@ export async function runStackSync(opts: StackSyncServiceOptions): Promise<Stack
         originTrunkSha: report.originTrunkSha,
         fastForward: report.fastForward,
         restackCandidates: report.restackCandidates,
+        activeBuildSkips: filteredActiveBuildSkips,
+        providerCommands: report.providerCommands,
       };
       try {
         await completeCurrentSyncStatus(cwd, terminalStatus);
@@ -330,14 +332,24 @@ export async function runStackSync(opts: StackSyncServiceOptions): Promise<Stack
         reason: report.reason ?? 'stack sync deferred',
         excludedCandidates,
       }, daemonSessionId);
+    } else if (report.outcome === 'skipped') {
+      writeSyncEvent(db, {
+        type: 'stack:sync:skipped',
+        syncId,
+        trigger,
+        dryRun,
+        reason: report.reason ?? 'stack sync skipped',
+        restackCandidates: report.restackCandidates,
+        excludedCandidates,
+      }, daemonSessionId);
     } else {
-      // failed, conflict, or skipped
+      // failed or conflict
       writeSyncEvent(db, {
         type: 'stack:sync:failed',
         syncId,
         trigger,
         dryRun,
-        outcome: report.outcome as 'failed' | 'conflict' | 'skipped',
+        outcome: report.outcome as 'failed' | 'conflict',
         reason: report.reason ?? `stack sync ${report.outcome}`,
         ...(report.error !== undefined && { error: report.error }),
       }, daemonSessionId);

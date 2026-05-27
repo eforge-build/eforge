@@ -40,6 +40,7 @@ function deltaKeys(presetId: WorkflowPresetId): Set<string> {
   if (delta.build?.postMergeCommands !== undefined) keys.add('build.postMergeCommands');
   if (delta.stacking?.enabled !== undefined) keys.add('stacking.enabled');
   if (delta.stacking?.gitSpice?.command !== undefined) keys.add('stacking.gitSpice.command');
+  if (delta.stacking?.sync?.afterBuild !== undefined) keys.add('stacking.sync.afterBuild');
   return keys;
 }
 
@@ -190,10 +191,10 @@ describe('buildConfigChangeSummary', () => {
     expect(stackingItem?.value).toBe('true');
   });
 
-  it('stacked-pr-autosync summary includes build.postMergeCommands', () => {
+  it('stacked-pr-autosync summary includes stacking.sync.afterBuild', () => {
     const items = buildConfigChangeSummary('stacked-pr-autosync');
-    const cmdsItem = items.find((i) => i.key === 'build.postMergeCommands');
-    expect(cmdsItem?.value).toContain('eforge stack sync');
+    const syncItem = items.find((i) => i.key === 'stacking.sync.afterBuild');
+    expect(syncItem?.value).toBe('true');
   });
 
   it('buildConfigChangeSummaryWithGitSpice adds stacking.gitSpice.command', () => {
@@ -270,13 +271,13 @@ describe('resolvePresetAfterRemediation', () => {
     expect(result!.delta.stacking?.enabled).toBe(true);
   });
 
-  it('autosync preset with custom git-spice command preserves postMergeCommands', () => {
+  it('autosync preset with custom git-spice command preserves stacking.sync.afterBuild', () => {
     const result = resolvePresetAfterRemediation('stacked-pr-autosync', {
       action: 'proceed-with-stacking',
       gitSpiceCommand: '/custom/git-spice',
     });
     expect(result).not.toBeNull();
-    expect(result!.delta.build?.postMergeCommands).toContain('eforge stack sync');
+    expect(result!.delta.stacking?.sync?.afterBuild).toBe(true);
     expect(result!.delta.stacking?.gitSpice?.command).toBe('/custom/git-spice');
   });
 });
@@ -353,10 +354,9 @@ describe('applyDeltaToConfig', () => {
   it('applies full stacked-pr-autosync delta correctly', () => {
     const result = applyDeltaToConfig({}, getPresetConfigDelta('stacked-pr-autosync'));
     const landing = result.landing as { action: string };
-    const stacking = result.stacking as { enabled: boolean };
-    const build = result.build as { postMergeCommands: string[] };
+    const stacking = result.stacking as { enabled: boolean; sync: { afterBuild: boolean } };
     expect(landing.action).toBe('pr');
     expect(stacking.enabled).toBe(true);
-    expect(build.postMergeCommands).toContain('eforge stack sync');
+    expect(stacking.sync.afterBuild).toBe(true);
   });
 });
