@@ -60,6 +60,12 @@ function makeStubProvider(overrides?: Partial<StackProviderAdapter>): StackProvi
     restackBranch: async () => makeResult('git-spice', ['branch', 'restack']),
     restackStack: async () => makeResult('git-spice', ['stack', 'restack']),
     upstackOnto: async (_cwd, target) => makeResult('git-spice', ['upstack', 'onto', target]),
+    commandPreview: (argv) => ({ command: 'git-spice', args: argv }),
+    syncRepoPreview: () => ({ command: 'git-spice', args: ['repo', 'sync'] }),
+    restackStackPreview: () => ({ command: 'git-spice', args: ['stack', 'restack'] }),
+    parsePrUrl: (stdout) => stdout.match(/https:\/\/github\.com\/[^\s]+\/pull\/\d+/)?.[0],
+    isValidPrUrl: (url) => /^https:\/\/github\.com\/.+\/pull\/\d+$/.test(url),
+    redactMessage: (message) => message,
     ...overrides,
   };
 }

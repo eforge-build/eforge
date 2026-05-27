@@ -10102,6 +10102,203 @@
               "type": "string"
             }
           }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "syncId",
+            "dryRun"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:sync:start",
+              "type": "string"
+            },
+            "syncId": {
+              "type": "string"
+            },
+            "trigger": {
+              "anyOf": [
+                {
+                  "const": "manual",
+                  "type": "string"
+                },
+                {
+                  "const": "after-build",
+                  "type": "string"
+                },
+                {
+                  "const": "scheduled",
+                  "type": "string"
+                }
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "syncId",
+            "dryRun",
+            "restackCandidates",
+            "excludedCandidates"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:sync:complete",
+              "type": "string"
+            },
+            "syncId": {
+              "type": "string"
+            },
+            "trigger": {
+              "anyOf": [
+                {
+                  "const": "manual",
+                  "type": "string"
+                },
+                {
+                  "const": "after-build",
+                  "type": "string"
+                },
+                {
+                  "const": "scheduled",
+                  "type": "string"
+                }
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "restackCandidates": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "excludedCandidates": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "localTrunkSha": {
+              "type": "string"
+            },
+            "originTrunkSha": {
+              "type": "string"
+            },
+            "fastForward": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "syncId",
+            "dryRun",
+            "outcome",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:sync:failed",
+              "type": "string"
+            },
+            "syncId": {
+              "type": "string"
+            },
+            "trigger": {
+              "anyOf": [
+                {
+                  "const": "manual",
+                  "type": "string"
+                },
+                {
+                  "const": "after-build",
+                  "type": "string"
+                },
+                {
+                  "const": "scheduled",
+                  "type": "string"
+                }
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "conflict",
+                  "type": "string"
+                }
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "syncId",
+            "reason",
+            "excludedCandidates"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:sync:deferred",
+              "type": "string"
+            },
+            "syncId": {
+              "type": "string"
+            },
+            "trigger": {
+              "anyOf": [
+                {
+                  "const": "manual",
+                  "type": "string"
+                },
+                {
+                  "const": "after-build",
+                  "type": "string"
+                },
+                {
+                  "const": "scheduled",
+                  "type": "string"
+                }
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "excludedCandidates": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         }
       ]
     }

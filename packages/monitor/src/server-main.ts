@@ -676,6 +676,34 @@ async function main(): Promise<void> {
             }, daemonSessionId);
           }
           // --- eforge:endregion plan-01-types-and-daemon-emission ---
+          // --- eforge:region plan-01-core-daemon-stack-sync ---
+          // Trigger daemon-owned after-build sync when configured and a build
+          // session completes successfully (completed status, not failed).
+          if (
+            event.type === 'queue:prd:complete' &&
+            event.status === 'completed' &&
+            config?.stacking?.enabled === true &&
+            config?.stacking?.sync?.afterBuild === true &&
+            cwd
+          ) {
+            // Fire-and-forget: do not await so the event drain loop is not delayed.
+            const afterBuildConfig = config;
+            void (async () => {
+              try {
+                const { runStackSync } = await import('./stack-sync-service.js');
+                await runStackSync({
+                  db,
+                  config: afterBuildConfig,
+                  cwd,
+                  request: { trigger: 'after-build', activeBuildPolicy: 'defer' },
+                  daemonSessionId,
+                });
+              } catch {
+                // Best-effort: after-build sync failures are non-fatal
+              }
+            })();
+          }
+          // --- eforge:endregion plan-01-core-daemon-stack-sync ---
         }
       } catch (err) {
         // Only fault if this controller is still the active one — otherwise

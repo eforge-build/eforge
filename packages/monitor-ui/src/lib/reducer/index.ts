@@ -365,6 +365,14 @@ export const IGNORED_EVENT_TYPES = [
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',
   // --- eforge:endregion plan-01-core-engine-auto-merge ---
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  // Daemon-scoped stack sync lifecycle events — projected via daemonHandlerRegistry.
+  // The per-session eforgeReducer does not handle these.
+  'stack:sync:start',
+  'stack:sync:complete',
+  'stack:sync:failed',
+  'stack:sync:deferred',
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -84,6 +84,34 @@ export interface StackProviderAdapter {
    * Rebase the current branch's upstack onto a new target.
    */
   upstackOnto(cwd: string, target: string): Promise<ProviderCommandResult>;
+
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  /**
+   * Return the dry-run command preview for the given argv.
+   *
+   * Returns the command and args the provider would pass to execFile,
+   * without executing anything. Used by sync.ts for dry-run records.
+   */
+  commandPreview(argv: string[]): { command: string; args: string[] };
+
+  /**
+   * Extract a PR URL from the provider's stdout output.
+   *
+   * Returns the first URL found in stdout, or undefined when none is present.
+   */
+  parsePrUrl(stdout: string): string | undefined;
+
+  /**
+   * Returns true when the given string is a valid PR URL for this provider.
+   */
+  isValidPrUrl(url: string): boolean;
+
+  /**
+   * Redact common secret shapes from a provider message before persisting or
+   * displaying it.
+   */
+  redactMessage(message: string): string;
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 // ---------------------------------------------------------------------------

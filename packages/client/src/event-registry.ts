@@ -1779,6 +1779,43 @@ const eventRegistry = {
       return { queue: failed };
     },
   },
+
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  // Stack sync lifecycle events are daemon-scoped and persisted so they appear
+  // in the activity feed and can be correlated with other daemon events. The
+  // project function returns undefined because stack sync status is loaded from
+  // disk (sync-status.json) at snapshot time — no in-memory projection needed.
+
+  'stack:sync:start': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) =>
+      e.trigger
+        ? `Stack sync started (${e.trigger}, syncId: ${e.syncId})`
+        : `Stack sync started (syncId: ${e.syncId})`,
+  },
+
+  'stack:sync:complete': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) =>
+      e.restackCandidates.length > 0
+        ? `Stack sync complete: ${e.restackCandidates.length} branch(es) restacked`
+        : `Stack sync complete (syncId: ${e.syncId})`,
+  },
+
+  'stack:sync:failed': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Stack sync ${e.outcome}: ${e.reason}`,
+  },
+
+  'stack:sync:deferred': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Stack sync deferred: ${e.reason}`,
+  },
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 } satisfies EventRegistryShape;
 
 // ---------------------------------------------------------------------------

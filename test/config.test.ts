@@ -1043,4 +1043,50 @@ describe('validation waiver config — acceptance criteria and committed changes
     });
   });
 });
+
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+describe('stacking.sync.afterBuild config', () => {
+  it('DEFAULT_CONFIG.stacking.sync.afterBuild defaults to false', () => {
+    expect(DEFAULT_CONFIG.stacking.sync.afterBuild).toBe(false);
+  });
+
+  it('resolveConfig({}) stacking.sync.afterBuild equals false', () => {
+    const config = resolveConfig({});
+    expect(config.stacking.sync.afterBuild).toBe(false);
+  });
+
+  it('resolveConfig propagates stacking.sync.afterBuild: true', () => {
+    const config = resolveConfig({ stacking: { enabled: true, sync: { afterBuild: true } } });
+    expect(config.stacking.sync.afterBuild).toBe(true);
+  });
+
+  it('stacking.sync.afterBuild false does not enable itself when stacking is enabled', () => {
+    const config = resolveConfig({ stacking: { enabled: true, sync: { afterBuild: false } } });
+    expect(config.stacking.sync.afterBuild).toBe(false);
+    expect(config.stacking.enabled).toBe(true);
+  });
+
+  it('eforgeConfigSchema accepts stacking.sync.afterBuild: true', () => {
+    const result = eforgeConfigSchema.safeParse({
+      stacking: { enabled: true, sync: { afterBuild: true } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('eforgeConfigSchema accepts stacking.sync.afterBuild: false', () => {
+    const result = eforgeConfigSchema.safeParse({
+      stacking: { enabled: false, sync: { afterBuild: false } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('mergePartialConfigs merges stacking.sync across layers', () => {
+    const base: PartialEforgeConfig = { stacking: { enabled: true } };
+    const overlay: PartialEforgeConfig = { stacking: { sync: { afterBuild: true } } };
+    const merged = mergePartialConfigs(base, overlay);
+    expect(merged.stacking?.enabled).toBe(true);
+    expect(merged.stacking?.sync?.afterBuild).toBe(true);
+  });
+});
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 // --- eforge:endregion plan-01-acceptance-evidence-model ---

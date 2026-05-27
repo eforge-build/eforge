@@ -202,8 +202,20 @@ export type {
   StackSyncProviderCommandWire,
   StackSyncActiveBuildSkipWire,
   StackSyncOutcomeWire,
+  StackSyncStatusWire,
+  StackSyncStatusResponse,
 } from './routes.js';
-export { apiStackSync, apiStackSyncIfRunning } from './api/stack.js';
+export {
+  apiStackSync,
+  apiStackSyncIfRunning,
+  apiGetStackSyncStatus,
+  apiGetStackSyncStatusIfRunning,
+} from './api/stack.js';
+export {
+  DaemonNotDiscoverableError,
+  discoverProjectRootCwd,
+  daemonRequestFromWorktree,
+} from './daemon-client.js';
 // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
 export {

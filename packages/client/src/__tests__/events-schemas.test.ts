@@ -3892,4 +3892,186 @@ describe('recovery:complete event — optional RecoveryVerdict metadata fields',
   });
 });
 
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+describe('stack sync lifecycle event schema coverage', () => {
+  const ts = '2025-06-01T12:00:00.000Z';
+
+  const validStackSyncEvents = [
+    {
+      label: 'stack:sync:start — manual trigger, wet',
+      payload: { type: 'stack:sync:start', timestamp: ts, syncId: 'sync-001', trigger: 'manual', dryRun: false },
+    },
+    {
+      label: 'stack:sync:start — after-build trigger, dry run',
+      payload: { type: 'stack:sync:start', timestamp: ts, syncId: 'sync-002', trigger: 'after-build', dryRun: true },
+    },
+    {
+      label: 'stack:sync:start — no trigger (manual/default), wet',
+      payload: { type: 'stack:sync:start', timestamp: ts, syncId: 'sync-003', dryRun: false },
+    },
+    {
+      label: 'stack:sync:complete — all fields',
+      payload: {
+        type: 'stack:sync:complete',
+        timestamp: ts,
+        syncId: 'sync-001',
+        trigger: 'manual',
+        dryRun: false,
+        restackCandidates: ['eforge/feat-a', 'eforge/feat-b'],
+        excludedCandidates: [],
+        localTrunkSha: 'abc1234',
+        originTrunkSha: 'abc1234',
+        fastForward: true,
+      },
+    },
+    {
+      label: 'stack:sync:complete — minimal (no optional fields)',
+      payload: {
+        type: 'stack:sync:complete',
+        timestamp: ts,
+        syncId: 'sync-002',
+        dryRun: true,
+        restackCandidates: [],
+        excludedCandidates: [],
+      },
+    },
+    {
+      label: 'stack:sync:failed — failed outcome',
+      payload: {
+        type: 'stack:sync:failed',
+        timestamp: ts,
+        syncId: 'sync-003',
+        trigger: 'after-build',
+        dryRun: false,
+        outcome: 'failed',
+        reason: 'repo sync exited with code 128',
+        error: 'fatal: remote disconnected',
+      },
+    },
+    {
+      label: 'stack:sync:failed — conflict outcome',
+      payload: {
+        type: 'stack:sync:failed',
+        timestamp: ts,
+        syncId: 'sync-004',
+        dryRun: false,
+        outcome: 'conflict',
+        reason: 'restack conflict on eforge/feat-a',
+      },
+    },
+    {
+      label: 'stack:sync:deferred — candidates excluded',
+      payload: {
+        type: 'stack:sync:deferred',
+        timestamp: ts,
+        syncId: 'sync-005',
+        trigger: 'manual',
+        reason: 'Active builds in progress on 2 stack layers',
+        excludedCandidates: ['eforge/feat-a', 'eforge/feat-b'],
+      },
+    },
+    {
+      label: 'stack:sync:deferred — no candidates',
+      payload: {
+        type: 'stack:sync:deferred',
+        timestamp: ts,
+        syncId: 'sync-006',
+        reason: 'Active builds running',
+        excludedCandidates: [],
+      },
+    },
+  ];
+
+  it('accepts all valid stack:sync:* event payloads', () => {
+    for (const { label, payload } of validStackSyncEvents) {
+      const result = safeParseEforgeEvent(payload);
+      expect(result.success, `${label} should be accepted: ${!result.success ? JSON.stringify((result as Record<string, unknown>).error) : ''}`).toBe(true);
+    }
+  });
+
+  it('round-trips all stack:sync:* events through JSON', () => {
+    for (const { label, payload } of validStackSyncEvents) {
+      const roundTripped = JSON.parse(JSON.stringify(payload));
+      const result = safeParseEforgeEvent(roundTripped);
+      expect(result.success, `${label} round-trip should succeed`).toBe(true);
+    }
+  });
+
+  it('rejects stack:sync:start missing syncId', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:start',
+      timestamp: ts,
+      dryRun: false,
+      // syncId intentionally missing
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects stack:sync:start missing dryRun', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:start',
+      timestamp: ts,
+      syncId: 'sync-001',
+      // dryRun intentionally missing
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects stack:sync:complete with invalid trigger literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:complete',
+      timestamp: ts,
+      syncId: 'sync-001',
+      trigger: 'cron',
+      dryRun: false,
+      restackCandidates: [],
+      excludedCandidates: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects stack:sync:failed with invalid outcome literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:sync:failed',
+      timestamp: ts,
+      syncId: 'sync-001',
+      dryRun: false,
+      outcome: 'skipped',
+      reason: 'wrong outcome literal for this event type',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('stack:sync:* events are present in the event registry with daemon scope', () => {
+    const syncEventTypes = [
+      'stack:sync:start',
+      'stack:sync:complete',
+      'stack:sync:failed',
+      'stack:sync:deferred',
+    ] as const;
+
+    for (const type of syncEventTypes) {
+      const meta = (eventRegistry as Record<string, { scope: string; persist: boolean }>)[type];
+      expect(meta, `${type} must be in eventRegistry`).toBeDefined();
+      expect(meta.scope).toBe('daemon');
+    }
+  });
+
+  it('stack:sync:* events are in DAEMON_EVENT_TYPES (persisted)', () => {
+    const persistedTypes = new Set(DAEMON_EVENT_TYPES);
+    expect(persistedTypes.has('stack:sync:start')).toBe(true);
+    expect(persistedTypes.has('stack:sync:complete')).toBe(true);
+    expect(persistedTypes.has('stack:sync:failed')).toBe(true);
+    expect(persistedTypes.has('stack:sync:deferred')).toBe(true);
+  });
+
+  it('isPersistedDaemonEventType returns true for stack:sync:* events', () => {
+    expect(isPersistedDaemonEventType('stack:sync:start')).toBe(true);
+    expect(isPersistedDaemonEventType('stack:sync:complete')).toBe(true);
+    expect(isPersistedDaemonEventType('stack:sync:failed')).toBe(true);
+    expect(isPersistedDaemonEventType('stack:sync:deferred')).toBe(true);
+  });
+});
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---
+
 // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---

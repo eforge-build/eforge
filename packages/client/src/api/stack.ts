@@ -13,7 +13,7 @@ export function apiGetStackLayersIfRunning(opts: { cwd: string }) {
 // --- eforge:endregion plan-03-stack-daemon-ui ---
 
 // --- eforge:region plan-01-stack-sync-daemon-cli ---
-import type { StackSyncRequest, StackSyncResponse } from '../routes.js';
+import type { StackSyncRequest, StackSyncResponse, StackSyncStatusResponse } from '../routes.js';
 
 export function apiStackSync(opts: { cwd: string; body: StackSyncRequest }) {
   return daemonRequest<StackSyncResponse>(
@@ -30,6 +30,22 @@ export function apiStackSyncIfRunning(opts: { cwd: string; body: StackSyncReques
     'POST',
     API_ROUTES.stackSync,
     opts.body,
+  );
+}
+
+export function apiGetStackSyncStatus(opts: { cwd: string }) {
+  return daemonRequest<StackSyncStatusResponse>(
+    opts.cwd,
+    'GET',
+    API_ROUTES.stackSyncStatus,
+  );
+}
+
+export function apiGetStackSyncStatusIfRunning(opts: { cwd: string }) {
+  return daemonRequestIfRunning<StackSyncStatusResponse>(
+    opts.cwd,
+    'GET',
+    API_ROUTES.stackSyncStatus,
   );
 }
 // --- eforge:endregion plan-01-stack-sync-daemon-cli ---

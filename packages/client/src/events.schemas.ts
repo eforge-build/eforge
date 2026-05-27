@@ -2200,6 +2200,58 @@ const EforgeEventVariantsSchema = Type.Union([
     reason: Type.Optional(Type.String()),
   }),
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  Type.Object({
+    type: Type.Literal('stack:sync:start'),
+    syncId: Type.String(),
+    trigger: Type.Optional(Type.Union([
+      Type.Literal('manual'),
+      Type.Literal('after-build'),
+      Type.Literal('scheduled'),
+    ])),
+    dryRun: Type.Boolean(),
+  }),
+  Type.Object({
+    type: Type.Literal('stack:sync:complete'),
+    syncId: Type.String(),
+    trigger: Type.Optional(Type.Union([
+      Type.Literal('manual'),
+      Type.Literal('after-build'),
+      Type.Literal('scheduled'),
+    ])),
+    dryRun: Type.Boolean(),
+    restackCandidates: Type.Array(Type.String()),
+    excludedCandidates: Type.Array(Type.String()),
+    localTrunkSha: Type.Optional(Type.String()),
+    originTrunkSha: Type.Optional(Type.String()),
+    fastForward: Type.Optional(Type.Boolean()),
+    reason: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('stack:sync:failed'),
+    syncId: Type.String(),
+    trigger: Type.Optional(Type.Union([
+      Type.Literal('manual'),
+      Type.Literal('after-build'),
+      Type.Literal('scheduled'),
+    ])),
+    dryRun: Type.Boolean(),
+    outcome: Type.Union([Type.Literal('failed'), Type.Literal('conflict')]),
+    reason: Type.String(),
+    error: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('stack:sync:deferred'),
+    syncId: Type.String(),
+    trigger: Type.Optional(Type.Union([
+      Type.Literal('manual'),
+      Type.Literal('after-build'),
+      Type.Literal('scheduled'),
+    ])),
+    reason: Type.String(),
+    excludedCandidates: Type.Array(Type.String()),
+  }),
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 ]);
 
 // ---------------------------------------------------------------------------
@@ -2276,6 +2328,27 @@ export type StackLayerStatus = Static<typeof StackLayerStatusSchema>;
 export type StackArtifactRef = Static<typeof StackArtifactRefSchema>;
 export type StackLayerWire = Static<typeof StackLayerWireSchema>;
 // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+export type StackSyncTriggerWire = 'manual' | 'after-build' | 'scheduled';
+export type StackSyncActiveBuildPolicyWire = 'skip' | 'defer';
+export type StackSyncOutcomeWire = 'skipped' | 'complete' | 'failed' | 'conflict' | 'deferred';
+/** Wire shape of a stack sync status record (matches StackSyncStatus from engine). */
+export interface StackSyncStatusWire {
+  id: string;
+  trigger?: StackSyncTriggerWire;
+  activeBuildPolicy?: StackSyncActiveBuildPolicyWire;
+  startedAt: string;
+  completedAt?: string;
+  outcome: StackSyncOutcomeWire;
+  reason?: string;
+  error?: string;
+  dryRun: boolean;
+  localTrunkSha?: string;
+  originTrunkSha?: string;
+  fastForward?: boolean;
+  restackCandidates: string[];
+}
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
 // ---------------------------------------------------------------------------
 // Re-export constants and utilities
@@ -2414,6 +2487,66 @@ export const DaemonStreamSnapshotSchema = Type.Object({
   // --- eforge:region plan-03-stack-daemon-ui ---
   stackLayers: Type.Array(StackLayerWireSchema),
   // --- eforge:endregion plan-03-stack-daemon-ui ---
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  stackSyncStatus: Type.Optional(Type.Object({
+    last: Type.Optional(Type.Object({
+      id: Type.String(),
+      trigger: Type.Optional(Type.Union([
+        Type.Literal('manual'),
+        Type.Literal('after-build'),
+        Type.Literal('scheduled'),
+      ])),
+      activeBuildPolicy: Type.Optional(Type.Union([
+        Type.Literal('skip'),
+        Type.Literal('defer'),
+      ])),
+      startedAt: Type.String(),
+      completedAt: Type.Optional(Type.String()),
+      outcome: Type.Union([
+        Type.Literal('skipped'),
+        Type.Literal('complete'),
+        Type.Literal('failed'),
+        Type.Literal('conflict'),
+        Type.Literal('deferred'),
+      ]),
+      reason: Type.Optional(Type.String()),
+      error: Type.Optional(Type.String()),
+      dryRun: Type.Boolean(),
+      localTrunkSha: Type.Optional(Type.String()),
+      originTrunkSha: Type.Optional(Type.String()),
+      fastForward: Type.Optional(Type.Boolean()),
+      restackCandidates: Type.Array(Type.String()),
+    })),
+    current: Type.Optional(Type.Object({
+      id: Type.String(),
+      trigger: Type.Optional(Type.Union([
+        Type.Literal('manual'),
+        Type.Literal('after-build'),
+        Type.Literal('scheduled'),
+      ])),
+      activeBuildPolicy: Type.Optional(Type.Union([
+        Type.Literal('skip'),
+        Type.Literal('defer'),
+      ])),
+      startedAt: Type.String(),
+      completedAt: Type.Optional(Type.String()),
+      outcome: Type.Union([
+        Type.Literal('skipped'),
+        Type.Literal('complete'),
+        Type.Literal('failed'),
+        Type.Literal('conflict'),
+        Type.Literal('deferred'),
+      ]),
+      reason: Type.Optional(Type.String()),
+      error: Type.Optional(Type.String()),
+      dryRun: Type.Boolean(),
+      localTrunkSha: Type.Optional(Type.String()),
+      originTrunkSha: Type.Optional(Type.String()),
+      fastForward: Type.Optional(Type.Boolean()),
+      restackCandidates: Type.Array(Type.String()),
+    })),
+  })),
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 });
 
 /**

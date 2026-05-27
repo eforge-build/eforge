@@ -742,6 +742,17 @@
             }
           },
           "additionalProperties": false
+        },
+        "sync": {
+          "description": "Stack sync scheduling settings.",
+          "type": "object",
+          "properties": {
+            "afterBuild": {
+              "description": "When true and stacking is enabled, the daemon automatically triggers a stack sync after each successful build session completes. The sync runs as a daemon-owned operation with full active-build awareness. Default: false.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false,

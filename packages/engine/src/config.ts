@@ -336,6 +336,13 @@ const stackingConfigSchema = z.object({
       'Path or name of the git-spice executable. Defaults to "git-spice" on PATH. Set this if git-spice is installed to a non-standard location or you use a wrapper script.',
     ),
   }).optional().describe('git-spice provider settings.'),
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  sync: z.object({
+    afterBuild: z.boolean().optional().describe(
+      'When true and stacking is enabled, the daemon automatically triggers a stack sync after each successful build session completes. The sync runs as a daemon-owned operation with full active-build awareness. Default: false.',
+    ),
+  }).optional().describe('Stack sync scheduling settings.'),
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }).describe(
   'Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology.',
 );
@@ -567,6 +574,17 @@ export interface StackingConfig {
   enabled: boolean;
   provider: 'git-spice';
   gitSpice: { command?: string };
+  // --- eforge:region plan-01-core-daemon-stack-sync ---
+  /** Stack sync scheduling settings. */
+  sync: {
+    /**
+     * When true and stacking is enabled, the daemon automatically triggers a
+     * stack sync after each successful build session completes.
+     * Default: false.
+     */
+    afterBuild: boolean;
+  };
+  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 /** Resolved landing publication config. */
@@ -953,7 +971,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   hooks: Object.freeze([]),
   tools: Object.freeze({ toolbelts: {} }),
   // --- eforge:region plan-01-stack-contracts-config-state-events ---
-  stacking: Object.freeze({ enabled: false, provider: 'git-spice' as const, gitSpice: Object.freeze({}) as { command?: string } }),
+  stacking: Object.freeze({ enabled: false, provider: 'git-spice' as const, gitSpice: Object.freeze({}) as { command?: string }, sync: Object.freeze({ afterBuild: false }) }),
   landing: Object.freeze({
     action: 'merge' as const,
     // --- eforge:region plan-01-core-engine-auto-merge ---
@@ -1133,6 +1151,11 @@ export function resolveConfig(
       gitSpice: Object.freeze({
         command: fileConfig.stacking?.gitSpice?.command,
       }),
+      // --- eforge:region plan-01-core-daemon-stack-sync ---
+      sync: Object.freeze({
+        afterBuild: fileConfig.stacking?.sync?.afterBuild ?? DEFAULT_CONFIG.stacking.sync.afterBuild,
+      }),
+      // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     }),
     landing: Object.freeze({
       action: landingAction,
@@ -1432,10 +1455,18 @@ export function mergePartialConfigs(
     const mergedGitSpice = (global.stacking?.gitSpice || project.stacking?.gitSpice)
       ? { ...global.stacking?.gitSpice, ...project.stacking?.gitSpice }
       : undefined;
+    // --- eforge:region plan-01-core-daemon-stack-sync ---
+    const mergedSync = (global.stacking?.sync || project.stacking?.sync)
+      ? { ...global.stacking?.sync, ...project.stacking?.sync }
+      : undefined;
+    // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     result.stacking = {
       ...global.stacking,
       ...project.stacking,
       ...(mergedGitSpice !== undefined ? { gitSpice: mergedGitSpice } : {}),
+      // --- eforge:region plan-01-core-daemon-stack-sync ---
+      ...(mergedSync !== undefined ? { sync: mergedSync } : {}),
+      // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     };
   }
   if (global.landing || project.landing) {

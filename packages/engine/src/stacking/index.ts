@@ -66,3 +66,20 @@ export type {
   StackSyncOutcome,
 } from './sync.js';
 // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
+
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+export type {
+  StackSyncTrigger,
+  StackSyncActiveBuildPolicy,
+  StackSyncStatus,
+  StackSyncStatusFile,
+} from './sync-state.js';
+export {
+  stackSyncStatusPath,
+  loadStackSyncStatus,
+  loadStackSyncStatusSync,
+  saveStackSyncStatus,
+  setCurrentSyncStatus,
+  completeCurrentSyncStatus,
+} from './sync-state.js';
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---

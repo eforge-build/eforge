@@ -188,6 +188,7 @@ export const API_ROUTES = {
   // --- eforge:endregion plan-03-stack-daemon-ui ---
   // --- eforge:region plan-01-stack-sync-daemon-cli ---
   stackSync: '/api/stack/sync',
+  stackSyncStatus: '/api/stack/sync/status',
   // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 } as const;
 
@@ -462,7 +463,7 @@ export interface StackSyncActiveBuildSkipWire {
 }
 
 /** Outcome of a POST /api/stack/sync operation. */
-export type StackSyncOutcomeWire = 'skipped' | 'complete' | 'failed' | 'conflict';
+export type StackSyncOutcomeWire = 'skipped' | 'complete' | 'failed' | 'conflict' | 'deferred';
 
 /** Request body for POST /api/stack/sync */
 export interface StackSyncRequest {
@@ -471,13 +472,63 @@ export interface StackSyncRequest {
    * Branch SHAs are left unchanged.
    */
   dryRun?: boolean;
+  /** The trigger that initiated this sync (propagated to the durable status record). */
+  trigger?: 'manual' | 'after-build' | 'scheduled';
+  /**
+   * How to handle active-build overlap in wet mode.
+   * 'skip' (default) — return 'skipped' outcome when excluded candidates exist.
+   * 'defer'          — return 'deferred' outcome instead; retry when builds complete.
+   * Dry-runs always use 'skip' semantics.
+   */
+  activeBuildPolicy?: 'skip' | 'defer';
+}
+
+/** Durable stack sync status record as returned by the status route. */
+export interface StackSyncStatusWire {
+  /** Unique identifier for this sync operation. */
+  id: string;
+  /** Trigger that initiated the sync. */
+  trigger?: 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
+  /** Active-build policy used for this sync. */
+  activeBuildPolicy?: 'skip' | 'defer';
+  /** ISO timestamp when the sync started. */
+  startedAt: string;
+  /** ISO timestamp when the sync completed (absent for in-progress syncs). */
+  completedAt?: string;
+  /**
+   * Overall outcome. Absent for in-progress (current) records that have not
+   * yet completed. Always present on terminal (last) records.
+   */
+  outcome?: StackSyncOutcomeWire;
+  /** Human-readable reason (present for non-complete outcomes). */
+  reason?: string;
+  /** Error message when outcome is 'failed' or 'conflict'. */
+  error?: string;
+  /** Whether the sync was a dry run. */
+  dryRun: boolean;
+  /** SHA of the local trunk branch, when available. */
+  localTrunkSha?: string;
+  /** SHA of origin/<trunk>, when available. */
+  originTrunkSha?: string;
+  /** Whether the local trunk was at or behind origin. */
+  fastForward?: boolean;
+  /** Artifact branches eligible for restack after exclusion filtering. */
+  restackCandidates: string[];
+}
+
+/** Response for GET /api/stack/sync/status */
+export interface StackSyncStatusResponse {
+  /** The most recently completed (terminal) sync status. Absent when no sync has completed. */
+  last?: StackSyncStatusWire;
+  /** The currently in-progress sync status. Absent when no sync is running. */
+  current?: StackSyncStatusWire;
 }
 
 /** Response for POST /api/stack/sync */
 export interface StackSyncResponse {
   /** Overall outcome. */
   outcome: StackSyncOutcomeWire;
-  /** Human-readable reason (always present for 'skipped', 'failed', 'conflict'). */
+  /** Human-readable reason (always present for 'skipped', 'failed', 'conflict', 'deferred'). */
   reason?: string;
   /** True when stacking is enabled and active (false for 'skipped' outcome). */
   stackingActive: boolean;
@@ -497,6 +548,16 @@ export interface StackSyncResponse {
   providerCommands: StackSyncProviderCommandWire[];
   /** Error message when outcome is 'failed' or 'conflict'. */
   error?: string;
+  /** Unique sync operation ID (present when routed through the daemon service). */
+  syncId?: string;
+  /** The trigger that initiated this sync (present when supplied in the request). */
+  trigger?: 'manual' | 'after-build' | 'scheduled';
+  /** Active-build policy used (present when supplied in the request). */
+  activeBuildPolicy?: 'skip' | 'defer';
+  /** ISO timestamp when the sync started (present when routed through the daemon service). */
+  startedAt?: string;
+  /** ISO timestamp when the sync completed (present when routed through the daemon service). */
+  completedAt?: string;
 }
 // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 

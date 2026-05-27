@@ -488,3 +488,91 @@ describe('serveDaemonEventsSSE — stream:hello.stackLayers', () => {
   });
 });
 // --- eforge:endregion plan-03-stack-daemon-ui ---
+
+// --- eforge:region plan-01-core-daemon-stack-sync ---
+// ---------------------------------------------------------------------------
+// (f) stream:hello includes stackSyncStatus when sync-status.json exists
+// ---------------------------------------------------------------------------
+
+describe('serveDaemonEventsSSE — stream:hello.stackSyncStatus', () => {
+  it('omits stackSyncStatus when .eforge/stacks/sync-status.json is absent', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+
+    const raw = await fetchSseFirstChunk(
+      `http://127.0.0.1:${server.port}/api/daemon-events`,
+      {},
+      1,
+      400,
+    );
+
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+
+    const dataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    expect(dataLine).toBeDefined();
+    const helloData = JSON.parse(dataLine!.slice('data: '.length)) as Record<string, unknown>;
+
+    // When no sync-status.json exists, stackSyncStatus should be absent
+    expect(helloData.stackSyncStatus).toBeUndefined();
+
+    await server.stop();
+    db.close();
+  });
+
+  it('includes stackSyncStatus.last when sync-status.json has a completed sync', async () => {
+    const cwd = makeTmpCwd();
+    mkdirSync(join(cwd, '.eforge', 'stacks'), { recursive: true });
+
+    const lastSync = {
+      id: 'sync-sse-001',
+      trigger: 'manual',
+      startedAt: '2025-06-01T10:00:00.000Z',
+      completedAt: '2025-06-01T10:00:05.000Z',
+      outcome: 'complete',
+      dryRun: false,
+      restackCandidates: ['eforge/feat-a'],
+    };
+
+    writeFileSync(
+      join(cwd, '.eforge', 'stacks', 'sync-status.json'),
+      JSON.stringify({ version: 1, last: lastSync }),
+      'utf-8',
+    );
+
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+
+    const raw = await fetchSseFirstChunk(
+      `http://127.0.0.1:${server.port}/api/daemon-events`,
+      {},
+      1,
+      400,
+    );
+
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+
+    const dataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    expect(dataLine).toBeDefined();
+    const helloData = JSON.parse(dataLine!.slice('data: '.length)) as {
+      stackSyncStatus?: { last?: Record<string, unknown>; current?: Record<string, unknown> };
+    };
+
+    expect(helloData.stackSyncStatus).toBeDefined();
+    expect(helloData.stackSyncStatus!.last).toBeDefined();
+    expect(helloData.stackSyncStatus!.last!.id).toBe('sync-sse-001');
+    expect(helloData.stackSyncStatus!.last!.outcome).toBe('complete');
+    expect(helloData.stackSyncStatus!.current).toBeUndefined();
+
+    await server.stop();
+    db.close();
+  });
+});
+// --- eforge:endregion plan-01-core-daemon-stack-sync ---
+// --- eforge:endregion plan-03-stack-daemon-ui ---
