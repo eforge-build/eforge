@@ -92,9 +92,9 @@ Add `--dry-run` to preview the git-spice commands without mutating branches:
 eforge stack sync --dry-run
 ```
 
-A sync report shows the provider commands, restack candidates, active-build skips, local/origin trunk SHAs, and whether the local trunk is fast-forward eligible. If active eforge builds are using stack branches, sync skips those branches and you should run the command again after the builds complete.
+A sync report shows the provider commands, restack candidates, active-build skips, local/origin trunk SHAs, and whether the local trunk is fast-forward eligible. If active eforge builds overlap the stack, eforge reports the skipped branches and defers the restack for the whole stack because restack cannot be scoped safely. Run sync again after those builds complete.
 
-For automatic sync, use `/eforge:workflow` and choose `stacked-pr-autosync`, or add `eforge stack sync` to `build.postMergeCommands` yourself. That runs stack sync after each successful merge alongside your post-merge validation commands.
+For automatic sync, use `/eforge:workflow` and choose `stacked-pr-autosync`, or add `eforge stack sync` to `build.postMergeCommands` yourself. This adds stack sync to eforge's post-merge validation commands, so it runs during future eforge builds after plan merges into the merge worktree and before landing/PR publication—not automatically when an upstream PR merges outside eforge.
 
 ## Note on GitHub inline comments
 
