@@ -112,18 +112,22 @@ describe('verification 1: token accumulation across agent:result events', () => 
 // Verification 2: plan lifecycle events transition planStatuses
 // ---------------------------------------------------------------------------
 describe('verification 2: plan lifecycle events transition planStatuses', () => {
-  it('plan:status:change events transition planStatuses[planId] through running → complete', () => {
+  it('plan:status:change events transition planStatuses[planId] through pending → running → completed', () => {
     let state = initialRunState;
 
     // Initial: no status
     expect(state.planStatuses[PLAN_A]).toBeUndefined();
 
+    // pending → still undefined because pending is not a rendered PipelineStage
+    state = addEvent(state, makeEvent('plan:status:change', { planId: PLAN_A, status: 'pending' }), 'ev-1');
+    expect(state.planStatuses[PLAN_A]).toBeUndefined();
+
     // running → implement
-    state = addEvent(state, makeEvent('plan:status:change', { planId: PLAN_A, status: 'running' }), 'ev-1');
+    state = addEvent(state, makeEvent('plan:status:change', { planId: PLAN_A, status: 'running' }), 'ev-2');
     expect(state.planStatuses[PLAN_A]).toBe('implement');
 
     // completed → complete
-    state = addEvent(state, makeEvent('plan:status:change', { planId: PLAN_A, status: 'completed' }), 'ev-2');
+    state = addEvent(state, makeEvent('plan:status:change', { planId: PLAN_A, status: 'completed' }), 'ev-3');
     expect(state.planStatuses[PLAN_A]).toBe('complete');
   });
 
