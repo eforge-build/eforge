@@ -2754,55 +2754,41 @@ export async function startServer(
     return false;
   }
   // --- eforge:endregion plan-03-control-plane-profile-routes ---
-  const server = createServer(async (req, res) => {
-    const url = req.url ?? '/';
-    // Pathname strips the query string for static route matching and file
-    // resolution. API routes continue to use the full `url` string (which
-    // already handles query params via URLSearchParams where needed).
-    const pathname = url.split('?')[0];
-
-    if (handleCorsPreflightRoute(req, res)) return;
-    if (handleKeepAliveRoute(req, res)) return;
-
-    if (await handleControlPlaneRoutes(req, res, url)) return;
-
-    if (await handleProfileRoutes(req, res, url)) return;
-
-    // --- eforge:region plan-02-extension-tooling-surfaces ---
+  async function handleExtensionManagementRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-01-extension-management-api ---
     if (req.method === 'POST' && url === API_ROUTES.extensionNew) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let body: ExtensionNewRequest;
       try {
         const bodyRaw = await parseJsonBody(req);
         if (typeof bodyRaw !== 'object' || bodyRaw === null || Array.isArray(bodyRaw)) {
           sendJsonError(res, 400, 'Invalid JSON body');
-          return;
+          return true;
         }
         body = bodyRaw as ExtensionNewRequest;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (!body.name || typeof body.name !== 'string') {
         sendJsonError(res, 400, 'Missing required field: name');
-        return;
+        return true;
       }
       if (body.scope !== undefined && body.scope !== 'local' && body.scope !== 'project' && body.scope !== 'user') {
         sendJsonError(res, 400, 'Invalid extension scope. Supported scopes: local, project, user');
-        return;
+        return true;
       }
       if (body.template !== undefined && body.template !== 'event-logger' && body.template !== 'blank') {
         sendJsonError(res, 400, 'Unknown extension template. Supported templates: event-logger, blank');
-        return;
+        return true;
       }
       if (body.force !== undefined && typeof body.force !== 'boolean') {
         sendJsonError(res, 400, 'Invalid field: force must be boolean');
-        return;
+        return true;
       }
       try {
         const { scaffoldNativeExtension } = await import('@eforge-build/engine/extensions/index');
@@ -2820,11 +2806,11 @@ export async function startServer(
           : 500;
         sendJsonError(res, status, err instanceof Error ? err.message : 'Failed to scaffold extension');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionReload) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       try {
         const data = await loadExtensionResponse();
         const watcher = await reloadAutoBuildExtensions(options?.daemonState);
@@ -2832,16 +2818,19 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to reload extensions');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-01-extension-management-api ---
+    return false;
+  }
 
+  async function handleExtensionReplayRoute(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-01-engine-daemon-extension-replay ---
     if (req.method === 'POST' && url === API_ROUTES.extensionTest) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
 
       let body: ExtensionTestRequest;
@@ -2850,12 +2839,12 @@ export async function startServer(
         const validation = validateExtensionTestRequestBody(rawBody);
         if (typeof validation === 'string') {
           sendJsonError(res, 400, validation);
-          return;
+          return true;
         }
         body = validation;
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
 
       let extensionPath: string | undefined;
@@ -2863,7 +2852,7 @@ export async function startServer(
         extensionPath = await validateExtensionQueryPath(body.path) ?? undefined;
         if (!extensionPath) {
           sendJsonError(res, 400, 'Invalid extension path');
-          return;
+          return true;
         }
       }
       let fixturePath: string | undefined;
@@ -2871,7 +2860,7 @@ export async function startServer(
         fixturePath = await validateExtensionQueryPath(body.fixture) ?? undefined;
         if (!fixturePath) {
           sendJsonError(res, 400, 'Invalid fixture path');
-          return;
+          return true;
         }
       }
 
@@ -2934,10 +2923,13 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to test extensions');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
+    return false;
+  }
 
+  async function handleExtensionReadRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     if (req.method === 'GET' && (url === API_ROUTES.extensionList || url.startsWith(`${API_ROUTES.extensionList}?`))) {
       try {
         const data = await loadExtensionResponse();
@@ -2945,7 +2937,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to list extensions');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && (url === API_ROUTES.extensionShow || url.startsWith(`${API_ROUTES.extensionShow}?`))) {
@@ -2954,24 +2946,24 @@ export async function startServer(
       const name = qParams.get('name');
       if (!name) {
         sendJsonError(res, 400, 'Missing required query param: name');
-        return;
+        return true;
       }
       if (!EXTENSION_NAME_RE.test(name)) {
         sendJsonError(res, 400, 'Invalid extension name');
-        return;
+        return true;
       }
       try {
         const data = await loadExtensionResponse();
         const extension = selectExtensionByName(data.extensions, name);
         if (!extension) {
           sendJsonError(res, 404, `Extension not found: ${name}`);
-          return;
+          return true;
         }
         sendJson(res, { extension });
       } catch (err) {
         sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to show extension');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'GET' && (url === API_ROUTES.extensionValidate || url.startsWith(`${API_ROUTES.extensionValidate}?`))) {
@@ -2983,23 +2975,23 @@ export async function startServer(
       const rawPath = hasPath ? qParams.get('path') ?? '' : undefined;
       if (hasName && hasPath) {
         sendJsonError(res, 400, 'Specify only one of name or path');
-        return;
+        return true;
       }
       if (hasName && (!name || !EXTENSION_NAME_RE.test(name))) {
         sendJsonError(res, 400, 'Invalid extension name');
-        return;
+        return true;
       }
       const validatedPath = hasPath ? await validateExtensionQueryPath(rawPath ?? '') : undefined;
       if (hasPath && !validatedPath) {
         sendJsonError(res, 400, 'Invalid extension path');
-        return;
+        return true;
       }
       try {
         const data = await loadExtensionResponse(validatedPath ? { path: validatedPath } : undefined);
         const extensions = name ? data.extensions.filter((entry) => entry.name === name) : data.extensions;
         if (name && extensions.length === 0) {
           sendJsonError(res, 404, `Extension not found: ${name}`);
-          return;
+          return true;
         }
         const selectedKeys = name
           ? new Set(extensions.flatMap((entry) => [entry.name, entry.path]))
@@ -3022,49 +3014,52 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to validate extensions');
       }
-      return;
+      return true;
     }
+    return false;
+  }
 
+  async function handleExtensionTrustRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-02-management-surfaces ---
     if (req.method === 'POST' && url === API_ROUTES.extensionTrust) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let trustBody: { name?: unknown; path?: unknown; trustedBy?: unknown };
       try {
         const rawBody = await parseJsonBody(req);
         if (typeof rawBody !== 'object' || rawBody === null || Array.isArray(rawBody)) {
           sendJsonError(res, 400, 'Invalid JSON body');
-          return;
+          return true;
         }
         trustBody = rawBody as { name?: unknown; path?: unknown; trustedBy?: unknown };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       const trustHasName = trustBody.name !== undefined;
       const trustHasPath = trustBody.path !== undefined;
       if (!trustHasName && !trustHasPath) {
         sendJsonError(res, 400, 'Missing required field: name or path');
-        return;
+        return true;
       }
       if (trustHasName && trustHasPath) {
         sendJsonError(res, 400, 'Specify only one of name or path');
-        return;
+        return true;
       }
       if (trustHasName && (typeof trustBody.name !== 'string' || !EXTENSION_NAME_RE.test(trustBody.name))) {
         sendJsonError(res, 400, 'Invalid extension name');
-        return;
+        return true;
       }
       if (trustHasPath && typeof trustBody.path !== 'string') {
         sendJsonError(res, 400, 'Invalid extension path');
-        return;
+        return true;
       }
       if (trustBody.trustedBy !== undefined && typeof trustBody.trustedBy !== 'string') {
         sendJsonError(res, 400, 'Invalid trustedBy: must be a string');
-        return;
+        return true;
       }
       const trustName = trustHasName ? (trustBody.name as string) : undefined;
       const trustRawPath = trustHasPath ? (trustBody.path as string) : undefined;
@@ -3093,31 +3088,31 @@ export async function startServer(
             .filter((c): c is typeof discovery.candidates[number] => c !== undefined);
           if (teamCandidates.length === 0) {
             sendJsonError(res, 404, `No project-team extension found with name: ${trustName}`);
-            return;
+            return true;
           }
           if (teamCandidates.length > 1) {
             sendJsonError(res, 409, `Ambiguous: multiple project-team extensions found with name: ${trustName}`);
-            return;
+            return true;
           }
           trustCandidate = teamCandidates[0];
         } else if (trustRawPath !== undefined) {
           const resolvedTrustPath = resolve(cwd, trustRawPath);
           if (!await isProjectTeamExtensionPath(trustRawPath, configDir)) {
             sendJsonError(res, 400, 'Path must resolve to a project-team extension within eforge/extensions/');
-            return;
+            return true;
           }
           trustCandidate = discovery.candidates.find(
             (c) => c.scope === 'project-team' && c.path === resolvedTrustPath,
           );
           if (!trustCandidate) {
             sendJsonError(res, 404, `No project-team extension found at path: ${trustRawPath}`);
-            return;
+            return true;
           }
         }
 
         if (!trustCandidate) {
           sendJsonError(res, 404, 'Extension not found');
-          return;
+          return true;
         }
 
         let trustHash: string;
@@ -3128,11 +3123,11 @@ export async function startServer(
             trustHash = await hashExtensionFile(trustCandidate.entrypoint);
           } else {
             sendJsonError(res, 400, 'Cannot hash extension: no entrypoint resolved');
-            return;
+            return true;
           }
         } catch (err) {
           sendJsonError(res, 500, `Failed to hash extension: ${err instanceof Error ? err.message : String(err)}`);
-          return;
+          return true;
         }
 
         await upsertTrustRecord(eforgeDir, trustCandidate.name, trustHash, trustedBy);
@@ -3177,48 +3172,48 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to trust extension');
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionUntrust) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
         sendJsonError(res, 503, 'Working directory not configured');
-        return;
+        return true;
       }
       let untrustBody: { name?: unknown; path?: unknown; trustedBy?: unknown };
       try {
         const rawBody = await parseJsonBody(req);
         if (typeof rawBody !== 'object' || rawBody === null || Array.isArray(rawBody)) {
           sendJsonError(res, 400, 'Invalid JSON body');
-          return;
+          return true;
         }
         untrustBody = rawBody as { name?: unknown; path?: unknown; trustedBy?: unknown };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
+        return true;
       }
       if (untrustBody.trustedBy !== undefined) {
         sendJsonError(res, 400, 'trustedBy is not accepted for untrust requests');
-        return;
+        return true;
       }
       const untrustHasName = untrustBody.name !== undefined;
       const untrustHasPath = untrustBody.path !== undefined;
       if (!untrustHasName && !untrustHasPath) {
         sendJsonError(res, 400, 'Missing required field: name or path');
-        return;
+        return true;
       }
       if (untrustHasName && untrustHasPath) {
         sendJsonError(res, 400, 'Specify only one of name or path');
-        return;
+        return true;
       }
       if (untrustHasName && (typeof untrustBody.name !== 'string' || !EXTENSION_NAME_RE.test(untrustBody.name))) {
         sendJsonError(res, 400, 'Invalid extension name');
-        return;
+        return true;
       }
       if (untrustHasPath && typeof untrustBody.path !== 'string') {
         sendJsonError(res, 400, 'Invalid extension path');
-        return;
+        return true;
       }
       const untrustName = untrustHasName ? (untrustBody.name as string) : undefined;
       const untrustRawPath = untrustHasPath ? (untrustBody.path as string) : undefined;
@@ -3246,31 +3241,31 @@ export async function startServer(
             .filter((c): c is typeof discovery.candidates[number] => c !== undefined);
           if (teamCandidates.length === 0) {
             sendJsonError(res, 404, `No project-team extension found with name: ${untrustName}`);
-            return;
+            return true;
           }
           if (teamCandidates.length > 1) {
             sendJsonError(res, 409, `Ambiguous: multiple project-team extensions found with name: ${untrustName}`);
-            return;
+            return true;
           }
           untrustCandidate = teamCandidates[0];
         } else if (untrustRawPath !== undefined) {
           const resolvedUntrustPath = resolve(cwd, untrustRawPath);
           if (!await isProjectTeamExtensionPath(untrustRawPath, configDir)) {
             sendJsonError(res, 400, 'Path must resolve to a project-team extension within eforge/extensions/');
-            return;
+            return true;
           }
           untrustCandidate = discovery.candidates.find(
             (c) => c.scope === 'project-team' && c.path === resolvedUntrustPath,
           );
           if (!untrustCandidate) {
             sendJsonError(res, 404, `No project-team extension found at path: ${untrustRawPath}`);
-            return;
+            return true;
           }
         }
 
         if (!untrustCandidate) {
           sendJsonError(res, 404, 'Extension not found');
-          return;
+          return true;
         }
 
         await removeTrustRecord(eforgeDir, untrustCandidate.name);
@@ -3320,22 +3315,25 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to untrust extension');
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-02-management-surfaces ---
+    return false;
+  }
 
+  async function handleExtensionPackageRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- eforge:region plan-02-extension-package-daemon-operations ---
     if (req.method === 'POST' && url === API_ROUTES.extensionInstall) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let installBody: ExtensionInstallRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         installBody = rawBody as unknown as ExtensionInstallRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       if (typeof installBody.source !== 'string' || installBody.source.length === 0) {
-        sendJsonError(res, 400, 'Missing required field: source'); return;
+        sendJsonError(res, 400, 'Missing required field: source'); return true;
       }
       if (
         installBody.scope !== undefined &&
@@ -3343,20 +3341,20 @@ export async function startServer(
         installBody.scope !== 'project' &&
         installBody.scope !== 'user'
       ) {
-        sendJsonError(res, 400, 'Invalid scope. Supported: local, project, user'); return;
+        sendJsonError(res, 400, 'Invalid scope. Supported: local, project, user'); return true;
       }
       if (
         installBody.name !== undefined &&
         (typeof installBody.name !== 'string' || !EXTENSION_NAME_RE.test(installBody.name))
       ) {
-        sendJsonError(res, 400, 'Invalid extension name'); return;
+        sendJsonError(res, 400, 'Invalid extension name'); return true;
       }
       for (const fieldError of [
         validateBooleanField(installBody as unknown as Record<string, unknown>, 'force'),
         validateBooleanField(installBody as unknown as Record<string, unknown>, 'trust'),
         validateStringField(installBody as unknown as Record<string, unknown>, 'trustedBy'),
       ]) {
-        if (fieldError) { sendJsonError(res, 400, fieldError); return; }
+        if (fieldError) { sendJsonError(res, 400, fieldError); return true; }
       }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
@@ -3368,7 +3366,7 @@ export async function startServer(
         const extension =
           listData.extensions.find((e) => e.path === result.targetPath) ??
           selectExtensionByName(listData.extensions, result.name);
-        if (!extension) { sendJsonError(res, 500, 'Extension installed but not found in discovery'); return; }
+        if (!extension) { sendJsonError(res, 500, 'Extension installed but not found in discovery'); return true; }
         const needsTrust = result.scope === 'project' && (!installBody.trust);
         sendJson(res, {
           extension,
@@ -3380,23 +3378,23 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to install extension'); }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionUpdate) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let updateBody: ExtensionUpdateRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         updateBody = rawBody as unknown as ExtensionUpdateRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       const updateValidationError = validateExtensionPackageTargetBody(updateBody as unknown as Record<string, unknown>, {
         allowTrust: true,
         allowVersion: true,
       });
-      if (updateValidationError) { sendJsonError(res, 400, updateValidationError); return; }
+      if (updateValidationError) { sendJsonError(res, 400, updateValidationError); return true; }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
         const { config, warnings } = await loadConfig(cwd);
@@ -3407,7 +3405,7 @@ export async function startServer(
         const extension =
           listData.extensions.find((e) => e.path === result.targetPath) ??
           selectExtensionByName(listData.extensions, result.name);
-        if (!extension) { sendJsonError(res, 500, 'Extension updated but not found in discovery'); return; }
+        if (!extension) { sendJsonError(res, 500, 'Extension updated but not found in discovery'); return true; }
         const needsTrust = result.scope === 'project' && (!updateBody.trust);
         sendJson(res, {
           extension,
@@ -3420,22 +3418,22 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to update extension'); }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionRemove) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let removeBody: ExtensionRemoveRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         removeBody = rawBody as unknown as ExtensionRemoveRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       const removeValidationError = validateExtensionPackageTargetBody(removeBody as unknown as Record<string, unknown>, {
         allowForce: true,
       });
-      if (removeValidationError) { sendJsonError(res, 400, removeValidationError); return; }
+      if (removeValidationError) { sendJsonError(res, 400, removeValidationError); return true; }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
         const { config, warnings } = await loadConfig(cwd);
@@ -3447,23 +3445,23 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to remove extension'); }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionPromote) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let promoteBody: ExtensionPromoteRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         promoteBody = rawBody as unknown as ExtensionPromoteRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       const promoteValidationError = validateExtensionPackageTargetBody(promoteBody as unknown as Record<string, unknown>, {
         allowForce: true,
         allowTrust: true,
       });
-      if (promoteValidationError) { sendJsonError(res, 400, promoteValidationError); return; }
+      if (promoteValidationError) { sendJsonError(res, 400, promoteValidationError); return true; }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
         const { config, warnings } = await loadConfig(cwd);
@@ -3474,7 +3472,7 @@ export async function startServer(
         const extension =
           listData.extensions.find((e) => e.path === result.targetPath) ??
           selectExtensionByName(listData.extensions, result.name);
-        if (!extension) { sendJsonError(res, 500, 'Extension promoted but not found in discovery'); return; }
+        if (!extension) { sendJsonError(res, 500, 'Extension promoted but not found in discovery'); return true; }
         const needsTrust = !promoteBody.trust;
         sendJson(res, {
           extension,
@@ -3486,22 +3484,22 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to promote extension'); }
       }
-      return;
+      return true;
     }
 
     if (req.method === 'POST' && url === API_ROUTES.extensionDemote) {
-      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
-      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return; }
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
+      if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       let demoteBody: ExtensionDemoteRequest;
       try {
         const rawBody = await parseJsonBody(req);
-        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+        if (!isPlainObject(rawBody)) { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
         demoteBody = rawBody as unknown as ExtensionDemoteRequest;
-      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+      } catch { sendJsonError(res, 400, 'Invalid JSON body'); return true; }
       const demoteValidationError = validateExtensionPackageTargetBody(demoteBody as unknown as Record<string, unknown>, {
         allowForce: true,
       });
-      if (demoteValidationError) { sendJsonError(res, 400, demoteValidationError); return; }
+      if (demoteValidationError) { sendJsonError(res, 400, demoteValidationError); return true; }
       try {
         const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
         const { config, warnings } = await loadConfig(cwd);
@@ -3512,7 +3510,7 @@ export async function startServer(
         const extension =
           listData.extensions.find((e) => e.path === result.targetPath) ??
           selectExtensionByName(listData.extensions, result.name);
-        if (!extension) { sendJsonError(res, 500, 'Extension demoted but not found in discovery'); return; }
+        if (!extension) { sendJsonError(res, 500, 'Extension demoted but not found in discovery'); return true; }
         sendJson(res, {
           extension,
           message: `Extension "${result.name}" demoted to project-local scope.`,
@@ -3521,11 +3519,39 @@ export async function startServer(
         if (err instanceof ExtensionPackageError) { sendJsonError(res, err.statusCode, err.message); }
         else { sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to demote extension'); }
       }
-      return;
+      return true;
     }
     // --- eforge:endregion plan-02-extension-package-daemon-operations ---
+    return false;
+  }
 
+  async function handleExtensionRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
+    // --- eforge:region plan-02-extension-tooling-surfaces ---
+    if (await handleExtensionManagementRoutes(req, res, url)) return true;
+    if (await handleExtensionReplayRoute(req, res, url)) return true;
+    if (await handleExtensionReadRoutes(req, res, url)) return true;
+    if (await handleExtensionTrustRoutes(req, res, url)) return true;
+    if (await handleExtensionPackageRoutes(req, res, url)) return true;
     // --- eforge:endregion plan-02-extension-tooling-surfaces ---
+    return false;
+  }
+  const server = createServer(async (req, res) => {
+    const url = req.url ?? '/';
+    // Pathname strips the query string for static route matching and file
+    // resolution. API routes continue to use the full `url` string (which
+    // already handles query params via URLSearchParams where needed).
+    const pathname = url.split('?')[0];
+
+    if (handleCorsPreflightRoute(req, res)) return;
+    if (handleKeepAliveRoute(req, res)) return;
+
+    if (await handleControlPlaneRoutes(req, res, url)) return;
+
+    if (await handleProfileRoutes(req, res, url)) return;
+
+    // --- eforge:region plan-04-extension-routes ---
+    if (await handleExtensionRoutes(req, res, url)) return;
+    // --- eforge:endregion plan-04-extension-routes ---
 
     // --- eforge:region plan-02-daemon-http-and-mcp-tool ---
     // Playbook names must be kebab-case (mirrors `playbookFrontmatterSchema.name`).

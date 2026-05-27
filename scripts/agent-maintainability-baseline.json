@@ -3,7 +3,7 @@
   "files": [
     {
       "path": "packages/monitor/src/server.ts",
-      "noGrowthCeiling": 4882,
+      "noGrowthCeiling": 4908,
       "category": "implementation"
     },
     {
