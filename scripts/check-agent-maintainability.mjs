@@ -12,7 +12,7 @@
  * Exits 0 on success, non-zero on any violation.
  */
 
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
 
 const REPO_ROOT = process.cwd();
@@ -190,49 +190,40 @@ const baselineMap = new Map(
 const violations = [];
 const markerErrors = [];
 
-const scanDirs = [
-  join(REPO_ROOT, 'packages'),
-  join(REPO_ROOT, 'test'),
-  join(REPO_ROOT, 'scripts'),
-  join(REPO_ROOT, 'web'),
-  join(REPO_ROOT, 'eforge-plugin'),
-];
+// Walk from the repository root so root-level implementation files are included.
+// SKIP_DIRS handles node_modules, dist, .git, and other undesirable directories.
+walkFiles(REPO_ROOT, (absPath, relPath) => {
+  if (!isImplementationFile(relPath)) return;
 
-for (const dir of scanDirs) {
-  if (!existsSync(dir)) continue;
-  walkFiles(dir, (absPath, relPath) => {
-    if (!isImplementationFile(relPath)) return;
+  const lineCount = countLines(absPath);
+  const content = readFileSync(absPath, 'utf-8');
 
-    const lineCount = countLines(absPath);
-    const content = readFileSync(absPath, 'utf-8');
+  // Check region marker balance regardless of size.
+  if (content.includes('eforge:region') || content.includes('eforge:endregion')) {
+    const errors = checkMarkerBalance(relPath, content);
+    markerErrors.push(...errors);
+  }
 
-    // Check region marker balance regardless of size.
-    if (content.includes('eforge:region') || content.includes('eforge:endregion')) {
-      const errors = checkMarkerBalance(relPath, content);
-      markerErrors.push(...errors);
+  const baselineEntry = baselineMap.get(relPath);
+
+  if (baselineEntry) {
+    // File is in the baseline — enforce no-growth ceiling.
+    if (lineCount > baselineEntry.noGrowthCeiling) {
+      violations.push(
+        `BASELINE EXCEEDED  ${relPath}: ${lineCount} lines (ceiling: ${baselineEntry.noGrowthCeiling})`
+      );
     }
-
-    const baselineEntry = baselineMap.get(relPath);
-
-    if (baselineEntry) {
-      // File is in the baseline — enforce no-growth ceiling.
-      if (lineCount > baselineEntry.noGrowthCeiling) {
-        violations.push(
-          `BASELINE EXCEEDED  ${relPath}: ${lineCount} lines (ceiling: ${baselineEntry.noGrowthCeiling})`
-        );
-      }
-    } else {
-      // File is not in the baseline — enforce hard cap by category.
-      const cap = isTestFile(relPath) ? TEST_CAP : IMPL_CAP;
-      if (lineCount > cap) {
-        const category = isTestFile(relPath) ? 'test' : 'implementation';
-        violations.push(
-          `CAP EXCEEDED  ${relPath}: ${lineCount} lines (${category} cap: ${cap})`
-        );
-      }
+  } else {
+    // File is not in the baseline — enforce hard cap by category.
+    const cap = isTestFile(relPath) ? TEST_CAP : IMPL_CAP;
+    if (lineCount > cap) {
+      const category = isTestFile(relPath) ? 'test' : 'implementation';
+      violations.push(
+        `CAP EXCEEDED  ${relPath}: ${lineCount} lines (${category} cap: ${cap})`
+      );
     }
-  });
-}
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Report

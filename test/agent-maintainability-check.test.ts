@@ -191,6 +191,26 @@ describe('check-agent-maintainability.mjs', () => {
     expect(result.status).toBe(0);
   });
 
+  it('exits non-zero for an oversized root-level implementation file not in the baseline', () => {
+    const fixtureDir = makeTmpFixtureDir('oversized-root-level');
+
+    const baselineContent = JSON.stringify({ files: [] }, null, 2);
+    const scriptsDir = join(fixtureDir, 'scripts');
+    mkdirSync(scriptsDir, { recursive: true });
+    writeFileSync(join(scriptsDir, 'agent-maintainability-baseline.json'), baselineContent, 'utf-8');
+
+    // Place an oversized .ts file directly at the repo root — not in any subdirectory.
+    // 700 lines — above the 600-line implementation cap.
+    const oversizedContent = makeOversizedContent(700);
+    writeFileSync(join(fixtureDir, 'root-level-impl.ts'), oversizedContent, 'utf-8');
+
+    const result = runScript(fixtureDir);
+    expect(result.status).not.toBe(0);
+    const output = result.stdout + result.stderr;
+    expect(output).toMatch(/root-level-impl\.ts/);
+    expect(output).toMatch(/700/);
+  });
+
   it('exits non-zero for crossed (improperly interleaved) region markers', () => {
     const fixtureDir = makeTmpFixtureDir('crossed-markers');
 
