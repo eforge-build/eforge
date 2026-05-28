@@ -1,72 +1,12 @@
 import { defineConfig } from 'vitest/config';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
-  define: {
-    // Stub the baked-in CLI version constant for test environments
-    EFORGE_VERSION: JSON.stringify('test'),
-  },
   test: {
-    setupFiles: ['./test/setup-test-env.ts'],
-    include: [
-      'test/**/*.test.ts',
-      'packages/engine/test/**/*.test.ts',
-      // --- eforge:region plan-02-web-site ---
-      'web/__tests__/**/*.test.ts',
-      // --- eforge:endregion plan-02-web-site ---
-      // --- eforge:region plan-04-monitor-ui ---
-      'packages/monitor-ui/src/**/*.test.tsx',
-      'packages/monitor-ui/src/**/*.test.ts',
-      'packages/monitor-ui/test/**/*.test.ts',
-      // --- eforge:endregion plan-04-monitor-ui ---
-      // --- eforge:region plan-04-daemon-events-server ---
-      'packages/client/src/__tests__/**/*.test.ts',
-      // --- eforge:endregion plan-04-daemon-events-server ---
-      // --- eforge:region plan-01-types-and-daemon-emission ---
-      'packages/monitor/src/__tests__/**/*.test.ts',
-      // --- eforge:endregion plan-01-types-and-daemon-emission ---
-    ],
-    server: {
-      deps: {
-        inline: [/^@eforge-build\//, /^@modelcontextprotocol\//],
-        moduleDirectories: ['node_modules', 'packages/engine/node_modules', 'packages/eforge/node_modules'],
-      },
-    },
-  },
-  resolve: {
-    alias: [
-      { find: /^@eforge-build\/engine\/(.*)$/, replacement: resolve(root, 'packages/engine/src/$1') },
-      { find: /^@eforge-build\/monitor\/(.*)$/, replacement: resolve(root, 'packages/monitor/src/$1') },
-      { find: '@eforge-build/monitor', replacement: resolve(root, 'packages/monitor/src/index.ts') },
-      { find: /^@eforge-build\/monitor-ui\/(.*)$/, replacement: resolve(root, 'packages/monitor-ui/src/$1') },
-      { find: '@eforge-build/client/browser', replacement: resolve(root, 'packages/client/src/browser.ts') },
-      { find: '@eforge-build/client', replacement: resolve(root, 'packages/client/src/index.ts') },
-      { find: /^@eforge-build\/scopes\/(.*)$/, replacement: resolve(root, 'packages/scopes/src/$1') },
-      { find: '@eforge-build/scopes', replacement: resolve(root, 'packages/scopes/src/index.ts') },
-      { find: /^@eforge-build\/extension-sdk\/(.*)$/, replacement: resolve(root, 'packages/extension-sdk/src/$1') },
-      { find: '@eforge-build/extension-sdk', replacement: resolve(root, 'packages/extension-sdk/src/index.ts') },
-      { find: /^@eforge-build\/input\/(.*)$/, replacement: resolve(root, 'packages/input/src/$1') },
-      { find: '@eforge-build/input', replacement: resolve(root, 'packages/input/src/index.ts') },
-      // --- eforge:region plan-04-monitor-ui ---
-      // @/ alias for monitor-ui src root — used by monitor-ui component test files.
-      { find: /^@\/(.*)$/, replacement: resolve(root, 'packages/monitor-ui/src/$1') },
-      // --- eforge:endregion plan-04-monitor-ui ---
-      // @modelcontextprotocol/sdk is installed in packages/eforge/node_modules only; map sub-paths
-      // to the ESM dist so test files can import from it directly.
-      {
-        find: /^@modelcontextprotocol\/sdk\/(.+)$/,
-        replacement: resolve(root, 'packages/eforge/node_modules/@modelcontextprotocol/sdk/dist/esm/$1'),
-      },
-      {
-        find: '@modelcontextprotocol/sdk',
-        replacement: resolve(root, 'packages/eforge/node_modules/@modelcontextprotocol/sdk/dist/esm/index.js'),
-      },
-      // docs-gen package source aliases
-      { find: '@eforge-build/eforge/cli', replacement: resolve(root, 'packages/eforge/src/cli/index.ts') },
-      { find: /^@eforge-build\/docs-gen\/(.*)$/, replacement: resolve(root, 'packages/docs-gen/src/$1') },
+    projects: [
+      // Main project: engine, client, monitor, monitor-ui, web tests
+      './vitest.main.config.ts',
+      // Console UI: run-state, pipeline component, and related tests
+      './packages/console-ui/vitest.config.ts',
     ],
   },
 });

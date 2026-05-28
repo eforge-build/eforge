@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import { AgentDetailSheet } from '../agent-detail-sheet';
+import type { AgentThread, StoredEvent } from '@/lib/reducer';
 
 afterEach(cleanup);
-import type { AgentThread, AgentActivityFacts, StoredEvent } from '@/lib/reducer';
 
 function makeThread(overrides: Partial<AgentThread> = {}): AgentThread {
   return {
@@ -26,97 +26,27 @@ function makeThread(overrides: Partial<AgentThread> = {}): AgentThread {
   };
 }
 
-function makeActivity(overrides: Partial<AgentActivityFacts> = {}): AgentActivityFacts {
-  return {
-    attribution: 'exact',
-    files: [
-      { path: 'src/index.ts', additions: 10, deletions: 2 },
-      { path: 'src/utils.ts', additions: 5, deletions: 0 },
-    ],
-    totals: { filesChanged: 2, additions: 15, deletions: 2 },
-    ...overrides,
-  };
-}
-
-describe('AgentDetailSheet', () => {
-  it('drawer renders title containing agent role and plan id', () => {
+describe('AgentDetailSheet smoke', () => {
+  it('renders title containing agent role and plan id', () => {
     const thread = makeThread({ agent: 'builder', planId: 'plan-01' });
-    render(
-      <AgentDetailSheet thread={thread} events={[]} open={true} onClose={() => {}} />,
-    );
-    // The SheetContent title is "role · planId"
+    render(<AgentDetailSheet thread={thread} events={[]} open={true} onClose={() => {}} />);
     expect(screen.getByText('builder · plan-01')).toBeTruthy();
-  });
-
-  it('result text longer than 600 chars renders a button labeled "Show more"', () => {
-    const longText = 'a'.repeat(601);
-    const thread = makeThread({ resultText: longText });
-    render(
-      <AgentDetailSheet thread={thread} events={[]} open={true} onClose={() => {}} />,
-    );
-    expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
-    // Only first 600 chars should be visible (plus ellipsis)
-    expect(screen.queryByText(longText)).toBeFalsy();
-  });
-
-  it('attribution badge for "exact" contains the text "exact"', () => {
-    const thread = makeThread({ activity: makeActivity({ attribution: 'exact' }) });
-    render(
-      <AgentDetailSheet thread={thread} events={[]} open={true} onClose={() => {}} />,
-    );
-    expect(screen.getByText('exact')).toBeTruthy();
-  });
-
-  it('attribution badge for "best_effort" contains the text "best_effort"', () => {
-    const thread = makeThread({ activity: makeActivity({ attribution: 'best_effort' }) });
-    render(
-      <AgentDetailSheet thread={thread} events={[]} open={true} onClose={() => {}} />,
-    );
-    expect(screen.getByText('best_effort')).toBeTruthy();
   });
 
   it('activity totals render when activity is present', () => {
     const thread = makeThread({
-      activity: makeActivity({
+      activity: {
         attribution: 'exact',
+        files: [{ path: 'src/index.ts', additions: 10, deletions: 2 }],
         totals: { filesChanged: 3, additions: 20, deletions: 5 },
-      }),
+      },
     });
-    render(
-      <AgentDetailSheet thread={thread} events={[]} open={true} onClose={() => {}} />,
-    );
-    // totals section should render filesChanged, +additions, -deletions
-    const container = document.body;
-    expect(container.textContent).toContain('3 files');
-    expect(container.textContent).toContain('+20');
-    expect(container.textContent).toContain('-5');
+    render(<AgentDetailSheet thread={thread} events={[]} open={true} onClose={() => {}} />);
+    expect(document.body.textContent).toContain('3 files');
+    expect(document.body.textContent).toContain('+20');
   });
 
-  it('activity totals are omitted when activity is undefined', () => {
-    const thread = makeThread({ activity: undefined });
-    const { container } = render(
-      <AgentDetailSheet thread={thread} events={[]} open={true} onClose={() => {}} />,
-    );
-    // "Files changed (deterministic)" section should not be rendered
-    expect(within(container).queryByText('Files changed (deterministic)')).toBeFalsy();
-  });
-
-  it('does not render when thread is null', () => {
-    const { container } = render(
-      <AgentDetailSheet thread={null} events={[]} open={true} onClose={() => {}} />,
-    );
-    expect(container.firstChild).toBeNull();
-  });
-
-  it('does not render sheet content when open is false', () => {
-    const thread = makeThread();
-    const { container } = render(
-      <AgentDetailSheet thread={thread} events={[]} open={false} onClose={() => {}} />,
-    );
-    expect(within(container).queryByText('builder · plan-01')).toBeFalsy();
-  });
-
-  it('renders warning events for the matching agentId', () => {
+  it('renders matching warning event for the agentId and omits non-matching', () => {
     const thread = makeThread({ agentId: 'agent-abc-123' });
     const events: StoredEvent[] = [
       {
@@ -131,11 +61,21 @@ describe('AgentDetailSheet', () => {
           message: 'Context approaching limit.',
         },
       },
+      {
+        eventId: 'ev2',
+        event: {
+          type: 'agent:warning',
+          timestamp: '2024-01-15T10:02:00.000Z',
+          sessionId: 's1',
+          agentId: 'agent-xyz-999',
+          agent: 'reviewer',
+          code: 'OTHER_WARNING',
+          message: 'Some other agent warning.',
+        },
+      },
     ];
-    render(
-      <AgentDetailSheet thread={thread} events={events} open={true} onClose={() => {}} />,
-    );
+    render(<AgentDetailSheet thread={thread} events={events} open={true} onClose={() => {}} />);
     expect(screen.getByText(/CONTEXT_LIMIT/)).toBeTruthy();
-    expect(screen.getByText(/Context approaching limit\./)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('OTHER_WARNING');
   });
 });
