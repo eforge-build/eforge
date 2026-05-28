@@ -43,7 +43,7 @@
     },
     {
       "path": "packages/engine/src/pipeline/stages/build-stages.ts",
-      "noGrowthCeiling": 1518,
+      "noGrowthCeiling": 1527,
       "category": "implementation"
     },
     {

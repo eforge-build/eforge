@@ -2749,7 +2749,7 @@ export class EforgeEngine {
         return;
       }
 
-      const { summary, diffStat } = eligibility;
+      const { summary, diffStat, artifactBasePath } = eligibility;
       const { seededMerged, seededPending } = deriveResumeSeedState(summary.plans);
 
       yield { timestamp: ts(), type: 'build:resume:start', prdId, setName, featureBranch };
@@ -2765,8 +2765,9 @@ export class EforgeEngine {
         resumeContextByPlan.set(planId, formatResumeContext({ planId, summary, seededMerged, seededPending }));
       }
 
-      // Orchestration artifacts are in the merge worktree
-      const planBaseCwd = mergeWorktreePath;
+      // Orchestration artifacts are read from the recreated merge worktree when
+      // present, or from a read-only recovery copy materialized from branch history.
+      const planBaseCwd = artifactBasePath;
       const configPath = resolve(planBaseCwd, this.config.plan.outputDir, setName, 'orchestration.yaml');
 
       const validation = await validatePlanSet(configPath);

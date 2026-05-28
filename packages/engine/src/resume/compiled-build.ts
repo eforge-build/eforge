@@ -10,8 +10,8 @@
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { buildFailureSummary } from '../recovery/failure-summary.js';
@@ -39,6 +39,12 @@ export interface ResumeEligibleResult {
   summary: BuildFailureSummary;
   /** The diffStat from the feature branch (may be empty string). */
   diffStat: string;
+  /** Filesystem root that contains the compiled plan artifacts to read. */
+  artifactBasePath: string;
+  /** Where the artifacts were recovered from. */
+  artifactSource: 'merge-worktree' | 'branch-history';
+  /** Commit used when artifacts had to be recovered from branch history. */
+  artifactCommit?: string;
 }
 
 export type ResumeEligibilityResult = ResumeIneligibleResult | ResumeEligibleResult;
@@ -57,6 +63,92 @@ export interface ResumeSeedState {
 // ---------------------------------------------------------------------------
 // Eligibility checks
 // ---------------------------------------------------------------------------
+
+async function ensureMergeWorktreeFromBranch(opts: {
+  cwd: string;
+  featureBranch: string;
+  mergeWorktreePath: string;
+}): Promise<void> {
+  if (existsSync(opts.mergeWorktreePath)) return;
+
+  await mkdir(dirname(opts.mergeWorktreePath), { recursive: true });
+  await exec('git', ['worktree', 'add', opts.mergeWorktreePath, opts.featureBranch], { cwd: opts.cwd });
+}
+
+async function recoverArtifactsFromBranchHistory(opts: {
+  cwd: string;
+  featureBranch: string;
+  mergeWorktreePath: string;
+  outputDir: string;
+  setName: string;
+}): Promise<{ artifactBasePath: string; artifactCommit: string } | undefined> {
+  const planSetPath = join(opts.outputDir, opts.setName);
+  const orchRelPath = join(planSetPath, 'orchestration.yaml');
+
+  const { stdout: commitsOut } = await exec(
+    'git',
+    ['rev-list', opts.featureBranch, '--', orchRelPath],
+    { cwd: opts.cwd },
+  );
+  const candidateCommits = commitsOut.split('\n').map((line) => line.trim()).filter(Boolean);
+  let artifactCommit = '';
+  for (const candidate of candidateCommits) {
+    try {
+      await exec('git', ['cat-file', '-e', `${candidate}:${orchRelPath}`], { cwd: opts.cwd });
+      artifactCommit = candidate;
+      break;
+    } catch {
+      // The latest path-touching commit may be a cleanup deletion; keep walking.
+    }
+  }
+  if (!artifactCommit) return undefined;
+
+  const { stdout: filesOut } = await exec(
+    'git',
+    ['ls-tree', '-r', '--name-only', artifactCommit, '--', planSetPath],
+    { cwd: opts.cwd },
+  );
+  const files = filesOut.split('\n').map((line) => line.trim()).filter(Boolean);
+  if (!files.includes(orchRelPath)) return undefined;
+
+  const artifactBasePath = join(dirname(opts.mergeWorktreePath), '__resume_artifacts__');
+  const targetPlanSetDir = join(artifactBasePath, planSetPath);
+  await rm(targetPlanSetDir, { recursive: true, force: true });
+
+  for (const relPath of files) {
+    const { stdout } = await exec('git', ['show', `${artifactCommit}:${relPath}`], { cwd: opts.cwd });
+    const targetPath = join(artifactBasePath, relPath);
+    await mkdir(dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, stdout, 'utf-8');
+  }
+
+  return { artifactBasePath, artifactCommit };
+}
+
+async function resolveCompiledArtifactSource(opts: {
+  cwd: string;
+  featureBranch: string;
+  mergeWorktreePath: string;
+  outputDir: string;
+  setName: string;
+}): Promise<
+  | { ok: true; artifactBasePath: string; artifactSource: 'merge-worktree' | 'branch-history'; artifactCommit?: string }
+  | { ok: false; checkedPath: string }
+> {
+  await ensureMergeWorktreeFromBranch(opts);
+
+  const orchPath = resolve(opts.mergeWorktreePath, opts.outputDir, opts.setName, 'orchestration.yaml');
+  if (existsSync(orchPath)) {
+    return { ok: true, artifactBasePath: opts.mergeWorktreePath, artifactSource: 'merge-worktree' };
+  }
+
+  const recovered = await recoverArtifactsFromBranchHistory(opts);
+  if (recovered) {
+    return { ok: true, artifactBasePath: recovered.artifactBasePath, artifactSource: 'branch-history', artifactCommit: recovered.artifactCommit };
+  }
+
+  return { ok: false, checkedPath: orchPath };
+}
 
 /**
  * Check whether a compiled-build resume is eligible.
@@ -92,13 +184,24 @@ export async function checkResumeEligibility(opts: {
     };
   }
 
-  // 2. orchestration.yaml must exist in the merge worktree.
-  const orchPath = resolve(mergeWorktreePath, outputDir, setName, 'orchestration.yaml');
-  if (!existsSync(orchPath)) {
+  // 2. orchestration.yaml must be available from the merge worktree, the
+  //    feature branch tip, or the feature branch history. Worktrees are
+  //    disposable scratch; the branch is the durable artifact store.
+  let artifactSource: Awaited<ReturnType<typeof resolveCompiledArtifactSource>>;
+  try {
+    artifactSource = await resolveCompiledArtifactSource({ cwd, featureBranch, mergeWorktreePath, outputDir, setName });
+  } catch (err) {
     return {
       eligible: false,
-      reason: `orchestration.yaml not found — compiled plan artifacts are missing or the merge worktree was not preserved`,
-      checkedPath: orchPath,
+      reason: `failed to recreate merge worktree for ${featureBranch}: ${(err as Error).message}`,
+    };
+  }
+
+  if (!artifactSource.ok) {
+    return {
+      eligible: false,
+      reason: `orchestration.yaml not found — compiled plan artifacts are missing from the preserved branch and its history`,
+      checkedPath: artifactSource.checkedPath,
     };
   }
 
@@ -127,6 +230,9 @@ export async function checkResumeEligibility(opts: {
     eligible: true,
     summary,
     diffStat: summary.diffStat,
+    artifactBasePath: artifactSource.artifactBasePath,
+    artifactSource: artifactSource.artifactSource,
+    ...(artifactSource.artifactCommit !== undefined ? { artifactCommit: artifactSource.artifactCommit } : {}),
   };
 }
 

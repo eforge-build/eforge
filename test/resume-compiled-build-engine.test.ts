@@ -8,9 +8,17 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { deriveResumeSeedState, formatResumeContext, checkResumeEligibility } from '@eforge-build/engine/resume/compiled-build';
 import { applyResumeSeed, initializeState, type ResumeSeedOptions } from '@eforge-build/engine/orchestrator';
-import type { PlanSummaryEntry, BuildFailureSummary, EforgeState } from '@eforge-build/engine/events';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { openDatabase } from '@eforge-build/monitor/db';
+import type { PlanSummaryEntry, BuildFailureSummary, EforgeEvent } from '@eforge-build/engine/events';
+import { StubHarness } from './stub-harness.js';
+import { useTempDir } from './test-tmpdir.js';
 
 // --- eforge:region plan-01-engine-resume ---
 
@@ -54,6 +62,98 @@ function makePlans(
     build: ['implement', 'review-cycle'],
     review: TEST_REVIEW,
   }));
+}
+
+const makeTempDir = useTempDir('eforge-resume-compiled-build-');
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf-8' }).trim();
+}
+
+function writeFileEnsuringDir(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, 'utf-8');
+}
+
+function initRepo(): string {
+  const cwd = makeTempDir();
+  git(cwd, ['init', '-b', 'main']);
+  git(cwd, ['config', 'user.email', 'test@example.com']);
+  git(cwd, ['config', 'user.name', 'Test User']);
+  writeFileEnsuringDir(join(cwd, 'README.md'), '# test\n');
+  git(cwd, ['add', 'README.md']);
+  git(cwd, ['commit', '-m', 'chore: initial']);
+  return cwd;
+}
+
+function writeCompiledPlanSet(cwd: string, setName: string, opts: { validate?: string[] } = {}): void {
+  const validate = opts.validate ?? [];
+  const validateYaml = validate.length > 0
+    ? `validate:\n${validate.map((cmd) => `  - ${cmd}`).join('\n')}\n`
+    : 'validate: []\n';
+  writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'orchestration.yaml'), `name: ${setName}
+description: Test resume plan set
+base_branch: main
+mode: excursion
+${validateYaml}plans:
+  - id: plan-01
+    name: Plan 01
+    depends_on: []
+    branch: ${setName}/plan-01
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile: []
+  defaultBuild: []
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
+`);
+  writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'plan-01.md'), `---
+id: plan-01
+name: Plan 01
+---
+
+# Plan 01
+`);
+}
+
+function seedFailedRunEvidence(cwd: string, setName: string): string {
+  const dbPath = join(cwd, '.eforge', 'monitor.db');
+  const db = openDatabase(dbPath);
+  const runId = `run-${setName}`;
+  const ts = '2026-01-01T00:00:00.000Z';
+  db.insertRun({ id: runId, planSet: setName, command: 'build', status: 'failed', startedAt: ts, cwd });
+  db.insertEvent({ runId, type: 'plan:status:change', planId: 'plan-01', data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-01', status: 'completed', timestamp: ts }), timestamp: ts });
+  db.insertEvent({ runId, type: 'plan:merge:complete', planId: 'plan-01', data: JSON.stringify({ type: 'plan:merge:complete', planId: 'plan-01', commitSha: 'abc123', timestamp: ts }), timestamp: ts });
+  db.insertEvent({ runId, type: 'plan:build:failed', planId: 'plan-02', data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-02', error: 'prior failure', timestamp: ts }), timestamp: ts });
+  db.insertEvent({ runId, type: 'phase:end', data: JSON.stringify({ type: 'phase:end', runId, result: { status: 'failed', summary: 'failed' }, timestamp: ts }), timestamp: ts });
+  db.updateRunStatus(runId, 'failed', ts);
+  db.close();
+  return dbPath;
+}
+
+function createFeatureBranchWithArtifacts(cwd: string, setName: string, opts: { removeArtifactsAtTip?: boolean } = {}): void {
+  git(cwd, ['switch', '-c', `eforge/${setName}`]);
+  writeCompiledPlanSet(cwd, setName);
+  git(cwd, ['add', 'eforge']);
+  git(cwd, ['commit', '-m', 'plan: compiled artifacts']);
+  if (opts.removeArtifactsAtTip) {
+    rmSync(join(cwd, 'eforge', 'plans', setName), { recursive: true, force: true });
+    git(cwd, ['add', 'eforge']);
+    git(cwd, ['commit', '-m', 'cleanup: remove compiled artifacts']);
+  }
+  git(cwd, ['switch', 'main']);
 }
 
 // ---------------------------------------------------------------------------
@@ -305,7 +405,7 @@ describe('formatResumeContext — builder prompt injection', () => {
 // checkResumeEligibility — ineligibility cases (unit-level, no real git/fs)
 // ---------------------------------------------------------------------------
 
-describe('checkResumeEligibility — feature branch ineligibility', () => {
+describe('checkResumeEligibility — ineligibility and artifact recovery', () => {
   it('returns ineligible with reason containing the branch name when branch is missing', async () => {
     // Use a path that definitely does not exist to exercise the branch-missing path
     const result = await checkResumeEligibility({
@@ -321,6 +421,125 @@ describe('checkResumeEligibility — feature branch ineligibility', () => {
     if (!result.eligible) {
       expect(result.reason).toContain('eforge/test-feature');
     }
+  });
+
+  it('returns ineligible with checkedPath when the branch has no orchestration artifact', async () => {
+    const cwd = initRepo();
+    const setName = 'missing-orchestration';
+    git(cwd, ['switch', '-c', `eforge/${setName}`]);
+    writeFileEnsuringDir(join(cwd, 'feature.txt'), 'feature work\n');
+    git(cwd, ['add', 'feature.txt']);
+    git(cwd, ['commit', '-m', 'feat: branch without artifacts']);
+    git(cwd, ['switch', 'main']);
+
+    const result = await checkResumeEligibility({
+      cwd,
+      setName,
+      prdId: setName,
+      mergeWorktreePath: join(dirname(cwd), `${setName}-worktrees`, '__merge__'),
+      outputDir: 'eforge/plans',
+      dbPath: undefined,
+      trunkBranch: 'main',
+    });
+
+    expect(result.eligible).toBe(false);
+    if (!result.eligible) {
+      expect(result.reason).toContain('orchestration.yaml not found');
+      expect(result.checkedPath).toContain(join('eforge', 'plans', setName, 'orchestration.yaml'));
+    }
+  });
+
+  it('recreates a missing merge worktree from the preserved feature branch', async () => {
+    const cwd = initRepo();
+    const setName = 'branch-tip-artifacts';
+    createFeatureBranchWithArtifacts(cwd, setName);
+    const dbPath = seedFailedRunEvidence(cwd, setName);
+    const mergeWorktreePath = join(dirname(cwd), `${setName}-worktrees`, '__merge__');
+
+    const result = await checkResumeEligibility({
+      cwd,
+      setName,
+      prdId: setName,
+      mergeWorktreePath,
+      outputDir: 'eforge/plans',
+      dbPath,
+      trunkBranch: 'main',
+    });
+
+    expect(result.eligible).toBe(true);
+    if (result.eligible) {
+      expect(result.artifactSource).toBe('merge-worktree');
+      expect(result.artifactBasePath).toBe(mergeWorktreePath);
+      expect(existsSync(join(mergeWorktreePath, 'eforge', 'plans', setName, 'orchestration.yaml'))).toBe(true);
+    }
+  });
+
+  it('recovers orchestration artifacts from branch history when cleanup removed them at branch tip', async () => {
+    const cwd = initRepo();
+    const setName = 'history-artifacts';
+    createFeatureBranchWithArtifacts(cwd, setName, { removeArtifactsAtTip: true });
+    const dbPath = seedFailedRunEvidence(cwd, setName);
+    const mergeWorktreePath = join(dirname(cwd), `${setName}-worktrees`, '__merge__');
+
+    const result = await checkResumeEligibility({
+      cwd,
+      setName,
+      prdId: setName,
+      mergeWorktreePath,
+      outputDir: 'eforge/plans',
+      dbPath,
+      trunkBranch: 'main',
+    });
+
+    expect(result.eligible).toBe(true);
+    if (result.eligible) {
+      expect(result.artifactSource).toBe('branch-history');
+      expect(result.artifactCommit).toMatch(/^[a-f0-9]{40}$/);
+      expect(existsSync(join(result.artifactBasePath, 'eforge', 'plans', setName, 'orchestration.yaml'))).toBe(true);
+      expect(existsSync(join(result.artifactBasePath, 'eforge', 'plans', setName, 'plan-01.md'))).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EforgeEngine.resumeBuild compile-free execution
+// ---------------------------------------------------------------------------
+
+describe('EforgeEngine.resumeBuild — compile-free execution', () => {
+  it('emits a resume phase and no compile phase when compiled artifacts already exist', async () => {
+    const cwd = initRepo();
+    const setName = 'compile-free-resume';
+    createFeatureBranchWithArtifacts(cwd, setName);
+    seedFailedRunEvidence(cwd, setName);
+
+    const engine = await EforgeEngine.create({
+      cwd,
+      agentRuntimes: new StubHarness([]),
+      config: {
+        landing: { ...DEFAULT_CONFIG.landing, action: 'leave' },
+        build: {
+          ...DEFAULT_CONFIG.build,
+          postMergeCommands: [],
+          cleanupPlanFiles: false,
+          validation: {
+            ...DEFAULT_CONFIG.build.validation,
+            allowNoCommands: true,
+            noCommandsReason: 'compile-free resume unit test',
+          },
+        },
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.resumeBuild(setName, { cwd })) {
+      events.push(event);
+    }
+
+    const phaseStarts = events.filter((event): event is Extract<EforgeEvent, { type: 'phase:start' }> => event.type === 'phase:start');
+    expect(phaseStarts.map((event) => event.command)).toContain('resume');
+    expect(phaseStarts.map((event) => event.command)).not.toContain('compile');
+    expect(events.some((event) => event.type === 'planning:start')).toBe(false);
+    expect(events.some((event) => event.type === 'build:resume:state')).toBe(true);
   });
 });
 
