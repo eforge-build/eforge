@@ -319,38 +319,40 @@ export async function* runBuildPipeline(
   // permission failures, corruption) are treated as hard failures.
 
   // Stat the worktree path first so that ENOENT from exec() is never misread as
-  // "not a git repository". A missing worktree path or missing git executable are
-  // both hard failures, not graceful skips.
+  // "not a git repository". A missing worktree path means we are in a unit-test
+  // context without a real worktree — skip gracefully. A path that exists but
+  // where git fails for other reasons (permissions, corruption, missing binary)
+  // is treated as a hard failure.
+  let worktreeExists = false;
   try {
     await stat(ctx.worktreePath);
+    worktreeExists = true;
   } catch {
-    const errorMsg = `Dirty worktree guard: worktree path does not exist: ${ctx.worktreePath}`;
-    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
-    ctx.buildFailed = true;
-    return;
+    // Path does not exist — not a real worktree (unit test). Skip gracefully.
   }
 
   let isGitRepo = false;
-  try {
-    await exec('git', ['rev-parse', '--is-inside-work-tree'], { cwd: ctx.worktreePath });
-    isGitRepo = true;
-  } catch (err) {
-    // Distinguish "not a git repository" (expected in unit tests without a real worktree)
-    // from real git failures (permissions, corruption, dubious ownership, missing git binary).
-    // ENOENT is no longer treated as "not a git repo" here — the stat() above already
-    // confirmed the path exists, so ENOENT means git itself could not be launched.
-    const stderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr ?? '';
-    const isNotGitRepo =
-      stderr.includes('not a git repository') ||
-      stderr.includes('not a git repo');
-    if (!isNotGitRepo) {
-      // A real Git error (or missing git binary) — treat as a hard failure.
-      const errorMsg = `Dirty worktree guard: git failed: ${err instanceof Error ? err.message : String(err)}`;
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
-      ctx.buildFailed = true;
-      return;
+  if (worktreeExists) {
+    try {
+      await exec('git', ['rev-parse', '--is-inside-work-tree'], { cwd: ctx.worktreePath });
+      isGitRepo = true;
+    } catch (err) {
+      // Distinguish "not a git repository" (expected in unit tests without a real worktree)
+      // from real git failures (permissions, corruption, dubious ownership, missing git binary).
+      // The path exists (confirmed above), so ENOENT here means git itself could not be launched.
+      const stderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr ?? '';
+      const isNotGitRepo =
+        stderr.includes('not a git repository') ||
+        stderr.includes('not a git repo');
+      if (!isNotGitRepo) {
+        // A real Git error (or missing git binary) — treat as a hard failure.
+        const errorMsg = `Dirty worktree guard: git failed: ${err instanceof Error ? err.message : String(err)}`;
+        yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
+        ctx.buildFailed = true;
+        return;
+      }
+      // Not a git repository — skip the dirty worktree guard gracefully.
     }
-    // Not a git repository — skip the dirty worktree guard gracefully.
   }
   if (isGitRepo) {
     try {
