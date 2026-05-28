@@ -1,0 +1,84 @@
+name: first-pass-test-thinning-for-eforge-automated-tests
+description: Thin duplicated legacy monitor-ui tests to compact smoke/parity
+  coverage while preserving active console-ui coverage unchanged.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm exec vitest run
+    packages/monitor-ui/src/lib/reducer/__tests__/handle-agent.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/handle-daemon.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/handle-decisions.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/handle-enqueue.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/handle-expedition.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/handle-plan-build.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/handle-planning.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/handle-session.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/handle-validation.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/regression-orchestration-gap.test.ts
+    packages/monitor-ui/src/lib/reducer/__tests__/regression.test.ts
+    packages/monitor-ui/src/components/pipeline/__tests__/agent-detail-sheet.test.tsx
+    packages/monitor-ui/src/components/pipeline/__tests__/agent-stage-map.test.ts
+    packages/monitor-ui/src/components/pipeline/__tests__/compute-depth-map.test.ts
+  - pnpm exec vitest run
+    packages/console-ui/src/lib/run-state/__tests__/handle-agent.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/handle-daemon.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/handle-decisions.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/handle-enqueue.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/handle-expedition.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/handle-plan-build.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/handle-planning.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/handle-session.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/handle-validation.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/regression-orchestration-gap.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/regression.test.ts
+    packages/console-ui/src/components/pipeline/__tests__/agent-detail-sheet.test.tsx
+    packages/console-ui/src/components/pipeline/__tests__/agent-stage-map.test.ts
+    packages/console-ui/src/components/pipeline/__tests__/compute-depth-map.test.ts
+plans:
+  - id: plan-01-thin-monitor-ui-tests
+    name: Thin Legacy monitor-ui Duplicate Tests
+    depends_on: []
+    branch: first-pass-test-thinning-for-eforge-automated-tests/plan-01-thin-monitor-ui-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: The change is test-only, but it spans 14 legacy duplicate files and
+          requires file-by-file inspection to preserve monitor-ui-only
+          assertions while reducing duplicated behavioral matrices.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - test
+      - code
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused multi-file test-suite maintenance task with a
+    concrete 14-file target list, so excursion is appropriate and expedition
+    would be unnecessary. A plan-review cycle helps enforce the strict scope
+    guardrails before implementation. The build runs implementation, then
+    review-cycle to catch over-thinning or scope drift, then test-cycle to
+    execute the required targeted validation after review fixes. Review focuses
+    on test coverage quality and code hygiene without unrelated
+    security/API/docs perspectives.
+diff_base_ref: 2243faacb70111953aaea547412beedb66c38514
