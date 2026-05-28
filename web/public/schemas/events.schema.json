@@ -189,6 +189,10 @@
                 {
                   "const": "build",
                   "type": "string"
+                },
+                {
+                  "const": "resume",
+                  "type": "string"
                 }
               ]
             }
@@ -10575,6 +10579,107 @@
                   "type": "boolean"
                 }
               }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "setName",
+            "featureBranch"
+          ],
+          "properties": {
+            "type": {
+              "const": "build:resume:start",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "seededMerged",
+            "seededPending",
+            "featureBranch",
+            "landedCommitCount",
+            "diffStat"
+          ],
+          "properties": {
+            "type": {
+              "const": "build:resume:state",
+              "type": "string"
+            },
+            "seededMerged": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "seededPending": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "landedCommitCount": {
+              "type": "number"
+            },
+            "diffStat": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "build:resume:ineligible",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "checkedPath": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "setName"
+          ],
+          "properties": {
+            "type": {
+              "const": "build:resume:complete",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
             }
           }
         }

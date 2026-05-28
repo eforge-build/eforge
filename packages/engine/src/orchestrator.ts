@@ -15,6 +15,9 @@ import { join } from 'node:path';
 
 const exec = promisify(execFile);
 import type { EforgeEvent, OrchestrationConfig, EforgeState, PlanState } from './events.js';
+// --- eforge:region plan-01-engine-resume ---
+import { updatePlanStatus } from './state.js';
+// --- eforge:endregion plan-01-engine-resume ---
 import {
   computeWorktreeBase,
   type MergeResolver,
@@ -151,6 +154,11 @@ export interface OrchestratorOptions {
    *  and this array is defined, the build fails unless an explicit waiver is active. */
   expectedAcceptanceCriteria?: import('./validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
   // --- eforge:endregion plan-02-engine-acceptance-gates ---
+  // --- eforge:region plan-01-engine-resume ---
+  /** Resume seed for compiled-build resume. When provided, merged plans are seeded from prior
+   *  build evidence and resume context is injected into builder prompts. */
+  resumeSeed?: ResumeSeedOptions;
+  // --- eforge:endregion plan-01-engine-resume ---
 }
 
 /**
@@ -193,6 +201,44 @@ export function initializeState(
   return { state };
 }
 
+// --- eforge:region plan-01-engine-resume ---
+/**
+ * Options for seeding orchestrator state from a prior compiled-build run.
+ * Passed from the resume entry point after eligibility is confirmed.
+ */
+export interface ResumeSeedOptions {
+  /**
+   * Plan IDs with merge-complete evidence from the prior run.
+   * These will be seeded as status='merged' and merged=true so the scheduler
+   * treats them as dependency-satisfied without re-running them.
+   */
+  seededMerged: string[];
+  /**
+   * Per-plan resume context text keyed by plan ID.
+   * Injected into builder prompts via BuildStageContext.resumeContext.
+   */
+  resumeContextByPlan: Map<string, string>;
+}
+
+/**
+ * Apply resume seed to an already-initialized EforgeState.
+ *
+ * Mutates the state in place:
+ * - Plans in seededMerged → status='merged', merged=true, added to completedPlans.
+ * - Plans already at 'pending' that are NOT in seededMerged remain pending (no-op).
+ * - Plans not present in state.plans are silently ignored (history may contain
+ *   plans that were removed from orchestration.yaml).
+ */
+export function applyResumeSeed(state: EforgeState, seed: ResumeSeedOptions): void {
+  for (const planId of seed.seededMerged) {
+    const plan = state.plans[planId];
+    if (!plan) continue;
+    updatePlanStatus(state, planId, 'merged');
+    plan.merged = true;
+  }
+}
+// --- eforge:endregion plan-01-engine-resume ---
+
 export class Orchestrator {
   private readonly options: OrchestratorOptions;
 
@@ -203,6 +249,12 @@ export class Orchestrator {
   async *execute(config: OrchestrationConfig): AsyncGenerator<EforgeEvent> {
     const { repoRoot, signal } = this.options;
     const { state } = initializeState(config, repoRoot);
+    // --- eforge:region plan-01-engine-resume ---
+    // Apply resume seed when the caller has reconstructed prior build state.
+    if (this.options.resumeSeed) {
+      applyResumeSeed(state, this.options.resumeSeed);
+    }
+    // --- eforge:endregion plan-01-engine-resume ---
     const featureBranch = `eforge/${config.name}`;
     // Compute mergeWorktreePath deterministically; options.mergeWorktreePath overrides for testing
     const mergeWorktreePath = this.options.mergeWorktreePath ?? join(computeWorktreeBase(repoRoot, config.name), '__merge__');

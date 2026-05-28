@@ -376,6 +376,12 @@ export type {
   TerminalFailureScope,
   TerminalFailureEnvelope,
   // --- eforge:endregion plan-01-terminal-failure-contract ---
+  // --- eforge:region plan-01-engine-resume ---
+  BuildResumeStartEvent,
+  BuildResumeStateEvent,
+  BuildResumeIneligibleEvent,
+  BuildResumeCompleteEvent,
+  // --- eforge:endregion plan-01-engine-resume ---
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema, PlanningDecisionSchema,

@@ -64,6 +64,12 @@ export type {
   StackArtifactRef,
   StackLayerWire,
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+  // --- eforge:region plan-01-engine-resume ---
+  BuildResumeStartEvent,
+  BuildResumeStateEvent,
+  BuildResumeIneligibleEvent,
+  BuildResumeCompleteEvent,
+  // --- eforge:endregion plan-01-engine-resume ---
 } from './events.schemas.js';
 
 export {

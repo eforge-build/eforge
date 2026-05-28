@@ -6,7 +6,7 @@ import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans,
 import { extractExpectedAcceptanceCriteria } from '@eforge-build/engine/validation/acceptance-criteria';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
-import { initializeState, Orchestrator } from '@eforge-build/engine/orchestrator';
+import { initializeState, applyResumeSeed, type ResumeSeedOptions, Orchestrator } from '@eforge-build/engine/orchestrator';
 import type { PlanRunner } from '@eforge-build/engine/orchestrator';
 import type { EforgeState, EforgeEvent, OrchestrationConfig, PlanState } from '@eforge-build/engine/events';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
@@ -1578,3 +1578,134 @@ describe('prdValidate — no-validator acceptance gate', () => {
   });
 });
 // --- eforge:endregion plan-02-engine-acceptance-gates ---
+
+// --- eforge:region plan-01-engine-resume ---
+
+describe('applyResumeSeed — resume state seeding', () => {
+  it('seeds a merged dependency and leaves dependents pending', () => {
+    const config = {
+      name: 'test-set',
+      baseBranch: 'main',
+      mode: 'excursion' as const,
+      plans: makePlans([
+        { id: 'plan-01' },
+        { id: 'plan-02', dependsOn: ['plan-01'] },
+      ]),
+      pipeline: { scope: 'excursion' as const, compile: [], defaultBuild: [], defaultReview: TEST_REVIEW },
+    };
+    const { state } = initializeState(config, '/tmp/repo');
+    expect(state.plans['plan-01'].status).toBe('pending');
+    expect(state.plans['plan-02'].status).toBe('pending');
+
+    const seed: ResumeSeedOptions = {
+      seededMerged: ['plan-01'],
+      resumeContextByPlan: new Map(),
+    };
+    applyResumeSeed(state, seed);
+
+    expect(state.plans['plan-01'].status).toBe('merged');
+    expect(state.plans['plan-01'].merged).toBe(true);
+    expect(state.completedPlans).toContain('plan-01');
+    // Dependent stays pending — it needs to run
+    expect(state.plans['plan-02'].status).toBe('pending');
+    expect(state.plans['plan-02'].merged).toBe(false);
+  });
+
+  it('seeds multiple merged plans from a graph with one failed and one blocked', () => {
+    const config = {
+      name: 'test-set',
+      baseBranch: 'main',
+      mode: 'excursion' as const,
+      plans: makePlans([
+        { id: 'plan-01' },
+        { id: 'plan-02', dependsOn: ['plan-01'] },
+        { id: 'plan-03', dependsOn: ['plan-02'] },
+      ]),
+      pipeline: { scope: 'excursion' as const, compile: [], defaultBuild: [], defaultReview: TEST_REVIEW },
+    };
+    const { state } = initializeState(config, '/tmp/repo');
+
+    // Simulate: plan-01 merged, plan-02 failed, plan-03 blocked
+    const seed: ResumeSeedOptions = {
+      seededMerged: ['plan-01'],
+      resumeContextByPlan: new Map([
+        ['plan-02', 'Resume context for plan-02'],
+        ['plan-03', 'Resume context for plan-03'],
+      ]),
+    };
+    applyResumeSeed(state, seed);
+
+    expect(state.plans['plan-01'].status).toBe('merged');
+    expect(state.plans['plan-01'].merged).toBe(true);
+    // plan-02 and plan-03 start as pending — ready for scheduling
+    expect(state.plans['plan-02'].status).toBe('pending');
+    expect(state.plans['plan-03'].status).toBe('pending');
+  });
+
+  it('handles a completed-but-unmerged plan conservatively (stays pending)', () => {
+    const config = {
+      name: 'test-set',
+      baseBranch: 'main',
+      mode: 'excursion' as const,
+      plans: makePlans([{ id: 'plan-01' }]),
+      pipeline: { scope: 'excursion' as const, compile: [], defaultBuild: [], defaultReview: TEST_REVIEW },
+    };
+    const { state } = initializeState(config, '/tmp/repo');
+
+    // plan-01 is NOT in seededMerged → stays pending (conservative)
+    const seed: ResumeSeedOptions = {
+      seededMerged: [],
+      resumeContextByPlan: new Map(),
+    };
+    applyResumeSeed(state, seed);
+
+    expect(state.plans['plan-01'].status).toBe('pending');
+    expect(state.plans['plan-01'].merged).toBe(false);
+  });
+
+  it('silently ignores plan IDs from seed that are not in state.plans', () => {
+    const config = {
+      name: 'test-set',
+      baseBranch: 'main',
+      mode: 'excursion' as const,
+      plans: makePlans([{ id: 'plan-01' }]),
+      pipeline: { scope: 'excursion' as const, compile: [], defaultBuild: [], defaultReview: TEST_REVIEW },
+    };
+    const { state } = initializeState(config, '/tmp/repo');
+
+    // plan-99 is from prior history but not in current orchestration.yaml
+    const seed: ResumeSeedOptions = {
+      seededMerged: ['plan-99'],
+      resumeContextByPlan: new Map(),
+    };
+    // Should not throw
+    expect(() => applyResumeSeed(state, seed)).not.toThrow();
+    expect(state.plans['plan-01'].status).toBe('pending');
+  });
+
+  it('seeds all plans as merged when the whole graph completed', () => {
+    const config = {
+      name: 'test-set',
+      baseBranch: 'main',
+      mode: 'excursion' as const,
+      plans: makePlans([
+        { id: 'plan-01' },
+        { id: 'plan-02', dependsOn: ['plan-01'] },
+      ]),
+      pipeline: { scope: 'excursion' as const, compile: [], defaultBuild: [], defaultReview: TEST_REVIEW },
+    };
+    const { state } = initializeState(config, '/tmp/repo');
+
+    const seed: ResumeSeedOptions = {
+      seededMerged: ['plan-01', 'plan-02'],
+      resumeContextByPlan: new Map(),
+    };
+    applyResumeSeed(state, seed);
+
+    expect(state.plans['plan-01'].status).toBe('merged');
+    expect(state.plans['plan-02'].status).toBe('merged');
+    expect(state.completedPlans).toContain('plan-01');
+    expect(state.completedPlans).toContain('plan-02');
+  });
+});
+// --- eforge:endregion plan-01-engine-resume ---

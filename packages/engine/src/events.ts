@@ -41,6 +41,12 @@ export type {
   TerminalFailureScope,
   TerminalFailureEnvelope,
   // --- eforge:endregion plan-01-terminal-failure-contract ---
+  // --- eforge:region plan-01-engine-resume ---
+  BuildResumeStartEvent,
+  BuildResumeStateEvent,
+  BuildResumeIneligibleEvent,
+  BuildResumeCompleteEvent,
+  // --- eforge:endregion plan-01-engine-resume ---
 } from '@eforge-build/client';
 
 export {

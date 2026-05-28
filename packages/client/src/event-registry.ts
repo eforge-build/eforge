@@ -1351,6 +1351,30 @@ const eventRegistry = {
   },
   // --- eforge:endregion plan-01-terminal-failure-contract ---
 
+  // --- eforge:region plan-01-engine-resume ---
+  'build:resume:start': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Resuming compiled build for PRD ${e.prdId} on ${e.featureBranch}`,
+  },
+  'build:resume:state': {
+    scope: 'session',
+    persist: true,
+    summary: (e) =>
+      `Resume state seeded: ${e.seededMerged.length} merged, ${e.seededPending.length} pending on ${e.featureBranch}`,
+  },
+  'build:resume:ineligible': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Resume ineligible: ${e.reason}`,
+  },
+  'build:resume:complete': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Build resume complete for PRD ${e.prdId}`,
+  },
+  // --- eforge:endregion plan-01-engine-resume ---
+
   'recovery:start': {
     scope: 'session',
     persist: false,

@@ -2671,6 +2671,383 @@ export class EforgeEngine {
     }
   }
 
+  // --- eforge:region plan-01-engine-resume ---
+  /**
+   * Resume a compiled build that previously failed.
+   *
+   * Checks eligibility (feature branch, orchestration.yaml, failure evidence),
+   * reconstructs plan state from monitor DB and git history, seeds the orchestrator
+   * with merged/pending plan statuses, and runs the existing build pipeline without
+   * invoking any compile/planner stages.
+   *
+   * Emits: build:resume:start → build:resume:state OR build:resume:ineligible →
+   *        (build pipeline events) → build:resume:complete
+   */
+  async *resumeBuild(
+    prdId: string,
+    options: {
+      setName?: string;
+      cwd?: string;
+      verbose?: boolean;
+      abortController?: AbortController;
+    } = {},
+  ): AsyncGenerator<EforgeEvent> {
+    const cwd = options.cwd ?? this.cwd;
+    const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+
+    // Resolve setName from prdId when not provided
+    const setName = options.setName ?? prdId;
+    const featureBranch = `eforge/${setName}`;
+    const mergeWorktreePath = join(computeWorktreeBase(cwd, setName), '__merge__');
+
+    const ts = () => new Date().toISOString();
+
+    // Emit profile info upfront
+    yield { timestamp: ts(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
+    for (const warning of this.startupWarnings()) {
+      yield { timestamp: ts(), type: 'config:warning', message: warning.message, source: warning.source, details: warning.details };
+    }
+
+    // Check eligibility
+    const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext } = await import('./resume/compiled-build.js');
+
+    const eligibility = await checkResumeEligibility({
+      cwd,
+      setName,
+      prdId,
+      mergeWorktreePath,
+      outputDir: this.config.plan.outputDir,
+      dbPath,
+      trunkBranch: this.config.build.trunkBranch,
+    });
+
+    if (!eligibility.eligible) {
+      yield {
+        timestamp: ts(),
+        type: 'build:resume:ineligible',
+        reason: eligibility.reason,
+        ...(eligibility.checkedPath ? { checkedPath: eligibility.checkedPath } : {}),
+      };
+      return;
+    }
+
+    const { summary, diffStat } = eligibility;
+
+    // Derive seeded state from failure summary
+    const { seededMerged, seededPending } = deriveResumeSeedState(summary.plans);
+
+    // Emit resume start
+    yield {
+      timestamp: ts(),
+      type: 'build:resume:start',
+      prdId,
+      setName,
+      featureBranch,
+    };
+
+    // Emit seeded state summary
+    yield {
+      timestamp: ts(),
+      type: 'build:resume:state',
+      seededMerged,
+      seededPending,
+      featureBranch,
+      landedCommitCount: summary.landedCommits.length,
+      diffStat,
+    };
+
+    // Build per-plan resume context map for builder prompt injection
+    const resumeContextByPlan = new Map<string, string>();
+    // Generate resume context for non-merged plans (the ones that need to run)
+    for (const planId of seededPending) {
+      resumeContextByPlan.set(
+        planId,
+        formatResumeContext({ planId, summary, seededMerged, seededPending }),
+      );
+    }
+
+    // Delegate to the existing build pipeline, passing resume seed
+    // to suppress compile phases and seed orchestrator state.
+    const runId = randomUUID();
+    let status: 'completed' | 'failed' = 'completed';
+    let buildSummary = 'Resume complete';
+    const terminalTracker = createBuildTerminalFailureTracker(runId);
+    let tracing: ReturnType<typeof createTracingContext> | undefined;
+
+    try {
+      validatePlanSetName(setName);
+      tracing = createTracingContext(this.config, runId, 'build', setName);
+
+      yield {
+        type: 'phase:start',
+        runId,
+        planSet: setName,
+        command: 'resume',
+        timestamp: ts(),
+      };
+
+      tracing.setInput({ planSet: setName, prdId, resumeMode: true });
+
+      // Orchestration artifacts are in the merge worktree
+      const planBaseCwd = mergeWorktreePath;
+      const configPath = resolve(planBaseCwd, this.config.plan.outputDir, setName, 'orchestration.yaml');
+
+      const validation = await validatePlanSet(configPath);
+      if (!validation.valid) {
+        status = 'failed';
+        buildSummary = `Plan set validation failed: ${validation.errors.join('; ')}`;
+        return;
+      }
+
+      const orchConfig = await parseOrchestrationConfig(configPath);
+      for (const warning of orchConfig.warnings ?? []) {
+        yield { timestamp: ts(), type: 'planning:warning', message: warning, source: 'parseOrchestrationConfig' };
+      }
+
+      const planDir = resolve(planBaseCwd, this.config.plan.outputDir, setName);
+      const planFileMap = new Map<string, PlanFile>();
+      for (const plan of orchConfig.plans) {
+        const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
+        for (const warning of planFile.warnings ?? []) {
+          yield { timestamp: ts(), type: 'planning:warning', planId: plan.id, message: warning, source: 'parsePlanFile' };
+        }
+        planFileMap.set(plan.id, planFile);
+      }
+
+      const config = this.config;
+      const agentRuntimes = this.agentRuntimes;
+      const verbose = options.verbose;
+      const abortController = options.abortController;
+      const extensionReviewerPerspectives = this.extensionRegistry.reviewerPerspectives;
+      const extensionValidationProviders = this.extensionRegistry.validationProviders;
+      const buildPipeline = orchConfig.pipeline;
+
+      const planRunner = async function* (
+        planId: string,
+        worktreePath: string,
+      ): AsyncGenerator<EforgeEvent> {
+        const planFile = planFileMap.get(planId);
+        if (!planFile) {
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId, error: `Plan file not found: ${planId}` };
+          return;
+        }
+
+        const planEntry = orchConfig.plans.find((p) => p.id === planId)!;
+        let planBuild: BuildStageSpec[] = planEntry.build;
+        let planReview: ReviewProfileConfig = planEntry.review;
+
+        const builderShards = planFile.agents?.['builder']?.shards;
+        const guardResult = applyShardedPlanGuard(planBuild, planReview, builderShards);
+        planBuild = guardResult.planBuild;
+        planReview = guardResult.planReview;
+        for (const item of guardResult.injected) {
+          yield {
+            timestamp: new Date().toISOString(),
+            type: 'plan:build:progress',
+            planId,
+            message: `Runtime guard: injected ${item} into sharded plan (shards do not self-verify; review-cycle is the integration gate)`,
+          };
+        }
+
+        const buildCtx: BuildStageContext = {
+          agentRuntimes,
+          config,
+          pipeline: buildPipeline,
+          tracing: tracing!,
+          cwd: worktreePath,
+          planSetName: setName,
+          sourceContent: '',
+          verbose,
+          abortController,
+          modelTracker: new ModelTracker(),
+          plans: Array.from(planFileMap.values()),
+          expeditionModules: [],
+          moduleBuildConfigs: new Map(),
+          planId,
+          worktreePath,
+          planFile,
+          orchConfig,
+          planEntry,
+          reviewIssues: [],
+          build: planBuild,
+          review: planReview,
+          extensionReviewerPerspectives,
+          extensionValidationProviders,
+          // --- eforge:region plan-01-engine-resume ---
+          resumeContext: resumeContextByPlan.get(planId),
+          // --- eforge:endregion plan-01-engine-resume ---
+        };
+
+        yield* runBuildPipeline(buildCtx);
+      };
+
+      // Validation fixer closure
+      const validationFixer: ValidationFixer = async function* (fixerCwd, failures, attempt, maxAttempts) {
+        const fixerSpan = tracing!.createSpan('validation-fixer', { attempt, maxAttempts });
+        fixerSpan.setInput({ failures: failures.map((f) => f.command) });
+        const fixerTracker = createToolTracker(fixerSpan);
+        try {
+          const validationFixerConfig = resolveAgentConfig('validation-fixer', config);
+          for await (const event of runValidationFixer({
+            ...validationFixerConfig,
+            cwd: fixerCwd,
+            failures,
+            attempt,
+            maxAttempts,
+            verbose,
+            abortController,
+            phase: 'standalone',
+            harness: agentRuntimes.forRole('validation-fixer'),
+          })) {
+            fixerTracker.handleEvent(event);
+            yield event;
+          }
+          fixerTracker.cleanup();
+          fixerSpan.end();
+        } catch (err) {
+          fixerTracker.cleanup();
+          fixerSpan.error(err as Error);
+        }
+      };
+
+      // Merge conflict resolver closure
+      const mergeEvents: EforgeEvent[] = [];
+      const mergeEventSink = (event: EforgeEvent) => { mergeEvents.push(event); };
+
+      const mergeResolver: MergeResolver = async (resolverCwd, conflict) => {
+        const resolverSpan = tracing!.createSpan('merge-conflict-resolver', {
+          branch: conflict.branch,
+          files: conflict.conflictedFiles,
+        });
+        const resolverTracker = createToolTracker(resolverSpan);
+        let resolved = false;
+        try {
+          const mergeResolverConfig = resolveAgentConfig('merge-conflict-resolver', config);
+          for await (const event of runMergeConflictResolver({
+            ...mergeResolverConfig,
+            cwd: resolverCwd,
+            conflict,
+            verbose,
+            abortController,
+            phase: 'standalone',
+            harness: agentRuntimes.forRole('merge-conflict-resolver'),
+          })) {
+            resolverTracker.handleEvent(event);
+            mergeEventSink(event);
+            if (event.type === 'plan:merge:resolve:complete') {
+              resolved = event.resolved;
+            }
+          }
+          resolverTracker.cleanup();
+          resolverSpan.end();
+        } catch (err) {
+          resolverTracker.cleanup();
+          resolverSpan.error(err as Error);
+        }
+        return resolved;
+      };
+
+      const validationPolicy = this.config.build.validation;
+      const signal = abortController?.signal;
+      const shouldCleanup = this.config.build.cleanupPlanFiles;
+      const effectiveLandingAction = this.config.landing.action;
+
+      // Build the resume seed for the orchestrator
+      const resumeSeed = { seededMerged, resumeContextByPlan };
+
+      const orchestrator = new Orchestrator({
+        repoRoot: cwd,
+        planRunner,
+        signal,
+        postMergeCommands: config.build.postMergeCommands,
+        validateCommands: orchConfig.validate,
+        postMergeCommandTimeoutMs: config.build.postMergeCommandTimeoutMs,
+        validationFixer,
+        maxValidationRetries: config.build.maxValidationRetries,
+        mergeResolver,
+        mergeWorktreePath,
+        shouldCleanup,
+        cleanupPlanSet: setName,
+        cleanupOutputDir: this.config.plan.outputDir,
+        extensionRegistry: this.extensionRegistry,
+        policyGateTimeoutMs: this.config.extensions.policyGateTimeoutMs,
+        policyGateFailurePolicy: this.config.extensions.policyGateFailurePolicy,
+        engineConfig: config,
+        landingAction: effectiveLandingAction,
+        prAutoMergePolicy: this.config.landing.pr.autoMerge,
+        validationPolicy,
+        // --- eforge:region plan-01-engine-resume ---
+        resumeSeed,
+        // --- eforge:endregion plan-01-engine-resume ---
+      });
+
+      for await (const event of orchestrator.execute(orchConfig)) {
+        while (mergeEvents.length > 0) {
+          yield mergeEvents.shift()!;
+        }
+        yield event;
+        terminalTracker.observe(event);
+        if (event.type === 'plan:build:failed') { status = 'failed'; buildSummary = event.error.startsWith('Merge failed') ? `Merge failed for ${event.planId}` : `Build failed for ${event.planId}`; }
+        if (event.type === 'validation:complete') { status = event.passed ? 'completed' : 'failed'; buildSummary = event.passed ? 'Resume complete' : 'Post-merge validation failed'; }
+        if (event.type === 'prd_validation:complete') {
+          if (!event.passed) {
+            status = 'failed';
+            buildSummary = `PRD validation failed: ${event.gaps.length} gap(s) found`;
+          }
+        }
+        if (event.type === 'acceptance_validation:complete') {
+          const failCount = event.verdicts.filter((v) => v.verdict !== 'pass').length;
+          const hasWaiver = (event.waivers ?? []).some((waiver) => waiver.trim().length > 0);
+          if (!event.passed || (failCount > 0 && !hasWaiver)) {
+            status = 'failed';
+            buildSummary = formatAcceptanceFailureSummary(event.verdicts);
+          }
+        }
+        if (event.type === 'daemon:error' && event.source === 'stack:artifact-recording') {
+          status = 'failed';
+          buildSummary = event.message;
+        }
+        if (event.type === 'stack:landing:update' && event.status === 'failed') {
+          status = 'failed';
+          buildSummary = event.reason ? `Stack landing failed: ${event.reason}` : 'Stack landing failed';
+        }
+        if (event.type === 'landing:skipped') {
+          status = 'failed';
+          buildSummary = event.reason ? `Landing skipped: ${event.reason}` : 'Landing skipped';
+        }
+      }
+
+      while (mergeEvents.length > 0) {
+        yield mergeEvents.shift()!;
+      }
+
+    } catch (err) {
+      status = 'failed';
+      buildSummary = (err as Error).message;
+    } finally {
+      tracing?.setOutput({ status, summary: buildSummary });
+      const terminalEvt = terminalTracker.toEvent(status, buildSummary);
+      if (terminalEvt) yield terminalEvt;
+      yield {
+        type: 'phase:end',
+        runId,
+        result: { status, summary: buildSummary },
+        timestamp: ts(),
+      };
+      await tracing?.flush();
+    }
+
+    if (status === 'completed') {
+      yield {
+        timestamp: ts(),
+        type: 'build:resume:complete',
+        prdId,
+        setName,
+      };
+    }
+  }
+  // --- eforge:endregion plan-01-engine-resume ---
+
   /**
    * Status: returns idle shape. Active build state lives in memory only;
    * daemon-mode running-build signal comes from the monitor REST API.

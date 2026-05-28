@@ -579,7 +579,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 207
+Total variants: 211
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -790,6 +790,10 @@ Total variants: 207
 | `stack:sync:deferred` | `excludedCandidates`, `reason`, `syncId`, `trigger` |
 | `stack:sync:skipped` | `dryRun`, `excludedCandidates`, `reason`, `restackCandidates`, `syncId`, `trigger` |
 | `build:terminal-failure` | `failure`, `runId` |
+| `build:resume:start` | `featureBranch`, `prdId`, `setName` |
+| `build:resume:state` | `diffStat`, `featureBranch`, `landedCommitCount`, `seededMerged`, `seededPending` |
+| `build:resume:ineligible` | `checkedPath`, `reason` |
+| `build:resume:complete` | `prdId`, `setName` |
 
 ## JSON Schema
 
