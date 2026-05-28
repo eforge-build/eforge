@@ -242,6 +242,7 @@ export {
 } from './api/session-plan.js';
 
 export type {
+  SessionPlanListRequest,
   SessionPlanStatusWire,
   PlanningTypeWire,
   PlanningDepthWire,

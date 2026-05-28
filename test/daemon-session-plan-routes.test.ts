@@ -61,6 +61,7 @@ function makeSessionPlanRaw(opts: {
   status?: string;
   requiredDimensions?: string[];
   agentProfile?: string;
+  eforgeSession?: string;
 } = {}): string {
   const session = opts.session ?? '2026-01-01-add-feature';
   const topic = opts.topic ?? 'Add Feature';
@@ -81,6 +82,7 @@ function makeSessionPlanRaw(opts: {
     'open_questions: []',
     'profile: null',
     ...(opts.agentProfile ? [`agent_profile: ${opts.agentProfile}`] : []),
+    ...(opts.eforgeSession ? [`eforge_session: ${opts.eforgeSession}`] : []),
     '---',
     '',
     `# ${topic}`,
@@ -180,10 +182,7 @@ describe('GET /api/session-plan/list', () => {
   it('returns active session plans with readiness summary', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
-    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({
-      session: '2026-01-01-add-feature',
-      topic: 'Add Feature',
-    }));
+    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({ session: '2026-01-01-add-feature', topic: 'Add Feature' }));
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
@@ -202,21 +201,13 @@ describe('GET /api/session-plan/list', () => {
     expect(Array.isArray(data.plans[0].missingDimensions)).toBe(true);
   });
 
-  it('excludes plans with status submitted or abandoned', async () => {
+  it('excludes plans with status submitted or abandoned, includes ready', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
-    await writeSessionPlanFile(tmpDir, '2026-01-01-submitted', makeSessionPlanRaw({
-      session: '2026-01-01-submitted',
-      status: 'submitted',
-    }));
-    await writeSessionPlanFile(tmpDir, '2026-01-02-abandoned', makeSessionPlanRaw({
-      session: '2026-01-02-abandoned',
-      status: 'abandoned',
-    }));
-    await writeSessionPlanFile(tmpDir, '2026-01-03-active', makeSessionPlanRaw({
-      session: '2026-01-03-active',
-      status: 'planning',
-    }));
+    await writeSessionPlanFile(tmpDir, '2026-01-01-submitted', makeSessionPlanRaw({ session: '2026-01-01-submitted', status: 'submitted' }));
+    await writeSessionPlanFile(tmpDir, '2026-01-02-abandoned', makeSessionPlanRaw({ session: '2026-01-02-abandoned', status: 'abandoned' }));
+    await writeSessionPlanFile(tmpDir, '2026-01-03-active', makeSessionPlanRaw({ session: '2026-01-03-active', status: 'planning' }));
+    await writeSessionPlanFile(tmpDir, '2026-01-04-ready', makeSessionPlanRaw({ session: '2026-01-04-ready', status: 'ready' }));
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
@@ -225,8 +216,48 @@ describe('GET /api/session-plan/list', () => {
     expect(res.status).toBe(200);
 
     const data = await res.json() as { plans: Array<{ session: string }> };
-    expect(data.plans).toHaveLength(1);
-    expect(data.plans[0].session).toBe('2026-01-03-active');
+    const sessions = data.plans.map((p) => p.session);
+    expect(sessions).toContain('2026-01-03-active');
+    expect(sessions).toContain('2026-01-04-ready');
+    expect(sessions).not.toContain('2026-01-01-submitted');
+    expect(sessions).not.toContain('2026-01-02-abandoned');
+  });
+
+  it('includeSubmitted=true includes planning, ready, and submitted, excludes abandoned; returns eforge_session', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeSessionPlanFile(tmpDir, '2026-01-01-planning', makeSessionPlanRaw({ session: '2026-01-01-planning', status: 'planning' }));
+    await writeSessionPlanFile(tmpDir, '2026-01-02-ready', makeSessionPlanRaw({ session: '2026-01-02-ready', status: 'ready' }));
+    await writeSessionPlanFile(tmpDir, '2026-01-03-submitted', makeSessionPlanRaw({ session: '2026-01-03-submitted', status: 'submitted', eforgeSession: 'run-xyz-456' }));
+    await writeSessionPlanFile(tmpDir, '2026-01-04-abandoned', makeSessionPlanRaw({ session: '2026-01-04-abandoned', status: 'abandoned' }));
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.sessionPlanList}?includeSubmitted=true`);
+    expect(res.status).toBe(200);
+    const data = await res.json() as { plans: Array<{ session: string; eforge_session?: string }> };
+    const sessions = data.plans.map((p) => p.session);
+    expect(sessions).toContain('2026-01-01-planning');
+    expect(sessions).toContain('2026-01-02-ready');
+    expect(sessions).toContain('2026-01-03-submitted');
+    expect(sessions).not.toContain('2026-01-04-abandoned');
+    expect(data.plans.find((p) => p.session === '2026-01-03-submitted')?.eforge_session).toBe('run-xyz-456');
+  });
+
+  it('includeSubmitted=1 also includes submitted plans and excludes abandoned', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeSessionPlanFile(tmpDir, '2026-01-01-planning', makeSessionPlanRaw({ session: '2026-01-01-planning', status: 'planning' }));
+    await writeSessionPlanFile(tmpDir, '2026-01-02-submitted', makeSessionPlanRaw({ session: '2026-01-02-submitted', status: 'submitted' }));
+    await writeSessionPlanFile(tmpDir, '2026-01-03-abandoned', makeSessionPlanRaw({ session: '2026-01-03-abandoned', status: 'abandoned' }));
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.sessionPlanList}?includeSubmitted=1`);
+    expect(res.status).toBe(200);
+    const data = await res.json() as { plans: Array<{ session: string }> };
+    const sessions = data.plans.map((p) => p.session);
+    expect(sessions).toContain('2026-01-01-planning');
+    expect(sessions).toContain('2026-01-02-submitted');
+    expect(sessions).not.toContain('2026-01-03-abandoned');
   });
 });
 
@@ -271,10 +302,7 @@ describe('GET /api/session-plan/show', () => {
   it('returns frontmatter, body, and readiness detail for existing plan', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
-    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({
-      session: '2026-01-01-add-feature',
-      topic: 'Add Feature',
-    }));
+    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({ session: '2026-01-01-add-feature', topic: 'Add Feature' }));
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
@@ -414,9 +442,7 @@ describe('POST /api/session-plan/set-section', () => {
   it('updates a section and returns readiness detail', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
-    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({
-      session: '2026-01-01-add-feature',
-    }));
+    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({ session: '2026-01-01-add-feature' }));
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
@@ -511,9 +537,7 @@ describe('POST /api/session-plan/set-status', () => {
   it('sets status to ready', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
-    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({
-      session: '2026-01-01-add-feature',
-    }));
+    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({ session: '2026-01-01-add-feature' }));
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
@@ -532,9 +556,7 @@ describe('POST /api/session-plan/set-status', () => {
   it('returns 400 when status is submitted but eforge_session is missing', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
-    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({
-      session: '2026-01-01-add-feature',
-    }));
+    await writeSessionPlanFile(tmpDir, '2026-01-01-add-feature', makeSessionPlanRaw({ session: '2026-01-01-add-feature' }));
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });

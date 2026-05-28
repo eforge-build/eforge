@@ -92,6 +92,7 @@ export {
   serializeSessionPlan,
 
   // List
+  listSessionPlans,
   listActiveSessionPlans,
 
   // Dimension helpers
@@ -130,6 +131,7 @@ export type {
   SessionPlanFrontmatter,
   SessionPlan,
   SessionPlanListEntry,
+  ListSessionPlansOpts,
   ListActiveSessionPlansOpts,
   CreateSessionPlanOpts,
   CreateSessionPlanFromPlaybookSeedOpts,

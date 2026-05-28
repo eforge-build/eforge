@@ -231,6 +231,12 @@ export interface SkippedDimensionWire {
   reason: string;
 }
 
+/** Query options for GET /api/session-plan/list */
+export interface SessionPlanListRequest {
+  /** When true, include plans with status `'submitted'` in addition to `'planning'` and `'ready'`. */
+  includeSubmitted?: boolean;
+}
+
 /** A lightweight session plan listing entry. */
 export interface SessionPlanListEntryWire {
   session: string;
@@ -239,6 +245,8 @@ export interface SessionPlanListEntryWire {
   path: string;
   ready: boolean;
   missingDimensions: string[];
+  /** Associated eforge run session identifier. Present when the plan was submitted and declares `eforge_session`. */
+  eforge_session?: string;
 }
 
 /** Readiness detail returned by mutation routes and the readiness GET. */

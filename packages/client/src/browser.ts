@@ -47,6 +47,7 @@ export type {
   SessionPlanReadinessResponse,
   SessionPlanMigrateLegacyRequest,
   SessionPlanMigrateLegacyResponse,
+  SessionPlanListRequest,
   // --- eforge:region plan-03-stack-daemon-ui ---
   StackLayersResponse,
   // --- eforge:endregion plan-03-stack-daemon-ui ---
