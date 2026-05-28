@@ -14,7 +14,7 @@ import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
-import { startServer, type DaemonState, type MonitorServer, type WorkerTracker } from '@eforge-build/monitor/server';
+import { startServer, type DaemonState, type MonitorServer, type StartServerOptions, type WorkerTracker } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
 import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
 
@@ -69,29 +69,23 @@ async function setupProject(tmpDir: string): Promise<{ configDir: string }> {
 
 /** Build a valid raw playbook string. */
 function validPlaybookRaw(opts: {
-  name?: string;
-  description?: string;
-  scope?: string;
-  mode?: string;
-  goal?: string;
+  name?: string; description?: string; scope?: string; mode?: string; goal?: string; profile?: string;
 } = {}): string {
-  const name = opts.name ?? 'my-feature';
-  const description = opts.description ?? 'Add the my-feature capability';
-  const scope = opts.scope ?? 'project-team';
-  const mode = opts.mode ?? 'autonomous';
-  const goal = opts.goal ?? 'Implement the feature.';
-  return [
-    '---',
-    `name: ${name}`,
-    `description: ${description}`,
-    `scope: ${scope}`,
-    `mode: ${mode}`,
-    '---',
-    '',
-    '## Goal',
-    '',
-    goal,
-  ].join('\n');
+  const { name = 'my-feature', description = 'Add the my-feature capability', scope = 'project-team', mode = 'autonomous', goal = 'Implement the feature.', profile } = opts;
+  const lines = ['---', `name: ${name}`, `description: ${description}`, `scope: ${scope}`, `mode: ${mode}`];
+  if (profile) lines.push(`profile: ${profile}`);
+  lines.push('---', '', '## Goal', '', goal);
+  return lines.join('\n');
+}
+
+/** Build an invalid-AC playbook string (grouping label + bare command triggers the quality gate). */
+function invalidAcPlaybookRaw(opts: { name?: string; mode?: string; profile?: string; vague?: boolean } = {}): string {
+  const { name = 'bad-ac', mode = 'autonomous', profile, vague } = opts;
+  const lines = ['---', `name: ${name}`, 'description: Test playbook with bad AC', 'scope: project-team', `mode: ${mode}`];
+  if (profile) lines.push(`profile: ${profile}`);
+  lines.push('---', '', '## Goal', '', 'Do the thing.', '', '## Acceptance criteria', '', '- Supply-chain checks:', '- `pnpm build`.');
+  if (vague) lines.push('- Works correctly.');
+  return lines.join('\n');
 }
 
 /** POST helper that sends JSON. */
@@ -103,17 +97,30 @@ async function post(url: string, body: unknown): Promise<Response> {
   });
 }
 
+async function setup(opts: StartServerOptions = {}) {
+  const tmpDir = makeTempDir();
+  const { configDir } = await setupProject(tmpDir);
+  const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+  server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, ...opts });
+  return { tmpDir, configDir };
+}
+async function start(tmpDir: string, opts: StartServerOptions = {}) {
+  const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+  server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, ...opts });
+}
+async function init() {
+  const tmpDir = makeTempDir();
+  const { configDir } = await setupProject(tmpDir);
+  return { tmpDir, configDir };
+}
+
 // ---------------------------------------------------------------------------
 // Route: GET /api/playbook/list
 // ---------------------------------------------------------------------------
 
 describe('GET /api/playbook/list', () => {
   it('returns empty list when no playbooks exist', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookList}`);
     expect(res.status).toBe(200);
@@ -125,8 +132,7 @@ describe('GET /api/playbook/list', () => {
   });
 
   it('returns playbooks with source, shadows, and mode fields when files exist at multiple tiers', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     // Write project-team autonomous playbook
     const teamDir = resolve(configDir, 'playbooks');
@@ -141,8 +147,7 @@ describe('GET /api/playbook/list', () => {
     // Write a planning-mode playbook
     await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', scope: 'project-team', mode: 'planning' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await start(tmpDir);
 
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookList}`);
     expect(res.status).toBe(200);
@@ -175,37 +180,27 @@ describe('GET /api/playbook/list', () => {
 
 describe('GET /api/playbook/show', () => {
   it('returns 400 when name param is missing', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookShow}`);
     expect(res.status).toBe(400);
   });
 
   it('returns 404 when playbook does not exist', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookShow}?name=nonexistent`);
     expect(res.status).toBe(404);
   });
 
   it('returns playbook frontmatter, body, and mode for an existing playbook', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw(), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await start(tmpDir);
 
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookShow}?name=my-feature`);
     expect(res.status).toBe(200);
@@ -231,11 +226,7 @@ describe('GET /api/playbook/show', () => {
 
 describe('POST /api/playbook/save', () => {
   it('returns 400 with errors array when playbook frontmatter is invalid', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
       scope: 'project-team',
@@ -253,11 +244,7 @@ describe('POST /api/playbook/save', () => {
   });
 
   it('returns 400 when the Goal section is missing', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
       scope: 'project-team',
@@ -273,12 +260,75 @@ describe('POST /api/playbook/save', () => {
     expect(data.errors.some((e) => /goal/i.test(e))).toBe(true);
   });
 
-  it('writes the playbook file and returns its path', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
+  // --- eforge:region plan-01-playbook-ac-quality-gates ---
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+  it('returns 400 and does not create file when acceptance criteria contain quality issues', async () => {
+    const { tmpDir } = await setup();
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
+      scope: 'project-team',
+      playbook: {
+        frontmatter: { name: 'bad-ac', description: 'Test invalid AC', scope: 'project-team', mode: 'autonomous' },
+        body: {
+          goal: 'Do the thing.',
+          outOfScope: '',
+          // Grouping label, bare command, and vague criterion
+          acceptanceCriteria: '- Supply-chain checks:\n- `pnpm build`.\n- Works correctly.',
+          plannerNotes: '',
+        },
+      },
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('Acceptance criteria quality issues');
+    expect(data.error).toContain('[grouping-label]');
+    expect(data.error).toContain('[bare-command]');
+    expect(data.error).toContain('[vague]');
+    expect(data.error).toContain('Supply-chain checks:');
+
+    // File must not have been created
+    const targetPath = resolve(tmpDir, 'eforge', 'playbooks', 'bad-ac.md');
+    await expect(access(targetPath)).rejects.toThrow();
+  });
+
+  it('returns 400 and leaves existing file unchanged when acceptance criteria contain quality issues', async () => {
+    const { tmpDir, configDir } = await init();
+
+    // Create sentinel file with known content
+    const playbooksDir = resolve(configDir, 'playbooks');
+    await mkdir(playbooksDir, { recursive: true });
+    const sentinelContent = '---\nname: existing\ndescription: Existing playbook\nscope: project-team\nmode: autonomous\n---\n\n## Goal\n\nExisting goal.\n';
+    await writeFile(resolve(playbooksDir, 'existing.md'), sentinelContent, 'utf-8');
+
+    await start(tmpDir);
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
+      scope: 'project-team',
+      playbook: {
+        frontmatter: { name: 'existing', description: 'Existing playbook', scope: 'project-team', mode: 'autonomous' },
+        body: {
+          goal: 'New goal.',
+          outOfScope: '',
+          acceptanceCriteria: '- Supply-chain checks:\n- `pnpm build`.',
+          plannerNotes: '',
+        },
+      },
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('Acceptance criteria quality issues');
+
+    // Existing file must be unchanged
+    const fileContent = await readFile(resolve(playbooksDir, 'existing.md'), 'utf-8');
+    expect(fileContent).toBe(sentinelContent);
+  });
+
+  // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
+
+  it('writes the playbook file and returns its path', async () => {
+    await setup();
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
       scope: 'project-team',
@@ -307,11 +357,7 @@ describe('POST /api/playbook/save', () => {
 
 describe('POST /api/playbook/enqueue (old route removed)', () => {
   it('returns 404 for the old enqueue route', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const res = await post(`http://localhost:${server.port}/api/playbook/enqueue`, {
       name: 'my-feature',
@@ -326,11 +372,7 @@ describe('POST /api/playbook/enqueue (old route removed)', () => {
 
 describe('POST /api/playbook/run', () => {
   it('returns 404 when the named playbook does not exist', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'nonexistent',
@@ -339,16 +381,14 @@ describe('POST /api/playbook/run', () => {
   });
 
   it('returns { kind: "enqueued", id } for an autonomous playbook and creates a PRD', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     // Write an autonomous playbook to the team dir
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -379,8 +419,7 @@ describe('POST /api/playbook/run', () => {
   });
 
   it('returns { kind: "requires-agent", mode: "planning", name, message } for a planning-mode playbook and does not write a session plan or enqueue', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     // Write a planning-mode playbook
     const teamDir = resolve(configDir, 'playbooks');
@@ -392,8 +431,7 @@ describe('POST /api/playbook/run', () => {
     const sentinelSessionPlan = resolve(sessionPlanDir, 'existing-plan.md');
     await writeFile(sentinelSessionPlan, '# Existing plan\n\nDo not modify.\n', 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-planning',
@@ -418,15 +456,13 @@ describe('POST /api/playbook/run', () => {
   });
 
   it('returns requires-agent for a planning-mode playbook even when afterQueueId is provided', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-planning',
@@ -446,15 +482,13 @@ describe('POST /api/playbook/run', () => {
   });
 
   it('returns { kind: "requires-agent" } on repeated calls for a planning-mode playbook (no 409)', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     // First run
     const first = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, { name: 'my-planning' });
@@ -471,15 +505,13 @@ describe('POST /api/playbook/run', () => {
   });
 
   it('returns 404 and does not enqueue when afterQueueId is missing for an autonomous playbook', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -495,17 +527,128 @@ describe('POST /api/playbook/run', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
+  // --- eforge:region plan-01-playbook-ac-quality-gates ---
+
+  it('returns requires-agent for a planning-mode playbook with invalid acceptance criteria (AC gate must not apply to planning mode)', async () => {
+    const { tmpDir, configDir } = await init();
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    // Write a planning-mode playbook with deliberately invalid AC (grouping label + bare command)
+    await writeFile(resolve(teamDir, 'planning-bad-ac.md'), invalidAcPlaybookRaw({ name: 'planning-bad-ac', mode: 'planning' }), 'utf-8');
+
+    await start(tmpDir, { daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'planning-bad-ac',
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { kind: string; mode: string; name: string };
+    expect(data.kind).toBe('requires-agent');
+    expect(data.mode).toBe('planning');
+    expect(data.name).toBe('planning-bad-ac');
+
+    // No queue files and no auto-build wake
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    await expect(readdir(queueDir)).rejects.toThrow();
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('returns 400 and does not enqueue when autonomous playbook has invalid acceptance criteria', async () => {
+    const { tmpDir, configDir } = await init();
+
+    // Write a playbook with invalid AC directly to the playbooks directory
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'bad-ac.md'), invalidAcPlaybookRaw({ vague: true }), 'utf-8');
+
+    await start(tmpDir, { daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'bad-ac',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('Acceptance criteria quality issues');
+    expect(data.error).toContain('[grouping-label]');
+    expect(data.error).toContain('[bare-command]');
+    expect(data.error).toContain('[vague]');
+
+    // No queue markdown files should have been created
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    const queueExists = await readdir(queueDir).then(() => true).catch(() => false);
+    if (queueExists) {
+      const files = await readdir(queueDir);
+      const markdownFiles = files.filter((f) => f.endsWith('.md'));
+      expect(markdownFiles).toHaveLength(0);
+    }
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('returns AC-quality 400 before dependency 404 when afterQueueId is missing-upstream and AC is invalid', async () => {
+    const { tmpDir, configDir } = await init();
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'bad-ac.md'), invalidAcPlaybookRaw(), 'utf-8');
+
+    await start(tmpDir, { daemonState: makeDaemonState() });
+
+    // AC gate must fire before the dependency validation (which would return 404)
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'bad-ac',
+      afterQueueId: 'missing-upstream',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('Acceptance criteria quality issues');
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('returns AC-quality 400 before profile 400 when autonomous playbook has both invalid AC and a missing profile', async () => {
+    const { tmpDir, configDir } = await init();
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    // Playbook with invalid AC AND a profile that does not exist
+    await writeFile(resolve(teamDir, 'bad-ac-missing-profile.md'), invalidAcPlaybookRaw({ name: 'bad-ac-missing-profile', profile: 'nonexistent-profile' }), 'utf-8');
+
+    await start(tmpDir, { daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+      name: 'bad-ac-missing-profile',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    // Must get the AC-quality error, not the missing-profile error
+    expect(data.error).toContain('Acceptance criteria quality issues');
+    expect(data.error).not.toContain('nonexistent-profile');
+
+    // No queue files and no auto-build wake
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    const queueExists = await readdir(queueDir).then(() => true).catch(() => false);
+    if (queueExists) {
+      const files = await readdir(queueDir);
+      expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(0);
+    }
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
+
   it('persists dependsOn in PRD frontmatter when afterQueueId is provided for autonomous playbook', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
     await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await start(tmpDir);
 
     // First run the predecessor so it exists in the queue
     const predecessorRes = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
@@ -533,15 +676,13 @@ describe('POST /api/playbook/run', () => {
   });
 
   it('enqueued PRD is visible via GET /api/queue', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await start(tmpDir);
 
     const runRes = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -561,22 +702,18 @@ describe('POST /api/playbook/run', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Route: POST /api/playbook/promote
-// ---------------------------------------------------------------------------
+// --- Route: POST /api/playbook/promote ---
 
 describe('POST /api/playbook/promote', () => {
   it('moves a playbook from project-local to project-team and returns the new path', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     // Write playbook to project-local tier
     const localDir = resolve(tmpDir, '.eforge', 'playbooks');
     await mkdir(localDir, { recursive: true });
     await writeFile(resolve(localDir, 'my-feature.md'), validPlaybookRaw({ scope: 'project-local' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await start(tmpDir);
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookPromote}`, { name: 'my-feature' });
     expect(res.status).toBe(200);
@@ -598,22 +735,18 @@ describe('POST /api/playbook/promote', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Route: POST /api/playbook/demote
-// ---------------------------------------------------------------------------
+// --- Route: POST /api/playbook/demote ---
 
 describe('POST /api/playbook/demote', () => {
   it('moves a playbook from project-team to project-local and returns the new path', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     // Write playbook to project-team tier
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ scope: 'project-team' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await start(tmpDir);
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookDemote}`, { name: 'my-feature' });
     expect(res.status).toBe(200);
@@ -635,17 +768,11 @@ describe('POST /api/playbook/demote', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Route: POST /api/playbook/validate
-// ---------------------------------------------------------------------------
+// --- Route: POST /api/playbook/validate ---
 
 describe('POST /api/playbook/validate', () => {
   it('returns ok:true for a valid raw playbook', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookValidate}`, {
       raw: validPlaybookRaw(),
@@ -658,11 +785,7 @@ describe('POST /api/playbook/validate', () => {
   });
 
   it('returns ok:false with errors for an invalid raw playbook', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const invalidRaw = '---\nname: INVALID NAME\nscope: bad-scope\n---\n\n## Goal\n\nDo something.';
 
@@ -678,11 +801,7 @@ describe('POST /api/playbook/validate', () => {
   });
 
   it('returns ok:false when the ## Goal section is missing', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const rawNoGoal = '---\nname: my-feature\ndescription: A feature\nscope: project-team\nmode: autonomous\n---\n\n## Out of scope\n\nNothing.';
 
@@ -697,54 +816,17 @@ describe('POST /api/playbook/validate', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Playbook profile field — /api/playbook/run
-// ---------------------------------------------------------------------------
-
-/** Build a playbook raw string with an optional profile field. */
-function validPlaybookRawWithProfile(opts: {
-  name?: string;
-  mode?: string;
-  profile?: string;
-} = {}): string {
-  const name = opts.name ?? 'my-feature';
-  const mode = opts.mode ?? 'autonomous';
-  const lines = [
-    '---',
-    `name: ${name}`,
-    'description: Add the my-feature capability',
-    'scope: project-team',
-    `mode: ${mode}`,
-  ];
-  if (opts.profile) {
-    lines.push(`profile: ${opts.profile}`);
-  }
-  lines.push('---', '', '## Goal', '', 'Implement the feature.');
-  return lines.join('\n');
-}
-
-/** Create a minimal profile file in the eforge/profiles/ directory. */
-async function createProfile(configDir: string, name: string): Promise<void> {
-  const profilesDir = resolve(configDir, 'profiles');
-  await mkdir(profilesDir, { recursive: true });
-  await writeFile(resolve(profilesDir, `${name}.yaml`), '# test profile\n', 'utf-8');
-}
+// --- Playbook profile field — /api/playbook/run ---
 
 describe('POST /api/playbook/run — profile field', () => {
   it('does not validate missing profile for a planning-mode playbook', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRawWithProfile({
-      name: 'my-planning',
-      mode: 'planning',
-      profile: 'missing-profile',
-    }), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning', profile: 'missing-profile' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-planning',
@@ -764,17 +846,17 @@ describe('POST /api/playbook/run — profile field', () => {
   });
 
   it('creates queued PRD with profile: frontmatter when autonomous playbook has a known profile', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
-    await createProfile(configDir, 'docs-heavy');
+    const profilesDir = resolve(configDir, 'profiles');
+    await mkdir(profilesDir, { recursive: true });
+    await writeFile(resolve(profilesDir, 'docs-heavy.yaml'), '# test profile\n', 'utf-8');
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRawWithProfile({ profile: 'docs-heavy' }), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ profile: 'docs-heavy' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -793,16 +875,14 @@ describe('POST /api/playbook/run — profile field', () => {
   });
 
   it('returns 400 and does not enqueue when autonomous playbook profile is absent from all profile scopes', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
     // Note: no profile file created
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRawWithProfile({ profile: 'missing-profile' }), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ profile: 'missing-profile' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -819,15 +899,13 @@ describe('POST /api/playbook/run — profile field', () => {
   });
 
   it('persists landingAction in PRD frontmatter when valid landingAction value is provided for autonomous playbook', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -848,15 +926,13 @@ describe('POST /api/playbook/run — profile field', () => {
   });
 
   it('returns 400 and does not enqueue when landingAction value is invalid for autonomous playbook', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -874,15 +950,13 @@ describe('POST /api/playbook/run — profile field', () => {
   });
 
   it('returns requires-agent for a planning-mode playbook even when valid landingAction is provided', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-planning',
@@ -902,15 +976,13 @@ describe('POST /api/playbook/run — profile field', () => {
   });
 
   it('returns 400 with migration error when old onSuccess wire value is sent in request body', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -928,11 +1000,7 @@ describe('POST /api/playbook/run — profile field', () => {
   });
 
   it('save/show/list round-trip includes profile field and required mode', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    await setup();
 
     const saveRes = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
       scope: 'project-team',
@@ -973,9 +1041,7 @@ describe('POST /api/playbook/run — profile field', () => {
 
 // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 
-// ---------------------------------------------------------------------------
-// Helpers for enqueue-route tests (daemon mode requires workerTracker)
-// ---------------------------------------------------------------------------
+// --- Helpers for enqueue-route tests (daemon mode requires workerTracker) ---
 
 function makeStubWorkerTracker(): WorkerTracker {
   return {
@@ -988,21 +1054,11 @@ function makeStubWorkerTracker(): WorkerTracker {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Route: POST /api/enqueue — landingAutoMerge validation
-// ---------------------------------------------------------------------------
+// --- Route: POST /api/enqueue — landingAutoMerge validation ---
 
 describe('POST /api/enqueue - landingAutoMerge validation', () => {
   it('returns 400 when landingAutoMerge is true and landingAction is merge', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, {
-      strictPort: true,
-      cwd: tmpDir,
-      workerTracker: makeStubWorkerTracker(),
-    });
+    await setup({ workerTracker: makeStubWorkerTracker() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
       source: 'implement a new feature',
@@ -1017,15 +1073,7 @@ describe('POST /api/enqueue - landingAutoMerge validation', () => {
   });
 
   it('returns 400 when landingAutoMerge is a non-boolean value', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, {
-      strictPort: true,
-      cwd: tmpDir,
-      workerTracker: makeStubWorkerTracker(),
-    });
+    await setup({ workerTracker: makeStubWorkerTracker() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
       source: 'implement a new feature',
@@ -1039,18 +1087,12 @@ describe('POST /api/enqueue - landingAutoMerge validation', () => {
   });
 
   it('returns 400 when landingAutoMerge is true and policy is never', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     // Set landing.pr.autoMerge: never in project config
     await writeFile(resolve(configDir, 'config.yaml'), 'landing:\n  pr:\n    autoMerge: never\n', 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, {
-      strictPort: true,
-      cwd: tmpDir,
-      workerTracker: makeStubWorkerTracker(),
-    });
+    await start(tmpDir, { workerTracker: makeStubWorkerTracker() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
       source: 'implement a new feature',
@@ -1070,15 +1112,13 @@ describe('POST /api/enqueue - landingAutoMerge validation', () => {
 
 describe('POST /api/playbook/run - landingAutoMerge persistence', () => {
   it('persists landing_auto_merge: true in PRD frontmatter when landingAction pr and landingAutoMerge true are both supplied', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -1100,15 +1140,13 @@ describe('POST /api/playbook/run - landingAutoMerge persistence', () => {
   });
 
   it('returns 400 when landingAutoMerge is not a boolean', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
@@ -1121,15 +1159,13 @@ describe('POST /api/playbook/run - landingAutoMerge persistence', () => {
   });
 
   it('returns 400 when landingAutoMerge is true but landingAction is leave', async () => {
-    const tmpDir = makeTempDir();
-    const { configDir } = await setupProject(tmpDir);
+    const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
 
-    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
+    await start(tmpDir, { daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
       name: 'my-feature',
