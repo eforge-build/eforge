@@ -8004,10 +8004,56 @@
                 },
                 "terminalFailure": {
                   "type": "object",
-                  "required": [
-                    "stage"
-                  ],
                   "properties": {
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "plan",
+                          "type": "string"
+                        },
+                        {
+                          "const": "post-merge-validation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "prd-validation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "acceptance-validation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "artifact-recording",
+                          "type": "string"
+                        },
+                        {
+                          "const": "landing",
+                          "type": "string"
+                        },
+                        {
+                          "const": "daemon",
+                          "type": "string"
+                        },
+                        {
+                          "const": "compile",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unknown",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "authoritative": {
+                      "type": "boolean"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
                     "stage": {
                       "type": "string"
                     },
@@ -8019,6 +8065,41 @@
                     },
                     "eventType": {
                       "type": "string"
+                    },
+                    "sourceEventType": {
+                      "type": "string"
+                    },
+                    "sourceEventId": {
+                      "type": "integer"
+                    },
+                    "sourceEventTimestamp": {
+                      "type": "string"
+                    },
+                    "landing": {
+                      "type": "object",
+                      "required": [
+                        "status"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string"
+                        },
+                        "action": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "validationPassed": {
+                      "type": "boolean"
+                    },
+                    "prdValidationPassed": {
+                      "type": "boolean"
+                    },
+                    "acceptanceValidationPassed": {
+                      "type": "boolean"
                     }
                   }
                 },
@@ -10370,6 +10451,129 @@
               "type": "array",
               "items": {
                 "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "runId",
+            "failure"
+          ],
+          "properties": {
+            "type": {
+              "const": "build:terminal-failure",
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "failure": {
+              "type": "object",
+              "required": [
+                "scope",
+                "message",
+                "authoritative"
+              ],
+              "properties": {
+                "scope": {
+                  "anyOf": [
+                    {
+                      "const": "plan",
+                      "type": "string"
+                    },
+                    {
+                      "const": "post-merge-validation",
+                      "type": "string"
+                    },
+                    {
+                      "const": "prd-validation",
+                      "type": "string"
+                    },
+                    {
+                      "const": "acceptance-validation",
+                      "type": "string"
+                    },
+                    {
+                      "const": "artifact-recording",
+                      "type": "string"
+                    },
+                    {
+                      "const": "landing",
+                      "type": "string"
+                    },
+                    {
+                      "const": "daemon",
+                      "type": "string"
+                    },
+                    {
+                      "const": "compile",
+                      "type": "string"
+                    },
+                    {
+                      "const": "unknown",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                },
+                "authoritative": {
+                  "type": "boolean"
+                },
+                "planId": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string"
+                },
+                "phaseSummary": {
+                  "type": "string"
+                },
+                "phaseStatus": {
+                  "type": "string"
+                },
+                "eventType": {
+                  "type": "string"
+                },
+                "sourceEventType": {
+                  "type": "string"
+                },
+                "sourceEventId": {
+                  "type": "integer"
+                },
+                "sourceEventTimestamp": {
+                  "type": "string"
+                },
+                "landing": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "validationPassed": {
+                  "type": "boolean"
+                },
+                "prdValidationPassed": {
+                  "type": "boolean"
+                },
+                "acceptanceValidationPassed": {
+                  "type": "boolean"
+                }
               }
             }
           }

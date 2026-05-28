@@ -378,6 +378,11 @@ export const IGNORED_EVENT_TYPES = [
   // Daemon-scoped; handled by daemonHandlerRegistry, not per-session eforgeReducer.
   'stack:sync:skipped',
   // --- eforge:endregion plan-03-docs-and-workflow-guidance ---
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  // build:terminal-failure — run-level authoritative terminal failure event.
+  // Monitor UI rendering is future work; session reducer does not handle it.
+  'build:terminal-failure',
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
 ] as const;
 
 // ---------------------------------------------------------------------------
