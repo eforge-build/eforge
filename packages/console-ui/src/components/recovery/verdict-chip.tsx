@@ -59,14 +59,14 @@ export function RecoveryVerdictChip({
     <Badge
       variant="outline"
       className={cn(
-        'text-[10px] px-1.5 py-0 rounded-sm gap-1 h-auto font-medium',
+        'text-10px px-1.5 py-0 rounded-sm gap-1 h-auto font-medium',
         getVerdictChipClass(verdict),
         className,
       )}
     >
       <span>{verdict}</span>
-      <span className={cn('text-[8px]', getConfidenceClass(confidence))}>●</span>
-      <span className="opacity-70 text-[9px]">{confidence}</span>
+      <span className={cn('text-8px', getConfidenceClass(confidence))}>●</span>
+      <span className="opacity-70 text-9px">{confidence}</span>
     </Badge>
   );
 }

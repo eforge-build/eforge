@@ -23,14 +23,14 @@ interface PlanTabProps {
 
 function StageChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-bg-tertiary text-text-dim border border-border">
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-10px font-medium bg-bg-tertiary text-text-dim border border-border">
       {label}
     </span>
   );
 }
 
 function ChevronSep() {
-  return <span className="text-text-dim text-[10px]">›</span>;
+  return <span className="text-text-dim text-10px">›</span>;
 }
 
 function BuildStageStrip({ stages }: { stages: BuildStageSpec[] }) {
@@ -80,7 +80,7 @@ function ReviewProfileDisplay({ review }: { review: ReviewProfileConfig }) {
           value={
             <div className="flex flex-wrap gap-1">
               {review.perspectives.map((p: string) => (
-                <Badge key={p} variant="outline" className="text-[10px] px-1.5 py-0">{p}</Badge>
+                <Badge key={p} variant="outline" className="text-10px px-1.5 py-0">{p}</Badge>
               ))}
             </div>
           }
@@ -99,7 +99,7 @@ function ReviewProfileDisplay({ review }: { review: ReviewProfileConfig }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-5">
-      <h3 className="text-[11px] font-semibold text-text-dim uppercase tracking-wider mb-2">{title}</h3>
+      <h3 className="text-11px font-semibold text-text-dim uppercase tracking-wider mb-2">{title}</h3>
       {children}
     </div>
   );
@@ -192,16 +192,16 @@ export function PlanTab({ orchestration, pipelineEvent, profile }: PlanTabProps)
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div>
                     <div className="text-xs font-semibold text-foreground">{plan.name}</div>
-                    <div className="text-[10px] text-text-dim font-mono mt-0.5">{plan.id}</div>
+                    <div className="text-10px text-text-dim font-mono mt-0.5">{plan.id}</div>
                   </div>
-                  <div className="text-[10px] text-text-dim font-mono shrink-0">{plan.branch}</div>
+                  <div className="text-10px text-text-dim font-mono shrink-0">{plan.branch}</div>
                 </div>
 
                 {plan.dependsOn && plan.dependsOn.length > 0 && (
                   <div className="mb-2 flex items-center gap-1 flex-wrap">
-                    <span className="text-[10px] text-text-dim">depends on:</span>
+                    <span className="text-10px text-text-dim">depends on:</span>
                     {plan.dependsOn.map((dep) => (
-                      <Badge key={dep} variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                      <Badge key={dep} variant="outline" className="text-10px px-1.5 py-0 font-mono">
                         {dep}
                       </Badge>
                     ))}
@@ -210,14 +210,14 @@ export function PlanTab({ orchestration, pipelineEvent, profile }: PlanTabProps)
 
                 {plan.build && plan.build.length > 0 && (
                   <div className="mb-2">
-                    <div className="text-[10px] text-text-dim mb-1">Build stages</div>
+                    <div className="text-10px text-text-dim mb-1">Build stages</div>
                     <BuildStageStrip stages={plan.build} />
                   </div>
                 )}
 
                 {plan.review && (
                   <div>
-                    <div className="text-[10px] text-text-dim mb-1">Review</div>
+                    <div className="text-10px text-text-dim mb-1">Review</div>
                     <ReviewProfileDisplay review={plan.review} />
                   </div>
                 )}

@@ -441,7 +441,7 @@ function EventCardImpl({ event, startTime, showVerbose }: EventCardProps) {
     >
       <span
         className={cn(
-          'text-[11px] font-semibold px-1.5 py-px rounded-sm whitespace-nowrap min-w-[100px] text-center',
+          'text-11px font-semibold px-1.5 py-px rounded-sm whitespace-nowrap min-w-[100px] text-center',
           typeClasses[typeInfo.cls] || typeClasses.info,
         )}
       >
@@ -452,7 +452,7 @@ function EventCardImpl({ event, startTime, showVerbose }: EventCardProps) {
           <span>{summary}</span>
           {planId && (
             <span
-              className="text-blue cursor-pointer hover:underline font-mono text-[11px]"
+              className="text-blue cursor-pointer hover:underline font-mono text-11px"
               onClick={() => openPreview(planId)}
             >
               {planId === 'gap-close' ? 'PRD Gap Close' : planId}
@@ -460,7 +460,7 @@ function EventCardImpl({ event, startTime, showVerbose }: EventCardProps) {
           )}
           {event.type === 'planning:start' && event.source.includes('\n') && (
             <span
-              className="text-blue cursor-pointer hover:underline text-[11px]"
+              className="text-blue cursor-pointer hover:underline text-11px"
               onClick={() => openContentPreview(event.label ?? 'PRD Source', event.source)}
             >
               view source
@@ -485,14 +485,14 @@ function EventCardImpl({ event, startTime, showVerbose }: EventCardProps) {
               {isExpanded ? 'hide' : 'details'}
             </Button>
             {isExpanded && (
-              <div className="text-text-dim text-[11px] mt-1 whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
+              <div className="text-text-dim text-11px mt-1 whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
                 {detail}
               </div>
             )}
           </>
         )}
       </div>
-      <span className="text-[11px] text-text-dim whitespace-nowrap">{elapsed}</span>
+      <span className="text-11px text-text-dim whitespace-nowrap">{elapsed}</span>
     </div>
   );
 }

@@ -23,7 +23,7 @@ export function DecisionTimeline({ decisions, sessionStart, totalSpan, label }: 
   return (
     <>
       {label && (
-        <div className="text-[10px] text-text-dim mb-0.5 uppercase tracking-wider">{label}</div>
+        <div className="text-10px text-text-dim mb-0.5 uppercase tracking-wider">{label}</div>
       )}
       <div className="relative h-4">
         {decisions.map((dp, idx) => {
@@ -45,10 +45,10 @@ export function DecisionTimeline({ decisions, sessionStart, totalSpan, label }: 
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top">
-                <div className="font-medium text-[11px]">{dp.decision.kind}</div>
-                <div className="opacity-70 text-[10px] max-w-[200px]">{decisionSummary(dp.decision)}</div>
+                <div className="font-medium text-11px">{dp.decision.kind}</div>
+                <div className="opacity-70 text-10px max-w-[200px]">{decisionSummary(dp.decision)}</div>
                 {dp.decision.rationale && (
-                  <div className="opacity-50 text-[10px] max-w-[200px] mt-0.5 italic">{dp.decision.rationale}</div>
+                  <div className="opacity-50 text-10px max-w-[200px] mt-0.5 italic">{dp.decision.rationale}</div>
                 )}
               </TooltipContent>
             </Tooltip>

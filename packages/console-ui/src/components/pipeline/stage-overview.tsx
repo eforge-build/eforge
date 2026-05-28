@@ -13,7 +13,7 @@ function StagePill({ stage, status = 'pending', hoveredStage, onStageHover }: {
   const isDimmed = hoveredStage !== null && hoveredStage !== stage;
   return (
     <span
-      className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap transition-all duration-150 ${STAGE_STATUS_STYLES[status]}${isHighlighted ? ' ring-1 ring-foreground/40 brightness-125' : ''}${isDimmed ? ' opacity-40' : ''}`}
+      className={`px-1.5 py-0.5 rounded text-10px font-medium whitespace-nowrap transition-all duration-150 ${STAGE_STATUS_STYLES[status]}${isHighlighted ? ' ring-1 ring-foreground/40 brightness-125' : ''}${isDimmed ? ' opacity-40' : ''}`}
       style={status === 'active' ? { animation: 'pulse-opacity 2s ease-in-out infinite' } : undefined}
       onMouseEnter={() => onStageHover(stage)}
       onMouseLeave={() => onStageHover(null)}

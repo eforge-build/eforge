@@ -343,9 +343,10 @@ describe('PlansView', () => {
       expect(showCalls.length).toBeGreaterThan(0);
     });
 
-    // The detail panel should show plan2's topic
+    // The detail panel should show plan2's topic (may appear in both list and detail panel)
     await waitFor(() => {
-      expect(screen.getByText('Plan Two')).toBeDefined();
+      const matches = screen.getAllByText('Plan Two');
+      expect(matches.length).toBeGreaterThan(0);
     });
   });
 
@@ -383,7 +384,9 @@ describe('PlansView', () => {
     globalThis.fetch = makeFetchMock({ plans: [plan] }, makeShowResponse());
     render(<PlansView />);
     await waitFor(() => {
-      expect(screen.getByText('/plans/sess-active-1.md')).toBeDefined();
+      // Path appears in both the list row and the detail panel
+      const matches = screen.getAllByText('/plans/sess-active-1.md');
+      expect(matches.length).toBeGreaterThan(0);
     });
   });
 
@@ -418,7 +421,8 @@ describe('PlansView', () => {
       expect(screen.getByText('analytics-heavy')).toBeDefined();
       // Required dimensions
       expect(screen.getByText('scope')).toBeDefined();
-      expect(screen.getByText('acceptance_criteria')).toBeDefined();
+      // acceptance_criteria appears in required_dimensions and missing_dimensions badges
+      expect(screen.getAllByText('acceptance_criteria').length).toBeGreaterThan(0);
       // Optional dimensions
       expect(screen.getByText('performance')).toBeDefined();
       // Skipped dimensions (plan-level)
