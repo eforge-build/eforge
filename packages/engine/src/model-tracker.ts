@@ -53,21 +53,88 @@ export class ModelTracker {
   }
 }
 
+// --- eforge:region plan-01-build-artifact-provenance ---
 /**
- * Compose a commit message body with an optional Models-Used trailer.
+ * Optional settings for composeCommitMessage.
+ */
+export interface ComposeCommitMessageOptions {
+  /**
+   * Optional provenance trailer lines to insert before the Models-Used trailer.
+   * Each string should be a complete trailer line, e.g.:
+   *   "Eforge-Source-PRD: <sha>:<path>"
+   * Lines are placed after the body and before Models-Used (when present).
+   */
+  provenanceTrailers?: string[];
+}
+
+/**
+ * Build `Eforge-Source-*` trailer lines from build artifact provenance refs.
  *
- * When the tracker is absent or empty, returns the body unchanged.
- * When non-empty, appends the Models-Used trailer separated by a blank line.
+ * Returns one trailer line per ref in input order. `collectBuildArtifactProvenance()`
+ * already returns refs in PRD → orchestration → plan order, so callers that pass
+ * its result directly get trailers in that order.
+ * Pass the returned array as `options.provenanceTrailers` to `composeCommitMessage`
+ * so they are placed before `Models-Used` in the final commit message.
+ *
+ * Usage:
+ *   const trailers = buildProvenanceTrailers(refs);
+ *   const msg = composeCommitMessage(body, tracker, { provenanceTrailers: trailers });
+ */
+export function buildProvenanceTrailers(
+  refs: Array<{ kind: string; commitSha: string; path: string }>,
+): string[] {
+  const lines: string[] = [];
+  for (const ref of refs) {
+    if (ref.kind === 'prd') {
+      lines.push(`Eforge-Source-PRD: ${ref.commitSha}:${ref.path}`);
+    } else if (ref.kind === 'orchestration') {
+      lines.push(`Eforge-Source-Orchestration: ${ref.commitSha}:${ref.path}`);
+    } else if (ref.kind === 'plan') {
+      lines.push(`Eforge-Source-Plan: ${ref.commitSha}:${ref.path}`);
+    }
+  }
+  return lines;
+}
+// --- eforge:endregion plan-01-build-artifact-provenance ---
+
+/**
+ * Compose a commit message body with optional provenance trailers and Models-Used trailer.
+ *
+ * When no trailer data is provided, returns the body unchanged.
+ * When non-empty, appends trailers separated from the body by a blank line.
  *
  * Callers pass the result to forgeCommit(), which appends Co-Authored-By after it.
  * Final commit message ordering:
  *   <body>
  *
- *   Models-Used: <id1>, <id2>   ← appended here when tracker is non-empty
+ *   Eforge-Source-PRD: <sha>:<path>   ← placed here when provenanceTrailers are provided
+ *   Eforge-Source-Plan: <sha>:<path>
+ *   Models-Used: <id1>, <id2>          ← appended here when tracker is non-empty
  *
  *   Co-Authored-By: forged-by-eforge <noreply@eforge.build>   ← appended by forgeCommit()
  */
-export function composeCommitMessage(body: string, tracker?: ModelTracker): string {
-  if (!tracker || tracker.size === 0) return body;
-  return `${body}\n\n${tracker.toTrailer()}`;
+export function composeCommitMessage(
+  body: string,
+  tracker?: ModelTracker,
+  // --- eforge:region plan-01-build-artifact-provenance ---
+  options?: ComposeCommitMessageOptions,
+  // --- eforge:endregion plan-01-build-artifact-provenance ---
+): string {
+  // --- eforge:region plan-01-build-artifact-provenance ---
+  const provenanceTrailers = options?.provenanceTrailers ?? [];
+  const hasProvenance = provenanceTrailers.length > 0;
+  // --- eforge:endregion plan-01-build-artifact-provenance ---
+  const hasModels = tracker && tracker.size > 0;
+
+  // --- eforge:region plan-01-build-artifact-provenance ---
+  if (!hasProvenance && !hasModels) return body;
+
+  const trailerLines: string[] = [];
+  if (hasProvenance) {
+    for (const t of provenanceTrailers) trailerLines.push(t);
+  }
+  if (hasModels) trailerLines.push(tracker!.toTrailer());
+
+  return `${body}\n\n${trailerLines.join('\n')}`;
+  // --- eforge:endregion plan-01-build-artifact-provenance ---
 }
