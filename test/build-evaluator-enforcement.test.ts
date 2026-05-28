@@ -294,6 +294,9 @@ describe('build evaluator enforcement stage', () => {
     expect(await head(repo)).toBe(builderHead);
     // Candidate files preserved in working tree for recovery
     expect(await readFile(join(repo, 'src.txt'), 'utf8')).toContain('review fix');
+    // Working tree is intentionally dirty — git status reports src.txt as modified
+    const status = await git(repo, ['status', '--porcelain']);
+    expect(status).toContain('src.txt');
   });
 
   it('fails the build at max-round exhaustion when issues remain unresolved (review-fixer made no changes)', async () => {

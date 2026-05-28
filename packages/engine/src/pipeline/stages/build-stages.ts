@@ -1263,8 +1263,18 @@ registerBuildStage({
     } as unknown as Parameters<typeof emitBuildDecision>[1]);
     // --- eforge:endregion plan-02-build-evaluator-enforcement ---
     // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
-    if (ctx.reviewIssues.length > 0 || !(finalEvaluation?.ran ?? false)) {
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: ctx.reviewIssues.length > 0 ? `${ctx.reviewIssues.length} unresolved issue(s) remain after ${maxRounds} review round(s).` : `Review cycle exhausted ${maxRounds} round(s) without a final evaluation verdict.` } as EforgeEvent;
+    // Use lastReviewIssueCount rather than ctx.reviewIssues.length because
+    // evaluateStageInner clears ctx.reviewIssues after verdict application.
+    // Fail when the last review found issues AND the final evaluation either did not
+    // run or did not accept all fixes (rejected or marked for review remain non-zero).
+    const evalNotAcceptedAll =
+      !finalEvaluation?.ran ||
+      (finalEvaluation.rejected + finalEvaluation.review) > 0;
+    if (lastReviewIssueCount > 0 && evalNotAcceptedAll) {
+      const errorMsg = !finalEvaluation?.ran
+        ? `Review cycle exhausted ${maxRounds} round(s) without a final evaluation verdict.`
+        : `${lastReviewIssueCount} unresolved issue(s) remain after ${maxRounds} review round(s) (${finalEvaluation.rejected} rejected, ${finalEvaluation.review} under review).`;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg } as EforgeEvent;
       ctx.buildFailed = true;
     }
     // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---

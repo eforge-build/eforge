@@ -104,7 +104,7 @@ Targeted test reproduction to add:
 - In `test/build-evaluator-enforcement.test.ts`, create a `review-cycle` with maxRounds 1, a reviewer issue, a review-fixer that mutates a file, and an evaluator response with no verdicts.
 - Assert the stage emits `plan:build:failed`.
 - Assert the stage sets `ctx.buildFailed = true`.
-- Assert the stage does not leave uncommitted changes.
+- Assert the stage fails before completion/merge and preserves or reports the uncommitted candidate changes for recovery.
 - Assert the stage does not emit a successful completion path.
 - In `test/orchestration-logic.test.ts`, cover event-ordering/terminal-state behavior so a merge failure does not leave a later queued `plan:status:change` to `completed` after a failure for the same plan.
 
@@ -173,7 +173,7 @@ Out of scope:
 - `test/build-evaluator-enforcement.test.ts` includes a `review-cycle` regression with maxRounds 1, a reviewer issue, a review-fixer that mutates a file, and an evaluator response with no verdicts.
 - The `review-cycle` no-verdict regression emits `plan:build:failed`.
 - The `review-cycle` no-verdict regression sets `ctx.buildFailed = true`.
-- The `review-cycle` no-verdict regression does not leave uncommitted changes.
+- The `review-cycle` no-verdict regression does not proceed to completion/merge while candidate changes remain uncommitted, and preserves or reports those changes for recovery.
 - The `review-cycle` no-verdict regression does not emit a successful completion path.
 - `test/orchestration-logic.test.ts` covers event-ordering/terminal-state behavior so a merge failure does not leave a later queued `plan:status:change` to `completed` after a failure for the same plan.
 - The existing `test/build-evaluator-enforcement.test.ts` no-verdict test is revised or split so no-candidate no-op remains non-terminal.

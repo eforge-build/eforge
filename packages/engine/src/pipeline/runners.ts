@@ -8,6 +8,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { stat } from 'node:fs/promises';
 
 import type { EforgeEvent, AgentRole } from '../events.js';
 import type { TracingContext } from '../tracing.js';
@@ -316,21 +317,34 @@ export async function* runBuildPipeline(
   // committed, which would produce a silent no-op merge. Non-git contexts (unit tests
   // without a real worktree) skip the check gracefully. Real git errors (index lock,
   // permission failures, corruption) are treated as hard failures.
+
+  // Stat the worktree path first so that ENOENT from exec() is never misread as
+  // "not a git repository". A missing worktree path or missing git executable are
+  // both hard failures, not graceful skips.
+  try {
+    await stat(ctx.worktreePath);
+  } catch {
+    const errorMsg = `Dirty worktree guard: worktree path does not exist: ${ctx.worktreePath}`;
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
+    ctx.buildFailed = true;
+    return;
+  }
+
   let isGitRepo = false;
   try {
     await exec('git', ['rev-parse', '--is-inside-work-tree'], { cwd: ctx.worktreePath });
     isGitRepo = true;
   } catch (err) {
     // Distinguish "not a git repository" (expected in unit tests without a real worktree)
-    // from real git failures (permissions, corruption, dubious ownership, bad path).
+    // from real git failures (permissions, corruption, dubious ownership, missing git binary).
+    // ENOENT is no longer treated as "not a git repo" here — the stat() above already
+    // confirmed the path exists, so ENOENT means git itself could not be launched.
     const stderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr ?? '';
-    const errCode = (err as NodeJS.ErrnoException).code;
     const isNotGitRepo =
       stderr.includes('not a git repository') ||
-      stderr.includes('not a git repo') ||
-      errCode === 'ENOENT';
+      stderr.includes('not a git repo');
     if (!isNotGitRepo) {
-      // A real Git error — treat as a hard failure to avoid silently allowing plan:build:complete.
+      // A real Git error (or missing git binary) — treat as a hard failure.
       const errorMsg = `Dirty worktree guard: git failed: ${err instanceof Error ? err.message : String(err)}`;
       yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
       ctx.buildFailed = true;
