@@ -5,6 +5,7 @@
 import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
 import { API_ROUTES } from '../routes.js';
 import type {
+  SessionPlanListRequest,
   SessionPlanListResponse,
   SessionPlanShowResponse,
   SessionPlanCreateRequest,
@@ -26,6 +27,7 @@ import type {
 
 // Re-export wire types for convenience
 export type {
+  SessionPlanListRequest,
   SessionPlanStatusWire,
   PlanningTypeWire,
   PlanningDepthWire,
@@ -55,8 +57,9 @@ export type {
 // Typed client helpers
 // ---------------------------------------------------------------------------
 
-export function apiSessionPlanList(opts: { cwd: string }) {
-  return daemonRequest<SessionPlanListResponse>(opts.cwd, 'GET', API_ROUTES.sessionPlanList);
+export function apiSessionPlanList(opts: { cwd: string; includeSubmitted?: boolean }) {
+  const query = opts.includeSubmitted ? '?includeSubmitted=true' : '';
+  return daemonRequest<SessionPlanListResponse>(opts.cwd, 'GET', `${API_ROUTES.sessionPlanList}${query}`);
 }
 
 export function apiSessionPlanShow(opts: { cwd: string; session: string }) {
@@ -127,8 +130,9 @@ export function apiSessionPlanMigrateLegacy(opts: { cwd: string; body: SessionPl
   );
 }
 
-export function apiSessionPlanListIfRunning(opts: { cwd: string }) {
-  return daemonRequestIfRunning<SessionPlanListResponse>(opts.cwd, 'GET', API_ROUTES.sessionPlanList);
+export function apiSessionPlanListIfRunning(opts: { cwd: string; includeSubmitted?: boolean }) {
+  const query = opts.includeSubmitted ? '?includeSubmitted=true' : '';
+  return daemonRequestIfRunning<SessionPlanListResponse>(opts.cwd, 'GET', `${API_ROUTES.sessionPlanList}${query}`);
 }
 
 export function apiSessionPlanShowIfRunning(opts: { cwd: string; session: string }) {

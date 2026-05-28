@@ -144,7 +144,7 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, onClose }: Di
     <div ref={containerRef} className="flex-1 min-w-0 bg-card border border-border rounded-lg flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-        <div className="text-[11px] text-text-dim truncate mr-2" title={filePath}>
+        <div className="text-11px text-text-dim truncate mr-2" title={filePath}>
           {filePath}
           {planId && <span className="ml-2 text-text-bright">{planId}</span>}
         </div>
@@ -173,7 +173,7 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, onClose }: Di
               <div key={entry.planId}>
                 {/* Plan header divider for multi-plan view */}
                 {!planId && (
-                  <div className="text-[10px] uppercase tracking-wide text-text-dim mb-2 pb-1 border-b border-border/50">
+                  <div className="text-10px uppercase tracking-wide text-text-dim mb-2 pb-1 border-b border-border/50">
                     {entry.planId}
                   </div>
                 )}
@@ -197,7 +197,7 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, onClose }: Di
                       {entry.diff}
                     </pre>
                     {highlightFailed && (
-                      <div className="text-[10px] text-text-dim mt-1">Highlighting unavailable</div>
+                      <div className="text-10px text-text-dim mt-1">Highlighting unavailable</div>
                     )}
                   </div>
                 )}

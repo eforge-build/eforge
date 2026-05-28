@@ -23,7 +23,7 @@ export function SheetPanel({ open, onClose, title, description, className, child
         <div className="flex items-start justify-between px-4 py-3 border-b border-border shrink-0">
           <div>
             {title && <h2 className="text-sm font-semibold text-foreground">{title}</h2>}
-            {description && <p className="text-[11px] text-text-dim mt-0.5">{description}</p>}
+            {description && <p className="text-11px text-text-dim mt-0.5">{description}</p>}
           </div>
           <Button
             type="button"

@@ -39,7 +39,7 @@ export const EMPTY_SET = new Set<string>();
 // --- Pill constants for artifact labels ---
 
 export const pillClass =
-  'inline-flex items-center h-auto px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition-colors border-none';
+  'inline-flex items-center h-auto px-2 py-0.5 rounded-full text-11px font-medium cursor-pointer transition-colors border-none';
 export const prdPillClass = `${pillClass} bg-yellow/15 text-yellow/70 hover:bg-yellow/25 hover:text-yellow/90`;
 export const planPillClass = `${pillClass} bg-cyan/15 text-cyan/70 hover:bg-cyan/25 hover:text-cyan/90`;
 
@@ -74,12 +74,12 @@ export function getAgentColor(agent: string) {
 // --- Profile tier colors ---
 
 export const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  errand: { bg: 'bg-[#3fb950]/15', text: 'text-[#3fb950]', border: 'border-[#3fb950]/30' },
-  excursion: { bg: 'bg-[#58a6ff]/15', text: 'text-[#58a6ff]', border: 'border-[#58a6ff]/30' },
-  expedition: { bg: 'bg-[#f0883e]/15', text: 'text-[#f0883e]', border: 'border-[#f0883e]/30' },
+  errand: { bg: 'bg-tier-errand/15', text: 'text-tier-errand', border: 'border-tier-errand/30' },
+  excursion: { bg: 'bg-tier-excursion/15', text: 'text-tier-excursion', border: 'border-tier-excursion/30' },
+  expedition: { bg: 'bg-tier-expedition/15', text: 'text-tier-expedition', border: 'border-tier-expedition/30' },
 };
 
-export const DEFAULT_TIER = { bg: 'bg-[#bc8cff]/15', text: 'text-[#bc8cff]', border: 'border-[#bc8cff]/30' };
+export const DEFAULT_TIER = { bg: 'bg-tier-default/15', text: 'text-tier-default', border: 'border-tier-default/30' };
 
 export function getTierColor(name: string) {
   return TIER_COLORS[name] ?? DEFAULT_TIER;

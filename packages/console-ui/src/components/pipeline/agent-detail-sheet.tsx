@@ -20,7 +20,7 @@ function AttributionBadge({ attribution }: { attribution: AgentActivityFacts['at
     unavailable: 'bg-bg-tertiary text-text-dim border-border',
   };
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${colors[attribution]}`}>
+    <span className={`text-10px px-1.5 py-0.5 rounded border font-mono ${colors[attribution]}`}>
       {attribution}
     </span>
   );
@@ -29,7 +29,7 @@ function AttributionBadge({ attribution }: { attribution: AgentActivityFacts['at
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-text-dim mb-1.5">{title}</div>
+      <div className="text-10px uppercase tracking-wider text-text-dim mb-1.5">{title}</div>
       <div className="space-y-0.5">{children}</div>
     </div>
   );
@@ -185,7 +185,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
             {warnings.map((se) => {
               const ev = se.event as Extract<EforgeEvent, { type: 'agent:warning' }>;
               return (
-                <div key={se.eventId} className="text-yellow-400 text-[10px] font-mono py-0.5 break-words">
+                <div key={se.eventId} className="text-yellow-400 text-10px font-mono py-0.5 break-words">
                   [{ev.code}] {ev.message}
                 </div>
               );
@@ -199,7 +199,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
             {retries.map((se) => {
               const ev = se.event as Extract<EforgeEvent, { type: 'agent:retry' }>;
               return (
-                <div key={se.eventId} className="text-orange-400 text-[10px] py-0.5">
+                <div key={se.eventId} className="text-orange-400 text-10px py-0.5">
                   Attempt {ev.attempt}/{ev.maxAttempts}: {ev.label}
                 </div>
               );
@@ -210,7 +210,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
         {/* Stop error */}
         {thread.stopError && (
           <Section title="Stop error">
-            <div className="text-red-400 text-[10px] font-mono break-words">{thread.stopError}</div>
+            <div className="text-red-400 text-10px font-mono break-words">{thread.stopError}</div>
           </Section>
         )}
 
@@ -221,7 +221,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
               <AttributionBadge attribution={thread.activity.attribution} />
             </div>
             {thread.activity.totals && (
-              <div className="text-[10px] text-text-dim mb-1.5">
+              <div className="text-10px text-text-dim mb-1.5">
                 {thread.activity.totals.filesChanged} files · +{thread.activity.totals.additions}{' '}
                 -{thread.activity.totals.deletions}
               </div>
@@ -229,7 +229,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
             {thread.activity.files && thread.activity.files.length > 0 && (
               <div className="space-y-0.5">
                 {thread.activity.files.map((f) => (
-                  <div key={f.path} className="text-[10px] font-mono flex items-center gap-2">
+                  <div key={f.path} className="text-10px font-mono flex items-center gap-2">
                     <span className="text-text-dim truncate flex-1">{f.path}</span>
                     {f.additions != null && (
                       <span className="text-green-400 shrink-0">+{f.additions}</span>
@@ -244,7 +244,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
             {thread.activity.notes && thread.activity.notes.length > 0 && (
               <div className="mt-1.5 space-y-0.5">
                 {thread.activity.notes.map((note, i) => (
-                  <div key={i} className="text-[10px] text-text-dim italic">
+                  <div key={i} className="text-10px text-text-dim italic">
                     {note}
                   </div>
                 ))}
@@ -258,7 +258,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
           <Section title={`Tool calls (${toolUses.length})`}>
             <button
               type="button"
-              className="text-[10px] text-blue-400 underline mb-1"
+              className="text-10px text-blue-400 underline mb-1"
               onClick={() => setToolsExpanded((v) => !v)}
             >
               {toolsExpanded ? 'Hide' : 'Show all'}
@@ -267,7 +267,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
               toolUses.map((se) => {
                 const ev = se.event as Extract<EforgeEvent, { type: 'agent:tool_use' }>;
                 return (
-                  <div key={se.eventId} className="text-[10px] font-mono py-0.5 text-text-dim">
+                  <div key={se.eventId} className="text-10px font-mono py-0.5 text-text-dim">
                     {ev.tool}
                   </div>
                 );
@@ -280,7 +280,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
           <Section title={`Messages (${messages.length})`}>
             <button
               type="button"
-              className="text-[10px] text-blue-400 underline"
+              className="text-10px text-blue-400 underline"
               onClick={() => setMessagesExpanded((v) => !v)}
             >
               {messagesExpanded ? 'Hide' : 'Show all'}
@@ -291,7 +291,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
                 return (
                   <div
                     key={se.eventId}
-                    className="text-[10px] text-text-dim py-0.5 border-l-2 border-border pl-2 break-words"
+                    className="text-10px text-text-dim py-0.5 border-l-2 border-border pl-2 break-words"
                   >
                     {ev.content}
                   </div>
@@ -303,13 +303,13 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
         {/* Final result */}
         {fullText && (
           <Section title="Final result">
-            <pre className="text-[10px] whitespace-pre-wrap break-words font-mono text-text-dim">
+            <pre className="text-10px whitespace-pre-wrap break-words font-mono text-text-dim">
               {displayText}
             </pre>
             {fullText.length > RESULT_TEXT_LIMIT && (
               <button
                 type="button"
-                className="text-[10px] text-blue-400 underline mt-1"
+                className="text-10px text-blue-400 underline mt-1"
                 onClick={() => setResultExpanded((v) => !v)}
               >
                 {resultExpanded ? 'Show less' : 'Show more'}

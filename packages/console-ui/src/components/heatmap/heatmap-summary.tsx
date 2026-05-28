@@ -6,7 +6,7 @@ interface HeatmapSummaryProps {
 function StatItem({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex flex-col">
-      <span className="text-[10px] text-text-dim uppercase tracking-wide">{label}</span>
+      <span className="text-10px text-text-dim uppercase tracking-wide">{label}</span>
       <span className={`text-sm font-bold ${highlight ? 'text-red' : 'text-text-bright'}`}>
         {value}
       </span>

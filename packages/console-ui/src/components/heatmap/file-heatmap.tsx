@@ -107,7 +107,7 @@ export function FileHeatmap({ runState, sessionId }: FileHeatmapProps) {
       <div className={`bg-card border border-border rounded-lg px-4 py-3 flex flex-col gap-3 ${selectedFile ? 'min-w-[400px]' : 'flex-1'}`}>
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h3 className="text-[11px] uppercase tracking-wide text-text-dim">
+          <h3 className="text-11px uppercase tracking-wide text-text-dim">
             File Heatmap
           </h3>
           <HeatmapSummary {...stats} />
@@ -122,7 +122,7 @@ export function FileHeatmap({ runState, sessionId }: FileHeatmapProps) {
             {plans.map((plan) => (
               <div
                 key={plan.id}
-                className="w-6 text-[9px] text-text-dim text-center overflow-hidden"
+                className="w-6 text-9px text-text-dim text-center overflow-hidden"
                 title={plan.id}
               >
                 <div className="truncate" style={{ writingMode: 'vertical-lr', height: '60px', transform: 'rotate(180deg)' }}>
@@ -139,7 +139,7 @@ export function FileHeatmap({ runState, sessionId }: FileHeatmapProps) {
             return (
               <div key={file.path} className="flex items-center gap-0.5 mb-0.5">
                 <div
-                  className={`w-[320px] text-[10px] overflow-hidden text-ellipsis whitespace-nowrap shrink-0 cursor-pointer hover:text-text-bright ${isFileSelected ? 'text-text-bright font-medium' : 'text-text-dim'}`}
+                  className={`w-[320px] text-10px overflow-hidden text-ellipsis whitespace-nowrap shrink-0 cursor-pointer hover:text-text-bright ${isFileSelected ? 'text-text-bright font-medium' : 'text-text-dim'}`}
                   title={file.path}
                   onClick={() => handleFileNameClick(file.path)}
                 >

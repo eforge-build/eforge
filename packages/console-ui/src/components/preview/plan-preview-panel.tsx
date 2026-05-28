@@ -119,7 +119,7 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
           <div className="flex items-center gap-2 min-w-0">
             {planType !== 'plan' && (
               <span className={cn(
-                'text-[10px] font-medium px-1.5 py-0.5 rounded-sm shrink-0',
+                'text-10px font-medium px-1.5 py-0.5 rounded-sm shrink-0',
                 planType === 'architecture' ? 'bg-cyan/15 text-cyan' : 'bg-yellow/15 text-yellow',
               )}>
                 {planType === 'architecture' ? 'Architecture' : 'Module'}
@@ -171,10 +171,10 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
               {metadata && <PlanMetadata {...metadata} />}
               {planFileChanges && planFileChanges.length > 0 && (
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-text-dim mb-1">Files Changed</div>
+                  <div className="text-10px uppercase tracking-wide text-text-dim mb-1">Files Changed</div>
                   <div className="flex flex-wrap gap-1">
                     {planFileChanges.map((f) => (
-                      <span key={f} className="text-[10px] font-mono bg-bg-tertiary px-1.5 py-0.5 rounded text-text-dim">
+                      <span key={f} className="text-10px font-mono bg-bg-tertiary px-1.5 py-0.5 rounded text-text-dim">
                         {f}
                       </span>
                     ))}

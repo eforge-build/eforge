@@ -58,7 +58,7 @@ export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
   if (suggestion > 0) parts.push(<span key="s" className="text-text-dim">{suggestion} suggestion</span>);
   if (parts.length === 0) return null;
   return (
-    <div className="text-[10px] mt-0.5 flex items-center gap-1">
+    <div className="text-10px mt-0.5 flex items-center gap-1">
       {parts.map((part, i) => (
         <span key={i} className="flex items-center gap-1">
           {i > 0 && <span className="opacity-30">·</span>}
@@ -266,7 +266,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                         threadStart={threadStart}
                         threadEnd={threadEnd}
                       />
-                      <span className="text-[9px] truncate px-1 leading-4 text-foreground/70 relative z-10">
+                      <span className="text-9px truncate px-1 leading-4 text-foreground/70 relative z-10">
                         {thread.agent}{thread.totalTokens != null ? ` ${formatNumber(thread.totalTokens)}` : ''}
                       </span>
                     </div>
@@ -274,14 +274,14 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                   <TooltipContent side="top">
                     <div className="font-medium">{thread.agent}</div>
                     {(thread.harness || thread.model) && (
-                      <div className="opacity-50 text-[10px]">
+                      <div className="opacity-50 text-10px">
                         {[thread.harness, thread.model].filter(Boolean).join(' · ')}
                         {thread.harnessSource && (
                           <span className={thread.harnessSource === 'plan' ? ' text-blue-400' : ''}> ({thread.harnessSource})</span>
                         )}
                       </div>
                     )}
-                    <div className={thread.effortSource === 'plan' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
+                    <div className={thread.effortSource === 'plan' ? 'text-blue-400 font-medium text-10px' : 'opacity-50 text-10px'}>
                       effort: {thread.effort
                         ? (thread.effortClamped && thread.effortOriginal
                           ? `${thread.effort} (clamped from ${thread.effortOriginal})`
@@ -291,7 +291,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                         <span> ({thread.effortSource})</span>
                       )}
                     </div>
-                    <div className={thread.thinkingSource === 'plan' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
+                    <div className={thread.thinkingSource === 'plan' ? 'text-blue-400 font-medium text-10px' : 'opacity-50 text-10px'}>
                       thinking: {thread.thinking
                         ? (thread.thinkingCoerced && thread.thinkingOriginal
                           ? `${thread.thinking} (coerced from ${formatThinking(thread.thinkingOriginal) ?? 'unknown'})`
@@ -302,7 +302,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                       )}
                     </div>
                     {thread.tier && (
-                      <div className={thread.tierSource === 'role' ? 'text-amber-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
+                      <div className={thread.tierSource === 'role' ? 'text-amber-400 font-medium text-10px' : 'opacity-50 text-10px'}>
                         tier: {thread.tier}
                         {thread.tierSource && (
                           <span> ({thread.tierSource})</span>
@@ -310,23 +310,23 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                       </div>
                     )}
                     {thread.perspective && (
-                      <div className="opacity-50 text-[10px]">
+                      <div className="opacity-50 text-10px">
                         perspective: {thread.perspective}
                       </div>
                     )}
                     {thread.toolbelt !== undefined && (
-                      <div className="opacity-50 text-[10px]">
+                      <div className="opacity-50 text-10px">
                         toolbelt: {thread.toolbelt === null ? 'none' : thread.toolbelt}
                         {thread.toolbeltSource && ` (${thread.toolbeltSource})`}
                       </div>
                     )}
                     {thread.projectMcpSelection && (
-                      <div className="opacity-50 text-[10px]">
+                      <div className="opacity-50 text-10px">
                         project MCP: {thread.projectMcpSelection}
                       </div>
                     )}
                     {thread.projectMcpServerNames && thread.projectMcpServerNames.length > 0 && (
-                      <div className="opacity-50 text-[10px]">
+                      <div className="opacity-50 text-10px">
                         servers: {[...thread.projectMcpServerNames].sort().join(', ')}
                       </div>
                     )}
@@ -380,7 +380,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                           animation: isRunning ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
                         }}
                       >
-                        <span className="text-[9px] truncate px-1 leading-4 text-foreground/70 relative z-10">
+                        <span className="text-9px truncate px-1 leading-4 text-foreground/70 relative z-10">
                           {statusGlyph ? `${statusGlyph} ` : ''}{span.command}
                         </span>
                       </div>
@@ -411,7 +411,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                           width: '12px',
                         }}
                       >
-                        <span className="text-[9px] truncate px-0.5 leading-4 relative z-10">✗</span>
+                        <span className="text-9px truncate px-0.5 leading-4 relative z-10">✗</span>
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side="top">

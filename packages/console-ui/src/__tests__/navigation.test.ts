@@ -11,20 +11,24 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('consoleRouteOrder', () => {
-  it('contains exactly three route base IDs in order', () => {
-    expect(consoleRouteOrder).toEqual(['now', 'runDetail', 'system']);
+  it('contains exactly four route base IDs in order', () => {
+    expect(consoleRouteOrder).toEqual(['now', 'plans', 'runDetail', 'system']);
   });
 
-  it('has length 3', () => {
-    expect(consoleRouteOrder).toHaveLength(3);
+  it('has length 4', () => {
+    expect(consoleRouteOrder).toHaveLength(4);
   });
 
   it('starts with now', () => {
     expect(consoleRouteOrder[0]).toBe('now');
   });
 
+  it('second entry is plans', () => {
+    expect(consoleRouteOrder[1]).toBe('plans');
+  });
+
   it('ends with system', () => {
-    expect(consoleRouteOrder[2]).toBe('system');
+    expect(consoleRouteOrder[3]).toBe('system');
   });
 });
 
@@ -35,6 +39,10 @@ describe('consoleRouteOrder', () => {
 describe('toConsolePath', () => {
   it("maps 'now' to /console/", () => {
     expect(toConsolePath('now')).toBe('/console/');
+  });
+
+  it("maps 'plans' to /console/plans", () => {
+    expect(toConsolePath('plans')).toBe('/console/plans');
   });
 
   it("maps 'system' to /console/system", () => {
@@ -67,6 +75,10 @@ describe('parseConsoleRoute', () => {
 
   it("returns 'now' for empty string", () => {
     expect(parseConsoleRoute('')).toBe('now');
+  });
+
+  it("returns 'plans' for /console/plans", () => {
+    expect(parseConsoleRoute('/console/plans')).toBe('plans');
   });
 
   it("returns 'system' for /console/system", () => {
@@ -124,6 +136,14 @@ describe('parseConsoleRoute', () => {
     const result = parseConsoleRoute('/console/runs/abc123/');
     expect(result).toEqual({ id: 'runDetail', detailId: 'abc123' });
   });
+
+  it('strips query string from plans path', () => {
+    expect(parseConsoleRoute('/console/plans?foo=bar')).toBe('plans');
+  });
+
+  it('strips trailing slash from plans path', () => {
+    expect(parseConsoleRoute('/console/plans/')).toBe('plans');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -131,8 +151,8 @@ describe('parseConsoleRoute', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildNavItems', () => {
-  it('returns two nav items (now and system)', () => {
-    expect(buildNavItems()).toHaveLength(2);
+  it('returns three nav items (now, plans, and system)', () => {
+    expect(buildNavItems()).toHaveLength(3);
   });
 
   it('first item is now', () => {
@@ -140,15 +160,26 @@ describe('buildNavItems', () => {
     expect(items[0].id).toBe('now');
   });
 
-  it('second item is system', () => {
+  it('second item is plans', () => {
     const items = buildNavItems();
-    expect(items[1].id).toBe('system');
+    expect(items[1].id).toBe('plans');
+  });
+
+  it('third item is system', () => {
+    const items = buildNavItems();
+    expect(items[2].id).toBe('system');
   });
 
   it('now item has href /console/', () => {
     const items = buildNavItems();
     const nowItem = items.find((i) => i.id === 'now');
     expect(nowItem?.href).toBe('/console/');
+  });
+
+  it('plans item has href /console/plans', () => {
+    const items = buildNavItems();
+    const plansItem = items.find((i) => i.id === 'plans');
+    expect(plansItem?.href).toBe('/console/plans');
   });
 
   it('system item has href /console/system', () => {
@@ -162,5 +193,11 @@ describe('buildNavItems', () => {
     for (const item of items) {
       expect(item.label.length).toBeGreaterThan(0);
     }
+  });
+
+  it('plans item has label "Plans"', () => {
+    const items = buildNavItems();
+    const plansItem = items.find((i) => i.id === 'plans');
+    expect(plansItem?.label).toBe('Plans');
   });
 });

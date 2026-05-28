@@ -66,7 +66,7 @@ export function AnimatedCounter({ value, format }: AnimatedCounterProps) {
       <span>{format(Math.round(displayValue))}</span>
       {deltaText && (
         <span
-          className="text-[10px] font-normal text-green transition-opacity duration-500"
+          className="text-10px font-normal text-green transition-opacity duration-500"
           style={{ opacity: deltaVisible ? 0.8 : 0 }}
         >
           {deltaText}

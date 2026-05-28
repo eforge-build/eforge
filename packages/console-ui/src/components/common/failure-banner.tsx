@@ -30,7 +30,7 @@ const COLLAPSE_THRESHOLD = 5;
 function FailureRow({ failure }: { failure: BuildFailure }) {
   return (
     <div className="flex items-start gap-2 text-xs">
-      <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-red/15 text-red font-mono text-[11px]">
+      <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-red/15 text-red font-mono text-11px">
         {abbreviatePlanId(failure.planId)}
       </span>
       <span className="text-text-bright">{failure.error}</span>

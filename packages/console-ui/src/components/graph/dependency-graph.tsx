@@ -152,7 +152,7 @@ export function DependencyGraph({
 
   if (!orchestration) {
     return (
-      <div className="flex items-center justify-center h-full text-text-dim text-[11px]">
+      <div className="flex items-center justify-center h-full text-text-dim text-11px">
         No orchestration data available
       </div>
     );
@@ -160,7 +160,7 @@ export function DependencyGraph({
 
   if (!isLayoutReady) {
     return (
-      <div className="flex items-center justify-center h-full text-text-dim text-[11px]">
+      <div className="flex items-center justify-center h-full text-text-dim text-11px">
         Computing layout...
       </div>
     );

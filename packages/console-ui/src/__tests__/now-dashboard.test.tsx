@@ -448,7 +448,8 @@ describe('NowDashboard - stack sync card', () => {
   });
 
   it('renders last outcome badge when sync status is present', () => {
-    const state = stateWithStack();
+    // Pass {} so stateWithStack produces a state with stackSync populated (outcome: 'complete').
+    const state = stateWithStack({});
 
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
 

@@ -118,7 +118,7 @@ export function SummaryCards({
               <AnimatedCounter value={tokensIn + tokensOut} format={formatTokens} />
             </span>
             {cacheRead > 0 && tokensIn > 0 && (
-              <span className="text-text-dim text-[10px]">
+              <span className="text-text-dim text-10px">
                 ({Math.round(cacheRead / tokensIn * 100)}% cached)
               </span>
             )}

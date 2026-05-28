@@ -83,7 +83,7 @@ function RunDetailContent({ detailId, isLive, runState, plans, isLoading, error,
         </Button>
         <span className="text-xs text-text-dim font-mono truncate">{detailId}</span>
         {isLive && (
-          <span className="ml-1 inline-flex items-center gap-1 text-[10px] font-medium text-blue">
+          <span className="ml-1 inline-flex items-center gap-1 text-10px font-medium text-blue">
             <span className="w-1.5 h-1.5 rounded-full bg-blue animate-pulse" />
             Live
           </span>

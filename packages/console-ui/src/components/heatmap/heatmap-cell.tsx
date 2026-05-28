@@ -32,7 +32,7 @@ export function HeatmapCell({ touched, riskLevel, filePath, planName, onClick, i
     >
       {/* Tooltip */}
       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-50 pointer-events-none">
-        <div className="bg-popover border border-border rounded-md px-2.5 py-1.5 text-[10px] whitespace-nowrap shadow-lg">
+        <div className="bg-popover border border-border rounded-md px-2.5 py-1.5 text-10px whitespace-nowrap shadow-lg">
           <div className="text-text-bright">{filePath}</div>
           <div className="text-text-dim mt-0.5">
             {planName} · {riskLabels[riskLevel]}

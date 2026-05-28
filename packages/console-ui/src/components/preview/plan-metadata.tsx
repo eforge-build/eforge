@@ -26,7 +26,7 @@ export function PlanMetadata({ id, name, dependsOn, branch, migrations }: PlanMe
         {/* ID */}
         <div className="flex items-baseline gap-2">
           <span className="text-text-dim min-w-[80px]">ID</span>
-          <code className="text-foreground font-mono text-[11px] bg-background/50 px-1.5 py-0.5 rounded">
+          <code className="text-foreground font-mono text-11px bg-background/50 px-1.5 py-0.5 rounded">
             {id}
           </code>
         </div>
@@ -35,7 +35,7 @@ export function PlanMetadata({ id, name, dependsOn, branch, migrations }: PlanMe
         {branch && (
           <div className="flex items-baseline gap-2">
             <span className="text-text-dim min-w-[80px]">Branch</span>
-            <code className="text-foreground font-mono text-[11px] bg-background/50 px-1.5 py-0.5 rounded">
+            <code className="text-foreground font-mono text-11px bg-background/50 px-1.5 py-0.5 rounded">
               {branch}
             </code>
           </div>
@@ -50,7 +50,7 @@ export function PlanMetadata({ id, name, dependsOn, branch, migrations }: PlanMe
                 <Badge
                   key={dep}
                   variant="outline"
-                  className="text-[10px] px-1.5 py-0 font-mono"
+                  className="text-10px px-1.5 py-0 font-mono"
                 >
                   {dep}
                 </Badge>
@@ -80,7 +80,7 @@ export function PlanMetadata({ id, name, dependsOn, branch, migrations }: PlanMe
               {migrationsExpanded && (
                 <div className="mt-1 space-y-0.5">
                   {migrations.map((m, i) => (
-                    <div key={i} className="text-[11px] text-text-dim">
+                    <div key={i} className="text-11px text-text-dim">
                       <code className="font-mono">{m.timestamp}</code> - {m.description}
                     </div>
                   ))}

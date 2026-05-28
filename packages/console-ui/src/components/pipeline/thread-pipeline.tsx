@@ -151,7 +151,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
   return (
     <TooltipProvider delayDuration={0}>
       <div>
-        <h3 className="text-[11px] uppercase tracking-wider text-text-dim mb-2 flex items-center gap-1.5">
+        <h3 className="text-11px uppercase tracking-wider text-text-dim mb-2 flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-blue" />
           Pipeline
         </h3>
@@ -163,7 +163,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
         )}
 
         {!hasThreadContent ? (
-          <div className="text-[11px] text-text-dim italic">Waiting for agent activity...</div>
+          <div className="text-11px text-text-dim italic">Waiting for agent activity...</div>
         ) : (
           <div className="flex flex-col gap-1.5">
             {hasGlobalThreads && (

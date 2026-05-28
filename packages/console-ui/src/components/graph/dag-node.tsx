@@ -47,7 +47,7 @@ function DagNodeComponent({ data }: NodeProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <span
-                className="text-[11px] font-medium truncate"
+                className="text-11px font-medium truncate"
                 style={{ color: 'var(--color-foreground)' }}
               >
                 {nodeData.planName}
@@ -55,7 +55,7 @@ function DagNodeComponent({ data }: NodeProps) {
             </TooltipTrigger>
             <TooltipContent side="bottom">{nodeData.planName}</TooltipContent>
           </Tooltip>
-          <span className="text-[9px]" style={{ color: 'var(--color-text-dim)' }}>
+          <span className="text-9px" style={{ color: 'var(--color-text-dim)' }}>
             {nodeData.status}
           </span>
         </div>

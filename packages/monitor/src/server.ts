@@ -4080,8 +4080,15 @@ export async function startServer(
         return true;
       }
       try {
-        const { listActiveSessionPlans, loadSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
-        const entries = await listActiveSessionPlans({ cwd });
+        const { listSessionPlans, loadSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
+        const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+        const qParams = new URLSearchParams(queryString);
+        const includeSubmittedParam = qParams.get('includeSubmitted');
+        const includeSubmitted = includeSubmittedParam === 'true' || includeSubmittedParam === '1';
+        const statuses: Array<'planning' | 'ready' | 'submitted'> = includeSubmitted
+          ? ['planning', 'ready', 'submitted']
+          : ['planning', 'ready'];
+        const entries = await listSessionPlans({ cwd, statuses });
         const plans = await Promise.all(
           entries.map(async (entry) => {
             try {
@@ -4094,6 +4101,7 @@ export async function startServer(
                 path: entry.path,
                 ready: readiness.ready,
                 missingDimensions: readiness.missingDimensions,
+                ...(entry.eforge_session !== undefined ? { eforge_session: entry.eforge_session } : {}),
                 ...(readiness.acDiagnostics && readiness.acDiagnostics.length > 0
                   ? { acDiagnostics: readiness.acDiagnostics }
                   : {}),
@@ -4106,6 +4114,7 @@ export async function startServer(
                 path: entry.path,
                 ready: false,
                 missingDimensions: [],
+                ...(entry.eforge_session !== undefined ? { eforge_session: entry.eforge_session } : {}),
               };
             }
           }),

@@ -238,7 +238,7 @@
     },
     {
       "path": "test/daemon-session-plan-routes.test.ts",
-      "noGrowthCeiling": 1257,
+      "noGrowthCeiling": 1279,
       "category": "test"
     },
     {

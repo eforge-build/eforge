@@ -4,7 +4,7 @@
 
 **Goal**: Make console-ui the canonical local-first control surface for planning, observing, configuring, and steering eforge builds while keeping the engine headless and harness integrations thin.
 
-- **Planning Workspace** - First-class session-plan browsing, readiness, handoff visibility, structured editing, and later agent-assisted planning workflows centered on the session-plan artifact.
+- **Planning Workspace** - Structured session-plan editing and agent-assisted planning workflows centered on the session-plan artifact (read-only browsing, readiness display, and handoff-visibility links shipped in `/console/plans`).
 - **Actionable build control** - Queue management, retry/recovery, validation waivers, stack sync, and build lifecycle actions from the console.
 - **Configuration and library surfaces** - Manage profiles, playbooks, scoped config, extensions, and model/runtime preferences through typed daemon/client APIs.
 - **Thin integration strategy** - Reduce Pi and Claude Code integrations to launch, deep-link, status, and build entry points that reuse daemon/client primitives instead of duplicating rich workflow UX.

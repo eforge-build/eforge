@@ -20,6 +20,7 @@ import {
   migrateBooleanDimensions,
   sessionPlanToBuildSource,
   listActiveSessionPlans,
+  listSessionPlans,
   type SessionPlan,
 } from '@eforge-build/input';
 import { useTempDir } from './test-tmpdir.js';
@@ -654,5 +655,133 @@ describe('listActiveSessionPlans', () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0].session).toBe('2026-01-01-plan-a');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listSessionPlans
+// ---------------------------------------------------------------------------
+
+describe('listSessionPlans', () => {
+  const makeTempDir = useTempDir('session-plans-list-');
+
+  it('returns empty list when directory does not exist', async () => {
+    const cwd = makeTempDir();
+    const entries = await listSessionPlans({ cwd, statuses: ['planning', 'ready'] });
+    expect(entries).toHaveLength(0);
+  });
+
+  it('returns only plans matching the given statuses', async () => {
+    const cwd = makeTempDir();
+    const dir = resolve(cwd, '.eforge', 'session-plans');
+    await mkdir(dir, { recursive: true });
+
+    await writeFile(resolve(dir, '2026-01-01-plan-a.md'), makePlanRaw({ session: '2026-01-01-plan-a', status: 'planning' }), 'utf-8');
+    await writeFile(resolve(dir, '2026-01-02-plan-b.md'), makePlanRaw({ session: '2026-01-02-plan-b', status: 'ready' }), 'utf-8');
+    await writeFile(resolve(dir, '2026-01-03-plan-c.md'), makePlanRaw({ session: '2026-01-03-plan-c', status: 'submitted' }), 'utf-8');
+    await writeFile(resolve(dir, '2026-01-04-plan-d.md'), makePlanRaw({ session: '2026-01-04-plan-d', status: 'abandoned' }), 'utf-8');
+
+    const activeEntries = await listSessionPlans({ cwd, statuses: ['planning', 'ready'] });
+    expect(activeEntries).toHaveLength(2);
+    const activeSessions = activeEntries.map((e) => e.session);
+    expect(activeSessions).toContain('2026-01-01-plan-a');
+    expect(activeSessions).toContain('2026-01-02-plan-b');
+
+    const withSubmitted = await listSessionPlans({ cwd, statuses: ['planning', 'ready', 'submitted'] });
+    expect(withSubmitted).toHaveLength(3);
+    const withSubmittedSessions = withSubmitted.map((e) => e.session);
+    expect(withSubmittedSessions).toContain('2026-01-03-plan-c');
+    expect(withSubmittedSessions).not.toContain('2026-01-04-plan-d');
+  });
+
+  it('includes eforge_session on submitted plans that declare it', async () => {
+    const cwd = makeTempDir();
+    const dir = resolve(cwd, '.eforge', 'session-plans');
+    await mkdir(dir, { recursive: true });
+
+    const submittedWithSession = `---
+session: 2026-01-01-submitted-plan
+topic: "Submitted Plan"
+status: submitted
+planning_type: feature
+planning_depth: focused
+eforge_session: run-abc-123
+required_dimensions:
+  - scope
+optional_dimensions: []
+skipped_dimensions: []
+open_questions: []
+profile: null
+---
+
+# Submitted Plan
+`;
+    await writeFile(resolve(dir, '2026-01-01-submitted-plan.md'), submittedWithSession, 'utf-8');
+
+    const entries = await listSessionPlans({ cwd, statuses: ['submitted'] });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].eforge_session).toBe('run-abc-123');
+  });
+
+  it('omits eforge_session when not declared in frontmatter', async () => {
+    const cwd = makeTempDir();
+    const dir = resolve(cwd, '.eforge', 'session-plans');
+    await mkdir(dir, { recursive: true });
+
+    await writeFile(resolve(dir, '2026-01-01-plan-a.md'), makePlanRaw({ session: '2026-01-01-plan-a', status: 'planning' }), 'utf-8');
+
+    const entries = await listSessionPlans({ cwd, statuses: ['planning'] });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].eforge_session).toBeUndefined();
+  });
+
+  it('sorts results by session id', async () => {
+    const cwd = makeTempDir();
+    const dir = resolve(cwd, '.eforge', 'session-plans');
+    await mkdir(dir, { recursive: true });
+
+    await writeFile(resolve(dir, 'zzz.md'), makePlanRaw({ session: 'zzz', topic: 'Z' }), 'utf-8');
+    await writeFile(resolve(dir, 'aaa.md'), makePlanRaw({ session: 'aaa', topic: 'A' }), 'utf-8');
+    await writeFile(resolve(dir, 'mmm.md'), makePlanRaw({ session: 'mmm', topic: 'M' }), 'utf-8');
+
+    const entries = await listSessionPlans({ cwd, statuses: ['planning'] });
+    expect(entries[0].session).toBe('aaa');
+    expect(entries[1].session).toBe('mmm');
+    expect(entries[2].session).toBe('zzz');
+  });
+
+  it('skips malformed files without failing the entire listing', async () => {
+    const cwd = makeTempDir();
+    const dir = resolve(cwd, '.eforge', 'session-plans');
+    await mkdir(dir, { recursive: true });
+
+    await writeFile(resolve(dir, '2026-01-01-valid.md'), makePlanRaw({ session: '2026-01-01-valid', status: 'planning' }), 'utf-8');
+    // Malformed file: no valid frontmatter
+    await writeFile(resolve(dir, '2026-01-02-malformed.md'), 'not valid frontmatter at all\njust random text', 'utf-8');
+
+    const entries = await listSessionPlans({ cwd, statuses: ['planning', 'ready'] });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].session).toBe('2026-01-01-valid');
+
+    // listActiveSessionPlans wrapper should preserve the same behavior
+    const active = await listActiveSessionPlans({ cwd });
+    expect(active).toHaveLength(1);
+    expect(active[0].session).toBe('2026-01-01-valid');
+  });
+
+  it('listActiveSessionPlans is a compatibility wrapper returning planning and ready only', async () => {
+    const cwd = makeTempDir();
+    const dir = resolve(cwd, '.eforge', 'session-plans');
+    await mkdir(dir, { recursive: true });
+
+    await writeFile(resolve(dir, '2026-01-01-plan-a.md'), makePlanRaw({ session: '2026-01-01-plan-a', status: 'planning' }), 'utf-8');
+    await writeFile(resolve(dir, '2026-01-02-plan-b.md'), makePlanRaw({ session: '2026-01-02-plan-b', status: 'ready' }), 'utf-8');
+    await writeFile(resolve(dir, '2026-01-03-plan-c.md'), makePlanRaw({ session: '2026-01-03-plan-c', status: 'submitted' }), 'utf-8');
+
+    const active = await listActiveSessionPlans({ cwd });
+    const explicit = await listSessionPlans({ cwd, statuses: ['planning', 'ready'] });
+
+    expect(active).toHaveLength(2);
+    expect(active.map((e) => e.session).sort()).toEqual(explicit.map((e) => e.session).sort());
   });
 });

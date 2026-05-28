@@ -8,7 +8,7 @@ interface TimelineControlsProps {
 export function TimelineControls({ showVerbose, onToggleVerbose }: TimelineControlsProps) {
   return (
     <div className="flex items-center gap-3">
-      <label className="text-[11px] text-text-dim flex items-center gap-1 cursor-pointer">
+      <label className="text-11px text-text-dim flex items-center gap-1 cursor-pointer">
         <Checkbox
           checked={showVerbose}
           onCheckedChange={(checked) => onToggleVerbose(checked === true)}

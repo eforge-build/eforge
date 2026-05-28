@@ -9,6 +9,7 @@
  * Public API:
  *   parseSessionPlan          — parse raw markdown to a typed SessionPlan
  *   serializeSessionPlan      — serialize a SessionPlan back to markdown
+ *   listSessionPlans          — list session plans filtered by lifecycle statuses
  *   listActiveSessionPlans    — list active session plans in project-local scope
  *   selectDimensions          — resolve required/optional/skipped dimension sets
  *   checkReadiness            — check if all required dimensions have content
@@ -109,7 +110,7 @@ export interface SessionPlan extends SessionPlanFrontmatter {
 // Session plan list entry
 // ---------------------------------------------------------------------------
 
-/** A lightweight listing entry for an active session plan file. */
+/** A lightweight listing entry for a session plan file. */
 export interface SessionPlanListEntry {
   /** Session identifier (e.g. `2026-04-03-add-dark-mode`). */
   session: string;
@@ -119,6 +120,8 @@ export interface SessionPlanListEntry {
   status: SessionPlanStatus;
   /** Absolute path to the session plan file. */
   path: string;
+  /** Associated eforge run session identifier. Present when status is `'submitted'` and the plan declares `eforge_session`. */
+  eforge_session?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -418,19 +421,14 @@ export function serializeSessionPlan(plan: SessionPlan): string {
 // ---------------------------------------------------------------------------
 
 export interface ListActiveSessionPlansOpts {
-  /** Project root directory. Session plans are always project-local. */
   cwd: string;
 }
-
-/**
- * List active session plan files from `.eforge/session-plans/` (project-local
- * scope only). Returns a lightweight listing — no full plan parsing.
- *
- * Only files with `status: planning` or `status: ready` are returned.
- */
-export async function listActiveSessionPlans(
-  opts: ListActiveSessionPlansOpts,
-): Promise<SessionPlanListEntry[]> {
+export interface ListSessionPlansOpts {
+  cwd: string;
+  statuses: SessionPlanStatus[];
+}
+/** List session plans filtered by statuses. Skips unparseable files. Results sorted by session ID. */
+export async function listSessionPlans(opts: ListSessionPlansOpts): Promise<SessionPlanListEntry[]> {
   const sessionPlansDir = resolve(opts.cwd, '.eforge', 'session-plans');
 
   let filenames: string[];
@@ -441,6 +439,7 @@ export async function listActiveSessionPlans(
   }
 
   const mdFiles = filenames.filter((f) => f.endsWith('.md')).sort();
+  const statusSet = new Set(opts.statuses);
   const results: SessionPlanListEntry[] = [];
 
   await Promise.all(
@@ -449,12 +448,13 @@ export async function listActiveSessionPlans(
       try {
         const raw = await readFile(filePath, 'utf-8');
         const plan = parseSessionPlan(raw);
-        if (plan.status === 'planning' || plan.status === 'ready') {
+        if (statusSet.has(plan.status)) {
           results.push({
             session: plan.session,
             topic: plan.topic,
             status: plan.status,
             path: filePath,
+            ...(plan.status === 'submitted' && plan.eforge_session !== undefined && { eforge_session: plan.eforge_session }),
           });
         }
       } catch {
@@ -462,12 +462,13 @@ export async function listActiveSessionPlans(
       }
     }),
   );
-
-  // Sort by session ID for deterministic output
   results.sort((a, b) => a.session.localeCompare(b.session));
   return results;
 }
-
+/** Compatibility wrapper: returns planning/ready session plans. Delegates to `listSessionPlans`. */
+export async function listActiveSessionPlans(opts: ListActiveSessionPlansOpts): Promise<SessionPlanListEntry[]> {
+  return listSessionPlans({ cwd: opts.cwd, statuses: ['planning', 'ready'] });
+}
 // ---------------------------------------------------------------------------
 // Public API — dimension helpers
 // ---------------------------------------------------------------------------
@@ -623,7 +624,6 @@ export function createSessionPlan(opts: CreateSessionPlanOpts): SessionPlan {
     status: 'planning',
     planning_type: planningType,
     planning_depth: planningDepth,
-    eforge_session: undefined,
     required_dimensions: [],
     optional_dimensions: [],
     skipped_dimensions: [],
