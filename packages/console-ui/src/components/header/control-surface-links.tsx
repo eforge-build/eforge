@@ -1,17 +1,30 @@
 import * as React from 'react';
+import { buildNavItems } from '@/lib/navigation';
 
 interface ControlSurfaceLinksProps {
-  /** Navigation handler — reserved for future control links. */
+  /** In-app navigation handler for Console route links. */
   onNavigate?: (href: string) => void;
 }
 
 /**
- * Slot for future control-surface navigation links in the header.
- * Currently renders a Monitor back-link only.
+ * Top-level Console navigation links rendered in the header control surface.
+ * Renders Now, Plans, and System nav buttons plus a Monitor back-link.
  */
-export function ControlSurfaceLinks({ onNavigate: _ }: ControlSurfaceLinksProps) {
+export function ControlSurfaceLinks({ onNavigate }: ControlSurfaceLinksProps) {
+  const navItems = buildNavItems();
   return (
     <div className="flex items-center gap-2">
+      {navItems.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onNavigate?.(item.href)}
+          aria-label={item.label}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {item.label}
+        </button>
+      ))}
       <a
         href="/"
         className="text-xs text-muted-foreground hover:text-foreground transition-colors"

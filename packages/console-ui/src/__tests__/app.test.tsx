@@ -51,6 +51,11 @@ vi.mock('@/components/timeline/timeline', () => ({
   Timeline: () => <div data-testid="timeline" />,
 }));
 
+// Mock the Plans route so it resolves synchronously without network calls
+vi.mock('@/views/plans', () => ({
+  PlansView: () => <div data-testid="plans-view">Planning Workspace</div>,
+}));
+
 // ---------------------------------------------------------------------------
 // jsdom compatibility
 // ---------------------------------------------------------------------------
@@ -108,6 +113,23 @@ describe('App — popstate routing', () => {
     expect(screen.getByText(RUN_DETAIL_SUSPENSE_MARKER)).toBeDefined();
     // NowDashboard must not be present on this route
     expect(screen.queryByText(NOW_MARKER)).toBeNull();
+  });
+
+  it('initial render at /console/plans mounts the Plans route, not NowDashboard', async () => {
+    window.history.pushState(null, '', '/console/plans');
+    render(<App />);
+
+    // NowDashboard must not be present on the plans route
+    expect(screen.queryByText(NOW_MARKER)).toBeNull();
+    // Allow the lazy mock to resolve
+    await act(async () => {});
+    expect(screen.getByTestId('plans-view')).toBeDefined();
+  });
+
+  it('unknown routes render the Now dashboard', () => {
+    window.history.pushState(null, '', '/console/not-a-route');
+    render(<App />);
+    expect(screen.getByText(NOW_MARKER)).toBeDefined();
   });
 
   it('switches from run-detail to now-dashboard when popstate fires with /console/ pathname', async () => {

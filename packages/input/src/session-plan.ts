@@ -9,6 +9,7 @@
  * Public API:
  *   parseSessionPlan          — parse raw markdown to a typed SessionPlan
  *   serializeSessionPlan      — serialize a SessionPlan back to markdown
+ *   listSessionPlans          — list session plans filtered by lifecycle statuses
  *   listActiveSessionPlans    — list active session plans in project-local scope
  *   selectDimensions          — resolve required/optional/skipped dimension sets
  *   checkReadiness            — check if all required dimensions have content
@@ -453,7 +454,7 @@ export async function listSessionPlans(opts: ListSessionPlansOpts): Promise<Sess
             topic: plan.topic,
             status: plan.status,
             path: filePath,
-            ...(plan.eforge_session !== undefined && { eforge_session: plan.eforge_session }),
+            ...(plan.status === 'submitted' && plan.eforge_session !== undefined && { eforge_session: plan.eforge_session }),
           });
         }
       } catch {
@@ -623,7 +624,6 @@ export function createSessionPlan(opts: CreateSessionPlanOpts): SessionPlan {
     status: 'planning',
     planning_type: planningType,
     planning_depth: planningDepth,
-    eforge_session: undefined,
     required_dimensions: [],
     optional_dimensions: [],
     skipped_dimensions: [],

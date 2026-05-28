@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { ConsoleShell } from '@/components/shell/console-shell';
 import { initialConsoleProjectState } from '@/lib/project-state';
 import { EFORGE_LOGO_URL } from '@/lib/brand';
@@ -143,5 +143,39 @@ describe('header content in ConsoleShell', () => {
       </ConsoleShell>,
     );
     expect(queryByLabelText('connection and daemon status')).toBeNull();
+  });
+
+  it('renders a Plans navigation button in the header', () => {
+    const { getByRole } = render(
+      <ConsoleShell projectState={stubState}>
+        <div>content</div>
+      </ConsoleShell>,
+    );
+    const plansButton = getByRole('button', { name: /^plans$/i });
+    expect(plansButton).toBeDefined();
+  });
+
+  it('clicking the Plans button calls onNavigate with /console/plans', () => {
+    const onNavigate = vi.fn();
+    const { getByRole } = render(
+      <ConsoleShell projectState={stubState} onNavigate={onNavigate}>
+        <div>content</div>
+      </ConsoleShell>,
+    );
+    fireEvent.click(getByRole('button', { name: /^plans$/i }));
+    expect(onNavigate).toHaveBeenCalledWith('/console/plans');
+  });
+
+  it('clicking the Plans button does not cause a page reload (uses onNavigate, not href)', () => {
+    const onNavigate = vi.fn();
+    const { getByRole } = render(
+      <ConsoleShell projectState={stubState} onNavigate={onNavigate}>
+        <div>content</div>
+      </ConsoleShell>,
+    );
+    const plansButton = getByRole('button', { name: /^plans$/i });
+    // Plans link is a button, not an anchor — no href-based navigation
+    expect(plansButton.tagName.toLowerCase()).toBe('button');
+    expect(plansButton.getAttribute('href')).toBeNull();
   });
 });
