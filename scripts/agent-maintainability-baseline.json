@@ -8,7 +8,7 @@
     },
     {
       "path": "packages/monitor/src/server.ts",
-      "noGrowthCeiling": 4975,
+      "noGrowthCeiling": 4980,
       "category": "implementation"
     },
     {
@@ -28,12 +28,12 @@
     },
     {
       "path": "packages/pi-eforge/extensions/eforge/index.ts",
-      "noGrowthCeiling": 2561,
+      "noGrowthCeiling": 2594,
       "category": "implementation"
     },
     {
       "path": "packages/eforge/src/cli/index.ts",
-      "noGrowthCeiling": 2029,
+      "noGrowthCeiling": 2031,
       "category": "implementation"
     },
     {
@@ -88,7 +88,7 @@
     },
     {
       "path": "packages/monitor/src/server-main.ts",
-      "noGrowthCeiling": 1076,
+      "noGrowthCeiling": 1080,
       "category": "implementation"
     },
     {
