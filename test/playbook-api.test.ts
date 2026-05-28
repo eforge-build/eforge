@@ -69,29 +69,23 @@ async function setupProject(tmpDir: string): Promise<{ configDir: string }> {
 
 /** Build a valid raw playbook string. */
 function validPlaybookRaw(opts: {
-  name?: string;
-  description?: string;
-  scope?: string;
-  mode?: string;
-  goal?: string;
+  name?: string; description?: string; scope?: string; mode?: string; goal?: string; profile?: string;
 } = {}): string {
-  const name = opts.name ?? 'my-feature';
-  const description = opts.description ?? 'Add the my-feature capability';
-  const scope = opts.scope ?? 'project-team';
-  const mode = opts.mode ?? 'autonomous';
-  const goal = opts.goal ?? 'Implement the feature.';
-  return [
-    '---',
-    `name: ${name}`,
-    `description: ${description}`,
-    `scope: ${scope}`,
-    `mode: ${mode}`,
-    '---',
-    '',
-    '## Goal',
-    '',
-    goal,
-  ].join('\n');
+  const { name = 'my-feature', description = 'Add the my-feature capability', scope = 'project-team', mode = 'autonomous', goal = 'Implement the feature.', profile } = opts;
+  const lines = ['---', `name: ${name}`, `description: ${description}`, `scope: ${scope}`, `mode: ${mode}`];
+  if (profile) lines.push(`profile: ${profile}`);
+  lines.push('---', '', '## Goal', '', goal);
+  return lines.join('\n');
+}
+
+/** Build an invalid-AC playbook string (grouping label + bare command triggers the quality gate). */
+function invalidAcPlaybookRaw(opts: { name?: string; mode?: string; profile?: string; vague?: boolean } = {}): string {
+  const { name = 'bad-ac', mode = 'autonomous', profile, vague } = opts;
+  const lines = ['---', `name: ${name}`, 'description: Test playbook with bad AC', 'scope: project-team', `mode: ${mode}`];
+  if (profile) lines.push(`profile: ${profile}`);
+  lines.push('---', '', '## Goal', '', 'Do the thing.', '', '## Acceptance criteria', '', '- Supply-chain checks:', '- `pnpm build`.');
+  if (vague) lines.push('- Works correctly.');
+  return lines.join('\n');
 }
 
 /** POST helper that sends JSON. */
@@ -541,24 +535,7 @@ describe('POST /api/playbook/run', () => {
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     // Write a planning-mode playbook with deliberately invalid AC (grouping label + bare command)
-    const invalidAcPlanningPlaybook = [
-      '---',
-      'name: planning-bad-ac',
-      'description: A planning playbook with invalid AC',
-      'scope: project-team',
-      'mode: planning',
-      '---',
-      '',
-      '## Goal',
-      '',
-      'Plan the thing.',
-      '',
-      '## Acceptance criteria',
-      '',
-      '- Supply-chain checks:',
-      '- `pnpm build`.',
-    ].join('\n');
-    await writeFile(resolve(teamDir, 'planning-bad-ac.md'), invalidAcPlanningPlaybook, 'utf-8');
+    await writeFile(resolve(teamDir, 'planning-bad-ac.md'), invalidAcPlaybookRaw({ name: 'planning-bad-ac', mode: 'planning' }), 'utf-8');
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
@@ -584,25 +561,7 @@ describe('POST /api/playbook/run', () => {
     // Write a playbook with invalid AC directly to the playbooks directory
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    const invalidAcPlaybook = [
-      '---',
-      'name: bad-ac',
-      'description: Test playbook with bad AC',
-      'scope: project-team',
-      'mode: autonomous',
-      '---',
-      '',
-      '## Goal',
-      '',
-      'Do the thing.',
-      '',
-      '## Acceptance criteria',
-      '',
-      '- Supply-chain checks:',
-      '- `pnpm build`.',
-      '- Works correctly.',
-    ].join('\n');
-    await writeFile(resolve(teamDir, 'bad-ac.md'), invalidAcPlaybook, 'utf-8');
+    await writeFile(resolve(teamDir, 'bad-ac.md'), invalidAcPlaybookRaw({ vague: true }), 'utf-8');
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
@@ -633,24 +592,7 @@ describe('POST /api/playbook/run', () => {
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    const invalidAcPlaybook = [
-      '---',
-      'name: bad-ac',
-      'description: Test playbook with bad AC',
-      'scope: project-team',
-      'mode: autonomous',
-      '---',
-      '',
-      '## Goal',
-      '',
-      'Do the thing.',
-      '',
-      '## Acceptance criteria',
-      '',
-      '- Supply-chain checks:',
-      '- `pnpm build`.',
-    ].join('\n');
-    await writeFile(resolve(teamDir, 'bad-ac.md'), invalidAcPlaybook, 'utf-8');
+    await writeFile(resolve(teamDir, 'bad-ac.md'), invalidAcPlaybookRaw(), 'utf-8');
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
@@ -672,25 +614,7 @@ describe('POST /api/playbook/run', () => {
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     // Playbook with invalid AC AND a profile that does not exist
-    const invalidAcMissingProfilePlaybook = [
-      '---',
-      'name: bad-ac-missing-profile',
-      'description: Playbook with invalid AC and missing profile',
-      'scope: project-team',
-      'mode: autonomous',
-      'profile: nonexistent-profile',
-      '---',
-      '',
-      '## Goal',
-      '',
-      'Do the thing.',
-      '',
-      '## Acceptance criteria',
-      '',
-      '- Supply-chain checks:',
-      '- `pnpm build`.',
-    ].join('\n');
-    await writeFile(resolve(teamDir, 'bad-ac-missing-profile.md'), invalidAcMissingProfilePlaybook, 'utf-8');
+    await writeFile(resolve(teamDir, 'bad-ac-missing-profile.md'), invalidAcPlaybookRaw({ name: 'bad-ac-missing-profile', profile: 'nonexistent-profile' }), 'utf-8');
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
@@ -894,46 +818,13 @@ describe('POST /api/playbook/validate', () => {
 
 // --- Playbook profile field — /api/playbook/run ---
 
-/** Build a playbook raw string with an optional profile field. */
-function validPlaybookRawWithProfile(opts: {
-  name?: string;
-  mode?: string;
-  profile?: string;
-} = {}): string {
-  const name = opts.name ?? 'my-feature';
-  const mode = opts.mode ?? 'autonomous';
-  const lines = [
-    '---',
-    `name: ${name}`,
-    'description: Add the my-feature capability',
-    'scope: project-team',
-    `mode: ${mode}`,
-  ];
-  if (opts.profile) {
-    lines.push(`profile: ${opts.profile}`);
-  }
-  lines.push('---', '', '## Goal', '', 'Implement the feature.');
-  return lines.join('\n');
-}
-
-/** Create a minimal profile file in the eforge/profiles/ directory. */
-async function createProfile(configDir: string, name: string): Promise<void> {
-  const profilesDir = resolve(configDir, 'profiles');
-  await mkdir(profilesDir, { recursive: true });
-  await writeFile(resolve(profilesDir, `${name}.yaml`), '# test profile\n', 'utf-8');
-}
-
 describe('POST /api/playbook/run — profile field', () => {
   it('does not validate missing profile for a planning-mode playbook', async () => {
     const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRawWithProfile({
-      name: 'my-planning',
-      mode: 'planning',
-      profile: 'missing-profile',
-    }), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning', profile: 'missing-profile' }), 'utf-8');
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
@@ -957,11 +848,13 @@ describe('POST /api/playbook/run — profile field', () => {
   it('creates queued PRD with profile: frontmatter when autonomous playbook has a known profile', async () => {
     const { tmpDir, configDir } = await init();
 
-    await createProfile(configDir, 'docs-heavy');
+    const profilesDir = resolve(configDir, 'profiles');
+    await mkdir(profilesDir, { recursive: true });
+    await writeFile(resolve(profilesDir, 'docs-heavy.yaml'), '# test profile\n', 'utf-8');
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRawWithProfile({ profile: 'docs-heavy' }), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ profile: 'docs-heavy' }), 'utf-8');
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
@@ -987,7 +880,7 @@ describe('POST /api/playbook/run — profile field', () => {
 
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRawWithProfile({ profile: 'missing-profile' }), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ profile: 'missing-profile' }), 'utf-8');
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
