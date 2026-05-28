@@ -3618,7 +3618,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { writePlaybook, playbookFrontmatterSchema } = await import('@eforge-build/input');
+        const { writePlaybook, playbookFrontmatterSchema, analyzeAcceptanceCriteria, formatAcDiagnostics } = await import('@eforge-build/input');
         const fm = body.playbook.frontmatter;
         const bd = body.playbook.body;
         // Validate frontmatter
@@ -3638,14 +3638,31 @@ export async function startServer(
           res.end(JSON.stringify({ error: 'Playbook validation failed', errors: ['Missing required section: ## Goal'] }));
           return true;
         }
-        const bdTyped = bd as { goal?: string; outOfScope?: string; acceptanceCriteria?: string; plannerNotes?: string };
+        const bdTyped = bd as { goal?: unknown; outOfScope?: unknown; acceptanceCriteria?: unknown; plannerNotes?: unknown };
+        // Validate that optional string body fields are not wrong types
+        for (const field of ['outOfScope', 'acceptanceCriteria', 'plannerNotes'] as const) {
+          if (bdTyped[field] !== undefined && typeof bdTyped[field] !== 'string') {
+            sendJsonError(res, 400, `Invalid field: ${field} must be a string`);
+            return true;
+          }
+        }
         const playbook = {
           ...fmResult.data,
-          goal: bdTyped.goal ?? '',
-          outOfScope: bdTyped.outOfScope ?? '',
-          acceptanceCriteria: bdTyped.acceptanceCriteria ?? '',
-          plannerNotes: bdTyped.plannerNotes ?? '',
+          goal: (bdTyped.goal as string) ?? '',
+          outOfScope: (bdTyped.outOfScope as string | undefined) ?? '',
+          acceptanceCriteria: (bdTyped.acceptanceCriteria as string | undefined) ?? '',
+          plannerNotes: (bdTyped.plannerNotes as string | undefined) ?? '',
         };
+        // --- eforge:region plan-01-playbook-ac-quality-gates ---
+        // AC quality gate: validate acceptance criteria before writing
+        if (playbook.acceptanceCriteria) {
+          const acQuality = analyzeAcceptanceCriteria(playbook.acceptanceCriteria);
+          if (!acQuality.valid) {
+            sendJsonError(res, 400, `Playbook acceptance criteria quality gate failed:\n${formatAcDiagnostics(acQuality.diagnostics)}`);
+            return true;
+          }
+        }
+        // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
         const configDir = await getConfigDir(cwd);
         const result = await writePlaybook({ configDir: configDir ?? cwd, cwd, scope: body.scope, playbook });
         sendJson(res, { path: result.path });
@@ -3730,7 +3747,7 @@ export async function startServer(
       // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { loadPlaybook, playbookToBuildSource } = await import('@eforge-build/input');
+        const { loadPlaybook, playbookToBuildSource, analyzeAcceptanceCriteriaInBody, formatAcDiagnostics } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
@@ -3750,6 +3767,14 @@ export async function startServer(
           });
         } else {
           // Autonomous-mode: enqueue as PRD
+          // --- eforge:region plan-01-playbook-ac-quality-gates ---
+          const plan = playbookToBuildSource(playbook);
+          const acQuality = analyzeAcceptanceCriteriaInBody(plan.source);
+          if (acQuality && !acQuality.valid) {
+            sendJsonError(res, 400, `Playbook acceptance criteria quality gate failed:\n${formatAcDiagnostics(acQuality.diagnostics)}`);
+            return true;
+          }
+          // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
           // --- eforge:region plan-01-core-profile-propagation ---
           // Validate the playbook's profile before enqueueing.
           if (playbook.profile) {
@@ -3766,7 +3791,6 @@ export async function startServer(
           // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
           const { enqueuePrd, inferTitle, validateDependsOnExists } = await import('@eforge-build/engine/prd-queue');
           // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
-          const plan = playbookToBuildSource(playbook);
           const queueDir = options?.queueDir ?? '.eforge/queue';
           const title = inferTitle(plan.source, plan.name);
 

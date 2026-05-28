@@ -29,6 +29,7 @@ import {
   movePlaybook,
   copyPlaybookToScope,
   PlaybookNotFoundError,
+  analyzeAcceptanceCriteria,
   type Playbook,
 } from '@eforge-build/input';
 import { getScopeDirectory } from '@eforge-build/scopes';
@@ -826,6 +827,47 @@ describe('bundled playbooks', () => {
     const raw = await readFile(resolve(playbooksDir, 'complexity-hotspot-reduction.md'), 'utf-8');
     const parsed = parsePlaybook(raw);
     expect(parsed.mode).toBe('planning');
+  });
+
+  // --- eforge:region plan-01-playbook-ac-quality-gates ---
+  it('all bundled playbooks with acceptance criteria pass AC quality analysis', async () => {
+    const playbooksDir = fileURLToPath(new URL('../eforge/playbooks', import.meta.url));
+    const files = (await readdir(playbooksDir)).filter((f) => f.endsWith('.md'));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const raw = await readFile(resolve(playbooksDir, file), 'utf-8');
+      const parsed = parsePlaybook(raw);
+      if (!parsed.acceptanceCriteria) continue;
+      const acQuality = analyzeAcceptanceCriteria(parsed.acceptanceCriteria);
+      expect(
+        acQuality.valid,
+        `${file} has AC quality issues:\n${acQuality.diagnostics.map((d, i) => `  ${i + 1}. [${d.kind}] ${d.message}`).join('\n')}`,
+      ).toBe(true);
+    }
+  });
+  // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
+
+  it('dependency-update.md has valid, non-empty acceptance criteria with required evidence-artifact coverage', async () => {
+    const playbooksDir = fileURLToPath(new URL('../eforge/playbooks', import.meta.url));
+    const raw = await readFile(resolve(playbooksDir, 'dependency-update.md'), 'utf-8');
+    const parsed = parsePlaybook(raw);
+    expect(parsed.acceptanceCriteria, 'dependency-update.md must have non-empty acceptance criteria').toBeTruthy();
+    const acQuality = analyzeAcceptanceCriteria(parsed.acceptanceCriteria!);
+    expect(
+      acQuality.valid,
+      `dependency-update.md has AC quality issues:\n${acQuality.diagnostics.map((d, i) => `  ${i + 1}. [${d.kind}] ${d.message}`).join('\n')}`,
+    ).toBe(true);
+    const ac = parsed.acceptanceCriteria!;
+    expect(ac, 'must reference tracked dependency-update evidence artifact').toContain('tracked dependency-update evidence artifact');
+    expect(ac, 'must reference pnpm audit exit status/findings').toContain('pnpm audit');
+    expect(ac, 'must reference manifest diff-review conclusions').toContain('manifest diff-review');
+    expect(ac, 'must reference lockfile diff-review conclusions').toContain('lockfile diff-review');
+    expect(ac, 'must reference unexpected new packages').toContain('unexpected');
+    expect(ac, 'must reference lifecycle-script inspection').toContain('lifecycle-script');
+    expect(ac, 'must reference repository inspection').toContain('repository');
+    expect(ac, 'must reference maintainer inspection').toContain('maintainer');
+    expect(ac, 'must reference native/build-behavior inspection').toContain('native');
+    expect(ac, 'must reference npm diff conclusions').toContain('npm diff');
   });
 });
 
