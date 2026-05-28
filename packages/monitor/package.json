@@ -48,7 +48,7 @@
     "@eforge-build/monitor-ui": "workspace:*",
     "@types/node": "^25.9.1",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "author": "Schaake Solutions LLC"
 }

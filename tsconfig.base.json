@@ -9,6 +9,8 @@
     "declaration": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "6.0",
+    "types": ["node"],
     "paths": {
       "@eforge-build/engine/*": ["./packages/engine/src/*"],
       "@eforge-build/monitor/*": ["./packages/monitor/src/*"],
