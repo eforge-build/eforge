@@ -22,6 +22,24 @@ export interface EnqueueRequest {
   /** When true, enable GitHub PR auto-merge after PR creation (requires the effective landing action to be 'pr', whether supplied via landingAction or resolved from project config). */
   landingAutoMerge?: boolean;
   // --- eforge:endregion plan-01-core-engine-auto-merge ---
+  // --- eforge:region plan-01-build-dependency-core ---
+  /**
+   * Optional upstream queue item id. When provided, the enqueued PRD gains
+   * `depends_on: [afterQueueId]` in its frontmatter. Placement depends on the
+   * upstream state:
+   * - Active upstream (pending/running/waiting): placed in `.eforge/queue/waiting/`
+   *   and unblocked by the queue scheduler when the upstream completes.
+   * - Completed upstream with a usable artifact: placed in the queue root as an
+   *   immediately eligible dependent (no waiting required).
+   *
+   * Failed, skipped, and unknown ids are rejected with an error containing the
+   * invalid id.
+   *
+   * Explicit `afterQueueId` takes precedence over any automatic dependency
+   * detection performed during enqueue.
+   */
+  afterQueueId?: string;
+  // --- eforge:endregion plan-01-build-dependency-core ---
 }
 
 /** POST /api/auto-build */

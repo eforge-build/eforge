@@ -24,7 +24,7 @@ import type {
   RecoveryVerdict,
   BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
@@ -585,44 +585,59 @@ export class EforgeEngine {
       }
       // --- eforge:endregion plan-01-complete-ac-quality-gate ---
 
-      // Run dependency detection (graceful fallback on failure)
+      // --- eforge:region plan-01-build-dependency-core ---
+      // When an explicit afterQueueId is provided, classify the upstream and
+      // skip dependency-detector output. Otherwise, run dependency detection.
       let dependsOn: string[] = [];
-      try {
-        const queue = await loadQueue(this.config.prdQueue.dir, cwd);
-        const queueItems: QueueItemSummary[] = queue
-          .map((p) => ({
-            id: p.id,
-            title: p.frontmatter.title,
-            scopeSummary: p.content.slice(0, 500),
-          }));
+      let intoWaiting = false;
+      if (options.afterQueueId !== undefined) {
+        const classification = await classifyAfterQueueId(
+          options.afterQueueId,
+          this.config.prdQueue.dir,
+          cwd,
+        );
+        dependsOn = classification.dependsOn;
+        intoWaiting = classification.intoWaiting;
+      } else {
+        // Run dependency detection (graceful fallback on failure)
+        try {
+          const queue = await loadQueue(this.config.prdQueue.dir, cwd);
+          const queueItems: QueueItemSummary[] = queue
+            .map((p) => ({
+              id: p.id,
+              title: p.frontmatter.title,
+              scopeSummary: p.content.slice(0, 500),
+            }));
 
-        // In CLI-only mode, running builds are not tracked via state.json.
-        // Daemon-mode dependency detection consults monitor data separately.
-        const runningBuilds: RunningBuildSummary[] = [];
+          // In CLI-only mode, running builds are not tracked via state.json.
+          // Daemon-mode dependency detection consults monitor data separately.
+          const runningBuilds: RunningBuildSummary[] = [];
 
-        if (queueItems.length > 0 || runningBuilds.length > 0) {
-          const depDetectorConfig = resolveAgentConfig('dependency-detector', this.config);
-          const depGen = runDependencyDetector({
-            ...depDetectorConfig,
-            prdContent: formattedBody,
-            queueItems,
-            runningBuilds,
-            verbose,
-            abortController,
-            phase: 'standalone',
-            harness: this.agentRuntimes.forRole('dependency-detector'),
-          });
-          let depResult = await depGen.next();
-          while (!depResult.done) {
-            yield depResult.value;
-            depResult = await depGen.next();
+          if (queueItems.length > 0 || runningBuilds.length > 0) {
+            const depDetectorConfig = resolveAgentConfig('dependency-detector', this.config);
+            const depGen = runDependencyDetector({
+              ...depDetectorConfig,
+              prdContent: formattedBody,
+              queueItems,
+              runningBuilds,
+              verbose,
+              abortController,
+              phase: 'standalone',
+              harness: this.agentRuntimes.forRole('dependency-detector'),
+            });
+            let depResult = await depGen.next();
+            while (!depResult.done) {
+              yield depResult.value;
+              depResult = await depGen.next();
+            }
+            dependsOn = depResult.value?.dependsOn ?? [];
           }
-          dependsOn = depResult.value?.dependsOn ?? [];
+        } catch {
+          // Dependency detection failure should not block enqueue
+          dependsOn = [];
         }
-      } catch {
-        // Dependency detection failure should not block enqueue
-        dependsOn = [];
       }
+      // --- eforge:endregion plan-01-build-dependency-core ---
 
       // Write to queue (filesystem-only — queue state is runtime, not tracked in git)
       const enqueueResult = await enqueuePrd({
@@ -631,6 +646,9 @@ export class EforgeEngine {
         queueDir: this.config.prdQueue.dir,
         cwd,
         depends_on: dependsOn,
+        // --- eforge:region plan-01-build-dependency-core ---
+        ...(intoWaiting && { intoWaiting: true }),
+        // --- eforge:endregion plan-01-build-dependency-core ---
         ...(options.profile !== undefined && { profile: options.profile }),
         ...(options.landingAction !== undefined && { landingAction: options.landingAction }),
         // --- eforge:region plan-01-core-engine-auto-merge ---

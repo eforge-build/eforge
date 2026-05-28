@@ -166,6 +166,13 @@ prdQueue:
   dir: .eforge/queue          # Where queued PRDs are stored (gitignored — runtime state)
   autoBuild: true             # Daemon automatically builds after enqueue
   watchPollIntervalMs: 5000   # Poll interval for watch mode (ms)
+  # Explicit build dependency (per-enqueue, not a config key):
+  #   Pass --after <queue-id> to the CLI or afterQueueId to the eforge_build tool
+  #   to create a deterministic dependency on an active or completed queue entry.
+  #   Active upstream items (pending/running/waiting) are held in .eforge/queue/waiting/
+  #   and unblocked when the upstream completes. Completed upstream items with a usable
+  #   artifact are enqueued immediately as eligible dependents. Explicit afterQueueId
+  #   takes precedence over automatic dependency detection (which remains best effort).
 
 daemon:
   idleShutdownMs: 7200000     # Idle timeout before auto-shutdown (2 hours). Set to 0 to disable.
@@ -855,7 +862,7 @@ eforge has two dimensions of parallelism:
 
 Controls the maximum number of PRDs built concurrently when processing the queue (`eforge build --queue` or `eforge queue run`). Default: `2`.
 
-PRDs with `depends_on` frontmatter are held in a `waiting` state until their upstream builds reach a terminal state. When an upstream build completes, its dependents transition from `waiting` to `pending` and are dispatched normally. If an upstream build fails or is cancelled, all transitive dependents transition to `skipped` with a reason recording the upstream id and terminal state. Skip propagation is recursive - if a `skipped` entry itself has dependents, those also become `skipped`.
+PRDs with `depends_on` frontmatter whose upstream builds are still active (pending, running, or waiting) are held in a `waiting/` subdirectory until each upstream reaches a terminal state. PRDs whose upstream dependencies have already completed with usable artifacts are eligible immediately and remain in the queue root rather than `waiting/`. When an active upstream build completes, its waiting dependents transition from `waiting` to `pending` and are dispatched normally. If an upstream build fails or is cancelled, all transitive dependents transition to `skipped` with a reason recording the upstream id and terminal state. Skip propagation is recursive - if a `skipped` entry itself has dependents, those also become `skipped`.
 
 CLI override: `--max-concurrent-builds <n>`
 

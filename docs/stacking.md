@@ -41,6 +41,10 @@ When a PRD has exactly one `depends_on` entry and stacking is enabled, eforge au
 
 When a PRD has multiple `depends_on` entries, eforge cannot infer the stack parent unambiguously. You must set `stack_parent` explicitly to indicate which dependency is the direct parent layer.
 
+### Explicit handoff and stack parent
+
+When you use `--after <queue-id>` (CLI) or `afterQueueId` (MCP/Pi tool) to create an explicit dependency, the resulting single `depends_on` entry participates in the same stack parent inference described above. If stacking is enabled and the explicit dependency is the only `depends_on` entry, eforge infers `stack_parent` from it at dispatch time — no extra configuration is needed. The explicit handoff is deterministic: dependency detector inference is not used when `afterQueueId` is supplied.
+
 ### Multi-dependency ambiguity
 
 Multi-dependency stacking requires explicit `stack_parent`:

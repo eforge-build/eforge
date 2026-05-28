@@ -17,6 +17,7 @@ import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type DaemonState, type MonitorServer, type StartServerOptions, type WorkerTracker } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
 import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
+import { upsertArtifact, upsertCompletion } from '@eforge-build/engine/artifacts';
 
 const makeTempDir = useTempDir('eforge-playbook-api-');
 
@@ -520,7 +521,8 @@ describe('POST /api/playbook/run', () => {
 
     expect(res.status).toBe(404);
     const data = await res.json() as { error: string };
-    expect(data.error).toContain('depends_on references unknown queue item: "missing-upstream"');
+    expect(data.error).toContain('missing-upstream');
+    expect(data.error).toContain('unknown queue item');
 
     const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await expect(readdir(queueDir)).rejects.toThrow();
@@ -999,6 +1001,204 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
+  // --- eforge:region plan-02-playbook-placement-parity ---
+
+  it('writes dependent PRD to waiting/ when autonomous upstream is active (in queue root)', async () => {
+    const { tmpDir, configDir } = await init();
+
+    // Write a playbook to use as the dependent
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }), 'utf-8');
+
+    // Write an active PRD directly to the queue root (simulating an in-progress upstream)
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    await mkdir(queueDir, { recursive: true });
+    const upstreamId = 'active-upstream-for-playbook';
+    await writeFile(
+      resolve(queueDir, `${upstreamId}.md`),
+      `---\ntitle: Active Upstream\ncreated: 2026-01-01\n---\n\n# Active Upstream\n`,
+      'utf-8',
+    );
+
+    await start(tmpDir, { daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server!.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-dependent',
+      afterQueueId: upstreamId,
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { kind: string; id: string };
+    expect(data.kind).toBe('enqueued');
+
+    // Dependent must be in waiting/ not queue root
+    const waitingFile = resolve(queueDir, 'waiting', `${data.id}.md`);
+    await expect(access(waitingFile)).resolves.toBeUndefined();
+    // Must NOT be in queue root
+    await expect(access(resolve(queueDir, `${data.id}.md`))).rejects.toThrow();
+
+    const content = await readFile(waitingFile, 'utf-8');
+    expect(content).toContain('depends_on');
+    expect(content).toContain(upstreamId);
+
+    expect(autoBuildWakeReasons).toContain('playbook-enqueue');
+  });
+
+  it('writes dependent PRD to queue root when autonomous upstream is completed with usable artifact', async () => {
+    const { tmpDir, configDir } = await init();
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }), 'utf-8');
+
+    // Record a usable artifact for a completed upstream (no queue file — already completed)
+    const upstreamId = 'completed-upstream-with-artifact';
+    const now = new Date().toISOString();
+    await upsertArtifact(tmpDir, {
+      prdId: upstreamId,
+      artifactBranch: `eforge/${upstreamId}`,
+      commitSha: 'abc123',
+      resolvedBase: 'main',
+      landingAction: 'leave',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+    });
+
+    await start(tmpDir, { daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server!.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-dependent',
+      afterQueueId: upstreamId,
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { kind: string; id: string };
+    expect(data.kind).toBe('enqueued');
+
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    // Dependent must be in queue root (NOT waiting/) because upstream is already completed
+    const queueFile = resolve(queueDir, `${data.id}.md`);
+    await expect(access(queueFile)).resolves.toBeUndefined();
+    // Must NOT be in waiting/
+    const waitingFile = resolve(queueDir, 'waiting', `${data.id}.md`);
+    await expect(access(waitingFile)).rejects.toThrow();
+
+    const content = await readFile(queueFile, 'utf-8');
+    expect(content).toContain('depends_on');
+    expect(content).toContain(upstreamId);
+
+    expect(autoBuildWakeReasons).toContain('playbook-enqueue');
+  });
+
+  it('returns 404 and does not enqueue when autonomous upstream is in failed/ directory', async () => {
+    const { tmpDir, configDir } = await init();
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }), 'utf-8');
+
+    // Write an upstream PRD to the failed/ directory
+    const failedDir = resolve(tmpDir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    const upstreamId = 'failed-upstream';
+    await writeFile(
+      resolve(failedDir, `${upstreamId}.md`),
+      `---\ntitle: Failed Upstream\ncreated: 2026-01-01\n---\n\n# Failed Upstream\n`,
+      'utf-8',
+    );
+
+    await start(tmpDir, { daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server!.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-dependent',
+      afterQueueId: upstreamId,
+    });
+    expect(res.status).toBe(404);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain(upstreamId);
+
+    // No dependent should have been written
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    const files = await readdir(queueDir);
+    expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(0);
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('returns 404 and does not enqueue when autonomous upstream is in skipped/ directory', async () => {
+    const { tmpDir, configDir } = await init();
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }), 'utf-8');
+
+    // Write an upstream PRD to the skipped/ directory
+    const skippedDir = resolve(tmpDir, '.eforge', 'queue', 'skipped');
+    await mkdir(skippedDir, { recursive: true });
+    const upstreamId = 'skipped-upstream';
+    await writeFile(
+      resolve(skippedDir, `${upstreamId}.md`),
+      `---\ntitle: Skipped Upstream\ncreated: 2026-01-01\n---\n\n# Skipped Upstream\n`,
+      'utf-8',
+    );
+
+    await start(tmpDir, { daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server!.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-dependent',
+      afterQueueId: upstreamId,
+    });
+    expect(res.status).toBe(404);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain(upstreamId);
+
+    // No dependent should have been written
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    const files = await readdir(queueDir);
+    expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(0);
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  it('returns 404 and does not enqueue when autonomous upstream completed without usable artifact', async () => {
+    const { tmpDir, configDir } = await init();
+
+    const teamDir = resolve(configDir, 'playbooks');
+    await mkdir(teamDir, { recursive: true });
+    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }), 'utf-8');
+
+    // Record completion without artifact for the upstream
+    const upstreamId = 'completed-no-artifact-upstream';
+    const now = new Date().toISOString();
+    await upsertCompletion(tmpDir, {
+      prdId: upstreamId,
+      status: 'completed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await start(tmpDir, { daemonState: makeDaemonState() });
+
+    const res = await post(`http://localhost:${server!.port}${API_ROUTES.playbookRun}`, {
+      name: 'my-dependent',
+      afterQueueId: upstreamId,
+    });
+    expect(res.status).toBe(404);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain(upstreamId);
+
+    // No dependent should have been written
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    await expect(readdir(queueDir)).rejects.toThrow();
+    expect(autoBuildWakeReasons).toEqual([]);
+  });
+
+  // --- eforge:endregion plan-02-playbook-placement-parity ---
+
   it('save/show/list round-trip includes profile field and required mode', async () => {
     await setup();
 
@@ -1180,3 +1380,105 @@ describe('POST /api/playbook/run - landingAutoMerge persistence', () => {
 });
 
 // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+
+// --- eforge:region plan-01-build-dependency-core ---
+
+// ---------------------------------------------------------------------------
+// Route: POST /api/enqueue — afterQueueId validation
+// ---------------------------------------------------------------------------
+
+// Recording workerTracker so tests can inspect spawned args
+function makeRecordingWorkerTracker(): WorkerTracker & { calls: Array<{ command: string; args: string[] }> } {
+  const calls: Array<{ command: string; args: string[] }> = [];
+  return {
+    calls,
+    spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
+      calls.push({ command, args });
+      return { sessionId: 'rec-session', pid: 88888 };
+    },
+    cancelWorker(_sessionId: string): boolean {
+      return false;
+    },
+  };
+}
+
+describe('POST /api/enqueue - afterQueueId validation', () => {
+  it('returns 400 when afterQueueId is not a string (number)', async () => {
+    await setup({ workerTracker: makeStubWorkerTracker() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a new feature',
+      afterQueueId: 42,
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('afterQueueId');
+    expect(data.error).toContain('string');
+  });
+
+  it('returns 400 when afterQueueId is not a string (boolean)', async () => {
+    await setup({ workerTracker: makeStubWorkerTracker() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a new feature',
+      afterQueueId: true,
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('afterQueueId');
+  });
+
+  it('returns 400 with the invalid id in error text for an unknown afterQueueId', async () => {
+    const { tmpDir } = await init();
+    // Initialize git repo so loadQueue works
+    execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: tmpDir });
+    await start(tmpDir, { workerTracker: makeStubWorkerTracker() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a new feature',
+      afterQueueId: 'nonexistent-q-abc',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('nonexistent-q-abc');
+  });
+
+  it('passes --after <id> to enqueue worker when afterQueueId is valid (active root item)', async () => {
+    const { tmpDir, configDir } = await init();
+    execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: tmpDir });
+
+    // Write an active PRD to the queue root
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    await mkdir(queueDir, { recursive: true });
+    await writeFile(
+      resolve(queueDir, 'active-upstream.md'),
+      '---\ntitle: active-upstream\ncreated: 2026-01-01\n---\n\n# Active upstream\n',
+      'utf-8',
+    );
+
+    const tracker = makeRecordingWorkerTracker();
+    await start(tmpDir, { workerTracker: tracker });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a dependent feature',
+      afterQueueId: 'active-upstream',
+    });
+    expect(res.status).toBe(200);
+
+    // Worker should have been spawned with --after active-upstream
+    const call = tracker.calls.find((c) => c.command === 'enqueue');
+    expect(call).toBeDefined();
+    expect(call!.args).toContain('--after');
+    const afterIdx = call!.args.indexOf('--after');
+    expect(call!.args[afterIdx + 1]).toBe('active-upstream');
+  });
+});
+
+// --- eforge:endregion plan-01-build-dependency-core ---

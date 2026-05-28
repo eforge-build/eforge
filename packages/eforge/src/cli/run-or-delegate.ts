@@ -16,7 +16,7 @@
 
 import chalk from 'chalk';
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { stat as fsStat, readFile as fsReadFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -83,6 +83,14 @@ export interface BuildRunOpts {
     /** Per-run PR auto-merge intent override. Requires landingAction: 'pr'. */
     landingAutoMerge?: boolean;
     // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+    // --- eforge:region plan-01-build-dependency-core ---
+    /**
+     * Explicit upstream queue item id. When provided, the enqueued PRD gains
+     * `depends_on: [afterQueueId]` and is placed in waiting/ until the upstream
+     * completes. Overrides automatic dependency detection.
+     */
+    afterQueueId?: string;
+    // --- eforge:endregion plan-01-build-dependency-core ---
   };
   abortController?: AbortController;
   /** Called with the active monitor on start and undefined on teardown. */
@@ -332,6 +340,9 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
             // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
             ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
             // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+            // --- eforge:region plan-01-build-dependency-core ---
+            ...(options.afterQueueId !== undefined && { afterQueueId: options.afterQueueId }),
+            // --- eforge:endregion plan-01-build-dependency-core ---
           },
         });
         const result = data as EnqueueResponse;
@@ -431,6 +442,9 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
   // Phase 1: Enqueue (with build-source preprocessing for session-plan and enricher support)
   let enqueuedName: string | undefined;
   let enqueueResult: 'completed' | 'failed' | 'skipped' = 'completed';
+  // --- eforge:region plan-01-build-dependency-core ---
+  let enqueuedFilePath: string | undefined;
+  // --- eforge:endregion plan-01-build-dependency-core ---
   const enqueueSessionId = randomUUID();
 
   await withRunMonitor(options.monitor === false, async (monitor) => {
@@ -468,6 +482,9 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
         // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
         // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+        // --- eforge:region plan-01-build-dependency-core ---
+        ...(options.afterQueueId !== undefined && { afterQueueId: options.afterQueueId }),
+        // --- eforge:endregion plan-01-build-dependency-core ---
       });
     }
 
@@ -487,6 +504,9 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
       renderEvent(event);
       if (event.type === 'enqueue:complete') {
         enqueuedName = options.name ?? event.id;
+        // --- eforge:region plan-01-build-dependency-core ---
+        enqueuedFilePath = event.filePath;
+        // --- eforge:endregion plan-01-build-dependency-core ---
       }
       if (event.type === 'session:end') {
         enqueueResult = event.result.status;
@@ -498,6 +518,21 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
     console.error(chalk.red('Enqueue failed'));
     return { code: 1 };
   }
+
+  // --- eforge:region plan-01-build-dependency-core ---
+  // When afterQueueId is provided AND the PRD was placed in waiting/ (active
+  // upstream), do not attempt to run it immediately — the queue scheduler will
+  // unblock it when the upstream completes.
+  // If the upstream already completed with a usable artifact, the PRD lands in
+  // the queue root (enqueuedFilePath does NOT include /waiting/) and is
+  // immediately eligible, so we fall through to the runQueue path below.
+  // This guard must run before --dry-run so that a waiting PRD is not passed
+  // to runDryRun(), which searches only the queue root.
+  if (options.afterQueueId !== undefined && enqueuedFilePath !== undefined && dirname(resolve(enqueuedFilePath)) === resolve(engine.resolvedConfig.prdQueue.dir, 'waiting')) {
+    console.log(chalk.dim(`PRD enqueued and waiting for upstream "${options.afterQueueId}" to complete.`));
+    return { code: 0 };
+  }
+  // --- eforge:endregion plan-01-build-dependency-core ---
 
   // Path 2: --dry-run
   if (options.dryRun) {

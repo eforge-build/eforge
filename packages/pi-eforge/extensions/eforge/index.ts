@@ -336,6 +336,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         description: "When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge — the PR will be merged automatically once all required checks pass. When false, explicitly disable auto-merge even if the project default is 'always'. Omit to use the project default.",
       })),
       // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+      // --- eforge:region plan-03-consumer-surfaces-docs ---
+      afterQueueId: Type.Optional(Type.String({
+        description: "Optional upstream queue entry ID. When provided, the enqueued PRD gains depends_on: [afterQueueId]. Active upstream items (pending/running/waiting) are held in waiting/ and start when the upstream completes. Completed upstream items with a usable artifact are enqueued immediately as eligible dependents. Failed, skipped, and unknown IDs are rejected.",
+      })),
+      // --- eforge:endregion plan-03-consumer-surfaces-docs ---
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const policyChoice = await promptForBuildLandingGate(
@@ -359,6 +364,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const effectiveLandingAutoMerge = policyChoice.landingAutoMerge ?? params.landingAutoMerge;
       if (effectiveLandingAutoMerge !== undefined) body.landingAutoMerge = effectiveLandingAutoMerge;
       // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+      // --- eforge:region plan-03-consumer-surfaces-docs ---
+      if (params.afterQueueId !== undefined) body.afterQueueId = params.afterQueueId;
+      // --- eforge:endregion plan-03-consumer-surfaces-docs ---
       const { data, port } = await requireDaemon<EnqueueResponse>(
         ctx.cwd,
         "POST",

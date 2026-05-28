@@ -2096,7 +2096,7 @@ export async function startServer(
         return true;
       }
       try {
-        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; landingAction?: string; onSuccess?: unknown; landingAutoMerge?: unknown };
+        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; landingAction?: string; onSuccess?: unknown; landingAutoMerge?: unknown; afterQueueId?: unknown };
         if (!body.source || typeof body.source !== 'string') {
           sendJsonError(res, 400, 'Missing required field: source');
           return true;
@@ -2152,6 +2152,42 @@ export async function startServer(
           explicitLandingAutoMerge = body.landingAutoMerge;
         }
         // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+        // --- eforge:region plan-01-build-dependency-core ---
+        // Validate afterQueueId: reject non-string, validate string values by
+        // classifying the upstream state. The worker re-runs classification
+        // on spawn to handle races where the upstream completes in between.
+        let validatedAfterQueueId: string | undefined;
+        if (body.afterQueueId !== undefined) {
+          if (typeof body.afterQueueId !== 'string') {
+            sendJsonError(res, 400, 'Invalid field: afterQueueId must be a string');
+            return true;
+          }
+          if (cwd) {
+            let classifyFn: typeof import('@eforge-build/engine/prd-queue').classifyAfterQueueId;
+            let queueDir: string;
+            try {
+              const [prdQueueModule, configModule] = await Promise.all([
+                import('@eforge-build/engine/prd-queue'),
+                import('@eforge-build/engine/config'),
+              ]);
+              classifyFn = prdQueueModule.classifyAfterQueueId;
+              const { config: cfg } = await configModule.loadConfig(cwd);
+              queueDir = cfg.prdQueue.dir;
+            } catch (importErr) {
+              sendJsonError(res, 500, `Server error loading dependencies: ${importErr instanceof Error ? importErr.message : String(importErr)}`);
+              return true;
+            }
+            try {
+              await classifyFn(body.afterQueueId, queueDir, cwd);
+            } catch (classifyErr) {
+              const msg = classifyErr instanceof Error ? classifyErr.message : `Invalid afterQueueId: ${body.afterQueueId}`;
+              sendJsonError(res, 400, msg);
+              return true;
+            }
+          }
+          validatedAfterQueueId = body.afterQueueId;
+        }
+        // --- eforge:endregion plan-01-build-dependency-core ---
         // --- eforge:region plan-01-per-build-profile-override ---
         // Validate explicit profile override before spawning any worker.
         let explicitProfileName: string | undefined;
@@ -2239,6 +2275,11 @@ export async function startServer(
           args.push('--no-landing-auto-merge');
         }
         // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+        // --- eforge:region plan-01-build-dependency-core ---
+        if (validatedAfterQueueId) {
+          args.push('--after', validatedAfterQueueId);
+        }
+        // --- eforge:endregion plan-01-build-dependency-core ---
         // --- eforge:region plan-01-semantic-enqueue-wake ---
         // Wake is now driven by the persisted enqueue:complete DB event via the
         // daemon semantic-event reaction path (daemon-event-reactions.ts).
@@ -3692,7 +3733,9 @@ export async function startServer(
         sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
         return true;
       }
-      const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
+      if (body.afterQueueId !== undefined && typeof body.afterQueueId !== 'string') { sendJsonError(res, 400, 'Invalid field: afterQueueId must be a string'); return true; }
+      if (body.afterQueueId !== undefined && body.afterQueueId === '') { sendJsonError(res, 400, 'Invalid field: afterQueueId must not be empty'); return true; }
+      const afterQueueId = body.afterQueueId as string | undefined;
       // Reject legacy onSuccess with a migration pointer.
       if (body.onSuccess !== undefined) {
         sendJsonError(res, 400, 'Field "onSuccess" is no longer supported. Use "landingAction: pr|merge|leave" instead.');
@@ -3788,34 +3831,40 @@ export async function startServer(
             }
           }
           // --- eforge:endregion plan-01-core-profile-propagation ---
-          // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-          const { enqueuePrd, inferTitle, validateDependsOnExists } = await import('@eforge-build/engine/prd-queue');
-          // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+          // --- eforge:region plan-02-playbook-placement-parity ---
+          const { enqueuePrd, inferTitle, classifyAfterQueueId: classifyPlaybookUpstream } = await import('@eforge-build/engine/prd-queue');
+          // --- eforge:endregion plan-02-playbook-placement-parity ---
           const queueDir = options?.queueDir ?? '.eforge/queue';
           const title = inferTitle(plan.source, plan.name);
 
-          // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-          // Validate upstream exists before enqueueing; reject with 404 if not found.
+          // --- eforge:region plan-02-playbook-placement-parity ---
+          // Classify upstream state and determine placement; reject with 404 if the
+          // upstream is invalid or non-actionable (failed, skipped, unknown, or
+          // completed without a usable artifact).
+          let playbookDependsOn: string[] | undefined;
+          let playbookIntoWaiting = false;
           if (afterQueueId) {
             try {
-              await validateDependsOnExists([afterQueueId], queueDir, cwd);
-            } catch (validationErr) {
-              const msg = validationErr instanceof Error ? validationErr.message : 'Invalid afterQueueId';
+              const placement = await classifyPlaybookUpstream(afterQueueId, queueDir, cwd);
+              playbookDependsOn = placement.dependsOn;
+              playbookIntoWaiting = placement.intoWaiting;
+            } catch (classifyErr) {
+              const msg = classifyErr instanceof Error ? classifyErr.message : `Invalid afterQueueId: ${afterQueueId}`;
               sendJsonError(res, 404, msg);
               return true;
             }
           }
-          // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+          // --- eforge:endregion plan-02-playbook-placement-parity ---
 
           const result = await enqueuePrd({
             body: plan.source,
             title,
             queueDir,
             cwd,
-            depends_on: afterQueueId ? [afterQueueId] : undefined,
-            // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-            intoWaiting: afterQueueId ? true : false,
-            // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+            depends_on: playbookDependsOn,
+            // --- eforge:region plan-02-playbook-placement-parity ---
+            intoWaiting: playbookIntoWaiting,
+            // --- eforge:endregion plan-02-playbook-placement-parity ---
             postMerge: plan.postMerge,
             // --- eforge:region plan-01-core-profile-propagation ---
             profile: plan.profile,

@@ -500,6 +500,9 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
     .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
     // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+    // --- eforge:region plan-01-build-dependency-core ---
+    .option('--after <queue-id>', 'Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact')
+    // --- eforge:endregion plan-01-build-dependency-core ---
     .action(
       async (
         source: string,
@@ -512,6 +515,9 @@ export function createProgram(abortController?: AbortController, version?: strin
           // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
           landingAutoMerge?: boolean;
           // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+          // --- eforge:region plan-01-build-dependency-core ---
+          after?: string;
+          // --- eforge:endregion plan-01-build-dependency-core ---
         },
       ) => {
         let resolvedLandingAction: 'pr' | 'merge' | 'leave' | undefined;
@@ -591,6 +597,9 @@ export function createProgram(abortController?: AbortController, version?: strin
               // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
               ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
               // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+              // --- eforge:region plan-01-build-dependency-core ---
+              ...(options.after !== undefined && { afterQueueId: options.after }),
+              // --- eforge:endregion plan-01-build-dependency-core ---
             });
           }
           // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
@@ -631,6 +640,9 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
     .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
     // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+    // --- eforge:region plan-01-build-dependency-core ---
+    .option('--after <queue-id>', 'Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact')
+    // --- eforge:endregion plan-01-build-dependency-core ---
     .action(
       async (
         source: string | undefined,
@@ -652,6 +664,9 @@ export function createProgram(abortController?: AbortController, version?: strin
           // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
           landingAutoMerge?: boolean;
           // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+          // --- eforge:region plan-01-build-dependency-core ---
+          after?: string;
+          // --- eforge:endregion plan-01-build-dependency-core ---
         },
       ) => {
         let resolvedLandingActionBuild: 'pr' | 'merge' | 'leave' | undefined;
@@ -745,6 +760,9 @@ export function createProgram(abortController?: AbortController, version?: strin
               // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
               landingAutoMerge: resolvedLandingAutoMergeBuild,
               // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+              // --- eforge:region plan-01-build-dependency-core ---
+              afterQueueId: options.after,
+              // --- eforge:endregion plan-01-build-dependency-core ---
             },
             abortController,
             onMonitor: (m) => { activeMonitor = m; },

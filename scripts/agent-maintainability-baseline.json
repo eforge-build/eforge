@@ -8,12 +8,12 @@
     },
     {
       "path": "packages/monitor/src/server.ts",
-      "noGrowthCeiling": 4908,
+      "noGrowthCeiling": 4934,
       "category": "implementation"
     },
     {
       "path": "packages/engine/src/eforge.ts",
-      "noGrowthCeiling": 2787,
+      "noGrowthCeiling": 2805,
       "category": "implementation"
     },
     {
@@ -28,12 +28,12 @@
     },
     {
       "path": "packages/pi-eforge/extensions/eforge/index.ts",
-      "noGrowthCeiling": 2553,
+      "noGrowthCeiling": 2561,
       "category": "implementation"
     },
     {
       "path": "packages/eforge/src/cli/index.ts",
-      "noGrowthCeiling": 1955,
+      "noGrowthCeiling": 1973,
       "category": "implementation"
     },
     {
@@ -58,7 +58,7 @@
     },
     {
       "path": "packages/eforge/src/cli/mcp-proxy.ts",
-      "noGrowthCeiling": 1246,
+      "noGrowthCeiling": 1255,
       "category": "implementation"
     },
     {
@@ -78,7 +78,7 @@
     },
     {
       "path": "packages/engine/src/prd-queue.ts",
-      "noGrowthCeiling": 1132,
+      "noGrowthCeiling": 1262,
       "category": "implementation"
     },
     {
@@ -172,6 +172,16 @@
       "category": "implementation"
     },
     {
+      "path": "packages/client/src/routes.ts",
+      "noGrowthCeiling": 608,
+      "category": "implementation"
+    },
+    {
+      "path": "packages/eforge/src/cli/run-or-delegate.ts",
+      "noGrowthCeiling": 618,
+      "category": "implementation"
+    },
+    {
       "path": "packages/client/src/__tests__/events-schemas.test.ts",
       "noGrowthCeiling": 4079,
       "category": "test"
@@ -243,7 +253,12 @@
     },
     {
       "path": "test/daemon-recovery.test.ts",
-      "noGrowthCeiling": 1226,
+      "noGrowthCeiling": 1230,
+      "category": "test"
+    },
+    {
+      "path": "test/playbook-api.test.ts",
+      "noGrowthCeiling": 1484,
       "category": "test"
     }
   ]

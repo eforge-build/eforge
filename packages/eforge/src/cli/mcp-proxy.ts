@@ -215,8 +215,14 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         .optional()
         .describe("When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge. When false, explicitly disable auto-merge even if the project default is 'always'. Omit to use the project default."),
       // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+      // --- eforge:region plan-03-consumer-surfaces-docs ---
+      afterQueueId: z
+        .string()
+        .optional()
+        .describe("Optional upstream queue entry ID. When provided, the enqueued PRD gains depends_on: [afterQueueId]. Active upstream items (pending/running/waiting) are held in waiting/ and start when the upstream completes. Completed upstream items with a usable artifact are enqueued immediately as eligible dependents. Failed, skipped, and unknown IDs are rejected."),
+      // --- eforge:endregion plan-03-consumer-surfaces-docs ---
     },
-    handler: async ({ source, profile, landingAction, landingAutoMerge }, { cwd: toolCwd }) => {
+    handler: async ({ source, profile, landingAction, landingAutoMerge, afterQueueId }, { cwd: toolCwd }) => {
       const { resolveAndValidateLandingFlags: resolveFlags, CLILandingFlagError: LandingFlagError } = await import('./landing-options.js');
       let resolvedLandingAction: 'pr' | 'merge' | 'leave' | undefined;
       try {
@@ -231,6 +237,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       if (landingAutoMerge !== undefined) body.landingAutoMerge = landingAutoMerge;
       // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+      // --- eforge:region plan-03-consumer-surfaces-docs ---
+      if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
+      // --- eforge:endregion plan-03-consumer-surfaces-docs ---
       const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, body);
       return { ...data, monitorUrl: `http://localhost:${port}` };
     },
