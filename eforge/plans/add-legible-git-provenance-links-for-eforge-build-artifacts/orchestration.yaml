@@ -1,0 +1,75 @@
+name: add-legible-git-provenance-links-for-eforge-build-artifacts
+description: Add commit-pinned, human-readable Git provenance links for eforge
+  build artifacts in PR metadata, add best-effort provenance collection/link
+  rendering helpers, preserve commit trailer ordering if provenance trailers are
+  emitted, and update documentation about cleanup and branch-history tradeoffs.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- prd-artifact landing-actions stack-runtime-landing provenance
+    model-tracker git-forge-commit
+plans:
+  - id: plan-01-build-artifact-provenance
+    name: Build Artifact Provenance Links
+    depends_on: []
+    branch: add-legible-git-provenance-links-for-eforge-build-artifacts/plan-01-build-artifact-provenance
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The change crosses landing, stacked PR metadata, git-history lookup,
+          commit-message composition, tests, and docs; careful sequencing avoids
+          branch-relative provenance links.
+      reviewer:
+        effort: high
+        rationale: Review needs to verify Git command behavior, PR body rendering, and
+          trailer ordering across direct and stacked landing paths.
+      tester:
+        effort: high
+        rationale: The core behavior depends on temp-repo Git history and gh shims;
+          targeted test execution is required.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - docs
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive multi-file engine/docs/test feature, not a
+    delegated multi-subsystem expedition. A single planner can enumerate the
+    provenance helper, PR metadata plumbing, landing/stacked PR integration,
+    tests, and documentation updates, so excursion is appropriate. The
+    plan-review cycle adds a compile-time quality gate because the work spans
+    Git history lookup, PR rendering, commit metadata, and docs. Build runs
+    documentation authoring alongside implementation, then syncs docs and writes
+    tests after implementation, followed by iterative testing and review.
+    Parallel code/docs review is appropriate because the main risks are
+    implementation correctness and user-facing provenance documentation
+    accuracy.
+diff_base_ref: b71a22dc9e6679872a3c9358bce4388ff05a2139
