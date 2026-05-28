@@ -293,16 +293,38 @@ export function isMaxTurnsError(err: unknown): err is AgentTerminalError {
  */
 const BACKEND_WS_CLOSE_RE = /backend error:\s*websocket closed\s+\d+\b/i;
 
+/**
+ * Matches the Claude Code SDK socket-close message, which takes the form:
+ *   API Error: The socket connection was closed unexpectedly. ...
+ *
+ * Requires both the `API Error:` prefix and the exact phrase
+ * `socket connection was closed unexpectedly`. This covers:
+ *   - the raw SDK text, and
+ *   - the eforge-wrapper text (`Claude Code returned an error result: API Error: ...`)
+ *
+ * The `.*` between the two anchors accommodates any minor SDK wording between
+ * the prefix and the phrase. Deliberately does NOT match generic `API Error:`
+ * messages (auth, model, budget, HTTP) that omit the socket-close phrase.
+ */
+const CLAUDE_SDK_SOCKET_CLOSE_RE = /api error:.*socket connection was closed unexpectedly/i;
+
 /** True when an error message matches a known transient backend transport close. */
 export function isTransientTransportError(message: string): boolean {
   if (BACKEND_WS_CLOSE_RE.test(message)) return true;
+  if (CLAUDE_SDK_SOCKET_CLOSE_RE.test(message)) return true;
   const normalized = message.toLowerCase();
   return normalized.includes('backend error: websocket error');
 }
 
 /** Classify a thrown value into a terminal subtype when the engine can do so safely. */
 export function classifyAgentTerminalSubtype(err: unknown): AgentTerminalSubtype | undefined {
-  if (err instanceof AgentTerminalError) return err.subtype;
+  if (err instanceof AgentTerminalError) {
+    // A narrow transport signature in the detail overrides the original subtype so
+    // retry policies can run (Claude SDK result errors can wrap the socket-close
+    // detail inside an AgentTerminalError with a generic subtype).
+    if (isTransientTransportError(err.message)) return 'error_transient_transport';
+    return err.subtype;
+  }
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : undefined;
   if (message && isTransientTransportError(message)) return 'error_transient_transport';
   // --- eforge:region plan-01-pi-headless-isolation ---

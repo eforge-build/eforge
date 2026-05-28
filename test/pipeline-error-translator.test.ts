@@ -61,6 +61,23 @@ describe('toBuildFailedEvent', () => {
     expect(event.terminalSubtype).toBe('error_transient_transport');
   });
 
+  it('maps observed Claude Code SDK socket-close message to error_transient_transport', () => {
+    // Regression test: Claude SDK throws an "API Error: The socket connection was closed
+    // unexpectedly" message that must be classified as transient transport so retry policies
+    // can run, rather than being treated as a permanent build failure.
+    const planId = 'plan-03b';
+    const observedMessage =
+      "API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()";
+    const err = new Error(observedMessage);
+
+    const event = toBuildFailedEvent(planId, err);
+
+    expect(event.type).toBe('plan:build:failed');
+    expect(event.planId).toBe(planId);
+    expect(event.error).toBe(observedMessage);
+    expect(event.terminalSubtype).toBe('error_transient_transport');
+  });
+
   it('maps a plain Error to a build:failed event without terminalSubtype', () => {
     const planId = 'plan-03';
     const err = new Error('Something went wrong');
