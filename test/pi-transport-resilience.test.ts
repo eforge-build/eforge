@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
-import { isTransientTransportError } from '@eforge-build/engine/harness';
+import { isTransientTransportError, classifyAgentTerminalSubtype } from '@eforge-build/engine/harness';
 import type { EforgeEvent, AgentRole, AgentResultData, PlanFile } from '@eforge-build/engine/events';
 import { builderImplement } from '@eforge-build/engine/agents/builder';
 import { AgentTerminalError, isPiToolInfrastructureError } from '@eforge-build/engine/harness';
@@ -15,6 +15,11 @@ import { useTempDir } from './test-tmpdir.js';
 
 const TRANSIENT_CLOSE = 'Backend error: WebSocket closed 1012';
 const TRANSIENT_CLOSE_1000 = 'Backend error: WebSocket closed 1000';
+// Exact observed Claude Code SDK socket-close message (raw and eforge-wrapped forms).
+const CLAUDE_SDK_SOCKET_CLOSE_RAW =
+  "API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()";
+const CLAUDE_SDK_SOCKET_CLOSE_WRAPPED =
+  "Claude Code returned an error result: API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()";
 
 const RESULT: AgentResultData = {
   durationMs: 10,
@@ -121,6 +126,47 @@ describe('Pi transport transient classifier', () => {
     expect(isTransientTransportError('WebSocket closed 1000')).toBe(false);
     expect(isTransientTransportError('connection closed 1000')).toBe(false);
     expect(isTransientTransportError('closed 1000')).toBe(false);
+  });
+
+  it('classifies the raw Claude Code SDK socket-close message as transient transport', () => {
+    expect(isTransientTransportError(CLAUDE_SDK_SOCKET_CLOSE_RAW)).toBe(true);
+  });
+
+  it('classifies the eforge-wrapped Claude Code SDK socket-close message as transient transport', () => {
+    expect(isTransientTransportError(CLAUDE_SDK_SOCKET_CLOSE_WRAPPED)).toBe(true);
+  });
+
+  it('does not classify generic API Error messages as transient transport', () => {
+    expect(isTransientTransportError('API Error: invalid API key')).toBe(false);
+    expect(isTransientTransportError('Claude Code returned an error result: API Error: authentication failed')).toBe(false);
+    expect(isTransientTransportError('API Error: model not found')).toBe(false);
+    expect(isTransientTransportError('API Error: budget exceeded')).toBe(false);
+    expect(isTransientTransportError('API Error: HTTP 500 internal server error')).toBe(false);
+  });
+
+  it('does not classify generic socket or connection messages without the API Error prefix', () => {
+    expect(isTransientTransportError('socket connection was closed unexpectedly')).toBe(false);
+    expect(isTransientTransportError('The socket connection was closed unexpectedly')).toBe(false);
+  });
+});
+
+describe('classifyAgentTerminalSubtype Claude SDK socket close', () => {
+  it('classifies a plain Error with raw Claude SDK socket-close message as error_transient_transport', () => {
+    expect(classifyAgentTerminalSubtype(new Error(CLAUDE_SDK_SOCKET_CLOSE_RAW))).toBe('error_transient_transport');
+  });
+
+  it('classifies a plain Error with wrapped Claude SDK socket-close message as error_transient_transport', () => {
+    expect(classifyAgentTerminalSubtype(new Error(CLAUDE_SDK_SOCKET_CLOSE_WRAPPED))).toBe('error_transient_transport');
+  });
+
+  it('classifies an AgentTerminalError whose detail contains the socket-close message as error_transient_transport', () => {
+    const err = new AgentTerminalError('error_during_execution', CLAUDE_SDK_SOCKET_CLOSE_RAW);
+    expect(classifyAgentTerminalSubtype(err)).toBe('error_transient_transport');
+  });
+
+  it('preserves original AgentTerminalError subtype when message is not a transport error', () => {
+    const err = new AgentTerminalError('error_max_turns', 'Reached maximum number of turns.');
+    expect(classifyAgentTerminalSubtype(err)).toBe('error_max_turns');
   });
 });
 
@@ -264,6 +310,57 @@ describe('builderImplement pi-infrastructure downgrade', () => {
     expect(failures).toHaveLength(1);
     expect(failures[0].terminalSubtype).toBe('error_pi_tool_infrastructure');
     expect(filterEvents(events, 'plan:build:implement:complete')).toHaveLength(0);
+  });
+});
+
+describe('builderImplement Claude SDK socket-close regressions', () => {
+  const makeTempDir = useTempDir('eforge-claude-sdk-socket-builder-');
+
+  it('retries a pre-result Claude SDK socket-close error and emits one agent:retry with error_transient_transport', async () => {
+    const cwd = makeTempDir();
+    initGitRepo(cwd);
+    let attempts = 0;
+    // Retry is orchestrated by withRetry (not builderImplement internally).
+    // Use the same pattern as "builder withRetry transient transport continuation".
+    const runBuilderAttempt = async function* (input: BuilderContinuationInput): AsyncGenerator<EforgeEvent> {
+      attempts++;
+      if (attempts === 1) {
+        throw new Error(CLAUDE_SDK_SOCKET_CLOSE_RAW);
+      }
+      yield { type: 'plan:build:implement:complete', timestamp: new Date().toISOString(), planId: input.planId };
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.builder as RetryPolicy<BuilderContinuationInput>;
+    const events = await collectEvents(withRetry(runBuilderAttempt, policy, {
+      worktreePath: cwd,
+      baseBranch: 'main',
+      planId: 'plan-01-transport-resilience',
+      builderOptions: {},
+    }));
+
+    expect(attempts).toBe(2);
+    const retries = filterEvents(events, 'agent:retry');
+    expect(retries).toHaveLength(1);
+    expect(retries[0].subtype).toBe('error_transient_transport');
+    expect(findEvent(events, 'plan:build:implement:complete')).toBeDefined();
+  });
+
+  it('downgrades a post-result Claude SDK socket-close error to transient-transport-downgraded when HEAD advanced', async () => {
+    const cwd = makeTempDir();
+    initGitRepo(cwd);
+    const harness = new BuilderScriptHarness(async function* (options, agentId, agent, planId) {
+      commitFile(options.cwd, 'done.txt', 'done\n');
+      yield resultEvent(agentId, agent, planId);
+      throw new Error(CLAUDE_SDK_SOCKET_CLOSE_RAW);
+    });
+
+    const events = await collectEvents(builderImplement(makePlan(), { harness, cwd }));
+
+    const warnings = filterEvents(events, 'agent:warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('transient-transport-downgraded');
+    expect(findEvent(events, 'plan:build:implement:complete')).toBeDefined();
+    expect(filterEvents(events, 'plan:build:failed')).toHaveLength(0);
   });
 });
 
