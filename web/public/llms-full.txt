@@ -380,6 +380,21 @@ Apply the recovery verdict for a failed build plan (requeue, enqueue successor, 
 | `--cwd <cwd>` | Working directory override |
 | `--no-monitor` | Disable web monitor |
 
+### `resume`
+
+Resume a compiled build that previously failed
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--set-name <setName>` | Override the set name derived from the prdId |
+| `--cwd <cwd>` | Working directory override |
+| `--verbose` | Stream agent output |
+| `--no-monitor` | Disable web monitor |
+| `--session-id <uuid>` | Session ID injected by parent scheduler (skips child session:start emission) |
+
 ### `playbook`
 
 Manage playbooks
@@ -486,7 +501,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 65
+Total routes: 66
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -536,6 +551,7 @@ Total routes: 65
 | `queue` | `/api/queue` |
 | `readRecoverySidecar` | `/api/recovery/sidecar` |
 | `recover` | `/api/recover` |
+| `resumeBuild` | `/api/recover/resume-build` |
 | `runs` | `/api/runs` |
 | `runState` | `/api/run-state/:id` |
 | `runSummary` | `/api/run-summary/:id` |
@@ -1029,7 +1045,7 @@ Both surfaces are kept in parity per `AGENTS.md`.
 
 ## MCP tools (Claude Code)
 
-Total tools: 16
+Total tools: 17
 
 | Tool name | Description |
 |-----------|-------------|
@@ -1046,6 +1062,7 @@ Total tools: 16
 | `eforge_recover` | Trigger failure recovery analysis for a failed build plan. Spawns the recovery agent as a background subprocess and returns its sessionId and pid. |
 | `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
 | `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon). |
+| `eforge_resume_build` | Resume a compiled build that previously failed. Spawns the resume worker as a background subprocess and returns its sessionId and pid. |
 | `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook's frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require an interactive agent session (returns { kind: "requires-agent", mode: "planning", name, message }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback. |
 | `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook's content (requires playbook_name) — for a full interactive planning session use /eforge:playbook run <name> or /eforge:plan instead. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued. |
 | `eforge_stack_sync` | Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml. When active builds are running, check the outcome field: 'skipped' means no sync was performed (default activeBuildPolicy), 'deferred' means the sync was blocked by active builds and recorded for potential retry (requires activeBuildPolicy: 'defer'). |

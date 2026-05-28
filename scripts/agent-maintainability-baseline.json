@@ -8,12 +8,12 @@
     },
     {
       "path": "packages/monitor/src/server.ts",
-      "noGrowthCeiling": 4934,
+      "noGrowthCeiling": 4975,
       "category": "implementation"
     },
     {
       "path": "packages/engine/src/eforge.ts",
-      "noGrowthCeiling": 3162,
+      "noGrowthCeiling": 3182,
       "category": "implementation"
     },
     {
@@ -33,7 +33,7 @@
     },
     {
       "path": "packages/eforge/src/cli/index.ts",
-      "noGrowthCeiling": 1973,
+      "noGrowthCeiling": 2029,
       "category": "implementation"
     },
     {
@@ -58,7 +58,7 @@
     },
     {
       "path": "packages/eforge/src/cli/mcp-proxy.ts",
-      "noGrowthCeiling": 1255,
+      "noGrowthCeiling": 1279,
       "category": "implementation"
     },
     {
@@ -173,7 +173,7 @@
     },
     {
       "path": "packages/client/src/routes.ts",
-      "noGrowthCeiling": 608,
+      "noGrowthCeiling": 626,
       "category": "implementation"
     },
     {

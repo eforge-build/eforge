@@ -404,6 +404,10 @@ async function main(): Promise<void> {
         if (command !== 'enqueue') {
           commandArgs.push('--no-monitor');
         }
+        // Inject --session-id so child process runSession uses the same id as the daemon's tracker
+        if (command === 'resume' && !args.includes('--session-id')) {
+          commandArgs.push('--session-id', sessionId);
+        }
         // Ensure .eforge/ directory exists and open a per-session log file
         const eforgeDir = resolve(cwd, '.eforge');
         mkdirSync(eforgeDir, { recursive: true });

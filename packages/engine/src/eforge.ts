@@ -2695,8 +2695,16 @@ export class EforgeEngine {
     const cwd = options.cwd ?? this.cwd;
     const dbPath = resolve(cwd, '.eforge', 'monitor.db');
 
-    // Resolve setName from prdId when not provided
-    const setName = options.setName ?? prdId;
+    // Resolve setName from sidecar when not provided — ensures featureBranch and worktree
+    // paths match the original build when setName differs from prdId.
+    let setName = options.setName;
+    if (!setName) {
+      try {
+        const sidecarPath = join(resolve(cwd, this.config.prdQueue.dir), 'failed', `${prdId}.recovery.json`);
+        const parsed = JSON.parse(await readFile(sidecarPath, 'utf-8')) as { summary?: { setName?: string } };
+        setName = typeof parsed.summary?.setName === 'string' ? parsed.summary.setName : prdId;
+      } catch { setName = prdId; }
+    }
     const featureBranch = `eforge/${setName}`;
     const mergeWorktreePath = join(computeWorktreeBase(cwd, setName), '__merge__');
 
@@ -2706,64 +2714,6 @@ export class EforgeEngine {
     yield { timestamp: ts(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
     for (const warning of this.startupWarnings()) {
       yield { timestamp: ts(), type: 'config:warning', message: warning.message, source: warning.source, details: warning.details };
-    }
-
-    // Check eligibility
-    const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext } = await import('./resume/compiled-build.js');
-
-    const eligibility = await checkResumeEligibility({
-      cwd,
-      setName,
-      prdId,
-      mergeWorktreePath,
-      outputDir: this.config.plan.outputDir,
-      dbPath,
-      trunkBranch: this.config.build.trunkBranch,
-    });
-
-    if (!eligibility.eligible) {
-      yield {
-        timestamp: ts(),
-        type: 'build:resume:ineligible',
-        reason: eligibility.reason,
-        ...(eligibility.checkedPath ? { checkedPath: eligibility.checkedPath } : {}),
-      };
-      return;
-    }
-
-    const { summary, diffStat } = eligibility;
-
-    // Derive seeded state from failure summary
-    const { seededMerged, seededPending } = deriveResumeSeedState(summary.plans);
-
-    // Emit resume start
-    yield {
-      timestamp: ts(),
-      type: 'build:resume:start',
-      prdId,
-      setName,
-      featureBranch,
-    };
-
-    // Emit seeded state summary
-    yield {
-      timestamp: ts(),
-      type: 'build:resume:state',
-      seededMerged,
-      seededPending,
-      featureBranch,
-      landedCommitCount: summary.landedCommits.length,
-      diffStat,
-    };
-
-    // Build per-plan resume context map for builder prompt injection
-    const resumeContextByPlan = new Map<string, string>();
-    // Generate resume context for non-merged plans (the ones that need to run)
-    for (const planId of seededPending) {
-      resumeContextByPlan.set(
-        planId,
-        formatResumeContext({ planId, summary, seededMerged, seededPending }),
-      );
     }
 
     // Delegate to the existing build pipeline, passing resume seed
@@ -2778,15 +2728,42 @@ export class EforgeEngine {
       validatePlanSetName(setName);
       tracing = createTracingContext(this.config, runId, 'build', setName);
 
+      yield { type: 'phase:start', runId, planSet: setName, command: 'resume', timestamp: ts() };
+      tracing.setInput({ planSet: setName, prdId, resumeMode: true });
+
+      // Eligibility check runs inside the phase so failures are correlated with runId.
+      const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext } = await import('./resume/compiled-build.js');
+      const eligibility = await checkResumeEligibility({
+        cwd, setName, prdId, mergeWorktreePath,
+        outputDir: this.config.plan.outputDir, dbPath,
+        trunkBranch: this.config.build.trunkBranch,
+      });
+
+      if (!eligibility.eligible) {
+        status = 'failed';
+        buildSummary = eligibility.reason;
+        yield {
+          timestamp: ts(), type: 'build:resume:ineligible', reason: eligibility.reason,
+          ...(eligibility.checkedPath ? { checkedPath: eligibility.checkedPath } : {}),
+        };
+        return;
+      }
+
+      const { summary, diffStat } = eligibility;
+      const { seededMerged, seededPending } = deriveResumeSeedState(summary.plans);
+
+      yield { timestamp: ts(), type: 'build:resume:start', prdId, setName, featureBranch };
       yield {
-        type: 'phase:start',
-        runId,
-        planSet: setName,
-        command: 'resume',
-        timestamp: ts(),
+        timestamp: ts(), type: 'build:resume:state',
+        seededMerged, seededPending, featureBranch,
+        landedCommitCount: summary.landedCommits.length, diffStat,
       };
 
-      tracing.setInput({ planSet: setName, prdId, resumeMode: true });
+      // Build per-plan resume context map for builder prompt injection
+      const resumeContextByPlan = new Map<string, string>();
+      for (const planId of seededPending) {
+        resumeContextByPlan.set(planId, formatResumeContext({ planId, summary, seededMerged, seededPending }));
+      }
 
       // Orchestration artifacts are in the merge worktree
       const planBaseCwd = mergeWorktreePath;

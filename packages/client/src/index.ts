@@ -270,6 +270,11 @@ export type {
 
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
 
+// --- eforge:region plan-02-api-cli ---
+export type { ResumeBuildRequest, ResumeBuildResponse } from './routes.js';
+export { apiResumeBuild, apiResumeBuildIfRunning } from './api/resume-build.js';
+// --- eforge:endregion plan-02-api-cli ---
+
 export {
   type LockfileData,
   LOCKFILE_NAME,

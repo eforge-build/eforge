@@ -94,6 +94,21 @@ export interface ReadSidecarResponse {
   json: RecoveryVerdictSidecar;
 }
 
+// --- eforge:region plan-02-api-cli ---
+/** POST /api/recover/resume-build */
+export interface ResumeBuildRequest {
+  prdId: string;
+  /** Override the set name derived from the prdId. When omitted, the set name is derived from the prdId. */
+  setName?: string;
+}
+
+/** Response for POST /api/recover/resume-build */
+export interface ResumeBuildResponse {
+  sessionId: string;
+  pid: number;
+}
+// --- eforge:endregion plan-02-api-cli ---
+
 /** POST /api/recover/apply */
 export interface ApplyRecoveryRequest {
   prdId: string;
@@ -181,6 +196,9 @@ export const API_ROUTES = {
   recover: '/api/recover',
   readRecoverySidecar: '/api/recovery/sidecar',
   applyRecovery: '/api/recover/apply',
+  // --- eforge:region plan-02-api-cli ---
+  resumeBuild: '/api/recover/resume-build',
+  // --- eforge:endregion plan-02-api-cli ---
   schedulerKick: '/api/scheduler/kick',
   playbookList: '/api/playbook/list',
   playbookShow: '/api/playbook/show',

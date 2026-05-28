@@ -1835,6 +1835,64 @@ export function createProgram(abortController?: AbortController, version?: strin
     );
   // --- eforge:endregion plan-01-backend-apply-recovery ---
 
+  // --- eforge:region plan-02-api-cli ---
+  program
+    .command('resume <prdId>')
+    .description('Resume a compiled build that previously failed')
+    .option('--set-name <setName>', 'Override the set name derived from the prdId')
+    .option('--cwd <cwd>', 'Working directory override')
+    .option('--verbose', 'Stream agent output')
+    .option('--no-monitor', 'Disable web monitor')
+    .option('--session-id <uuid>', 'Session ID injected by parent scheduler (skips child session:start emission)')
+    .action(
+      async (
+        prdId: string,
+        options: {
+          setName?: string;
+          cwd?: string;
+          verbose?: boolean;
+          monitor?: boolean;
+          sessionId?: string;
+        },
+      ) => {
+        initDisplay({ verbose: options.verbose });
+
+        const cwd = options.cwd ? resolve(options.cwd) : undefined;
+
+        const engine = await EforgeEngine.create({ ...(cwd && { cwd }) });
+
+        try {
+          await withMonitor(options.monitor === false, async (monitor) => {
+            const sessionId = options.sessionId ?? randomUUID();
+
+            const resumeEvents = engine.resumeBuild(prdId, {
+              ...(options.setName && { setName: options.setName }),
+              verbose: options.verbose,
+              abortController,
+              ...(cwd && { cwd }),
+            });
+
+            await consumeEvents(
+              wrapEvents(runSession(resumeEvents, sessionId), {
+                monitor,
+                hooks: engine.resolvedConfig.hooks,
+                native: {
+                  registry: engine.nativeExtensionRegistry,
+                  timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+                  ...(cwd && { cwd }),
+                },
+              }),
+            );
+          });
+        } catch (err) {
+          const { message, exitCode } = formatCliError(err);
+          console.error(chalk.red(`Error: ${message}`));
+          process.exit(exitCode);
+        }
+      },
+    );
+  // --- eforge:endregion plan-02-api-cli ---
+
   // --- eforge:region plan-03-cli-playbook-commands ---
   registerPlaybookCommand(program);
   // --- eforge:endregion plan-03-cli-playbook-commands ---

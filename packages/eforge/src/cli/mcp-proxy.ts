@@ -11,7 +11,11 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiTestExtension, apiNewExtension, apiReloadExtensions, apiTrustExtension, apiUntrustExtension, apiInstallExtension, apiUpdateExtension, apiRemoveExtension, apiPromoteExtension, apiDemoteExtension, apiStackSync } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiTestExtension, apiNewExtension, apiReloadExtensions, apiTrustExtension, apiUntrustExtension, apiInstallExtension, apiUpdateExtension, apiRemoveExtension, apiPromoteExtension, apiDemoteExtension, apiStackSync,
+  // --- eforge:region plan-02-api-cli ---
+  apiResumeBuild,
+  // --- eforge:endregion plan-02-api-cli ---
+} from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   RunInfo,
@@ -994,6 +998,26 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   });
 
   // --- eforge:endregion plan-01-backend-apply-recovery ---
+
+  // --- eforge:region plan-02-api-cli ---
+
+  // Tool: eforge_resume_build
+  createDaemonTool(server, cwd, {
+    name: 'eforge_resume_build',
+    description: 'Resume a compiled build that previously failed. Spawns the resume worker as a background subprocess and returns its sessionId and pid.',
+    schema: {
+      prdId: z.string().describe('The plan ID (prdId) of the failed compiled build to resume'),
+      setName: z.string().optional().describe('Override the set name derived from the prdId. When omitted, the set name is derived from the prdId.'),
+    },
+    handler: async ({ prdId, setName }, { cwd: toolCwd }) => {
+      const body: { prdId: string; setName?: string } = { prdId };
+      if (setName !== undefined) body.setName = setName;
+      const { data } = await apiResumeBuild({ cwd: toolCwd, body });
+      return data;
+    },
+  });
+
+  // --- eforge:endregion plan-02-api-cli ---
 
   // --- eforge:endregion plan-03-daemon-mcp-pi ---
 

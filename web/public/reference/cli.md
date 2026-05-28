@@ -378,6 +378,21 @@ Apply the recovery verdict for a failed build plan (requeue, enqueue successor, 
 | `--cwd <cwd>` | Working directory override |
 | `--no-monitor` | Disable web monitor |
 
+### `resume`
+
+Resume a compiled build that previously failed
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--set-name <setName>` | Override the set name derived from the prdId |
+| `--cwd <cwd>` | Working directory override |
+| `--verbose` | Stream agent output |
+| `--no-monitor` | Disable web monitor |
+| `--session-id <uuid>` | Session ID injected by parent scheduler (skips child session:start emission) |
+
 ### `playbook`
 
 Manage playbooks
