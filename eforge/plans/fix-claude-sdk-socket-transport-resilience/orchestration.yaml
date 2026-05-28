@@ -1,0 +1,51 @@
+name: fix-claude-sdk-socket-transport-resilience
+description: Fix Claude SDK socket-close transport classification so existing
+  retry and downgrade policies treat the observed socket closure as transient
+  transport.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- test/pi-transport-resilience.test.ts
+    test/pipeline-error-translator.test.ts
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-claude-socket-transport-classifier
+    name: Classify Claude SDK Socket Closures as Transient Transport
+    depends_on: []
+    branch: fix-claude-sdk-socket-transport-resilience/plan-01-claude-socket-transport-classifier
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+  defaultBuild:
+    - implement
+    - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is a focused engine bugfix touching classifier behavior and
+    retry/downgrade regression tests, so excursion is appropriate: a single
+    planner can enumerate all affected files and dependencies. The build runs
+    implementation first, then writes targeted tests, executes an iterative test
+    cycle, and finishes with a review cycle. Review focuses on code correctness
+    and test coverage without security/API perspectives because the PRD does not
+    change public APIs, auth, secrets, dependencies, or trust boundaries."
+diff_base_ref: 2243faacb70111953aaea547412beedb66c38514
