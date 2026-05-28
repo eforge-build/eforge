@@ -17,10 +17,35 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 /dev release-finalize vX.Y.Z
                   After a release PR merges, tag main and push only the tag
 /dev plan         Prefill /eforge:plan for the published pi-eforge flow
+/dev tail-events [type|all] [limit] [plan=<id>] [run=<id>]
+                  Live-tail eforge monitor events from .eforge/monitor.db
+/dev tail-extension-events [name] [limit]
+                  Preset live-tail for extension runtime events
 /dev refresh      Refresh footer/widget status
 ```
 
 `/dev branch` accepts either a backward-compatible explicit branch name like `fix/foo` or a natural-language work description like `fix the dev branch prompt`. When a description is provided, the command defers to the active LLM to choose the branch name and run the git switch/create command.
+
+## Event tails
+
+`/dev tail-events` opens a live panel of recent monitor events. Pass a type/prefix, limit, plan id, or run id to filter:
+
+```text
+/dev tail-events
+/dev tail-events agent 50
+/dev tail-events plan:build:* plan=plan-02-api-cli
+/dev tail-events all 100 run=21652686-793a-4d61-b311-8bb2760a6d45
+```
+
+`/dev tail-extension-events` is a preset for recent `extension:*` events. Pass an extension name to filter, for example:
+
+```text
+/dev tail-extension-events eforge-guardrails
+/dev tail-extension-events eforge-guardrails 50
+/dev tail-extension-events all 100
+```
+
+These are local dogfooding helpers. If they prove useful, a more polished version may eventually belong in the published `packages/pi-eforge` integration.
 
 ## Policy helpers
 

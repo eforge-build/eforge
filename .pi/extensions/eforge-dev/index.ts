@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, type SelectItem, SelectList, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { showExtensionEventsTail, showMonitorEventsTail } from "./event-tail";
 
 type CheckStatus = "pending" | "running" | "passed" | "failed" | "skipped";
 
@@ -47,20 +48,12 @@ const DEV_ACTION = {
 	RELEASE_FINALIZE: "release-finalize",
 	RESTART: "restart",
 	PLAN: "plan",
+	TAIL_EVENTS: "tail-events",
+	TAIL_EXTENSION_EVENTS: "tail-extension-events",
 	REFRESH: "refresh",
 } as const;
 
-const DEV_ACTIONS = [
-	DEV_ACTION.BRANCH,
-	DEV_ACTION.CHECKS,
-	DEV_ACTION.PR,
-	DEV_ACTION.LAND,
-	DEV_ACTION.RELEASE,
-	DEV_ACTION.RELEASE_FINALIZE,
-	DEV_ACTION.RESTART,
-	DEV_ACTION.PLAN,
-	DEV_ACTION.REFRESH,
-];
+const DEV_ACTIONS = Object.values(DEV_ACTION);
 
 const CHECK_CHOICE = {
 	RUN: "Run checks",
@@ -1009,6 +1002,8 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 	const items: SelectItem[] = [
 		{ value: DEV_ACTION.BRANCH, label: "Create/switch branch from work description", description: "Describe the work; the model names the branch" },
 		{ value: DEV_ACTION.PLAN, label: "Prefill /eforge:plan", description: "Start the published pi-eforge planning flow" },
+		{ value: DEV_ACTION.TAIL_EVENTS, label: "Tail monitor events", description: "Live eforge monitor events" },
+		{ value: DEV_ACTION.TAIL_EXTENSION_EVENTS, label: "Tail extension events", description: "Preset for extension events" },
 		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, docs drift/link check" },
 		{ value: DEV_ACTION.PR, label: "Show PR readiness", description: "Branch, diff, docs drift, and next steps" },
 		{ value: DEV_ACTION.LAND, label: "Land current branch", description: "Commit, check, and open a PR or fast-forward merge" },
@@ -1118,6 +1113,8 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 				case DEV_ACTION.PLAN:
 					await prefillEforgePlan(ctx);
 					return;
+				case DEV_ACTION.TAIL_EVENTS: return showMonitorEventsTail(pi, ctx, rest.join(" "));
+				case DEV_ACTION.TAIL_EXTENSION_EVENTS: return showExtensionEventsTail(pi, ctx, rest.join(" "));
 				case DEV_ACTION.REFRESH:
 					ctx.ui.notify("eforge-dev status refreshed", "info");
 					return;
