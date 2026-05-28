@@ -8,17 +8,17 @@
     },
     {
       "path": "packages/monitor/src/server.ts",
-      "noGrowthCeiling": 4934,
+      "noGrowthCeiling": 4980,
       "category": "implementation"
     },
     {
       "path": "packages/engine/src/eforge.ts",
-      "noGrowthCeiling": 2805,
+      "noGrowthCeiling": 3182,
       "category": "implementation"
     },
     {
       "path": "packages/client/src/events.schemas.ts",
-      "noGrowthCeiling": 2723,
+      "noGrowthCeiling": 2753,
       "category": "implementation"
     },
     {
@@ -28,22 +28,22 @@
     },
     {
       "path": "packages/pi-eforge/extensions/eforge/index.ts",
-      "noGrowthCeiling": 2561,
+      "noGrowthCeiling": 2594,
       "category": "implementation"
     },
     {
       "path": "packages/eforge/src/cli/index.ts",
-      "noGrowthCeiling": 1973,
+      "noGrowthCeiling": 2031,
       "category": "implementation"
     },
     {
       "path": "packages/client/src/event-registry.ts",
-      "noGrowthCeiling": 1889,
+      "noGrowthCeiling": 1912,
       "category": "implementation"
     },
     {
       "path": "packages/engine/src/pipeline/stages/build-stages.ts",
-      "noGrowthCeiling": 1518,
+      "noGrowthCeiling": 1527,
       "category": "implementation"
     },
     {
@@ -58,7 +58,7 @@
     },
     {
       "path": "packages/eforge/src/cli/mcp-proxy.ts",
-      "noGrowthCeiling": 1255,
+      "noGrowthCeiling": 1279,
       "category": "implementation"
     },
     {
@@ -88,7 +88,7 @@
     },
     {
       "path": "packages/monitor/src/server-main.ts",
-      "noGrowthCeiling": 1076,
+      "noGrowthCeiling": 1080,
       "category": "implementation"
     },
     {
@@ -173,7 +173,7 @@
     },
     {
       "path": "packages/client/src/routes.ts",
-      "noGrowthCeiling": 608,
+      "noGrowthCeiling": 626,
       "category": "implementation"
     },
     {
@@ -183,7 +183,7 @@
     },
     {
       "path": "packages/client/src/__tests__/events-schemas.test.ts",
-      "noGrowthCeiling": 4079,
+      "noGrowthCeiling": 4145,
       "category": "test"
     },
     {
@@ -198,7 +198,7 @@
     },
     {
       "path": "packages/client/src/__tests__/events-wire-parity.test.ts",
-      "noGrowthCeiling": 2202,
+      "noGrowthCeiling": 2266,
       "category": "test"
     },
     {
@@ -218,7 +218,7 @@
     },
     {
       "path": "test/orchestration-logic.test.ts",
-      "noGrowthCeiling": 1580,
+      "noGrowthCeiling": 1712,
       "category": "test"
     },
     {

@@ -1,16 +1,16 @@
 ---
 name: eforge-recover
-description: Inspect the recovery verdict for a failed PRD and apply the recommended action (retry, split, or abandon)
+description: Inspect the recovery verdict for a failed PRD and apply the recommended action (retry, split, abandon, resume from compiled artifacts, or manual)
 disable-model-invocation: true
 ---
 
 # /eforge:recover
 
-Inspect the recovery analysis for a failed PRD and act on the verdict — re-queue, split into a successor PRD, or archive the original.
+Inspect the recovery analysis for a failed PRD and act on the verdict — re-queue, split into a successor PRD, resume from compiled artifacts, or archive the original.
 
 ## Workflow
 
-Call `eforge_queue_list` to discover failed PRDs, read the recovery sidecar to surface the verdict and rationale, confirm the action with the user, and call `eforge_apply_recovery` to execute. Never auto-apply — always confirm.
+Call `eforge_queue_list` to discover failed PRDs, read the recovery sidecar to surface the verdict and rationale, confirm the action with the user, and call `eforge_apply_recovery` to execute. For compiled-build resume, call `eforge_resume_build` after confirmation. Never auto-apply — always confirm.
 
 ## Steps
 
@@ -65,9 +65,13 @@ If the verdict is `split`, also show:
 {suggestedSuccessorPrd}
 ```
 
+Also check whether the PRD has compiled artifacts and a feature branch. If it does, present the compiled-build resume option alongside the verdict-recommended action:
+
+> This PRD has compiled artifacts on a feature branch. You may either follow the verdict action above or resume the build from its compiled artifacts using `eforge_resume_build`. Which would you prefer?
+
 ### Step 4: Confirm the Action
 
-Ask the user to confirm the verdict-specific action:
+Ask the user to confirm the verdict-specific action or the resume option:
 
 - `retry`: "Re-queue PRD `{prdId}` for another attempt? (yes / no)"
 - `split`: "Enqueue a successor PRD based on the suggested content above? (yes / no)"
@@ -78,15 +82,30 @@ Ask the user to confirm the verdict-specific action:
 
 **Stop here** for `manual`. Do not call `eforge_apply_recovery`. If it were called it would return `{ verdict: 'manual', noAction: true }` — no mutation occurs.
 
+- **resume**: "Resume PRD `{prdId}` from its compiled artifacts? (yes / no)"
+
 ### Step 5: Apply the Recovery
 
-On confirmation, call `eforge_apply_recovery` with `{ prdId }`.
+**Verdict-based recovery**: On confirmation for `retry`, `split`, or `abandon`, call `eforge_apply_recovery` with `{ prdId }`.
 
 The daemon applies the action in-process and returns synchronously. Report the result using the returned response fields:
 
 - **retry**: "PRD `{prdId}` has been re-queued. Commit: `{commitSha}`."
 - **split**: "Successor PRD `{successorPrdId}` enqueued. Commit: `{commitSha}`."
 - **abandon**: "PRD `{prdId}` has been archived. Commit: `{commitSha}`."
+
+**Compiled-build resume**: On confirmation for resume, call `eforge_resume_build` with `{ prdId }`. The daemon spawns a background build agent and returns `{ sessionId, pid }`. Report:
+
+> Resuming build for PRD `{prdId}`. Session ID: `{sessionId}`, PID: `{pid}`.
+
+## When to Choose Compiled-Build Resume vs PRD-Level Retry
+
+| Situation | Recommended action |
+|-----------|-------------------|
+| PRD failed early (before compile stage) — no artifacts | Use `retry` or `split` via `eforge_apply_recovery` |
+| PRD failed after compile — feature branch exists with partial work | Consider `eforge_resume_build` to pick up from compiled artifacts |
+| Compiled artifacts are stale or the plan has changed significantly | Use `retry` via `eforge_apply_recovery` to start fresh |
+| User wants to archive the failed PRD without further attempts | Use `abandon` via `eforge_apply_recovery` |
 
 ## Error Handling
 
@@ -95,6 +114,7 @@ The daemon applies the action in-process and returns synchronously. Report the r
 | `eforge_read_recovery_sidecar` returns 404 | Offer to call `eforge_recover` to generate the verdict (Step 2) |
 | Sidecar contains `recoveryError` | Offer to re-run `eforge_recover` to regenerate (Step 2) |
 | `eforge_apply_recovery` fails | Surface the daemon error message verbatim; do not retry automatically |
+| `eforge_resume_build` fails | Surface the daemon error message verbatim; do not retry automatically |
 <!-- parity-skip-start -->
 | Tool unavailable | Warn that eforge tools are not available; suggest checking the extension is loaded |
 <!-- parity-skip-end -->

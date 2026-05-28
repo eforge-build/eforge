@@ -270,6 +270,11 @@ export type {
 
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
 
+// --- eforge:region plan-02-api-cli ---
+export type { ResumeBuildRequest, ResumeBuildResponse } from './routes.js';
+export { apiResumeBuild, apiResumeBuildIfRunning } from './api/resume-build.js';
+// --- eforge:endregion plan-02-api-cli ---
+
 export {
   type LockfileData,
   LOCKFILE_NAME,
@@ -376,6 +381,12 @@ export type {
   TerminalFailureScope,
   TerminalFailureEnvelope,
   // --- eforge:endregion plan-01-terminal-failure-contract ---
+  // --- eforge:region plan-01-engine-resume ---
+  BuildResumeStartEvent,
+  BuildResumeStateEvent,
+  BuildResumeIneligibleEvent,
+  BuildResumeCompleteEvent,
+  // --- eforge:endregion plan-01-engine-resume ---
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema, PlanningDecisionSchema,

@@ -888,7 +888,16 @@ registerBuildStage({
   }
 
   // Resolve maxContinuations: per-plan > global config > default (3)
-  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.planFile);
+  const baseAgentConfig = resolveAgentConfig('builder', ctx.config, ctx.planFile);
+  // --- eforge:region plan-01-engine-resume ---
+  // Inject resume context into the builder prompt when resuming a compiled build.
+  const agentConfig = ctx.resumeContext
+    ? {
+        ...baseAgentConfig,
+        promptAppend: [baseAgentConfig.promptAppend, ctx.resumeContext].filter(Boolean).join('\n\n'),
+      }
+    : baseAgentConfig;
+  // --- eforge:endregion plan-01-engine-resume ---
   const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
   const parallelStages = ctx.build.filter((spec): spec is string[] => Array.isArray(spec));
   const verificationScope = hasTestStages(ctx.build) ? 'build-only' : 'full';

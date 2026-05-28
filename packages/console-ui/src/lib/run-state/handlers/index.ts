@@ -332,6 +332,13 @@ export const IGNORED_EVENT_TYPES = [
   // Monitor UI rendering is future work; session reducer does not handle it.
   'build:terminal-failure',
   // --- eforge:endregion plan-01-terminal-failure-contract ---
+  // --- eforge:region plan-01-engine-resume ---
+  // build:resume:* — resume lifecycle events. Monitor UI rendering is future work.
+  'build:resume:start',
+  'build:resume:state',
+  'build:resume:ineligible',
+  'build:resume:complete',
+  // --- eforge:endregion plan-01-engine-resume ---
 ] as const;
 
 // ---------------------------------------------------------------------------

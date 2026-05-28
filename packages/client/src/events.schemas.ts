@@ -929,7 +929,7 @@ const EforgeEventVariantsSchema = Type.Union([
     type: Type.Literal('phase:start'),
     runId: Type.String(),
     planSet: Type.String(),
-    command: Type.Union([Type.Literal('compile'), Type.Literal('build')]),
+    command: Type.Union([Type.Literal('compile'), Type.Literal('build'), Type.Literal('resume')]),
   }),
   Type.Object({
     type: Type.Literal('phase:end'),
@@ -2264,6 +2264,32 @@ const EforgeEventVariantsSchema = Type.Union([
   Type.Object({ type: Type.Literal('build:terminal-failure'), runId: Type.String(),
     failure: TerminalFailureEnvelopeSchema }),
   // --- eforge:endregion plan-01-terminal-failure-contract ---
+  // --- eforge:region plan-01-engine-resume ---
+  Type.Object({
+    type: Type.Literal('build:resume:start'),
+    prdId: Type.String(),
+    setName: Type.String(),
+    featureBranch: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('build:resume:state'),
+    seededMerged: Type.Array(Type.String()),
+    seededPending: Type.Array(Type.String()),
+    featureBranch: Type.String(),
+    landedCommitCount: Type.Number(),
+    diffStat: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('build:resume:ineligible'),
+    reason: Type.String(),
+    checkedPath: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('build:resume:complete'),
+    prdId: Type.String(),
+    setName: Type.String(),
+  }),
+  // --- eforge:endregion plan-01-engine-resume ---
 ]);
 
 // ---------------------------------------------------------------------------
@@ -2326,6 +2352,12 @@ export type BuildFailureSummary = Static<typeof BuildFailureSummarySchema>;
 export type TerminalFailureScope = Static<typeof TerminalFailureScopeSchema>;
 export type TerminalFailureEnvelope = Static<typeof TerminalFailureEnvelopeSchema>;
 // --- eforge:endregion plan-01-terminal-failure-contract ---
+// --- eforge:region plan-01-engine-resume ---
+export type BuildResumeStartEvent = Extract<EforgeEvent, { type: 'build:resume:start' }>;
+export type BuildResumeStateEvent = Extract<EforgeEvent, { type: 'build:resume:state' }>;
+export type BuildResumeIneligibleEvent = Extract<EforgeEvent, { type: 'build:resume:ineligible' }>;
+export type BuildResumeCompleteEvent = Extract<EforgeEvent, { type: 'build:resume:complete' }>;
+// --- eforge:endregion plan-01-engine-resume ---
 export type QueueEvent = Static<typeof QueueEventSchema>;
 export type PlanningDecisionEvent = Static<typeof PlanningDecisionEventSchema>;
 // --- eforge:region plan-01-supervisor-foundation ---

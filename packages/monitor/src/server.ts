@@ -2501,6 +2501,52 @@ export async function startServer(
     }
     // --- eforge:endregion plan-01-fix-recovery-ux ---
 
+    // --- eforge:region plan-02-api-cli ---
+    if (req.method === 'POST' && url === API_ROUTES.resumeBuild) {
+      if (!options?.workerTracker) {
+        sendJsonError(res, 503, 'Daemon mode not active');
+        return true;
+      }
+      let body: { prdId?: unknown; setName?: unknown };
+      try {
+        const rawBody = await parseJsonBody(req);
+        if (!isPlainObject(rawBody)) {
+          sendJsonError(res, 400, 'Invalid request body: must be a JSON object');
+          return true;
+        }
+        body = rawBody;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return true;
+      }
+      if (!body.prdId || typeof body.prdId !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: prdId');
+        return true;
+      }
+      if (!isValidPathSegment(body.prdId)) {
+        sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
+        return true;
+      }
+      if (body.setName !== undefined) {
+        if (typeof body.setName !== 'string' || !isValidPathSegment(body.setName)) {
+          sendJsonError(res, 400, 'Invalid setName: must not contain path separators or traversal sequences');
+          return true;
+        }
+      }
+      try {
+        const args: string[] = [body.prdId];
+        if (body.setName) {
+          args.push('--set-name', body.setName);
+        }
+        const result = options.workerTracker.spawnWorker('resume', args);
+        sendJson(res, { sessionId: result.sessionId, pid: result.pid });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to spawn resume worker');
+      }
+      return true;
+    }
+    // --- eforge:endregion plan-02-api-cli ---
+
     // --- Auto-build API routes ---
     if (req.method === 'POST' && url === API_ROUTES.daemonStop) {
       if (!options?.daemonState) {

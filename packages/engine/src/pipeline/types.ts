@@ -83,6 +83,15 @@ export interface BuildStageContext extends PipelineContext {
   buildFailed?: boolean;
   /** Commit SHA captured before the implement stage runs — used as reset target by the evaluator. */
   preImplementCommit?: string;
+  // --- eforge:region plan-01-engine-resume ---
+  /**
+   * Resume context injected into builder prompts during a compiled-build resume.
+   * Describes what prior work exists on the feature branch so the builder can
+   * continue from an accurate starting point rather than starting from scratch.
+   * When undefined, no resume context is appended to the builder prompt.
+   */
+  resumeContext?: string;
+  // --- eforge:endregion plan-01-engine-resume ---
 }
 
 export type CompileStage = (ctx: PipelineContext) => AsyncGenerator<EforgeEvent>;

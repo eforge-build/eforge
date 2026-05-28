@@ -1760,6 +1760,70 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
     },
   },
   // --- eforge:endregion plan-02-stack-provider-runtime ---
+
+  // --- eforge:region plan-01-engine-resume ---
+  // Build resume lifecycle
+  {
+    label: 'build:resume:start',
+    payload: {
+      type: 'build:resume:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-x',
+      setName: 'feature-x',
+      featureBranch: 'eforge/feature-x',
+    },
+  },
+  {
+    label: 'build:resume:state (merged and pending)',
+    payload: {
+      type: 'build:resume:state',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      seededMerged: ['plan-01', 'plan-02'],
+      seededPending: ['plan-03'],
+      featureBranch: 'eforge/feature-x',
+      landedCommitCount: 2,
+      diffStat: '5 files changed, 42 insertions(+), 3 deletions(-)',
+    },
+  },
+  {
+    label: 'build:resume:state (all pending, empty diffStat)',
+    payload: {
+      type: 'build:resume:state',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      seededMerged: [],
+      seededPending: ['plan-01', 'plan-02', 'plan-03'],
+      featureBranch: 'eforge/feature-x',
+      landedCommitCount: 0,
+      diffStat: '',
+    },
+  },
+  {
+    label: 'build:resume:ineligible (no checkedPath)',
+    payload: {
+      type: 'build:resume:ineligible',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      reason: 'feature branch eforge/feature-x not found',
+    },
+  },
+  {
+    label: 'build:resume:ineligible (with checkedPath)',
+    payload: {
+      type: 'build:resume:ineligible',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      reason: 'orchestration.yaml not found',
+      checkedPath: '/project/.worktrees/feature-x-merge/orchestration.yaml',
+    },
+  },
+  {
+    label: 'build:resume:complete',
+    payload: {
+      type: 'build:resume:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-x',
+      setName: 'feature-x',
+    },
+  },
+  // --- eforge:endregion plan-01-engine-resume ---
 ];
 
 // ---------------------------------------------------------------------------
