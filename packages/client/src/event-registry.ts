@@ -131,10 +131,7 @@ const eventRegistry = {
     project: () => undefined,
   },
 
-  'session:profile': {
-    scope: 'session',
-    persist: false,
-  },
+  'session:profile': { scope: 'session', persist: false },
 
   // -------------------------------------------------------------------------
   // Phase lifecycle
@@ -1346,16 +1343,21 @@ const eventRegistry = {
   // Recovery analysis
   // -------------------------------------------------------------------------
 
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  'build:terminal-failure': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Build terminal failure (${e.failure.scope}): ${e.failure.message}`,
+  },
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
+
   'recovery:start': {
     scope: 'session',
     persist: false,
     summary: (e) => `Analysing failed build for PRD ${e.prdId}`,
   },
 
-  'recovery:summary': {
-    scope: 'session',
-    persist: false,
-  },
+  'recovery:summary': { scope: 'session', persist: false },
 
   'recovery:complete': {
     scope: 'session',
@@ -1369,10 +1371,7 @@ const eventRegistry = {
     summary: (e) => `Recovery parse failed: ${e.error}`,
   },
 
-  'recovery:apply:start': {
-    scope: 'session',
-    persist: false,
-  },
+  'recovery:apply:start': { scope: 'session', persist: false },
 
   'recovery:apply:complete': {
     scope: 'session',

@@ -11,6 +11,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit, AcceptanceCriterionVerdict } from '../events.js';
 import { classifyAgentTerminalSubtype } from '../harness.js';
+import { findAuthoritativeTerminalEvent, reconstructPlanMaps, buildPlanSummaries, extractValidationCommands, extractLandingInfo, buildAuthoritativeFragment, detectLegacyFallbackFragment } from './terminal-failure-history.js';
 
 export interface SynthesizeOptions {
   setName: string;
@@ -82,6 +83,36 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         }
       }
       const modelsUsed = [...modelSet].sort();
+
+      // isLegacyFallback: true when synthesis is based on inferred/fallback evidence
+      // (phase:end exists but no authoritative terminal event, or agent:stop fallback).
+      // false when plan:build:failed events provide direct evidence without a phase:end context.
+      let isLegacyFallback = false;
+
+      // --- eforge:region plan-01-terminal-failure-contract ---
+      // Step 1: Find the latest failed phase:end to bound the authoritative lookup window.
+      const failedPhaseRows = db.prepare(
+        `SELECT id, data, timestamp FROM events WHERE run_id = ? AND type = 'phase:end' ORDER BY id DESC LIMIT 20`,
+      ).all(runId) as Array<{ id: number; data: string; timestamp: string }>;
+      const failedPhaseRow = failedPhaseRows.find(r => {
+        const d = parseEventData(r.data);
+        const res = d.result;
+        return Boolean(res && typeof res === 'object' && (res as Record<string, unknown>).status === 'failed');
+      });
+      if (failedPhaseRow) {
+        const authTerminal = findAuthoritativeTerminalEvent(db, runId, failedPhaseRow.id);
+        if (authTerminal) {
+          const maps = reconstructPlanMaps(db, runId);
+          const valStartRow = db.prepare(`SELECT id FROM events WHERE run_id = ? AND type = 'validation:start' AND id <= ? ORDER BY id DESC LIMIT 1`).get(runId, failedPhaseRow.id) as { id: number } | undefined;
+          const valCmds = extractValidationCommands(db, runId, valStartRow?.id ?? 0, failedPhaseRow.id);
+          const landingInfo = extractLandingInfo(db, runId, failedPhaseRow.id);
+          const fragment = buildAuthoritativeFragment(authTerminal, maps, prdId, setName, modelsUsed, failedPhaseRow.timestamp, valCmds, landingInfo);
+          return fragment;
+        }
+        // phase:end found but no authoritative terminal event — legacy fallback applies.
+        isLegacyFallback = true;
+      }
+      // --- eforge:endregion plan-01-terminal-failure-contract ---
 
       let failingPlan: FailingPlanEntry;
       let plans: PlanSummaryEntry[];
@@ -318,6 +349,9 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
             partial: true,
             terminalFailure: {
               stage: 'prd-validation',
+              scope: 'prd-validation',
+              message: errorMessage,
+              authoritative: false,
               ...(phaseSummary !== undefined ? { phaseSummary } : {}),
               ...(phaseStatus !== undefined ? { phaseStatus } : {}),
               eventType: 'prd_validation:complete',
@@ -407,6 +441,9 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
               partial: true,
               terminalFailure: {
                 stage: 'acceptance-validation',
+                scope: 'acceptance-validation',
+                message: 'Acceptance criteria validation failed',
+                authoritative: false,
                 ...(phaseSummary !== undefined ? { phaseSummary } : {}),
                 ...(phaseStatus !== undefined ? { phaseStatus } : {}),
                 eventType: 'acceptance_validation:complete',
@@ -426,16 +463,46 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         }
         // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
+        // Check for well-known non-plan terminal failure patterns (artifact-recording,
+        // landing, post-merge-validation) before falling back to agent:stop evidence.
+        const legacyFragment = detectLegacyFallbackFragment(db, runId, failedPhase.id, failedPhase.timestamp, prdId, setName, modelsUsed, phaseSummary, phaseStatus);
+        if (legacyFragment !== undefined) return legacyFragment;
+
+        // Reconstruct plan statuses to filter stale errored agent:stop events
+        // (stops for plans later marked completed/merged should be ignored).
+        const tfStatusMaps = reconstructPlanMaps(db, runId);
+        const tfStatusMap = tfStatusMaps.planStatusMap;
+        const tfStatusIdMap = tfStatusMaps.planStatusIdMap ?? new Map<string, number>();
+
         const stopStmt = db.prepare(
           `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'agent:stop' AND id <= ? ORDER BY id DESC LIMIT 20`,
         );
         const stopEvents = stopStmt.all(runId, failedPhase.id) as unknown as EventHistoryRow[];
         const failedStop = stopEvents.find((event) => {
           const parsed = parseEventData(event.data);
-          return typeof parsed.error === 'string' && parsed.error.length > 0;
+          if (!(typeof parsed.error === 'string' && parsed.error.length > 0)) return false;
+          if (event.planId) {
+            const latestStatus = tfStatusMap.get(event.planId);
+            if (latestStatus === 'completed' || latestStatus === 'merged') {
+              // Only suppress if the completed/merged status occurred AFTER this stop event
+              const statusId = tfStatusIdMap.get(event.planId);
+              if (statusId === undefined || statusId > event.id) return false;
+            }
+          }
+          return true;
         });
-        if (!failedStop) return null;
+        if (!failedStop) {
+          // All errored stops are superseded — return unknown terminal failure using phase summary
+          return {
+            prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main',
+            plans: [], failingPlan: { planId: 'unknown' },
+            landedCommits: [] as LandedCommit[], diffStat: '', modelsUsed,
+            failedAt: failedPhase.timestamp, partial: true,
+            terminalFailure: { stage: 'unknown', scope: 'unknown', message: phaseSummary ?? 'Build failed', authoritative: false },
+          };
+        }
 
+        isLegacyFallback = true;
         const parsedStop = parseEventData(failedStop.data);
         const errorMessage = typeof parsedStop.error === 'string' ? parsedStop.error : undefined;
         const agentId = typeof parsedStop.agentId === 'string' ? parsedStop.agentId : undefined;
@@ -476,7 +543,16 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         diffStat: '',
         modelsUsed,
         failedAt,
-        partial: true,
+        // Only mark partial for the legacy fallback path, not definitive plan:build:failed evidence.
+        ...(isLegacyFallback ? {
+          partial: true,
+          terminalFailure: {
+            scope: (failingPlan.planId === 'compile' ? 'compile' : 'plan') as import('../events.js').TerminalFailureScope,
+            message: failingPlan.errorMessage ?? 'Build failed',
+            authoritative: false,
+            ...(failingPlan.planId && failingPlan.planId !== 'compile' ? { planId: failingPlan.planId } : {}),
+          },
+        } : {}),
       };
     } finally {
       db.close();

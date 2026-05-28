@@ -541,6 +541,23 @@ const FailingPlanEntrySchema = Type.Object({
   // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
+// --- eforge:region plan-01-terminal-failure-contract ---
+export const TerminalFailureScopeSchema = Type.Union([
+  Type.Literal('plan'), Type.Literal('post-merge-validation'), Type.Literal('prd-validation'),
+  Type.Literal('acceptance-validation'), Type.Literal('artifact-recording'),
+  Type.Literal('landing'), Type.Literal('daemon'), Type.Literal('compile'), Type.Literal('unknown'),
+]);
+const TFLandingSchema = Type.Object({ status: Type.String(), action: Type.Optional(Type.String()), reason: Type.Optional(Type.String()) });
+export const TerminalFailureEnvelopeSchema = Type.Object({
+  scope: TerminalFailureScopeSchema, message: Type.String(),
+  authoritative: Type.Boolean(), planId: Type.Optional(Type.String()),
+  stage: Type.Optional(Type.String()), phaseSummary: Type.Optional(Type.String()),
+  phaseStatus: Type.Optional(Type.String()), eventType: Type.Optional(Type.String()),
+  sourceEventType: Type.Optional(Type.String()), sourceEventId: Type.Optional(Type.Integer()), sourceEventTimestamp: Type.Optional(Type.String()),
+  landing: Type.Optional(TFLandingSchema), validationPassed: Type.Optional(Type.Boolean()), prdValidationPassed: Type.Optional(Type.Boolean()), acceptanceValidationPassed: Type.Optional(Type.Boolean()),
+});
+// --- eforge:endregion plan-01-terminal-failure-contract ---
+
 const BuildFailureSummarySchema = Type.Object({
   prdId: Type.String(),
   setName: Type.String(),
@@ -555,12 +572,9 @@ const BuildFailureSummarySchema = Type.Object({
   partial: Type.Optional(Type.Boolean()),
   prdContent: Type.Optional(Type.String()),
   // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
-  terminalFailure: Type.Optional(Type.Object({
-    stage: Type.String(),
-    phaseSummary: Type.Optional(Type.String()),
-    phaseStatus: Type.Optional(Type.String()),
-    eventType: Type.Optional(Type.String()),
-  })),
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  terminalFailure: Type.Optional(Type.Partial(TerminalFailureEnvelopeSchema)),
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
   acceptanceValidation: Type.Optional(Type.Object({
     passed: Type.Boolean(),
     total: Type.Number(),
@@ -574,11 +588,7 @@ const BuildFailureSummarySchema = Type.Object({
     exitCode: Type.Number(),
     output: Type.Optional(Type.String()),
   }))),
-  landing: Type.Optional(Type.Object({
-    status: Type.String(),
-    action: Type.Optional(Type.String()),
-    reason: Type.Optional(Type.String()),
-  })),
+  landing: Type.Optional(TFLandingSchema),
   // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   // --- eforge:region plan-01-recovery-summary-reconstruction ---
   failingPlans: Type.Optional(Type.Array(FailingPlanEntrySchema)),
@@ -880,6 +890,11 @@ export const BuildDecisionSchema = Type.Union([
 ]);
 
 export type BuildDecision = Static<typeof BuildDecisionSchema>;
+
+const StackSyncTriggerSchema = Type.Optional(Type.Union([
+  Type.Literal('manual'), Type.Literal('after-build'),
+  Type.Literal('scheduled'), Type.Literal('retry-deferred'),
+]));
 
 const EforgeEventVariantsSchema = Type.Union([
   // Session lifecycle
@@ -2204,23 +2219,13 @@ const EforgeEventVariantsSchema = Type.Union([
   Type.Object({
     type: Type.Literal('stack:sync:start'),
     syncId: Type.String(),
-    trigger: Type.Optional(Type.Union([
-      Type.Literal('manual'),
-      Type.Literal('after-build'),
-      Type.Literal('scheduled'),
-      Type.Literal('retry-deferred'),
-    ])),
+    trigger: StackSyncTriggerSchema,
     dryRun: Type.Boolean(),
   }),
   Type.Object({
     type: Type.Literal('stack:sync:complete'),
     syncId: Type.String(),
-    trigger: Type.Optional(Type.Union([
-      Type.Literal('manual'),
-      Type.Literal('after-build'),
-      Type.Literal('scheduled'),
-      Type.Literal('retry-deferred'),
-    ])),
+    trigger: StackSyncTriggerSchema,
     dryRun: Type.Boolean(),
     restackCandidates: Type.Array(Type.String()),
     excludedCandidates: Type.Array(Type.String()),
@@ -2232,12 +2237,7 @@ const EforgeEventVariantsSchema = Type.Union([
   Type.Object({
     type: Type.Literal('stack:sync:failed'),
     syncId: Type.String(),
-    trigger: Type.Optional(Type.Union([
-      Type.Literal('manual'),
-      Type.Literal('after-build'),
-      Type.Literal('scheduled'),
-      Type.Literal('retry-deferred'),
-    ])),
+    trigger: StackSyncTriggerSchema,
     dryRun: Type.Boolean(),
     outcome: Type.Union([Type.Literal('failed'), Type.Literal('conflict')]),
     reason: Type.String(),
@@ -2246,30 +2246,24 @@ const EforgeEventVariantsSchema = Type.Union([
   Type.Object({
     type: Type.Literal('stack:sync:deferred'),
     syncId: Type.String(),
-    trigger: Type.Optional(Type.Union([
-      Type.Literal('manual'),
-      Type.Literal('after-build'),
-      Type.Literal('scheduled'),
-      Type.Literal('retry-deferred'),
-    ])),
+    trigger: StackSyncTriggerSchema,
     reason: Type.String(),
     excludedCandidates: Type.Array(Type.String()),
   }),
   Type.Object({
     type: Type.Literal('stack:sync:skipped'),
     syncId: Type.String(),
-    trigger: Type.Optional(Type.Union([
-      Type.Literal('manual'),
-      Type.Literal('after-build'),
-      Type.Literal('scheduled'),
-      Type.Literal('retry-deferred'),
-    ])),
+    trigger: StackSyncTriggerSchema,
     dryRun: Type.Boolean(),
     reason: Type.String(),
     restackCandidates: Type.Array(Type.String()),
     excludedCandidates: Type.Array(Type.String()),
   }),
   // --- eforge:endregion plan-01-core-daemon-stack-sync ---
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  Type.Object({ type: Type.Literal('build:terminal-failure'), runId: Type.String(),
+    failure: TerminalFailureEnvelopeSchema }),
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
 ]);
 
 // ---------------------------------------------------------------------------
@@ -2328,6 +2322,10 @@ export type LandedCommit = Static<typeof LandedCommitSchema>;
 export type PlanSummaryEntry = Static<typeof PlanSummaryEntrySchema>;
 export type FailingPlanEntry = Static<typeof FailingPlanEntrySchema>;
 export type BuildFailureSummary = Static<typeof BuildFailureSummarySchema>;
+// --- eforge:region plan-01-terminal-failure-contract ---
+export type TerminalFailureScope = Static<typeof TerminalFailureScopeSchema>;
+export type TerminalFailureEnvelope = Static<typeof TerminalFailureEnvelopeSchema>;
+// --- eforge:endregion plan-01-terminal-failure-contract ---
 export type QueueEvent = Static<typeof QueueEventSchema>;
 export type PlanningDecisionEvent = Static<typeof PlanningDecisionEventSchema>;
 // --- eforge:region plan-01-supervisor-foundation ---

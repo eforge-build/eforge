@@ -55,6 +55,9 @@ import { runPrdValidator } from './agents/prd-validator.js';
 import { buildPrdValidatorDiff } from './prd-validator-diff.js';
 import { runGapCloser } from './agents/gap-closer.js';
 import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser } from './orchestrator.js';
+// --- eforge:region plan-01-terminal-failure-contract ---
+import { createBuildTerminalFailureTracker } from './terminal-failure.js';
+// --- eforge:endregion plan-01-terminal-failure-contract ---
 import type { MergeResolver } from './worktree-ops.js';
 import { computeWorktreeBase, createMergeWorktree } from './worktree-ops.js';
 import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
@@ -663,6 +666,9 @@ export class EforgeEngine {
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Build complete';
+    // --- eforge:region plan-01-terminal-failure-contract ---
+    const terminalTracker = createBuildTerminalFailureTracker(runId);
+    // --- eforge:endregion plan-01-terminal-failure-contract ---
 
     // Emit profile info before config warnings
     yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
@@ -1124,21 +1130,11 @@ export class EforgeEngine {
           yield mergeEvents.shift()!;
         }
         yield event;
-        if (event.type === 'plan:build:failed') {
-          status = 'failed';
-          summary = event.error.startsWith('Merge failed')
-            ? `Merge failed for ${event.planId}`
-            : `Build failed for ${event.planId}`;
-        }
-        if (event.type === 'validation:complete') {
-          if (event.passed) {
-            status = 'completed';
-            summary = 'Build complete';
-          } else {
-            status = 'failed';
-            summary = 'Post-merge validation failed';
-          }
-        }
+        // --- eforge:region plan-01-terminal-failure-contract ---
+        terminalTracker.observe(event);
+        // --- eforge:endregion plan-01-terminal-failure-contract ---
+        if (event.type === 'plan:build:failed') { status = 'failed'; summary = event.error.startsWith('Merge failed') ? `Merge failed for ${event.planId}` : `Build failed for ${event.planId}`; }
+        if (event.type === 'validation:complete') { status = event.passed ? 'completed' : 'failed'; summary = event.passed ? 'Build complete' : 'Post-merge validation failed'; }
         if (event.type === 'prd_validation:complete') {
           if (!event.passed) {
             status = 'failed';
@@ -1179,6 +1175,10 @@ export class EforgeEngine {
       summary = (err as Error).message;
     } finally {
       tracing?.setOutput({ status, summary });
+      // --- eforge:region plan-01-terminal-failure-contract ---
+      const terminalEvt = terminalTracker.toEvent(status, summary);
+      if (terminalEvt) yield terminalEvt;
+      // --- eforge:endregion plan-01-terminal-failure-contract ---
       yield {
         type: 'phase:end',
         runId,

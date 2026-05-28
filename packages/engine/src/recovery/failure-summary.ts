@@ -174,8 +174,9 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
     // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
   };
 
-  // Only set partial: true when no monitor DB events were found
-  if (!eventFragment) {
+  // Set partial: true when no monitor DB events were found, or when the event fragment
+  // itself is marked partial (e.g. legacy fallback inference without authoritative terminal event).
+  if (!eventFragment || eventFragment.partial === true) {
     result.partial = true;
   }
 

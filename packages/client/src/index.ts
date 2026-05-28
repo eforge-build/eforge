@@ -372,6 +372,10 @@ export type {
   StackArtifactRef,
   StackLayerWire,
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  TerminalFailureScope,
+  TerminalFailureEnvelope,
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema, PlanningDecisionSchema,
@@ -385,6 +389,9 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeE
   // --- eforge:region plan-01-stack-contracts-config-state-events ---
   StackProviderSchema, LandingPublicationActionSchema, StackLayerStatusSchema, StackArtifactRefSchema, StackLayerWireSchema,
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  TerminalFailureScopeSchema, TerminalFailureEnvelopeSchema,
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
 } from './events.js';
 
 export type {
