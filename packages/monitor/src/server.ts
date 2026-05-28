@@ -3733,7 +3733,9 @@ export async function startServer(
         sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
         return true;
       }
-      const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
+      if (body.afterQueueId !== undefined && typeof body.afterQueueId !== 'string') { sendJsonError(res, 400, 'Invalid field: afterQueueId must be a string'); return true; }
+      if (body.afterQueueId !== undefined && body.afterQueueId === '') { sendJsonError(res, 400, 'Invalid field: afterQueueId must not be empty'); return true; }
+      const afterQueueId = body.afterQueueId as string | undefined;
       // Reject legacy onSuccess with a migration pointer.
       if (body.onSuccess !== undefined) {
         sendJsonError(res, 400, 'Field "onSuccess" is no longer supported. Use "landingAction: pr|merge|leave" instead.');
@@ -3829,34 +3831,40 @@ export async function startServer(
             }
           }
           // --- eforge:endregion plan-01-core-profile-propagation ---
-          // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-          const { enqueuePrd, inferTitle, validateDependsOnExists } = await import('@eforge-build/engine/prd-queue');
-          // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+          // --- eforge:region plan-02-playbook-placement-parity ---
+          const { enqueuePrd, inferTitle, classifyAfterQueueId: classifyPlaybookUpstream } = await import('@eforge-build/engine/prd-queue');
+          // --- eforge:endregion plan-02-playbook-placement-parity ---
           const queueDir = options?.queueDir ?? '.eforge/queue';
           const title = inferTitle(plan.source, plan.name);
 
-          // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-          // Validate upstream exists before enqueueing; reject with 404 if not found.
+          // --- eforge:region plan-02-playbook-placement-parity ---
+          // Classify upstream state and determine placement; reject with 404 if the
+          // upstream is invalid or non-actionable (failed, skipped, unknown, or
+          // completed without a usable artifact).
+          let playbookDependsOn: string[] | undefined;
+          let playbookIntoWaiting = false;
           if (afterQueueId) {
             try {
-              await validateDependsOnExists([afterQueueId], queueDir, cwd);
-            } catch (validationErr) {
-              const msg = validationErr instanceof Error ? validationErr.message : 'Invalid afterQueueId';
+              const placement = await classifyPlaybookUpstream(afterQueueId, queueDir, cwd);
+              playbookDependsOn = placement.dependsOn;
+              playbookIntoWaiting = placement.intoWaiting;
+            } catch (classifyErr) {
+              const msg = classifyErr instanceof Error ? classifyErr.message : `Invalid afterQueueId: ${afterQueueId}`;
               sendJsonError(res, 404, msg);
               return true;
             }
           }
-          // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+          // --- eforge:endregion plan-02-playbook-placement-parity ---
 
           const result = await enqueuePrd({
             body: plan.source,
             title,
             queueDir,
             cwd,
-            depends_on: afterQueueId ? [afterQueueId] : undefined,
-            // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-            intoWaiting: afterQueueId ? true : false,
-            // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+            depends_on: playbookDependsOn,
+            // --- eforge:region plan-02-playbook-placement-parity ---
+            intoWaiting: playbookIntoWaiting,
+            // --- eforge:endregion plan-02-playbook-placement-parity ---
             postMerge: plan.postMerge,
             // --- eforge:region plan-01-core-profile-propagation ---
             profile: plan.profile,

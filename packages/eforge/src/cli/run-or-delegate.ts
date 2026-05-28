@@ -16,7 +16,7 @@
 
 import chalk from 'chalk';
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { stat as fsStat, readFile as fsReadFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -528,7 +528,7 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
   // immediately eligible, so we fall through to the runQueue path below.
   // This guard must run before --dry-run so that a waiting PRD is not passed
   // to runDryRun(), which searches only the queue root.
-  if (options.afterQueueId !== undefined && enqueuedFilePath?.includes('/waiting/')) {
+  if (options.afterQueueId !== undefined && enqueuedFilePath !== undefined && dirname(resolve(enqueuedFilePath)) === resolve(engine.resolvedConfig.prdQueue.dir, 'waiting')) {
     console.log(chalk.dim(`PRD enqueued and waiting for upstream "${options.afterQueueId}" to complete.`));
     return { code: 0 };
   }

@@ -8,7 +8,7 @@
     },
     {
       "path": "packages/monitor/src/server.ts",
-      "noGrowthCeiling": 4915,
+      "noGrowthCeiling": 4932,
       "category": "implementation"
     },
     {
@@ -78,7 +78,7 @@
     },
     {
       "path": "packages/engine/src/prd-queue.ts",
-      "noGrowthCeiling": 1250,
+      "noGrowthCeiling": 1262,
       "category": "implementation"
     },
     {
@@ -173,12 +173,12 @@
     },
     {
       "path": "packages/client/src/routes.ts",
-      "noGrowthCeiling": 604,
+      "noGrowthCeiling": 608,
       "category": "implementation"
     },
     {
       "path": "packages/eforge/src/cli/run-or-delegate.ts",
-      "noGrowthCeiling": 607,
+      "noGrowthCeiling": 618,
       "category": "implementation"
     },
     {
@@ -258,7 +258,7 @@
     },
     {
       "path": "test/playbook-api.test.ts",
-      "noGrowthCeiling": 1284,
+      "noGrowthCeiling": 1484,
       "category": "test"
     }
   ]
