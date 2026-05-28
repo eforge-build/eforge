@@ -318,6 +318,14 @@ No local merge into the feature branch is performed. The artifact branch is the 
 
 When `allowLocalMergeToTrunk` is `false` and the CLI is running interactively on trunk, it prompts before enqueue and offers four resolutions: switch to `pr`, cancel, create or switch to a feature branch, or enable the solo-dev opt-in. When `--auto` is set, the CLI defers to the engine, which rejects the build at runtime via `landing:skipped` with a reason of the form `Local merge to trunk '<trunk>' is not permitted (set allowLocalMergeToTrunk: true to opt in)`.
 
+### Merge-strategy tradeoff and provenance preservation
+
+eforge builds plan branches that squash-merge into the artifact branch. When the artifact branch lands into the base branch via `--no-ff`, the resulting merge commit retains the full intermediate history. This keeps every commit that added or modified plan artifacts — PRD copies in `eforge/prds/`, compiled plan files in `eforge/plans/{planSet}/`, and `orchestration.yaml` — reachable from the base branch even after `cleanupPlanFiles` removes those paths from `HEAD`.
+
+The durable provenance guarantee is Git history, not the final tree. Artifact references use commit SHAs (`git show <sha>:<path>`) rather than branch-relative paths so they survive cleanup. A `git show <sha>:<path>` reference points to the commit that last added or modified the file, not a branch tip — so it stays valid regardless of subsequent commits or cleanups.
+
+**Squash and rebase landing:** if you apply a squash or rebase merge strategy after the PR is opened (for example, via GitHub's "Squash and merge" or "Rebase and merge" button), the intermediate commits on the artifact branch are collapsed or discarded. Commit-pinned artifact references that resolve against those intermediate commits become unreachable from the base branch. If preserving eforge build provenance across your Git history is important, configure GitHub to require or prefer merge commits for artifact branch PRs.
+
 ### Stacked PR topology
 
 When `stacking.enabled: true`, the artifact branches form a linear chain. Each artifact branch targets the parent artifact branch (`stack_parent`'s artifact branch) as its PR base. git-spice is the only supported stack provider in v1. See [docs/stacking.md](stacking.md) for setup and operation details.

@@ -119,6 +119,16 @@ export interface StackLandingOptions {
   /** Optional deterministic PR metadata to apply via `gh pr edit` after URL discovery. */
   metadata?: PullRequestMetadata;
   // --- eforge:endregion plan-01-pr-metadata ---
+  // --- eforge:region plan-01-build-artifact-provenance ---
+  /**
+   * Optional lazy metadata factory called after cleanup and the PR URL discovery
+   * attempt, and before `gh pr edit`. Takes precedence over `metadata` when both
+   * are provided. The edit is only applied when a PR URL was discovered; if no URL
+   * is found the resolved metadata is discarded. Best-effort: factory errors fall
+   * back to `metadata` if present, or skip the edit entirely.
+   */
+  metadataFactory?: () => Promise<PullRequestMetadata>;
+  // --- eforge:endregion plan-01-build-artifact-provenance ---
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +189,9 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   // --- eforge:region plan-01-pr-metadata ---
   const { metadata } = opts;
   // --- eforge:endregion plan-01-pr-metadata ---
+  // --- eforge:region plan-01-build-artifact-provenance ---
+  const { metadataFactory } = opts;
+  // --- eforge:endregion plan-01-build-artifact-provenance ---
   const { prdId, stackId, branch, baseBranch, provider: providerName } = stackContext;
   // --- eforge:region plan-01-core-daemon-stack-sync ---
   // Use provider-level helpers for redaction, PR URL parsing, and validation
@@ -353,11 +366,22 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     (await discoverPrUrlViaGh(mergeWorktreePath, branch, provider.isValidPrUrl.bind(provider)));
   // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
+  // --- eforge:region plan-01-build-artifact-provenance ---
+  // Resolve metadata: prefer lazy factory (called after cleanup) over static metadata.
+  let resolvedMetadata: PullRequestMetadata | undefined = metadata;
+  if (metadataFactory !== undefined) {
+    try {
+      resolvedMetadata = await metadataFactory();
+    } catch {
+      // Best-effort: fall back to static metadata (or skip edit if also absent)
+    }
+  }
+  // --- eforge:endregion plan-01-build-artifact-provenance ---
   // --- eforge:region plan-01-pr-metadata ---
   // Step 5a: Apply deterministic PR metadata via gh pr edit (non-fatal).
-  if (prUrl !== undefined && metadata !== undefined) {
+  if (prUrl !== undefined && resolvedMetadata !== undefined) {
     try {
-      await editPullRequest(mergeWorktreePath, prUrl, metadata);
+      await editPullRequest(mergeWorktreePath, prUrl, resolvedMetadata);
     } catch (editErr) {
       yield {
         timestamp: ts(),

@@ -29,10 +29,14 @@ import type { EforgeEvent, EforgeState, OrchestrationConfig } from './events.js'
 import type { WorktreeManager } from './worktree-manager.js';
 import type { MergeResolver } from './worktree-ops.js';
 import type { ModelTracker } from './model-tracker.js';
+import { composeCommitMessage, buildProvenanceTrailers } from './model-tracker.js';
 import { cleanupPlanFiles } from './cleanup.js';
 // --- eforge:region plan-01-pr-metadata ---
 import { renderPullRequestMetadata } from './pr-metadata.js';
 // --- eforge:endregion plan-01-pr-metadata ---
+// --- eforge:region plan-01-build-artifact-provenance ---
+import { collectBuildArtifactProvenance, type BuildArtifactProvenanceRef } from './provenance.js';
+// --- eforge:endregion plan-01-build-artifact-provenance ---
 // --- eforge:region plan-03-branch-aware-landing ---
 import { resolveTrunkBranch, isTrunkBranch } from './branch-policy.js';
 import type { EforgeConfig } from './config.js';
@@ -70,8 +74,16 @@ export interface LandingActionOptions {
   worktreeManager: WorktreeManager;
   mergeResolver?: MergeResolver;
   modelTracker: ModelTracker;
-  /** Commit message used for merge action. */
+  /** Commit message used for merge action (pre-composed, used as fallback). */
   commitMessage: string;
+  // --- eforge:region plan-01-build-artifact-provenance ---
+  /**
+   * Raw commit body (before trailer composition) for the merge action.
+   * When provided, landing recomposes the commit message with provenance trailers
+   * after cleanup/provenance collection. Falls back to `commitMessage` when absent.
+   */
+  rawCommitBody?: string;
+  // --- eforge:endregion plan-01-build-artifact-provenance ---
   signal?: AbortSignal;
   shouldCleanup?: boolean;
   cleanupPlanSet?: string;
@@ -209,6 +221,9 @@ export async function* executeLandingAction(
     worktreeManager,
     mergeResolver,
     commitMessage,
+    // --- eforge:region plan-01-build-artifact-provenance ---
+    rawCommitBody,
+    // --- eforge:endregion plan-01-build-artifact-provenance ---
     shouldCleanup,
     cleanupPlanSet,
     cleanupOutputDir,
@@ -309,7 +324,26 @@ export async function* executeLandingAction(
       }
       // --- eforge:endregion plan-03-branch-aware-landing ---
 
-      const commitSha = await worktreeManager.mergeToBase(baseBranch, commitMessage, mergeResolver);
+      // --- eforge:region plan-01-build-artifact-provenance ---
+      // After cleanup, collect provenance and compose the final commit message
+      // with Eforge-Source-* trailers when a raw commit body was provided.
+      let finalCommitMessage = commitMessage;
+      if (rawCommitBody !== undefined && cleanupPlanSet && cleanupOutputDir) {
+        try {
+          const provenanceRefs = await collectBuildArtifactProvenance(mergeWorktreePath, {
+            planSetName: cleanupPlanSet,
+            outputDir: cleanupOutputDir,
+            prdArtifactPath: cleanupPrdFilePath,
+          });
+          const provenanceTrailers = buildProvenanceTrailers(provenanceRefs);
+          finalCommitMessage = composeCommitMessage(rawCommitBody, opts.modelTracker, { provenanceTrailers });
+        } catch {
+          // Best-effort: provenance failure must not block the merge
+        }
+      }
+      // --- eforge:endregion plan-01-build-artifact-provenance ---
+
+      const commitSha = await worktreeManager.mergeToBase(baseBranch, finalCommitMessage, mergeResolver);
 
       yield {
         type: 'merge:finalize:complete' as const,
@@ -371,6 +405,23 @@ export async function* executeLandingAction(
     }
     // --- eforge:endregion plan-03-branch-aware-landing ---
 
+    // --- eforge:region plan-01-build-artifact-provenance ---
+    // Collect build artifact provenance after cleanup and before PR creation (best-effort).
+    // Uses git history so it works regardless of whether cleanup removed files from HEAD.
+    let provenanceRefs: BuildArtifactProvenanceRef[] = [];
+    if (cleanupPlanSet && cleanupOutputDir) {
+      try {
+        provenanceRefs = await collectBuildArtifactProvenance(mergeWorktreePath, {
+          planSetName: cleanupPlanSet,
+          outputDir: cleanupOutputDir,
+          prdArtifactPath: cleanupPrdFilePath,
+        });
+      } catch {
+        // Best-effort: provenance failure must not fail landing
+      }
+    }
+    // --- eforge:endregion plan-01-build-artifact-provenance ---
+
     try {
       // Direct PR workflow: always publish featureBranch -> baseBranch
       // --- eforge:region plan-01-pr-metadata ---
@@ -379,6 +430,9 @@ export async function* executeLandingAction(
         featureBranch,
         baseBranch,
         modelTracker: opts.modelTracker,
+        // --- eforge:region plan-01-build-artifact-provenance ---
+        provenanceRefs: provenanceRefs.length > 0 ? provenanceRefs : undefined,
+        // --- eforge:endregion plan-01-build-artifact-provenance ---
       });
       // --- eforge:endregion plan-01-pr-metadata ---
       const prResult = await worktreeManager.issuePr({ baseBranch, metadata: prMetadata });
