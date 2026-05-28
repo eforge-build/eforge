@@ -70,10 +70,18 @@ export function PlansView({ onNavigate }: PlansViewProps) {
         </div>
       )}
 
-      {/* Main list + detail layout */}
+      {/*
+        Main list + detail layout.
+        Note: `min-w-0` is set on every panel and propagates down through
+        SessionPlanList / SessionPlanDetail / SessionPlanMarkdownPreview.
+        Long unbroken tokens (URLs, file paths) in the markdown preview
+        would otherwise expand the flex children past the panel width.
+        Do not remove `min-w-0` from these ancestors without testing with
+        a plan body containing a long unbroken string.
+      */}
       {hasPlans && (
-        <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
-          <ResizablePanel defaultSize={30} minSize={20}>
+        <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 min-w-0">
+          <ResizablePanel defaultSize={30} minSize={20} className="min-w-0 overflow-hidden">
             <SessionPlanList
               plans={plans}
               selectedSession={selectedSession}
@@ -81,7 +89,7 @@ export function PlansView({ onNavigate }: PlansViewProps) {
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={70} minSize={30}>
+          <ResizablePanel defaultSize={70} minSize={30} className="min-w-0 overflow-hidden">
             <SessionPlanDetail
               detail={detail}
               status={detailStatus}

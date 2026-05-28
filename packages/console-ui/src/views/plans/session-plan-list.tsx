@@ -15,8 +15,8 @@ interface SessionPlanListProps {
 
 export function SessionPlanList({ plans, selectedSession, onSelect }: SessionPlanListProps) {
   return (
-    <ScrollArea className="h-full">
-      <ul className="space-y-1 p-2">
+    <ScrollArea className="h-full min-w-0">
+      <ul className="space-y-1 p-2 min-w-0">
         {plans.map((plan) => (
           <li key={plan.session}>
             <button
@@ -24,11 +24,11 @@ export function SessionPlanList({ plans, selectedSession, onSelect }: SessionPla
               onClick={() => onSelect(plan.session)}
               aria-label={`${plan.session} ${plan.topic}`}
               className={cn(
-                'w-full text-left px-3 py-2 rounded-md text-xs hover:bg-accent/50 transition-colors',
+                'w-full min-w-0 overflow-hidden text-left px-3 py-2 rounded-md text-xs hover:bg-accent/50 transition-colors',
                 selectedSession === plan.session && 'bg-accent text-accent-foreground',
               )}
             >
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex min-w-0 items-center gap-2 flex-wrap">
                 <span className="font-mono font-medium truncate max-w-[160px]">
                   {plan.session}
                 </span>

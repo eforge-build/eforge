@@ -416,13 +416,27 @@ describe('PlansView', () => {
     };
     globalThis.fetch = makeFetchMock({ plans: [plan] }, richShowResponse);
     render(<PlansView />);
+
+    // Profile lives in the always-visible summary; should render without
+    // expanding the disclosure. Tightened to getByText (no duplication).
     await waitFor(() => {
-      // Profile
       expect(screen.getByText('analytics-heavy')).toBeDefined();
-      // Required dimensions
+    });
+
+    // Disclosure content is hidden until the trigger is clicked.
+    expect(screen.queryByText('performance')).toBeNull();
+    expect(screen.queryByText('What is the rollout plan?')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /show details/i }));
+    });
+
+    await waitFor(() => {
+      // Required dimensions. `scope` is required but not in covered.
       expect(screen.getByText('scope')).toBeDefined();
-      // acceptance_criteria appears in required_dimensions and missing_dimensions badges
-      expect(screen.getAllByText('acceptance_criteria').length).toBeGreaterThan(0);
+      // `acceptance_criteria` is both a required and a missing dimension —
+      // appears twice (once per section).
+      expect(screen.getAllByText('acceptance_criteria').length).toBe(2);
       // Optional dimensions
       expect(screen.getByText('performance')).toBeDefined();
       // Skipped dimensions (plan-level)
@@ -434,11 +448,11 @@ describe('PlansView', () => {
       expect(screen.getByText('problem_statement_covered')).toBeDefined();
       // Readiness - missing dimensions section
       expect(screen.getByText('Missing dimensions')).toBeDefined();
-      const allMissing = screen.getAllByText('acceptance_criteria');
-      expect(allMissing.length).toBeGreaterThan(0);
       // Readiness - skipped dimensions section
       expect(screen.getByText('Skipped dimensions (readiness)')).toBeDefined();
       expect(screen.getByText('low_priority_skipped')).toBeDefined();
+      // Profile no longer duplicated in the disclosure body.
+      expect(screen.getAllByText('analytics-heavy').length).toBe(1);
     });
   });
 
