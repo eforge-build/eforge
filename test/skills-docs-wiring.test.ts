@@ -476,6 +476,175 @@ describe('eforge-plugin/skills/plan/plan.md — AC quality guidance', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Actionable planning-playbook contract (plan-01-actionable-planning-playbooks)
+// ---------------------------------------------------------------------------
+
+describe('playbook skills — implementation-ready session plan contract', () => {
+  const piPlaybook = readRepoFile('packages/pi-eforge/skills/eforge-playbook/SKILL.md');
+  const pluginPlaybook = readRepoFile('eforge-plugin/skills/playbook/playbook.md');
+
+  it('Pi playbook skill contains "implementation-ready session plan"', () => {
+    expect(piPlaybook).toContain('implementation-ready session plan');
+  });
+
+  it('plugin playbook skill contains "implementation-ready session plan"', () => {
+    expect(pluginPlaybook).toContain('implementation-ready session plan');
+  });
+
+  it('Pi playbook skill contains a synthesis step heading in Step 5.5', () => {
+    expect(piPlaybook).toContain('Synthesize implementation handoff');
+  });
+
+  it('plugin playbook skill contains a synthesis step heading in Step 5.5', () => {
+    expect(pluginPlaybook).toContain('Synthesize implementation handoff');
+  });
+
+  it('Pi playbook skill mentions concrete implementation targets in synthesis step', () => {
+    expect(piPlaybook).toContain('implementation targets');
+  });
+
+  it('plugin playbook skill mentions concrete implementation targets in synthesis step', () => {
+    expect(pluginPlaybook).toContain('implementation targets');
+  });
+
+  it('Pi playbook skill mentions concrete actions in synthesis step', () => {
+    expect(piPlaybook).toContain('concrete actions');
+  });
+
+  it('plugin playbook skill mentions concrete actions in synthesis step', () => {
+    expect(pluginPlaybook).toContain('concrete actions');
+  });
+
+  it('Pi playbook skill mentions non-goals in synthesis step', () => {
+    expect(piPlaybook).toContain('non-goals');
+  });
+
+  it('plugin playbook skill mentions non-goals in synthesis step', () => {
+    expect(pluginPlaybook).toContain('non-goals');
+  });
+
+  it('Pi playbook skill mentions validation criteria in synthesis step', () => {
+    expect(piPlaybook).toContain('validation criteria');
+  });
+
+  it('plugin playbook skill mentions validation criteria in synthesis step', () => {
+    expect(pluginPlaybook).toContain('validation criteria');
+  });
+
+  it('Pi playbook skill mentions evidence/context placement', () => {
+    expect(piPlaybook).toMatch(/context.oriented/i);
+  });
+
+  it('plugin playbook skill mentions evidence/context placement', () => {
+    expect(pluginPlaybook).toMatch(/context.oriented/i);
+  });
+
+  it('Pi playbook skill mentions unresolved findings becoming open questions or follow-up scope', () => {
+    expect(piPlaybook).toContain('Open Questions');
+    expect(piPlaybook).toContain('follow-up scope');
+  });
+
+  it('plugin playbook skill mentions unresolved findings becoming open questions or follow-up scope', () => {
+    expect(pluginPlaybook).toContain('Open Questions');
+    expect(pluginPlaybook).toContain('follow-up scope');
+  });
+
+  it('Pi playbook skill warns against audit-repeat plans', () => {
+    expect(piPlaybook).toContain('audit-repeat');
+  });
+
+  it('plugin playbook skill warns against audit-repeat plans', () => {
+    expect(pluginPlaybook).toContain('audit-repeat');
+  });
+});
+
+describe('plan skills — implementation-handoff contract in Path (c)', () => {
+  const piPlan = readRepoFile('packages/pi-eforge/skills/eforge-plan/SKILL.md');
+  const pluginPlan = readRepoFile('eforge-plugin/skills/plan/plan.md');
+
+  it('Pi plan skill Path (c) option 3 says create an implementation-ready session plan', () => {
+    expect(piPlan).toContain('implementation-ready session plan');
+  });
+
+  it('plugin plan skill Path (c) option 3 says create an implementation-ready session plan', () => {
+    expect(pluginPlan).toContain('implementation-ready session plan');
+  });
+
+  it('Pi plan skill Path (c) states the topic describes the change to build', () => {
+    // Step 7 must tell the agent to ask for a topic describing the implementation change
+    expect(piPlan).toMatch(/topic.*describes.*implementation change to build/s);
+  });
+
+  it('plugin plan skill Path (c) states the topic describes the change to build', () => {
+    expect(pluginPlan).toMatch(/topic.*describes.*implementation change to build/s);
+  });
+
+  it('Pi plan skill Path (c) mentions Scope as an implementation-handoff section', () => {
+    const pathCStart = piPlan.indexOf('**Path (c)');
+    const pathCContent = piPlan.slice(pathCStart, pathCStart + 3000);
+    expect(pathCContent).toContain('Scope');
+  });
+
+  it('Pi plan skill Path (c) mentions Code Impact as an implementation-handoff section', () => {
+    const pathCStart = piPlan.indexOf('**Path (c)');
+    const pathCContent = piPlan.slice(pathCStart, pathCStart + 3000);
+    expect(pathCContent).toContain('Code Impact');
+  });
+
+  it('Pi plan skill Path (c) mentions Acceptance Criteria as an implementation-handoff section', () => {
+    const pathCStart = piPlan.indexOf('**Path (c)');
+    const pathCContent = piPlan.slice(pathCStart, pathCStart + 3000);
+    expect(pathCContent).toContain('Acceptance Criteria');
+  });
+
+  it('plugin plan skill Path (c) mentions Scope, Code Impact, and Acceptance Criteria as handoff sections', () => {
+    const pathCStart = pluginPlan.indexOf('**Path (c)');
+    const pathCContent = pluginPlan.slice(pathCStart, pathCStart + 3000);
+    expect(pathCContent).toContain('Scope');
+    expect(pathCContent).toContain('Code Impact');
+    expect(pathCContent).toContain('Acceptance Criteria');
+  });
+
+  it('Pi plan skill Path (c) contains synthesis step', () => {
+    expect(piPlan).toContain('Synthesize implementation handoff');
+  });
+
+  it('plugin plan skill Path (c) contains synthesis step', () => {
+    expect(pluginPlan).toContain('Synthesize implementation handoff');
+  });
+
+  it('Pi plan skill sub-note mentions synthesized handoff', () => {
+    expect(piPlan).toContain('synthesized implementation handoff');
+  });
+
+  it('plugin plan skill sub-note mentions synthesized handoff', () => {
+    expect(pluginPlan).toContain('synthesized implementation handoff');
+  });
+});
+
+describe('plan-command.ts — planning playbook option wording', () => {
+  const planCommand = readRepoFile('packages/pi-eforge/extensions/eforge/plan-command.ts');
+
+  it('does not contain "seed a session plan" for the planning playbook option', () => {
+    expect(planCommand).not.toContain('seed a session plan');
+  });
+
+  it('contains "implementation-ready session plan" for the planning playbook option', () => {
+    expect(planCommand).toContain('implementation-ready session plan');
+  });
+});
+
+describe('docs/config.md — planning playbook prose', () => {
+  const docsConfig = readRepoFile('docs/config.md');
+
+  it('planning playbook prose contains "implementation-ready session plan"', () => {
+    expect(docsConfig).toContain('implementation-ready session plan');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
 describe('packages/pi-eforge/skills/eforge-plan/SKILL.md — AC quality guidance', () => {
   const raw = readRepoFile('packages/pi-eforge/skills/eforge-plan/SKILL.md');
 

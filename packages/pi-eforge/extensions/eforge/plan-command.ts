@@ -193,7 +193,7 @@ export async function handlePlanCommand(
     {
       value: "playbook",
       label: "Start from a planning-mode playbook",
-      description: "Load a planning playbook, investigate, and seed a session plan",
+      description: "Load a planning playbook, investigate, then draft an implementation-ready session plan",
     },
   ]);
 

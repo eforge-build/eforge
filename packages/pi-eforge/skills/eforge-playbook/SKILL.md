@@ -20,7 +20,7 @@ A lower-tier playbook with the same name **shadows** a higher-tier one. eforge a
 Every playbook has a `mode` field in its frontmatter:
 
 - **`mode: autonomous`** — eforge builds the playbook end-to-end without further prompting. Hand-off-and-forget: the daemon enqueues it and runs it. Suitable for mechanical, repeatable workflows where the build agent does not need to consult the user mid-run.
-- **`mode: planning`** — running the playbook triggers an investigation-first workflow. The agent loads the playbook, performs the investigation guided by the playbook's Goal, Acceptance criteria, and Notes for the planner, creates a session plan with concrete findings and action items, and continues the planning conversation interactively. The daemon does not create the session plan directly.
+- **`mode: planning`** — running the playbook triggers an investigation-first workflow. The agent loads the playbook, performs the investigation guided by the playbook's Goal, Acceptance criteria, and Notes for the planner, synthesizes investigation findings into an implementation-ready session plan with concrete implementation targets, actions, non-goals, and validation criteria, and continues the planning conversation interactively. The daemon does not create the session plan directly.
 
 The `mode` field governs what happens when you run a playbook: `autonomous` enqueues a build; `planning` starts an investigation-first planning workflow.
 
@@ -130,7 +130,7 @@ When classification is confident, state the inferred scope briefly:
 
 Ask the user which mode this playbook should use:
 
-> "Should this be an **autonomous** playbook (eforge builds it end-to-end without further prompting — hand-off-and-forget) or a **planning** playbook (the agent investigates first, creates a session plan with findings, and continues `/eforge:plan` interactively before building)?"
+> "Should this be an **autonomous** playbook (eforge builds it end-to-end without further prompting — hand-off-and-forget) or a **planning** playbook (the agent investigates first, synthesizes findings into an implementation-ready session plan, and continues `/eforge:plan` interactively before building)?"
 
 **Default heuristic** — pre-select a suggestion before asking, based on the workflow description:
 
@@ -254,7 +254,7 @@ Same as Step 3.5. Validate before saving, surface errors verbatim, do NOT write 
 
 ## Branch: Run (Step 5)
 
-Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first). For planning playbooks the agent performs an investigation-first workflow: loads the playbook, investigates the codebase guided by the playbook's Goal, Acceptance criteria, and Notes, creates a session plan with concrete findings and action items, and continues interactively via `/eforge:plan`.
+Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first). For planning playbooks the agent performs an investigation-first workflow: loads the playbook, investigates the codebase guided by the playbook's Goal, Acceptance criteria, and Notes, synthesizes findings into an implementation-ready session plan, and continues interactively via `/eforge:plan`.
 
 ### 5.1: Pick a playbook
 
@@ -369,13 +369,20 @@ Do not call `eforge_playbook { action: "run" }` for planning playbooks — the d
 
 3. **Summarize findings**: Build a clear summary of what was found — concrete evidence, confirmed facts, and any remaining assumptions with confidence levels.
 
-4. **Ask for a topic**: Ask the user for a short topic to anchor this session (the playbook provides the shape; the topic anchors it to the current work). If the playbook's Goal makes the topic obvious, suggest it and allow override.
+4. **Synthesize implementation handoff**: Before asking for a topic, convert findings into an implementation-ready handoff:
+   - **Choose implementation targets**: When evidence supports a clear choice, name the specific files, modules, or components that will change.
+   - **Define concrete actions**: For each selected target, state what will be done (e.g., "refactor X to use Y", "add Z to module A").
+   - **Separate evidence from spec**: Put confirmed findings and assumptions in context/evidence-oriented content. Put implementation targets, actions, non-goals, and validation criteria in actionable sections (Scope, Code Impact, Acceptance Criteria).
+   - **Move unresolved findings**: Judgment-heavy or inconclusive findings become Open Questions, follow-up scope, or non-goals — not a directive to re-run the investigation during the build.
+   - **Avoid audit-repeat plans**: The session plan should not instruct the build agent to repeat the investigation. If evidence is insufficient to choose a target, state that as an open question.
 
-5. **Create the session plan**: Generate a session ID `{YYYY-MM-DD}-{playbook-name}` (e.g. `2026-05-19-complexity-hotspot-reduction`). If the playbook has a `profile` field, call `eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true, agent_profile: "{playbook.profile}" }` so the session plan inherits the profile at enqueue time. If the playbook has no `profile`, call `eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true }`. If that session ID already exists, do not abandon the flow: ask whether to resume and update the existing session or create a new suffixed session ID (for example `{YYYY-MM-DD}-{playbook-name}-2`), then continue with the chosen session.
+5. **Ask for a topic**: Ask the user for a short topic that describes the implementation change to build — not the investigation already performed (e.g., "Reduce complexity in event parser" rather than "Audit complexity hotspots"). If the synthesized targets make the topic obvious, suggest it and allow override.
 
-6. **Write concrete sections**: Write investigation findings as concrete section content using `eforge_session_plan { action: "set-section", session, dimension, content }`. At minimum write a scope or goal section reflecting the playbook intent plus investigation results. Include specific evidence — not generic playbook template language.
+6. **Create the session plan**: Generate a session ID `{YYYY-MM-DD}-{playbook-name}` (e.g. `2026-05-19-complexity-hotspot-reduction`). If the playbook has a `profile` field, call `eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true, agent_profile: "{playbook.profile}" }` so the session plan inherits the profile at enqueue time. If the playbook has no `profile`, call `eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true }`. If that session ID already exists, do not abandon the flow: ask whether to resume and update the existing session or create a new suffixed session ID (for example `{YYYY-MM-DD}-{playbook-name}-2`), then continue with the chosen session.
 
-7. **Continue planning**: Announce the session plan path and offer to continue into `/eforge:plan --resume` to work through the remaining dimensions before building.
+7. **Write implementation-ready sections**: Write section content using `eforge_session_plan { action: "set-section", session, dimension, content }`. Scope, Code Impact, and Acceptance Criteria sections must describe the implementation handoff — concrete targets, actions, and validation criteria — not the investigation findings. Record confirmed findings and evidence in context-oriented sections. Include specific evidence — not generic playbook template language.
+
+8. **Continue planning**: Announce the session plan path and offer to continue into `/eforge:plan --resume` to work through the remaining dimensions before building.
    > "Investigation complete. Session plan created at `{path}`. Would you like to continue with `/eforge:plan --resume` to work through the remaining planning dimensions?"
 
 **Defensive fallback**: If `eforge_playbook { action: "run" }` is called for a planning playbook and returns `{ kind: "requires-agent", mode: "planning", name, message }`, apply the investigation-first flow above starting from step 1. Do not prompt for a landing action in this fallback path.
