@@ -320,17 +320,25 @@ describe('builderImplement Claude SDK socket-close regressions', () => {
     const cwd = makeTempDir();
     initGitRepo(cwd);
     let attempts = 0;
-    const harness = new BuilderScriptHarness(async function* (options, agentId, agent, planId) {
+    // Retry is orchestrated by withRetry (not builderImplement internally).
+    // Use the same pattern as "builder withRetry transient transport continuation".
+    const runBuilderAttempt = async function* (input: BuilderContinuationInput): AsyncGenerator<EforgeEvent> {
       attempts++;
       if (attempts === 1) {
         throw new Error(CLAUDE_SDK_SOCKET_CLOSE_RAW);
       }
-      commitFile(options.cwd, 'done.txt', 'done\n');
-      yield resultEvent(agentId, agent, planId);
-    });
+      yield { type: 'plan:build:implement:complete', timestamp: new Date().toISOString(), planId: input.planId };
+    };
 
-    const events = await collectEvents(builderImplement(makePlan(), { harness, cwd }));
+    const policy = DEFAULT_RETRY_POLICIES.builder as RetryPolicy<BuilderContinuationInput>;
+    const events = await collectEvents(withRetry(runBuilderAttempt, policy, {
+      worktreePath: cwd,
+      baseBranch: 'main',
+      planId: 'plan-01-transport-resilience',
+      builderOptions: {},
+    }));
 
+    expect(attempts).toBe(2);
     const retries = filterEvents(events, 'agent:retry');
     expect(retries).toHaveLength(1);
     expect(retries[0].subtype).toBe('error_transient_transport');
