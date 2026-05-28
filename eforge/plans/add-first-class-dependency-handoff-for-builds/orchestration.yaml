@@ -1,0 +1,129 @@
+name: add-first-class-dependency-handoff-for-builds
+description: Add first-class afterQueueId dependency handoff for normal build
+  enqueue flows, including shared queue placement, CLI/daemon/API plumbing,
+  playbook placement parity, Pi/Claude consumer surfaces, docs, and tests.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-build-dependency-core
+    name: Build Dependency Handoff Core Plumbing
+    depends_on: []
+    branch: add-first-class-dependency-handoff-for-builds/plan-01-build-dependency-core
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Touches shared queue semantics, daemon request validation, CLI
+          delegation, and engine enqueue behavior with bounded edits in several
+          large files.
+      reviewer:
+        effort: high
+        rationale: The route and queue placement semantics need careful review for API
+          compatibility and stale-id edge cases.
+      tester:
+        effort: high
+        rationale: Needs targeted coverage for active vs completed-artifact placement
+          and CLI/daemon plumbing.
+  - id: plan-02-playbook-placement-parity
+    name: Playbook Dependency Placement Parity
+    depends_on:
+      - plan-01-build-dependency-core
+    branch: add-first-class-dependency-handoff-for-builds/plan-02-playbook-placement-parity
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: medium
+        rationale: Uses the helper from plan 01 to fix one route path and expand route
+          tests.
+      tester:
+        effort: high
+        rationale: Completed-artifact vs active-upstream playbook placement needs
+          file-location assertions.
+  - id: plan-03-consumer-surfaces-docs
+    name: Consumer Surfaces and Documentation
+    depends_on:
+      - plan-01-build-dependency-core
+      - plan-02-playbook-placement-parity
+    branch: add-first-class-dependency-handoff-for-builds/plan-03-consumer-surfaces-docs
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - docs
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Keeps Pi and Claude Code plugin surfaces in parity while updating
+          skill docs and bounded sections of large extension files.
+      reviewer:
+        effort: high
+        rationale: Consumer-facing schema, skill, plugin-version, and documentation
+          changes need parity review.
+      tester:
+        effort: high
+        rationale: Needs source-wiring tests plus Pi native-command behavior tests.
+      doc-syncer:
+        effort: medium
+        rationale: Several user-facing docs and skill files must describe the new flag
+          and deterministic handoff behavior consistently.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - review-cycle
+    - doc-sync
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive cross-cutting feature touching engine queue
+    placement, daemon/client API contracts, CLI, Pi, Claude plugin parity, docs,
+    and tests, but a single planner can enumerate the work and dependencies, so
+    excursion is appropriate rather than expedition. A plan review gate is
+    useful because the change spans many surfaces and has edge cases around
+    waiting versus completed-artifact placement. The build runs documentation
+    authoring alongside implementation, then writes targeted tests, performs an
+    iterative review cycle focused on API contract and test coverage risk, syncs
+    docs against the final diff, and finishes with an iterative test cycle to
+    catch integration regressions.
+diff_base_ref: 8d3fdabf464a2ea574ae18da2b18bfd6282220e4
