@@ -1839,7 +1839,7 @@ export function createProgram(abortController?: AbortController, version?: strin
   program
     .command('resume <prdId>')
     .description('Resume a compiled build that previously failed')
-    .option('--set-name <setName>', 'Override the set name derived from the prdId')
+    .option('--set-name <setName>', 'Override the set name; when omitted, resolved from recovery sidecar or derived from the prdId')
     .option('--cwd <cwd>', 'Working directory override')
     .option('--verbose', 'Stream agent output')
     .option('--no-monitor', 'Disable web monitor')

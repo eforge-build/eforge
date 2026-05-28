@@ -98,7 +98,7 @@ export interface ReadSidecarResponse {
 /** POST /api/recover/resume-build */
 export interface ResumeBuildRequest {
   prdId: string;
-  /** Override the set name derived from the prdId. When omitted, the set name is derived from the prdId. */
+  /** Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId. */
   setName?: string;
 }
 

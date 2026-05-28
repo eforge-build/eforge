@@ -1942,6 +1942,39 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
   // --- eforge:endregion plan-01-backend-apply-recovery ---
 
+  // --- eforge:region plan-03-consumer-parity ---
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_resume_build
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_resume_build",
+    label: "eforge resume build",
+    description: "Resume a failed build from its compiled artifacts. Use when a PRD failed after the compile stage and has a feature branch with partial compiled work. Spawns a background build agent that picks up from the compiled artifacts and returns { sessionId, pid }. Always confirm with the user before calling this tool.",
+    parameters: Type.Object({
+      prdId: Type.String({
+        description: "The plan ID (prdId) of the failed build to resume from compiled artifacts",
+      }),
+      setName: Type.Optional(Type.String({
+        description: "Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId.",
+      })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const body: { prdId: string; setName?: string } = { prdId: params.prdId };
+      if (params.setName !== undefined) body.setName = params.setName;
+      const { data } = await requireDaemon(
+        ctx.cwd,
+        "POST",
+        API_ROUTES.resumeBuild,
+        body,
+      );
+      if (_latestCtx) void refreshStatus(_latestCtx);
+      return jsonResult(data);
+    },
+  });
+
+  // --- eforge:endregion plan-03-consumer-parity ---
+
   // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
   // --- eforge:region plan-02-daemon-http-and-mcp-tool ---

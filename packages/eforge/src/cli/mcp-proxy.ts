@@ -1007,7 +1007,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     description: 'Resume a compiled build that previously failed. Spawns the resume worker as a background subprocess and returns its sessionId and pid.',
     schema: {
       prdId: z.string().describe('The plan ID (prdId) of the failed compiled build to resume'),
-      setName: z.string().optional().describe('Override the set name derived from the prdId. When omitted, the set name is derived from the prdId.'),
+      setName: z.string().optional().describe('Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId.'),
     },
     handler: async ({ prdId, setName }, { cwd: toolCwd }) => {
       const body: { prdId: string; setName?: string } = { prdId };

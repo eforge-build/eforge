@@ -387,7 +387,7 @@ Resume a compiled build that previously failed
 
 | Flag | Description |
 |------|-------------|
-| `--set-name <setName>` | Override the set name derived from the prdId |
+| `--set-name <setName>` | Override the set name; when omitted, resolved from recovery sidecar or derived from the prdId |
 | `--cwd <cwd>` | Working directory override |
 | `--verbose` | Stream agent output |
 | `--no-monitor` | Disable web monitor |

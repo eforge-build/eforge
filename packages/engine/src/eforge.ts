@@ -2784,7 +2784,18 @@ export class EforgeEngine {
       const planDir = resolve(planBaseCwd, this.config.plan.outputDir, setName);
       const planFileMap = new Map<string, PlanFile>();
       for (const plan of orchConfig.plans) {
-        const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
+        const planFilePath = resolve(planDir, `${plan.id}.md`);
+        if (!existsSync(planFilePath)) {
+          status = 'failed';
+          buildSummary = `Missing plan markdown: ${plan.id}.md`;
+          yield {
+            timestamp: ts(), type: 'build:resume:ineligible',
+            reason: `plan markdown file not found: ${plan.id}.md`,
+            checkedPath: planFilePath,
+          };
+          return;
+        }
+        const planFile = await parsePlanFile(planFilePath);
         for (const warning of planFile.warnings ?? []) {
           yield { timestamp: ts(), type: 'planning:warning', planId: plan.id, message: warning, source: 'parsePlanFile' };
         }
