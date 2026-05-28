@@ -1,0 +1,69 @@
+name: fix-review-cycle-dirty-worktree-completion-bug
+description: Fix review-cycle dirty-worktree completion bug by making missing
+  evaluator verdicts and unresolved max-round review cycles terminal, adding a
+  final sequential dirty-worktree guard, and preventing stale completed status
+  events after merge failures.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- test/build-evaluator-enforcement.test.ts
+    test/orchestration-logic.test.ts test/pipeline.test.ts
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-review-cycle-dirty-worktree-safety
+    name: Review Cycle Dirty Worktree Safety
+    depends_on: []
+    branch: fix-review-cycle-dirty-worktree-completion-bug/plan-01-review-cycle-dirty-worktree-safety
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Multi-file engine orchestration bugfix across evaluator, pipeline
+          runner, and plan lifecycle event ordering with regression tests in
+          oversized files requiring bounded edits.
+      reviewer:
+        effort: high
+        rationale: Safety-critical orchestration changes must verify terminal event
+          semantics, dirty-worktree handling, and no regression to
+          accepted/rejected evaluator flows.
+      tester:
+        effort: high
+        rationale: Targeted tests exercise asynchronous event ordering and git worktree
+          state; failures may require careful diagnosis.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: This is a focused but non-trivial engine orchestration bugfix
+    spanning pipeline stages, runners, orchestrator event ordering, and
+    regression tests, so excursion is appropriate. A plan review gate is useful
+    because the fix affects terminal state semantics and event ordering. The
+    build pipeline implements the fix, adds/updates tests, runs an iterative
+    test cycle, then performs a strict review cycle. Review perspectives are
+    limited to code and test because the risk is correctness of orchestration
+    logic and regression coverage, not security or public API behavior.
+diff_base_ref: df79dd510068928c21e6969e1e444ef188384c0e
