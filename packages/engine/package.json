@@ -30,10 +30,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.141",
-    "@earendil-works/pi-agent-core": "^0.75.4",
-    "@earendil-works/pi-ai": "^0.75.4",
-    "@earendil-works/pi-coding-agent": "^0.75.4",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.154",
+    "@earendil-works/pi-agent-core": "^0.76.0",
+    "@earendil-works/pi-ai": "^0.76.0",
+    "@earendil-works/pi-coding-agent": "^0.76.0",
     "@eforge-build/client": "workspace:*",
     "@eforge-build/extension-sdk": "workspace:*",
     "@eforge-build/scopes": "workspace:*",
@@ -49,7 +49,7 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "author": "Schaake Solutions LLC"
 }

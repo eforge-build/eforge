@@ -11,7 +11,7 @@
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
     "gray-matter": "^4.0.3",
-    "next": "^15.5.18",
+    "next": "^16.2.6",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "rehype-pretty-code": "^0.14.3",
@@ -21,14 +21,14 @@
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
-    "shiki": "^1.29.2",
+    "shiki": "^4.1.0",
     "unified": "^11.0.5"
   },
   "devDependencies": {
-    "@types/node": "^20.19.41",
+    "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
-    "typescript": "^5.9.3",
-    "vitest": "^2.1.9"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
   }
 }

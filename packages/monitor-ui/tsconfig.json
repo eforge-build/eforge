@@ -11,6 +11,8 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": false,
     "noEmit": true,
+    "ignoreDeprecations": "6.0",
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]

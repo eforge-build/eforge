@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "dist",
     "composite": false,
-    "noEmit": false
+    "noEmit": false,
+    "paths": {}
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
