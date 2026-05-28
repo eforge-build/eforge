@@ -501,7 +501,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
     // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     // --- eforge:region plan-01-build-dependency-core ---
-    .option('--after <queue-id>', 'Wait for an upstream queue item to complete before building')
+    .option('--after <queue-id>', 'Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact')
     // --- eforge:endregion plan-01-build-dependency-core ---
     .action(
       async (
@@ -641,7 +641,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
     // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     // --- eforge:region plan-01-build-dependency-core ---
-    .option('--after <queue-id>', 'Wait for an upstream queue item to complete before building')
+    .option('--after <queue-id>', 'Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact')
     // --- eforge:endregion plan-01-build-dependency-core ---
     .action(
       async (

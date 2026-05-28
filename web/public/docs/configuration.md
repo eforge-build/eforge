@@ -344,6 +344,8 @@ depends_on: [api-v2]  # wait for pending/running/waiting queue item ids
 
 `depends_on` is validated at enqueue time and only live queue items can be dependencies. Items blocked on dependencies live under the queue's `waiting/` state until all upstream items complete; if an upstream item fails or is cancelled, its waiting dependents move to `skipped/`.
 
+**Explicit deterministic handoff**: instead of writing `depends_on` in frontmatter, pass `--after <queue-id>` to the CLI or `afterQueueId` to the `eforge_build` MCP/Pi tool to create an explicit dependency on an active or completed queue entry. Active upstream items (pending/running/waiting) are held in `waiting/` and unblocked when the upstream completes. Completed upstream items with a usable artifact are enqueued immediately as eligible dependents. Explicit `afterQueueId` takes precedence over automatic dependency detection, which remains best effort and is only used when no explicit dependency is supplied. Failed, skipped, and unknown IDs are rejected at enqueue time.
+
 ## Post-Merge Commands
 
 Commands to run after all plans merge - compile, test, lint, or any validation step:

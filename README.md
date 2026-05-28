@@ -114,6 +114,12 @@ Standalone CLI:
 npx @eforge-build/eforge build "Add rate limiting to the API"
 npx @eforge-build/eforge build plans/my-feature-prd.md
 
+# Deterministic handoff: enqueue a build that waits for an upstream build to finish
+# Use --after <queue-id> to create an explicit dependency on an active build.
+# Active upstream (pending/running/waiting): held until upstream completes.
+# Completed upstream with artifact: enqueued immediately as an eligible dependent.
+npx @eforge-build/eforge build "Add e2e tests for rate limiting" --after q-abc123
+
 # Run a saved playbook
 npx @eforge-build/eforge play docs-sync
 

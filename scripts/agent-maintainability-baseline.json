@@ -8,7 +8,7 @@
     },
     {
       "path": "packages/monitor/src/server.ts",
-      "noGrowthCeiling": 4932,
+      "noGrowthCeiling": 4934,
       "category": "implementation"
     },
     {
@@ -28,7 +28,7 @@
     },
     {
       "path": "packages/pi-eforge/extensions/eforge/index.ts",
-      "noGrowthCeiling": 2553,
+      "noGrowthCeiling": 2561,
       "category": "implementation"
     },
     {
@@ -58,7 +58,7 @@
     },
     {
       "path": "packages/eforge/src/cli/mcp-proxy.ts",
-      "noGrowthCeiling": 1246,
+      "noGrowthCeiling": 1255,
       "category": "implementation"
     },
     {

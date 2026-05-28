@@ -1132,3 +1132,60 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(block).toContain("StringEnum(['local', 'user'])");
   });
 });
+
+// ---------------------------------------------------------------------------
+// eforge_build afterQueueId wiring (plan-03-consumer-surfaces-docs)
+// ---------------------------------------------------------------------------
+
+describe('eforge_build afterQueueId schema and forwarding parity (plan-03-consumer-surfaces-docs)', () => {
+  const mcpSource = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
+  const piSource = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+
+  function getMcpBuildBlock(): string {
+    const start = mcpSource.indexOf("name: 'eforge_build',");
+    expect(start).toBeGreaterThan(-1);
+    const next = mcpSource.indexOf('createDaemonTool(', start + 1);
+    return next > start ? mcpSource.slice(start, next) : mcpSource.slice(start);
+  }
+
+  function getPiBuildBlock(): string {
+    const start = piSource.indexOf('name: "eforge_build"');
+    expect(start).toBeGreaterThan(-1);
+    const next = piSource.indexOf('pi.registerTool(', start + 1);
+    const blockStart = piSource.lastIndexOf('pi.registerTool(', start);
+    return next > blockStart ? piSource.slice(blockStart, next) : piSource.slice(blockStart);
+  }
+
+  it('MCP proxy eforge_build schema declares optional afterQueueId field', () => {
+    const block = getMcpBuildBlock();
+    expect(block).toContain('afterQueueId');
+    expect(block).toMatch(/afterQueueId:\s*z[\s\S]*?\.string\(\)[\s\S]*?\.optional\(\)/);
+  });
+
+  it('Pi extension eforge_build schema declares optional afterQueueId field', () => {
+    const block = getPiBuildBlock();
+    expect(block).toContain('afterQueueId');
+    expect(block).toMatch(/afterQueueId:\s*Type\.Optional\(Type\.String/);
+  });
+
+  it('MCP proxy eforge_build handler forwards afterQueueId to the enqueue body', () => {
+    const block = getMcpBuildBlock();
+    expect(block).toMatch(/body\.afterQueueId\s*=\s*afterQueueId/);
+  });
+
+  it('Pi extension eforge_build handler forwards afterQueueId to the enqueue body', () => {
+    const block = getPiBuildBlock();
+    expect(block).toMatch(/body\.afterQueueId\s*=\s*params\.afterQueueId/);
+  });
+
+  it('MCP proxy eforge_build only sets afterQueueId in body when defined', () => {
+    const block = getMcpBuildBlock();
+    // Must be guarded by a defined check (not unconditionally assigned)
+    expect(block).toMatch(/afterQueueId\s*!==\s*undefined/);
+  });
+
+  it('Pi extension eforge_build only sets afterQueueId in body when defined', () => {
+    const block = getPiBuildBlock();
+    expect(block).toMatch(/params\.afterQueueId\s*!==\s*undefined/);
+  });
+});

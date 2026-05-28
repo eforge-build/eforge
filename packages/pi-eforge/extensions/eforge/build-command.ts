@@ -18,8 +18,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   apiListProfilesIfRunning,
   apiSessionPlanListIfRunning,
+  apiGetQueueIfRunning,
   type AgentRuntimeProfileInfo,
   type SessionPlanListEntryWire,
+  type QueueItem,
 } from "@eforge-build/client";
 import { DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import {
@@ -75,6 +77,67 @@ function hasLandingOverride(args: string): boolean {
   return /(?:^|\s)(--landing-action|landingAction|--landing-auto-merge|--no-landing-auto-merge|landingAutoMerge)(?:\s|=|:|$)/.test(args);
   // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 }
+
+// --- eforge:region plan-03-consumer-surfaces-docs ---
+
+/**
+ * Returns true when args already contain an explicit --after override so the
+ * active-build wait selector should be bypassed.
+ */
+function hasAfterOverride(args: string): boolean {
+  return /(?:^|\s)--after(?:\s|=|$)/.test(args);
+}
+
+/** Fetch active (pending/running/queued/waiting) queue items for dependency selection. */
+async function fetchActiveBuildsForDependency(cwd: string): Promise<QueueItem[]> {
+  try {
+    const result = await apiGetQueueIfRunning({ cwd });
+    if (result === null) return [];
+    return result.data.filter(
+      (item) =>
+        item.status === "running" ||
+        item.status === "pending" ||
+        item.status === "queued" ||
+        item.status === "waiting",
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Show active-build wait selector. Returns updated args string with `--after <id>` appended
+ * when the user picks an upstream, original args when "Run now" is chosen, or null if cancelled.
+ */
+async function selectActiveBuildsForDependency(ctx: UIContext, args: string): Promise<string | null> {
+  if (hasAfterOverride(args)) return args;
+
+  const activeItems = await withLoader(ctx, "Checking queue...", () =>
+    fetchActiveBuildsForDependency(ctx.cwd),
+  );
+  if (activeItems.length === 0) return args;
+
+  const waitOptions = [
+    {
+      value: "__now__",
+      label: "Run now",
+      description: "Enqueue immediately, no dependency",
+    },
+    ...activeItems.map((item) => ({
+      value: item.id,
+      label: `Wait for: ${item.title}`,
+      description: `[${item.status}] Runs after this build finishes`,
+    })),
+  ];
+
+  const choice = await showSelectPanel(ctx, "eforge - Active Builds Detected", waitOptions);
+  if (!choice) return null;
+  if (choice === "__now__") return args;
+
+  return `${args} --after ${quoteSkillArg(choice)}`;
+}
+
+// --- eforge:endregion plan-03-consumer-surfaces-docs ---
 
 async function selectProfileArgs(ctx: UIContext, args: string): Promise<string | null> {
   if (hasProfileOverride(args)) return args;
@@ -190,8 +253,12 @@ export async function handleBuildCommand(
 
   // If explicit landing override already in args, bypass the landing selector
   if (hasLandingOverride(argsWithProfile)) {
-    sendBuildSkill(pi, argsWithProfile);
+    // --- eforge:region plan-03-consumer-surfaces-docs ---
+    const afterArgsWithLanding = await selectActiveBuildsForDependency(ctx, argsWithProfile);
+    if (afterArgsWithLanding === null) return;
+    sendBuildSkill(pi, afterArgsWithLanding);
     return;
+    // --- eforge:endregion plan-03-consumer-surfaces-docs ---
   }
 
   // Landing selection: show the full selector with "Use project default"
@@ -210,5 +277,9 @@ export async function handleBuildCommand(
   }
   // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
-  sendBuildSkill(pi, finalArgs);
+  // --- eforge:region plan-03-consumer-surfaces-docs ---
+  const finalArgsWithDep = await selectActiveBuildsForDependency(ctx, finalArgs);
+  if (finalArgsWithDep === null) return;
+  sendBuildSkill(pi, finalArgsWithDep);
+  // --- eforge:endregion plan-03-consumer-surfaces-docs ---
 }

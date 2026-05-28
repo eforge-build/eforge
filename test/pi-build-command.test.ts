@@ -26,10 +26,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock Pi TUI helpers — avoids loading @earendil-works/pi-tui peer dep
 // ---------------------------------------------------------------------------
 
+// vi.hoisted ensures this is available when the vi.mock factory runs (hoisted above imports).
+const { mockShowSelectPanel } = vi.hoisted(() => ({
+  mockShowSelectPanel: vi.fn(),
+}));
+
 vi.mock('../packages/pi-eforge/extensions/eforge/ui-helpers.js', () => ({
   withLoader: vi.fn(async (_ctx: unknown, _msg: unknown, fn: () => unknown) => fn()),
   showInfoPanel: vi.fn(),
-  showSelectPanel: vi.fn(),
+  showSelectPanel: mockShowSelectPanel,
   showSearchableSelectPanel: vi.fn(),
 }));
 
@@ -53,11 +58,13 @@ vi.mock('@eforge-build/client', async (importOriginal) => {
     ...actual,
     apiListProfilesIfRunning: vi.fn(),
     apiSessionPlanListIfRunning: vi.fn(),
+    apiGetQueueIfRunning: vi.fn(),
   };
 });
 
 import { handleBuildCommand } from '../packages/pi-eforge/extensions/eforge/build-command.js';
 import { promptForBuildLandingGate } from '../packages/pi-eforge/extensions/eforge/landing-gate.js';
+import { apiGetQueueIfRunning } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -90,6 +97,14 @@ function captureSkillCall(pi: ReturnType<typeof makePi>): string | undefined {
 
 function mockLandingGate(result: { landingAction?: string; cancelled?: boolean; configUpdated?: boolean; landingAutoMerge?: boolean }) {
   (promptForBuildLandingGate as ReturnType<typeof vi.fn>).mockResolvedValue(result);
+}
+
+function mockQueue(items: Array<{ id: string; title: string; status: string }>) {
+  (apiGetQueueIfRunning as ReturnType<typeof vi.fn>).mockResolvedValue({ data: items });
+}
+
+function mockQueueEmpty() {
+  (apiGetQueueIfRunning as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [] });
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +348,118 @@ describe('handleBuildCommand - profile override preservation', () => {
   });
 });
 
+// --- eforge:region plan-03-consumer-surfaces-docs ---
+
+// ---------------------------------------------------------------------------
+// Tests: active-build wait selection (--after <queue-id>)
+// ---------------------------------------------------------------------------
+
+describe('handleBuildCommand - active-build wait selection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLandingGate({});
+  });
+
+  it('skips active-build selector when queue is empty', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+    mockQueueEmpty();
+
+    // Use --profile to bypass profile selection (not the concern of this test)
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
+
+    expect(pi.sendUserMessage).toHaveBeenCalledOnce();
+    const call = captureSkillCall(pi)!;
+    expect(call).not.toContain('--after');
+    // showSelectPanel should not be called for active-build (only for profile/source which are mocked out)
+  });
+
+  it('appends --after <id> when user selects an active build to wait for', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+    mockQueue([{ id: 'q-abc123', title: 'Add rate limiting', status: 'running' }]);
+    // Simulate user selecting the active build (returns the queue id)
+    mockShowSelectPanel.mockResolvedValueOnce('q-abc123');
+
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
+
+    expect(pi.sendUserMessage).toHaveBeenCalledOnce();
+    const call = captureSkillCall(pi)!;
+    expect(call).toContain('--after');
+    expect(call).toContain('"q-abc123"');
+  });
+
+  it('omits --after when user selects "Run now"', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+    mockQueue([{ id: 'q-abc123', title: 'Add rate limiting', status: 'running' }]);
+    // Simulate user selecting "Run now"
+    mockShowSelectPanel.mockResolvedValueOnce('__now__');
+
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
+
+    expect(pi.sendUserMessage).toHaveBeenCalledOnce();
+    const call = captureSkillCall(pi)!;
+    expect(call).not.toContain('--after');
+  });
+
+  it('does not call skill when user cancels the active-build selector', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+    mockQueue([{ id: 'q-abc123', title: 'Add rate limiting', status: 'running' }]);
+    // Simulate user cancelling (returns null/undefined)
+    mockShowSelectPanel.mockResolvedValueOnce(null);
+
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
+
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it('preserves --profile and --landing-action alongside --after', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+    mockLandingGate({ landingAction: 'pr' });
+    mockQueue([{ id: 'q-xyz', title: 'Feature B', status: 'pending' }]);
+    mockShowSelectPanel.mockResolvedValueOnce('q-xyz');
+
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast"');
+
+    const call = captureSkillCall(pi)!;
+    expect(call).toContain('--profile');
+    expect(call).toContain('"fast"');
+    expect(call).toContain('--landing-action pr');
+    expect(call).toContain('--after');
+    expect(call).toContain('"q-xyz"');
+  });
+
+  it('bypasses active-build selector when --after is already in args', async () => {
+    const pi = makePi();
+    const ctx = makeCtx();
+    mockQueue([{ id: 'q-abc', title: 'Active build', status: 'running' }]);
+    // --after already in args from headless/scripted caller; --profile bypasses profile selection
+    await handleBuildCommand(pi as any, ctx as any, '--infer --profile "fast" --after "q-already"');
+
+    // Active-build selector should not be shown (mockShowSelectPanel not called for dependency)
+    // The call should pass through with the existing --after
+    const call = captureSkillCall(pi);
+    expect(call).toContain('--after');
+    expect(call).toContain('q-already');
+  });
+
+  it('does not show active-build selector in headless mode', async () => {
+    const pi = makePi();
+    mockQueue([{ id: 'q-abc', title: 'Active build', status: 'running' }]);
+
+    await handleBuildCommand(pi as any, null, '--infer');
+
+    // headless: sends skill directly, no UI prompts
+    expect(pi.sendUserMessage).toHaveBeenCalledOnce();
+    expect(captureSkillCall(pi)).toBe('/skill:eforge-build --infer');
+  });
+});
+
+// --- eforge:endregion plan-03-consumer-surfaces-docs ---
+
 // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 
 // ---------------------------------------------------------------------------
@@ -342,6 +469,9 @@ describe('handleBuildCommand - profile override preservation', () => {
 describe('handleBuildCommand - PR auto-merge selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Plan-03 added selectActiveBuildsForDependency to all UI paths; mock the queue as empty
+    // so tests focused on landing/auto-merge behavior are not affected by the dependency selector.
+    mockQueueEmpty();
   });
 
   it('appends --landing-auto-merge when gate returns landingAutoMerge: true', async () => {

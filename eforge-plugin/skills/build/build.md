@@ -1,6 +1,6 @@
 ---
 description: Enqueue a source for the eforge daemon to build via MCP tool
-argument-hint: "[source] [--infer] [--profile <name>] [--landing-action <action>]"
+argument-hint: "[source] [--infer] [--profile <name>] [--landing-action <action>] [--after <queue-id>]"
 disable-model-invocation: true
 ---
 
@@ -16,12 +16,13 @@ Enqueue a PRD file or description for the eforge daemon to build. Uses the eforg
 - `--landing-action <action>` (optional) - Override the landing action for this build. One of `pr`, `merge`, or `leave`. Precedence: this argument > PRD frontmatter > `landing.action` in `eforge/config.yaml` > engine default (`merge`). If omitted, the project config default applies. Note: `merge` on the trunk branch requires `build.allowLocalMergeToTrunk: true` in `eforge/config.yaml`.
 - `--landing-auto-merge` (optional) - Enable GitHub PR auto-merge for this build. Only applies when the effective landing action is `pr`. Sends `landingAutoMerge: true` in the enqueue body, overriding the configured `landing.pr.autoMerge` policy for this run.
 - `--no-landing-auto-merge` (optional) - Disable GitHub PR auto-merge for this build. Only applies when the effective landing action is `pr`. Sends `landingAutoMerge: false` in the enqueue body, overriding the configured `landing.pr.autoMerge` policy for this run.
+- `--after <queue-id>` (optional) - Explicit upstream dependency. When provided, the enqueued PRD gains `depends_on: [queue-id]`. Active upstream items (pending/running/waiting) are held in `waiting/` and start automatically when the upstream completes. Completed upstream items with a usable artifact are enqueued immediately as eligible dependents. This is a deterministic handoff - it takes precedence over any automatic dependency detection. A single explicit dependency becomes the stack parent when stacking is enabled.
 
 ## Workflow
 
 ### Step 1: Resolve Source Input
 
-Parse and remember any `--profile <name>` override before resolving the source. Determine the working source from one of four branches:
+Parse and remember any `--profile <name>` override and any `--after <queue-id>` flag before resolving the source. Remove both flags from `$ARGUMENTS` before source resolution so they are not mistaken for build content. Keep the remembered queue id to include as `afterQueueId` in the enqueue call at Step 5. Determine the working source from one of four branches:
 
 **Branch A — File path**: If `$ARGUMENTS` is a file path (ends in `.md`, `.txt`, `.yaml`, or contains `/`):
 1. Verify the file exists with the Read tool
@@ -175,7 +176,7 @@ First, validate the project config by calling the `mcp__eforge__eforge_config` t
 
 - If `valid` is `true`, continue silently.
 
-Call the `mcp__eforge__eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If an explicit landing action was selected (anything other than "Use project default"), include `landingAction: "<value>"` in the call. **Do not include `landingAction` when the user selected "Use project default" or when no landing override is present in `$ARGUMENTS` — omitting the key lets the engine inherit the configured default.** If an explicit auto-merge override was selected (anything other than "Use policy default"), include `landingAutoMerge: <true|false>` in the call. **Do not include `landingAutoMerge` when "Use policy default" was selected or when neither `--landing-auto-merge` nor `--no-landing-auto-merge` is present in `$ARGUMENTS` — omitting the key defers to the `landing.pr.autoMerge` policy.**
+Call the `mcp__eforge__eforge_build` tool with `{ source: "<source>" }`. If the user explicitly specified a profile override, include `profile: "<name>"` in the call. If an explicit landing action was selected (anything other than "Use project default"), include `landingAction: "<value>"` in the call. **Do not include `landingAction` when the user selected "Use project default" or when no landing override is present in `$ARGUMENTS` — omitting the key lets the engine inherit the configured default.** If an explicit auto-merge override was selected (anything other than "Use policy default"), include `landingAutoMerge: <true|false>` in the call. **Do not include `landingAutoMerge` when "Use policy default" was selected or when neither `--landing-auto-merge` nor `--no-landing-auto-merge` is present in `$ARGUMENTS` — omitting the key defers to the `landing.pr.autoMerge` policy.** If `$ARGUMENTS` contains `--after <queue-id>`, extract the queue id and include `afterQueueId: "<queue-id>"` in the call. **Do not include `afterQueueId` when `--after` is not present in `$ARGUMENTS` — omitting the key means no explicit dependency and automatic dependency detection applies.**
 
 <!-- parity-skip-start -->
 Present the landing selector conversationally with the four choices (Use project default, pr, merge, leave) before calling the tool, unless an explicit override is already in `$ARGUMENTS`. On protected trunk with unsafe effective default, exclude merge and project-default-as-merge from the normal options and offer the remediation choices instead (pr, leave, update config if applicable, cancel).
