@@ -1,0 +1,55 @@
+name: make-planning-mode-playbooks-produce-actionable-implementation-plans
+description: Update first-party Pi and Claude Code planning-mode playbook
+  instructions and related copy so investigation findings are transformed into
+  implementation-ready session plans.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm docs:check-parity
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm test -- test/skills-docs-wiring.test.ts
+    test/pi-playbook-commands.test.ts
+plans:
+  - id: plan-01-actionable-planning-playbooks
+    name: Make Planning Playbooks Produce Actionable Session Plans
+    depends_on: []
+    branch: make-planning-mode-playbooks-produce-actionable-implementation-plans/plan-01-actionable-planning-playbooks
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - docs
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive multi-file consumer-facing instruction and
+    documentation fix across Pi and Claude plugin integrations, so excursion is
+    appropriate. A plan-review-cycle helps catch parity, scope, and
+    acceptance-criteria gaps before build. The build runs implementation
+    alongside documentation authoring, then syncs docs and runs
+    validation-oriented tests/checks before an iterative review cycle. Review
+    focuses on code and docs because the work changes skill instructions,
+    user-facing copy, and plugin packaging, without security-sensitive behavior.
+diff_base_ref: 2243faacb70111953aaea547412beedb66c38514
