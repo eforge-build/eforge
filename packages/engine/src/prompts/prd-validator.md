@@ -37,7 +37,9 @@ Some files appear with a marker of the form `[summarized: ...]` instead of a ful
 
 ## Output Format
 
-Output a single JSON block with your analysis. Include a `completionPercent` field (0-100 integer) estimating overall PRD completion, a `complexity` field per gap, and an `acceptanceVerdicts` array with one entry per acceptance criterion.
+Your entire response MUST consist of exactly one fenced ` ```json ``` ` block. Do not add any prose, explanation, preamble, or text before or after the JSON block — the block must be the first and only thing in your response.
+
+The JSON block must include a `completionPercent` field (0-100 integer) estimating overall PRD completion, a `complexity` field per gap, and an `acceptanceVerdicts` array with one entry per acceptance criterion.
 
 Complexity definitions:
 - `trivial` - missing log line, config tweak, or minor wiring
