@@ -25,7 +25,7 @@ Normalize input and add it to the PRD queue
 | `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
 | `--landing-auto-merge` | Enable PR auto-merge for this build |
 | `--no-landing-auto-merge` | Disable PR auto-merge for this build |
-| `--after <queue-id>` | Wait for an upstream queue item to complete before building |
+| `--after <queue-id>` | Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact |
 
 ### `build`
 
@@ -54,7 +54,7 @@ Compile + build + validate in one step
 | `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
 | `--landing-auto-merge` | Enable PR auto-merge for this build |
 | `--no-landing-auto-merge` | Disable PR auto-merge for this build |
-| `--after <queue-id>` | Wait for an upstream queue item to complete before building |
+| `--after <queue-id>` | Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact |
 
 ### `monitor`
 
