@@ -195,18 +195,19 @@ function buildMarkdown(
   }
 
   // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
+  if (summary.partial === true) {
+    lines.push(`**⚠ Partial analysis** — failure summary was reconstructed from incomplete event history. Some details may be missing.`);
+    lines.push('');
+  }
+
   if (summary.terminalFailure) {
     lines.push('## Terminal Failure', '');
-    lines.push(`**Stage:** ${summary.terminalFailure.stage}`);
-    if (summary.terminalFailure.phaseStatus) {
-      lines.push(`**Phase Status:** ${summary.terminalFailure.phaseStatus}`);
-    }
-    if (summary.terminalFailure.phaseSummary) {
-      lines.push(`**Phase Summary:** ${escapeTableCell(summary.terminalFailure.phaseSummary)}`);
-    }
-    if (summary.terminalFailure.eventType) {
-      lines.push(`**Event Type:** ${summary.terminalFailure.eventType}`);
-    }
+    if (summary.terminalFailure.scope) lines.push(`**Scope:** ${summary.terminalFailure.scope}`);
+    if (summary.terminalFailure.stage) lines.push(`**Stage:** ${summary.terminalFailure.stage}`);
+    if (summary.terminalFailure.message) lines.push(`**Message:** ${escapeTableCell(summary.terminalFailure.message)}`);
+    if (summary.terminalFailure.phaseStatus) lines.push(`**Phase Status:** ${summary.terminalFailure.phaseStatus}`);
+    if (summary.terminalFailure.phaseSummary) lines.push(`**Phase Summary:** ${escapeTableCell(summary.terminalFailure.phaseSummary)}`);
+    if (summary.terminalFailure.eventType) lines.push(`**Event Type:** ${summary.terminalFailure.eventType}`);
     lines.push('');
   }
 

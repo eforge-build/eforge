@@ -11,6 +11,10 @@
  */
 
 export type {
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  TerminalFailureScope,
+  TerminalFailureEnvelope,
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
   EforgeEvent,
   DaemonRunUpsertEvent,
   AgentRole,
@@ -87,6 +91,10 @@ export {
   StackArtifactRefSchema,
   StackLayerWireSchema,
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  TerminalFailureScopeSchema,
+  TerminalFailureEnvelopeSchema,
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
 } from './events.schemas.js';
 
 export { EforgeEventSchema } from './events.schemas.js';

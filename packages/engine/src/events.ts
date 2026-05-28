@@ -37,6 +37,10 @@ export type {
   StackProvider,
   LandingPublicationAction,
   // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  TerminalFailureScope,
+  TerminalFailureEnvelope,
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
 } from '@eforge-build/client';
 
 export {
@@ -44,6 +48,10 @@ export {
   SEVERITY_ORDER,
   isAlwaysYieldedAgentEvent,
   EforgeEventSchema,
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  TerminalFailureScopeSchema,
+  TerminalFailureEnvelopeSchema,
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
 } from '@eforge-build/client';
 
 // Engine-only types not part of the wire protocol:

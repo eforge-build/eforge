@@ -327,6 +327,11 @@ export const IGNORED_EVENT_TYPES = [
   'landing:auto-merge:start',
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',
+  // --- eforge:region plan-01-terminal-failure-contract ---
+  // build:terminal-failure — run-level authoritative terminal failure event.
+  // Monitor UI rendering is future work; session reducer does not handle it.
+  'build:terminal-failure',
+  // --- eforge:endregion plan-01-terminal-failure-contract ---
 ] as const;
 
 // ---------------------------------------------------------------------------

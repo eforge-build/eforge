@@ -646,7 +646,7 @@ describe('buildFailureSummary', () => {
     expect(summary.baseBranch).toBe('main'); // falls back to main (no remote tracking)
     expect(summary.featureBranch).toBe('eforge/test-recovery-set');
     expect(summary.prdId).toBe('test-prd');
-    // Monitor DB had events, so partial should not be true
+    // Monitor DB had plan:build:failed events with direct evidence — not legacy inference, not partial
     expect(summary.partial).toBeUndefined();
   });
 
@@ -1352,7 +1352,7 @@ describe('buildFailureSummary multi-plan reconstruction', () => {
       dbPath,
     });
 
-    expect(summary.partial).toBeUndefined();
+    expect(summary.partial).toBeUndefined(); // direct evidence, not partial
   });
 
   it('plan:error:set enriches summary.plans error when no plan:build:failed row exists for the plan', async () => {
