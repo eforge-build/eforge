@@ -1,0 +1,102 @@
+name: resume-failed-compiled-builds
+description: Add a compiled-build resume operation that reuses existing
+  orchestration artifacts, failed-build history, and preserved git branches
+  instead of recompiling failed Expeditions.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+plans:
+  - id: plan-01-engine-resume
+    name: Engine Resume Reconstruction
+    depends_on: []
+    branch: resume-failed-compiled-builds/plan-01-engine-resume
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Cross-cuts event schemas, orchestrator state seeding, worktree reuse,
+          and build prompt context without a prior implementation pattern.
+      reviewer:
+        effort: high
+        rationale: Resume state can skip or rerun work; review must scrutinize
+          dependency-state safety and event-contract compatibility.
+  - id: plan-02-api-cli
+    name: Resume API, Daemon, and CLI Surfaces
+    depends_on:
+      - plan-01-engine-resume
+    branch: resume-failed-compiled-builds/plan-02-api-cli
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Adds a new daemon route, shared client contract, CLI worker entry
+          point, and MCP proxy tool that must stay aligned.
+  - id: plan-03-consumer-parity
+    name: Pi and Claude Consumer Parity
+    depends_on:
+      - plan-02-api-cli
+    branch: resume-failed-compiled-builds/plan-03-consumer-parity
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - test-write
+      - doc-sync
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: Excursion fits because the work is cross-cutting but cohesive and
+    explicitly does not need delegated expedition/module planning. A planner
+    plus plan review is enough to coordinate engine resume reconstruction,
+    client/daemon route contracts, CLI, Pi/Claude surfaces, and tests. Build
+    runs implementation with documentation authoring in parallel, then
+    writes/syncs tests/docs, executes iterative tests, and finishes with
+    review-cycle. API and test perspectives are selected because the feature
+    adds public client/daemon/CLI/tool contracts and has substantial
+    reconstruction/scheduling acceptance criteria.
+diff_base_ref: df79dd510068928c21e6969e1e444ef188384c0e
