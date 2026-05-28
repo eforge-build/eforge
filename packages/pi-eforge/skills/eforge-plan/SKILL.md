@@ -32,7 +32,7 @@ If `--session <session-id>` is provided, skip the start menu and follow Path (a)
 > "How would you like to start?
 > 1. **Resume** an existing planning session
 > 2. **New** session — start from scratch
-> 3. **Start from a planning-mode playbook** — load a planning playbook, investigate the codebase, and create a session plan with concrete findings"
+> 3. **Start from a planning-mode playbook** — load a planning playbook, investigate the codebase, synthesize findings, and create an implementation-ready session plan"
 
 Then follow the corresponding path below.
 
@@ -58,13 +58,19 @@ Then follow the corresponding path below.
 4. Call `eforge_playbook { action: 'show', name: '{name}' }` to load the full playbook content. If an exact `--playbook` was provided but the playbook is not `mode: planning`, stop and explain that `/eforge:plan` only starts from planning-mode playbooks.
 5. Read the playbook's Goal, Acceptance criteria, and Notes for the planner sections. Identify what needs to be investigated: relevant files, codebase areas, questions to answer, commands to run.
 6. Perform the investigation using read, search, and command capabilities. Gather evidence from the codebase. Validate cheap assumptions immediately.
-7. Ask the user for a topic to anchor the session (the playbook provides the shape; the topic anchors it to the current work). If the Goal makes the topic obvious, suggest it and allow override.
-8. Generate a session ID: `{YYYY-MM-DD}-{playbook-name}` (e.g., `2026-05-19-complexity-hotspot-reduction`).
-9. Create the session plan. If the playbook has a `profile` field, call `eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}', open: true, agent_profile: '{playbook.profile}' }` so the session plan inherits that profile at enqueue time. If the playbook has no `profile`, call `eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}', open: true }`. If that session ID already exists, ask whether to resume and update the existing session or create a new suffixed session ID (for example `{YYYY-MM-DD}-{playbook-name}-2`), then continue with the chosen session.
-10. Write investigation findings as concrete section content using `eforge_session_plan { action: 'set-section', session, dimension, content }` for each covered dimension. Include specific evidence — not generic playbook template language.
-11. Proceed to Step 2 (Gather Context) — investigation findings already written into the session provide the starting context.
+7. **Synthesize implementation handoff**: Before asking for a topic, convert findings into an implementation-ready handoff:
+   - **Choose implementation targets**: When evidence supports a clear choice, name the specific files, modules, or components that will change.
+   - **Define concrete actions**: For each selected target, state what will be done.
+   - **Separate evidence from spec**: Put confirmed findings and assumptions in context/evidence-oriented content. Put implementation targets, actions, non-goals, and validation criteria in actionable sections (Scope, Code Impact, Acceptance Criteria).
+   - **Move unresolved findings**: Judgment-heavy or inconclusive findings become Open Questions, follow-up scope, or non-goals — not a directive to re-run the investigation during the build.
+   - **Avoid audit-repeat plans**: The session plan must not instruct the build agent to repeat the investigation. If evidence is insufficient to choose a target, state that as an open question.
+8. Ask the user for a topic that describes the implementation change to build — not the investigation already performed (e.g., "Reduce complexity in event parser" rather than "Audit complexity hotspots"). If the synthesized targets make the topic obvious, suggest it and allow override.
+9. Generate a session ID: `{YYYY-MM-DD}-{playbook-name}` (e.g., `2026-05-19-complexity-hotspot-reduction`).
+10. Create the session plan. If the playbook has a `profile` field, call `eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}', open: true, agent_profile: '{playbook.profile}' }` so the session plan inherits that profile at enqueue time. If the playbook has no `profile`, call `eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}', open: true }`. If that session ID already exists, ask whether to resume and update the existing session or create a new suffixed session ID (for example `{YYYY-MM-DD}-{playbook-name}-2`), then continue with the chosen session.
+11. Write section content using `eforge_session_plan { action: 'set-section', session, dimension, content }` for each covered dimension. **Scope, Code Impact, and Acceptance Criteria** sections must describe the implementation handoff — concrete targets, actions, and validation criteria. Record confirmed investigation findings in context-oriented content (e.g., a Context section or Notes). Include specific evidence — not generic playbook template language.
+12. Proceed to Step 2 (Gather Context) — the synthesized implementation handoff from step 7 is the authoritative starting context. Step 2 resumes from the synthesized handoff without re-running covered investigation.
 
-> **Sub-note — investigation-seeded sessions**: when starting from a planning-mode playbook (path c), the investigation and findings are written into the session plan before Step 2 begins. In Step 2 (Gather Context), treat existing section content as established starting context — do NOT re-investigate areas already covered. Instead, read the session file, summarize what was found, and continue planning from there. The session content can be refined and extended throughout the planning conversation.
+> **Sub-note — investigation-seeded sessions**: when starting from a planning-mode playbook (path c), the investigation is performed and findings are synthesized into an implementation-ready handoff before Step 2 begins. Scope, Code Impact, and Acceptance Criteria sections describe the implementation targets and actions — not the investigation. In Step 2 (Gather Context), treat existing section content as established starting context — do NOT re-investigate areas already covered. Instead, read the session file, summarize the synthesized handoff, and continue planning from there. The session content can be refined and extended throughout the planning conversation.
 >
 > **Note on `create-from-playbook`**: `eforge_session_plan { action: 'create-from-playbook' }` is a static template helper that pre-populates Goal, Out of scope, Acceptance criteria, and Notes from a playbook without performing investigation. It is retained for scratch/template seeding scenarios but is not the planning-playbook Run path — use path (c) above for investigation-first planning.
 
