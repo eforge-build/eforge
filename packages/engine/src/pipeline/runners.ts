@@ -310,5 +310,50 @@ export async function* runBuildPipeline(
     if (ctx.buildFailed) return;
   }
 
+  // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
+  // Final guard: fail the pipeline when the plan worktree has uncommitted changes at
+  // the end of all build stages. A dirty worktree means implementation work was not
+  // committed, which would produce a silent no-op merge. Non-git contexts (unit tests
+  // without a real worktree) skip the check gracefully. Real git errors (index lock,
+  // permission failures, corruption) are treated as hard failures.
+  let isGitRepo = false;
+  try {
+    await exec('git', ['rev-parse', '--is-inside-work-tree'], { cwd: ctx.worktreePath });
+    isGitRepo = true;
+  } catch (err) {
+    // Distinguish "not a git repository" (expected in unit tests without a real worktree)
+    // from real git failures (permissions, corruption, dubious ownership, bad path).
+    const stderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr ?? '';
+    const isNotGitRepo =
+      stderr.includes('not a git repository') ||
+      stderr.includes('not a git repo');
+    if (!isNotGitRepo) {
+      // A real Git error — treat as a hard failure to avoid silently allowing plan:build:complete.
+      const errorMsg = `Dirty worktree guard: git failed: ${err instanceof Error ? err.message : String(err)}`;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
+      ctx.buildFailed = true;
+      return;
+    }
+    // Not a git repository — skip the dirty worktree guard gracefully.
+  }
+  if (isGitRepo) {
+    try {
+      const { stdout: dirtyOut } = await exec('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: ctx.worktreePath });
+      const dirtyFiles = dirtyOut.trimEnd().split(/\r?\n/).filter(Boolean);
+      if (dirtyFiles.length > 0) {
+        const errorMsg = `Plan pipeline completed with ${dirtyFiles.length} uncommitted file(s) in the worktree:\n${dirtyFiles.join('\n')}`;
+        yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
+        ctx.buildFailed = true;
+        return;
+      }
+    } catch (err) {
+      const errorMsg = `Dirty worktree guard: git status failed: ${err instanceof Error ? err.message : String(err)}`;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
+      ctx.buildFailed = true;
+      return;
+    }
+  }
+  // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
+
   yield { timestamp: new Date().toISOString(), type: 'plan:build:complete', planId: ctx.planId };
 }

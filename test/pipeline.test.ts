@@ -7,8 +7,13 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { execFileSync, execFile } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
+
+const execAsync = promisify(execFile);
 import { stringify as stringifyYaml } from 'yaml';
 import { parseOrchestrationConfig } from '@eforge-build/engine/plan';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
@@ -809,6 +814,108 @@ describe('runBuildPipeline parallel stage groups', () => {
 
     // No build:complete because pipeline was stopped
     expect(events.find((e) => e.type === 'plan:build:complete')).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Final dirty-worktree guard in runBuildPipeline
+// ---------------------------------------------------------------------------
+
+describe('runBuildPipeline dirty-worktree guard', () => {
+  const makeTempDir = useTempDir('eforge-pipeline-dirty-worktree-');
+
+  it('emits plan:build:failed with dirty file list and no plan:build:complete when a sequential stage leaves uncommitted changes', async () => {
+    // Set up a real git repository so the dirty-worktree guard can run git status
+    const repoDir = makeTempDir();
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoDir });
+    execFileSync('git', ['config', 'user.email', 'test@eforge.build'], { cwd: repoDir });
+    execFileSync('git', ['config', 'user.name', 'eforge-test'], { cwd: repoDir });
+    await writeFile(join(repoDir, 'initial.txt'), 'initial\n');
+    execFileSync('git', ['add', '-A'], { cwd: repoDir });
+    execFileSync('git', ['commit', '-m', 'chore: initial'], { cwd: repoDir });
+
+    // Register a build stage that writes a file WITHOUT committing it
+    registerBuildStage(testDescriptor('test-dirty-stage', 'build'), async function* () {
+      await writeFile(join(repoDir, 'uncommitted.txt'), 'uncommitted content\n');
+      yield { type: 'planning:progress', message: 'dirty stage ran' } as EforgeEvent;
+    });
+
+    const ctx = makeBuildCtx({ build: ['test-dirty-stage'], worktreePath: repoDir });
+    const events = await collect(runBuildPipeline(ctx));
+
+    // Must emit plan:build:failed with dirty file info including porcelain status line
+    const failed = events.find(e => e.type === 'plan:build:failed');
+    expect(failed).toBeDefined();
+    const failedError = (failed as Extract<EforgeEvent, { type: 'plan:build:failed' }>).error;
+    expect(failedError).toContain('uncommitted.txt');
+    // The error must include the raw porcelain status line (e.g. '?? uncommitted.txt')
+    // not just the filename, so that callers can diagnose untracked vs modified files.
+    expect(failedError).toMatch(/\?\? uncommitted\.txt/);
+
+    // Must NOT emit plan:build:complete
+    expect(events.find(e => e.type === 'plan:build:complete')).toBeUndefined();
+
+    // ctx.buildFailed must be set
+    expect(ctx.buildFailed).toBe(true);
+  });
+
+  it('emits plan:build:failed with dirty file list and no plan:build:complete when a sequential stage leaves modified tracked files', async () => {
+    // Set up a real git repository so the dirty-worktree guard can run git status
+    const repoDir = makeTempDir();
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoDir });
+    execFileSync('git', ['config', 'user.email', 'test@eforge.build'], { cwd: repoDir });
+    execFileSync('git', ['config', 'user.name', 'eforge-test'], { cwd: repoDir });
+    await writeFile(join(repoDir, 'initial.txt'), 'initial\n');
+    execFileSync('git', ['add', '-A'], { cwd: repoDir });
+    execFileSync('git', ['commit', '-m', 'chore: initial'], { cwd: repoDir });
+
+    // Register a build stage that modifies an already-committed file WITHOUT committing it
+    registerBuildStage(testDescriptor('test-dirty-tracked-stage', 'build'), async function* () {
+      await writeFile(join(repoDir, 'initial.txt'), 'modified content\n');
+      yield { type: 'planning:progress', message: 'dirty tracked stage ran' } as EforgeEvent;
+    });
+
+    const ctx = makeBuildCtx({ build: ['test-dirty-tracked-stage'], worktreePath: repoDir });
+    const events = await collect(runBuildPipeline(ctx));
+
+    // Must emit plan:build:failed with dirty file info including porcelain status line for modified tracked file
+    const failed = events.find(e => e.type === 'plan:build:failed');
+    expect(failed).toBeDefined();
+    const failedError = (failed as Extract<EforgeEvent, { type: 'plan:build:failed' }>).error;
+    expect(failedError).toContain('initial.txt');
+    // The error must include the raw porcelain status line for a modified tracked file (e.g. ' M initial.txt')
+    expect(failedError).toMatch(/ M initial\.txt/);
+
+    // Must NOT emit plan:build:complete
+    expect(events.find(e => e.type === 'plan:build:complete')).toBeUndefined();
+
+    // ctx.buildFailed must be set
+    expect(ctx.buildFailed).toBe(true);
+  });
+
+  it('emits plan:build:complete when the worktree is clean after all stages', async () => {
+    const repoDir = makeTempDir();
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoDir });
+    execFileSync('git', ['config', 'user.email', 'test@eforge.build'], { cwd: repoDir });
+    execFileSync('git', ['config', 'user.name', 'eforge-test'], { cwd: repoDir });
+    await writeFile(join(repoDir, 'initial.txt'), 'initial\n');
+    execFileSync('git', ['add', '-A'], { cwd: repoDir });
+    execFileSync('git', ['commit', '-m', 'chore: initial'], { cwd: repoDir });
+
+    // Stage that writes AND commits — clean worktree at exit
+    registerBuildStage(testDescriptor('test-clean-stage', 'build'), async function* () {
+      await writeFile(join(repoDir, 'committed.txt'), 'committed content\n');
+      await execAsync('git', ['add', '-A'], { cwd: repoDir });
+      await execAsync('git', ['commit', '-m', 'feat: committed'], { cwd: repoDir });
+      yield { type: 'planning:progress', message: 'clean stage ran' } as EforgeEvent;
+    });
+
+    const ctx = makeBuildCtx({ build: ['test-clean-stage'], worktreePath: repoDir });
+    const events = await collect(runBuildPipeline(ctx));
+
+    expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
+    expect(events.find(e => e.type === 'plan:build:complete')).toBeDefined();
+    expect(ctx.buildFailed).toBeUndefined();
   });
 });
 
