@@ -438,9 +438,9 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
       if (signal?.aborted) {
         break;
       }
-
-      yield event;
-
+      // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
+      if (!(event.type === 'plan:status:change' && event.status === 'completed' && state.plans[event.planId]?.status === 'failed')) yield event; // drop stale completed (merge-failure race)
+      // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
       // Check if any running plans just finished (completed or failed — NOT pending,
       // which is the initial state before the async plan runner updates it to running)
       const justCompleted: string[] = [];

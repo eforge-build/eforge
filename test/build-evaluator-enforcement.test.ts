@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, AgentRole } from '@eforge-build/engine/events';
 import type { AgentRunOptions } from '@eforge-build/engine/harness';
 import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
-import { getBuildStage, type BuildStageContext } from '@eforge-build/engine/pipeline';
+import { getBuildStage, runBuildPipeline, type BuildStageContext } from '@eforge-build/engine/pipeline';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
@@ -176,7 +176,8 @@ describe('build evaluator enforcement stage', () => {
     expect(await committedFile(repo, 'src.txt')).not.toContain('rejected reviewer line 18');
   });
 
-  it('does not create an evaluation commit when no verdict submission or XML fallback is produced', async () => {
+  // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
+  it('fails the build without an evaluation commit when there are candidate changes but the evaluator produces no verdicts', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src.txt', 'base\n');
     await commitAll(repo, 'chore: initial');
@@ -189,13 +190,197 @@ describe('build evaluator enforcement stage', () => {
     const ctx = makeCtx(repo, new StubHarness([{ text: 'I have thoughts but no verdicts.' }]), resetTarget);
     const events = await collect(getBuildStage('evaluate')(ctx));
 
-    const warning = events.find(e => e.type === 'agent:warning');
-    expect(warning).toBeDefined();
-    expect(warning?.code).toBe('evaluation-verdicts-missing');
-    expect(warning?.message).toContain('no verdicts');
+    const failed = events.find(e => e.type === 'plan:build:failed');
+    expect(failed).toBeDefined();
+    expect(failed?.error).toContain('no verdicts');
+    expect(ctx.buildFailed).toBe(true);
+    // No agent:warning for evaluation-verdicts-missing — now a hard failure
+    expect(events.find(e => e.type === 'agent:warning' && e.code === 'evaluation-verdicts-missing')).toBeUndefined();
+    // HEAD is reset to builderHead (no evaluation commit)
     expect(await head(repo)).toBe(builderHead);
+    // Working tree preserves candidate changes for recovery
     expect(await readFile(join(repo, 'src.txt'), 'utf8')).toContain('review');
   });
+
+  it('fails the build when the evaluator harness throws (result.failed path)', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+    const builderHead = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\nreview\n');
+
+    // Harness throws so builderEvaluate catches it and returns { failed: true }
+    const ctx = makeCtx(repo, new StubHarness([{ error: new Error('evaluator backend failed') }]), resetTarget);
+    const events = await collect(getBuildStage('evaluate')(ctx));
+
+    const failed = events.find(e => e.type === 'plan:build:failed');
+    expect(failed).toBeDefined();
+    const failedError = (failed as Extract<EforgeEvent, { type: 'plan:build:failed' }>).error;
+    expect(failedError).toContain('evaluator backend failed');
+    expect(failedError).toContain('src.txt');
+    expect(ctx.buildFailed).toBe(true);
+    // No evaluation commit created
+    expect(await head(repo)).toBe(builderHead);
+    // Candidate files preserved in working tree for recovery
+    expect(await readFile(join(repo, 'src.txt'), 'utf8')).toContain('review');
+  });
+
+  it('emits no plan:build:failed and makes no evaluation commit when there are no candidate changes', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+    const builderHead = await head(repo);
+    // No working tree changes — no candidate changes for evaluator
+
+    const ctx = makeCtx(repo, new StubHarness([]), resetTarget);
+    const events = await collect(getBuildStage('evaluate')(ctx));
+
+    expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
+    expect(events.find(e => e.type === 'agent:warning')).toBeUndefined();
+    expect(await head(repo)).toBe(builderHead);
+    expect(ctx.buildFailed).toBeUndefined();
+  });
+
+  it('fails the build when review-cycle max-round evaluator produces no verdicts with candidate fixer changes', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+    const builderHead = await head(repo);
+
+    const reviewIssueXml = '<review-issues><issue severity="warning" category="bugs" file="src.txt">needs fix</issue></review-issues>';
+
+    class FixingHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'review-fixer') {
+            // Review fixer mutates the file — candidate changes exist for evaluator
+            const current = await readFile(join(repo, 'src.txt'), 'utf8');
+            await writeRepoFile(repo, 'src.txt', `${current.trimEnd()}\nreview fix\n`);
+          }
+        }
+      }
+    }
+
+    const harness = new FixingHarness([
+      { text: reviewIssueXml },          // reviewer: finds issue
+      { text: 'Applied fix.' },           // review-fixer: text only (but FixingHarness mutates file)
+      { text: 'No verdicts produced.' },  // evaluator: no verdicts
+    ]);
+
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.build = ['review-cycle'];
+    ctx.review = { ...DEFAULT_REVIEW, strategy: 'single', maxRounds: 1 };
+
+    const events = await collect(getBuildStage('review-cycle')(ctx));
+
+    // Must emit plan:build:failed from evaluateStageInner
+    const failed = events.find(e => e.type === 'plan:build:failed');
+    expect(failed).toBeDefined();
+    expect(failed?.error).toContain('src.txt');
+    expect(ctx.buildFailed).toBe(true);
+    // No plan:build:complete emitted
+    expect(events.find(e => e.type === 'plan:build:complete')).toBeUndefined();
+    // HEAD is reset to builderHead (no evaluation commit created)
+    expect(await head(repo)).toBe(builderHead);
+    // Candidate files preserved in working tree for recovery
+    expect(await readFile(join(repo, 'src.txt'), 'utf8')).toContain('review fix');
+    // Working tree is intentionally dirty — git status reports src.txt as modified
+    const status = await git(repo, ['status', '--porcelain']);
+    expect(status).toContain('src.txt');
+  });
+
+  it('fails the build at max-round exhaustion when issues remain unresolved (review-fixer made no changes)', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+
+    const reviewIssueXml = '<review-issues><issue severity="warning" category="bugs" file="src.txt">still needs fix</issue></review-issues>';
+
+    // StubHarness: reviewer finds issues, review-fixer makes no actual file changes
+    const harness = new StubHarness([
+      { text: reviewIssueXml },    // reviewer: issue found
+      { text: 'Applied fix.' },    // review-fixer: text only, no file mutations
+    ]);
+
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.build = ['review-cycle'];
+    ctx.review = { ...DEFAULT_REVIEW, strategy: 'single', maxRounds: 1 };
+
+    const events = await collect(getBuildStage('review-cycle')(ctx));
+
+    // Max-round termination with issues remaining → plan:build:failed
+    const termination = events.find(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        e.type === 'plan:build:decision' &&
+        (e as Extract<EforgeEvent, { type: 'plan:build:decision' }>).decision.kind === 'cycle-terminated' &&
+        (e as Extract<EforgeEvent, { type: 'plan:build:decision' }>).decision.reason === 'max-rounds',
+    );
+    expect(termination).toBeDefined();
+    expect((termination!.decision as { issuesRemaining: number }).issuesRemaining).toBeGreaterThan(0);
+    expect((termination!.decision as { finalEvaluationRan: boolean }).finalEvaluationRan).toBe(false);
+
+    const failed = events.find(e => e.type === 'plan:build:failed');
+    expect(failed).toBeDefined();
+    expect(ctx.buildFailed).toBe(true);
+  });
+
+  it('runBuildPipeline does not emit plan:build:complete when review-cycle evaluator produces no verdicts with candidate fixer changes', async () => {
+    // Regression: the original bug caused runBuildPipeline() to emit plan:build:complete
+    // even when the review-cycle stage set ctx.buildFailed. This test runs the full
+    // pipeline (not just the stage) to verify completion is suppressed.
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+
+    const reviewIssueXml = '<review-issues><issue severity="warning" category="bugs" file="src.txt">needs fix</issue></review-issues>';
+
+    class FixingHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'review-fixer') {
+            const current = await readFile(join(repo, 'src.txt'), 'utf8');
+            await writeRepoFile(repo, 'src.txt', `${current.trimEnd()}\nreview fix\n`);
+          }
+        }
+      }
+    }
+
+    const harness = new FixingHarness([
+      { text: reviewIssueXml },         // reviewer: finds issue
+      { text: 'Applied fix.' },          // review-fixer: mutates file via FixingHarness
+      { text: 'No verdicts produced.' }, // evaluator: no verdicts
+    ]);
+
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.build = ['review-cycle'];
+    ctx.review = { ...DEFAULT_REVIEW, strategy: 'single', maxRounds: 1 };
+
+    const events = await collect(runBuildPipeline(ctx));
+
+    // Pipeline must NOT emit plan:build:complete when the stage failed
+    expect(events.find(e => e.type === 'plan:build:complete')).toBeUndefined();
+    // plan:build:failed must appear in the pipeline event stream
+    expect(events.find(e => e.type === 'plan:build:failed')).toBeDefined();
+    expect(ctx.buildFailed).toBe(true);
+  });
+  // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
 
   it('fails the build without an evaluation commit when the evaluator mutates the captured diff without verdicts', async () => {
     const repo = await initRepo(makeTempDir());
@@ -366,6 +551,9 @@ describe('build evaluator enforcement stage', () => {
     expect(termination!.decision.rationale).toContain('last review found 1 issue(s)');
     expect(termination!.decision.rationale).not.toMatch(/issues remaining/i);
     expect(ctx.reviewIssues).toHaveLength(0);
+    // Final evaluation accepted — must NOT fail the build
+    expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
+    expect(ctx.buildFailed).toBeFalsy();
   });
 
   // --- eforge:region plan-03-reviewer-contract-hardening ---

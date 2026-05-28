@@ -693,13 +693,7 @@ describe('executePlans - build:failed handling', () => {
     const stubWorktreeManager = {
       acquireForPlan: async () => '/tmp/fake-worktree',
       releaseForPlan: async () => {},
-      mergePlan: async () => {
-        throw new Error(
-          "builtOnMerge plan 'plan-a' has uncommitted changes in the merge worktree.\n" +
-          "Commit all implementation work before marking a plan complete.\n" +
-          "Dirty files:\n M dirty-file.ts",
-        );
-      },
+      mergePlan: async () => { throw new Error("builtOnMerge plan 'plan-a' has uncommitted changes in the merge worktree.\nCommit all implementation work before marking a plan complete.\nDirty files:\n M dirty-file.ts"); },
     } as unknown as WorktreeManager;
 
     const ctx: PhaseContext = {
@@ -742,6 +736,12 @@ describe('executePlans - build:failed handling', () => {
     expect(events.some((e) => e.type === 'stack:layer:recorded' || e.type === 'daemon:error')).toBe(false);
     // overall build status must be failed
     expect(state.status).toBe('failed');
+    // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
+    const pscA = events.filter((e): e is Extract<EforgeEvent, { type: 'plan:status:change' }> => e.type === 'plan:status:change' && 'planId' in e && (e as Extract<EforgeEvent, { type: 'plan:status:change' }>).planId === 'plan-a');
+    const fi = pscA.findIndex((e) => e.status === 'failed');
+    expect(fi).not.toBe(-1);
+    expect(pscA.slice(fi + 1).some((e) => e.status === 'completed')).toBe(false);
+    // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
   });
   // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 

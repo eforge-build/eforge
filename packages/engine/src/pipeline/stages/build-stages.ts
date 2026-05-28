@@ -216,7 +216,12 @@ function lastBuildEvaluationNotRun(): LastBuildEvaluation {
   return { ran: false, accepted: 0, rejected: 0, review: 0, files: [] };
 }
 // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
-
+// --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
+function formatNoVerdictsFailureMessage(s: EvaluationSnapshot, r: string): string {
+  const p = s.files.map((f) => f.path).join(', ');
+  return p ? `${r} Candidate files with uncommitted changes: ${p}` : r;
+}
+// --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
 function summarizeEvaluationVerdicts(verdicts: EvaluationVerdict[]) {
   return verdicts.map(v => ({
     file: v.file,
@@ -536,16 +541,10 @@ async function* evaluateStageInner(
       yield driftFailure;
       return;
     }
-    yield {
-      timestamp: new Date().toISOString(),
-      type: 'agent:warning',
-      planId: ctx.planId,
-      agentId: 'unknown-evaluator',
-      agent: 'evaluator',
-      code: 'evaluation-judgment-failed',
-      message: err instanceof Error ? err.message : String(err),
-    };
-    setLastBuildEvaluation(ctx, lastBuildEvaluationNotRun());
+    // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: formatNoVerdictsFailureMessage(snapshot, err instanceof Error ? err.message : String(err)) } as EforgeEvent;
+    ctx.buildFailed = true;
+    // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
     return;
   }
 
@@ -555,16 +554,10 @@ async function* evaluateStageInner(
       yield driftFailure;
       return;
     }
-    yield {
-      timestamp: new Date().toISOString(),
-      type: 'agent:warning',
-      planId: ctx.planId,
-      agentId: result?.agentId ?? 'unknown-evaluator',
-      agent: 'evaluator',
-      code: (suppressedTerminalFailure || result?.failed) ? 'evaluation-judgment-failed' : 'evaluation-verdicts-missing',
-      message: suppressedTerminalFailure?.error ?? result?.error ?? 'Evaluator produced no verdicts; no review-fixer changes were committed.',
-    };
-    setLastBuildEvaluation(ctx, lastBuildEvaluationNotRun());
+    // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: formatNoVerdictsFailureMessage(snapshot, suppressedTerminalFailure?.error ?? result?.error ?? 'Evaluator produced no verdicts; review-fixer changes remain uncommitted.') } as EforgeEvent;
+    ctx.buildFailed = true;
+    // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
     return;
   }
 
@@ -1269,6 +1262,22 @@ registerBuildStage({
       }),
     } as unknown as Parameters<typeof emitBuildDecision>[1]);
     // --- eforge:endregion plan-02-build-evaluator-enforcement ---
+    // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
+    // Use lastReviewIssueCount rather than ctx.reviewIssues.length because
+    // evaluateStageInner clears ctx.reviewIssues after verdict application.
+    // Fail when the last review found issues AND the final evaluation either did not
+    // run or did not accept all fixes (rejected or marked for review remain non-zero).
+    const evalNotAcceptedAll =
+      !finalEvaluation?.ran ||
+      (finalEvaluation.rejected + finalEvaluation.review) > 0;
+    if (lastReviewIssueCount > 0 && evalNotAcceptedAll) {
+      const errorMsg = !finalEvaluation?.ran
+        ? `Review cycle exhausted ${maxRounds} round(s) without a final evaluation verdict.`
+        : `${lastReviewIssueCount} unresolved issue(s) remain after ${maxRounds} review round(s) (${finalEvaluation.rejected} rejected, ${finalEvaluation.review} under review).`;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg } as EforgeEvent;
+      ctx.buildFailed = true;
+    }
+    // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
   }
 });
 
@@ -1504,5 +1513,6 @@ registerBuildStage({
     yield* testStageInner(ctx);
     if (ctx.reviewIssues.length === 0) break;
     yield* evaluateStageInner(ctx, { strictness });
+    if (ctx.buildFailed) return;
   }
 });
