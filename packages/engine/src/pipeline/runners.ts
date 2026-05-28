@@ -324,9 +324,11 @@ export async function* runBuildPipeline(
     // Distinguish "not a git repository" (expected in unit tests without a real worktree)
     // from real git failures (permissions, corruption, dubious ownership, bad path).
     const stderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr ?? '';
+    const errCode = (err as NodeJS.ErrnoException).code;
     const isNotGitRepo =
       stderr.includes('not a git repository') ||
-      stderr.includes('not a git repo');
+      stderr.includes('not a git repo') ||
+      errCode === 'ENOENT';
     if (!isNotGitRepo) {
       // A real Git error — treat as a hard failure to avoid silently allowing plan:build:complete.
       const errorMsg = `Dirty worktree guard: git failed: ${err instanceof Error ? err.message : String(err)}`;

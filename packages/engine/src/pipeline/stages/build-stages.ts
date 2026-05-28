@@ -216,7 +216,6 @@ function lastBuildEvaluationNotRun(): LastBuildEvaluation {
   return { ran: false, accepted: 0, rejected: 0, review: 0, files: [] };
 }
 // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
-
 // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
 function formatNoVerdictsFailureMessage(s: EvaluationSnapshot, r: string): string {
   const p = s.files.map((f) => f.path).join(', ');
