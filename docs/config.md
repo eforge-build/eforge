@@ -318,7 +318,11 @@ All waiver booleans require a non-empty reason string. A config that sets any wa
 
 ## PRD provenance
 
-When the daemon dispatches a PRD from `.eforge/queue/`, it writes a canonical copy to `eforge/prds/{prdId}.md` as a provenance record. Unlike queue state (`.eforge/queue/` — gitignored), `eforge/prds/` files are committed artifacts that link each build session to its originating requirements and survive queue cleanup. These files are written by the engine at dispatch time and are retained after the build completes.
+When the daemon dispatches a PRD from `.eforge/queue/`, it writes a canonical copy to `eforge/prds/{prdId}.md` as a provenance record. Unlike queue state (`.eforge/queue/` — gitignored), `eforge/prds/` files are committed artifacts that link each build session to its originating requirements and survive queue cleanup. These files are written by the engine at dispatch time and committed to the artifact branch.
+
+When `build.cleanupPlanFiles: true` (the default), the engine removes plan artifacts — including the PRD copy in `eforge/prds/`, the compiled plan files in `eforge/plans/{planSet}/`, and `orchestration.yaml` — from `HEAD` during the `pr` or `merge` landing flows after a successful build. These artifacts are **not** permanently lost: cleanup only removes them from the final tree. When the artifact branch is landed with a merge commit (eforge's local `merge` action, or a GitHub PR merged via "Create a merge commit"), the full intermediate history — including the commits that added these artifacts — remains reachable from the base branch. `landing.action: leave` does not run this cleanup path and leaves the artifact branch in place for manual inspection. When `landing.action: pr` is used, provenance durability depends on the repository's chosen merge strategy: squash or rebase merges can collapse intermediate commits and make artifact references unreachable.
+
+> **Note:** Build provenance depends on Git history, not the final tree. Squash or rebase landing strategies (applied after the PR is opened, e.g. via GitHub's "Squash and merge") can collapse or discard intermediate commits, potentially making artifact recovery references unreachable. Use merge commits when preserving eforge provenance history is important to your team.
 
 ## Native extensions
 

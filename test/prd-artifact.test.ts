@@ -12,6 +12,9 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { materializePrdArtifact } from '@eforge-build/engine/prd-queue';
 import { cleanupPlanFiles } from '@eforge-build/engine/cleanup';
+// --- eforge:region plan-01-build-artifact-provenance ---
+import { collectBuildArtifactProvenance } from '@eforge-build/engine/provenance';
+// --- eforge:endregion plan-01-build-artifact-provenance ---
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -136,4 +139,51 @@ describe('materializePrdArtifact', () => {
     expect(fullLog).toContain('build(my-plan-set): record PRD provenance');
     expect(fullLog).toContain('cleanup(my-plan-set): remove plan files and PRD provenance artifact');
   });
+
+  // --- eforge:region plan-01-build-artifact-provenance ---
+  it('(e) collected provenance SHA is usable with git show after cleanup removes the artifact from HEAD', async () => {
+    const dir = makeTempDir();
+    setupGitRepo(dir);
+    commitPlanDir(dir, 'my-plan-set');
+
+    const prdContent = '# My PRD\nFull content for recovery test.';
+    const { artifactRelPath } = await materializePrdArtifact({
+      mergeWorktreePath: dir,
+      prdId: 'my-plan-set',
+      prdContent,
+    });
+
+    // Run cleanup — artifact removed from HEAD, preserved in history
+    for await (const _ of cleanupPlanFiles(dir, 'my-plan-set', 'eforge/plans', artifactRelPath)) {
+      // consume events
+    }
+
+    // Artifact is gone from working tree
+    expect(existsSync(join(dir, artifactRelPath))).toBe(false);
+
+    // collectBuildArtifactProvenance uses --diff-filter=AM, so it finds the add
+    // commit, not the cleanup/deletion commit.
+    const refs = await collectBuildArtifactProvenance(dir, {
+      planSetName: 'my-plan-set',
+      outputDir: 'eforge/plans',
+      prdArtifactPath: artifactRelPath,
+    });
+
+    // The PRD artifact ref must be present with a valid 40-char SHA
+    const prdRef = refs.find((r) => r.kind === 'prd');
+    expect(prdRef).toBeDefined();
+    expect(prdRef!.commitSha).toHaveLength(40);
+
+    // git show <sha>:<path> must recover the original content even after cleanup
+    const recovered = execFileSync(
+      'git',
+      ['show', `${prdRef!.commitSha}:${prdRef!.path}`],
+      { cwd: dir },
+    ).toString();
+    expect(recovered).toBe(prdContent);
+
+    // Sanity: the gitShowRef string matches the format `git show <sha>:<path>`
+    expect(prdRef!.gitShowRef).toBe(`git show ${prdRef!.commitSha}:${prdRef!.path}`);
+  });
+  // --- eforge:endregion plan-01-build-artifact-provenance ---
 });

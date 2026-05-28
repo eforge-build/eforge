@@ -25,6 +25,7 @@ import { executeLandingAction, type LandingResult } from '../landing.js';
 // --- eforge:region plan-01-pr-metadata ---
 import { renderPullRequestMetadata } from '../pr-metadata.js';
 // --- eforge:endregion plan-01-pr-metadata ---
+import { collectBuildArtifactProvenance } from '../provenance.js';
 // --- eforge:region plan-03-branch-aware-landing ---
 import type { EforgeConfig, LandingConfig } from '../config.js';
 // --- eforge:endregion plan-03-branch-aware-landing ---
@@ -1136,14 +1137,14 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     prAutoMergePolicy: ctx.prAutoMergePolicy,
     landingAutoMerge: ctx.landingAutoMerge,
     // --- eforge:endregion plan-01-core-engine-auto-merge ---
-    // --- eforge:region plan-01-pr-metadata ---
-    metadata: renderPullRequestMetadata({
-      config: ctx.config,
-      featureBranch: ctx.stackContext.branch,
-      baseBranch: ctx.stackContext.baseBranch ?? ctx.config.baseBranch,
-      modelTracker: ctx.modelTracker,
-    }),
-    // --- eforge:endregion plan-01-pr-metadata ---
+    // --- eforge:region plan-01-build-artifact-provenance ---
+    // Static metadata is the base; metadataFactory adds provenance when cleanup context is available.
+    metadata: renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker }),
+    metadataFactory: ctx.cleanupPlanSet && ctx.cleanupOutputDir ? async () => {
+      const r = await collectBuildArtifactProvenance(ctx.mergeWorktreePath, { planSetName: ctx.cleanupPlanSet!, outputDir: ctx.cleanupOutputDir!, prdArtifactPath: ctx.cleanupPrdFilePath }).catch(() => []);
+      return renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker, provenanceRefs: r.length > 0 ? r : undefined });
+    } : undefined,
+    // --- eforge:endregion plan-01-build-artifact-provenance ---
   })) {
     if (event.type === 'stack:landing:update' && effectiveLandingAction === 'pr') {
       if (event.status === 'complete') {
@@ -1246,15 +1247,13 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
   // --- eforge:endregion plan-01-engine-config-and-landing ---
 
   if (allMerged && !signal?.aborted) {
-    // Build the merge commit message (used by merge action only; passed through for completeness)
+    // Build commit message body; rawCommitBody preserved so landing can recompose with provenance trailers.
     const prefix = config.mode === 'errand' ? 'fix' : 'feat';
-    let commitMessage: string;
-    if (config.plans.length === 1) {
-      commitMessage = composeCommitMessage(`${prefix}(${config.name}): ${config.plans[0].name}`, ctx.modelTracker);
-    } else {
-      const planList = config.plans.map((p) => `- ${p.id}: ${p.name}`).join('\n');
-      commitMessage = composeCommitMessage(`${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}`, ctx.modelTracker);
-    }
+    const planList = config.plans.map((p) => `- ${p.id}: ${p.name}`).join('\n');
+    const rawCommitBody: string = config.plans.length === 1
+      ? `${prefix}(${config.name}): ${config.plans[0].name}`
+      : `${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}`;
+    const commitMessage = composeCommitMessage(rawCommitBody, ctx.modelTracker);
 
     // --- eforge:region plan-02-policy-gate-engine-integration ---
     // Policy gate applies only to merge; stays here per plan spec.
@@ -1346,6 +1345,7 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       mergeResolver: ctx.mergeResolver,
       modelTracker: ctx.modelTracker,
       commitMessage,
+      rawCommitBody,
       signal: ctx.signal,
       shouldCleanup: ctx.shouldCleanup,
       cleanupPlanSet: ctx.cleanupPlanSet,

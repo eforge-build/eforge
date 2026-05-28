@@ -27,6 +27,21 @@ A **build source** is the input eforge hands to the compile phase after normaliz
 
 `/eforge:plan` creates session plans under `.eforge/session-plans/`. A session plan is a driver-side planning artifact: it records the planning type and depth, required and optional dimensions, skipped dimensions with reasons, open questions, readiness, and any inherited `agent_profile` from a planning-mode playbook. When `/eforge:build` uses a ready session-plan file, eforge converts that file into ordinary build source before writing the normalized PRD to the queue.
 
+**Session plans are local and private.** The `.eforge/session-plans/` directory is gitignored — session plans are never committed and are not the shared provenance mechanism. They exist only on the developer's machine.
+
+## Build Artifact Provenance
+
+When a build runs, eforge commits source artifacts into the artifact branch before building:
+
+- A canonical PRD copy is written to `eforge/prds/{prdId}.md` at dispatch time.
+- Compiled plan files and `orchestration.yaml` are written to `eforge/plans/{planSet}/` during compile.
+
+These committed files are the shared, team-visible provenance record linking a build session to its originating requirements and plan.
+
+When `build.cleanupPlanFiles: true` (the default), eforge removes these artifacts from `HEAD` after a successful build. They are not permanently lost — when the artifact branch is landed with a merge commit (eforge's local `merge` action, or a GitHub PR merged via "Create a merge commit"), the commits that added the artifacts remain reachable in Git history. Use `git show <sha>:<path>` with a commit-pinned reference to recover any artifact. PR bodies include an **Eforge provenance** section with these references when artifact commits are found. When `landing.action: pr` is used, provenance durability depends on the repository's chosen merge strategy.
+
+The durable provenance guarantee is Git history, not the final tree. Squash or rebase merge strategies applied after a PR is opened (for example, GitHub's "Squash and merge") can collapse intermediate commits and make artifact references unreachable. Use merge commits when preserving build provenance history matters to your team.
+
 ## Workflow Profiles
 
 The planner selects one of three profiles based on scope complexity:
@@ -81,7 +96,7 @@ The active profile is resolved highest-priority-first: project-local beats proje
 
 When you run `/eforge:build` or `eforge build`, eforge writes a normalized PRD file to the configured queue directory (`.eforge/queue/` by default - gitignored, runtime state only). A long-running **daemon** watches the queue and, when `prdQueue.autoBuild` is enabled, processes PRDs automatically. The daemon runs in the background and survives terminal exit. `prdQueue.watchPollIntervalMs` controls how often the watcher polls for queued work.
 
-At dispatch time, the daemon also writes a canonical copy of the PRD to `eforge/prds/{prdId}.md` - a committed provenance record that links the build session to its originating requirements independently of queue state. Queue files in `.eforge/queue/` are ephemeral; `eforge/prds/` files persist after builds complete and survive queue cleanup.
+At dispatch time, the daemon also writes a canonical copy of the PRD to `eforge/prds/{prdId}.md` - a committed provenance record that links the build session to its originating requirements independently of queue state. Queue files in `.eforge/queue/` are ephemeral; `eforge/prds/` files are committed to the artifact branch and survive queue cleanup. When `build.cleanupPlanFiles: true` (the default), these artifacts are removed from `HEAD` after a successful build but remain recoverable from Git history via commit-pinned references. See [Build Artifact Provenance](#build-artifact-provenance) above.
 
 The queue supports dependencies and priority. A PRD can declare `depends_on` to wait for upstream PRDs to complete before it starts; eforge validates that dependencies refer to pending, running, or waiting queue items. Within each dependency wave, lower numeric `priority` values run first, PRDs without `priority` run last, and ties fall back to creation date. If an upstream PRD fails or is cancelled, waiting dependents are skipped instead of cascading a broken build.
 

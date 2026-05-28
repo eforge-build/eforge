@@ -152,4 +152,66 @@ describe('composeCommitMessage', () => {
     expect(parts[0]).toBe(body);
     expect(parts[1]).toBe('Models-Used: model-x');
   });
+
+  // --- eforge:region plan-01-build-artifact-provenance ---
+
+  it('returns body unchanged when options has empty provenanceTrailers and no tracker', () => {
+    const body = 'feat(plan-01): implement feature';
+    expect(composeCommitMessage(body, undefined, { provenanceTrailers: [] })).toBe(body);
+  });
+
+  it('appends only provenance trailers when tracker is absent', () => {
+    const body = 'feat(plan-01): implement feature';
+    const result = composeCommitMessage(body, undefined, {
+      provenanceTrailers: ['Eforge-Source-PRD: abc1234:eforge/prds/my-prd.md'],
+    });
+    expect(result).toBe(
+      'feat(plan-01): implement feature\n\nEforge-Source-PRD: abc1234:eforge/prds/my-prd.md',
+    );
+  });
+
+  it('appends only provenance trailers when tracker is empty', () => {
+    const body = 'feat(plan-01): implement feature';
+    const tracker = new ModelTracker();
+    const result = composeCommitMessage(body, tracker, {
+      provenanceTrailers: ['Eforge-Source-PRD: abc1234:eforge/prds/my-prd.md'],
+    });
+    expect(result).toBe(
+      'feat(plan-01): implement feature\n\nEforge-Source-PRD: abc1234:eforge/prds/my-prd.md',
+    );
+  });
+
+  it('appends provenance trailers before Models-Used when both are present', () => {
+    const body = 'feat(plan-01): implement feature';
+    const tracker = new ModelTracker();
+    tracker.record('claude-sonnet-4-5');
+    const result = composeCommitMessage(body, tracker, {
+      provenanceTrailers: ['Eforge-Source-PRD: abc1234:eforge/prds/my-prd.md'],
+    });
+    expect(result).toBe(
+      'feat(plan-01): implement feature\n\n' +
+      'Eforge-Source-PRD: abc1234:eforge/prds/my-prd.md\n' +
+      'Models-Used: claude-sonnet-4-5',
+    );
+  });
+
+  it('appends multiple provenance trailers in insertion order before Models-Used', () => {
+    const body = 'feat(plan-01): implement feature';
+    const tracker = new ModelTracker();
+    tracker.record('claude-opus-4-5');
+    const result = composeCommitMessage(body, tracker, {
+      provenanceTrailers: [
+        'Eforge-Source-PRD: abc1234:eforge/prds/my-prd.md',
+        'Eforge-Source-Plan: def5678:eforge/plans/my-set/plan-01.md',
+      ],
+    });
+    expect(result).toBe(
+      'feat(plan-01): implement feature\n\n' +
+      'Eforge-Source-PRD: abc1234:eforge/prds/my-prd.md\n' +
+      'Eforge-Source-Plan: def5678:eforge/plans/my-set/plan-01.md\n' +
+      'Models-Used: claude-opus-4-5',
+    );
+  });
+
+  // --- eforge:endregion plan-01-build-artifact-provenance ---
 });
