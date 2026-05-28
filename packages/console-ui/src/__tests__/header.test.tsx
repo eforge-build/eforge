@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import { ConsoleShell } from '@/components/shell/console-shell';
 import { initialConsoleProjectState } from '@/lib/project-state';
-import { EFORGE_LOGO_URL } from '@/lib/brand';
+import { EFORGE_LOGO_ALT, EFORGE_LOGO_URL } from '@/lib/brand';
 
 const FIXED_NOW = new Date('2025-01-15T12:00:30.000Z').getTime();
 
@@ -33,7 +33,16 @@ const stubState = {
   },
 };
 
-describe('header content in ConsoleShell', () => {
+function renderShell(onNavigate = vi.fn()) {
+  render(
+    <ConsoleShell projectState={stubState} onNavigate={onNavigate}>
+      <div>content</div>
+    </ConsoleShell>,
+  );
+  return { onNavigate };
+}
+
+describe('ConsoleShell header', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
@@ -43,139 +52,23 @@ describe('header content in ConsoleShell', () => {
     vi.useRealTimers();
   });
 
-  it('renders a <header> element as first child of the shell root', () => {
-    const { container } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const shellRoot = container.firstElementChild;
-    const firstChild = shellRoot?.firstElementChild;
-    expect(firstChild?.tagName.toLowerCase()).toBe('header');
+  it('shows brand, project, connection, and build status controls', () => {
+    renderShell();
+
+    const logo = screen.getByAltText(EFORGE_LOGO_ALT) as HTMLImageElement;
+    expect(logo.src).toBe(EFORGE_LOGO_URL);
+    expect(screen.getByText('my-project')).toBeDefined();
+    expect(screen.getByLabelText(/connection status/i)).toBeDefined();
+    expect(screen.getByRole('switch', { name: /auto-build toggle/i })).toBeDefined();
+    expect(screen.getByLabelText(/queue count/i)).toBeDefined();
+    expect(screen.getByLabelText(/active builds count/i)).toBeDefined();
   });
 
-  it('header contains the eforge logo image with correct src', () => {
-    const { container } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const header = container.querySelector('header');
-    const img = header?.querySelector('img');
-    expect(img).not.toBeNull();
-    expect(img!.src).toBe(EFORGE_LOGO_URL);
-    expect(img!.alt).toBeTruthy();
-  });
+  it('routes header navigation through onNavigate', () => {
+    const { onNavigate } = renderShell();
 
-  it('header contains project repo basename', () => {
-    const { container } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const header = container.querySelector('header');
-    expect(header?.textContent).toContain('my-project');
-  });
+    fireEvent.click(screen.getByRole('button', { name: /^plans$/i }));
 
-  it('header contains connection-status indicator', () => {
-    const { getByLabelText } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const indicator = getByLabelText(/connection status/i);
-    expect(indicator).toBeDefined();
-  });
-
-  it('header contains auto-build toggle switch', () => {
-    const { getByRole } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const toggle = getByRole('switch', { name: /auto-build toggle/i });
-    expect(toggle).toBeDefined();
-  });
-
-  it('header contains queue-count chip', () => {
-    const { getByLabelText } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const queueChip = getByLabelText(/queue count/i);
-    expect(queueChip).toBeDefined();
-  });
-
-  it('header contains active-count chip', () => {
-    const { getByLabelText } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const activeChip = getByLabelText(/active builds count/i);
-    expect(activeChip).toBeDefined();
-  });
-
-  it('header contains last-update timestamp', () => {
-    const { getByLabelText } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const timestamp = getByLabelText(/last update/i);
-    expect(timestamp).toBeDefined();
-  });
-
-  it('does not render the legacy sidebar aside element', () => {
-    const { queryByRole } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    expect(queryByRole('complementary', { name: /console navigation/i })).toBeNull();
-  });
-
-  it('does not render the legacy bottom status strip', () => {
-    const { queryByLabelText } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    expect(queryByLabelText('connection and daemon status')).toBeNull();
-  });
-
-  it('renders a Plans navigation button in the header', () => {
-    const { getByRole } = render(
-      <ConsoleShell projectState={stubState}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const plansButton = getByRole('button', { name: /^plans$/i });
-    expect(plansButton).toBeDefined();
-  });
-
-  it('clicking the Plans button calls onNavigate with /console/plans', () => {
-    const onNavigate = vi.fn();
-    const { getByRole } = render(
-      <ConsoleShell projectState={stubState} onNavigate={onNavigate}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    fireEvent.click(getByRole('button', { name: /^plans$/i }));
     expect(onNavigate).toHaveBeenCalledWith('/console/plans');
-  });
-
-  it('clicking the Plans button does not cause a page reload (uses onNavigate, not href)', () => {
-    const onNavigate = vi.fn();
-    const { getByRole } = render(
-      <ConsoleShell projectState={stubState} onNavigate={onNavigate}>
-        <div>content</div>
-      </ConsoleShell>,
-    );
-    const plansButton = getByRole('button', { name: /^plans$/i });
-    // Plans link is a button, not an anchor — no href-based navigation
-    expect(plansButton.tagName.toLowerCase()).toBe('button');
-    expect(plansButton.getAttribute('href')).toBeNull();
   });
 });

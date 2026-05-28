@@ -108,6 +108,7 @@
   .plan-prose {
     color: var(--color-foreground);
     line-height: 1.6;
+    overflow-wrap: anywhere;
   }
 
   .plan-prose > * + * {

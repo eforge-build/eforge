@@ -97,7 +97,7 @@ export function PlanBodyHighlight({ content }: PlanBodyHighlightProps) {
 
   return (
     <div
-      className="text-xs overflow-x-auto [&_pre]:!bg-transparent [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_code]:text-xs"
+      className="max-w-full min-w-0 overflow-x-auto text-xs [&_pre]:!bg-transparent [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_code]:text-xs"
       dangerouslySetInnerHTML={{ __html: highlightedHtml }}
     />
   );
