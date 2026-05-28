@@ -1,0 +1,75 @@
+name: harden-recovery-analysis-with-an-authoritative-terminal-failure-contract
+description: Harden recovery analysis by adding an authoritative terminal
+  failure event contract, making recovery prefer it over inferred history, and
+  fixing fallback precedence for stale agent failures versus post-validation
+  landing/artifact failures.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm exec vitest run
+    packages/client/src/__tests__/terminal-failure-event.test.ts
+    test/recovery-terminal-failure.test.ts test/recovery.test.ts
+    test/recovery-recommendation.test.ts
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-terminal-failure-contract
+    name: Authoritative Terminal Failure Contract and Recovery Precedence
+    depends_on: []
+    branch: harden-recovery-analysis-with-an-authoritative-terminal-failure-contract/plan-01-terminal-failure-contract
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Cross-cutting schema, engine emission, DB recovery synthesis, and
+          maintainability line-ceiling constraints require careful coordination
+          without broad rewrites.
+      reviewer:
+        effort: high
+        rationale: Review must verify event contract compatibility, fallback precedence,
+          partial semantics, and line-ceiling compliance across oversized legacy
+          files.
+      tester:
+        effort: high
+        rationale: Regression coverage needs synthetic monitor DB histories plus live
+          event emission checks for terminal failure precedence.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+    - doc-sync
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - test
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: Excursion fits because this is a cohesive architectural hardening
+    change across shared event schemas, engine failure emission, recovery
+    synthesis, and regression tests, but a single planner can enumerate the
+    ordered plans and dependencies. plan-review-cycle is included to catch
+    contract and fallback-behavior gaps before implementation. The build
+    pipeline includes test-write and test-cycle because the PRD requires
+    multiple regression fixtures and command validation, plus review-cycle for
+    quality-critical recovery behavior. doc-sync is included because the change
+    touches shared event/API contracts that may have existing references. Review
+    focuses on api and test perspectives with strict evaluation due to schema
+    compatibility, event-contract correctness, and recovery regression risk.
+diff_base_ref: 8d3fdabf464a2ea574ae18da2b18bfd6282220e4
