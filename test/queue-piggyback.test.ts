@@ -17,6 +17,7 @@ import {
   validateDependsOnExists,
   enqueuePrd,
   loadQueue,
+  classifyAfterQueueId,
   type QueuedPrd,
 } from '@eforge-build/engine/prd-queue';
 import { upsertArtifact, upsertCompletion } from '@eforge-build/engine/artifacts';
@@ -719,3 +720,200 @@ describe('enqueuePrd with intoWaiting', () => {
     expect(prd!.frontmatter.depends_on).toEqual(['upstream-build']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// classifyAfterQueueId — placement helper
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-build-dependency-core ---
+describe('classifyAfterQueueId', () => {
+  const makeTempDir = useTempDir('eforge-classify-after-');
+
+  it('returns intoWaiting: true for an active root queue item', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    writePrdToQueue(cwd, queueDir, 'pending-upstream');
+
+    const result = await classifyAfterQueueId('pending-upstream', queueDir, cwd);
+    expect(result).toEqual({ dependsOn: ['pending-upstream'], intoWaiting: true });
+  });
+
+  it('returns intoWaiting: true for an active waiting queue item', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    writePrdToWaiting(cwd, queueDir, 'waiting-upstream', ['some-parent']);
+
+    const result = await classifyAfterQueueId('waiting-upstream', queueDir, cwd);
+    expect(result).toEqual({ dependsOn: ['waiting-upstream'], intoWaiting: true });
+  });
+
+  it('returns intoWaiting: false for a completed upstream with usable artifact', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    // No queue file — upstream has already completed
+    await recordArtifact(cwd, 'completed-upstream');
+
+    const result = await classifyAfterQueueId('completed-upstream', queueDir, cwd);
+    expect(result).toEqual({ dependsOn: ['completed-upstream'], intoWaiting: false });
+  });
+
+  it('throws for a failed upstream in the failed/ directory', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    const failedDir = join(cwd, queueDir, 'failed');
+    mkdirSync(failedDir, { recursive: true });
+    writeFileSync(
+      join(failedDir, 'failed-upstream.md'),
+      '---\ntitle: failed-upstream\n---\n\n# failed\n',
+    );
+
+    await expect(
+      classifyAfterQueueId('failed-upstream', queueDir, cwd),
+    ).rejects.toThrow('failed-upstream');
+  });
+
+  it('throws for a skipped upstream in the skipped/ directory', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    const skippedDir = join(cwd, queueDir, 'skipped');
+    mkdirSync(skippedDir, { recursive: true });
+    writeFileSync(
+      join(skippedDir, 'skipped-upstream.md'),
+      '---\ntitle: skipped-upstream\n---\n\n# skipped\n',
+    );
+
+    await expect(
+      classifyAfterQueueId('skipped-upstream', queueDir, cwd),
+    ).rejects.toThrow('skipped-upstream');
+  });
+
+  it('throws for a completed upstream without a usable artifact (completion registry)', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    const now = new Date().toISOString();
+    await upsertCompletion(cwd, {
+      prdId: 'completed-no-artifact',
+      status: 'completed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      classifyAfterQueueId('completed-no-artifact', queueDir, cwd),
+    ).rejects.toThrow('completed-no-artifact');
+  });
+
+  it('throws for an unknown upstream id', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+
+    await expect(
+      classifyAfterQueueId('nonexistent-id', queueDir, cwd),
+    ).rejects.toThrow('nonexistent-id');
+  });
+
+  it('error messages contain the afterQueueId for all failure cases', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+
+    const unknownErr = await classifyAfterQueueId('unknown-xyz', queueDir, cwd).catch((e: Error) => e);
+    expect(unknownErr).toBeInstanceOf(Error);
+    expect((unknownErr as Error).message).toContain('unknown-xyz');
+  });
+
+  it('throws for a failed upstream even when a stale usable artifact record exists', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    // Stale artifact record for the same id
+    await recordArtifact(cwd, 'stale-failed');
+    // But the PRD is in the failed/ directory
+    const failedDir = join(cwd, queueDir, 'failed');
+    writeFileSync(
+      join(failedDir, 'stale-failed.md'),
+      '---\ntitle: stale-failed\n---\n\n# stale-failed\n',
+    );
+
+    await expect(
+      classifyAfterQueueId('stale-failed', queueDir, cwd),
+    ).rejects.toThrow('stale-failed');
+  });
+
+  it('throws for a skipped upstream even when a stale usable artifact record exists', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    // Stale artifact record for the same id
+    await recordArtifact(cwd, 'stale-skipped');
+    // But the PRD is in the skipped/ directory
+    const skippedDir = join(cwd, queueDir, 'skipped');
+    writeFileSync(
+      join(skippedDir, 'stale-skipped.md'),
+      '---\ntitle: stale-skipped\n---\n\n# stale-skipped\n',
+    );
+
+    await expect(
+      classifyAfterQueueId('stale-skipped', queueDir, cwd),
+    ).rejects.toThrow('stale-skipped');
+  });
+
+  it('throws for a completion-registry failed upstream even when a stale usable artifact record exists', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    // Stale artifact record
+    await recordArtifact(cwd, 'stale-completion-failed');
+    // But the completion registry says failed
+    const now = new Date().toISOString();
+    await upsertCompletion(cwd, {
+      prdId: 'stale-completion-failed',
+      status: 'failed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      classifyAfterQueueId('stale-completion-failed', queueDir, cwd),
+    ).rejects.toThrow('stale-completion-failed');
+  });
+
+  it('throws for a completion-registry skipped upstream even when a stale usable artifact record exists', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    // Stale artifact record
+    await recordArtifact(cwd, 'stale-completion-skipped');
+    // But the completion registry says skipped
+    const now = new Date().toISOString();
+    await upsertCompletion(cwd, {
+      prdId: 'stale-completion-skipped',
+      status: 'skipped',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      classifyAfterQueueId('stale-completion-skipped', queueDir, cwd),
+    ).rejects.toThrow('stale-completion-skipped');
+  });
+
+  it('throws for a completion-registry completed-without-artifact upstream even when a stale usable artifact record exists', async () => {
+    const dir = makeTempDir();
+    const { cwd, queueDir } = setupGitQueue(dir);
+    // Stale artifact record
+    await recordArtifact(cwd, 'stale-completed-no-artifact');
+    // But the completion registry says completed without artifact
+    const now = new Date().toISOString();
+    await upsertCompletion(cwd, {
+      prdId: 'stale-completed-no-artifact',
+      status: 'completed',
+      artifactAvailable: false,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      classifyAfterQueueId('stale-completed-no-artifact', queueDir, cwd),
+    ).rejects.toThrow('stale-completed-no-artifact');
+  });
+});
+// --- eforge:endregion plan-01-build-dependency-core ---

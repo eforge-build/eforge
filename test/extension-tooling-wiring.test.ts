@@ -764,3 +764,64 @@ describe('MCP/Pi eforge_extension parity', () => {
     expect(source).toContain('trustProjectExtensions');
   });
 });
+
+// --- eforge:region plan-01-build-dependency-core ---
+describe('CLI --after flag wiring', () => {
+  it('eforge enqueue command declares --after <queue-id> option', () => {
+    const cliIndexSource = readRepoFile('packages/eforge/src/cli/index.ts');
+    // The enqueue command should register --after
+    const enqueueBlock = cliIndexSource.slice(
+      cliIndexSource.indexOf(".command('enqueue <source>')"),
+      cliIndexSource.indexOf(".command('build [source]')"),
+    );
+    expect(enqueueBlock).toContain("--after <queue-id>");
+    expect(enqueueBlock).toContain('afterQueueId: options.after');
+  });
+
+  it('eforge build command declares --after <queue-id> option', () => {
+    const cliIndexSource = readRepoFile('packages/eforge/src/cli/index.ts');
+    const buildBlock = cliIndexSource.slice(
+      cliIndexSource.indexOf(".command('build [source]')"),
+      cliIndexSource.indexOf(".command('monitor')"),
+    );
+    expect(buildBlock).toContain("--after <queue-id>");
+    expect(buildBlock).toContain('afterQueueId: options.after');
+  });
+
+  it('run-or-delegate BuildRunOpts declares afterQueueId option', () => {
+    const rodSource = readRepoFile('packages/eforge/src/cli/run-or-delegate.ts');
+    expect(rodSource).toContain('afterQueueId?: string');
+  });
+
+  it('run-or-delegate daemon delegation path includes afterQueueId in apiEnqueue body', () => {
+    const rodSource = readRepoFile('packages/eforge/src/cli/run-or-delegate.ts');
+    expect(rodSource).toContain('afterQueueId: options.afterQueueId');
+  });
+
+  it('run-or-delegate in-process enqueue path passes afterQueueId to engine.enqueue', () => {
+    const rodSource = readRepoFile('packages/eforge/src/cli/run-or-delegate.ts');
+    // The afterQueueId spread must appear in the engine.enqueue call
+    const enqueueCall = rodSource.slice(
+      rodSource.indexOf('yield* engine.enqueue(normalizedSource,'),
+      rodSource.indexOf('yield* engine.enqueue(normalizedSource,') + 800,
+    );
+    expect(enqueueCall).toContain('afterQueueId');
+  });
+
+  it('EnqueueRequest exposes optional afterQueueId field', () => {
+    const routesSource = readRepoFile('packages/client/src/routes.ts');
+    expect(routesSource).toContain('afterQueueId?: string');
+    // Should be inside the EnqueueRequest interface
+    const enqueueRequestBlock = routesSource.slice(
+      routesSource.indexOf('export interface EnqueueRequest {'),
+      routesSource.indexOf('}', routesSource.indexOf('export interface EnqueueRequest {')),
+    );
+    expect(enqueueRequestBlock).toContain('afterQueueId?: string');
+  });
+
+  it('EnqueueOptions exposes optional afterQueueId field', () => {
+    const eventsSource = readRepoFile('packages/engine/src/events.ts');
+    expect(eventsSource).toContain('afterQueueId?: string');
+  });
+});
+// --- eforge:endregion plan-01-build-dependency-core ---

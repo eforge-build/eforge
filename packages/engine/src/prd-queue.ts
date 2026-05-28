@@ -883,6 +883,131 @@ export async function setQueuedPrdStackParent(
 // Piggyback scheduling helpers
 // ---------------------------------------------------------------------------
 
+// --- eforge:region plan-01-build-dependency-core ---
+/**
+ * Result of classifying an explicit `afterQueueId` dependency.
+ */
+export interface AfterQueueClassification {
+  /** The dependency list to persist in PRD frontmatter (`depends_on`). */
+  dependsOn: string[];
+  /**
+   * Whether the new PRD should be placed in `.eforge/queue/waiting/`.
+   * True when the upstream is still active (pending, running, waiting).
+   * False when the upstream is already completed with a usable artifact.
+   */
+  intoWaiting: boolean;
+}
+
+/**
+ * Classify an explicit `afterQueueId` and return placement metadata.
+ *
+ * Classification rules (evaluated in order):
+ * 1. Active root queue item (pending/running) → `intoWaiting: true`
+ * 2. Active waiting queue item → `intoWaiting: true`
+ * 3. Live running upstream (lock file alive) → `intoWaiting: true`
+ * 4. Failed or skipped queue directory → throw with id in message
+ * 5. Completion registry: failed/skipped/completed-without-artifact → throw with id in message
+ * 6. Completed upstream with usable artifact → `intoWaiting: false`
+ * 7. Unknown id → throw with id in message
+ *
+ * Throws an `Error` whose message contains the `afterQueueId` value for all
+ * invalid or non-actionable upstream states.
+ */
+export async function classifyAfterQueueId(
+  afterQueueId: string,
+  queueDir: string,
+  cwd: string,
+): Promise<AfterQueueClassification> {
+  // 1 & 2: Check active root/waiting queue items
+  const [pendingPrds, waitingPrds] = await Promise.all([
+    loadQueue(queueDir, cwd).catch((): QueuedPrd[] => []),
+    loadQueue(`${queueDir}/waiting`, cwd).catch((): QueuedPrd[] => []),
+  ]);
+
+  if (pendingPrds.some((p) => p.id === afterQueueId)) {
+    return { dependsOn: [afterQueueId], intoWaiting: true };
+  }
+  if (waitingPrds.some((p) => p.id === afterQueueId)) {
+    return { dependsOn: [afterQueueId], intoWaiting: true };
+  }
+
+  // 3: Check live running upstream (lock file alive) - handles race where PRD
+  // file may have been consumed but lock is still live at classification time
+  const lockStatus = await readPrdLockStatus(afterQueueId, cwd);
+  if (lockStatus.state === 'live') {
+    return { dependsOn: [afterQueueId], intoWaiting: true };
+  }
+
+  // 4: Check terminal state directories (failed, skipped) — must come before
+  // artifact registry so a stale usable-artifact record cannot mask a failed
+  // or skipped upstream.
+  const [failedPrds, skippedPrds] = await Promise.all([
+    loadQueue(`${queueDir}/failed`, cwd).catch((): QueuedPrd[] => []),
+    loadQueue(`${queueDir}/skipped`, cwd).catch((): QueuedPrd[] => []),
+  ]);
+
+  if (failedPrds.some((p) => p.id === afterQueueId)) {
+    throw new Error(
+      `afterQueueId "${afterQueueId}" references a failed upstream queue item. ` +
+      `Only pending, running, waiting, or completed-with-artifact items can be used as upstream dependencies.`,
+    );
+  }
+  if (skippedPrds.some((p) => p.id === afterQueueId)) {
+    throw new Error(
+      `afterQueueId "${afterQueueId}" references a skipped upstream queue item. ` +
+      `Only pending, running, waiting, or completed-with-artifact items can be used as upstream dependencies.`,
+    );
+  }
+
+  // 5: Check completion registry for terminal states — also before artifact
+  // registry so that failed/skipped/completed-without-artifact completion
+  // records override any stale artifact entry.
+  const completionRegistry = await loadCompletionRegistry(cwd);
+  const completionRecord = lookupCompletion(completionRegistry, afterQueueId);
+  if (completionRecord) {
+    if (completionRecord.status === 'failed') {
+      throw new Error(
+        `afterQueueId "${afterQueueId}" references a failed upstream (completion registry). ` +
+        `Only pending, running, waiting, or completed-with-artifact items can be used as upstream dependencies.`,
+      );
+    }
+    if (completionRecord.status === 'skipped') {
+      throw new Error(
+        `afterQueueId "${afterQueueId}" references a skipped upstream (completion registry). ` +
+        `Only pending, running, waiting, or completed-with-artifact items can be used as upstream dependencies.`,
+      );
+    }
+    if (completionRecord.status === 'completed' && !completionRecord.artifactAvailable) {
+      throw new Error(
+        `afterQueueId "${afterQueueId}" references a completed upstream without a usable artifact. ` +
+        `Re-run the upstream build to produce a usable artifact before adding dependents.`,
+      );
+    }
+  }
+
+  // 6: Check artifact registry — completed with usable artifact → ready immediately.
+  // Only reached when no terminal/non-artifact state has overridden it above.
+  const registry = await loadArtifactRegistry(cwd);
+  if (hasUsableArtifact(registry, afterQueueId)) {
+    return { dependsOn: [afterQueueId], intoWaiting: false };
+  }
+
+  // completed with artifactAvailable in completion registry but no durable artifact — inconsistency
+  if (completionRecord?.status === 'completed') {
+    throw new Error(
+      `afterQueueId "${afterQueueId}" references a completed upstream without a durable artifact in the registry. ` +
+      `Re-run the upstream build to produce a usable artifact before adding dependents.`,
+    );
+  }
+
+  // 7: Unknown id
+  throw new Error(
+    `afterQueueId "${afterQueueId}" references an unknown queue item. ` +
+    `Only pending, running, waiting, or completed-with-artifact queue items can be used as upstream dependencies.`,
+  );
+}
+// --- eforge:endregion plan-01-build-dependency-core ---
+
 /**
  * Find all PRDs in the given array that list `upstreamId` in their `depends_on`.
  */
@@ -955,8 +1080,13 @@ export async function validateDependsOnExists(
   for (const dep of depends_on) {
     // 1. Active root/waiting queue item: accept.
     if (existingIds.has(dep)) continue;
+    // 2. Live running upstream (lock file alive): accept. Handles the race where
+    // the PRD file has been consumed by the worker but the lock is still live.
+    // eslint-disable-next-line no-await-in-loop
+    const lockStatus = await readPrdLockStatus(dep, cwd);
+    if (lockStatus.state === 'live') continue;
     // --- eforge:region plan-02-artifact-registry-dependency-readiness ---
-    // 2. Failed/skipped queue directory item: error containing "artifact".
+    // 3. Failed/skipped queue directory item: error containing "artifact".
     // Failed/skipped queue items never satisfy dependencies, even if an old
     // artifact record is still present from an earlier successful attempt.
     if (terminalIds.has(dep)) {

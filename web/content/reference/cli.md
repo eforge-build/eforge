@@ -25,6 +25,7 @@ Normalize input and add it to the PRD queue
 | `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
 | `--landing-auto-merge` | Enable PR auto-merge for this build |
 | `--no-landing-auto-merge` | Disable PR auto-merge for this build |
+| `--after <queue-id>` | Wait for an upstream queue item to complete before building |
 
 ### `build`
 
@@ -53,6 +54,7 @@ Compile + build + validate in one step
 | `--landing-action <action>` | Landing action for this build (pr\|merge\|leave) |
 | `--landing-auto-merge` | Enable PR auto-merge for this build |
 | `--no-landing-auto-merge` | Disable PR auto-merge for this build |
+| `--after <queue-id>` | Wait for an upstream queue item to complete before building |
 
 ### `monitor`
 

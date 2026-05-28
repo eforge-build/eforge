@@ -2096,7 +2096,7 @@ export async function startServer(
         return true;
       }
       try {
-        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; landingAction?: string; onSuccess?: unknown; landingAutoMerge?: unknown };
+        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string; landingAction?: string; onSuccess?: unknown; landingAutoMerge?: unknown; afterQueueId?: unknown };
         if (!body.source || typeof body.source !== 'string') {
           sendJsonError(res, 400, 'Missing required field: source');
           return true;
@@ -2152,6 +2152,42 @@ export async function startServer(
           explicitLandingAutoMerge = body.landingAutoMerge;
         }
         // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+        // --- eforge:region plan-01-build-dependency-core ---
+        // Validate afterQueueId: reject non-string, validate string values by
+        // classifying the upstream state. The worker re-runs classification
+        // on spawn to handle races where the upstream completes in between.
+        let validatedAfterQueueId: string | undefined;
+        if (body.afterQueueId !== undefined) {
+          if (typeof body.afterQueueId !== 'string') {
+            sendJsonError(res, 400, 'Invalid field: afterQueueId must be a string');
+            return true;
+          }
+          if (cwd) {
+            let classifyFn: typeof import('@eforge-build/engine/prd-queue').classifyAfterQueueId;
+            let queueDir: string;
+            try {
+              const [prdQueueModule, configModule] = await Promise.all([
+                import('@eforge-build/engine/prd-queue'),
+                import('@eforge-build/engine/config'),
+              ]);
+              classifyFn = prdQueueModule.classifyAfterQueueId;
+              const { config: cfg } = await configModule.loadConfig(cwd);
+              queueDir = cfg.prdQueue.dir;
+            } catch (importErr) {
+              sendJsonError(res, 500, `Server error loading dependencies: ${importErr instanceof Error ? importErr.message : String(importErr)}`);
+              return true;
+            }
+            try {
+              await classifyFn(body.afterQueueId, queueDir, cwd);
+            } catch (classifyErr) {
+              const msg = classifyErr instanceof Error ? classifyErr.message : `Invalid afterQueueId: ${body.afterQueueId}`;
+              sendJsonError(res, 400, msg);
+              return true;
+            }
+          }
+          validatedAfterQueueId = body.afterQueueId;
+        }
+        // --- eforge:endregion plan-01-build-dependency-core ---
         // --- eforge:region plan-01-per-build-profile-override ---
         // Validate explicit profile override before spawning any worker.
         let explicitProfileName: string | undefined;
@@ -2239,6 +2275,11 @@ export async function startServer(
           args.push('--no-landing-auto-merge');
         }
         // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+        // --- eforge:region plan-01-build-dependency-core ---
+        if (validatedAfterQueueId) {
+          args.push('--after', validatedAfterQueueId);
+        }
+        // --- eforge:endregion plan-01-build-dependency-core ---
         // --- eforge:region plan-01-semantic-enqueue-wake ---
         // Wake is now driven by the persisted enqueue:complete DB event via the
         // daemon semantic-event reaction path (daemon-event-reactions.ts).

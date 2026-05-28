@@ -125,4 +125,12 @@ export interface EnqueueOptions {
   /** Stack provider override for this PRD. */
   stack_provider?: 'git-spice';
   // --- eforge:endregion plan-01-engine-config-and-landing ---
+  // --- eforge:region plan-01-build-dependency-core ---
+  /**
+   * Explicit upstream queue item id. When provided, the enqueued PRD gains
+   * `depends_on: [afterQueueId]` and placement is determined by upstream state.
+   * Overrides dependency-detector output when set.
+   */
+  afterQueueId?: string;
+  // --- eforge:endregion plan-01-build-dependency-core ---
 }

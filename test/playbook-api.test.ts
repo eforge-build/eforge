@@ -1180,3 +1180,105 @@ describe('POST /api/playbook/run - landingAutoMerge persistence', () => {
 });
 
 // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
+
+// --- eforge:region plan-01-build-dependency-core ---
+
+// ---------------------------------------------------------------------------
+// Route: POST /api/enqueue — afterQueueId validation
+// ---------------------------------------------------------------------------
+
+// Recording workerTracker so tests can inspect spawned args
+function makeRecordingWorkerTracker(): WorkerTracker & { calls: Array<{ command: string; args: string[] }> } {
+  const calls: Array<{ command: string; args: string[] }> = [];
+  return {
+    calls,
+    spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
+      calls.push({ command, args });
+      return { sessionId: 'rec-session', pid: 88888 };
+    },
+    cancelWorker(_sessionId: string): boolean {
+      return false;
+    },
+  };
+}
+
+describe('POST /api/enqueue - afterQueueId validation', () => {
+  it('returns 400 when afterQueueId is not a string (number)', async () => {
+    await setup({ workerTracker: makeStubWorkerTracker() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a new feature',
+      afterQueueId: 42,
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('afterQueueId');
+    expect(data.error).toContain('string');
+  });
+
+  it('returns 400 when afterQueueId is not a string (boolean)', async () => {
+    await setup({ workerTracker: makeStubWorkerTracker() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a new feature',
+      afterQueueId: true,
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('afterQueueId');
+  });
+
+  it('returns 400 with the invalid id in error text for an unknown afterQueueId', async () => {
+    const { tmpDir } = await init();
+    // Initialize git repo so loadQueue works
+    execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: tmpDir });
+    await start(tmpDir, { workerTracker: makeStubWorkerTracker() });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a new feature',
+      afterQueueId: 'nonexistent-q-abc',
+    });
+    expect(res.status).toBe(400);
+
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('nonexistent-q-abc');
+  });
+
+  it('passes --after <id> to enqueue worker when afterQueueId is valid (active root item)', async () => {
+    const { tmpDir, configDir } = await init();
+    execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: tmpDir });
+
+    // Write an active PRD to the queue root
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    await mkdir(queueDir, { recursive: true });
+    await writeFile(
+      resolve(queueDir, 'active-upstream.md'),
+      '---\ntitle: active-upstream\ncreated: 2026-01-01\n---\n\n# Active upstream\n',
+      'utf-8',
+    );
+
+    const tracker = makeRecordingWorkerTracker();
+    await start(tmpDir, { workerTracker: tracker });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: 'implement a dependent feature',
+      afterQueueId: 'active-upstream',
+    });
+    expect(res.status).toBe(200);
+
+    // Worker should have been spawned with --after active-upstream
+    const call = tracker.calls.find((c) => c.command === 'enqueue');
+    expect(call).toBeDefined();
+    expect(call!.args).toContain('--after');
+    const afterIdx = call!.args.indexOf('--after');
+    expect(call!.args[afterIdx + 1]).toBe('active-upstream');
+  });
+});
+
+// --- eforge:endregion plan-01-build-dependency-core ---
