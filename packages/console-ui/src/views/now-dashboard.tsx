@@ -5,6 +5,7 @@ import { selectNowDashboardModel } from '@/lib/selectors/now';
 import { NowStateBanner } from '@/components/now/now-state-banner';
 import { AttentionPanel } from '@/components/now/attention-panel';
 import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
+import { QueueStackCard } from '@/components/now/queue-stack-card';
 import { QueueCard } from '@/components/now/queue-card';
 import { RunHistoryCard } from '@/components/now/run-history-card';
 import { StackSummaryCard } from '@/components/now/stack-summary-card';
@@ -58,6 +59,9 @@ export function NowDashboard({ projectState, activeSessions, onNavigate }: NowDa
 
       {/* Active builds grid */}
       <ActiveBuildsGrid cards={model.activeBuilds} onNavigate={onNavigate} />
+
+      {/* Dependency-linked queued stacks */}
+      <QueueStackCard stacks={model.queueStacks} />
 
       {/* Queue */}
       <QueueCard summary={model.queue} />

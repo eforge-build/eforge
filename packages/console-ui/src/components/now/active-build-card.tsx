@@ -355,7 +355,6 @@ export function ActiveBuildCard({ card, onNavigate }: ActiveBuildCardProps) {
         <BuildPipelineStrip
           rows={card.miniGanttRows}
           hasPlanningRow={card.hasPlanningRow}
-          maxRows={4}
         />
 
         <div className="flex items-center justify-between gap-3 border-t pt-2 text-xs text-muted-foreground">

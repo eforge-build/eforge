@@ -2,9 +2,9 @@
  * BuildPipelineStrip — compact plan-lane visualization for active build cards.
  *
  * The dashboard version is intentionally higher-signal than the full run-detail
- * timeline: it shows one small rail per plan, active worker counts, and a small
- * amount of overflow summarization so multi-plan / parallel builds remain
- * glanceable.
+ * timeline: it shows one small rail per plan and active worker counts. When a
+ * caller opts into row limiting, overflow is hidden behind an explicit
+ * disclosure instead of being permanently summarized.
  */
 import * as React from 'react';
 import { cn } from '@/lib/utils';
@@ -142,14 +142,16 @@ export interface BuildPipelineStripProps {
   rows: MiniGanttRow[];
   /** True when planning events exist in the run state. */
   hasPlanningRow: boolean;
-  /** Maximum number of plan rows to show before summarizing overflow. */
+  /** Optional initial row limit; overflow is available through disclosure. */
   maxRows?: number;
 }
 
-export function BuildPipelineStrip({ rows, hasPlanningRow, maxRows = 4 }: BuildPipelineStripProps) {
+export function BuildPipelineStrip({ rows, hasPlanningRow, maxRows }: BuildPipelineStripProps) {
+  const [expanded, setExpanded] = React.useState(false);
   if (rows.length === 0 && !hasPlanningRow) return null;
 
-  const visibleRows = rows.slice(0, maxRows);
+  const shouldLimit = maxRows != null && rows.length > maxRows && !expanded;
+  const visibleRows = shouldLimit ? rows.slice(0, maxRows) : rows;
   const hiddenCount = Math.max(0, rows.length - visibleRows.length);
 
   return (
@@ -162,9 +164,13 @@ export function BuildPipelineStrip({ rows, hasPlanningRow, maxRows = 4 }: BuildP
         <PlanRow key={row.planId} row={row} />
       ))}
       {hiddenCount > 0 && (
-        <div className="rounded-md border border-dashed border-border/70 px-2 py-1 text-xs text-muted-foreground">
-          + {hiddenCount} more plan{hiddenCount === 1 ? '' : 's'}
-        </div>
+        <button
+          type="button"
+          className="w-full rounded-md border border-dashed border-border/70 px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
+          onClick={() => setExpanded(true)}
+        >
+          + {hiddenCount} more plan{hiddenCount === 1 ? '' : 's'} — show all
+        </button>
       )}
     </div>
   );

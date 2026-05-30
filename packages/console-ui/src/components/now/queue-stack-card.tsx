@@ -1,0 +1,115 @@
+import * as React from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import type { NowQueueStack, NowQueueStackItem } from '@/lib/selectors/now';
+import { cn } from '@/lib/utils';
+
+interface QueueStackCardProps {
+  stacks: NowQueueStack[];
+}
+
+function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+  const s = status.toLowerCase();
+  if (s === 'failed') return 'destructive';
+  if (s === 'running') return 'default';
+  if (s === 'waiting') return 'outline';
+  return 'secondary';
+}
+
+function statusSummary(stack: NowQueueStack): string {
+  const parts: string[] = [];
+  if (stack.activeCount > 0) parts.push(`${stack.activeCount} running`);
+  if (stack.waitingCount > 0) parts.push(`${stack.waitingCount} waiting`);
+  if (stack.pendingCount > 0) parts.push(`${stack.pendingCount} pending`);
+  return parts.join(' · ');
+}
+
+function itemDetail(item: NowQueueStackItem): string {
+  if (item.blockedBy.length > 0) {
+    return `blocked by ${item.blockedBy.join(', ')}`;
+  }
+  if (item.status.toLowerCase() === 'running') {
+    return item.unlocksCount > 0
+      ? `currently running · unlocks ${item.unlocksCount} plan${item.unlocksCount !== 1 ? 's' : ''}`
+      : 'currently running';
+  }
+  if (item.unlocksCount > 0) {
+    return `unlocks ${item.unlocksCount} plan${item.unlocksCount !== 1 ? 's' : ''}`;
+  }
+  return 'ready when dependencies clear';
+}
+
+function QueueStackItemRow({ item, isLast }: { item: NowQueueStackItem; isLast: boolean }) {
+  return (
+    <li className="relative pl-6">
+      {!isLast && <span className="absolute left-[7px] top-5 h-full w-px bg-border" aria-hidden="true" />}
+      <span
+        className={cn(
+          'absolute left-0 top-1.5 h-3.5 w-3.5 rounded-full border bg-background',
+          item.status.toLowerCase() === 'running' ? 'border-primary bg-primary' : 'border-muted-foreground/50',
+        )}
+        aria-hidden="true"
+      />
+      <div className="rounded-md border bg-muted/20 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            Layer {item.layer} / {item.totalLayers}
+          </span>
+          <Badge variant={statusVariant(item.status)} className="capitalize text-xs">
+            {item.status}
+          </Badge>
+        </div>
+        <p className="mt-1 text-sm font-medium text-foreground">{item.title}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{itemDetail(item)}</p>
+      </div>
+    </li>
+  );
+}
+
+export function QueueStackCard({ stacks }: QueueStackCardProps) {
+  if (stacks.length === 0) return null;
+
+  const totalPlans = stacks.reduce((sum, stack) => sum + stack.totalItems, 0);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 pt-4 px-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-sm font-semibold">Build stack</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Dependency-linked queued plans, shown in unlock order.
+            </p>
+          </div>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {totalPlans} stacked plan{totalPlans !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4 px-4 pb-4">
+        {stacks.map((stack, stackIndex) => (
+          <section key={stack.id} aria-label={`Build stack ${stackIndex + 1}`}>
+            {stacks.length > 1 && (
+              <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                <span>Stack {stackIndex + 1}</span>
+                <span>{statusSummary(stack)}</span>
+              </div>
+            )}
+            {stacks.length === 1 && statusSummary(stack) && (
+              <p className="mb-2 text-xs text-muted-foreground">{statusSummary(stack)}</p>
+            )}
+            <ol className="space-y-2">
+              {stack.items.map((item, itemIndex) => (
+                <QueueStackItemRow
+                  key={item.id}
+                  item={item}
+                  isLast={itemIndex === stack.items.length - 1}
+                />
+              ))}
+            </ol>
+          </section>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}

@@ -9,6 +9,7 @@ import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { NowQueueSummary } from '@/lib/selectors/now';
+import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 
 interface QueueCardProps {
   summary: NowQueueSummary;
@@ -21,7 +22,14 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
   return 'secondary';
 }
 
+function blockedByLabel(dependsOn: string[]): string {
+  return dependsOn.map((depId) => selectPrdDisplayLabel(undefined, depId)).join(', ');
+}
+
 export function QueueCard({ summary }: QueueCardProps) {
+  const [expanded, setExpanded] = React.useState(false);
+  const items = expanded ? (summary.allItems ?? summary.topItems) : summary.topItems;
+
   return (
     <Card>
       <CardHeader className="pb-2 pt-4 px-4">
@@ -58,7 +66,7 @@ export function QueueCard({ summary }: QueueCardProps) {
 
             {/* Top items — display only */}
             <ul className="space-y-1.5">
-              {summary.topItems.map((item) => (
+              {items.map((item) => (
                 <li key={item.id} className="flex items-start gap-2">
                   <Badge
                     variant={statusVariant(item.status)}
@@ -75,7 +83,7 @@ export function QueueCard({ summary }: QueueCardProps) {
                     )}
                     {item.dependsOn && item.dependsOn.length > 0 && (
                       <p className="text-xs text-muted-foreground">
-                        depends on {item.dependsOn.length} item{item.dependsOn.length !== 1 ? 's' : ''}
+                        blocked by {blockedByLabel(item.dependsOn)}
                       </p>
                     )}
                     {item.recoveryVerdict && (
@@ -90,10 +98,14 @@ export function QueueCard({ summary }: QueueCardProps) {
                 </li>
               ))}
             </ul>
-            {summary.hiddenCount > 0 && (
-              <p className="text-xs text-muted-foreground mt-2">
-                + {summary.hiddenCount} more
-              </p>
+            {summary.hiddenCount > 0 && !expanded && (
+              <button
+                type="button"
+                className="mt-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => setExpanded(true)}
+              >
+                + {summary.hiddenCount} more — show all
+              </button>
             )}
           </>
         )}
