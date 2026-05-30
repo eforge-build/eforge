@@ -141,6 +141,35 @@ function buildMarkdown(
     }
     lines.push('');
   }
+
+  if (summary.reviewFailure) {
+    lines.push('## Review Failure Details', '');
+    lines.push(`**Plan ID:** ${escapeTableCell(summary.reviewFailure.planId)}`);
+    lines.push('');
+    if (summary.reviewFailure.issues.length > 0) {
+      lines.push('### Final Review Issues', '');
+      lines.push('| Severity | Category | File | Line | Description | Fix |');
+      lines.push('|----------|----------|------|------|-------------|-----|');
+      for (const issue of summary.reviewFailure.issues) {
+        lines.push(`| ${escapeTableCell(issue.severity)} | ${escapeTableCell(issue.category)} | ${escapeTableCell(issue.file)} | ${issue.line ?? ''} | ${escapeTableCell(issue.description)} | ${escapeTableCell(issue.fix ?? '')} |`);
+      }
+      lines.push('');
+    }
+    if (summary.reviewFailure.evaluation) {
+      const ev = summary.reviewFailure.evaluation;
+      lines.push('### Final Evaluation Verdicts', '');
+      lines.push(`**Accepted:** ${ev.accepted} | **Rejected:** ${ev.rejected} | **Needs Review:** ${ev.review}`);
+      lines.push('');
+      if (ev.verdicts.length > 0) {
+        lines.push('| Action | File | Hunk | Reason |');
+        lines.push('|--------|------|------|--------|');
+        for (const verdictRow of ev.verdicts) {
+          lines.push(`| ${escapeTableCell(verdictRow.action)} | ${escapeTableCell(verdictRow.file)} | ${verdictRow.hunk ?? ''} | ${escapeTableCell(verdictRow.reason)} |`);
+        }
+        lines.push('');
+      }
+    }
+  }
   // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
   if (summary.landedCommits.length > 0) {

@@ -135,6 +135,7 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
   const plans: PlanSummaryEntry[] = eventFragment?.plans ?? [];
   // --- eforge:region plan-01-recovery-summary-reconstruction ---
   const failingPlans = eventFragment?.failingPlans;
+  const reviewFailure = eventFragment?.reviewFailure;
   // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
   // failedAt derivation (Decision #11):
@@ -171,6 +172,7 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
     // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
     // --- eforge:region plan-01-recovery-summary-reconstruction ---
     ...(failingPlans !== undefined ? { failingPlans } : {}),
+    ...(reviewFailure !== undefined ? { reviewFailure } : {}),
     // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
   };
 

@@ -11,7 +11,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit, AcceptanceCriterionVerdict } from '../events.js';
 import { classifyAgentTerminalSubtype } from '../harness.js';
-import { findAuthoritativeTerminalEvent, reconstructPlanMaps, buildPlanSummaries, extractValidationCommands, extractLandingInfo, buildAuthoritativeFragment, detectLegacyFallbackFragment } from './terminal-failure-history.js';
+import { findAuthoritativeTerminalEvent, reconstructPlanMaps, buildPlanSummaries, extractValidationCommands, extractLandingInfo, extractReviewFailureDetails, buildAuthoritativeFragment, detectLegacyFallbackFragment } from './terminal-failure-history.js';
 
 export interface SynthesizeOptions {
   setName: string;
@@ -106,7 +106,10 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           const valStartRow = db.prepare(`SELECT id FROM events WHERE run_id = ? AND type = 'validation:start' AND id <= ? ORDER BY id DESC LIMIT 1`).get(runId, failedPhaseRow.id) as { id: number } | undefined;
           const valCmds = extractValidationCommands(db, runId, valStartRow?.id ?? 0, failedPhaseRow.id);
           const landingInfo = extractLandingInfo(db, runId, failedPhaseRow.id);
-          const fragment = buildAuthoritativeFragment(authTerminal, maps, prdId, setName, modelsUsed, failedPhaseRow.timestamp, valCmds, landingInfo);
+          const reviewFailure = authTerminal.planId
+            ? extractReviewFailureDetails(db, runId, authTerminal.planId, authTerminal.id)
+            : undefined;
+          const fragment = buildAuthoritativeFragment(authTerminal, maps, prdId, setName, modelsUsed, failedPhaseRow.timestamp, valCmds, landingInfo, reviewFailure);
           return fragment;
         }
         // phase:end found but no authoritative terminal event — legacy fallback applies.
@@ -118,6 +121,7 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
       let plans: PlanSummaryEntry[];
       let failedAt: string;
       let failingPlans: FailingPlanEntry[] | undefined;
+      let reviewFailure: BuildFailureSummary['reviewFailure'];
 
       // --- eforge:region plan-01-recovery-summary-reconstruction ---
       // Query ALL plan:build:failed events for the run (ordered by id ASC; latest = last element).
@@ -290,6 +294,9 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           });
         }
         failingPlans = [...failingPlanMap.values()];
+        if (latestFailedEvent.planId) {
+          reviewFailure = extractReviewFailureDetails(db, runId, latestFailedEvent.planId, latestFailedEvent.id);
+        }
       }
       // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
       else {
@@ -538,6 +545,7 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         failingPlan,
         // --- eforge:region plan-01-recovery-summary-reconstruction ---
         ...(failingPlans !== undefined ? { failingPlans } : {}),
+        ...(reviewFailure !== undefined ? { reviewFailure } : {}),
         // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
         landedCommits: [] as LandedCommit[],
         diffStat: '',
