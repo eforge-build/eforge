@@ -47,7 +47,7 @@
     "@eforge-build/monitor": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.6.2",
-    "commander": "^14.0.3",
+    "commander": "^15.0.0",
     "ora": "^9.4.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
