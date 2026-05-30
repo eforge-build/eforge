@@ -6,6 +6,7 @@ import type { ActiveSessionDetail } from '@/hooks/use-active-session-streams';
 import type { ConsoleActivityEntry } from '@/lib/types';
 import {
   selectNowQueueSummary,
+  selectNowQueueStacks,
   selectNowAttentionItems,
   selectNowActiveBuildCards,
   selectNowStatusSummary,
@@ -131,6 +132,46 @@ describe('selectNowQueueSummary', () => {
     expect(statuses).not.toContain('running');
     expect(statuses.indexOf('failed')).toBeLessThan(statuses.indexOf('waiting'));
     expect(statuses.indexOf('waiting')).toBeLessThan(statuses.indexOf('pending'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Queue stack selector
+// ---------------------------------------------------------------------------
+
+describe('selectNowQueueStacks', () => {
+  it('groups dependency-linked running and waiting queue items in unlock order', () => {
+    const queue = makeQueue([
+      { id: 'base', title: 'Base Build', status: 'running' },
+      { id: 'api', title: 'API Build', status: 'waiting', dependsOn: ['base'] },
+      { id: 'handoff', title: 'Handoff Build', status: 'waiting', dependsOn: ['api'] },
+      { id: 'failed', title: 'Failed Build', status: 'failed' },
+    ]);
+
+    const stacks = selectNowQueueStacks(queue);
+
+    expect(stacks).toHaveLength(1);
+    expect(stacks[0].totalItems).toBe(3);
+    expect(stacks[0].items.map((item) => item.id)).toEqual(['base', 'api', 'handoff']);
+    expect(stacks[0].items[1].blockedBy).toEqual(['Base Build']);
+    expect(stacks[0].items[2].blockedBy).toEqual(['API Build']);
+  });
+
+  it('does not clip stack groups', () => {
+    const queue = makeQueue([
+      { id: 'a1', status: 'running' },
+      { id: 'a2', status: 'waiting', dependsOn: ['a1'] },
+      { id: 'b1', status: 'pending' },
+      { id: 'b2', status: 'waiting', dependsOn: ['b1'] },
+      { id: 'c1', status: 'pending' },
+      { id: 'c2', status: 'waiting', dependsOn: ['c1'] },
+      { id: 'd1', status: 'pending' },
+      { id: 'd2', status: 'waiting', dependsOn: ['d1'] },
+    ]);
+
+    const stacks = selectNowQueueStacks(queue);
+
+    expect(stacks).toHaveLength(4);
   });
 });
 

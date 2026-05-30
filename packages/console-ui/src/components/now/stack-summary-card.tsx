@@ -21,7 +21,7 @@ export function StackSummaryCard({ summary }: StackSummaryCardProps) {
   return (
     <Card className="mb-4">
       <CardHeader className="pb-2 pt-4 px-4">
-        <CardTitle className="text-sm font-semibold">Stack layers</CardTitle>
+        <CardTitle className="text-sm font-semibold">Git stack history</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4">
         {/* Status counts */}

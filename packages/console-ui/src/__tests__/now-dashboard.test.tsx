@@ -75,6 +75,23 @@ describe('NowDashboard', () => {
     expect(screen.getByText('Run history')).toBeDefined();
   });
 
+  it('renders dependency-linked queue stacks', () => {
+    const state = connectedState({
+      queue: [
+        makeQueue({ id: 'base', title: 'Base Build', status: 'running' }),
+        makeQueue({ id: 'api', title: 'API Build', status: 'waiting', dependsOn: ['base'] }),
+        makeQueue({ id: 'handoff', title: 'Handoff Build', status: 'waiting', dependsOn: ['api'] }),
+      ],
+    });
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    expect(screen.getByText('Build stack')).toBeDefined();
+    expect(screen.getAllByText('Base Build').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('API Build').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Handoff Build').length).toBeGreaterThan(0);
+  });
+
   it('renders active build navigation for active session streams', () => {
     const onNavigate = vi.fn();
     const state = connectedState({ runs: [makeRun({ sessionId: 'sess-active' })] });

@@ -9,7 +9,6 @@
 
 import type {
   RunInfo,
-  QueueItem,
   StackLayerWire,
   EforgeEvent,
 } from '@eforge-build/client/browser';
@@ -22,6 +21,15 @@ import { toConsolePath } from '@/lib/navigation';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 import { selectPlanStatusCounts, getSummaryStats, selectMiniGanttRows } from '@/lib/run-state';
 import type { RunState, PlanStatusCounts, MiniGanttRow } from '@/lib/run-state';
+import { queueItemLabelById, selectNowQueueStacks } from './queue-stacks';
+import type { NowQueueStack } from './queue-stacks';
+import { selectNowQueueSummary } from './queue-summary';
+import type { NowQueueSummary } from './queue-summary';
+
+export { selectNowQueueSummary } from './queue-summary';
+export type { NowQueueItem, NowQueueSummary } from './queue-summary';
+export { selectNowQueueStacks } from './queue-stacks';
+export type { NowQueueStack, NowQueueStackItem } from './queue-stacks';
 
 // ---------------------------------------------------------------------------
 // View model types
@@ -91,29 +99,6 @@ export interface NowActiveBuildCard {
   miniGanttRows: MiniGanttRow[];
   /** True when planning events exist in the run state (shows PRD row in pipeline strip). */
   hasPlanningRow: boolean;
-}
-
-export interface NowQueueItem {
-  id: string;
-  title: string;
-  status: string;
-  priority: number | undefined;
-  created: string | undefined;
-  dependsOn: string[] | undefined;
-  recoveryVerdict: { verdict: string; confidence: string } | undefined;
-}
-
-export interface NowQueueSummary {
-  total: number;
-  byStatus: Record<string, number>;
-  runningCount: number;
-  pendingCount: number;
-  failedCount: number;
-  waitingCount: number;
-  withDependenciesCount: number;
-  withRecoveryVerdictCount: number;
-  topItems: NowQueueItem[];
-  hiddenCount: number;
 }
 
 export interface NowRecentRunItem {
@@ -196,6 +181,7 @@ export interface NowDashboardModel {
   attentionHiddenCount: number;
   activeBuilds: NowActiveBuildCard[];
   queue: NowQueueSummary;
+  queueStacks: NowQueueStack[];
   recentRuns: NowRecentRunItem[];
   /** All runs sorted newest first (no limit), for the expandable RunHistoryCard. */
   allRuns: NowRecentRunItem[];
@@ -212,18 +198,9 @@ export interface NowDashboardModel {
 
 const STALE_THRESHOLD_MS = 30_000;
 const MAX_ATTENTION_ITEMS = 5;
-const MAX_QUEUE_ITEMS = 4;
 const MAX_RECENT_RUNS = 4;
 const MAX_STACK_ROWS = 6;
 const MAX_ACTIVITY_ROWS = 6;
-
-// Status attention ordering for queue items (lower index = higher priority)
-const QUEUE_STATUS_ATTENTION_ORDER = ['failed', 'running', 'waiting', 'pending'];
-
-function queueStatusOrder(status: string): number {
-  const idx = QUEUE_STATUS_ATTENTION_ORDER.indexOf(status.toLowerCase());
-  return idx === -1 ? QUEUE_STATUS_ATTENTION_ORDER.length : idx;
-}
 
 // ---------------------------------------------------------------------------
 // Attention severity merge helpers
@@ -295,73 +272,6 @@ export function isLivenessStale(
   if (candidates.length === 0) return false;
   const latest = Math.max(...candidates);
   return now - latest > STALE_THRESHOLD_MS;
-}
-
-// ---------------------------------------------------------------------------
-// Queue summary selector
-// ---------------------------------------------------------------------------
-
-export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
-  const byStatus: Record<string, number> = {};
-  let runningCount = 0;
-  let pendingCount = 0;
-  let failedCount = 0;
-  let waitingCount = 0;
-  let withDependenciesCount = 0;
-  let withRecoveryVerdictCount = 0;
-
-  for (const item of queue) {
-    const s = item.status.toLowerCase();
-    byStatus[s] = (byStatus[s] ?? 0) + 1;
-    if (s === 'running') runningCount++;
-    if (s === 'pending') pendingCount++;
-    if (s === 'failed') failedCount++;
-    if (s === 'waiting') waitingCount++;
-    if (item.dependsOn && item.dependsOn.length > 0) withDependenciesCount++;
-    if (item.recoveryVerdict) withRecoveryVerdictCount++;
-  }
-
-  // The queue card surfaces work that hasn't started yet — running builds
-  // are already displayed prominently as active build cards above.
-  const displayable = queue.filter((item) => item.status.toLowerCase() !== 'running');
-
-  const sorted = [...displayable].sort((a, b) => {
-    const orderDiff = queueStatusOrder(a.status) - queueStatusOrder(b.status);
-    if (orderDiff !== 0) return orderDiff;
-    // Tie-break: higher priority first (higher number = more urgent)
-    const aPriority = a.priority ?? 0;
-    const bPriority = b.priority ?? 0;
-    if (bPriority !== aPriority) return bPriority - aPriority;
-    // Then older created first
-    const aCreated = a.created ?? '';
-    const bCreated = b.created ?? '';
-    if (aCreated !== bCreated) return aCreated < bCreated ? -1 : 1;
-    // Finally by id
-    return a.id < b.id ? -1 : 1;
-  });
-
-  const topItems: NowQueueItem[] = sorted.slice(0, MAX_QUEUE_ITEMS).map((item) => ({
-    id: item.id,
-    title: selectPrdDisplayLabel(item.title, item.id),
-    status: item.status,
-    priority: item.priority,
-    created: item.created,
-    dependsOn: item.dependsOn,
-    recoveryVerdict: item.recoveryVerdict,
-  }));
-
-  return {
-    total: displayable.length,
-    byStatus,
-    runningCount,
-    pendingCount,
-    failedCount,
-    waitingCount,
-    withDependenciesCount,
-    withRecoveryVerdictCount,
-    topItems,
-    hiddenCount: Math.max(0, displayable.length - MAX_QUEUE_ITEMS),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -455,18 +365,42 @@ export function selectNowAttentionItems(
     });
   }
 
-  // 6. Queue items blocked by dependencies
+  // 6. Queue items blocked by dependencies.  Collapse dependency-linked
+  // stacks into one attention item so a three-plan stack reads as one system
+  // state instead of several repetitive "waiting" rows.
+  const queueStacks = selectNowQueueStacks(state.queue);
+  const queueById = new Map(state.queue.map((q) => [q.id, q]));
+  const stackedBlockedIds = new Set<string>();
+  for (const stack of queueStacks) {
+    const blockedCount = stack.items.filter(
+      (item) => item.blockedBy.length > 0 && item.status.toLowerCase() !== 'running',
+    ).length;
+    if (blockedCount === 0) continue;
+    for (const item of stack.items) stackedBlockedIds.add(item.id);
+    const active = stack.items.find((item) => item.status.toLowerCase() === 'running') ?? stack.items[0];
+    candidates.push({
+      item: {
+        id: `queue-stack-blocked-${stack.id}`,
+        severity: 'info',
+        message: `Build stack blocked behind ${active.title}`,
+        detail: `${blockedCount} waiting plan${blockedCount !== 1 ? 's' : ''} across ${stack.totalItems} stacked plan${stack.totalItems !== 1 ? 's' : ''}`,
+      },
+      dedupKey: `queue-stack:${stack.id}`,
+    });
+  }
+
   const blocked = state.queue.filter(
-    (q) => q.dependsOn && q.dependsOn.length > 0 && q.status.toLowerCase() !== 'failed' && q.status.toLowerCase() !== 'running',
+    (q) => q.dependsOn && q.dependsOn.length > 0 && q.status.toLowerCase() !== 'failed' && q.status.toLowerCase() !== 'running' && !stackedBlockedIds.has(q.id),
   );
   for (const item of blocked) {
     const label = selectPrdDisplayLabel(item.title, item.id);
+    const blockedBy = item.dependsOn!.map((depId) => queueItemLabelById(queueById, depId)).join(', ');
     candidates.push({
       item: {
         id: `queue-blocked-${item.id}`,
         severity: 'info',
         message: `Waiting on dependencies: ${label}`,
-        detail: `depends on ${item.dependsOn!.length} item(s)`,
+        detail: `blocked by ${blockedBy}`,
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });
@@ -1005,6 +939,7 @@ export function selectNowDashboardModel(
     now,
   );
   const queue = selectNowQueueSummary(state.queue);
+  const queueStacks = selectNowQueueStacks(state.queue);
   const recentRuns = selectNowRecentRuns(state.runs, now);
   const allRuns = selectAllNowRunItems(state.runs, now);
   const stack = selectNowStackSummary(state.stackLayers);
@@ -1020,6 +955,7 @@ export function selectNowDashboardModel(
     attentionHiddenCount,
     activeBuilds,
     queue,
+    queueStacks,
     recentRuns,
     allRuns,
     stack,

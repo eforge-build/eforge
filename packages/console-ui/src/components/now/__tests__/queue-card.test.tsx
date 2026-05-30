@@ -76,20 +76,27 @@ describe('QueueCard - populated queue', () => {
       ],
     });
     const { container } = render(<QueueCard summary={summary} />);
-    expect(container.textContent).toContain('depends on 1 item');
+    expect(container.textContent).toContain('blocked by Q Prev');
   });
 
-  it('renders hiddenCount when items exceed topItems', () => {
+  it('renders hiddenCount with disclosure when items exceed topItems', () => {
     const summary = makeSummary({
-      total: 6,
-      pendingCount: 6,
+      total: 2,
+      pendingCount: 2,
       topItems: [
         { id: 'q-1', title: 'Task 1', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
       ],
-      hiddenCount: 5,
+      allItems: [
+        { id: 'q-1', title: 'Task 1', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+        { id: 'q-2', title: 'Task 2', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+      ],
+      hiddenCount: 1,
     });
     const { container } = render(<QueueCard summary={summary} />);
-    expect(container.textContent).toContain('+ 5 more');
+    expect(container.textContent).toContain('+ 1 more — show all');
+    expect(screen.queryByText('Task 2')).toBeNull();
+    fireEvent.click(screen.getByText('+ 1 more — show all'));
+    expect(screen.getByText('Task 2')).toBeDefined();
   });
 });
 

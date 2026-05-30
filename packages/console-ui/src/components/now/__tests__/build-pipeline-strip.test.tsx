@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import * as React from 'react';
 import { BuildPipelineStrip } from '../build-pipeline-strip';
 import type { MiniGanttRow } from '@/lib/run-state';
@@ -70,6 +70,31 @@ describe('BuildPipelineStrip', () => {
     const rows = [makeRow('plan-failed', { isFailed: true, stage: 'failed' })];
     render(<BuildPipelineStrip rows={rows} hasPlanningRow={false} />);
     expect(screen.getByText('failed')).toBeDefined();
+  });
+
+  it('renders all plans by default instead of clipping active build content', () => {
+    const rows = [
+      makeRow('plan-1'),
+      makeRow('plan-2'),
+      makeRow('plan-3'),
+      makeRow('plan-4'),
+      makeRow('plan-5'),
+    ];
+
+    render(<BuildPipelineStrip rows={rows} hasPlanningRow={false} />);
+
+    expect(screen.getByTitle('Plan plan-5')).toBeDefined();
+    expect(screen.queryByText(/\+ \d+ more/)).toBeNull();
+  });
+
+  it('uses disclosure when a caller explicitly requests a row limit', () => {
+    const rows = [makeRow('plan-1'), makeRow('plan-2'), makeRow('plan-3')];
+
+    render(<BuildPipelineStrip rows={rows} hasPlanningRow={false} maxRows={2} />);
+
+    expect(screen.queryByTitle('Plan plan-3')).toBeNull();
+    fireEvent.click(screen.getByText('+ 1 more plan — show all'));
+    expect(screen.getByTitle('Plan plan-3')).toBeDefined();
   });
 
   it('renders data-plan-id attribute for each plan row', () => {
