@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import type { BuildStageContext } from '../packages/engine/src/pipeline/types.js';
 import type { ValidationProviderRegistration } from '../packages/engine/src/extensions/types.js';
 import { EforgeConfig } from '../packages/engine/src/config.js';
@@ -173,17 +173,16 @@ describe('validate build stage', () => {
   });
 
   it('provider that times out sets ctx.buildFailed and emits plan:build:failed', async () => {
-    vi.useFakeTimers();
     const ctx = makeCtx([makeProvider({ validate: () => new Promise(() => { /* never resolves */ }) })]);
-    // Use a very short timeout so fake timers can advance past it
+    // Real timers with a short (100ms) provider timeout. Fake timers are unsafe here:
+    // the validate stage awaits a real async git diff (computeReviewThresholdSnapshot)
+    // before the provider loop, so the provider timeout's setTimeout is scheduled after
+    // any synchronous timer advance would have already passed.
     ctx.config = {
       extensions: { validationProviderTimeoutMs: 100 },
     } as unknown as EforgeConfig;
 
-    const stagePromise = runStage(ctx);
-    vi.advanceTimersByTime(200);
-    const { events } = await stagePromise;
-    vi.useRealTimers();
+    const { events } = await runStage(ctx);
 
     const types = events.map((e) => e.type);
     expect(types).toContain('extension:validation-provider:start');
