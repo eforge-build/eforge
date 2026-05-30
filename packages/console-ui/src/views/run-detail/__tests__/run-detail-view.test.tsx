@@ -70,6 +70,32 @@ describe('RunDetailView', () => {
     expect(screen.getByText('session-abc-123')).toBeTruthy();
   });
 
+  it('uses the PRD title as the build detail title', async () => {
+    const runState = makeRunState({
+      events: [
+        {
+          eventId: 'event-1',
+          event: {
+            type: 'planning:start',
+            source: 'title: Recoverable Validation Provider Failures\ncreated: 2026-05-30\n\n# Body',
+          },
+        },
+      ],
+    });
+
+    render(
+      <RunDetailView
+        detailId="session-abc-123"
+        isLive={true}
+        liveRunState={runState}
+        onBack={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Recoverable Validation Provider Failures')).toBeTruthy();
+    expect(screen.getByText('session-abc-123')).toBeTruthy();
+  });
+
   it('shows "Live" badge when isLive is true', async () => {
     const runState = makeRunState();
     render(

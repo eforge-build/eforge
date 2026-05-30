@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { usePlanPreview } from './plan-preview-context';
 import { PlanMetadata } from './plan-metadata';
 import { PlanBodyHighlight } from './plan-body-highlight';
-import { splitPlanContent, parseFrontmatterFields } from '@/lib/plan-content';
+import { splitPlanContent, parseFrontmatterFields, extractPrdTitle } from '@/lib/plan-content';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { PlanInfo } from '@eforge-build/client/browser';
@@ -78,6 +78,10 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
       })()
     : null;
 
+  const contentPreviewTitle = contentPreview
+    ? extractPrdTitle(contentPreview.content) ?? contentPreview.title
+    : null;
+
   // File changes for selected plan
   const planFileChanges = selectedPlanId ? fileChanges.get(selectedPlanId) : undefined;
 
@@ -126,7 +130,7 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
               </span>
             )}
             <h2 className="text-sm font-semibold text-foreground truncate">
-              {contentPreview?.title ?? selectedPlan?.name ?? 'Plan Preview'}
+              {contentPreviewTitle ?? selectedPlan?.name ?? 'Plan Preview'}
             </h2>
           </div>
           <Button
