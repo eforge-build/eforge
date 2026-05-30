@@ -15,7 +15,13 @@ import { emitBuildDecisionForPlan } from '../decisions.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
-import { runReview, parseReviewIssuesStrict, computeReviewContext } from './reviewer.js';
+import {
+  runReview,
+  parseReviewIssuesStrict,
+  computeReviewContext,
+  filterGeneratedReviewArtifactPaths,
+  getReviewDiffPathspecArgs,
+} from './reviewer.js';
 import {
   getReviewIssueSchemaYaml,
   getCodeReviewIssueSchemaYaml,
@@ -60,14 +66,14 @@ export async function computeReviewThresholdSnapshot(
   let changedLines = 0;
 
   try {
-    const { stdout } = await exec('git', ['diff', `${baseBranch}...HEAD`, '--name-only'], { cwd });
-    changedFiles = stdout.trim().split('\n').filter(Boolean);
+    const { stdout } = await exec('git', ['diff', '--name-only', '--end-of-options', `${baseBranch}...HEAD`, ...getReviewDiffPathspecArgs()], { cwd });
+    changedFiles = filterGeneratedReviewArtifactPaths(stdout.trim().split('\n').filter(Boolean));
   } catch {
     // Non-git directory or git unavailable — default to empty
   }
 
   try {
-    const { stdout } = await exec('git', ['diff', `${baseBranch}...HEAD`, '--stat'], { cwd });
+    const { stdout } = await exec('git', ['diff', '--stat', '--end-of-options', `${baseBranch}...HEAD`, ...getReviewDiffPathspecArgs()], { cwd });
     const statLine = stdout.trim().split('\n').pop() ?? '';
     const insertMatch = statLine.match(/(\d+)\s+insertion/);
     const deleteMatch = statLine.match(/(\d+)\s+deletion/);
