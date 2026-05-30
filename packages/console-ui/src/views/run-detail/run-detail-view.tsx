@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { SummaryChips } from './summary-chips';
 import { BottomTabPanel } from './bottom-tab-panel';
 import { useHybridRunDetail } from '@/hooks/use-run-detail';
+import { extractPrdTitle } from '@/lib/plan-content';
 import type { RunState } from '@/lib/run-state';
 // --- eforge:region plan-07-build-detail-tabs ---
 import { PlanPreviewProvider, PlanPreviewPanel, usePlanPreview } from '@/components/preview';
@@ -55,8 +56,22 @@ interface RunDetailContentProps {
   onBack?: () => void;
 }
 
+function getRunTitle(runState: RunState | null): string | null {
+  if (!runState) return null;
+  if (runState.enqueueTitle) return runState.enqueueTitle;
+
+  for (let i = runState.events.length - 1; i >= 0; i--) {
+    const { event } = runState.events[i];
+    if (event.type !== 'planning:start') continue;
+    return extractPrdTitle(event.source) ?? event.label ?? null;
+  }
+
+  return null;
+}
+
 function RunDetailContent({ detailId, isLive, runState, plans, isLoading, error, onBack }: RunDetailContentProps) {
   const { setRuntimeData } = usePlanPreview();
+  const runTitle = getRunTitle(runState);
 
   useEffect(() => {
     if (!runState) return;
@@ -81,7 +96,16 @@ function RunDetailContent({ detailId, isLive, runState, plans, isLoading, error,
           <ArrowLeft className="w-3.5 h-3.5" />
           Back
         </Button>
-        <span className="text-xs text-text-dim font-mono truncate">{detailId}</span>
+        <div className="min-w-0 flex flex-1 flex-col">
+          <span className="text-sm font-medium text-foreground truncate" title={runTitle ?? detailId}>
+            {runTitle ?? detailId}
+          </span>
+          {runTitle && (
+            <span className="text-10px text-text-dim font-mono truncate" title={detailId}>
+              {detailId}
+            </span>
+          )}
+        </div>
         {isLive && (
           <span className="ml-1 inline-flex items-center gap-1 text-10px font-medium text-blue">
             <span className="w-1.5 h-1.5 rounded-full bg-blue animate-pulse" />

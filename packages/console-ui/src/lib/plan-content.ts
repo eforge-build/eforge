@@ -32,6 +32,7 @@ export function splitPlanContent(raw: string): { frontmatter: string | null; bod
 export function parseFrontmatterFields(yaml: string): {
   id: string;
   name: string;
+  title: string;
   dependsOn: string[];
   branch: string;
   migrations: Array<{ timestamp: string; description: string }>;
@@ -48,6 +49,7 @@ export function parseFrontmatterFields(yaml: string): {
 
   const id = typeof parsed['id'] === 'string' ? parsed['id'] : '';
   const name = typeof parsed['name'] === 'string' ? parsed['name'] : '';
+  const title = typeof parsed['title'] === 'string' ? parsed['title'] : '';
   const branch = typeof parsed['branch'] === 'string' ? parsed['branch'] : '';
 
   // depends_on is the canonical YAML key; dependsOn is the camelCase variant
@@ -67,5 +69,28 @@ export function parseFrontmatterFields(yaml: string): {
       )
     : [];
 
-  return { id, name, dependsOn, branch, migrations };
+  return { id, name, title, dependsOn, branch, migrations };
+}
+
+function stripYamlScalarQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) return trimmed;
+  const quote = trimmed[0];
+  if ((quote === '"' || quote === "'") && trimmed[trimmed.length - 1] === quote) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+/**
+ * Extract the user-facing PRD title from either YAML frontmatter or the
+ * delimiter-less metadata block used by queued PRD sources.
+ */
+export function extractPrdTitle(source: string): string | null {
+  const { frontmatter } = splitPlanContent(source);
+  const metadata = frontmatter ?? source;
+  const match = metadata.match(/^\s*title\s*:\s*(.+?)\s*$/m);
+  if (!match) return null;
+  const title = stripYamlScalarQuotes(match[1]);
+  return title.length > 0 ? title : null;
 }
