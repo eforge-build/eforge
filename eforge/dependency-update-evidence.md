@@ -2,169 +2,136 @@
 
 ## Update Context
 
-- **Date**: 2026-05-28
+- **Date**: 2026-05-30
 - **pnpm version used**: 10.26.0 (matches `packageManager: pnpm@10.26.0` in root `package.json`)
 - **Update command**: `pnpm update -r --latest`
-- **pnpm-workspace.yaml packages**: `packages/*` and `web` - unchanged
-- **`pnpm.onlyBuiltDependencies`**: `["esbuild"]` - unchanged; no new lifecycle/build scripts required expanding this list
+- **Follow-up install**: `pnpm install --no-frozen-lockfile` (to refresh the lockfile-side specifier for the root `pnpm.overrides` entry `"postcss": ">=8.5.15"`), followed by `pnpm install --frozen-lockfile` to confirm manifest/lockfile consistency.
+- **pnpm-workspace.yaml packages**: `packages/*` and `web` - unchanged.
+- **`pnpm.onlyBuiltDependencies`**: `["esbuild"]` - unchanged; no new lifecycle/build scripts required expanding this list.
+- **`pnpm.overrides`**: `{ "postcss": ">=8.5.15" }` - unchanged; carried over from the prior supply-chain advisory remediation (GHSA-qx2v-qp2m-jg93 against `postcss <8.5.10` transitively pulled through `next`).
 
 ## pnpm audit
 
 **Command**: `pnpm audit`
 **Exit status**: 0
-
 **Findings**: No known vulnerabilities found.
 
-**Remediation**: The initial install recorded a moderate-severity advisory GHSA-qx2v-qp2m-jg93 (PostCSS XSS via unescaped `</style>` in CSS stringify output) via the `.>next>postcss` path. `next@16.2.6` originally pinned `postcss@8.4.31` (within the vulnerable range `<8.5.10`). Remediated by adding a pnpm override `"postcss": ">=8.5.15"` in the root `package.json` `pnpm.overrides` section. After running `pnpm install --no-frozen-lockfile`, the lockfile now resolves `next@16.2.6`'s postcss dependency to `8.5.15` (the patched version). `pnpm audit` exits 0 with no vulnerabilities found.
+The pre-existing root override `"postcss": ">=8.5.15"` continues to mask GHSA-qx2v-qp2m-jg93 - the lockfile resolves the override-bound postcss range to `8.5.15` for every importer. No new audit findings were introduced by this update.
 
 ## Manifest Diff-Review Conclusions
 
-Changes to `package.json` files across the workspace:
+Changes to `package.json` files in this update (`git diff -- package.json 'packages/*/package.json' web/package.json`):
 
 | Package | Dependency | Old version | New version | Type |
 |---------|-----------|-------------|-------------|------|
-| root | `@earendil-works/pi-agent-core` | ^0.75.4 | ^0.76.0 | minor |
-| root | `@earendil-works/pi-ai` | ^0.75.4 | ^0.76.0 | minor |
-| root | `@earendil-works/pi-coding-agent` | ^0.75.4 | ^0.76.0 | minor |
-| root | `eslint` | ^9.39.4 | ^10.4.0 | **major** |
-| root | `next` | ^15.5.18 | ^16.2.6 | **major** |
-| root, all packages | `typescript` | ^5.9.3 | ^6.0.3 | **major** |
-| root | `typescript-eslint` | ^8.59.4 | ^8.60.0 | minor |
-| packages/engine | `@anthropic-ai/claude-agent-sdk` | ^0.2.141 | ^0.3.154 | minor |
-| packages/engine | `@earendil-works/pi-agent-core` | ^0.75.4 | ^0.76.0 | minor |
-| packages/engine | `@earendil-works/pi-ai` | ^0.75.4 | ^0.76.0 | minor |
-| packages/engine | `@earendil-works/pi-coding-agent` | ^0.75.4 | ^0.76.0 | minor |
-| packages/console-ui | `@fontsource/inter` | ^5.2.5 | ^5.2.8 | patch |
-| packages/console-ui | `@fontsource/jetbrains-mono` | ^5.2.5 | ^5.2.8 | patch |
-| packages/console-ui | `@radix-ui/react-dropdown-menu` | ^2.1.15 | ^2.1.16 | patch |
-| packages/console-ui | `@radix-ui/react-select` | ^2.2.5 | ^2.2.6 | patch |
-| packages/console-ui | `lucide-react` | ^1.16.0 | ^1.17.0 | minor |
-| packages/console-ui | `react-resizable-panels` | ^4.11.1 | ^4.11.2 | patch |
-| packages/console-ui | `vite` | ^8.0.13 | ^8.0.14 | patch |
-| packages/docs-gen | `ts-morph` | ^25.0.1 | ^28.0.0 | **major** |
-| packages/monitor-ui | `dompurify` | ^3.4.5 | ^3.4.7 | patch |
-| packages/monitor-ui | `lucide-react` | ^1.16.0 | ^1.17.0 | minor |
-| packages/monitor-ui | `react-resizable-panels` | ^4.11.1 | ^4.11.2 | patch |
-| packages/monitor-ui | `vite` | ^8.0.13 | ^8.0.14 | patch |
-| web | `next` | ^15.5.18 | ^16.2.6 | **major** |
-| web | `shiki` | ^1.29.2 | ^4.1.0 | **major** |
-| web | `@types/node` | ^20.19.41 | ^25.9.1 | **major** |
-| web | `vitest` | ^2.1.9 | ^4.1.7 | **major** |
+| root | `@earendil-works/pi-agent-core` | ^0.76.0 | ^0.78.0 | minor |
+| root | `@earendil-works/pi-ai` | ^0.76.0 | ^0.78.0 | minor |
+| root | `@earendil-works/pi-coding-agent` | ^0.76.0 | ^0.78.0 | minor |
+| root | `commander` | ^14.0.3 | ^15.0.0 | **major** |
+| root | `eslint` | ^10.4.0 | ^10.4.1 | patch |
+| packages/docs-gen | `commander` | ^14.0.3 | ^15.0.0 | **major** |
+| packages/eforge | `commander` | ^14.0.3 | ^15.0.0 | **major** |
+| packages/engine | `@anthropic-ai/claude-agent-sdk` | ^0.3.154 | ^0.3.158 | patch |
+| packages/engine | `@earendil-works/pi-agent-core` | ^0.76.0 | ^0.78.0 | minor |
+| packages/engine | `@earendil-works/pi-ai` | ^0.76.0 | ^0.78.0 | minor |
+| packages/engine | `@earendil-works/pi-coding-agent` | ^0.76.0 | ^0.78.0 | minor |
 
-All manifest changes are pnpm-generated range updates. No workspace-internal specifiers were changed. `packageManager` remains `pnpm@10.26.0`.
+`web/package.json` had no direct dependency range changes in this iteration. All other workspace packages were already at the latest compatible ranges established in the prior dependency-update build (manifest entries unchanged in this diff).
+
+All manifest changes are pnpm-generated range updates. No workspace-internal specifier was changed. `packageManager` remains `pnpm@10.26.0`. Package publish versions are unchanged. The root `pnpm.onlyBuiltDependencies` and `pnpm.overrides` keys were not modified.
 
 ## Lockfile Diff-Review Conclusions
 
-The lockfile was regenerated by pnpm (not hand-edited). The diff reflects:
-- Resolution of newly ranged direct dependencies to latest compatible versions.
-- Transitive dependency graph updates cascading from major version bumps (typescript, eslint, next, shiki, vitest, ts-morph).
-- Net reduction in lockfile size (approximately 768 lines removed), indicating consolidation of transitive dependencies in updated packages.
-- No new packages with lifecycle `install`/`postinstall`/`preinstall` scripts were introduced beyond those already in `pnpm.onlyBuiltDependencies`.
-- `pnpm install --frozen-lockfile` exits 0, confirming manifest/lockfile consistency after the update.
+`pnpm-lock.yaml` was regenerated by pnpm; it was not hand-edited. The diff reflects:
+- Resolution of the bumped direct dependency ranges above to their new exact versions (`commander@15.0.0`, `@earendil-works/pi-agent-core@0.78.0`, `@earendil-works/pi-ai@0.78.0`, `@earendil-works/pi-coding-agent@0.78.0`, `@anthropic-ai/claude-agent-sdk@0.3.158`, `eslint@10.4.1`).
+- Transitive cascade from the Pi monorepo bump (e.g. `typebox`, `ignore`, internal Pi peer chain).
+- Refreshed `postcss` override specifier line in the lockfile importers section to keep it aligned with the manifest-side `>=8.5.15` after the `--latest` refresh. The resolved postcss version remains `8.5.15` everywhere.
+- `pnpm install --frozen-lockfile` exits 0 after the final lockfile state, confirming manifest/lockfile consistency.
 
 ## workspace:* Specifiers Remain Intact
 
-Confirmed: all internal `@eforge-build/*` dependencies use `workspace:*` specifiers after the update. The following workspace links were verified unchanged:
+Confirmed by grep over the manifest diff: every `@eforge-build/*` internal dependency continues to use `workspace:*`. No internal specifier was rewritten to a published range during this update. The set of workspace links established in the prior update is preserved:
 
-- `packages/console-ui` → `@eforge-build/client: workspace:*`
-- `packages/docs-gen` → `@eforge-build/client: workspace:*`, `@eforge-build/eforge: workspace:*`, `@eforge-build/engine: workspace:*`
-- `packages/eforge` → `@eforge-build/client: workspace:*`, `@eforge-build/engine: workspace:*`, `@eforge-build/input: workspace:*`, `@eforge-build/monitor: workspace:*`
-- `packages/engine` → `@eforge-build/client: workspace:*`, `@eforge-build/extension-sdk: workspace:*`, `@eforge-build/scopes: workspace:*`
-- `packages/extension-sdk` → `@eforge-build/client: workspace:*`
-- `packages/input` → `@eforge-build/scopes: workspace:*`
-- `packages/monitor-ui` → `@eforge-build/client: workspace:*`
-- `packages/monitor` → `@eforge-build/client: workspace:*`, `@eforge-build/engine: workspace:*`, `@eforge-build/input: workspace:*`, `@eforge-build/console-ui: workspace:*`, `@eforge-build/monitor-ui: workspace:*`
-- `packages/pi-eforge` → `@eforge-build/client: workspace:*`
+- `packages/console-ui` -> `@eforge-build/client: workspace:*`
+- `packages/docs-gen` -> `@eforge-build/client: workspace:*`, `@eforge-build/eforge: workspace:*`, `@eforge-build/engine: workspace:*`
+- `packages/eforge` -> `@eforge-build/client: workspace:*`, `@eforge-build/engine: workspace:*`, `@eforge-build/input: workspace:*`, `@eforge-build/monitor: workspace:*`
+- `packages/engine` -> `@eforge-build/client: workspace:*`, `@eforge-build/extension-sdk: workspace:*`, `@eforge-build/scopes: workspace:*`
+- `packages/extension-sdk` -> `@eforge-build/client: workspace:*`
+- `packages/input` -> `@eforge-build/scopes: workspace:*`
+- `packages/monitor-ui` -> `@eforge-build/client: workspace:*`
+- `packages/monitor` -> `@eforge-build/client: workspace:*`, `@eforge-build/engine: workspace:*`, `@eforge-build/input: workspace:*`, `@eforge-build/console-ui: workspace:*`, `@eforge-build/monitor-ui: workspace:*`
+- `packages/pi-eforge` -> `@eforge-build/client: workspace:*`
+- root dev deps -> `@eforge-build/client`, `@eforge-build/docs-gen`, `@eforge-build/engine`, `@eforge-build/monitor`, `@eforge-build/monitor-ui`, `@eforge-build/scopes`, `@eforge-build/web` all `workspace:*`
 
 ## Unexpected New Packages Assessment
 
-No unexpectedly new packages were introduced. The lockfile changes reflect transitive graph updates from the direct dependency bumps. No unfamiliar packages appeared in the lockfile that were not already present or are not recognizable transitive dependencies of the updated packages.
+No unfamiliar packages were introduced. The lockfile additions are limited to expected transitive resolutions for the bumped direct dependencies (commander 15, the Pi 0.78 chain, claude-agent-sdk 0.3.158, eslint 10.4.1). The most notable transitive movement is the Pi-chain bump of `@mariozechner/clipboard` (and its platform optional subpackages) from `0.3.6` to `0.3.9` - the same `badlogic`-owned napi-rs distribution that was already present in the prior lockfile; inspected in detail in the "Lifecycle-Script, Repository, Maintainer, and Native/Build-Behavior Inspection" section below. No unfamiliar publisher, no package outside the established maintainer set, and no new install/postinstall lifecycle scripts appeared. The pnpm warning lists the same `Ignored build scripts: @google/genai, koffi, protobufjs, sharp` as before - these were already present in the prior lockfile and were already evaluated; none was newly introduced by this update.
 
 ## Lifecycle-Script, Repository, Maintainer, and Native/Build-Behavior Inspection
 
-Inspected all newly introduced, major-version, and higher-risk packages:
+Inspected the newly resolved versions for every major / SDK / toolchain change in this diff:
 
-### typescript@6.0.3 (5.x -> 6.x, major)
-- **Repository**: `github.com/microsoft/TypeScript` - unchanged ownership
-- **Maintainers**: Microsoft maintainer team (`microsoft1es`, `typescript-bot`, `weswigham`, `andrewbranch`, `typescript-deploys`, `jakebailey`) - consistent with prior versions
-- **Lifecycle scripts**: build/test scripts only (dev-time scripts, not install hooks); no `preinstall`/`install`/`postinstall`
-- **Native/binary**: no native bindings; pure JavaScript/TypeScript toolchain
-- **Assessment**: trusted Microsoft package; major version brings updated type system features. Compatibility fixes applied (tsconfig `moduleResolution` updates where needed).
+### commander@15.0.0 (14.x -> 15.x, major)
+- **Repository**: `github.com/tj/commander.js` - unchanged ownership (TJ Holowaychuk historical project, currently maintained by `shadowspawn`/`abetomo`).
+- **Maintainers**: `shadowspawn <npm_j@ruru.gen.nz>`, `abetomo <abe@enzou.tokyo>` - identical to commander@14.x maintainer set.
+- **Lifecycle scripts**: only dev-time scripts (`check`, `fix`, `test`, `test-all`). No `preinstall`/`install`/`postinstall`.
+- **Native/binary**: pure JavaScript; no native bindings; no platform-specific subpackages.
+- **dist**: 12 files, 207 KB unpacked, with npm registry signature attached.
+- **Assessment**: trusted long-running CLI argument-parsing library; major version brings ESM/typing polish. Our CLI usage (`packages/eforge/src/cli/**/*.ts`, `packages/docs-gen/src/cli.ts`) compiles and type-checks against commander@15 without source changes.
 
-### eslint@10.4.0 (9.x -> 10.x, major)
-- **Repository**: `github.com/eslint/eslint` - unchanged ownership
-- **Maintainers**: `openjsfoundation <npm@openjsf.org>`, `eslintbot <contact@eslint.org>` - consistent OpenJS Foundation ownership
-- **Lifecycle scripts**: no `preinstall`/`install`/`postinstall`
-- **Native/binary**: no native bindings
-- **Assessment**: trusted OpenJS Foundation package; expected major version progression.
+### @earendil-works/pi-agent-core@0.78.0, @earendil-works/pi-ai@0.78.0, @earendil-works/pi-coding-agent@0.78.0 (0.76.x -> 0.78.x, minor)
+- **Repository**: `github.com/earendil-works/pi` - unchanged ownership.
+- **Maintainers**: `mitsuhiko`, `badlogic`, `rwachtler` - identical to the prior Pi 0.76.x team.
+- **Lifecycle scripts**: `prepublishOnly` only (publish-time, not install-time). No install hooks.
+- **Native/binary (Pi packages themselves)**: no native bindings; pure TypeScript output.
+- **New native transitive (`@mariozechner/clipboard`)**: the Pi 0.78 chain pulls `@mariozechner/clipboard@0.3.9` (bumped from the previously resolved `0.3.6`) along with its platform-optional subpackages (`@mariozechner/clipboard-{darwin-arm64,darwin-universal,darwin-x64,linux-arm64-gnu,linux-arm64-musl,linux-riscv64-gnu,linux-x64-gnu,linux-x64-musl,win32-arm64-msvc,win32-x64-msvc}@0.3.9`). These are an expected transitive of the Pi update (not introduced by this iteration as a wholly new package - 0.3.6 was already present in the prior lockfile through the same Pi chain), surfaced as a napi-rs prebuilt-binary distribution. Inspection of the resolved tarballs:
+    - **Repository**: `github.com/badlogic/clipboard` - same `badlogic` maintainer that already maintains Pi; unchanged ownership relative to the 0.3.6 resolution.
+    - **Maintainers**: `badlogic` (npm), aligned with the Pi maintainer set.
+    - **Lifecycle scripts**: only dev-time napi scripts (`build`, `build:debug`, `artifacts`, `test`, `universal`, `version`) plus `prepublishOnly` (publish-time). No `preinstall`/`install`/`postinstall` lifecycle hooks - install is a plain tarball extraction of a prebuilt `.node` binary.
+    - **Native/build behavior**: napi-rs prebuilt binary distribution. The root `@mariozechner/clipboard` package ships a JS loader plus `.d.ts`; the platform optionalDependencies each ship a single prebuilt `clipboard.<platform>.node` binary gated by `os`/`cpu` fields so pnpm installs only the matching host triple. No source compile step at install time; nothing to add to `pnpm.onlyBuiltDependencies`.
+    - **Package size**: small (each platform subpackage is a single `.node` artifact; the root JS package is `index.js` + `index.d.ts` + `package.json`).
+    - **Assessment**: continues to be a trusted Pi transitive. Bump is 0.3.6 -> 0.3.9 with no change in ownership, install-time behavior, or expansion required to `pnpm.onlyBuiltDependencies`.
+- **Assessment**: trusted Pi SDK packages. Our harness wrappers in `packages/engine/src/harnesses/` are insulated by the `AgentHarness` interface and compile/type-check unchanged against 0.78.0.
 
-### next@16.2.6 (15.x -> 16.x, major)
-- **Repository**: `github.com/vercel/next.js` - unchanged ownership
-- **Maintainers**: `vercel-release-bot`, `zeit-bot` - consistent Vercel ownership
-- **Lifecycle scripts**: `prepublishOnly: cd ../../ && turbo run build` (publish-time only, not install hook); no install-time hooks
-- **Lifecycle script bin**: `dist/bin/next`
-- **Native/platform optional packages**: The lockfile includes `@next/swc-darwin-arm64`, `@next/swc-darwin-x64`, `@next/swc-linux-arm64-gnu`, `@next/swc-linux-arm64-musl`, `@next/swc-linux-x64-gnu`, `@next/swc-linux-x64-musl`, `@next/swc-win32-arm64-msvc`, `@next/swc-win32-x64-msvc` as optional platform-specific binaries for the SWC compiler. It also includes `sharp@0.34.5` (with its own `@img/sharp-*` and `@img/sharp-libvips-*` platform packages) as an optional image optimization dependency. These are standard Next.js optional peer packages that pnpm resolves but only installs the platform-appropriate one at runtime. They do not require `pnpm.onlyBuiltDependencies` expansion because pnpm's `onlyBuiltDependencies` controls which packages may run `install`/`postinstall` scripts; these SWC and sharp packages ship pre-built binaries via optional platform subpackages rather than running build scripts at install time.
-- **Assessment**: trusted Vercel package; major version brings React 19 compatibility and updated routing. `pnpm.onlyBuiltDependencies` expansion not required.
+### @anthropic-ai/claude-agent-sdk@0.3.158 (0.3.154 -> 0.3.158, patch)
+- **Repository**: `github.com/anthropics/claude-agent-sdk-typescript` - unchanged ownership.
+- **Maintainers**: same Anthropic maintainer set captured in the prior evidence iteration (`zak-anthropic`, `dylanc-anthropic`, `benjmann`, `nikhil-anthropic`, `ejlangev-ant`, `jv-anthropic`, `ollie-ant-2025`, `packy-anthropic`, `noahz-anthropic`, `sbidasaria`, `wolffiex`, `igorkofman`, `felixrieseberg-anthropic`, `joan-anthropic`).
+- **Lifecycle scripts**: none.
+- **Native/platform optional packages**: same `@anthropic-ai/claude-agent-sdk-{darwin,linux,win32}-*` set as 0.3.154; ship pre-built binaries as optional platform subpackages and do not run install-time scripts. `pnpm.onlyBuiltDependencies` expansion is not required.
+- **Assessment**: trusted Anthropic SDK patch bump; no API surface change required in our harness wrappers.
 
-### shiki@4.1.0 (1.x -> 4.x, major)
-- **Repository**: `github.com/shikijs/shiki` - unchanged ownership
-- **Maintainers**: `antfu`, `orta`, `octref`, `shiki-deploys` - consistent maintainer team
-- **Lifecycle scripts**: no `preinstall`/`install`/`postinstall`
-- **Native/binary**: no native bindings
-- **Assessment**: trusted syntax highlighting package; major version reflects API restructuring.
+### eslint@10.4.1 (10.4.0 -> 10.4.1, patch)
+- **Repository**: `github.com/eslint/eslint` - unchanged ownership.
+- **Maintainers**: OpenJS Foundation / ESLint team - unchanged from 10.4.0.
+- **Lifecycle scripts**: none at install time.
+- **Native/binary**: no native bindings.
+- **Assessment**: routine patch release; no rule-set or API change relevant to this repo's eslint usage.
 
-### ts-morph@28.0.0 (25.x -> 28.x, major)
-- **Repository**: `github.com/dsherret/ts-morph` - unchanged ownership
-- **Maintainers**: `dsherret <dsherret@gmail.com>` - single maintainer, consistent
-- **Lifecycle scripts**: no `preinstall`/`install`/`postinstall`
-- **Native/binary**: no native bindings; pure TypeScript AST manipulation library
-- **Assessment**: trusted AST manipulation package; major version tracks TypeScript major versions (ts-morph 28 targets TypeScript 6).
-
-### vitest@4.1.7 (2.x -> 4.x, major)
-- **Repository**: `github.com/vitest-dev/vitest` - unchanged ownership
-- **Maintainers**: `antfu`, `patak`, `oreanno`, `yyx990803`, `vitestbot` - consistent Vite/Vitest ecosystem team
-- **Lifecycle scripts**: no `preinstall`/`install`/`postinstall`
-- **Native/binary**: no native bindings
-- **Assessment**: trusted test framework; major version brings updated Vite integration.
-
-### @anthropic-ai/claude-agent-sdk@0.3.154 (0.2.x -> 0.3.x)
-- **Repository**: `github.com/anthropics/claude-agent-sdk-typescript` - unchanged ownership
-- **Maintainers**: Anthropic engineering team (zak-anthropic, dylanc-anthropic, benjmann, nikhil-anthropic, ejlangev-ant, jv-anthropic, ollie-ant-2025, packy-anthropic, noahz-anthropic, sbidasaria, wolffiex, igorkofman, felixrieseberg-anthropic, joan-anthropic) - consistent Anthropic team
-- **Lifecycle scripts**: none
-- **Native/platform optional packages**: The lockfile includes `@anthropic-ai/claude-agent-sdk-darwin-arm64`, `@anthropic-ai/claude-agent-sdk-darwin-x64`, `@anthropic-ai/claude-agent-sdk-linux-arm64`, `@anthropic-ai/claude-agent-sdk-linux-arm64-musl`, `@anthropic-ai/claude-agent-sdk-linux-x64`, `@anthropic-ai/claude-agent-sdk-linux-x64-musl`, `@anthropic-ai/claude-agent-sdk-win32-arm64`, `@anthropic-ai/claude-agent-sdk-win32-x64` as optional platform-specific packages. These ship pre-built native binaries (consistent with the SDK's use of native Node.js modules for performance-critical agent operations) and do not run install-time scripts. Only the platform-appropriate package is installed at runtime. `pnpm.onlyBuiltDependencies` expansion is not required.
-- **Assessment**: trusted Anthropic package; minor version bump with API refinements.
-
-### @earendil-works/pi-agent-core@0.76.0, @earendil-works/pi-ai@0.76.0, @earendil-works/pi-coding-agent@0.76.0 (0.75.x -> 0.76.x)
-- **Repository**: `github.com/earendil-works/pi-mono` - unchanged ownership
-- **Maintainers**: `mitsuhiko`, `badlogic`, `rwachtler` - consistent team
-- **Lifecycle scripts**: `prepublishOnly` (publish-time only); no install hooks
-- **Native/binary**: no native bindings
-- **Assessment**: trusted Pi agent SDK packages; minor version bump.
-
-### @types/node@25.9.1 (20.x -> 25.x, major)
-- **Assessment**: DefinitelyTyped types package; major version tracks Node.js major versions. No runtime code, no lifecycle scripts.
+No newly introduced top-level package or transitive package required an expansion of `pnpm.onlyBuiltDependencies`. No suspicious obfuscated scripts and no unexpected network/download behavior were observed in the inspected packages. The only native-binary movement in this iteration is the version bump of the existing `@mariozechner/clipboard` napi-rs distribution from `0.3.6` to `0.3.9` (and its platform optional subpackages) pulled transitively through the Pi 0.78 chain - inspected above; no new ownership, no install-time scripts, and no `pnpm.onlyBuiltDependencies` change required.
 
 ## npm diff Conclusions
 
-`npm diff` was run for the following packages that qualify as risky or high-impact due to major version, toolchain role, provider SDK role, or lifecycle scripts:
+`npm diff` was reviewed for the higher-impact changes in this update:
 
-- **typescript@5.9.3 -> 6.0.3**: Major toolchain update. The diff reflects updated type-checking rules, improved inference, and new language features. No unexpected runtime code injection.
-- **eslint@9.39.4 -> 10.4.0**: Major linter update. Rule changes and API refinements consistent with the ESLint changelog. No unexpected code.
-- **next@15.5.18 -> 16.2.6**: Major framework update with React 19 support. Build output and routing internals updated. No unexpected lifecycle hooks beyond the existing `prepublishOnly`.
-- **shiki@1.29.2 -> 4.1.0**: Major syntax highlighter update. Restructured API, updated grammar bundles. No unexpected lifecycle hooks.
-- **ts-morph@25.0.1 -> 28.0.0**: Major AST library update tracking TypeScript 6. No unexpected lifecycle hooks or binary downloads.
-- **vitest@2.1.9 -> 4.1.7**: Major test framework update. Updated Vite integration and test runner. No unexpected lifecycle hooks.
-- **@anthropic-ai/claude-agent-sdk@0.2.141 -> 0.3.154**: Agent SDK update. Type and API refinements. No unexpected lifecycle hooks.
+- **commander@14.0.3 -> 15.0.0**: Major bump. Diff reflects ESM packaging refinements, type definition cleanup, and option-handling API tightening per the commander v15 changelog. No unexpected runtime hooks, no install scripts, no binary blobs.
+- **@anthropic-ai/claude-agent-sdk@0.3.154 -> 0.3.158**: Patch series. Diff is limited to typed surface area refinements consistent with the SDK changelog. No new lifecycle hooks; the existing platform-optional native package set is unchanged.
+- **@earendil-works/pi-{agent-core,ai,coding-agent}@0.76 -> 0.78**: Minor bumps. Diffs are confined to the published `dist/` JS / `.d.ts` outputs and are consistent with the Pi changelog. No install scripts beyond the existing `prepublishOnly`.
 
-All inspected packages showed changes consistent with their documented changelogs and version bump types. No suspicious code patterns, unexpected network calls, binary downloads, or obfuscated scripts were found.
+All other bumps in this diff are patch-level updates (`eslint@10.4.0 -> 10.4.1`) where `npm diff` was not warranted; the changes are routine maintenance with no security or supply-chain signal.
 
 ## Validation Results
 
-All verification commands passed after applying compatibility fixes (tsconfig `moduleResolution` and TypeScript 6 strictness adjustments):
+All verification commands ran from a clean install on the final diff:
 
 | Command | Exit status |
 |---------|------------|
 | `pnpm install --frozen-lockfile` | 0 |
+| `pnpm audit` | 0 |
 | `pnpm build` | 0 |
+| `pnpm test` | 0 |
 | `pnpm type-check` | 0 |
 | `node packages/docs-gen/dist/cli.js check` | 0 |
+
+`pnpm test` ran the full vitest suite on the final diff: 350 test files / 6453 tests, all passing.
+
+No compatibility source/config changes were required by this iteration's dependency bumps - the codebase already compiles, type-checks, builds, and passes its test suite against commander@15, Pi 0.78, claude-agent-sdk 0.3.158, and eslint@10.4.1 without modification. The dependency-update commit itself touches only `package.json`, `packages/*/package.json`, `pnpm-lock.yaml`, and this evidence artifact. Sibling commits on the same branch also add the standard eforge build artifacts (`eforge/plans/...` plan files and `eforge/prds/...` PRD provenance for this build); those are eforge orchestration outputs, not part of the dependency change itself, and are expected to appear on any eforge-driven branch.
