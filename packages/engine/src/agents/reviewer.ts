@@ -13,6 +13,38 @@ const exec = promisify(execFile);
 /** Max byte length for diff context injected into reviewer prompts. */
 const DIFF_CONTEXT_MAX_BYTES = 80_000;
 
+// --- eforge:region plan-01-generated-artifact-review-filter ---
+const GENERATED_REVIEW_ARTIFACT_PATH_PREFIXES = [
+  'eforge/plans/',
+  'eforge/prds/',
+] as const;
+
+/**
+ * Return true for eforge-owned build provenance artifacts that should not be
+ * reviewed as implementation changes. The active plan body is supplied to
+ * reviewers separately, and cleanup removes these artifacts after successful
+ * builds.
+ */
+export function isGeneratedReviewArtifactPath(file: string): boolean {
+  return GENERATED_REVIEW_ARTIFACT_PATH_PREFIXES.some((prefix) => file.startsWith(prefix));
+}
+
+/** Remove eforge-generated build provenance artifacts from review file lists. */
+export function filterGeneratedReviewArtifactPaths(files: string[]): string[] {
+  return files.filter((file) => !isGeneratedReviewArtifactPath(file));
+}
+
+/** Git pathspecs used to keep review diff context focused on implementation changes. */
+export function getReviewDiffPathspecArgs(): string[] {
+  return [
+    '--',
+    '.',
+    ':(exclude)eforge/plans/**',
+    ':(exclude)eforge/prds/**',
+  ];
+}
+// --- eforge:endregion plan-01-generated-artifact-review-filter ---
+
 /**
  * Compute the changed-files list and a bounded diff for injection into reviewer prompts.
  * Both values are injected as read-only context so agents with `tools: 'read-only'`
@@ -31,8 +63,8 @@ export async function computeReviewContext(
   let diffContext = '';
 
   try {
-    const { stdout } = await exec('git', ['diff', '--no-ext-diff', '--no-textconv', '--name-only', '--end-of-options', `${baseBranch}...HEAD`], { cwd });
-    changedFiles = stdout.trim();
+    const { stdout } = await exec('git', ['diff', '--no-ext-diff', '--no-textconv', '--name-only', '--end-of-options', `${baseBranch}...HEAD`, ...getReviewDiffPathspecArgs()], { cwd });
+    changedFiles = filterGeneratedReviewArtifactPaths(stdout.trim().split('\n').filter(Boolean)).join('\n');
   } catch {
     // Not a git repo or git unavailable — leave empty
   }
@@ -40,7 +72,7 @@ export async function computeReviewContext(
   try {
     const { stdout } = await exec(
       'git',
-      ['diff', '--no-ext-diff', '--no-textconv', '--unified=3', '--stat', '--end-of-options', `${baseBranch}...HEAD`],
+      ['diff', '--no-ext-diff', '--no-textconv', '--unified=3', '--stat', '--end-of-options', `${baseBranch}...HEAD`, ...getReviewDiffPathspecArgs()],
       { cwd },
     );
     diffContext = stdout.length > DIFF_CONTEXT_MAX_BYTES
