@@ -8239,6 +8239,125 @@
                       }
                     }
                   }
+                },
+                "reviewFailure": {
+                  "type": "object",
+                  "required": [
+                    "planId",
+                    "issues"
+                  ],
+                  "properties": {
+                    "planId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "severity",
+                          "category",
+                          "file",
+                          "description"
+                        ],
+                        "properties": {
+                          "severity": {
+                            "anyOf": [
+                              {
+                                "const": "critical",
+                                "type": "string"
+                              },
+                              {
+                                "const": "warning",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suggestion",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "file": {
+                            "type": "string"
+                          },
+                          "line": {
+                            "type": "number"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "fix": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "evaluation": {
+                      "type": "object",
+                      "required": [
+                        "accepted",
+                        "rejected",
+                        "review",
+                        "verdicts"
+                      ],
+                      "properties": {
+                        "accepted": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "rejected": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "review": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "verdicts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "file",
+                              "action",
+                              "reason"
+                            ],
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "action": {
+                                "anyOf": [
+                                  {
+                                    "const": "accept",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "reject",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "review",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "reason": {
+                                "type": "string"
+                              },
+                              "hunk": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }

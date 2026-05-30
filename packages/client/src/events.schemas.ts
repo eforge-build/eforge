@@ -541,12 +541,11 @@ const FailingPlanEntrySchema = Type.Object({
   // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
+const ReviewFailureActionSchema = Type.Union([Type.Literal('accept'), Type.Literal('reject'), Type.Literal('review')]);
+const ReviewFailureEvaluationVerdictSchema = Type.Object({ file: Type.String(), action: ReviewFailureActionSchema, reason: Type.String(), hunk: Type.Optional(Type.Integer({ minimum: 1 })) });
+const ReviewFailureDetailsSchema = Type.Object({ planId: Type.String(), issues: Type.Array(ReviewIssueSchema), evaluation: Type.Optional(Type.Object({ accepted: Type.Integer({ minimum: 0 }), rejected: Type.Integer({ minimum: 0 }), review: Type.Integer({ minimum: 0 }), verdicts: Type.Array(ReviewFailureEvaluationVerdictSchema) })) });
 // --- eforge:region plan-01-terminal-failure-contract ---
-export const TerminalFailureScopeSchema = Type.Union([
-  Type.Literal('plan'), Type.Literal('post-merge-validation'), Type.Literal('prd-validation'),
-  Type.Literal('acceptance-validation'), Type.Literal('artifact-recording'),
-  Type.Literal('landing'), Type.Literal('daemon'), Type.Literal('compile'), Type.Literal('unknown'),
-]);
+export const TerminalFailureScopeSchema = Type.Union([Type.Literal('plan'), Type.Literal('post-merge-validation'), Type.Literal('prd-validation'), Type.Literal('acceptance-validation'), Type.Literal('artifact-recording'), Type.Literal('landing'), Type.Literal('daemon'), Type.Literal('compile'), Type.Literal('unknown')]);
 const TFLandingSchema = Type.Object({ status: Type.String(), action: Type.Optional(Type.String()), reason: Type.Optional(Type.String()) });
 export const TerminalFailureEnvelopeSchema = Type.Object({
   scope: TerminalFailureScopeSchema, message: Type.String(),
@@ -592,6 +591,7 @@ const BuildFailureSummarySchema = Type.Object({
   // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   // --- eforge:region plan-01-recovery-summary-reconstruction ---
   failingPlans: Type.Optional(Type.Array(FailingPlanEntrySchema)),
+  reviewFailure: Type.Optional(ReviewFailureDetailsSchema),
   // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 

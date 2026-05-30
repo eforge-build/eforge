@@ -10,7 +10,7 @@
  */
 
 import { DatabaseSync } from 'node:sqlite';
-import type { BuildFailureSummary, FailingPlanEntry, LandedCommit, PlanSummaryEntry } from '../events.js';
+import type { BuildFailureSummary, FailingPlanEntry, LandedCommit, PlanSummaryEntry, ReviewIssue } from '../events.js';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -29,6 +29,36 @@ function parseData(data: string): Record<string, unknown> {
     const p = JSON.parse(data);
     return p && typeof p === 'object' ? p as Record<string, unknown> : {};
   } catch { return {}; }
+}
+
+type ReviewFailureDetails = NonNullable<BuildFailureSummary['reviewFailure']>;
+type ReviewFailureEvaluation = NonNullable<ReviewFailureDetails['evaluation']>;
+type ReviewFailureEvaluationVerdict = ReviewFailureEvaluation['verdicts'][number];
+
+function parseReviewIssues(raw: unknown): ReviewIssue[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((issue): issue is ReviewIssue => {
+    if (!issue || typeof issue !== 'object') return false;
+    const r = issue as Record<string, unknown>;
+    return (r.severity === 'critical' || r.severity === 'warning' || r.severity === 'suggestion') &&
+      typeof r.category === 'string' &&
+      typeof r.file === 'string' &&
+      (r.line === undefined || typeof r.line === 'number') &&
+      typeof r.description === 'string' &&
+      (r.fix === undefined || typeof r.fix === 'string');
+  });
+}
+
+function parseEvaluationVerdicts(raw: unknown): ReviewFailureEvaluationVerdict[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((verdict): verdict is ReviewFailureEvaluationVerdict => {
+    if (!verdict || typeof verdict !== 'object') return false;
+    const r = verdict as Record<string, unknown>;
+    return typeof r.file === 'string' &&
+      (r.action === 'accept' || r.action === 'reject' || r.action === 'review') &&
+      typeof r.reason === 'string' &&
+      (r.hunk === undefined || Number.isInteger(r.hunk));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +239,42 @@ export function extractLandingInfo(
   return { status, ...(typeof d.action === 'string' ? { action: d.action } : {}), ...(typeof d.reason === 'string' ? { reason: d.reason } : {}) };
 }
 
+export function extractReviewFailureDetails(
+  db: DatabaseSync,
+  runId: string,
+  planId: string,
+  upToId: number,
+): ReviewFailureDetails | undefined {
+  const reviewRow = db.prepare(
+    `SELECT data FROM events WHERE run_id = ? AND type = 'plan:build:review:complete' AND plan_id = ? AND id <= ? ORDER BY id DESC LIMIT 1`,
+  ).get(runId, planId, upToId) as { data: string } | undefined;
+  const reviewIssues = reviewRow ? parseReviewIssues(parseData(reviewRow.data).issues) : [];
+
+  const evalRow = db.prepare(
+    `SELECT data FROM events WHERE run_id = ? AND type = 'plan:build:evaluate:complete' AND plan_id = ? AND id <= ? ORDER BY id DESC LIMIT 1`,
+  ).get(runId, planId, upToId) as { data: string } | undefined;
+  let evaluation: ReviewFailureEvaluation | undefined;
+  if (evalRow) {
+    const parsed = parseData(evalRow.data);
+    const verdicts = parseEvaluationVerdicts(parsed.verdicts);
+    const accepted = typeof parsed.accepted === 'number'
+      ? parsed.accepted
+      : verdicts.filter(v => v.action === 'accept').length;
+    const rejected = typeof parsed.rejected === 'number'
+      ? parsed.rejected
+      : verdicts.filter(v => v.action === 'reject').length;
+    const review = verdicts.filter(v => v.action === 'review').length;
+    evaluation = { accepted, rejected, review, verdicts };
+  }
+
+  if (reviewIssues.length === 0 && evaluation === undefined) return undefined;
+  return {
+    planId,
+    issues: reviewIssues,
+    ...(evaluation !== undefined ? { evaluation } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Build authoritative BuildFailureSummary fragment from terminal event
 // ---------------------------------------------------------------------------
@@ -222,14 +288,26 @@ export function buildAuthoritativeFragment(
   failedPhaseTimestamp: string,
   validationCommands?: Array<{ command: string; exitCode: number; output?: string }>,
   landingInfo?: { status: string; action?: string; reason?: string },
+  reviewFailure?: ReviewFailureDetails,
 ): Partial<BuildFailureSummary> {
-  const allPlanIds = new Set(maps.planStatusMap.keys());
-  const emptyErrorMap = new Map<string, { error?: string; terminalSubtype?: string }>();
-  const plans = buildPlanSummaries(allPlanIds, maps, emptyErrorMap);
-
   // failingPlan: use planId for plan-scoped failures; synthetic compat ID for others
   const failingPlanId = terminal.planId ?? (terminal.scope !== 'plan' ? terminal.scope : 'unknown');
-  const failingPlan: FailingPlanEntry = { planId: failingPlanId, ...(terminal.scope === 'plan' ? { errorMessage: terminal.message } : {}) };
+  const allPlanIds = new Set(maps.planStatusMap.keys());
+  if (failingPlanId !== 'unknown') allPlanIds.add(failingPlanId);
+
+  const planErrorMap = new Map<string, { error?: string; terminalSubtype?: string }>();
+  if (terminal.scope === 'plan' && failingPlanId !== 'unknown') {
+    planErrorMap.set(failingPlanId, { error: terminal.message });
+  }
+  const plans = buildPlanSummaries(allPlanIds, maps, planErrorMap);
+
+  const toolUseCount = maps.toolUseMap.get(failingPlanId);
+  const failingPlan: FailingPlanEntry = {
+    planId: failingPlanId,
+    ...(terminal.scope === 'plan' ? { errorMessage: terminal.message } : {}),
+    ...(toolUseCount !== undefined ? { toolUseCount } : {}),
+  };
+  const failingPlans = terminal.scope === 'plan' && failingPlanId !== 'unknown' ? [failingPlan] : undefined;
 
   return {
     prdId, setName,
@@ -237,6 +315,7 @@ export function buildAuthoritativeFragment(
     baseBranch: 'main',
     plans,
     failingPlan,
+    ...(failingPlans !== undefined ? { failingPlans } : {}),
     landedCommits: [],
     diffStat: '',
     modelsUsed,
@@ -253,6 +332,7 @@ export function buildAuthoritativeFragment(
     ...(validationCommands && validationCommands.length > 0 ? { validationCommands } : {}),
     ...(terminal.landing ? { landing: terminal.landing } : {}),
     ...(landingInfo && !terminal.landing ? { landing: landingInfo } : {}),
+    ...(reviewFailure !== undefined ? { reviewFailure } : {}),
   };
 }
 
