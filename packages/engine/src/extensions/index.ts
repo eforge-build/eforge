@@ -182,6 +182,8 @@ export {
   normalizeValidationResult,
 } from './validation-provider-runtime.js';
 export type {
+  NormalizedValidationAnnotation,
+  NormalizedValidationFailureKind,
   NormalizedValidationResult,
   ValidationProviderRuntimeContext,
   RunValidationProviderOptions,

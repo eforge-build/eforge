@@ -44,12 +44,24 @@ function execFileWithChild(
 // Result types
 // ---------------------------------------------------------------------------
 
+export type NormalizedValidationFailureKind = 'result' | 'command' | 'timeout' | 'exception' | 'unexpected-return';
+
+export interface NormalizedValidationAnnotation {
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  file?: string;
+  line?: number;
+  details?: string;
+}
+
 export interface NormalizedValidationResult {
   status: 'passed' | 'failed' | 'skipped';
   message?: string;
   details?: string;
+  annotations?: NormalizedValidationAnnotation[];
   command?: string;
   exitCode?: number;
+  failureKind?: NormalizedValidationFailureKind;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,21 +104,26 @@ export function normalizeValidationResult(raw: unknown): NormalizedValidationRes
     if (raw.trim().length === 0) {
       return { status: 'passed' };
     }
-    return { status: 'failed', message: raw };
+    return { status: 'failed', message: raw, failureKind: 'result' };
   }
   if (typeof raw === 'object' && raw !== null && 'status' in raw) {
-    const obj = raw as { status: string; message?: string; details?: string };
+    const obj = raw as { status: unknown; message?: unknown; details?: unknown; annotations?: unknown };
     const status = obj.status;
     if (status === 'passed' || status === 'failed' || status === 'skipped') {
+      const message = typeof obj.message === 'string' ? obj.message : undefined;
+      const details = typeof obj.details === 'string' ? obj.details : undefined;
+      const annotations = normalizeValidationAnnotations(obj.annotations);
       return {
         status,
-        message: obj.message,
-        details: obj.details,
+        ...(message !== undefined ? { message } : {}),
+        ...(details !== undefined ? { details } : {}),
+        ...(annotations !== undefined ? { annotations } : {}),
+        ...(status === 'failed' ? { failureKind: 'result' as const } : {}),
       };
     }
   }
   // Unknown shape — treat as failure
-  return { status: 'failed', message: `Validation provider returned unexpected value: ${JSON.stringify(raw)}` };
+  return { status: 'failed', message: `Validation provider returned unexpected value: ${safeStringify(raw)}`, failureKind: 'unexpected-return' };
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +199,7 @@ export async function runValidationProvider(
           command: cmd,
         });
         return {
-          outcome: { status: 'failed', message: `Validation provider "${providerName}" timed out after ${timeoutMs}ms running: ${cmd}`, command: cmd },
+          outcome: { status: 'failed', message: `Validation provider "${providerName}" timed out after ${timeoutMs}ms running: ${cmd}`, command: cmd, failureKind: 'timeout' },
           events,
         };
       }
@@ -213,7 +230,7 @@ export async function runValidationProvider(
           exitCode,
         });
         return {
-          outcome: { status: 'failed', message, command: cmd, exitCode },
+          outcome: { status: 'failed', message, command: cmd, exitCode, failureKind: 'command' },
           events,
         };
       }
@@ -297,7 +314,7 @@ export async function runValidationProvider(
       timeoutMs,
     });
     return {
-      outcome: { status: 'failed', message: `Validation provider "${providerName}" timed out after ${timeoutMs}ms` },
+      outcome: { status: 'failed', message: `Validation provider "${providerName}" timed out after ${timeoutMs}ms`, failureKind: 'timeout' },
       events,
     };
   }
@@ -316,7 +333,7 @@ export async function runValidationProvider(
       message,
     });
     return {
-      outcome: { status: 'failed', message },
+      outcome: { status: 'failed', message, failureKind: 'exception' },
       events,
     };
   }
@@ -356,6 +373,36 @@ export async function runValidationProvider(
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+function normalizeValidationAnnotations(raw: unknown): NormalizedValidationAnnotation[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const annotations = raw.flatMap((entry): NormalizedValidationAnnotation[] => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const obj = entry as Record<string, unknown>;
+    if (obj.severity !== 'error' && obj.severity !== 'warning' && obj.severity !== 'info') return [];
+    if (typeof obj.message !== 'string') return [];
+    return [{
+      severity: obj.severity,
+      message: obj.message,
+      ...(typeof obj.file === 'string' ? { file: obj.file } : {}),
+      ...(typeof obj.line === 'number' ? { line: obj.line } : {}),
+      ...(typeof obj.details === 'string' ? { details: obj.details } : {}),
+    }];
+  });
+  return annotations.length > 0 ? annotations : undefined;
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    try {
+      return String(value);
+    } catch {
+      return '[unstringifiable value]';
+    }
+  }
+}
 
 type TimeoutResult<T> = { kind: 'value'; value: T } | { kind: 'timeout' } | { kind: 'error'; error: unknown };
 
