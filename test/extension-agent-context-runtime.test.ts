@@ -684,6 +684,37 @@ describe('executeAgentRunHooks — tool and availability augmentation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// executeAgentRunHooks — changedFiles propagation and mutation isolation
+// ---------------------------------------------------------------------------
+
+describe('executeAgentRunHooks — changedFiles propagation', () => {
+  it('exposes options.changedFiles on the hook context', async () => {
+    let captured: string[] | undefined;
+    const handler: AgentRunHandler = (ctx) => {
+      captured = ctx.changedFiles;
+      return undefined;
+    };
+
+    const opts: AgentRunOptions = { ...BASE_OPTIONS, changedFiles: ['src/a.ts', 'src/b.ts'] };
+    await executeAgentRunHooks([makeHook('cf-capture', handler)], opts, 'reviewer', undefined, RUNTIME_OPTIONS);
+
+    expect(captured).toEqual(['src/a.ts', 'src/b.ts']);
+  });
+
+  it('leaves options.changedFiles unchanged when a hook mutates ctx.changedFiles', async () => {
+    const handler: AgentRunHandler = (ctx) => {
+      ctx.changedFiles?.push('src/leaked.ts');
+      return undefined;
+    };
+
+    const opts: AgentRunOptions = { ...BASE_OPTIONS, changedFiles: ['src/a.ts'] };
+    await executeAgentRunHooks([makeHook('cf-mutate', handler)], opts, 'reviewer', undefined, RUNTIME_OPTIONS);
+
+    expect(opts.changedFiles).toEqual(['src/a.ts']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // executeAgentRunHooks — promptAppend coexistence with config promptAppend
 // ---------------------------------------------------------------------------
 

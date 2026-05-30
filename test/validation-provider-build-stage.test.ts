@@ -8,7 +8,13 @@
  * - Multiple providers, first passes, second fails → fails on second
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { execFile } from 'node:child_process';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import type { BuildStageContext } from '../packages/engine/src/pipeline/types.js';
 import type { ValidationProviderRegistration } from '../packages/engine/src/extensions/types.js';
 import { EforgeConfig } from '../packages/engine/src/config.js';
@@ -230,5 +236,71 @@ describe('validate build stage', () => {
       status: 'skipped',
     });
     expect(ctx.buildFailed).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// changedFiles propagation into validation provider context
+// ---------------------------------------------------------------------------
+
+const exec = promisify(execFile);
+const tempDirs: string[] = [];
+
+async function git(cwd: string, args: string[]): Promise<void> {
+  await exec('git', args, { cwd });
+}
+
+async function writeRepoFile(cwd: string, path: string, content: string): Promise<void> {
+  const fullPath = join(cwd, path);
+  await mkdir(join(fullPath, '..'), { recursive: true });
+  await writeFile(fullPath, content);
+}
+
+async function createValidateRepo(): Promise<string> {
+  const cwd = await mkdtemp(join(tmpdir(), 'eforge-validate-stage-'));
+  tempDirs.push(cwd);
+
+  await git(cwd, ['init', '-b', 'main']);
+  await git(cwd, ['config', 'user.email', 'test@example.com']);
+  await git(cwd, ['config', 'user.name', 'Test User']);
+  await writeRepoFile(cwd, 'README.md', '# test repo\n');
+  await git(cwd, ['add', '.']);
+  await git(cwd, ['commit', '-m', 'initial']);
+
+  await git(cwd, ['switch', '-c', 'feature']);
+  await writeRepoFile(cwd, 'src/app.ts', 'export const answer = 42;\n');
+  await writeRepoFile(cwd, 'eforge/plans/demo/plan-01.md', '# Generated plan\n');
+  await git(cwd, ['add', '.']);
+  await git(cwd, ['commit', '-m', 'feature change']);
+
+  return cwd;
+}
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+describe('validate build stage — changedFiles propagation', () => {
+  it('passes the filtered plan changed-file list to a function-form provider context', async () => {
+    const cwd = await createValidateRepo();
+    let capturedChangedFiles: string[] | undefined;
+
+    const ctx = makeCtx([
+      makeProvider({
+        validate: (_planOutputDir: unknown, providerCtx: unknown) => {
+          capturedChangedFiles = (providerCtx as { changedFiles?: string[] }).changedFiles;
+          return null;
+        },
+      }),
+    ]);
+    ctx.worktreePath = cwd;
+    ctx.orchConfig = { baseBranch: 'main' } as unknown as BuildStageContext['orchConfig'];
+
+    const { events } = await runStage(ctx);
+
+    expect(events.map((e) => e.type)).toContain('extension:validation-provider:complete');
+    expect(ctx.buildFailed).toBeUndefined();
+    // Generated plan artifact filtered out; only the real implementation file remains.
+    expect(capturedChangedFiles).toEqual(['src/app.ts']);
   });
 });

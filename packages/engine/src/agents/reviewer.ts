@@ -58,13 +58,19 @@ export function getReviewDiffPathspecArgs(): string[] {
 export async function computeReviewContext(
   cwd: string,
   baseBranch: string,
-): Promise<{ changedFiles: string; diffContext: string }> {
+): Promise<{ changedFiles: string; changedFilesList: string[]; diffContext: string }> {
   let changedFiles = '';
+  // --- eforge:region plan-01-changedfiles-extension-contexts ---
+  let changedFilesList: string[] = [];
+  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
   let diffContext = '';
 
   try {
     const { stdout } = await exec('git', ['diff', '--no-ext-diff', '--no-textconv', '--name-only', '--end-of-options', `${baseBranch}...HEAD`, ...getReviewDiffPathspecArgs()], { cwd });
-    changedFiles = filterGeneratedReviewArtifactPaths(stdout.trim().split('\n').filter(Boolean)).join('\n');
+    // --- eforge:region plan-01-changedfiles-extension-contexts ---
+    changedFilesList = filterGeneratedReviewArtifactPaths(stdout.trim().split('\n').filter(Boolean));
+    changedFiles = changedFilesList.join('\n');
+    // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
   } catch {
     // Not a git repo or git unavailable — leave empty
   }
@@ -82,7 +88,7 @@ export async function computeReviewContext(
     // Not a git repo or git unavailable — leave empty
   }
 
-  return { changedFiles, diffContext };
+  return { changedFiles, changedFilesList, diffContext };
 }
 
 /**
@@ -117,15 +123,18 @@ export async function composeReviewPrompt(
   baseBranch: string,
   cwd: string,
   append?: string,
-): Promise<string> {
-  const { changedFiles, diffContext } = await computeReviewContext(cwd, baseBranch);
-  return loadPrompt('reviewer', {
+): Promise<{ prompt: string; changedFiles: string[] }> {
+  const { changedFiles, changedFilesList, diffContext } = await computeReviewContext(cwd, baseBranch);
+  const prompt = await loadPrompt('reviewer', {
     plan_content: planContent,
     base_branch: baseBranch,
     changed_files: changedFiles,
     diff_context: diffContext,
     review_issue_schema: getReviewIssueSchemaYaml(),
   }, append);
+  // --- eforge:region plan-01-changedfiles-extension-contexts ---
+  return { prompt, changedFiles: changedFilesList };
+  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
 }
 
 /**
@@ -436,12 +445,14 @@ export async function* runReview(
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId };
 
-  const prompt = await composeReviewPrompt(planContent, baseBranch, cwd, options.promptAppend);
+  // --- eforge:region plan-01-changedfiles-extension-contexts ---
+  const { prompt, changedFiles } = await composeReviewPrompt(planContent, baseBranch, cwd, options.promptAppend);
+  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
 
   let fullText = '';
 
   for await (const event of harness.run(
-    { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
+    { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), changedFiles },
     'reviewer',
     planId,
   )) {

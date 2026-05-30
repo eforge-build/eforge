@@ -47,6 +47,8 @@ interface AgentRunContext {
   toolbelt?: string | null;
   toolbeltSource?: 'tier' | 'role' | 'plan' | 'default';
   projectMcpSelection?: 'all' | 'none' | 'toolbelt';
+  /** Changed files for this agent run, cloned from the run options so hook mutation cannot leak. */
+  changedFiles?: string[];
   effectiveToolName(name: string): string;
   logger: {
     debug(msg: string): void;
@@ -55,11 +57,7 @@ interface AgentRunContext {
     error(msg: string): void;
   };
   exec: {
-    run(
-      command: string,
-      args?: string[],
-      options?: { cwd?: string; env?: Record<string, string> },
-    ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+    run(command: string, args?: string[], options?: { cwd?: string; env?: Record<string, string> }): Promise<{ stdout: string; stderr: string; exitCode: number }>;
   };
 }
 
@@ -292,6 +290,8 @@ function buildAgentRunContext(
     ...(options.toolbelt !== undefined && { toolbelt: options.toolbelt }),
     ...(options.toolbeltSource !== undefined && { toolbeltSource: options.toolbeltSource }),
     ...(options.projectMcpSelection !== undefined && { projectMcpSelection: options.projectMcpSelection }),
+    // Clone into a fresh array so a hook mutating ctx.changedFiles cannot mutate the run options.
+    ...(options.changedFiles !== undefined && { changedFiles: [...options.changedFiles] }),
     effectiveToolName: effectiveCustomToolName,
     logger,
     exec,

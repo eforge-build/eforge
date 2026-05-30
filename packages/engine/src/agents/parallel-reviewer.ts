@@ -328,7 +328,7 @@ export async function* runParallelReview(
           let fullText = '';
 
           for await (const event of harness.run(
-            { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
+            { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective, changedFiles: [...snapshot.changedFiles] },
             'reviewer',
             planId,
           )) {
@@ -370,7 +370,7 @@ export async function* runParallelReview(
         let fullText = '';
 
         for await (const event of harness.run(
-          { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
+          { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective, changedFiles: [...snapshot.changedFiles] },
           'reviewer',
           planId,
         )) {
