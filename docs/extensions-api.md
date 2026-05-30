@@ -617,8 +617,12 @@ interface ValidationProviderSpec {
    *
    * Return values:
    * - `null` or `undefined` — passed
-   * - non-empty `string` — failed (the string is the failure message)
-   * - `ValidationProviderResult` — explicit structured outcome
+   * - non-empty `string` — recoverable failed gate (the string is the failure message)
+   * - `ValidationProviderResult` — explicit structured outcome; `status: 'failed'`
+   *   is recoverable before terminal failure, and annotations improve file/line targeting
+   *
+   * Throwing/rejecting, timing out, or returning an unexpected shape is a hard
+   * failure that bypasses recovery.
    *
    * Mutually exclusive with `commands`. Provide exactly one.
    */
@@ -634,7 +638,8 @@ interface ValidationProviderSpec {
    * Each command string is split on whitespace into `[executable, ...args]`
    * and run via `execFile` (no shell interpretation — quoted args, env-var
    * expansion, redirects, and pipes are not supported). A non-zero exit code
-   * fails the plan with the command's stderr (or stdout if stderr is empty).
+   * is a recoverable failed gate using the command's stderr (or stdout if stderr
+   * is empty) as the failure message.
    *
    * Mutually exclusive with `validate`. Provide exactly one.
    */
@@ -717,14 +722,16 @@ export default function validationProviders(eforge: EforgeExtensionAPI): void {
 
 **Failure semantics and timeout:**
 
-Providers are plan-failing but daemon-safe. Any failure outcome (string return, `status: 'failed'` result, thrown error, non-zero command exit, or timeout) fails the current plan. The timeout is controlled by `extensions.validationProviderTimeoutMs` (falls back to `extensions.eventHookTimeoutMs`).
+Providers are fail-closed gates. Normal validation failures — legacy non-empty string returns, structured `{ status: 'failed' }` results, and command-form non-zero exits — enter bounded in-plan recovery before terminal failure. Recovery uses the plan's review-fixer/evaluator path and the `review.maxRounds` budget. After each recovery attempt, eforge reruns the provider suite from the first provider. If recoverable failures remain unresolved when the budget is exhausted, the current plan fails and emits `plan:build:failed`.
+
+Hard provider failures bypass recovery and emit terminal `plan:build:failed` immediately: thrown exceptions/rejections, provider timeouts, and unexpected return shapes. The timeout is controlled by `extensions.validationProviderTimeoutMs` (falls back to `extensions.eventHookTimeoutMs`). Structured annotations on failed results improve recovery precision by giving the repair agent file/line targets.
 
 **Runtime events:**
 
 - `extension:validation-provider:start` — provider invocation has begun.
-- `extension:validation-provider:complete` — provider returned; carries `status`.
-- `extension:validation-provider:error` — provider threw; carries provider name and error message.
-- `extension:validation-provider:timeout` — timeout exceeded; carries provider name and elapsed milliseconds.
+- `extension:validation-provider:complete` — provider completed with a passed or skipped outcome; carries `status`.
+- `extension:validation-provider:error` — provider completed with a failed outcome; carries provider name and error message. This includes recoverable normal failures (legacy string returns, structured failed results, and command-form non-zero exits) as well as hard exception/rejection and unexpected-return-shape failures.
+- `extension:validation-provider:timeout` — timeout exceeded; carries provider name and elapsed milliseconds. This is a hard failure that bypasses recovery.
 
 **Runtime status:** registration is captured at load time. Providers execute at runtime during the per-plan `validate` build stage. See [`examples/extensions/validation-provider.ts`](../examples/extensions/validation-provider.ts) for a worked example with both function-form and command-form providers.
 

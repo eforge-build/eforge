@@ -454,6 +454,8 @@ export interface ReviewerPerspectiveSpec {
  *
  * Use this form when you need to report a status explicitly (including
  * `'skipped'`) or attach structured annotations to the build output.
+ *
+ * Structured `annotations` give recovery precise file/line repair targets.
  */
 export interface ValidationProviderResult {
   /** Validation outcome. */
@@ -505,10 +507,17 @@ type ValidationProviderReturn =
  * Validation providers run after a plan's build stage completes, before the
  * review stage, allowing extensions to enforce project-specific quality gates.
  *
- * A provider is **plan-failing but daemon-safe**: any failure outcome (string
- * return, `failed` structured status, thrown error, non-zero command exit, or
- * timeout) fails the current plan and emits `plan:build:failed`. The daemon
- * process itself is never crashed by a provider.
+ * A provider is a **fail-closed quality gate**. Normal failures — non-empty
+ * string returns, `status: 'failed'` results, or command-form non-zero exits —
+ * enter bounded recovery before terminal failure. Recovery uses the plan's
+ * review-fixer/evaluator path and `review.maxRounds` budget; after each attempt,
+ * eforge reruns the provider suite from the first provider. Unresolved failures
+ * still emit `plan:build:failed`.
+ *
+ * Hard failures bypass recovery and emit `plan:build:failed` immediately:
+ * thrown errors/rejections, provider timeouts, and unexpected return shapes. The
+ * daemon process itself is never crashed by a provider. Structured annotations
+ * improve recovery precision with file/line repair targets.
  *
  * @remarks Runtime-supported. Providers execute inside the built-in `validate`
  * build stage, bounded by `extensions.validationProviderTimeoutMs` (falls back
@@ -562,8 +571,11 @@ export interface ValidationProviderSpec {
    *
    * Return values:
    * - `null` or `undefined` — passed
-   * - non-empty `string` — failed (the string is the failure message)
-   * - `ValidationProviderResult` — explicit structured outcome
+   * - non-empty `string` — failed and recoverable before terminal failure
+   * - `ValidationProviderResult` — explicit structured outcome; `status: 'failed'`
+   *   is recoverable, and annotations improve targeting
+   *
+   * Throws/rejections, timeouts, and unexpected shapes bypass recovery.
    *
    * Mutually exclusive with `commands`. Provide exactly one.
    */
@@ -575,8 +587,8 @@ export interface ValidationProviderSpec {
    * Shell commands to run in the plan worktree, one per entry. Each command is
    * split on whitespace into `[executable, ...args]` and run via `execFile`
    * (no shell interpretation — quoted args, env-var expansion, redirects, and
-   * pipes are not supported). A non-zero exit code fails the plan with the
-   * command's stderr (or stdout if stderr is empty) as the message.
+   * pipes are not supported). A non-zero exit code is a recoverable normal
+   * failure using stderr (or stdout if stderr is empty) as the message.
    *
    * Mutually exclusive with `validate`. Provide exactly one.
    */
