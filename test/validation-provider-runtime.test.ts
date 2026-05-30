@@ -66,19 +66,48 @@ describe('normalizeValidationResult', () => {
     expect(normalizeValidationResult('   ')).toEqual({ status: 'passed' });
   });
 
-  it('non-empty string → failed', () => {
-    expect(normalizeValidationResult('lint error')).toEqual({ status: 'failed', message: 'lint error' });
+  it('non-empty string → failed with result failureKind', () => {
+    expect(normalizeValidationResult('lint error')).toEqual({ status: 'failed', message: 'lint error', failureKind: 'result' });
   });
 
   it('structured passed → passed', () => {
     expect(normalizeValidationResult({ status: 'passed', message: 'ok' })).toEqual({ status: 'passed', message: 'ok' });
   });
 
-  it('structured failed → failed', () => {
+  it('structured failed → failed with result failureKind', () => {
     expect(normalizeValidationResult({ status: 'failed', message: 'bad', details: 'output' })).toEqual({
       status: 'failed',
       message: 'bad',
       details: 'output',
+      failureKind: 'result',
+    });
+  });
+
+  it('structured failed preserves annotations', () => {
+    const annotations = [{ severity: 'error' as const, message: 'bad line', file: 'src/a.ts', line: 7 }];
+    expect(normalizeValidationResult({ status: 'failed', message: 'bad', annotations })).toEqual({
+      status: 'failed',
+      message: 'bad',
+      annotations,
+      failureKind: 'result',
+    });
+  });
+
+  it('structured passed preserves annotations without failureKind', () => {
+    const annotations = [{ severity: 'info' as const, message: 'note', file: 'src/a.ts', line: 7 }];
+    expect(normalizeValidationResult({ status: 'passed', message: 'ok', annotations })).toEqual({
+      status: 'passed',
+      message: 'ok',
+      annotations,
+    });
+  });
+
+  it('structured skipped preserves annotations without failureKind', () => {
+    const annotations = [{ severity: 'warning' as const, message: 'not checked', file: 'src/a.ts', line: 7 }];
+    expect(normalizeValidationResult({ status: 'skipped', message: 'not applicable', annotations })).toEqual({
+      status: 'skipped',
+      message: 'not applicable',
+      annotations,
     });
   });
 
@@ -93,6 +122,7 @@ describe('normalizeValidationResult', () => {
     const result = normalizeValidationResult({ foo: 'bar' });
     expect(result.status).toBe('failed');
     expect(result.message).toContain('unexpected value');
+    expect(result.failureKind).toBe('unexpected-return');
   });
 });
 
@@ -146,6 +176,7 @@ describe('runValidationProvider (function form)', () => {
 
     expect(result.outcome.status).toBe('failed');
     expect(result.outcome.message).toBe('lint errors found');
+    expect(result.outcome.failureKind).toBe('result');
     expect(result.events.find((e) => e.type === 'extension:validation-provider:error')).toMatchObject({
       status: 'failed',
       message: 'lint errors found',
@@ -159,8 +190,19 @@ describe('runValidationProvider (function form)', () => {
     expect(result.outcome.status).toBe('failed');
     expect(result.outcome.message).toBe('type errors');
     expect(result.outcome.details).toBe('TS2345');
+    expect(result.outcome.failureKind).toBe('result');
     const errorEvt = result.events.find((e) => e.type === 'extension:validation-provider:error') as Record<string, unknown> | undefined;
     expect(errorEvt).toMatchObject({ status: 'failed', message: 'type errors', details: 'TS2345' });
+  });
+
+  it('failed-via-structured preserves normalized annotations', async () => {
+    const annotations = [{ severity: 'error' as const, message: 'bad line', file: 'src/a.ts', line: 7, details: 'TS2345' }];
+    const reg = makeRegistration({ validate: () => ({ status: 'failed' as const, message: 'type errors', annotations }) });
+    const result = await runValidationProvider(reg, defaultCtx, defaultOptions);
+
+    expect(result.outcome.status).toBe('failed');
+    expect(result.outcome.failureKind).toBe('result');
+    expect(result.outcome.annotations).toEqual(annotations);
   });
 
   it('skipped emits start+complete(skipped) and returns skipped', async () => {
@@ -180,6 +222,7 @@ describe('runValidationProvider (function form)', () => {
 
     expect(result.outcome.status).toBe('failed');
     expect(result.outcome.message).toContain('unexpected crash');
+    expect(result.outcome.failureKind).toBe('exception');
     expect(result.events.find((e) => e.type === 'extension:validation-provider:error')).toMatchObject({
       status: 'failed',
       message: expect.stringContaining('unexpected crash'),
@@ -196,6 +239,7 @@ describe('runValidationProvider (function form)', () => {
 
     expect(result.outcome.status).toBe('failed');
     expect(result.outcome.message).toContain('timed out');
+    expect(result.outcome.failureKind).toBe('timeout');
     expect(result.events.find((e) => e.type === 'extension:validation-provider:timeout')).toMatchObject({
       timeoutMs: 100,
     });
@@ -299,6 +343,7 @@ describe('runValidationProvider (command form)', () => {
 
     expect(result.outcome.status).toBe('failed');
     expect(result.outcome.exitCode).toBe(1);
+    expect(result.outcome.failureKind).toBe('command');
     const errorEvt = result.events.find((e) => e.type === 'extension:validation-provider:error') as Record<string, unknown> | undefined;
     expect(errorEvt).toBeDefined();
     expect(errorEvt?.command).toBe('node -e process.exit(1)');
@@ -313,6 +358,7 @@ describe('runValidationProvider (command form)', () => {
     const result = await runValidationProvider(reg, defaultCtx, defaultOptions);
 
     expect(result.outcome.status).toBe('failed');
+    expect(result.outcome.failureKind).toBe('command');
     // Only one error event (from the first command); no complete event since we returned early.
     const errorEvts = result.events.filter((e) => e.type === 'extension:validation-provider:error');
     expect(errorEvts).toHaveLength(1);
@@ -350,6 +396,7 @@ describe('runValidationProvider (command form)', () => {
     vi.useRealTimers();
 
     expect(result.outcome.status).toBe('failed');
+    expect(result.outcome.failureKind).toBe('timeout');
     const timeoutEvt = result.events.find((e) => e.type === 'extension:validation-provider:timeout') as Record<string, unknown> | undefined;
     expect(timeoutEvt).toBeDefined();
     expect(timeoutEvt?.timeoutMs).toBe(50);

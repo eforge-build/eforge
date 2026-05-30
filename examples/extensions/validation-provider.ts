@@ -19,10 +19,15 @@
  *
  * Failure semantics:
  *
- * - A provider is **plan-failing but daemon-safe**. Any failure outcome (non-null string
- *   return, `status: 'failed'` result, thrown error, non-zero command exit, or timeout) fails
- *   the current plan and emits `plan:build:failed`. The daemon process itself is never
- *   crashed by a provider failure.
+ * - A provider is a **fail-closed quality gate**. Normal failures (non-null string
+ *   return, `status: 'failed'` result, or command-form non-zero exit) are recoverable
+ *   first using the plan's review-fixer/evaluator path and `review.maxRounds` budget.
+ *   After each recovery attempt, eforge reruns all validation providers from the first
+ *   provider. Unresolved recoverable failures still fail the current plan and emit
+ *   `plan:build:failed`.
+ * - Hard failures bypass recovery: thrown errors/rejections, provider timeouts, and
+ *   unexpected return shapes fail the current plan immediately. The daemon process
+ *   itself is never crashed by a provider failure.
  * - The provider runs under a wall-clock timeout controlled by
  *   `extensions.validationProviderTimeoutMs` (falls back to `extensions.eventHookTimeoutMs`).
  *   On expiry the subprocess tree is killed and an `extension:validation-provider:timeout`
@@ -30,6 +35,8 @@
  * - Providers emit `extension:validation-provider:start`, `extension:validation-provider:complete`,
  *   `extension:validation-provider:error`, and `extension:validation-provider:timeout` events
  *   during execution.
+ * - Structured annotations on failed results improve recovery precision by pointing the
+ *   repair agent at specific files and lines.
  *
  * No-mutation contract:
  *
@@ -51,7 +58,7 @@ export default function validationProviders(eforge: EforgeExtensionAPI): void {
   // - Access to stdout/stderr for a custom failure message
   // - Conditional logic based on changed files (ctx.changedFiles)
   // - Multiple subprocess calls in sequence
-  // - Structured annotations attached to specific files
+  // - Structured annotations attached to specific files so recovery can target exact lines
   eforge.registerValidationProvider({
     name: 'type-check-gate',
     description: 'Runs TypeScript type checking via pnpm type-check and fails the plan on type errors.',
@@ -77,6 +84,7 @@ export default function validationProviders(eforge: EforgeExtensionAPI): void {
   });
 
   // Command-form provider: simpler subprocess dispatch for exit-code-is-failure gates.
+  // A non-zero exit code is a recoverable normal validation failure before terminal failure.
   //
   // Use command form when:
   // - A non-zero exit code is the only failure signal you need
