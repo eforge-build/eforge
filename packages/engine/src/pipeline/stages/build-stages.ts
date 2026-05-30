@@ -52,9 +52,9 @@ import { captureEvaluationSnapshot, EvaluationInvariantError } from '../../evalu
 
 import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
-// --- eforge:region plan-01-validation-provider-runtime ---
-import { runValidationProvider } from '../../extensions/validation-provider-runtime.js';
-// --- eforge:endregion plan-01-validation-provider-runtime ---
+// --- eforge:region plan-01-runtime-recovery ---
+import { runValidationProviderRecoveryStage } from './validation-provider-recovery.js';
+// --- eforge:endregion plan-01-runtime-recovery ---
 import { resolveAgentConfig } from '../agent-config.js';
 import { isMaxTurnsError } from '../../harness.js';
 import { createToolTracker } from '../span-wiring.js';
@@ -1299,45 +1299,12 @@ registerBuildStage({
   predecessors: ['implement'],
   parallelizable: false,
 }, async function* validateStage(ctx) {
-  // --- eforge:region plan-01-validation-provider-runtime ---
-  const providers = ctx.extensionValidationProviders;
-
-  // No-op when no providers are registered (preserves placeholder behavior).
-  if (!providers || providers.length === 0) {
-    return;
-  }
-
-  const timeoutMs = ctx.config.extensions.validationProviderTimeoutMs;
-
-  for (const registration of providers) {
-    const result = await runValidationProvider(
-      registration,
-      {
-        planId: ctx.planId,
-        planOutputDir: ctx.worktreePath,
-        worktreePath: ctx.worktreePath,
-        signal: ctx.abortController?.signal,
-      },
-      { timeoutMs },
-    );
-
-    for (const event of result.events) {
-      yield event;
-    }
-
-    if (result.outcome.status === 'failed') {
-      const errorMessage = result.outcome.message ?? `Validation provider "${registration.name}" failed`;
-      yield {
-        timestamp: new Date().toISOString(),
-        type: 'plan:build:failed',
-        planId: ctx.planId,
-        error: errorMessage,
-      };
-      ctx.buildFailed = true;
-      return;
-    }
-  }
-  // --- eforge:endregion plan-01-validation-provider-runtime ---
+  // --- eforge:region plan-01-runtime-recovery ---
+  yield* runValidationProviderRecoveryStage(ctx, {
+    runReviewFix: () => reviewFixStageInner(ctx),
+    runEvaluate: (overrides) => evaluateStageInner(ctx, overrides),
+  });
+  // --- eforge:endregion plan-01-runtime-recovery ---
 });
 
 registerBuildStage({

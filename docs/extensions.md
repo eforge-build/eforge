@@ -299,7 +299,7 @@ Policy gates run at three blocking points: `beforeQueueDispatch` runs before a q
 
 Policy decisions are strictly validated. `{ decision: 'allow' }` lets the operation continue. `{ decision: 'block', reason }` blocks it and surfaces the reason. `{ decision: 'require-approval', reason }` currently blocks as an MVP behavior because no approval workflow, approval state, or monitor UI exists yet. Thrown errors, timeouts, and invalid decisions emit `extension:policy:*` diagnostics and follow `extensions.policyGateFailurePolicy`: `fail-closed` blocks, while `fail-open` allows continuation after recording diagnostics.
 
-Other non-event extension capability execution is intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete. For tools, `registerTool(tool)` records loader-time provenance and validation metadata; returning `tools: [tool]` from `onAgentRun` is the per-run injection path. `beforeEnqueue`, `beforeValidation`, approval workflows/UI/state, and `modify` decisions remain deferred and are not part of the current extension contract.
+Other extension capability families remain intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete. For tools, `registerTool(tool)` records loader-time provenance and validation metadata; returning `tools: [tool]` from `onAgentRun` is the per-run injection path. `beforeEnqueue`, `beforeValidation`, approval workflows/UI/state, and `modify` decisions remain deferred and are not part of the current extension contract.
 
 Reviewer perspectives execute during the review-cycle stage and are no longer deferred. They participate in parallel review perspective dispatch (for `review.strategy: parallel`, or `auto` when the diff crosses the parallel-review thresholds). Each registered perspective is evaluated for applicability against the plan diff; applicable custom perspectives run as separate review perspectives using the generic reviewer prompt with their `promptFragment` appended as extension-provenance context. Applicability inputs are read-only API snapshots: reviewer perspectives cannot mutate orchestration state, block the review, or access agent tool APIs.
 
@@ -382,7 +382,11 @@ See [`examples/extensions/reviewer-perspective.ts`](../examples/extensions/revie
 
 ### Validation providers
 
-Validation providers execute during the per-plan `validate` build stage, after the implement stage completes and before the review stage, when `validate` is included in the build pipeline. Each registered provider is invoked in registration order for every plan that reaches the validate stage. Providers are plan-failing but daemon-safe: any failure outcome (string return, `status: 'failed'` structured result, thrown error, non-zero command exit, or timeout) fails the current plan and emits `plan:build:failed`. The daemon process itself is never crashed by a provider failure.
+Validation providers execute during the per-plan `validate` build stage, after the implement stage completes and before the review stage, when `validate` is included in the build pipeline. Each registered provider is invoked in registration order for every plan that reaches the validate stage. Providers are fail-closed gates: normal validation failures can be repaired first, but unresolved failures still fail the current plan and emit `plan:build:failed`. The daemon process itself is never crashed by a provider failure.
+
+Normal validation-provider failures are recoverable before fail-closed terminal failure: legacy non-empty string returns, structured `{ status: 'failed' }` results, and command-form non-zero exits enter the plan's recovery loop. Recovery uses the same review-fixer/evaluator path as normal review issues and is bounded by the plan's `review.maxRounds` budget. After each recovery attempt, eforge reruns the provider suite from the first provider so earlier gates can re-check changes made during recovery.
+
+Hard provider failures bypass recovery and emit terminal `plan:build:failed` immediately: thrown exceptions or rejected promises, provider timeouts, and unexpected return shapes. Use these hard-failure paths for extension bugs or unavailable infrastructure, not ordinary quality-gate findings.
 
 **Result contract**
 
@@ -391,15 +395,15 @@ A provider may return values in one of two ways:
 - **Legacy string form**: return `null` or `undefined` to pass, or a non-empty `string` message to fail.
 - **Structured form**: return a `ValidationProviderResult` object with `status` (`'passed'`, `'failed'`, or `'skipped'`), an optional `message`, optional extended `details`, and optional per-file `annotations`.
 
-Mutually exclusive with the command form (see below). Provide exactly one of `validate` or `commands`.
+Mutually exclusive with the command form (see below). Provide exactly one of `validate` or `commands`. Structured annotations are the best path to precise recovery issues: include `file` and `line` whenever possible so the repair agent can target the relevant location instead of inferring it from free-form output.
 
 **Command form**
 
-For gates that reduce to a subprocess exit code, use the `commands` array instead of a `validate` function. Each entry is a whitespace-split command string run via `execFile` in the plan worktree. A non-zero exit code fails the plan with the command's stderr (or stdout if stderr is empty) as the message. Shell interpretation, quoted arguments, env-var expansion, redirects, and pipes are not supported; use the function form when you need those features.
+For gates that reduce to a subprocess exit code, use the `commands` array instead of a `validate` function. Each entry is a whitespace-split command string run via `execFile` in the plan worktree. A non-zero exit code is a recoverable normal validation failure with the command's stderr (or stdout if stderr is empty) as the message. Shell interpretation, quoted arguments, env-var expansion, redirects, and pipes are not supported; use the function form when you need those features.
 
 **Failure semantics and timeout**
 
-Providers run under a wall-clock timeout controlled by `extensions.validationProviderTimeoutMs` (falls back to `extensions.eventHookTimeoutMs`). On expiry the subprocess tree is killed and an `extension:validation-provider:timeout` event is emitted with the provider name and elapsed duration.
+Providers run under a wall-clock timeout controlled by `extensions.validationProviderTimeoutMs` (falls back to `extensions.eventHookTimeoutMs`). On expiry the subprocess tree is killed and an `extension:validation-provider:timeout` event is emitted with the provider name and elapsed duration. Timeouts are hard failures and do not enter recovery.
 
 **No-mutation contract**
 
@@ -410,9 +414,9 @@ Providers receive a `ValidationProviderContext` carrying read-only build facts: 
 The runtime emits the following events during validation provider execution:
 
 - `extension:validation-provider:start` — provider invocation has begun.
-- `extension:validation-provider:complete` — provider returned a non-failing result; carries `status` (`'passed'` or `'skipped'`). Failures are emitted as `extension:validation-provider:error` instead.
-- `extension:validation-provider:error` — provider threw an error; carries the provider name and error message.
-- `extension:validation-provider:timeout` — provider exceeded `validationProviderTimeoutMs`; carries the provider name and elapsed milliseconds.
+- `extension:validation-provider:complete` — provider completed with a passed or skipped outcome; carries `status`.
+- `extension:validation-provider:error` — provider completed with a failed outcome; carries provider name and error message. This includes recoverable normal failures (legacy string returns, structured failed results, and command-form non-zero exits) as well as hard exception/rejection and unexpected-return-shape failures.
+- `extension:validation-provider:timeout` — provider exceeded `validationProviderTimeoutMs`; carries the provider name and elapsed milliseconds. Timeouts are hard failures that bypass recovery.
 
 **Management output**
 

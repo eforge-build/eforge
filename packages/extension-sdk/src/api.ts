@@ -280,16 +280,28 @@ export interface EforgeExtensionAPI {
    * Register a custom validation provider that runs after the build stage
    * completes, before review.
    *
-   * Providers are **plan-failing but daemon-safe**: a failed result, thrown
-   * error, timeout, or non-zero command exit emits `plan:build:failed` and
-   * halts the current plan. The daemon process is never crashed.
+   * Providers are **fail-closed quality gates**. Normal validation failures — a
+   * non-empty string return, a {@link ValidationProviderResult} with
+   * `status: 'failed'`, or a command-form non-zero exit — enter bounded in-plan
+   * recovery before terminal failure. Recovery uses the plan's review-fixer /
+   * evaluator path and is limited by the `review.maxRounds` budget; after each
+   * recovery attempt, eforge reruns the provider suite from the first provider.
+   * Unresolved recoverable failures still emit `plan:build:failed` and halt the
+   * current plan.
+   *
+   * Hard provider failures bypass recovery and fail the current plan immediately:
+   * thrown errors/rejections, provider timeouts, and unexpected return shapes.
+   * The daemon process is never crashed.
+   *
+   * Prefer structured annotations on failed results when possible; file/line
+   * annotations give the recovery agent precise repair targets.
    *
    * Each provider spec must supply exactly one of:
    * - `validate`: an async function receiving `(planOutputDir, ctx?)` — return
-   *   `null`/`undefined` to pass, a non-empty `string` to fail, or a
-   *   {@link ValidationProviderResult} for structured outcomes.
+   *   `null`/`undefined` to pass, a non-empty `string` for a recoverable failure,
+   *   or a {@link ValidationProviderResult} for structured outcomes.
    * - `commands`: an array of shell command strings executed in the plan
-   *   worktree; any non-zero exit code fails the plan.
+   *   worktree; any non-zero exit code is a recoverable failure.
    *
    * @remarks Runtime-supported. Providers run inside the built-in `validate`
    * build stage, bounded by `extensions.validationProviderTimeoutMs`.

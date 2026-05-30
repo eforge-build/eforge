@@ -4,7 +4,7 @@
  * Covers:
  * - No providers → no events (preserves placeholder behavior)
  * - One passing provider → start + complete events, no failure
- * - One failing provider → start + error + plan:build:failed, ctx.buildFailed = true
+ * - Recoverable provider with no recovery budget → start + error + exhausted progress + plan:build:failed
  * - Multiple providers, first passes, second fails → fails on second
  */
 
@@ -67,7 +67,12 @@ function makeCtx(providers: ValidationProviderRegistration[]): BuildStageContext
     orchConfig: {} as BuildStageContext['orchConfig'],
     reviewIssues: [],
     build: [],
-    review: {} as BuildStageContext['review'],
+    review: {
+      strategy: 'single',
+      perspectives: [],
+      maxRounds: 0,
+      evaluatorStrictness: 'standard',
+    },
   };
 }
 
@@ -113,22 +118,27 @@ describe('validate build stage', () => {
     expect(ctx.buildFailed).toBeUndefined();
   });
 
-  it('one failing provider emits start + error + plan:build:failed, sets ctx.buildFailed', async () => {
+  it('recoverable provider with no recovery budget emits exhausted progress + plan:build:failed', async () => {
     const ctx = makeCtx([makeProvider({ validate: () => 'lint errors found' })]);
     const { events } = await runStage(ctx);
 
     const types = events.map((e) => e.type);
     expect(types).toContain('extension:validation-provider:start');
     expect(types).toContain('extension:validation-provider:error');
+    expect(types).toContain('plan:build:progress');
     expect(types).toContain('plan:build:failed');
 
-    // Ordering: start must precede error, and plan:build:failed must follow error
+    // Ordering: start must precede error, progress must precede plan:build:failed
     const startIdx = types.indexOf('extension:validation-provider:start');
     const errorIdx = types.indexOf('extension:validation-provider:error');
+    const progressIdx = types.indexOf('plan:build:progress');
     const failedIdx = types.indexOf('plan:build:failed');
     expect(startIdx).toBeLessThan(errorIdx);
-    expect(errorIdx).toBeLessThan(failedIdx);
+    expect(errorIdx).toBeLessThan(progressIdx);
+    expect(progressIdx).toBeLessThan(failedIdx);
 
+    const progressEvt = events.find((e) => e.type === 'plan:build:progress') as Record<string, unknown> | undefined;
+    expect(progressEvt?.message).toContain('recovery exhausted');
     const failedEvt = events.find((e) => e.type === 'plan:build:failed') as Record<string, unknown> | undefined;
     expect(failedEvt).toBeDefined();
     expect(failedEvt?.planId).toBe('plan-test-01');

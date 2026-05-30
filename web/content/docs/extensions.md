@@ -313,7 +313,7 @@ Policy gates run at three blocking points: `beforeQueueDispatch` runs before a q
 
 Policy decisions are strictly validated. `{ decision: 'allow' }` lets the operation continue. `{ decision: 'block', reason }` blocks it and surfaces the reason. `{ decision: 'require-approval', reason }` currently blocks as an MVP behavior because no approval workflow, approval state, or monitor UI exists yet. Thrown errors, timeouts, and invalid decisions emit `extension:policy:*` diagnostics and follow `extensions.policyGateFailurePolicy`: `fail-closed` blocks, while `fail-open` allows continuation after recording diagnostics.
 
-Other non-event extension capability execution is intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete. For tools, `registerTool(tool)` records loader-time provenance and validation metadata; returning `tools: [tool]` from `onAgentRun` is the per-run injection path. `beforeEnqueue`, `beforeValidation`, approval workflows/UI/state, and `modify` decisions remain deferred and are not part of the current extension contract.
+Other extension capability families remain intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete. For tools, `registerTool(tool)` records loader-time provenance and validation metadata; returning `tools: [tool]` from `onAgentRun` is the per-run injection path. `beforeEnqueue`, `beforeValidation`, approval workflows/UI/state, and `modify` decisions remain deferred and are not part of the current extension contract.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -359,6 +359,16 @@ Enricher failures are fail-open: a thrown error emits `extension:prd-enricher:fa
 Provenance events emitted per enricher call:
 - `extension:prd-enricher:applied` — enricher returned modified content.
 - `extension:prd-enricher:failed` — enricher threw (content unchanged; build continues).
+
+### Validation providers
+
+Validation providers execute during the per-plan `validate` build stage, after the implement stage completes and before the review stage, when `validate` is included in the build pipeline. Each registered provider is invoked in registration order for every plan that reaches the validate stage. Providers are fail-closed gates: normal validation failures can be repaired first, but unresolved failures still fail the current plan and emit `plan:build:failed`.
+
+Normal validation-provider failures are recoverable before fail-closed terminal failure: legacy non-empty string returns, structured `{ status: 'failed' }` results, and command-form non-zero exits enter the plan's recovery loop. Recovery uses the same review-fixer/evaluator path as normal review issues and is bounded by the plan's `review.maxRounds` budget. After each recovery attempt, eforge reruns the provider suite from the first provider so earlier gates can re-check changes made during recovery.
+
+Hard provider failures bypass recovery and emit terminal `plan:build:failed` immediately: thrown exceptions or rejected promises, provider timeouts, and unexpected return shapes. Use these hard-failure paths for extension bugs or unavailable infrastructure, not ordinary quality-gate findings.
+
+A provider may use the legacy string form (`null`/`undefined` passes, non-empty string fails), structured `ValidationProviderResult` form (`status`, `message`, `details`, and optional `annotations`), or command form (`commands`). Structured annotations are the best path to precise recovery issues: include `file` and `line` whenever possible so the repair agent can target the relevant location instead of inferring it from free-form output.
 
 ## Schema language
 
