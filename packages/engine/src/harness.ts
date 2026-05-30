@@ -174,6 +174,15 @@ export interface AgentRunOptions {
    */
   stage?: string;
   // --- eforge:endregion plan-01-agent-context-runtime ---
+  // --- eforge:region plan-01-changedfiles-extension-contexts ---
+  /**
+   * Changed files for this agent run, relative to the repo root. Engine-owned
+   * metadata for wrappers and extension hooks (e.g. reviewer agents supply their
+   * plan-diff file list). NOT forwarded directly to the backend SDK — backends
+   * construct provider requests from explicit known fields only.
+   */
+  changedFiles?: string[];
+  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
 }
 
 /**

@@ -1299,11 +1299,19 @@ registerBuildStage({
   predecessors: ['implement'],
   parallelizable: false,
 }, async function* validateStage(ctx) {
+  // --- eforge:region plan-01-changedfiles-extension-contexts ---
+  // No-op when no validation providers are registered — skip the diff computation entirely.
+  const validationProviders = ctx.extensionValidationProviders;
+  if (!validationProviders || validationProviders.length === 0) return;
+  // Compute the plan changed files once and pass a cloned list to each provider invocation.
+  const validationSnapshot = await computeReviewThresholdSnapshot(ctx.worktreePath, ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch);
+  const validationChangedFiles = [...validationSnapshot.changedFiles];
+  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
   // --- eforge:region plan-01-runtime-recovery ---
   yield* runValidationProviderRecoveryStage(ctx, {
     runReviewFix: () => reviewFixStageInner(ctx),
     runEvaluate: (overrides) => evaluateStageInner(ctx, overrides),
-  });
+  }, validationChangedFiles);
   // --- eforge:endregion plan-01-runtime-recovery ---
 });
 

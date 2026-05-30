@@ -4,9 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { computeReviewThresholdSnapshot } from '@eforge-build/engine/agents/parallel-reviewer';
-import { computeReviewContext } from '@eforge-build/engine/agents/reviewer';
+import { computeReviewThresholdSnapshot, runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
+import { computeReviewContext, runReview } from '@eforge-build/engine/agents/reviewer';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { afterEach, describe, expect, it } from 'vitest';
+
+import { StubHarness } from './stub-harness.js';
 
 const exec = promisify(execFile);
 
@@ -77,5 +80,63 @@ describe('review context generated-artifact filtering', () => {
     ]);
     expect(snapshot.changedLines).toBe(3);
     expect(snapshot.willParallelize).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// changedFiles propagation into reviewer harness AgentRunOptions
+// ---------------------------------------------------------------------------
+
+const EXPECTED_CHANGED_FILES = [
+  'eforge/playbooks/dependency-update.md',
+  'src/app.ts',
+];
+
+function validReviewResponse(): { text: string } {
+  return { text: '<review-issues></review-issues>' };
+}
+
+async function drain(generator: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
+  const events: EforgeEvent[] = [];
+  for await (const event of generator) {
+    events.push(event);
+  }
+  return events;
+}
+
+describe('reviewer harness changedFiles propagation', () => {
+  it('runReview passes the filtered changed-file list to the reviewer harness', async () => {
+    const cwd = await createReviewDiffRepo();
+    const harness = new StubHarness([validReviewResponse()]);
+
+    await drain(runReview({
+      harness,
+      planContent: '# Plan body',
+      baseBranch: 'main',
+      planId: 'plan-01',
+      cwd,
+    }));
+
+    expect(harness.calls).toHaveLength(1);
+    expect(harness.calls[0]!.changedFiles).toEqual(EXPECTED_CHANGED_FILES);
+  });
+
+  it('forced parallel review passes the filtered changed-file list to each perspective harness', async () => {
+    const cwd = await createReviewDiffRepo();
+    const harness = new StubHarness(Array.from({ length: 16 }, () => validReviewResponse()));
+
+    await drain(runParallelReview({
+      harness,
+      planContent: '# Plan body',
+      baseBranch: 'main',
+      planId: 'plan-01',
+      cwd,
+      strategy: 'parallel',
+    }));
+
+    expect(harness.calls.length).toBeGreaterThan(0);
+    for (const call of harness.calls) {
+      expect(call.changedFiles).toEqual(EXPECTED_CHANGED_FILES);
+    }
   });
 });
