@@ -12,10 +12,12 @@ import { ControlSurfaceLinks } from './control-surface-links';
 
 interface HeaderProps {
   projectState: ConsoleProjectState;
+  autoBuildToggling: boolean;
+  onSetAutoBuildEnabled: (enabled: boolean) => void;
   onNavigate?: (href: string) => void;
 }
 
-export function Header({ projectState, onNavigate }: HeaderProps) {
+export function Header({ projectState, autoBuildToggling, onSetAutoBuildEnabled, onNavigate }: HeaderProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -84,7 +86,11 @@ export function Header({ projectState, onNavigate }: HeaderProps) {
         <ConnectionIndicator status={summary.connectionStatus} />
 
         {/* Auto-build toggle */}
-        <AutoBuildToggle enabled={summary.autoBuildEnabled} />
+        <AutoBuildToggle
+          enabled={summary.autoBuildEnabled}
+          toggling={autoBuildToggling}
+          onSetEnabled={onSetAutoBuildEnabled}
+        />
       </div>
     </header>
   );

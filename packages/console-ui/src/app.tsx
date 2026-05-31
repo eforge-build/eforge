@@ -3,6 +3,7 @@ import * as React from 'react';
 import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { ConsoleShell } from '@/components/shell/console-shell';
 import { useDaemonEvents } from '@/hooks/use-daemon-events';
+import { useAutoBuild } from '@/hooks/use-auto-build';
 import { useActiveSessionStreams } from '@/hooks/use-active-session-streams';
 import { selectActiveSessionIds } from '@/lib/selectors';
 import { parseConsoleRoute, toConsolePath } from '@/lib/navigation';
@@ -31,7 +32,11 @@ export function App() {
   const [currentRoute, setCurrentRoute] = useState<ConsoleRouteId>(getInitialRoute);
 
   // Daemon-wide state
-  const { projectState, refreshQueue } = useDaemonEvents();
+  const { projectState, refreshQueue, setDaemonAutoBuild } = useDaemonEvents();
+  const { toggling: autoBuildToggling, setEnabled: onSetAutoBuildEnabled } = useAutoBuild(
+    projectState.autoBuild,
+    setDaemonAutoBuild,
+  );
 
   // Derive active session IDs from live runs
   const activeSessionIds = selectActiveSessionIds(projectState.runs);
@@ -101,6 +106,8 @@ export function App() {
   return (
     <ConsoleShell
       projectState={projectState}
+      autoBuildToggling={autoBuildToggling}
+      onSetAutoBuildEnabled={onSetAutoBuildEnabled}
       onNavigate={handleNavigate}
     >
       {routeContent}
