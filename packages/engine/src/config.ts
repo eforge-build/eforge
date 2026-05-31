@@ -399,18 +399,11 @@ const validationWaiverConfigSchema = z.object({
     'Required human-readable reason when allowEmptyPrdDiff is true.',
   ),
   // --- eforge:region plan-01-acceptance-evidence-model ---
-  allowNoAcceptanceCriteria: z.boolean().optional().describe(
-    'Allow builds with no extractable acceptance criteria to pass instead of failing. Requires noAcceptanceCriteriaReason.',
-  ),
-  noAcceptanceCriteriaReason: z.string().optional().describe(
-    'Required human-readable reason when allowNoAcceptanceCriteria is true.',
-  ),
-  allowNoCommittedChanges: z.boolean().optional().describe(
-    'Allow builds that produce no committed changes to pass instead of failing. Requires noCommittedChangesReason.',
-  ),
-  noCommittedChangesReason: z.string().optional().describe(
-    'Required human-readable reason when allowNoCommittedChanges is true.',
-  ),
+  allowNoAcceptanceCriteria: z.boolean().optional().describe('Allow builds with no extractable acceptance criteria to pass instead of failing. Requires noAcceptanceCriteriaReason.'),
+  noAcceptanceCriteriaReason: z.string().optional().describe('Required human-readable reason when allowNoAcceptanceCriteria is true.'),
+  acceptanceConflictPolicy: z.enum(['fail', 'manual', 'auto-waive-narrow']).optional().describe('Handle validator-reported acceptance criteria conflicts. Default: "manual".'),
+  allowNoCommittedChanges: z.boolean().optional().describe('Allow builds that produce no committed changes to pass instead of failing. Requires noCommittedChangesReason.'),
+  noCommittedChangesReason: z.string().optional().describe('Required human-readable reason when allowNoCommittedChanges is true.'),
   // --- eforge:endregion plan-01-acceptance-evidence-model ---
 }).superRefine((data, ctx) => {
   if (data.allowNoCommands && !data.noCommandsReason?.trim()) {
@@ -563,6 +556,7 @@ export interface ValidationConfig {
   // --- eforge:region plan-01-acceptance-evidence-model ---
   allowNoAcceptanceCriteria: boolean;
   noAcceptanceCriteriaReason?: string;
+  acceptanceConflictPolicy: 'fail' | 'manual' | 'auto-waive-narrow';
   allowNoCommittedChanges: boolean;
   noCommittedChangesReason?: string;
   // --- eforge:endregion plan-01-acceptance-evidence-model ---
@@ -927,6 +921,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
       allowEmptyPrdDiff: false,
       // --- eforge:region plan-01-acceptance-evidence-model ---
       allowNoAcceptanceCriteria: false,
+      acceptanceConflictPolicy: 'manual',
       allowNoCommittedChanges: false,
       // --- eforge:endregion plan-01-acceptance-evidence-model ---
     } as ValidationConfig),
@@ -1081,6 +1076,7 @@ export function resolveConfig(
         // --- eforge:region plan-01-acceptance-evidence-model ---
         allowNoAcceptanceCriteria: fileConfig.build?.validation?.allowNoAcceptanceCriteria ?? false,
         noAcceptanceCriteriaReason: fileConfig.build?.validation?.noAcceptanceCriteriaReason,
+        acceptanceConflictPolicy: fileConfig.build?.validation?.acceptanceConflictPolicy ?? DEFAULT_CONFIG.build.validation.acceptanceConflictPolicy,
         allowNoCommittedChanges: fileConfig.build?.validation?.allowNoCommittedChanges ?? false,
         noCommittedChangesReason: fileConfig.build?.validation?.noCommittedChangesReason,
         // --- eforge:endregion plan-01-acceptance-evidence-model ---

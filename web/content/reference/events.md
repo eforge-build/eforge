@@ -161,7 +161,7 @@ Total variants: 212
 | `gap_close:start` | `completionPercent`, `gapCount` |
 | `gap_close:plan_ready` | `gaps`, `planBody` |
 | `gap_close:complete` | `passed` |
-| `acceptance_validation:complete` | `passed`, `source`, `verdicts`, `waivers` |
+| `acceptance_validation:complete` | `acceptanceConflicts`, `passed`, `source`, `verdicts`, `waivers` |
 | `reconciliation:start` | - |
 | `reconciliation:complete` | `report` |
 | `cleanup:start` | `planSet` |

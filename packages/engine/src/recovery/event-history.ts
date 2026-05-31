@@ -9,7 +9,7 @@
  */
 
 import { DatabaseSync } from 'node:sqlite';
-import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit, AcceptanceCriterionVerdict } from '../events.js';
+import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit, AcceptanceCriteriaConflict, AcceptanceCriterionVerdict } from '../events.js';
 import { classifyAgentTerminalSubtype } from '../harness.js';
 import { findAuthoritativeTerminalEvent, reconstructPlanMaps, buildPlanSummaries, extractValidationCommands, extractLandingInfo, extractReviewFailureDetails, buildAuthoritativeFragment, detectLegacyFallbackFragment } from './terminal-failure-history.js';
 
@@ -396,6 +396,19 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
             const passCount = verdicts.filter((v) => v.verdict === 'pass').length;
             const failCount = verdicts.filter((v) => v.verdict === 'fail').length;
             const unknownCount = verdicts.filter((v) => v.verdict !== 'pass' && v.verdict !== 'fail').length;
+            const waivers = Array.isArray(parsedAcc.waivers)
+              ? parsedAcc.waivers.filter((waiver): waiver is string => typeof waiver === 'string' && waiver.trim().length > 0)
+              : [];
+            const rawConflicts = Array.isArray(parsedAcc.acceptanceConflicts) ? parsedAcc.acceptanceConflicts : [];
+            const conflicts: AcceptanceCriteriaConflict[] = rawConflicts.filter(
+              (conflict): conflict is AcceptanceCriteriaConflict =>
+                typeof conflict === 'object' && conflict !== null &&
+                typeof (conflict as Record<string, unknown>).criterion === 'string' &&
+                typeof (conflict as Record<string, unknown>).evidence === 'string' &&
+                typeof (conflict as Record<string, unknown>).conflictsWith === 'string' &&
+                typeof (conflict as Record<string, unknown>).scope === 'string' &&
+                typeof (conflict as Record<string, unknown>).recommendedAction === 'string',
+            );
 
             // Gather validation command results from the final validation attempt only.
             // Find the latest validation:start before the acceptance event to bound the window.
@@ -469,6 +482,8 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
                 fail: failCount,
                 unknown: unknownCount,
                 verdicts,
+                ...(waivers.length > 0 ? { waivers } : {}),
+                ...(conflicts.length > 0 ? { conflicts } : {}),
               },
               ...(validationCommands.length > 0 ? { validationCommands } : {}),
               ...(landingInfo !== undefined ? { landing: landingInfo } : {}),

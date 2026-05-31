@@ -28,18 +28,19 @@ Some files appear with a marker of the form `[summarized: ...]` instead of a ful
 4. **Ignore** minor wording differences, formatting choices, or implementation details that satisfy the spirit of the requirement
 5. **Ignore** requirements that are explicitly marked as out of scope
 6. If a requirement is partially implemented, note what's missing
-7. For each acceptance criterion (AC) in the PRD, produce a verdict. When the **Expected Acceptance Criteria** list provides `ac-###` IDs, use those IDs exactly in the `criterion` field:
+7. If an acceptance criterion appears too rigid or conflicts with work that was necessary to satisfy the PRD goal, still record the normal acceptance verdict (`fail` or `unknown`) and also add an `acceptanceConflicts` entry. Use this only when the diff shows a narrow, necessary conflict (for example, a forbidden directory needed a compatibility/type-checking update for a newly introduced public event type). Do not use conflicts to excuse broad scope creep or unrelated changes.
+8. For each acceptance criterion (AC) in the PRD, produce a verdict. When the **Expected Acceptance Criteria** list provides `ac-###` IDs, use those IDs exactly in the `criterion` field:
    - `pass`: the diff clearly shows the AC is satisfied — include the specific evidence
    - `fail`: the diff clearly shows the AC is not satisfied — include what is missing
    - `unknown`: you cannot determine from the diff alone whether the AC is satisfied — explain why
-8. When uncertain about an acceptance criterion, classify it as `unknown` — do not assume the implementation is correct
+9. When uncertain about an acceptance criterion, classify it as `unknown` — do not assume the implementation is correct
 {{validationEvidenceInstruction}}
 
 ## Output Format
 
 Your entire response MUST consist of exactly one fenced ` ```json ``` ` block. Do not add any prose, explanation, preamble, or text before or after the JSON block — the block must be the first and only thing in your response.
 
-The JSON block must include a `completionPercent` field (0-100 integer) estimating overall PRD completion, a `complexity` field per gap, and an `acceptanceVerdicts` array with one entry per acceptance criterion.
+The JSON block must include a `completionPercent` field (0-100 integer) estimating overall PRD completion, a `complexity` field per gap, and an `acceptanceVerdicts` array with one entry per acceptance criterion. Include `acceptanceConflicts` only when one or more non-passing acceptance verdicts conflict with necessary work.
 
 Complexity definitions:
 - `trivial` - missing log line, config tweak, or minor wiring
@@ -58,7 +59,8 @@ If all requirements are satisfied:
       "verdict": "pass",
       "evidence": "Specific evidence from the diff showing this criterion is satisfied"
     }
-  ]
+  ],
+  "acceptanceConflicts": []
 }
 ```
 
@@ -89,6 +91,15 @@ If there are gaps:
       "criterion": "ac-003",
       "verdict": "unknown",
       "evidence": "Why the diff is insufficient to verify this criterion"
+    }
+  ],
+  "acceptanceConflicts": [
+    {
+      "criterion": "ac-002",
+      "evidence": "Specific diff evidence showing the non-passing criterion conflicts with necessary work",
+      "conflictsWith": "The PRD goal or validation requirement that made the conflicting change necessary",
+      "scope": "narrow",
+      "recommendedAction": "revise_acceptance_criteria"
     }
   ]
 }

@@ -257,6 +257,20 @@ function buildMarkdown(
       }
       lines.push('');
     }
+    if (av.waivers && av.waivers.length > 0) {
+      lines.push('### Acceptance Waivers', '');
+      for (const waiver of av.waivers) lines.push(`- ${escapeTableCell(waiver)}`);
+      lines.push('');
+    }
+    if (av.conflicts && av.conflicts.length > 0) {
+      lines.push('### Acceptance Criteria Conflicts', '');
+      lines.push('| Criterion | Scope | Recommended Action | Conflicts With | Evidence |');
+      lines.push('|-----------|-------|--------------------|----------------|----------|');
+      for (const conflict of av.conflicts) {
+        lines.push(`| ${escapeTableCell(conflict.criterion)} | ${conflict.scope} | ${conflict.recommendedAction} | ${escapeTableCell(conflict.conflictsWith)} | ${escapeTableCell(conflict.evidence)} |`);
+      }
+      lines.push('');
+    }
   }
 
   if (summary.validationCommands && summary.validationCommands.length > 0) {

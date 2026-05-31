@@ -30,6 +30,7 @@ export type {
   PrdValidationGap,
   // --- eforge:region plan-01-validation-evidence-contract ---
   AcceptanceCriterionVerdict,
+  AcceptanceCriteriaConflict,
   // --- eforge:endregion plan-01-validation-evidence-contract ---
   TestIssue,
   BuildFailureSummary,
@@ -92,6 +93,7 @@ export {
   PlanningDecisionSchema,
   // --- eforge:region plan-01-validation-evidence-contract ---
   AcceptanceCriterionVerdictSchema,
+  AcceptanceCriteriaConflictSchema,
   // --- eforge:endregion plan-01-validation-evidence-contract ---
   safeParseEforgeEvent,
   parseEforgeEvent,

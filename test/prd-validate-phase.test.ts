@@ -521,6 +521,59 @@ describe('prdValidate phase — expectedAcceptanceCriteria synthesis', () => {
     expect(typedAcceptance.waivers).toContain('Auth is out of scope for this iteration; deferred to follow-up');
   });
 
+  it('fails by default when non-passing verdicts include acceptanceConflicts', async () => {
+    const stateDir = makeTempDir();
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      yield {
+        type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false,
+        verdicts: [{ criterion: 'ac-002', verdict: 'fail', evidence: 'packages/monitor-ui/src/lib/reducer/index.ts changed.' }],
+        acceptanceConflicts: [{ criterion: 'ac-002', evidence: 'monitor-ui reducer needed to ignore the new event type.', conflictsWith: 'The new client event must type-check in all consumers.', scope: 'narrow', recommendedAction: 'revise_acceptance_criteria' }],
+        source: 'prd',
+      } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    ctx.expectedAcceptanceCriteria = [{ id: 'ac-002', text: 'packages/monitor-ui/ must have zero modified files', raw: 'packages/monitor-ui/ must have zero modified files' }];
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    expect(ctx.state.status).toBe('failed');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'planning:progress', message: expect.stringContaining('manual review required') }));
+    const acceptance = events.find((e) => e.type === 'acceptance_validation:complete') as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>;
+    expect(acceptance.acceptanceConflicts).toHaveLength(1);
+    expect(acceptance.waivers).toBeUndefined();
+  });
+
+  it('auto-waives narrow acceptanceConflicts when policy allows it and deterministic validation passed', async () => {
+    const stateDir = makeTempDir();
+    const validator: PhaseContext['prdValidator'] = async function* () {
+      yield { type: 'prd_validation:start', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      yield {
+        type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false,
+        verdicts: [{ criterion: 'ac-002', verdict: 'fail', evidence: 'packages/monitor-ui/src/lib/reducer/index.ts changed.' }],
+        acceptanceConflicts: [{ criterion: 'ac-002', evidence: 'monitor-ui reducer needed to ignore the new event type.', conflictsWith: 'The new client event must type-check in all consumers.', scope: 'narrow', recommendedAction: 'revise_acceptance_criteria' }],
+        source: 'prd',
+      } as EforgeEvent;
+    };
+
+    const ctx = makeCtx(stateDir, validator);
+    ctx.expectedAcceptanceCriteria = [{ id: 'ac-002', text: 'packages/monitor-ui/ must have zero modified files', raw: 'packages/monitor-ui/ must have zero modified files' }];
+    ctx.validationCommandEvidence = [{ command: 'pnpm type-check', exitCode: 0 }];
+    ctx.validationPolicy = { allowNoCommands: false, allowEmptyPrdDiff: false, allowNoAcceptanceCriteria: false, acceptanceConflictPolicy: 'auto-waive-narrow', allowNoCommittedChanges: false };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    expect(ctx.state.status).not.toBe('failed');
+    const acceptance = events.find((e) => e.type === 'acceptance_validation:complete') as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>;
+    expect(acceptance.passed).toBe(true);
+    expect(acceptance.waivers?.[0]).toContain('Acceptance criterion conflict (ac-002)');
+  });
+
   it('fails build when expected criteria have non-passing verdicts and waivers contain only whitespace', async () => {
     const stateDir = makeTempDir();
     const validator: PhaseContext['prdValidator'] = async function* () {

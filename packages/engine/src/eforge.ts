@@ -1166,7 +1166,7 @@ export class EforgeEngine {
           if (!event.passed || (failCount > 0 && !hasWaiver)) {
             status = 'failed';
             // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
-            summary = formatAcceptanceFailureSummary(event.verdicts);
+            summary = formatAcceptanceFailureSummary(event.verdicts, event.acceptanceConflicts);
             // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
           }
         }
@@ -2993,7 +2993,7 @@ export class EforgeEngine {
           const hasWaiver = (event.waivers ?? []).some((waiver) => waiver.trim().length > 0);
           if (!event.passed || (failCount > 0 && !hasWaiver)) {
             status = 'failed';
-            buildSummary = formatAcceptanceFailureSummary(event.verdicts);
+            buildSummary = formatAcceptanceFailureSummary(event.verdicts, event.acceptanceConflicts);
           }
         }
         if (event.type === 'daemon:error' && event.source === 'stack:artifact-recording') {

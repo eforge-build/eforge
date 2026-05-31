@@ -314,6 +314,14 @@ export const AcceptanceCriterionVerdictSchema = Type.Object({
   ]),
   evidence: Type.String({ minLength: 1 }),
 });
+
+export const AcceptanceCriteriaConflictSchema = Type.Object({
+  criterion: Type.String({ minLength: 1 }),
+  evidence: Type.String({ minLength: 1 }),
+  conflictsWith: Type.String({ minLength: 1 }),
+  scope: Type.Union([Type.Literal('narrow'), Type.Literal('broad'), Type.Literal('unknown')]),
+  recommendedAction: Type.Union([Type.Literal('revise_acceptance_criteria'), Type.Literal('manual_review')]),
+});
 // --- eforge:endregion plan-01-validation-evidence-contract ---
 
 const ExpeditionModuleSchema = Type.Object({
@@ -568,6 +576,7 @@ const BuildFailureSummarySchema = Type.Object({
     fail: Type.Number(),
     unknown: Type.Number(),
     verdicts: Type.Array(AcceptanceCriterionVerdictSchema),
+    waivers: Type.Optional(Type.Array(Type.String())), conflicts: Type.Optional(Type.Array(AcceptanceCriteriaConflictSchema)),
   })),
   validationCommands: Type.Optional(Type.Array(Type.Object({
     command: Type.String(),
@@ -1922,6 +1931,7 @@ const EforgeEventVariantsSchema = Type.Union([
     passed: Type.Boolean(),
     verdicts: Type.Array(AcceptanceCriterionVerdictSchema, { minItems: 1 }),
     waivers: Type.Optional(Type.Array(Type.String())),
+    acceptanceConflicts: Type.Optional(Type.Array(AcceptanceCriteriaConflictSchema)),
     source: Type.String({ minLength: 1 }),
   }),
   // --- eforge:endregion plan-01-validation-evidence-contract ---
@@ -2315,6 +2325,7 @@ export type PipelineComposition = Static<typeof PipelineCompositionSchema>;
 export type PrdValidationGap = Static<typeof PrdValidationGapSchema>;
 // --- eforge:region plan-01-validation-evidence-contract ---
 export type AcceptanceCriterionVerdict = Static<typeof AcceptanceCriterionVerdictSchema>;
+export type AcceptanceCriteriaConflict = Static<typeof AcceptanceCriteriaConflictSchema>;
 // --- eforge:endregion plan-01-validation-evidence-contract ---
 export type ExpeditionModule = Static<typeof ExpeditionModuleSchema>;
 export type EforgeResult = Static<typeof EforgeResultSchema>;
