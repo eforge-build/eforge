@@ -1,0 +1,68 @@
+name: retry-evaluator-no-verdict-submissions
+description: Retry build evaluator no-verdict completions once through the
+  existing evaluator continuation path, then preserve fail-closed behavior after
+  retry exhaustion.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm exec vitest run test/build-evaluator-enforcement.test.ts
+    test/retry.test.ts
+plans:
+  - id: plan-01-evaluator-no-verdict-retry
+    name: Retry Build Evaluator No-Verdict Completions
+    depends_on: []
+    branch: retry-evaluator-no-verdict-submissions/plan-01-evaluator-no-verdict-retry
+    build:
+      - implement
+      - test-cycle
+      - validate
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: The change is small but touches retry lifecycle control flow in
+          oversized engine files and must preserve fail-closed safety.
+      reviewer:
+        effort: high
+        rationale: Review must check that the retry trigger is typed, local to the build
+          evaluator, and does not weaken evaluator enforcement.
+      tester:
+        effort: high
+        rationale: Regression coverage must distinguish retry success, retry exhaustion,
+          and non-retryable evaluator failures.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - test-cycle
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused but non-trivial engine bugfix touching evaluator
+    orchestration, retry policy behavior, and regression tests, so excursion is
+    appropriate. Plan review is included to ensure the retry/fail-closed
+    boundaries are planned safely. The build pipeline implements the fix,
+    adds/updates tests, runs a test cycle, then runs the registered
+    maintainability validation provider before a review-fix-evaluate cycle.
+    Review focuses on code correctness and test coverage, with two rounds to
+    catch lifecycle regressions without expedition-level overhead.
+diff_base_ref: 84c16d1715f5a0b7b12e7fbc4c38a8bad91674b5
