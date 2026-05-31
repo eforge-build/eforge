@@ -52,7 +52,7 @@ Rules:
 
 ## Route Contract and Daemon Wire Shape Ownership
 
-All HTTP route constants, route path builders, and daemon wire shapes (run info, queue items, session metadata, auto-build status) are owned by `@eforge-build/client` (`packages/client/`):
+All HTTP route constants, route path builders, and daemon wire shapes (run info, queue items, queue recovery requests/responses, session metadata, auto-build status) are owned by `@eforge-build/client` (`packages/client/`):
 
 - Import `API_ROUTES` and `buildPath()` for route constants; do **not** inline `/api/...` strings.
 - Import named per-route helpers (`apiEnqueue`, `apiCancel`, `apiHealth`, etc.) instead of calling `fetch` with inlined paths.

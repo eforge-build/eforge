@@ -501,7 +501,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 66
+Total routes: 68
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -549,6 +549,8 @@ Total routes: 66
 | `profileUse` | `/api/profile/use` |
 | `projectContext` | `/api/project-context` |
 | `queue` | `/api/queue` |
+| `queueRecoveryAnalyze` | `/api/queue/recovery/analyze` |
+| `queueRecoveryApply` | `/api/queue/recovery/apply` |
 | `readRecoverySidecar` | `/api/recovery/sidecar` |
 | `recover` | `/api/recover` |
 | `resumeBuild` | `/api/recover/resume-build` |

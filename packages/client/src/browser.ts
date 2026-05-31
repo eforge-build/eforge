@@ -62,6 +62,36 @@ export type {
   // --- eforge:endregion plan-02-client-surfaces-and-console ---
 } from './routes.js';
 
+// --- eforge:region plan-01-queue-recovery-api-engine ---
+export type {
+  QueueRecoveryStrategy,
+  QueueRecoveryStrategyWire,
+  QueueRecoveryLocation,
+  QueueRecoveryNodeRole,
+  QueueRecoveryNode,
+  QueueRecoveryEdge,
+  QueueRecoveryOperationKind,
+  QueueRecoveryMovePrdOperation,
+  QueueRecoveryRemoveRecoverySidecarsOperation,
+  QueueRecoveryOperation,
+  QueueRecoveryOperationStatus,
+  QueueRecoveryOperationResult,
+  QueueRecoveryNotice,
+  QueueRecoveryAnalyzeRequest,
+  QueueRecoveryAnalyzeResponse,
+  QueueRecoveryApplyRequest,
+  QueueRecoveryApplyResponse,
+} from './queue-recovery.js';
+export {
+  QUEUE_RECOVERY_STRATEGY_RETRY_AND_REACTIVATE,
+  isQueueRecoveryStrategy,
+} from './queue-recovery.js';
+export {
+  fetchQueueRecoveryAnalysis,
+  applyQueueRecovery,
+} from './browser-queue-recovery.js';
+// --- eforge:endregion plan-01-queue-recovery-api-engine ---
+
 export type {
   HealthResponse,
   AutoBuildState,

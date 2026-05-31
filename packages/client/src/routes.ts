@@ -2,14 +2,12 @@
  * Missing request type shapes not yet declared in types.ts.
  * Re-export from index so callers can import the request/response pair together.
  */
-
 // --- eforge:region plan-03-stack-daemon-ui ---
 import type { StackLayerWire } from './events.js';
 // --- eforge:endregion plan-03-stack-daemon-ui ---
 // --- eforge:region plan-01-recovery-summary-reconstruction ---
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
 // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
-
 /** POST /api/enqueue */
 export interface EnqueueRequest {
   source: string;
@@ -41,7 +39,6 @@ export interface EnqueueRequest {
   afterQueueId?: string;
   // --- eforge:endregion plan-01-build-dependency-core ---
 }
-
 /** POST /api/auto-build */
 export interface AutoBuildSetRequest {
   enabled: boolean;
@@ -186,6 +183,9 @@ export const API_ROUTES = {
   extensionDemote: '/api/extensions/demote',
   // --- eforge:endregion plan-01-extension-package-foundation ---
   queue: '/api/queue',
+  // --- eforge:region plan-01-queue-recovery-api-engine ---
+  queueRecoveryAnalyze: '/api/queue/recovery/analyze', queueRecoveryApply: '/api/queue/recovery/apply',
+  // --- eforge:endregion plan-01-queue-recovery-api-engine ---
   sessionMetadata: '/api/session-metadata',
   runs: '/api/runs',
   events: '/api/events/:runId',
