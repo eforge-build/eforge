@@ -30,6 +30,7 @@ export type {
   StalenessVerdict,
   RecoveryVerdict,
   ReviewPerspective,
+  EvaluationIssueOutcome,
   AgentTerminalSubtype,
   ShardScope,
   PipelineComposition,
@@ -54,6 +55,7 @@ export {
   SEVERITY_ORDER,
   isAlwaysYieldedAgentEvent,
   EforgeEventSchema,
+  EvaluationIssueOutcomeSchema,
   // --- eforge:region plan-01-terminal-failure-contract ---
   TerminalFailureScopeSchema,
   TerminalFailureEnvelopeSchema,

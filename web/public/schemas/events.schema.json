@@ -4507,6 +4507,30 @@
             "rejected": {
               "type": "number"
             },
+            "resolvedIssueOutcomes": {
+              "type": "number"
+            },
+            "falsePositiveIssueOutcomes": {
+              "type": "number"
+            },
+            "unresolvedIssueOutcomes": {
+              "type": "number"
+            },
+            "unresolvedNonBlockingIssueOutcomes": {
+              "type": "number"
+            },
+            "needsHumanReviewIssueOutcomes": {
+              "type": "number"
+            },
+            "acceptedRiskIssueOutcomes": {
+              "type": "number"
+            },
+            "splitToFollowupIssueOutcomes": {
+              "type": "number"
+            },
+            "blockingIssueOutcomes": {
+              "type": "number"
+            },
             "verdicts": {
               "type": "array",
               "items": {
@@ -4542,6 +4566,43 @@
                   "hunk": {
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "issueOutcome": {
+                    "description": "Evaluator issue disposition separate from patch action. Missing values are interpreted conservatively by the engine.",
+                    "anyOf": [
+                      {
+                        "const": "resolved",
+                        "type": "string"
+                      },
+                      {
+                        "const": "false_positive",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unresolved",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unresolved_blocking",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unresolved_nonblocking",
+                        "type": "string"
+                      },
+                      {
+                        "const": "needs_human_review",
+                        "type": "string"
+                      },
+                      {
+                        "const": "accepted_risk",
+                        "type": "string"
+                      },
+                      {
+                        "const": "split_to_followup",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -8351,6 +8412,43 @@
                               "hunk": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "issueOutcome": {
+                                "description": "Evaluator issue disposition separate from patch action. Missing values are interpreted conservatively by the engine.",
+                                "anyOf": [
+                                  {
+                                    "const": "resolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "false_positive",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unresolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unresolved_blocking",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unresolved_nonblocking",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "needs_human_review",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "accepted_risk",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "split_to_followup",
+                                    "type": "string"
+                                  }
+                                ]
                               }
                             }
                           }
@@ -9755,6 +9853,26 @@
                     },
                     "finalEvaluationRan": {
                       "type": "boolean"
+                    },
+                    "finalEvaluationResolved": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "finalEvaluationFalsePositive": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "finalEvaluationUnresolved": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "finalEvaluationNeedsHumanReview": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "finalEvaluationBlocking": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 },

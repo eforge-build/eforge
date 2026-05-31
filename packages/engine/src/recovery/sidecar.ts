@@ -161,10 +161,10 @@ function buildMarkdown(
       lines.push(`**Accepted:** ${ev.accepted} | **Rejected:** ${ev.rejected} | **Needs Review:** ${ev.review}`);
       lines.push('');
       if (ev.verdicts.length > 0) {
-        lines.push('| Action | File | Hunk | Reason |');
-        lines.push('|--------|------|------|--------|');
+        lines.push('| Action | Issue Outcome | File | Hunk | Reason |');
+        lines.push('|--------|---------------|------|------|--------|');
         for (const verdictRow of ev.verdicts) {
-          lines.push(`| ${escapeTableCell(verdictRow.action)} | ${escapeTableCell(verdictRow.file)} | ${verdictRow.hunk ?? ''} | ${escapeTableCell(verdictRow.reason)} |`);
+          lines.push(`| ${escapeTableCell(verdictRow.action)} | ${escapeTableCell(verdictRow.issueOutcome ?? '')} | ${escapeTableCell(verdictRow.file)} | ${verdictRow.hunk ?? ''} | ${escapeTableCell(verdictRow.reason)} |`);
         }
         lines.push('');
       }

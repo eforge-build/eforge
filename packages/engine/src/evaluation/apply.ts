@@ -5,106 +5,38 @@ import { dirname, join, relative, resolve, posix, win32 } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import type { EvaluationVerdict } from '../schemas.js';
+import { isBlockingEvaluationIssueOutcome, normalizeEvaluationIssueOutcome } from './issue-outcomes.js';
+import type {
+  ApplyEvaluationVerdictsOptions,
+  EvaluationApplicationResult,
+  EvaluationCandidateDecision,
+  EvaluationCandidateFile,
+  EvaluationCandidateHunk,
+  EvaluationCandidateStatus,
+  EvaluationFileVerdictSummary,
+  EvaluationResetState,
+  EvaluationSnapshot,
+  EvaluationValidationResult,
+} from './types.js';
 import { forgeCommit } from '../git.js';
 import { composeCommitMessage, type ModelTracker } from '../model-tracker.js';
 
+export type {
+  ApplyEvaluationVerdictsOptions,
+  EvaluationApplicationResult,
+  EvaluationCandidateDecision,
+  EvaluationCandidateFile,
+  EvaluationCandidateHunk,
+  EvaluationCandidateStatus,
+  EvaluationFileVerdictSummary,
+  EvaluationResetState,
+  EvaluationSnapshot,
+  EvaluationValidationResult,
+  EvaluationVerdictSummary,
+} from './types.js';
+
 const exec = promisify(execFile);
 const GIT_MAX_BUFFER = 50 * 1024 * 1024;
-
-export type EvaluationCandidateStatus =
-  | 'modified'
-  | 'added'
-  | 'deleted'
-  | 'renamed'
-  | 'copied'
-  | 'typechange'
-  | 'unmerged'
-  | 'unknown'
-  | 'untracked';
-
-export interface EvaluationResetState {
-  cwd: string;
-  resetTarget: string;
-  originalHead: string;
-  baseHead: string;
-}
-
-export interface EvaluationCandidateHunk {
-  index: number;
-  header: string;
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  diff: string;
-}
-
-export interface EvaluationCandidateFile {
-  path: string;
-  oldPath?: string;
-  status: EvaluationCandidateStatus;
-  statusCode: string;
-  diff: string;
-  diffHeader: string;
-  hunks: EvaluationCandidateHunk[];
-  isBinary: boolean;
-  isUntracked: boolean;
-  isRenameOnly: boolean;
-  requiresFileVerdict: boolean;
-  contentSha256?: string;
-  contentBase64?: string;
-  isSymlink?: boolean;
-  symlinkTargetBase64?: string;
-}
-
-export interface EvaluationSnapshot {
-  cwd: string;
-  capturedAt: string;
-  resetTarget?: string;
-  originalHead?: string;
-  baseHead: string;
-  stagedPatch: string;
-  candidatePatch: string;
-  files: EvaluationCandidateFile[];
-}
-
-export interface EvaluationFileVerdictSummary {
-  file: string;
-  mode: 'file' | 'hunks';
-  action?: EvaluationVerdict['action'];
-  acceptedHunks: number[];
-  rejectedHunks: number[];
-  reviewHunks: number[];
-}
-
-export interface EvaluationVerdictSummary {
-  accepted: number;
-  rejected: number;
-  review: number;
-  fileLevel: number;
-  hunkLevel: number;
-  files: EvaluationFileVerdictSummary[];
-}
-
-export type EvaluationCandidateDecision =
-  | { kind: 'file'; file: EvaluationCandidateFile; verdict: EvaluationVerdict }
-  | { kind: 'hunks'; file: EvaluationCandidateFile; verdictsByHunk: Map<number, EvaluationVerdict> };
-
-export interface EvaluationValidationResult {
-  decisions: Map<string, EvaluationCandidateDecision>;
-  summary: EvaluationVerdictSummary;
-}
-
-export interface ApplyEvaluationVerdictsOptions {
-  commit?: boolean;
-  commitMessage?: string;
-  modelTracker?: ModelTracker;
-}
-
-export interface EvaluationApplicationResult extends EvaluationVerdictSummary {
-  committed: boolean;
-  commitSha?: string;
-}
 
 export class EvaluationValidationError extends Error {
   constructor(message: string) {
@@ -523,9 +455,11 @@ export function validateEvaluationVerdicts(snapshot: EvaluationSnapshot, verdict
         file: file.path,
         mode: 'file',
         action: verdict.action,
+        issueOutcome: verdict.issueOutcome,
         acceptedHunks: [],
         rejectedHunks: [],
         reviewHunks: [],
+        blockingIssueHunks: isBlockingEvaluationIssueOutcome(normalizeEvaluationIssueOutcome(verdict)) ? [1] : [],
       });
       continue;
     }
@@ -557,6 +491,7 @@ export function validateEvaluationVerdicts(snapshot: EvaluationSnapshot, verdict
     const acceptedHunks: number[] = [];
     const rejectedHunks: number[] = [];
     const reviewHunks: number[] = [];
+    const blockingIssueHunks: number[] = [];
     for (const hunk of file.hunks) {
       const verdict = verdictsByHunk.get(hunk.index);
       if (!verdict) continue;
@@ -571,6 +506,9 @@ export function validateEvaluationVerdicts(snapshot: EvaluationSnapshot, verdict
         review += 1;
         reviewHunks.push(hunk.index);
       }
+      if (isBlockingEvaluationIssueOutcome(normalizeEvaluationIssueOutcome(verdict))) {
+        blockingIssueHunks.push(hunk.index);
+      }
     }
     hunkLevel += hunkVerdicts.length;
     decisions.set(file.path, { kind: 'hunks', file, verdictsByHunk });
@@ -580,6 +518,7 @@ export function validateEvaluationVerdicts(snapshot: EvaluationSnapshot, verdict
       acceptedHunks,
       rejectedHunks,
       reviewHunks,
+      blockingIssueHunks,
     });
   }
 

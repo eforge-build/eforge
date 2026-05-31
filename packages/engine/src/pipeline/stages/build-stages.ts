@@ -45,6 +45,7 @@ import {
   // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 } from '../../evaluation/index.js';
 import type { EvaluationVerdict } from '../../schemas.js';
+import { countEvaluationIssueOutcomes, type EvaluationIssueOutcomeCounts } from '../../evaluation/issue-outcomes.js';
 // --- eforge:endregion plan-02-build-evaluator-enforcement ---
 // --- eforge:region plan-01-reviewer-isolation ---
 import { captureEvaluationSnapshot, EvaluationInvariantError } from '../../evaluation/index.js';
@@ -197,7 +198,7 @@ type LastBuildEvaluation = {
   review: number;
   files: EvaluationFileVerdictSummary[];
   // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
-};
+} & EvaluationIssueOutcomeCounts;
 
 type BuildStageContextWithEvaluation = BuildStageContext & {
   __plan02LastBuildEvaluation?: LastBuildEvaluation;
@@ -212,8 +213,21 @@ function getLastBuildEvaluation(ctx: BuildStageContext): LastBuildEvaluation | u
 }
 
 // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
+function emptyIssueOutcomeCounts(): EvaluationIssueOutcomeCounts {
+  return {
+    resolvedIssueOutcomes: 0,
+    falsePositiveIssueOutcomes: 0,
+    unresolvedIssueOutcomes: 0,
+    unresolvedNonBlockingIssueOutcomes: 0,
+    needsHumanReviewIssueOutcomes: 0,
+    acceptedRiskIssueOutcomes: 0,
+    splitToFollowupIssueOutcomes: 0,
+    blockingIssueOutcomes: 0,
+  };
+}
+
 function lastBuildEvaluationNotRun(): LastBuildEvaluation {
-  return { ran: false, accepted: 0, rejected: 0, review: 0, files: [] };
+  return { ran: false, accepted: 0, rejected: 0, review: 0, files: [], ...emptyIssueOutcomeCounts() };
 }
 // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
@@ -228,6 +242,7 @@ function summarizeEvaluationVerdicts(verdicts: EvaluationVerdict[]) {
     action: v.action,
     reason: v.reason,
     ...(v.hunk !== undefined && { hunk: v.hunk }),
+    ...(v.issueOutcome !== undefined && { issueOutcome: v.issueOutcome }),
   }));
 }
 
@@ -567,12 +582,14 @@ async function* evaluateStageInner(
       modelTracker: ctx.modelTracker,
     });
     ctx.reviewIssues = [];
+    const issueOutcomeCounts = countEvaluationIssueOutcomes(result.verdicts);
     setLastBuildEvaluation(ctx, {
       ran: true,
       accepted: application.accepted,
       rejected: application.rejected,
       review: application.review,
       files: application.files,
+      ...issueOutcomeCounts,
     });
     yield {
       timestamp: new Date().toISOString(),
@@ -580,6 +597,7 @@ async function* evaluateStageInner(
       planId: ctx.planId,
       accepted: application.accepted,
       rejected: application.rejected,
+      ...issueOutcomeCounts,
       verdicts: summarizeEvaluationVerdicts(result.verdicts),
     };
   } catch (err) {
@@ -1255,7 +1273,7 @@ registerBuildStage({
     // --- eforge:region plan-02-build-evaluator-enforcement ---
     const finalEvaluation = getLastBuildEvaluation(ctx);
     const finalEvaluationText = finalEvaluation?.ran
-      ? `; final evaluation accepted ${finalEvaluation.accepted} and rejected ${finalEvaluation.rejected}`
+      ? `; final evaluation accepted ${finalEvaluation.accepted} and rejected ${finalEvaluation.rejected}; blocking issue outcomes ${finalEvaluation.blockingIssueOutcomes}`
       : '; final evaluation did not run';
     yield emitBuildDecision(ctx, {
       kind: 'cycle-terminated',
@@ -1268,21 +1286,26 @@ registerBuildStage({
       ...(finalEvaluation?.ran && {
         finalEvaluationAccepted: finalEvaluation.accepted,
         finalEvaluationRejected: finalEvaluation.rejected,
+        finalEvaluationResolved: finalEvaluation.resolvedIssueOutcomes,
+        finalEvaluationFalsePositive: finalEvaluation.falsePositiveIssueOutcomes,
+        finalEvaluationUnresolved: finalEvaluation.unresolvedIssueOutcomes,
+        finalEvaluationNeedsHumanReview: finalEvaluation.needsHumanReviewIssueOutcomes,
+        finalEvaluationBlocking: finalEvaluation.blockingIssueOutcomes,
       }),
     } as unknown as Parameters<typeof emitBuildDecision>[1]);
     // --- eforge:endregion plan-02-build-evaluator-enforcement ---
     // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
     // Use lastReviewIssueCount rather than ctx.reviewIssues.length because
     // evaluateStageInner clears ctx.reviewIssues after verdict application.
-    // Fail when the last review found issues AND the final evaluation either did not
-    // run or did not accept all fixes (rejected or marked for review remain non-zero).
-    const evalNotAcceptedAll =
-      !finalEvaluation?.ran ||
-      (finalEvaluation.rejected + finalEvaluation.review) > 0;
-    if (lastReviewIssueCount > 0 && evalNotAcceptedAll) {
+    // Fail only when the final evaluator did not run or explicit issue outcomes
+    // say blocking issues remain. Missing issue outcomes are normalized
+    // conservatively by countEvaluationIssueOutcomes(): accept => resolved,
+    // reject/review => unresolved.
+    const evalHasBlockingIssues = !finalEvaluation?.ran || finalEvaluation.blockingIssueOutcomes > 0;
+    if (lastReviewIssueCount > 0 && evalHasBlockingIssues) {
       const errorMsg = !finalEvaluation?.ran
         ? `Review cycle exhausted ${maxRounds} round(s) without a final evaluation verdict.`
-        : `${lastReviewIssueCount} unresolved issue(s) remain after ${maxRounds} review round(s) (${finalEvaluation.rejected} rejected, ${finalEvaluation.review} under review).`;
+        : `${finalEvaluation.blockingIssueOutcomes} blocking issue outcome(s) remain after ${maxRounds} review round(s) (${finalEvaluation.unresolvedIssueOutcomes} unresolved, ${finalEvaluation.needsHumanReviewIssueOutcomes} need human review; ${finalEvaluation.rejected} rejected, ${finalEvaluation.review} under review).`;
       yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg } as EforgeEvent;
       ctx.buildFailed = true;
     }

@@ -95,6 +95,8 @@ export const LandingActionSchema = Type.Union([
 ]);
 // --- eforge:endregion plan-01-engine-config-and-landing ---
 
+export const EvaluationIssueOutcomeSchema = Type.Union(['resolved', 'false_positive', 'unresolved', 'unresolved_blocking', 'unresolved_nonblocking', 'needs_human_review', 'accepted_risk', 'split_to_followup'].map(v => Type.Literal(v)), { description: 'Evaluator issue disposition separate from patch action. Missing values are interpreted conservatively by the engine.' });
+
 // --- eforge:region plan-01-stack-contracts-config-state-events ---
 /** Wire schema for the supported stack providers. */
 export const StackProviderSchema = Type.Literal('git-spice');
@@ -542,7 +544,7 @@ const FailingPlanEntrySchema = Type.Object({
 });
 
 const ReviewFailureActionSchema = Type.Union([Type.Literal('accept'), Type.Literal('reject'), Type.Literal('review')]);
-const ReviewFailureEvaluationVerdictSchema = Type.Object({ file: Type.String(), action: ReviewFailureActionSchema, reason: Type.String(), hunk: Type.Optional(Type.Integer({ minimum: 1 })) });
+const ReviewFailureEvaluationVerdictSchema = Type.Object({ file: Type.String(), action: ReviewFailureActionSchema, reason: Type.String(), hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema) });
 const ReviewFailureDetailsSchema = Type.Object({ planId: Type.String(), issues: Type.Array(ReviewIssueSchema), evaluation: Type.Optional(Type.Object({ accepted: Type.Integer({ minimum: 0 }), rejected: Type.Integer({ minimum: 0 }), review: Type.Integer({ minimum: 0 }), verdicts: Type.Array(ReviewFailureEvaluationVerdictSchema) })) });
 // --- eforge:region plan-01-terminal-failure-contract ---
 export const TerminalFailureScopeSchema = Type.Union([Type.Literal('plan'), Type.Literal('post-merge-validation'), Type.Literal('prd-validation'), Type.Literal('acceptance-validation'), Type.Literal('artifact-recording'), Type.Literal('landing'), Type.Literal('daemon'), Type.Literal('compile'), Type.Literal('unknown')]);
@@ -843,10 +845,8 @@ export const BuildDecisionSchema = Type.Union([
     reason: Type.Union([Type.Literal('no-issues'), Type.Literal('max-rounds')]),
     issuesRemaining: Type.Integer({ minimum: 0 }),
     // --- eforge:region plan-02-build-evaluator-enforcement ---
-    lastReviewIssueCount: Type.Optional(Type.Integer({ minimum: 0 })),
-    finalEvaluationAccepted: Type.Optional(Type.Integer({ minimum: 0 })),
-    finalEvaluationRejected: Type.Optional(Type.Integer({ minimum: 0 })),
-    finalEvaluationRan: Type.Optional(Type.Boolean()),
+    lastReviewIssueCount: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationAccepted: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationRejected: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationRan: Type.Optional(Type.Boolean()),
+    finalEvaluationResolved: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationFalsePositive: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationUnresolved: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationNeedsHumanReview: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationBlocking: Type.Optional(Type.Integer({ minimum: 0 })),
     // --- eforge:endregion plan-02-build-evaluator-enforcement ---
   }),
   // Perspectives respawned for next review round
@@ -1587,17 +1587,12 @@ const EforgeEventVariantsSchema = Type.Union([
     planId: Type.String(),
     accepted: Type.Number(),
     rejected: Type.Number(),
+    resolvedIssueOutcomes: Type.Optional(Type.Number()), falsePositiveIssueOutcomes: Type.Optional(Type.Number()), unresolvedIssueOutcomes: Type.Optional(Type.Number()), unresolvedNonBlockingIssueOutcomes: Type.Optional(Type.Number()), needsHumanReviewIssueOutcomes: Type.Optional(Type.Number()), acceptedRiskIssueOutcomes: Type.Optional(Type.Number()), splitToFollowupIssueOutcomes: Type.Optional(Type.Number()), blockingIssueOutcomes: Type.Optional(Type.Number()),
     verdicts: Type.Optional(
       Type.Array(
         Type.Object({
-          file: Type.String(),
-          action: Type.Union([
-            Type.Literal('accept'),
-            Type.Literal('reject'),
-            Type.Literal('review'),
-          ]),
-          reason: Type.String(),
-          hunk: Type.Optional(Type.Integer({ minimum: 1 })),
+          file: Type.String(), action: Type.Union([Type.Literal('accept'), Type.Literal('reject'), Type.Literal('review')]), reason: Type.String(),
+          hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema),
         }),
       ),
     ),
@@ -2307,6 +2302,7 @@ export type DaemonRunUpsertEvent = Extract<EforgeEvent, { type: 'daemon:run:upse
 export type AgentRole = Static<typeof AgentRoleSchema>;
 export type AgentTerminalSubtype = Static<typeof AgentTerminalSubtypeSchema>;
 export type ReviewPerspective = Static<typeof ReviewPerspectiveSchema>;
+export type EvaluationIssueOutcome = Static<typeof EvaluationIssueOutcomeSchema>;
 // --- eforge:region plan-01-dynamic-perspective-contracts ---
 /**
  * A dynamic review perspective key. Matches the bounded slug pattern:

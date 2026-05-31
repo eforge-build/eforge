@@ -613,6 +613,20 @@ describe('parseEvaluationBlock', () => {
     expect(result[0].hunk).toBe(2);
   });
 
+  it('extracts issueOutcome attributes from verdicts', () => {
+    const text = `
+<evaluation>
+  <verdict file="src/app.ts" action="reject" issueOutcome="false_positive">Reviewer issue is invalid</verdict>
+  <verdict file="src/handler.ts" action="review" issue-outcome="needs_human_review">Ambiguous</verdict>
+</evaluation>`;
+
+    const result = parseEvaluationBlock(text);
+    expect(result).toEqual([
+      { file: 'src/app.ts', action: 'reject', issueOutcome: 'false_positive', reason: 'Reviewer issue is invalid' },
+      { file: 'src/handler.ts', action: 'review', issueOutcome: 'needs_human_review', reason: 'Ambiguous' },
+    ]);
+  });
+
   it('returns undefined hunk for verdicts without hunk attribute', () => {
     const text = `
 <evaluation>

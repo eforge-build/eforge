@@ -42,6 +42,9 @@ export type {
   StalenessVerdict,
   RecoveryVerdict,
   ReviewPerspective,
+  // --- eforge:region build-completion-recovery ---
+  EvaluationIssueOutcome,
+  // --- eforge:endregion build-completion-recovery ---
   // --- eforge:region plan-01-dynamic-perspective-contracts ---
   ReviewPerspectiveKey,
   // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
@@ -77,6 +80,9 @@ export {
   SEVERITY_ORDER,
   isAlwaysYieldedAgentEvent,
   REVIEW_PERSPECTIVES,
+  // --- eforge:region build-completion-recovery ---
+  EvaluationIssueOutcomeSchema,
+  // --- eforge:endregion build-completion-recovery ---
   BuildDecisionSchema,
   PlanningDecisionSchema,
   // --- eforge:region plan-01-validation-evidence-contract ---

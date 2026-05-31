@@ -235,6 +235,17 @@ export type EvaluationEvidence = Static<typeof evaluationEvidenceSchema>;
  */
 export type EvaluationVerdict = Static<typeof evaluationVerdictSchema>;
 
+const VALID_EVALUATION_ISSUE_OUTCOMES = new Set([
+  'resolved',
+  'false_positive',
+  'unresolved',
+  'unresolved_blocking',
+  'unresolved_nonblocking',
+  'needs_human_review',
+  'accepted_risk',
+  'split_to_followup',
+]);
+
 /**
  * Extract text content of a child element from XML content.
  * Returns undefined if the element is not found.
@@ -296,9 +307,14 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
       const action = actionMatch[1];
       if (action !== 'accept' && action !== 'reject' && action !== 'review') continue;
 
-      // Extract optional hunk attribute
+      // Extract optional hunk and issue outcome attributes
       const hunkMatch = attrs.match(/hunk="(\d+)"/);
       const hunk = hunkMatch ? parseInt(hunkMatch[1], 10) : undefined;
+      const issueOutcomeMatch = attrs.match(/issueOutcome="([^"]+)"/) ?? attrs.match(/issue-outcome="([^"]+)"/);
+      const rawIssueOutcome = issueOutcomeMatch?.[1]?.trim();
+      const issueOutcome = rawIssueOutcome && VALID_EVALUATION_ISSUE_OUTCOMES.has(rawIssueOutcome)
+        ? rawIssueOutcome as EvaluationVerdict['issueOutcome']
+        : undefined;
 
       // Try to extract structured evidence child elements
       const staged = extractChildElement(innerContent, 'staged') ?? extractChildElement(innerContent, 'original');
@@ -339,6 +355,7 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
         reason,
         ...(evidence && { evidence }),
         ...(hunk !== undefined && { hunk }),
+        ...(issueOutcome !== undefined && { issueOutcome }),
       });
     }
   }
