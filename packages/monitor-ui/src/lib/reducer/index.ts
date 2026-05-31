@@ -388,6 +388,7 @@ export const IGNORED_EVENT_TYPES = [
   'build:resume:start',
   'build:resume:state',
   'build:resume:ineligible',
+  'build:resume:artifacts',
   'build:resume:complete',
   // --- eforge:endregion plan-01-engine-resume ---
 ] as const;
