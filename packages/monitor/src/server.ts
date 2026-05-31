@@ -1245,7 +1245,6 @@ export async function startServer(
 
     let allPlans = [...expeditionFiles, ...compiledPlans, ...gapClosePlans];
 
-    // --- eforge:region plan-02-resume-artifacts-projection ---
     if (allPlans.length === 0) {
       const row = db.getEventsByTypeForSession(sessionId, 'build:resume:artifacts').at(-1);
       if (row) {
@@ -1255,7 +1254,6 @@ export async function startServer(
         }
       }
     }
-    // --- eforge:endregion plan-02-resume-artifacts-projection ---
 
     // Enrich plans with per-plan build/review config from orchestration.yaml
     const buildConfigMap = await readBuildConfigFromOrchestration(sessionId);

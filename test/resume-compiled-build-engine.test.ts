@@ -118,6 +118,7 @@ pipeline:
       - code
     maxRounds: 1
     evaluatorStrictness: standard
+  rationale: resume
 `);
   writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'plan-01.md'), `---
 id: plan-01

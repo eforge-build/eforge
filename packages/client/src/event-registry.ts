@@ -1364,14 +1364,8 @@ const eventRegistry = {
     summary: (e) =>
       `Resume state seeded: ${e.seededMerged.length} merged, ${e.seededPending.length} pending on ${e.featureBranch}`,
   },
-  'build:resume:ineligible': {
-    scope: 'session',
-    persist: true,
-    summary: (e) => `Resume ineligible: ${e.reason}`,
-  },
-  // --- eforge:region plan-02-resume-artifacts-projection ---
+  'build:resume:ineligible': { scope: 'session', persist: true, summary: (e) => `Resume ineligible: ${e.reason}` },
   'build:resume:artifacts': { scope: 'session', persist: true, summary: (e) => `Recovered ${e.plans.length} compiled plan artifact(s) for PRD ${e.prdId}` },
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   'build:resume:complete': { scope: 'session', persist: true, summary: (e) => `Build resume complete for PRD ${e.prdId}` },
   // --- eforge:endregion plan-01-engine-resume ---
 
