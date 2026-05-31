@@ -58,6 +58,9 @@ const ZOD_IMPORT_ALLOWLIST: readonly string[] = [
   // input — playbook + session-plan schemas (out of scope for plan-03)
   'packages/input/src/playbook.ts',
   'packages/input/src/session-plan.ts',
+  // input — read-only session plan-set manifest schema (uses zod/v4 like the
+  // sibling session-plan / playbook input modules per plan-01 design)
+  'packages/input/src/session-plan-set/schema.ts',
 
   // docs-gen — config generator uses z.toJSONSchema() from Zod v4 to emit
   // config.schema.json from the engine's Zod config schemas (plan-01)

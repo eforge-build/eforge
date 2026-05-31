@@ -145,6 +145,70 @@ export type {
 } from './session-plan.js';
 
 // ---------------------------------------------------------------------------
+// Session plan-set exports (read-only)
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-input-session-plan-sets ---
+export {
+  // Constants / schemas
+  SESSION_PLAN_SET_MANIFEST_FILENAME,
+  SESSION_PLAN_SET_STATUSES,
+  SESSION_PLAN_SET_STRATEGIES,
+  SESSION_PLAN_SET_CHILD_KINDS,
+  sessionPlanSetStatusSchema,
+  sessionPlanSetStrategySchema,
+  sessionPlanSetChildKindSchema,
+  sessionPlanSetExternalRefSchema,
+  sessionPlanSetChildSchema,
+  sessionPlanSetManifestSchema,
+
+  // Manifest parse / serialize
+  parseSessionPlanSetManifest,
+  serializeSessionPlanSetManifest,
+
+  // Path resolution
+  resolveSessionPlanSetsRoot,
+  resolveSessionPlanSetDir,
+  resolveSessionPlanSetManifestPath,
+  resolveSessionPlanSetAnchorPath,
+  resolveSessionPlanSetChildPath,
+
+  // List / load
+  listSessionPlanSets,
+  loadSessionPlanSet,
+
+  // Validation / summary
+  validateSessionPlanSet,
+  summarizeSessionPlanSet,
+} from './session-plan-set.js';
+
+export type {
+  SessionPlanSetStatus,
+  SessionPlanSetStrategy,
+  SessionPlanSetChildKind,
+  SessionPlanSetExternalRef,
+  SessionPlanSetChild,
+  SessionPlanSetManifest,
+  SessionPlanSetListEntry,
+  SessionPlanSetAnchorLoad,
+  SessionPlanSetChildLoad,
+  SessionPlanSetLoadResult,
+  SessionPlanSetDiagnosticCode,
+  SessionPlanSetDiagnostic,
+  SessionPlanSetChildSummary,
+  SessionPlanSetAnchorSummary,
+  SessionPlanSetSummary,
+  SessionPlanSetValidationResult,
+  ResolveSessionPlanSetDirOpts,
+  ResolveSessionPlanSetAnchorPathOpts,
+  ResolveSessionPlanSetChildPathOpts,
+  ListSessionPlanSetsOpts,
+  LoadSessionPlanSetOpts,
+  ValidateSessionPlanSetOpts,
+} from './session-plan-set.js';
+// --- eforge:endregion plan-01-input-session-plan-sets ---
+
+// ---------------------------------------------------------------------------
 // Acceptance criteria quality exports
 // ---------------------------------------------------------------------------
 
