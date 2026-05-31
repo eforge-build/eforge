@@ -205,7 +205,7 @@ export function QueueRecoveryDialog({
                 <ul className="space-y-1">
                   {analysis.operations.map((operation) => (
                     <li key={operation.id} className="text-xs text-muted-foreground">
-                      <Badge variant="outline" className="mr-2 text-[10px]">{operation.kind}</Badge>
+                      <Badge variant="outline" className="mr-2 text-xs">{operation.kind}</Badge>
                       {operationLabel(operation)}
                     </li>
                   ))}
