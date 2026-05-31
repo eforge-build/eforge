@@ -19,6 +19,7 @@ export interface NowQueueSummary {
   pendingCount: number;
   failedCount: number;
   waitingCount: number;
+  skippedCount: number;
   withDependenciesCount: number;
   withRecoveryVerdictCount: number;
   topItems: NowQueueItem[];
@@ -46,6 +47,7 @@ export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
   let pendingCount = 0;
   let failedCount = 0;
   let waitingCount = 0;
+  let skippedCount = 0;
   let withDependenciesCount = 0;
   let withRecoveryVerdictCount = 0;
 
@@ -56,14 +58,19 @@ export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
     if (s === 'pending') pendingCount++;
     if (s === 'failed') failedCount++;
     if (s === 'waiting') waitingCount++;
+    if (s === 'skipped') skippedCount++;
     if (item.dependsOn && item.dependsOn.length > 0) withDependenciesCount++;
     if (item.recoveryVerdict) withRecoveryVerdictCount++;
   }
 
   const displayable = queue.filter((item) => item.status.toLowerCase() !== 'running');
   const failed = displayable.filter((item) => item.status.toLowerCase() === 'failed').sort(compareQueueItems);
-  const activeQueue = displayable.filter((item) => item.status.toLowerCase() !== 'failed');
-  const sorted = [...failed, ...sortQueueItemsTopologically(activeQueue)];
+  const skipped = displayable.filter((item) => item.status.toLowerCase() === 'skipped').sort(compareQueueItems);
+  const activeQueue = displayable.filter((item) => {
+    const status = item.status.toLowerCase();
+    return status !== 'failed' && status !== 'skipped';
+  });
+  const sorted = [...failed, ...skipped, ...sortQueueItemsTopologically(activeQueue)];
 
   const allItems = sorted.map(toNowQueueItem);
 
@@ -74,6 +81,7 @@ export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
     pendingCount,
     failedCount,
     waitingCount,
+    skippedCount,
     withDependenciesCount,
     withRecoveryVerdictCount,
     topItems: allItems.slice(0, MAX_QUEUE_ITEMS),

@@ -15,6 +15,7 @@ const emptySummary: NowQueueSummary = {
   pendingCount: 0,
   failedCount: 0,
   waitingCount: 0,
+  skippedCount: 0,
   withDependenciesCount: 0,
   withRecoveryVerdictCount: 0,
   topItems: [],
@@ -128,23 +129,21 @@ describe('QueueCard - no mutation', () => {
     expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 
-  it('contains no interactive buttons or dropdowns', () => {
+  it('expanding rows issues zero fetch calls before recovery action is used', () => {
     const summary = makeSummary({
       total: 2,
       topItems: [
-        { id: 'q-1', title: 'Task A', status: 'running', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
-        { id: 'q-2', title: 'Task B', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+        { id: 'q-1', title: 'Task A', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
       ],
+      allItems: [
+        { id: 'q-1', title: 'Task A', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+        { id: 'q-failed', title: 'Failed Task', status: 'failed', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+      ],
+      hiddenCount: 1,
     });
-    const { container } = render(<QueueCard summary={summary} />);
-    // No buttons (interactive mutation controls)
-    const buttons = container.querySelectorAll('button');
-    expect(buttons.length).toBe(0);
-    // No select (dropdown)
-    const selects = container.querySelectorAll('select');
-    expect(selects.length).toBe(0);
-    // No dialog triggers
-    const dialogs = container.querySelectorAll('[role="dialog"]');
-    expect(dialogs.length).toBe(0);
+    render(<QueueCard summary={summary} />);
+    fireEvent.click(screen.getByText('+ 1 more — show all'));
+    expect(screen.getByText('Inspect cascade')).toBeDefined();
+    expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 });

@@ -59,7 +59,7 @@ All HTTP route constants, route path builders, and daemon wire shapes (run info,
 - For browser bundles (`packages/console-ui/src`, `packages/monitor-ui/src/lib/api.ts`), import from `@eforge-build/client/browser`.
 - Do **not** re-declare wire-shape interfaces in monitor packages — use the exported types from `@eforge-build/client`.
 
-Bump `DAEMON_API_VERSION` in `packages/client/src/api-version.ts` when making breaking HTTP API changes.
+Bump `DAEMON_API_VERSION` in `packages/client/src/api-version-const.ts` when making breaking HTTP API changes (`api-version.ts` re-exports it for Node consumers).
 
 ## Bounded Edit Rule
 

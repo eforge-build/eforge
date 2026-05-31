@@ -144,6 +144,26 @@ describe('Queue view architecture guards', () => {
     expect(violations).toHaveLength(0);
   });
 
+  it('console source does not declare local QueueRecovery request/response wire shapes', () => {
+    const recoveryShapePattern = /^\s*(?:export\s+)?(?:interface|type)\s+QueueRecovery\w*(?:Request|Response)\b\s*(?:=|\{|extends\b)/;
+    const violations: string[] = [];
+    for (const filePath of allSourceFiles) {
+      const content = readFileSync(filePath, 'utf8');
+      const lines = nonCommentLines(content);
+      for (const { line, text } of lines) {
+        if (recoveryShapePattern.test(text)) {
+          violations.push(`${filePath}:${line}: ${text.trim()}`);
+        }
+      }
+    }
+    if (violations.length > 0) {
+      throw new Error(
+        `Console source must import queue recovery request/response types from @eforge-build/client/browser instead of declaring them locally:\n${violations.join('\n')}`,
+      );
+    }
+    expect(violations).toHaveLength(0);
+  });
+
   it('queue view files do not redeclare a daemon queue response shape (structural check)', () => {
     // Detect any interface or type alias block in queue view files that declares 3 or more
     // of the forbidden queue item field names as direct properties. Such a block is a

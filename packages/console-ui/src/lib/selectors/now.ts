@@ -365,7 +365,22 @@ export function selectNowAttentionItems(
     });
   }
 
-  // 6. Queue items blocked by dependencies.  Collapse dependency-linked
+  // 6. Skipped queue items need attention after terminal upstream cascades.
+  const skippedItems = state.queue.filter((q) => q.status.toLowerCase() === 'skipped');
+  for (const item of skippedItems) {
+    const label = selectPrdDisplayLabel(item.title, item.id);
+    candidates.push({
+      item: {
+        id: `queue-skipped-${item.id}`,
+        severity: 'warning',
+        message: `Skipped: ${label}`,
+        detail: 'blocked by failed upstream cascade',
+      },
+      dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
+    });
+  }
+
+  // 7. Queue items blocked by dependencies.  Collapse dependency-linked
   // stacks into one attention item so a three-plan stack reads as one system
   // state instead of several repetitive "waiting" rows.
   const queueStacks = selectNowQueueStacks(state.queue);
@@ -389,9 +404,15 @@ export function selectNowAttentionItems(
     });
   }
 
-  const blocked = state.queue.filter(
-    (q) => q.dependsOn && q.dependsOn.length > 0 && q.status.toLowerCase() !== 'failed' && q.status.toLowerCase() !== 'running' && !stackedBlockedIds.has(q.id),
-  );
+  const blocked = state.queue.filter((q) => {
+    const status = q.status.toLowerCase();
+    return q.dependsOn
+      && q.dependsOn.length > 0
+      && status !== 'failed'
+      && status !== 'skipped'
+      && status !== 'running'
+      && !stackedBlockedIds.has(q.id);
+  });
   for (const item of blocked) {
     const label = selectPrdDisplayLabel(item.title, item.id);
     const blockedBy = item.dependsOn!.map((depId) => queueItemLabelById(queueById, depId)).join(', ');

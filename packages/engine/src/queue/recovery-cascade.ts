@@ -142,13 +142,20 @@ export async function applyQueueRecovery(options: ApplyQueueRecoveryOptions): Pr
     }
   }
 
+  const failedResult = results.find((r) => r.status === 'failed');
+  const allApplied = analysis.operations.length > 0
+    && results.length === analysis.operations.length
+    && results.every((r) => r.status === 'applied');
+
   return {
     selectedPrdId: analysis.selectedPrdId,
     strategy: analysis.strategy,
-    applied: results.some((r) => r.status === 'applied'),
+    applied: allApplied,
     operationResults: results,
     warnings: analysis.warnings,
-    blockers: [],
+    blockers: failedResult
+      ? [blocker('operation-failed', failedResult.message ?? 'Queue recovery operation failed', failedResult.operation.prdId)]
+      : [],
   };
 }
 

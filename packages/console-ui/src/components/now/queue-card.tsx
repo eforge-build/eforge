@@ -1,24 +1,28 @@
 /**
- * QueueCard — display-only view of the build queue.
+ * QueueCard — read-oriented view of the build queue.
  *
  * Renders queue items as rows with status badge, title, priority chip, and
- * dependency chips. Zero mutation endpoints — no buttons, dropdowns, dialogs,
- * or drag handles.
+ * dependency chips. Failed rows expose an explicit queue cascade inspection
+ * action; no recovery mutation happens during render or expansion.
  */
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { NowQueueSummary } from '@/lib/selectors/now';
+import { Button } from '@/components/ui/button';
+import type { NowQueueItem, NowQueueSummary } from '@/lib/selectors/now';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
+import { QueueRecoveryDialog } from './queue-recovery-dialog';
 
 interface QueueCardProps {
   summary: NowQueueSummary;
+  refreshQueue?: () => Promise<void> | void;
 }
 
 function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   const s = status.toLowerCase();
   if (s === 'failed') return 'destructive';
   if (s === 'running') return 'default';
+  if (s === 'skipped') return 'outline';
   return 'secondary';
 }
 
@@ -26,8 +30,9 @@ function blockedByLabel(dependsOn: string[]): string {
   return dependsOn.map((depId) => selectPrdDisplayLabel(undefined, depId)).join(', ');
 }
 
-export function QueueCard({ summary }: QueueCardProps) {
+export function QueueCard({ summary, refreshQueue = () => undefined }: QueueCardProps) {
   const [expanded, setExpanded] = React.useState(false);
+  const [selectedRecoveryItem, setSelectedRecoveryItem] = React.useState<NowQueueItem | null>(null);
   const items = expanded ? (summary.allItems ?? summary.topItems) : summary.topItems;
 
   return (
@@ -55,6 +60,11 @@ export function QueueCard({ summary }: QueueCardProps) {
               {summary.failedCount > 0 && (
                 <span className="text-xs text-destructive">
                   Failed: <span className="font-medium">{summary.failedCount}</span>
+                </span>
+              )}
+              {summary.skippedCount > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  Skipped: <span className="font-medium text-foreground">{summary.skippedCount}</span>
                 </span>
               )}
               {summary.withDependenciesCount > 0 && (
@@ -94,6 +104,17 @@ export function QueueCard({ summary }: QueueCardProps) {
                     {!item.recoveryVerdict && item.status.toLowerCase() === 'failed' && (
                       <p className="text-xs text-muted-foreground">recovery pending</p>
                     )}
+                    {item.status.toLowerCase() === 'failed' && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="mt-1 h-auto px-0 py-0 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => setSelectedRecoveryItem(item)}
+                      >
+                        Inspect cascade
+                      </Button>
+                    )}
                   </div>
                 </li>
               ))}
@@ -110,6 +131,15 @@ export function QueueCard({ summary }: QueueCardProps) {
           </>
         )}
       </CardContent>
+      <QueueRecoveryDialog
+        open={selectedRecoveryItem != null}
+        prdId={selectedRecoveryItem?.id ?? null}
+        prdTitle={selectedRecoveryItem?.title}
+        onOpenChange={(open) => {
+          if (!open) setSelectedRecoveryItem(null);
+        }}
+        refreshQueue={refreshQueue}
+      />
     </Card>
   );
 }

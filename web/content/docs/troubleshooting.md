@@ -122,7 +122,7 @@ The recovery flow:
 5. Confirm the action with the user.
 6. Apply via `eforge_apply_recovery` or the standalone CLI command `eforge apply-recovery <prdId>` for verdict-based actions. For compiled-build resume, call `eforge_resume_build` (Pi), `mcp__eforge__eforge_resume_build` (Claude Code), or `eforge resume <prdId> [--set-name <name>]` (CLI) with the `prdId`.
 
-When you are present and the monitor UI is open, you can also click the retry button directly in the UI.
+When you are present in the Console Now dashboard, failed upstream rows in the Queue card also offer **Inspect cascade**. That dialog previews skipped descendants, daemon warnings/blockers, and planned queue moves before applying recovery and refreshing the queue.
 
 ## Untrusted project extension blocks loading
 

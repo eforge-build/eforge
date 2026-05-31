@@ -6,6 +6,7 @@ Zero-dependency HTTP client for the eforge daemon.
 
 - Root CLI (`packages/eforge/src/cli/index.ts`, `packages/eforge/src/cli/mcp-proxy.ts`)
 - Monitor (`packages/monitor/src/index.ts`, `packages/monitor/src/server-main.ts`, `packages/monitor/src/registry.ts`)
+- Console UI (`packages/console-ui/`, via `@eforge-build/client/browser`)
 - Pi extension (`packages/pi-eforge/extensions/eforge/index.ts`)
 
 ## What's included

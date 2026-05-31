@@ -35,7 +35,7 @@ export function App() {
   const [currentRoute, setCurrentRoute] = useState<ConsoleRouteId>(getInitialRoute);
 
   // Daemon-wide state
-  const { projectState } = useDaemonEvents();
+  const { projectState, refreshQueue } = useDaemonEvents();
 
   // Derive active session IDs from live runs
   const activeSessionIds = selectActiveSessionIds(projectState.runs);
@@ -64,7 +64,7 @@ export function App() {
   const routeContent = (() => {
     // --- eforge:region now-dashboard ---
     if (currentRoute === 'now') {
-      return <NowDashboard projectState={projectState} activeSessions={activeSessionStreams} onNavigate={handleNavigate} />;
+      return <NowDashboard projectState={projectState} activeSessions={activeSessionStreams} onNavigate={handleNavigate} refreshQueue={refreshQueue} />;
     }
     // --- eforge:endregion now-dashboard ---
 

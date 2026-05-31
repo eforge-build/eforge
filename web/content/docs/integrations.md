@@ -164,6 +164,12 @@ A web-based monitor runs locally alongside the daemon. Access it at:
 http://localhost:<port>
 ```
 
+Use the active Console dashboard for queue recovery workflows:
+
+```
+http://localhost:<port>/console/
+```
+
 The port is deterministically assigned per project in the 4567-4667 range. The same port persists across daemon restarts for a given project.
 
 The monitor shows:
@@ -171,7 +177,7 @@ The monitor shows:
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
 - Runtime agent decisions (effort, thinking mode) on stage hover
-- Queue management (cancel, retry after failure)
+- Console dashboard Queue card failed-cascade inspection and recovery apply with queue refresh
 - Extension status and diagnostics
 
 The monitor keeps running after a build completes so you can inspect results and costs.

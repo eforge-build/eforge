@@ -29,7 +29,15 @@ daemon REST (session plans)
   → API_ROUTES.sessionPlanShow  GET /api/session-plan/show?session=:session
   → use-session-plans.ts        (src/views/plans/use-session-plans.ts)
   → PlansView
+
+daemon REST (Now queue recovery)
+  → fetchQueueRecoveryAnalysis / applyQueueRecovery from @eforge-build/client/browser
+  → QueueRecoveryDialog        (src/components/now/queue-recovery-dialog.tsx)
+  → API_ROUTES.queue refresh   (src/hooks/use-daemon-events.ts)
+  → QUEUE_REFRESH_RECEIVED     (src/lib/project-state.ts)
 ```
+
+The Now dashboard Queue card shows failed upstream rows with an explicit **Inspect cascade** control. The dialog performs a read-only daemon analysis first, displays skipped descendants, dependency edges, warnings, blockers, and planned operations, and only mutates after the user clicks apply (with warning acknowledgement when required). Apply uses the client-owned browser helpers for the queue recovery daemon APIs, then refreshes `API_ROUTES.queue` and dispatches `QUEUE_REFRESH_RECEIVED` so skipped rows disappear without waiting for a full SSE reconnect.
 
 The `useActiveSessionStreams` hook subscribes to per-session SSE streams for all active session IDs. Each stream's events are folded through the run-state reducer to produce a `RunState` snapshot. Selectors derive view-ready data from those snapshots without mutating state.
 

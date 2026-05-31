@@ -24,7 +24,7 @@ export interface NowQueueStack {
   items: NowQueueStackItem[];
 }
 
-const QUEUE_STATUS_ATTENTION_ORDER = ['failed', 'running', 'waiting', 'pending'];
+const QUEUE_STATUS_ATTENTION_ORDER = ['failed', 'skipped', 'running', 'waiting', 'pending'];
 
 function queueStatusOrder(status: string): number {
   const idx = QUEUE_STATUS_ATTENTION_ORDER.indexOf(status.toLowerCase());
@@ -78,7 +78,10 @@ export function sortQueueItemsTopologically(items: QueueItem[]): QueueItem[] {
 }
 
 function getQueueStackComponents(queue: QueueItem[]): string[][] {
-  const eligible = queue.filter((item) => item.status.toLowerCase() !== 'failed');
+  const eligible = queue.filter((item) => {
+    const status = item.status.toLowerCase();
+    return status === 'running' || status === 'waiting' || status === 'pending';
+  });
   const byId = new Map(eligible.map((item) => [item.id, item]));
   const adjacency = new Map<string, Set<string>>();
 
@@ -115,15 +118,19 @@ function getQueueStackComponents(queue: QueueItem[]): string[][] {
 }
 
 export function selectNowQueueStacks(queue: QueueItem[]): NowQueueStack[] {
-  const byId = new Map(queue.map((item) => [item.id, item]));
+  const activeQueue = queue.filter((item) => {
+    const status = item.status.toLowerCase();
+    return status === 'running' || status === 'waiting' || status === 'pending';
+  });
+  const byId = new Map(activeQueue.map((item) => [item.id, item]));
   const dependentIdsById = new Map<string, string[]>();
-  for (const item of queue) {
+  for (const item of activeQueue) {
     for (const depId of item.dependsOn ?? []) {
       dependentIdsById.set(depId, [...(dependentIdsById.get(depId) ?? []), item.id]);
     }
   }
 
-  const stacks = getQueueStackComponents(queue).map((componentIds) => {
+  const stacks = getQueueStackComponents(activeQueue).map((componentIds) => {
     const componentItems = componentIds.flatMap((id) => {
       const item = byId.get(id);
       return item ? [item] : [];
