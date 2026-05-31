@@ -101,12 +101,20 @@ When this module modifies a file that another module also touches, you must decl
 
 1. **Check the architecture document** for the "Shared File Registry" section. It lists files shared across modules and their region assignments.
 2. **For each shared file** listed in your module's "Files > Modify" section, annotate the entry with a `[region: {module-id}, {location description}]` tag that specifies exactly where in the file this module's changes go.
-3. **In code examples** within the plan, wrap the module's code in region markers using the format:
+3. **In code examples** within the plan, wrap the module's code in cleanup-targeted region markers using the compiled plan-ID slug format. The slug must match `plan-\d{2}-...` (for example, `plan-01-auth`); non-plan module slugs such as `auth` are not stripped during cleanup and must not be used for temporary build-coordination markers in source.
 
 ```
-// --- eforge:region {module-id} ---
+// --- eforge:region {compiled-plan-id} ---
 {code this module owns}
-// --- eforge:endregion {module-id} ---
+// --- eforge:endregion {compiled-plan-id} ---
+```
+
+Inside JSX/TSX markup, use JSX comment markers instead:
+
+```tsx
+{/* --- eforge:region {compiled-plan-id} --- */}
+{markup this module owns}
+{/* --- eforge:endregion {compiled-plan-id} --- */}
 ```
 
 ### Example
@@ -120,16 +128,18 @@ In the "Files > Modify" section:
 
 In code examples:
 ```typescript
-// --- eforge:region auth ---
+// --- eforge:region plan-01-auth ---
 export { AuthProvider } from './auth/provider.js'
 export { validateToken } from './auth/token.js'
-// --- eforge:endregion auth ---
+// --- eforge:endregion plan-01-auth ---
 ```
+
+Shared-file region declarations are build-coordination instructions for parallel builders, not permanent source organization. Cleanup-targeted source marker slugs must use compiled plan IDs matching `plan-\d{2}-...`; durable source sections need semantic slugs that describe the code they organize.
 
 ### Rules
 
 - Only annotate files that appear in the architecture's shared file registry or that you know another module also modifies
-- The region ID must match this module's ID (`{{moduleId}}`)
+- `[region: ...]` annotation IDs must match this module's ID (`{{moduleId}}`); source marker comments that should be stripped during cleanup must instead use the compiled `plan-\d{2}-...` plan ID
 - Region boundaries must not overlap with regions declared by other modules (check dependency module plans for their region declarations)
 - If a file is shared but the architecture does not declare regions for it, flag this as an issue in the plan and propose region boundaries
 

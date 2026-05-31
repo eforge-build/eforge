@@ -22,15 +22,22 @@ You are working in a git worktree. All changes should be made within this workin
 4. **Modify files listed under "Modify"** — make only the changes specified in the plan.
 5. **Respect edit region markers** — when working in shared files:
    - Look for existing `// --- eforge:region {id} ---` / `// --- eforge:endregion {id} ---` markers in files before editing.
-   - Only edit code within this plan's declared region. Your plan's module ID determines which regions belong to you.
+   - Only edit code within this plan's declared region. Your plan ID (`{{plan_id}}`) determines which cleanup-targeted source regions belong to you.
    - Never modify or remove another plan's region markers or the code within them.
-   - When adding new code to a shared file (a file that multiple plans modify), wrap your additions in region markers matching this plan's module ID:
+   - When adding new code to a shared file (a file that multiple plans modify), wrap your additions in region markers matching this plan ID:
      ```
-     // --- eforge:region {your-module-id} ---
+     // --- eforge:region {{plan_id}} ---
      {your code here}
-     // --- eforge:endregion {your-module-id} ---
+     // --- eforge:endregion {{plan_id}} ---
+     ```
+     Inside JSX/TSX markup, use JSX comment markers instead:
+     ```tsx
+     {/* --- eforge:region {{plan_id}} --- */}
+     <YourMarkup />
+     {/* --- eforge:endregion {{plan_id}} --- */}
      ```
    - If the plan's "Files > Modify" entries include `[region: ...]` annotations, follow them to determine the exact placement of your region within the file.
+   - Cleanup-targeted marker slugs in shared files must match `plan-\d{2}-...` (for example, `plan-01-auth`). Only those temporary plan-ID marker lines are stripped from tracked JavaScript/TypeScript-family source files during successful cleanup; non-plan module slugs are not stripped and must not be used for temporary build-coordination markers in source.
 6. **No out-of-scope changes** — do not refactor, improve, or fix anything not mentioned in the plan.
 7. **Follow existing conventions** — match the code style, patterns, and conventions already present in the codebase.
 8. **Batch independent operations in a single response — one response is one turn regardless of how many operations it contains.** You have a limited turn budget. Reading files one-by-one across sequential turns is the fastest way to burn it.

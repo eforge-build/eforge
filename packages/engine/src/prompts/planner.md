@@ -187,7 +187,7 @@ Use this format in the architecture document:
 - `api`: api configuration section
 ```
 
-Region markers use the format `// --- eforge:region {module-id} ---` / `// --- eforge:endregion {module-id} ---`. These markers are instructions for module planners and builders - you do not write the actual marker comments into code. You declare which module owns which section of each shared file so that module planners can emit precise region boundaries in their plans.
+Region markers use the format `// --- eforge:region {plan-id} ---` / `// --- eforge:endregion {plan-id} ---` when written into JS/TS source, or `{/* --- eforge:region {plan-id} --- */}` / `{/* --- eforge:endregion {plan-id} --- */}` inside JSX/TSX markup, where `{plan-id}` must be the compiled plan slug matching `plan-\d{2}-...` (for example, `plan-01-auth`). Shared-file declarations in the architecture are temporary build-coordination instructions for module planners and builders - you do not write the actual marker comments into code. You declare which module owns which section of each shared file so that module planners can emit precise region boundaries in their plans. Distinguish cleanup-targeted plan-ID markers from durable semantic markers: only temporary `plan-\d{2}-...` marker lines are removed during successful cleanup; non-plan module slugs such as `auth` are not stripped and must not be used for temporary build-coordination markers in source.
 
 Rules for shared file identification:
 - Any file listed under "Modify" by two or more modules MUST have region declarations

@@ -129,7 +129,7 @@ build:
     - pnpm type-check
     - pnpm test
   maxValidationRetries: 2              # Retry count for validation fixes
-  cleanupPlanFiles: true               # Remove plan files after successful build
+  cleanupPlanFiles: true               # Remove plan files and temporary plan-ID markers after successful build
   # trunkBranch: main                  # Trunk branch name (default: detected from origin/HEAD, fallback: main)
   # allowLocalMergeToTrunk: false      # Allow landing.action: merge to land directly on trunk without a PR
                                        #   Default false; set to true only for solo/unprotected projects

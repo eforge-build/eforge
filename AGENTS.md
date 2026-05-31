@@ -24,7 +24,7 @@ See [`docs/llm-friendly-code.md`](docs/llm-friendly-code.md) for the full policy
 - **Legacy oversized files** are listed in `scripts/agent-maintainability-baseline.json` with a `noGrowthCeiling`. They may shrink but not grow.
 - **Files over 1,000 lines** must be edited with bounded exact edits (smallest diff). Do not rewrite the full file.
 - **New/moved functions** must have Cognitive Complexity <= 30 (measured by `eslint-plugin-sonarjs`). Justify higher complexity inline.
-- **Large files** (> 300 lines) must use `// --- eforge:region <slug> ---` / `// --- eforge:endregion <slug> ---` markers. Every marker must be balanced.
+- **Large files** (> 300 lines) must use durable semantic `// --- eforge:region <slug> ---` / `// --- eforge:endregion <slug> ---` markers. Temporary `plan-\d{2}-...` build-coordination markers are stripped during cleanup. Every marker must be balanced.
 - **Route constants and daemon wire shapes** are owned by `@eforge-build/client`. Do not inline `/api/...` path literals or re-declare wire-shape interfaces in monitor packages.
 
 Run `pnpm maintainability:check` to validate file sizes and marker balance before committing.
