@@ -206,7 +206,6 @@ describe('build evaluator enforcement stage', () => {
     expect(await committedFile(repo, 'src.txt')).not.toContain('rejected reviewer line 18');
   });
 
-  // --- eforge:region plan-01-evaluator-no-verdict-retry ---
   it('retries a normal no-verdict evaluator completion and commits accepted verdicts from the continuation', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src.txt', 'base\n');
@@ -279,7 +278,6 @@ describe('build evaluator enforcement stage', () => {
     expect(headContent).not.toContain('mutated after first evaluator');
     expect(ctx.buildFailed).toBeUndefined();
   });
-  // --- eforge:endregion plan-01-evaluator-no-verdict-retry ---
 
   it('fails the build without an evaluation commit when there are candidate changes but the evaluator produces no verdicts', async () => {
     const repo = await initRepo(makeTempDir());
