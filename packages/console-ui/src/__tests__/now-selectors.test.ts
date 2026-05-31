@@ -4,6 +4,7 @@ import type { RunInfo, QueueItem, EforgeEvent } from '@eforge-build/client/brows
 import type { StackLayerWire } from '@eforge-build/client/browser';
 import type { ActiveSessionDetail } from '@/hooks/use-active-session-streams';
 import type { ConsoleActivityEntry } from '@/lib/types';
+import { selectQueueSummary } from '@/lib/selectors/queue';
 import {
   selectNowQueueSummary,
   selectNowQueueStacks,
@@ -840,5 +841,50 @@ describe('isLivenessStale', () => {
       },
     };
     expect(isLivenessStale(state, now)).toBe(false);
+  });
+});
+
+describe('queue skipped terminal status handling', () => {
+  it('counts skipped as a known status in queue summaries', () => {
+    const queue = makeQueue([
+      { id: 'failed-upstream', status: 'failed' },
+      { id: 'skipped-child', status: 'skipped', dependsOn: ['failed-upstream'] },
+      { id: 'pending-next', status: 'pending' },
+    ]);
+
+    const queueSummary = selectQueueSummary(queue);
+    const nowSummary = selectNowQueueSummary(queue);
+
+    expect(queueSummary.skipped).toBe(1);
+    expect(nowSummary.skippedCount).toBe(1);
+    expect(nowSummary.byStatus.skipped).toBe(1);
+    expect(nowSummary.topItems.map((item) => item.id)).toEqual(['failed-upstream', 'skipped-child', 'pending-next']);
+  });
+
+  it('surfaces skipped queue items as warning attention entries', () => {
+    const queue = makeQueue([{ id: 'skipped-child', title: 'Skipped Child', status: 'skipped' }]);
+    const result = selectNowAttentionItems(
+      { ...initialConsoleProjectState, connectionStatus: 'connected', queue, lastSnapshotAt: Date.now() },
+      {},
+      Date.now(),
+    );
+
+    expect(result.items.some((item) => item.severity === 'warning' && item.message === 'Skipped: Skipped Child')).toBe(true);
+  });
+
+  it('does not let unrelated failed or skipped terminal rows alter active stack output', () => {
+    const activeOnly = makeQueue([
+      { id: 'base', title: 'Base Build', status: 'running' },
+      { id: 'api', title: 'API Build', status: 'waiting', dependsOn: ['base'] },
+    ]);
+    const withTerminals = [
+      ...activeOnly,
+      ...makeQueue([
+        { id: 'failed-upstream', title: 'Failed Upstream', status: 'failed' },
+        { id: 'skipped-child', title: 'Skipped Child', status: 'skipped', dependsOn: ['failed-upstream'] },
+      ]),
+    ];
+
+    expect(selectNowQueueStacks(withTerminals)).toEqual(selectNowQueueStacks(activeOnly));
   });
 });

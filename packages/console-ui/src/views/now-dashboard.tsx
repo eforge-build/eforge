@@ -30,9 +30,10 @@ interface NowDashboardProps {
   projectState: ConsoleProjectState;
   activeSessions: UseActiveSessionStreamsResult;
   onNavigate?: (href: string) => void;
+  refreshQueue?: () => Promise<void> | void;
 }
 
-export function NowDashboard({ projectState, activeSessions, onNavigate }: NowDashboardProps) {
+export function NowDashboard({ projectState, activeSessions, onNavigate, refreshQueue }: NowDashboardProps) {
   const [tick, setTick] = React.useState(() => Date.now());
   const [activityOpen, setActivityOpen] = React.useState(() => readActivityOpenParam());
 
@@ -64,7 +65,7 @@ export function NowDashboard({ projectState, activeSessions, onNavigate }: NowDa
       <QueueStackCard stacks={model.queueStacks} />
 
       {/* Queue */}
-      <QueueCard summary={model.queue} />
+      <QueueCard summary={model.queue} refreshQueue={refreshQueue} />
 
       {/* Stack summary | Activity launcher (two-column) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

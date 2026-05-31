@@ -18,6 +18,7 @@ export interface QueueSummary {
   pending: number;
   failed: number;
   waiting: number;
+  skipped: number;
   withDependencies: number;
   withRecoveryVerdict: number;
   recoveryPending: number;
@@ -37,16 +38,17 @@ export interface QueueStatusGroup {
 // Known status sets
 // ---------------------------------------------------------------------------
 
-const KNOWN_STATUSES = new Set(['running', 'pending', 'failed', 'waiting']);
+const KNOWN_STATUSES = new Set(['running', 'pending', 'failed', 'waiting', 'skipped']);
 
 /** Canonical display order for known status groups. */
-const KNOWN_STATUS_ORDER: string[] = ['running', 'pending', 'waiting', 'failed'];
+const KNOWN_STATUS_ORDER: string[] = ['running', 'pending', 'waiting', 'failed', 'skipped'];
 
 const STATUS_LABELS: Record<string, string> = {
   running: 'Running',
   pending: 'Pending',
   failed: 'Failed',
   waiting: 'Waiting',
+  skipped: 'Skipped',
 };
 
 // ---------------------------------------------------------------------------
@@ -61,6 +63,7 @@ export function selectQueueSummary(items: QueueItem[]): QueueSummary {
   let pending = 0;
   let failed = 0;
   let waiting = 0;
+  let skipped = 0;
   let withDependencies = 0;
   let withRecoveryVerdict = 0;
   let recoveryPending = 0;
@@ -71,6 +74,7 @@ export function selectQueueSummary(items: QueueItem[]): QueueSummary {
     else if (s === 'pending') pending++;
     else if (s === 'failed') failed++;
     else if (s === 'waiting') waiting++;
+    else if (s === 'skipped') skipped++;
 
     if (item.dependsOn && item.dependsOn.length > 0) withDependencies++;
 
@@ -89,6 +93,7 @@ export function selectQueueSummary(items: QueueItem[]): QueueSummary {
     pending,
     failed,
     waiting,
+    skipped,
     withDependencies,
     withRecoveryVerdict,
     recoveryPending,
@@ -121,11 +126,14 @@ export function sortQueueItems(items: QueueItem[]): QueueItem[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Return failed items sorted by priority / created time.
+ * Return failed and skipped terminal items sorted by priority / created time.
  */
 export function selectQueueAttentionItems(items: QueueItem[]): QueueItem[] {
-  const failed = items.filter((item) => item.status.toLowerCase() === 'failed');
-  return sortQueueItems(failed);
+  const terminal = items.filter((item) => {
+    const status = item.status.toLowerCase();
+    return status === 'failed' || status === 'skipped';
+  });
+  return sortQueueItems(terminal);
 }
 
 // ---------------------------------------------------------------------------

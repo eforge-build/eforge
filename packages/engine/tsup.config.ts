@@ -8,7 +8,7 @@ export default defineConfig({
   format: ["esm"],
   target: "node22",
   clean: true,
-  dts: true,
+  dts: false,
   external: [
     "@anthropic-ai/claude-agent-sdk",
     "@earendil-works/pi-coding-agent",

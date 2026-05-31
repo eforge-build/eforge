@@ -125,8 +125,8 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 45', () => {
-    // v45: `build:resume:artifacts` event variant added to the closed event union; v44: `afterQueueId` optional field added to `EnqueueRequest`; `POST /api/enqueue`
+  it('is 46', () => {
+    // v46: queue recovery analyze/apply routes and helpers; v45: `build:resume:artifacts` event variant added to the closed event union; v44: `afterQueueId` optional field added to `EnqueueRequest`; `POST /api/enqueue`
     // validates and forwards `afterQueueId` to the enqueue worker via `--after <id>`;
     // explicit `afterQueueId` in engine enqueue bypasses dependency-detector output;
     // older daemons would silently ignore `afterQueueId`, violating deterministic handoff semantics.
@@ -150,7 +150,7 @@ describe('DAEMON_API_VERSION', () => {
     // v38: `landing:start` wire event removes `feature-pr-after-local-merge` workflow literal
     // and replaces it with `feature-pr`; older clients that validated the event against the
     // previous schema union will reject events emitted by the new daemon.
-    expect(DAEMON_API_VERSION).toBe(45);
+    expect(DAEMON_API_VERSION).toBe(46);
   });
 });
 

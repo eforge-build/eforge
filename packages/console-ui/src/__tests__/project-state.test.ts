@@ -627,3 +627,20 @@ describe('consoleProjectReducer – EVENT_RECEIVED (stack:sync:skipped)', () => 
     expect(next.stackSync?.current).toBeUndefined();
   });
 });
+
+describe('consoleProjectReducer – QUEUE_REFRESH_RECEIVED', () => {
+  it('replaces queue with refreshed daemon data', () => {
+    const state: ConsoleProjectState = {
+      ...initialConsoleProjectState,
+      queue: [{ id: 'old', title: 'Old item', status: 'skipped' } as never],
+    };
+    const refreshed = [{ id: 'new', title: 'New item', status: 'pending' } as never];
+
+    const next = consoleProjectReducer(state, {
+      type: 'QUEUE_REFRESH_RECEIVED',
+      queue: refreshed,
+    });
+
+    expect(next.queue).toEqual(refreshed);
+  });
+});

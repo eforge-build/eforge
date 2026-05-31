@@ -82,6 +82,10 @@ export type ConsoleProjectAction =
     }
   | {
       type: 'CONNECTING';
+    }
+  | {
+      type: 'QUEUE_REFRESH_RECEIVED';
+      queue: QueueItem[];
     };
 
 // ---------------------------------------------------------------------------
@@ -100,6 +104,10 @@ function toProjectable(state: ConsoleProjectState): ProjectableState {
     latestHeartbeat: state.latestHeartbeat,
     stackLayers: state.stackLayers,
   };
+}
+
+function queueDepthFromQueue(queue: QueueItem[]): number {
+  return queue.filter((item) => item.status === 'pending' || item.status === 'running').length;
 }
 
 export function consoleProjectReducer(
@@ -357,6 +365,21 @@ export function consoleProjectReducer(
         stackSync: updatedStackSync,
         latestHeartbeat: updatedHeartbeat,
         lastEventAt: receivedAt,
+      };
+    }
+
+    case 'QUEUE_REFRESH_RECEIVED': {
+      const queueDepth = queueDepthFromQueue(action.queue);
+      return {
+        ...state,
+        queue: action.queue,
+        liveness: state.liveness ? { ...state.liveness, queueDepth } : state.liveness,
+        latestHeartbeat: state.latestHeartbeat
+          ? {
+              ...state.latestHeartbeat,
+              payload: { ...state.latestHeartbeat.payload, queueDepth },
+            }
+          : state.latestHeartbeat,
       };
     }
 

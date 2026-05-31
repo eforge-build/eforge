@@ -1,7 +1,7 @@
 // --- eforge:region console-shell ---
-import { useReducer, useEffect } from 'react';
+import { useReducer, useEffect, useCallback } from 'react';
 import { API_ROUTES, subscribeWithSnapshot } from '@eforge-build/client/browser';
-import type { DaemonStreamSnapshot, EforgeEvent } from '@eforge-build/client/browser';
+import type { DaemonStreamSnapshot, EforgeEvent, QueueItem } from '@eforge-build/client/browser';
 import {
   consoleProjectReducer,
   initialConsoleProjectState,
@@ -12,6 +12,7 @@ import type { ConnectionStatus } from '@/lib/types';
 export interface UseDaemonEventsResult {
   projectState: ConsoleProjectState;
   connectionStatus: ConnectionStatus;
+  refreshQueue: () => Promise<void>;
 }
 
 export function useDaemonEvents(): UseDaemonEventsResult {
@@ -19,6 +20,16 @@ export function useDaemonEvents(): UseDaemonEventsResult {
     consoleProjectReducer,
     initialConsoleProjectState,
   );
+
+  const refreshQueue = useCallback(async () => {
+    const response = await fetch(API_ROUTES.queue);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Queue refresh failed (${response.status}): ${text}`);
+    }
+    const queue = await response.json() as QueueItem[];
+    dispatch({ type: 'QUEUE_REFRESH_RECEIVED', queue });
+  }, []);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -65,6 +76,7 @@ export function useDaemonEvents(): UseDaemonEventsResult {
   return {
     projectState,
     connectionStatus: projectState.connectionStatus,
+    refreshQueue,
   };
 }
 // --- eforge:endregion console-shell ---

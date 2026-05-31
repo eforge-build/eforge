@@ -145,6 +145,38 @@ export { apiReadRecoverySidecar, apiReadRecoverySidecarIfRunning } from './api/r
 
 export { apiApplyRecovery, apiApplyRecoveryIfRunning } from './api/apply-recovery.js';
 
+// --- eforge:region plan-01-queue-recovery-api-engine ---
+export type {
+  QueueRecoveryStrategy,
+  QueueRecoveryStrategyWire,
+  QueueRecoveryLocation,
+  QueueRecoveryNodeRole,
+  QueueRecoveryNode,
+  QueueRecoveryEdge,
+  QueueRecoveryOperationKind,
+  QueueRecoveryMovePrdOperation,
+  QueueRecoveryRemoveRecoverySidecarsOperation,
+  QueueRecoveryOperation,
+  QueueRecoveryOperationStatus,
+  QueueRecoveryOperationResult,
+  QueueRecoveryNotice,
+  QueueRecoveryAnalyzeRequest,
+  QueueRecoveryAnalyzeResponse,
+  QueueRecoveryApplyRequest,
+  QueueRecoveryApplyResponse,
+} from './queue-recovery.js';
+export {
+  QUEUE_RECOVERY_STRATEGY_RETRY_AND_REACTIVATE,
+  isQueueRecoveryStrategy,
+} from './queue-recovery.js';
+export {
+  apiAnalyzeQueueRecovery,
+  apiAnalyzeQueueRecoveryIfRunning,
+  apiApplyQueueRecovery,
+  apiApplyQueueRecoveryIfRunning,
+} from './api/queue-recovery.js';
+// --- eforge:endregion plan-01-queue-recovery-api-engine ---
+
 export {
   apiPlaybookList,
   apiPlaybookListIfRunning,

@@ -12,7 +12,6 @@ import { resolve, dirname, extname, join, basename, sep, relative, isAbsolute } 
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { isIP } from 'node:net';
-
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
 import { DEFAULT_CONFIG, type EforgeConfig, type PartialEforgeConfig } from '@eforge-build/engine/config';
@@ -76,10 +75,11 @@ import {
 // --- eforge:region plan-01-core-daemon-stack-sync ---
 import { runStackSync, loadSyncStatusForRoute, loadSyncStatusForRouteSync } from './stack-sync-service.js';
 // --- eforge:endregion plan-01-core-daemon-stack-sync ---
-
+// --- eforge:region plan-01-queue-recovery-api-engine ---
+import { handleQueueRecoveryRoutes } from './queue-recovery-routes.js';
+// --- eforge:endregion plan-01-queue-recovery-api-engine ---
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
-
 // Derived prefix constants for parameterised routes (used in startsWith checks)
 const CANCEL_BASE = API_ROUTES.cancel.slice(0, API_ROUTES.cancel.indexOf('/:'));
 const PROFILE_BASE = API_ROUTES.profileDelete.slice(0, API_ROUTES.profileDelete.indexOf('/:'));
@@ -104,7 +104,6 @@ function isValidPathSegment(value: string): boolean {
     !value.includes('\0')
   );
 }
-
 /**
  * Assert that a resolved path is within the expected base directory.
  * Returns false if the path escapes the base directory.
@@ -114,7 +113,6 @@ function isWithinDir(resolvedPath: string, baseDir: string): boolean {
   return resolvedPath.startsWith(base);
 }
 // --- eforge:endregion plan-03-daemon-mcp-pi ---
-
 /**
  * Notify the auto-build controller about a queue mutation so it can wake the
  * active scheduler or repair a desired-enabled watcher that is not running.
@@ -125,11 +123,9 @@ function notifyQueueMutation(
 ): void {
   state?.autoBuildController.notifyQueueMutation(reason);
 }
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
 const CONSOLE_UI_DIR = resolve(__dirname, 'console-ui');
-
 /**
  * Parse and validate a DB event row into an EforgeEvent.
  *
@@ -2390,6 +2386,10 @@ export async function startServer(
       return true;
     }
     // --- eforge:endregion plan-03-daemon-mcp-pi ---
+
+    // --- eforge:region plan-01-queue-recovery-api-engine ---
+    if (await handleQueueRecoveryRoutes(req, res, url, { cwd: options?.cwd, queueDir: options?.queueDir, daemonState: options?.daemonState, sendJson, sendJsonError, rejectUnsafeMutationRequest: rejectUnsafeExtensionMutationRequest, notifyQueueMutation })) return true;
+    // --- eforge:endregion plan-01-queue-recovery-api-engine ---
 
     // --- eforge:region plan-01-fix-recovery-ux ---
     if (req.method === 'POST' && url === API_ROUTES.applyRecovery) {
