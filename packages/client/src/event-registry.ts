@@ -1232,9 +1232,9 @@ const eventRegistry = {
     persist: false,
     summary: (e) => {
       const failing = e.verdicts.filter((v) => v.verdict !== 'pass').length;
-      return e.passed
-        ? `Acceptance validation passed: ${e.verdicts.length} criterion/criteria verified`
-        : `Acceptance validation failed: ${failing} criterion/criteria not passed`;
+      const conflicts = e.acceptanceConflicts?.length ?? 0;
+      const suffix = conflicts > 0 ? ` (${conflicts} conflict(s) reported)` : '';
+      return e.passed ? `Acceptance validation passed: ${e.verdicts.length} criterion/criteria verified${suffix}` : `Acceptance validation failed: ${failing} criterion/criteria not passed${suffix}`;
     },
   },
   // --- eforge:endregion plan-01-validation-evidence-contract ---

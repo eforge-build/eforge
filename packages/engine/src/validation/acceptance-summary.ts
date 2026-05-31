@@ -7,7 +7,7 @@
  * - recovery/event-history.ts — to build compact acceptance evidence objects
  */
 
-import type { AcceptanceCriterionVerdict } from '@eforge-build/client';
+import type { AcceptanceCriteriaConflict, AcceptanceCriterionVerdict } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Verdict counts
@@ -44,19 +44,25 @@ export function countVerdicts(verdicts: AcceptanceCriterionVerdict[]): VerdictCo
  * inconclusive criteria (verdict: 'unknown'). An all-unknown failure does
  * not contain only "not met" — it says "inconclusive" instead.
  */
-export function formatAcceptanceFailureSummary(verdicts: AcceptanceCriterionVerdict[]): string {
+export function formatAcceptanceFailureSummary(
+  verdicts: AcceptanceCriterionVerdict[],
+  conflicts: AcceptanceCriteriaConflict[] = [],
+): string {
   const { fail, unknown } = countVerdicts(verdicts);
   const nonPass = fail + unknown;
+  const conflictSuffix = conflicts.length > 0
+    ? `; ${conflicts.length} acceptance criterion conflict(s) need review`
+    : '';
 
   if (fail > 0 && unknown > 0) {
-    return `Acceptance criteria validation failed: ${fail} criterion/criteria not met, ${unknown} inconclusive`;
+    return `Acceptance criteria validation failed: ${fail} criterion/criteria not met, ${unknown} inconclusive${conflictSuffix}`;
   } else if (fail > 0) {
-    return `Acceptance criteria validation failed: ${fail} criterion/criteria not met`;
+    return `Acceptance criteria validation failed: ${fail} criterion/criteria not met${conflictSuffix}`;
   } else if (unknown > 0) {
-    return `Acceptance criteria validation failed: ${unknown} criterion/criteria inconclusive (insufficient evidence)`;
+    return `Acceptance criteria validation failed: ${unknown} criterion/criteria inconclusive (insufficient evidence)${conflictSuffix}`;
   }
   // Fallback: shouldn't normally reach here if called on a failure, but be defensive
-  return `Acceptance criteria validation failed: ${Math.max(nonPass, 1)} criterion/criteria not met`;
+  return `Acceptance criteria validation failed: ${Math.max(nonPass, 1)} criterion/criteria not met${conflictSuffix}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +76,8 @@ export interface AcceptanceEvidence {
   fail: number;
   unknown: number;
   verdicts: AcceptanceCriterionVerdict[];
+  waivers?: string[];
+  conflicts?: AcceptanceCriteriaConflict[];
 }
 
 /**
@@ -78,10 +86,13 @@ export interface AcceptanceEvidence {
 export function buildAcceptanceEvidence(
   verdicts: AcceptanceCriterionVerdict[],
   passed: boolean,
+  options: { waivers?: string[]; conflicts?: AcceptanceCriteriaConflict[] } = {},
 ): AcceptanceEvidence {
   return {
     passed,
     ...countVerdicts(verdicts),
     verdicts,
+    ...(options.waivers && options.waivers.length > 0 ? { waivers: options.waivers } : {}),
+    ...(options.conflicts && options.conflicts.length > 0 ? { conflicts: options.conflicts } : {}),
   };
 }

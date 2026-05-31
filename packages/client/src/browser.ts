@@ -200,6 +200,7 @@ export type {
   PrdValidationGap,
   // --- eforge:region plan-01-validation-evidence-contract ---
   AcceptanceCriterionVerdict,
+  AcceptanceCriteriaConflict,
   // --- eforge:endregion plan-01-validation-evidence-contract ---
   TestIssue,
   BuildFailureSummary,
@@ -257,7 +258,7 @@ export type {
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES, EvaluationIssueOutcomeSchema, PlanningDecisionSchema,
   // --- eforge:region plan-01-validation-evidence-contract ---
-  AcceptanceCriterionVerdictSchema,
+  AcceptanceCriterionVerdictSchema, AcceptanceCriteriaConflictSchema,
   // --- eforge:endregion plan-01-validation-evidence-contract ---
   // --- eforge:region plan-01-dynamic-perspective-contracts ---
   ReviewPerspectiveKeySchema,

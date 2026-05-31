@@ -470,6 +470,15 @@
               "description": "Required human-readable reason when allowNoAcceptanceCriteria is true.",
               "type": "string"
             },
+            "acceptanceConflictPolicy": {
+              "description": "Handle validator-reported acceptance criteria conflicts. Default: \"manual\".",
+              "type": "string",
+              "enum": [
+                "fail",
+                "manual",
+                "auto-waive-narrow"
+              ]
+            },
             "allowNoCommittedChanges": {
               "description": "Allow builds that produce no committed changes to pass instead of failing. Requires noCommittedChangesReason.",
               "type": "boolean"

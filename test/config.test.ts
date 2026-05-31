@@ -951,6 +951,11 @@ describe('validation waiver config — acceptance criteria and committed changes
     expect(config.build.validation.noAcceptanceCriteriaReason).toBeUndefined();
   });
 
+  it('resolveConfig sets acceptanceConflictPolicy to manual by default', () => {
+    const config = resolveConfig({}, {});
+    expect(config.build.validation.acceptanceConflictPolicy).toBe('manual');
+  });
+
   it('resolveConfig sets noCommittedChangesReason to undefined by default', () => {
     const config = resolveConfig({}, {});
     expect(config.build.validation.noCommittedChangesReason).toBeUndefined();
@@ -1028,6 +1033,14 @@ describe('validation waiver config — acceptance criteria and committed changes
     expect(config.build.validation.allowNoCommittedChanges).toBe(true);
     expect(config.build.validation.noCommittedChangesReason).toBe('Docs-only sync');
     expect(config.build.validation.allowNoAcceptanceCriteria).toBe(false);
+  });
+
+  it('resolveConfig propagates acceptanceConflictPolicy', () => {
+    const config = resolveConfig(
+      { build: { validation: { acceptanceConflictPolicy: 'auto-waive-narrow' } } },
+      {},
+    );
+    expect(config.build.validation.acceptanceConflictPolicy).toBe('auto-waive-narrow');
   });
 
   it('mergePartialConfigs preserves acceptance criteria and committed changes waiver fields across layers', () => {

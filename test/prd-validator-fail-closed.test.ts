@@ -222,6 +222,28 @@ describe('runPrdValidator acceptance_validation:complete behavior', () => {
     expect(acceptance!.verdicts).toHaveLength(2);
   });
 
+  it('emits acceptanceConflicts when the validator reports a rigid criterion conflict', async () => {
+    const backend = new StubHarness([
+      {
+        text: '```json\n{"completionPercent": 100, "gaps": [], "acceptanceVerdicts": [{"criterion": "ac-002", "verdict": "fail", "evidence": "monitor-ui touched"}], "acceptanceConflicts": [{"criterion": "ac-002", "evidence": "monitor-ui reducer needed a new event ignore case", "conflictsWith": "type-checking the new client event", "scope": "narrow", "recommendedAction": "revise_acceptance_criteria"}]}\n```',
+      },
+    ]);
+
+    const events = await collectEvents(runPrdValidator(makeOptions(backend)));
+    const acceptance = findEvent(events, 'acceptance_validation:complete');
+    expect(acceptance).toBeDefined();
+    expect(acceptance!.passed).toBe(false);
+    expect(acceptance!.acceptanceConflicts).toEqual([
+      {
+        criterion: 'ac-002',
+        evidence: 'monitor-ui reducer needed a new event ignore case',
+        conflictsWith: 'type-checking the new client event',
+        scope: 'narrow',
+        recommendedAction: 'revise_acceptance_criteria',
+      },
+    ]);
+  });
+
   it('emits acceptance_validation:complete with passed=false for unparseable output', async () => {
     const backend = new StubHarness([
       { text: 'Here are my thoughts but no JSON block anywhere.' },

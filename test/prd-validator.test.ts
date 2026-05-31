@@ -54,6 +54,7 @@ describe('parseGaps', () => {
       gaps: [{ requirement: 'x', explanation: 'y', complexity: 'moderate' }],
       completionPercent: 85,
       acceptanceVerdicts: undefined,
+      acceptanceConflicts: undefined,
     });
   });
 
@@ -64,6 +65,7 @@ describe('parseGaps', () => {
       gaps: [{ requirement: 'x', explanation: 'y' }],
       completionPercent: undefined,
       acceptanceVerdicts: undefined,
+      acceptanceConflicts: undefined,
     });
   });
 
@@ -95,7 +97,7 @@ describe('parseGaps', () => {
 
   it('returns empty gaps and undefined completionPercent for empty input', () => {
     const result = parseGaps('');
-    expect(result).toEqual({ gaps: [], completionPercent: undefined, acceptanceVerdicts: undefined });
+    expect(result).toEqual({ gaps: [], completionPercent: undefined, acceptanceVerdicts: undefined, acceptanceConflicts: undefined });
   });
 
   it('returns a single synthetic gap when non-empty input has no JSON block', () => {
@@ -116,7 +118,7 @@ describe('parseGaps', () => {
   it('handles raw JSON without fences', () => {
     const input = 'Some text {"completionPercent": 90, "gaps": []} more text';
     const result = parseGaps(input);
-    expect(result).toEqual({ gaps: [], completionPercent: 90, acceptanceVerdicts: undefined });
+    expect(result).toEqual({ gaps: [], completionPercent: 90, acceptanceVerdicts: undefined, acceptanceConflicts: undefined });
   });
 
   it('handles completionPercent of 0', () => {
@@ -229,6 +231,44 @@ describe('parseGaps', () => {
   it('returns acceptanceVerdicts: undefined when no JSON block found', () => {
     const result = parseGaps('no json here');
     expect(result.acceptanceVerdicts).toBeUndefined();
+  });
+
+  it('parses acceptanceConflicts for rigid criteria that conflict with necessary work', () => {
+    const input = `\`\`\`json
+{
+  "completionPercent": 100,
+  "gaps": [],
+  "acceptanceVerdicts": [
+    {"criterion": "ac-002", "verdict": "fail", "evidence": "packages/monitor-ui/src/lib/reducer/index.ts changed"}
+  ],
+  "acceptanceConflicts": [
+    {
+      "criterion": "ac-002",
+      "evidence": "packages/monitor-ui/src/lib/reducer/index.ts was updated only to handle the new event type",
+      "conflictsWith": "The work introduced a public event type that monitor reducers must ignore for type-checking",
+      "scope": "narrow",
+      "recommendedAction": "revise_acceptance_criteria"
+    }
+  ]
+}
+\`\`\``;
+    const result = parseGaps(input);
+    expect(result.acceptanceConflicts).toEqual([
+      {
+        criterion: 'ac-002',
+        evidence: 'packages/monitor-ui/src/lib/reducer/index.ts was updated only to handle the new event type',
+        conflictsWith: 'The work introduced a public event type that monitor reducers must ignore for type-checking',
+        scope: 'narrow',
+        recommendedAction: 'revise_acceptance_criteria',
+      },
+    ]);
+  });
+
+  it('extracts JSON from fenced output with braces inside strings', () => {
+    const input = '```json\n{"completionPercent":100,"gaps":[],"acceptanceVerdicts":[{"criterion":"ac-001","verdict":"pass","evidence":"Handled object literal { type: \\\"x\\\" } correctly"}]}\n```';
+    const result = parseGaps(input);
+    expect(result.gaps).toEqual([]);
+    expect(result.acceptanceVerdicts?.[0].verdict).toBe('pass');
   });
   // --- eforge:endregion plan-01-validation-evidence-contract ---
 

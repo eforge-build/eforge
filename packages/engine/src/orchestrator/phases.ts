@@ -34,6 +34,7 @@ import type { ValidationConfig } from '../config.js';
 // --- eforge:endregion plan-02-final-validation-gates ---
 // --- eforge:region plan-02-engine-acceptance-gates ---
 import { synthesizeMissingVerdicts } from '../validation/acceptance-criteria.js';
+import { buildAcceptanceValidationEvents } from './acceptance-conflict-policy.js';
 // --- eforge:endregion plan-02-engine-acceptance-gates ---
 // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
@@ -830,15 +831,19 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
       // with no matching verdict is treated as unverified.
       if (event.type === 'acceptance_validation:complete' && ctx.expectedAcceptanceCriteria && ctx.expectedAcceptanceCriteria.length > 0) {
         const augmented = synthesizeMissingVerdicts(ctx.expectedAcceptanceCriteria, event.verdicts);
-        const allAugmentedPass = augmented.length > 0 && augmented.every((v) => v.verdict === 'pass');
-        const hasWaiver = (event.waivers ?? []).some((w) => w.trim().length > 0);
-        const augmentedPassed = allAugmentedPass || hasWaiver;
-        yield { ...event, verdicts: augmented, passed: augmentedPassed } as EforgeEvent;
-        acceptanceReceived = true;
-        acceptancePassed = augmentedPassed && augmented.length > 0;
+        const augmentedPassed = (augmented.length > 0 && augmented.every((v) => v.verdict === 'pass')) || (event.waivers ?? []).some((w) => w.trim().length > 0);
+        const adjusted = buildAcceptanceValidationEvents({ ...event, verdicts: augmented, passed: augmentedPassed }, ctx);
+        for (const adjustedEvent of adjusted.events) yield adjustedEvent;
+        acceptanceReceived = true; acceptancePassed = adjusted.passed;
         continue;
       }
       // --- eforge:endregion plan-02-engine-acceptance-gates ---
+      if (event.type === 'acceptance_validation:complete') {
+        const adjusted = buildAcceptanceValidationEvents(event, ctx);
+        for (const adjustedEvent of adjusted.events) yield adjustedEvent;
+        acceptanceReceived = true; acceptancePassed = adjusted.passed;
+        continue;
+      }
       yield event;
       if (event.type === 'prd_validation:complete') {
         terminalEmitted = true;
@@ -847,12 +852,6 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
         // --- eforge:endregion plan-02-final-validation-gates ---
       }
       // --- eforge:region plan-02-final-validation-gates ---
-      if (event.type === 'acceptance_validation:complete') {
-        acceptanceReceived = true;
-        const allVerdictsPass = event.verdicts.length > 0 && event.verdicts.every((v) => v.verdict === 'pass');
-        const hasWaiver = (event.waivers ?? []).some((waiver) => waiver.trim().length > 0);
-        acceptancePassed = event.passed && event.verdicts.length > 0 && (allVerdictsPass || hasWaiver);
-      }
       // --- eforge:endregion plan-02-final-validation-gates ---
 
       // If PRD validation fails, check viability gate before attempting gap closing

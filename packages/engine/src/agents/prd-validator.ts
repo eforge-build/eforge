@@ -1,6 +1,6 @@
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
-import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap, type AcceptanceCriterionVerdict } from '../events.js';
+import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap, type AcceptanceCriterionVerdict, type AcceptanceCriteriaConflict } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
@@ -44,7 +44,7 @@ export async function* runPrdValidator(
   // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
   const validationEvidence = formatValidationCommandEvidence(options.validationCommandEvidence);
   const validationEvidenceInstruction = validationEvidence
-    ? '9. When the **Deterministic Validation Command Evidence** section is present: a command with exit code 0 MAY serve as supporting evidence for a command-based acceptance criterion (e.g., a passing `pnpm type-check` supports "code must type-check"). A non-zero exit code or timeout is direct failure evidence. Absence of a command result means `unknown` — do not infer success'
+    ? '10. When the **Deterministic Validation Command Evidence** section is present: a command with exit code 0 MAY serve as supporting evidence for a command-based acceptance criterion (e.g., a passing `pnpm type-check` supports "code must type-check"). A non-zero exit code or timeout is direct failure evidence. Absence of a command result means `unknown` — do not infer success'
     : '';
   // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   const prompt = await loadPrompt('prd-validator', {
@@ -62,6 +62,7 @@ export async function* runPrdValidator(
   let gaps: PrdValidationGap[] = [];
   let completionPercent: number | undefined;
   let acceptanceVerdicts: AcceptanceCriterionVerdict[] | undefined;
+  let acceptanceConflicts: AcceptanceCriteriaConflict[] | undefined;
 
   try {
     let accumulatedText = '';
@@ -99,6 +100,7 @@ export async function* runPrdValidator(
     gaps = parsed.gaps;
     completionPercent = parsed.completionPercent;
     acceptanceVerdicts = parsed.acceptanceVerdicts;
+    acceptanceConflicts = parsed.acceptanceConflicts;
   } catch (err) {
     // Re-throw abort errors so the orchestrator can respect cancellation
     if (err instanceof Error && err.name === 'AbortError') throw err;
@@ -127,6 +129,7 @@ export async function* runPrdValidator(
     type: 'acceptance_validation:complete',
     passed: acceptancePassed,
     verdicts,
+    ...(acceptanceConflicts && acceptanceConflicts.length > 0 ? { acceptanceConflicts } : {}),
     source: 'prd',
   };
 }
@@ -172,10 +175,12 @@ export function formatValidationCommandEvidence(
 // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
 const VALID_COMPLEXITIES = new Set(['trivial', 'moderate', 'significant']);
+const VALID_CONFLICT_SCOPES = new Set(['narrow', 'broad', 'unknown']);
+const VALID_CONFLICT_ACTIONS = new Set(['revise_acceptance_criteria', 'manual_review']);
 
 /**
  * Parse gap analysis and acceptance verdict JSON from agent output.
- * Looks for a JSON block containing { "gaps": [...] } and optional fields.
+ * Looks for a JSON object in fenced or raw output and tolerates prose around it.
  *
  * Returns `acceptanceVerdicts: undefined` when the verdict array is absent or
  * the output is unparseable — callers should synthesize a failing verdict in
@@ -185,111 +190,155 @@ export function parseGaps(text: string): {
   gaps: PrdValidationGap[];
   completionPercent: number | undefined;
   acceptanceVerdicts: AcceptanceCriterionVerdict[] | undefined;
+  acceptanceConflicts: AcceptanceCriteriaConflict[] | undefined;
 } {
   const unparseableGap: PrdValidationGap = {
     requirement: 'PRD validator output unparseable',
     explanation: 'Agent output did not contain a parsable JSON gap-analysis block.',
   };
 
-  // Try to find a JSON block (fenced or raw)
-  const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) ?? text.match(/(\{[\s\S]*"gaps"[\s\S]*\})/);
-  if (!jsonMatch) {
-    // Non-empty input with no JSON block: fail closed with a synthetic gap.
-    if (text.trim() === '') return { gaps: [], completionPercent: undefined, acceptanceVerdicts: undefined };
-    return { gaps: [unparseableGap], completionPercent: undefined, acceptanceVerdicts: undefined };
+  if (text.trim() === '') {
+    return { gaps: [], completionPercent: undefined, acceptanceVerdicts: undefined, acceptanceConflicts: undefined };
+  }
+
+  const jsonText = findJsonObjectText(text);
+  if (!jsonText) {
+    return { gaps: [unparseableGap], completionPercent: undefined, acceptanceVerdicts: undefined, acceptanceConflicts: undefined };
   }
 
   try {
-    const parsed = JSON.parse(jsonMatch[1]);
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
     const completionPercent = typeof parsed.completionPercent === 'number' ? parsed.completionPercent : undefined;
+    const gaps = parseValidationGaps(parsed.gaps, unparseableGap);
+    const acceptanceVerdicts = parseAcceptanceVerdicts(parsed.acceptanceVerdicts);
+    const acceptanceConflicts = parseAcceptanceConflicts(parsed.acceptanceConflicts);
 
-    let gaps: PrdValidationGap[];
-    if (Array.isArray(parsed.gaps)) {
-      // --- eforge:region plan-02-engine-acceptance-gates ---
-      // Map instead of filter: malformed entries produce a synthetic failure gap rather than
-      // being silently dropped. Dropping malformed entries would hide validator bugs and
-      // allow a corrupted gap list to appear as "no gaps" (fail-open).
-      gaps = parsed.gaps.map((g: unknown): PrdValidationGap => {
-        if (
-          typeof g === 'object' && g !== null &&
-          typeof (g as Record<string, unknown>).requirement === 'string' &&
-          typeof (g as Record<string, unknown>).explanation === 'string'
-        ) {
-          const validGap = g as { requirement: string; explanation: string; complexity?: string };
-          const gap: PrdValidationGap = {
-            requirement: validGap.requirement,
-            explanation: validGap.explanation,
-          };
-          if (typeof validGap.complexity === 'string' && VALID_COMPLEXITIES.has(validGap.complexity)) {
-            gap.complexity = validGap.complexity as PrdValidationGap['complexity'];
-          }
-          return gap;
-        }
-        return {
-          requirement: 'Malformed PRD validation gap entry',
-          explanation: 'The validator returned a gap entry that could not be parsed; treating as a validation failure.',
-        };
-      });
-      // --- eforge:endregion plan-02-engine-acceptance-gates ---
-    } else {
-      gaps = [unparseableGap];
-    }
-
-    // Parse acceptance verdicts — absent key yields undefined (fail-closed signal).
-    // Items with missing or empty evidence are classified as `unknown`.
-    let acceptanceVerdicts: AcceptanceCriterionVerdict[] | undefined;
-    if (Array.isArray(parsed.acceptanceVerdicts) && parsed.acceptanceVerdicts.length > 0) {
-      const parsedVerdicts = parsed.acceptanceVerdicts
-        .map((v: unknown): AcceptanceCriterionVerdict => {
-          if (typeof v !== 'object' || v === null) {
-            return {
-              criterion: 'Unknown criterion',
-              verdict: 'unknown',
-              evidence: 'Malformed acceptance verdict entry.',
-            };
-          }
-
-          const verdictEntry = v as Record<string, unknown>;
-          const rawCriterion = verdictEntry.criterion;
-          const hasCriterion = typeof rawCriterion === 'string' && rawCriterion.trim() !== '';
-          const criterion = hasCriterion ? rawCriterion.trim() : 'Unknown criterion';
-          const rawEvidence = typeof verdictEntry.evidence === 'string' ? verdictEntry.evidence.trim() : '';
-
-          // A verdict without a criterion or evidence cannot certify an AC.
-          if (!hasCriterion) {
-            return {
-              criterion,
-              verdict: 'unknown',
-              evidence: 'No criterion provided for this acceptance verdict.',
-            };
-          }
-
-          // Missing or empty evidence → unknown (fail-closed)
-          if (rawEvidence === '') {
-            return {
-              criterion,
-              verdict: 'unknown',
-              evidence: 'No evidence provided for this criterion.',
-            };
-          }
-
-          const rawVerdict = verdictEntry.verdict;
-          let verdict: 'pass' | 'fail' | 'unknown';
-          if (rawVerdict === 'pass' || rawVerdict === 'fail' || rawVerdict === 'unknown') {
-            verdict = rawVerdict;
-          } else {
-            verdict = 'unknown';
-          }
-
-          return { criterion, verdict, evidence: rawEvidence };
-        });
-      acceptanceVerdicts = parsedVerdicts.length > 0 ? parsedVerdicts : undefined;
-    }
-
-    return { gaps, completionPercent, acceptanceVerdicts };
+    return { gaps, completionPercent, acceptanceVerdicts, acceptanceConflicts };
   } catch {
-    // JSON parse failure — fail closed with a synthetic gap
+    return { gaps: [unparseableGap], completionPercent: undefined, acceptanceVerdicts: undefined, acceptanceConflicts: undefined };
+  }
+}
+
+function parseValidationGaps(rawGaps: unknown, unparseableGap: PrdValidationGap): PrdValidationGap[] {
+  if (!Array.isArray(rawGaps)) return [unparseableGap];
+
+  // --- eforge:region plan-02-engine-acceptance-gates ---
+  // Map instead of filter: malformed entries produce a synthetic failure gap rather than
+  // being silently dropped. Dropping malformed entries would hide validator bugs and
+  // allow a corrupted gap list to appear as "no gaps" (fail-open).
+  return rawGaps.map((g: unknown): PrdValidationGap => {
+    if (
+      typeof g === 'object' && g !== null &&
+      typeof (g as Record<string, unknown>).requirement === 'string' &&
+      typeof (g as Record<string, unknown>).explanation === 'string'
+    ) {
+      const validGap = g as { requirement: string; explanation: string; complexity?: string };
+      const gap: PrdValidationGap = {
+        requirement: validGap.requirement,
+        explanation: validGap.explanation,
+      };
+      if (typeof validGap.complexity === 'string' && VALID_COMPLEXITIES.has(validGap.complexity)) {
+        gap.complexity = validGap.complexity as PrdValidationGap['complexity'];
+      }
+      return gap;
+    }
+    return {
+      requirement: 'Malformed PRD validation gap entry',
+      explanation: 'The validator returned a gap entry that could not be parsed; treating as a validation failure.',
+    };
+  });
+  // --- eforge:endregion plan-02-engine-acceptance-gates ---
+}
+
+function parseAcceptanceVerdicts(rawVerdicts: unknown): AcceptanceCriterionVerdict[] | undefined {
+  if (!Array.isArray(rawVerdicts) || rawVerdicts.length === 0) return undefined;
+  const parsedVerdicts = rawVerdicts.map((v: unknown): AcceptanceCriterionVerdict => {
+    if (typeof v !== 'object' || v === null) {
+      return { criterion: 'Unknown criterion', verdict: 'unknown', evidence: 'Malformed acceptance verdict entry.' };
+    }
+
+    const verdictEntry = v as Record<string, unknown>;
+    const rawCriterion = verdictEntry.criterion;
+    const hasCriterion = typeof rawCriterion === 'string' && rawCriterion.trim() !== '';
+    const criterion = hasCriterion ? rawCriterion.trim() : 'Unknown criterion';
+    const rawEvidence = typeof verdictEntry.evidence === 'string' ? verdictEntry.evidence.trim() : '';
+
+    if (!hasCriterion) {
+      return { criterion, verdict: 'unknown', evidence: 'No criterion provided for this acceptance verdict.' };
+    }
+    if (rawEvidence === '') {
+      return { criterion, verdict: 'unknown', evidence: 'No evidence provided for this criterion.' };
+    }
+
+    const rawVerdict = verdictEntry.verdict;
+    const verdict = rawVerdict === 'pass' || rawVerdict === 'fail' || rawVerdict === 'unknown'
+      ? rawVerdict
+      : 'unknown';
+    return { criterion, verdict, evidence: rawEvidence };
+  });
+  return parsedVerdicts.length > 0 ? parsedVerdicts : undefined;
+}
+
+function parseAcceptanceConflicts(rawConflicts: unknown): AcceptanceCriteriaConflict[] | undefined {
+  if (!Array.isArray(rawConflicts) || rawConflicts.length === 0) return undefined;
+  const conflicts = rawConflicts
+    .map(parseAcceptanceConflict)
+    .filter((conflict): conflict is AcceptanceCriteriaConflict => conflict !== undefined);
+  return conflicts.length > 0 ? conflicts : undefined;
+}
+
+function parseAcceptanceConflict(rawConflict: unknown): AcceptanceCriteriaConflict | undefined {
+  if (typeof rawConflict !== 'object' || rawConflict === null) return undefined;
+  const entry = rawConflict as Record<string, unknown>;
+  const criterion = typeof entry.criterion === 'string' ? entry.criterion.trim() : '';
+  const evidence = typeof entry.evidence === 'string' ? entry.evidence.trim() : '';
+  const conflictsWith = typeof entry.conflictsWith === 'string' ? entry.conflictsWith.trim() : '';
+  const scope = typeof entry.scope === 'string' && VALID_CONFLICT_SCOPES.has(entry.scope)
+    ? entry.scope as AcceptanceCriteriaConflict['scope']
+    : 'unknown';
+  const recommendedAction = typeof entry.recommendedAction === 'string' && VALID_CONFLICT_ACTIONS.has(entry.recommendedAction)
+    ? entry.recommendedAction as AcceptanceCriteriaConflict['recommendedAction']
+    : 'manual_review';
+
+  if (!criterion || !evidence || !conflictsWith) return undefined;
+  return { criterion, evidence, conflictsWith, scope, recommendedAction };
+}
+
+function findJsonObjectText(text: string): string | undefined {
+  const fencedBlocks = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1]);
+  for (const block of fencedBlocks) {
+    const objectText = findBalancedObject(block);
+    if (objectText) return objectText;
+  }
+  return findBalancedObject(text);
+}
+
+function findBalancedObject(text: string): string | undefined {
+  const start = text.indexOf('{');
+  if (start === -1) return undefined;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index++) {
+    const char = text[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = inString;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '{') depth++;
+    if (char === '}') depth--;
+    if (depth === 0) return text.slice(start, index + 1);
   }
 
-  return { gaps: [unparseableGap], completionPercent: undefined, acceptanceVerdicts: undefined };
+  return undefined;
 }

@@ -7679,6 +7679,61 @@
                 "type": "string"
               }
             },
+            "acceptanceConflicts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "criterion",
+                  "evidence",
+                  "conflictsWith",
+                  "scope",
+                  "recommendedAction"
+                ],
+                "properties": {
+                  "criterion": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "evidence": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "conflictsWith": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "scope": {
+                    "anyOf": [
+                      {
+                        "const": "narrow",
+                        "type": "string"
+                      },
+                      {
+                        "const": "broad",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "recommendedAction": {
+                    "anyOf": [
+                      {
+                        "const": "revise_acceptance_criteria",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual_review",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
             "source": {
               "minLength": 1,
               "type": "string"
@@ -8230,6 +8285,67 @@
                           "evidence": {
                             "minLength": 1,
                             "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "waivers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "conflicts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "criterion",
+                          "evidence",
+                          "conflictsWith",
+                          "scope",
+                          "recommendedAction"
+                        ],
+                        "properties": {
+                          "criterion": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "evidence": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "conflictsWith": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "scope": {
+                            "anyOf": [
+                              {
+                                "const": "narrow",
+                                "type": "string"
+                              },
+                              {
+                                "const": "broad",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "recommendedAction": {
+                            "anyOf": [
+                              {
+                                "const": "revise_acceptance_criteria",
+                                "type": "string"
+                              },
+                              {
+                                "const": "manual_review",
+                                "type": "string"
+                              }
+                            ]
                           }
                         }
                       }
