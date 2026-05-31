@@ -19,9 +19,9 @@ export function StackSummaryCard({ summary }: StackSummaryCardProps) {
   if (!summary) return null;
 
   return (
-    <Card className="mb-4">
+    <Card className="bg-card/50 border-border/60">
       <CardHeader className="pb-2 pt-4 px-4">
-        <CardTitle className="text-sm font-semibold">Git stack history</CardTitle>
+        <CardTitle className="text-sm font-semibold text-muted-foreground">Git stack history</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4">
         {/* Status counts */}

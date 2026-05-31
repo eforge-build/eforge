@@ -16,3 +16,4 @@ eforge/.active-profile
 web/.next/
 web/tsconfig.tsbuildinfo
 .vercel
+.playwright-mcp

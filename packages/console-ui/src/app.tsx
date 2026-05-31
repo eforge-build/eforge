@@ -18,7 +18,9 @@ const PlansView = lazy(() =>
 import { NowDashboard } from './views/now-dashboard';
 // --- eforge:endregion now-dashboard ---
 // --- eforge:region system-configuration-view ---
-import { SystemConfigurationView } from '@/views/system';
+const SystemConfigurationView = lazy(() =>
+  import('@/views/system').then((m) => ({ default: m.SystemConfigurationView })),
+);
 // --- eforge:endregion system-configuration-view ---
 
 function getInitialRoute(): ConsoleRouteId {
@@ -71,7 +73,11 @@ export function App() {
 
     // --- eforge:region system-configuration-view ---
     if (currentRoute === 'system') {
-      return <SystemConfigurationView projectState={projectState} />;
+      return (
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-text-dim text-sm">Loading...</div>}>
+          <SystemConfigurationView projectState={projectState} />
+        </Suspense>
+      );
     }
     // --- eforge:endregion system-configuration-view ---
 

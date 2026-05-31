@@ -5,8 +5,9 @@ import { selectNowDashboardModel } from '@/lib/selectors/now';
 import { NowStateBanner } from '@/components/now/now-state-banner';
 import { AttentionPanel } from '@/components/now/attention-panel';
 import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
-import { QueueStackCard } from '@/components/now/queue-stack-card';
 import { QueueCard } from '@/components/now/queue-card';
+import { MetricsPanel } from '@/components/now/metrics-panel';
+import { useBuildMetricHistory } from '@/hooks/use-build-metric-history';
 import { RunHistoryCard } from '@/components/now/run-history-card';
 import { StackSummaryCard } from '@/components/now/stack-summary-card';
 import { StackSyncStatusCard } from '@/components/now/stack-sync-status-card';
@@ -45,36 +46,45 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
   const now = tick;
   const model = selectNowDashboardModel(projectState, activeSessions, now);
 
+  // Accrue rolling token/cost history for the active-build velocity sparklines.
+  const metricHistory = useBuildMetricHistory(
+    model.activeBuilds.map((b) => ({ sessionId: b.sessionId, tokens: b.tokens, cost: b.cost })),
+    now,
+  );
+
   const handleActivityOpen = React.useCallback(() => setActivityOpen(true), []);
   const handleActivityClose = React.useCallback(() => setActivityOpen(false), []);
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-[1600px] space-y-4">
       {/* Connection/state banner */}
       {model.connectionBanner && (
         <NowStateBanner banner={model.connectionBanner} />
       )}
 
-      {/* Attention section */}
+      {/* Attention section — top priority, elevated above everything else */}
       <AttentionPanel items={model.attention} hiddenCount={model.attentionHiddenCount} />
 
       {/* Active builds grid */}
-      <ActiveBuildsGrid cards={model.activeBuilds} onNavigate={onNavigate} />
+      <ActiveBuildsGrid
+        cards={model.activeBuilds}
+        onNavigate={onNavigate}
+        metricHistory={metricHistory}
+      />
 
-      {/* Dependency-linked queued stacks */}
-      <QueueStackCard stacks={model.queueStacks} />
-
-      {/* Queue */}
-      <QueueCard summary={model.queue} refreshQueue={refreshQueue} />
-
-      {/* Stack summary | Activity launcher (two-column) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <StackSummaryCard summary={model.stack} />
-        <ActivityDrawerLauncher
-          items={model.activity}
-          onOpen={handleActivityOpen}
-          now={now}
-        />
+      {/* Primary working surfaces: queue alongside reference cards.
+          Collapses to a single column below lg. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+        <QueueCard stacks={model.queueStacks} summary={model.queue} refreshQueue={refreshQueue} />
+        <div className="space-y-4">
+          <MetricsPanel model={model.metrics} />
+          <ActivityDrawerLauncher
+            items={model.activity}
+            onOpen={handleActivityOpen}
+            now={now}
+          />
+          <StackSummaryCard summary={model.stack} />
+        </div>
       </div>
 
       {/* Run history */}
