@@ -9,10 +9,11 @@
  *   project — optional state projection for daemon-scoped events; inlines the
  *             logic from packages/monitor-ui/src/lib/daemon-reducer/handle-*.ts
  *
- * Derive DAEMON_EVENT_TYPES by filtering for persist:true entries:
- *   const DAEMON_EVENT_TYPES = Object.keys(eventRegistry).filter(
- *     k => eventRegistry[k as EforgeEvent['type']].persist
- *   );
+ * Derive DAEMON_EVENT_TYPES by filtering for daemon-scoped persist:true entries:
+ *   const DAEMON_EVENT_TYPES = Object.keys(eventRegistry).filter((k) => {
+ *     const meta = eventRegistry[k as EforgeEvent['type']];
+ *     return meta.scope === 'daemon' && meta.persist;
+ *   });
  *
  * The _Exhaustive type check at the bottom verifies every EforgeEvent['type']
  * has an entry, so adding a new event type to events.schemas.ts forces an
@@ -1363,16 +1364,9 @@ const eventRegistry = {
     summary: (e) =>
       `Resume state seeded: ${e.seededMerged.length} merged, ${e.seededPending.length} pending on ${e.featureBranch}`,
   },
-  'build:resume:ineligible': {
-    scope: 'session',
-    persist: true,
-    summary: (e) => `Resume ineligible: ${e.reason}`,
-  },
-  'build:resume:complete': {
-    scope: 'session',
-    persist: true,
-    summary: (e) => `Build resume complete for PRD ${e.prdId}`,
-  },
+  'build:resume:ineligible': { scope: 'session', persist: true, summary: (e) => `Resume ineligible: ${e.reason}` },
+  'build:resume:artifacts': { scope: 'session', persist: true, summary: (e) => `Recovered ${e.plans.length} compiled plan artifact(s) for PRD ${e.prdId}` },
+  'build:resume:complete': { scope: 'session', persist: true, summary: (e) => `Build resume complete for PRD ${e.prdId}` },
   // --- eforge:endregion plan-01-engine-resume ---
 
   'recovery:start': {
@@ -1864,20 +1858,26 @@ const _exhaustiveCheck: _Exhaustive = true;
 void _exhaustiveCheck;
 
 // ---------------------------------------------------------------------------
-// DAEMON_EVENT_TYPES: derived from entries with persist:true
+// DAEMON_EVENT_TYPES: derived from daemon-scoped entries with persist:true
 // ---------------------------------------------------------------------------
 
 /**
- * Allowlist of event types persisted to the DB and surfaced via
- * GET /api/daemon-events. Derived from registry entries with persist:true.
+ * Allowlist of daemon-owned event types persisted to the DB and surfaced via
+ * GET /api/daemon-events. Derived from registry entries with scope:'daemon'
+ * and persist:true.
  *
  * Note: daemon:heartbeat is intentionally absent — it is LIVE-ONLY, pushed
  * directly to SSE subscribers without being persisted to the DB, and must
- * never be replayed from storage (persist:false in the registry).
+ * never be replayed from storage (persist:false in the registry). Session-
+ * scoped persisted events are also absent because they belong to per-session
+ * event history, not daemon-wide event queries.
  */
 export const DAEMON_EVENT_TYPES: readonly string[] = (
   Object.keys(eventRegistry) as Array<EforgeEvent['type']>
-).filter((type) => (eventRegistry[type] as EventMeta<typeof type>).persist);
+).filter((type) => {
+  const meta = eventRegistry[type] as EventMeta<typeof type>;
+  return meta.scope === 'daemon' && meta.persist;
+});
 
 /**
  * Returns true when `type` is an event type that is persisted to the DB and

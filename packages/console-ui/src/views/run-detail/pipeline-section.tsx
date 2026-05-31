@@ -15,9 +15,12 @@ interface PipelineSectionProps {
 
 export function PipelineSection({ runState, plans }: PipelineSectionProps) {
   const planArtifacts = useMemo(() => {
-    if (!plans) return undefined;
-    return plans.map((p) => ({ id: p.id, name: p.name, body: p.body }));
-  }, [plans]);
+    if (plans && plans.length > 0) return plans.map((p) => ({ id: p.id, name: p.name, body: p.body }));
+    if (runState.resumeArtifacts.length > 0) {
+      return runState.resumeArtifacts.map((p) => ({ id: p.id, name: p.name, body: p.body }));
+    }
+    return undefined;
+  }, [plans, runState.resumeArtifacts]);
 
   const prdSource = useMemo(() => {
     for (const { event } of runState.events) {
@@ -25,8 +28,8 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
         return { label: event.label ?? 'Build PRD', content: event.source };
       }
     }
-    return null;
-  }, [runState.events]);
+    return runState.resumeSource;
+  }, [runState.events, runState.resumeSource]);
 
   const buildFailures = useMemo(() => {
     const failures: Array<{ planId: string; error: string }> = [];

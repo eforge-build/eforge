@@ -41,6 +41,10 @@ async function createReviewDiffRepo(): Promise<string> {
   await writeRepoFile(cwd, 'eforge/plans/demo/orchestration.yaml', 'plans:\n  - plan-01\n');
   await writeRepoFile(cwd, 'eforge/plans/demo/plan-01.md', '# Generated plan\n');
   await writeRepoFile(cwd, 'eforge/prds/demo.md', '# Generated PRD provenance\n');
+  await writeRepoFile(cwd, 'web/content/reference/events.md', '# Generated reference doc\n');
+  await writeRepoFile(cwd, 'web/public/reference/events.md', '# Generated public reference doc\n');
+  await writeRepoFile(cwd, 'web/public/schemas/events.schema.json', '{"generated":true}\n');
+  await writeRepoFile(cwd, 'web/public/llms-full.txt', '# Generated LLM bundle\n');
   await writeRepoFile(cwd, 'eforge/playbooks/dependency-update.md', '# Real playbook change\n');
   await git(cwd, ['add', '.']);
   await git(cwd, ['commit', '-m', 'feature change']);
@@ -67,6 +71,10 @@ describe('review context generated-artifact filtering', () => {
     expect(context.diffContext).not.toContain('eforge/plans/demo/orchestration.yaml');
     expect(context.diffContext).not.toContain('eforge/plans/demo/plan-01.md');
     expect(context.diffContext).not.toContain('eforge/prds/demo.md');
+    expect(context.diffContext).not.toContain('web/content/reference/events.md');
+    expect(context.diffContext).not.toContain('web/public/reference/events.md');
+    expect(context.diffContext).not.toContain('web/public/schemas/events.schema.json');
+    expect(context.diffContext).not.toContain('web/public/llms-full.txt');
   });
 
   it('omits generated artifacts from parallel review thresholds without hiding real files', async () => {

@@ -1814,15 +1814,10 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       checkedPath: '/project/.worktrees/feature-x-merge/orchestration.yaml',
     },
   },
-  {
-    label: 'build:resume:complete',
-    payload: {
-      type: 'build:resume:complete',
-      timestamp: '2025-01-01T00:00:00.000Z',
-      prdId: 'prd-feature-x',
-      setName: 'feature-x',
-    },
-  },
+  // --- eforge:region plan-02-resume-artifacts-projection ---
+  { label: 'build:resume:artifacts', payload: { type: 'build:resume:artifacts', timestamp: '2025-01-01T00:00:00.000Z', prdId: 'prd-feature-x', setName: 'feature-x', featureBranch: 'eforge/feature-x', artifactSource: 'merge-worktree', source: { label: 'Recovered PRD', content: '# PRD' }, orchestration: { name: 'feature-x', description: 'Feature X', created: '2025-01-01T00:00:00.000Z', mode: 'excursion', baseBranch: 'main', pipeline: { scope: 'excursion', compile: [], defaultBuild: [], defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' }, rationale: 'resume' }, plans: [{ id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }, { id: 'plan-02', name: 'Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review: { strategy: 'single', perspectives: ['security'], maxRounds: 2, evaluatorStrictness: 'strict' } }] }, plans: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }, { id: 'plan-02', name: 'Plan 02', body: '# Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review: { strategy: 'single', perspectives: ['security'], maxRounds: 2, evaluatorStrictness: 'strict' } }] } },
+  // --- eforge:endregion plan-02-resume-artifacts-projection ---
+  { label: 'build:resume:complete', payload: { type: 'build:resume:complete', timestamp: '2025-01-01T00:00:00.000Z', prdId: 'prd-feature-x', setName: 'feature-x' } },
   // --- eforge:endregion plan-01-engine-resume ---
 ];
 

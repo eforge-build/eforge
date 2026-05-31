@@ -41,6 +41,10 @@ export function getReviewDiffPathspecArgs(): string[] {
     '.',
     ':(exclude)eforge/plans/**',
     ':(exclude)eforge/prds/**',
+    ':(exclude)web/content/reference/**',
+    ':(exclude)web/public/reference/**',
+    ':(exclude)web/public/schemas/**',
+    ':(exclude)web/public/llms-full.txt',
   ];
 }
 // --- eforge:endregion plan-01-generated-artifact-review-filter ---

@@ -18,7 +18,7 @@ interface ThreadPipelineProps {
   reviewIssues?: Record<string, ReviewIssue[]>;
   events: StoredEvent[];
   orchestration?: OrchestrationConfig | null;
-  prdSource?: { label: string; content: string } | null;
+  prdSource?: { label: string; content?: string } | null;
   planArtifacts?: Array<{ id: string; name: string; body: string }>;
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
@@ -29,7 +29,6 @@ interface ThreadPipelineProps {
 function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const entries = Object.entries(planStatuses);
 
   const planArtifactMap = useMemo(() => {
     const map = new Map<string, { name: string; body: string }>();
@@ -99,9 +98,26 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     return map;
   }, [orchestration]);
 
+  const orderedPlanIds = useMemo(() => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    const add = (id: string) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      ids.push(id);
+    };
+
+    for (const plan of orchestration?.plans ?? []) add(plan.id);
+    for (const plan of planArtifacts ?? []) add(plan.id);
+    for (const id of Object.keys(planStatuses).sort()) add(id);
+
+    return ids;
+  }, [orchestration, planArtifacts, planStatuses]);
+
   const globalThreads = threadsByPlan.get('__global__') ?? EMPTY_THREADS;
   const hasGlobalThreads = globalThreads.length > 0;
-  const hasThreadContent = entries.length > 0 || hasGlobalThreads;
+  const hasPrdSource = prdSource !== null && prdSource !== undefined;
+  const hasThreadContent = orderedPlanIds.length > 0 || hasGlobalThreads || hasPrdSource;
 
   const { activeStages, completedStages } = useMemo(() => {
     const active = new Set<string>();
@@ -178,14 +194,31 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 hoveredStage={hoveredStage}
                 onStageHover={setHoveredStage}
                 eventsByAgent={eventsByAgent}
-                prdSource={prdSource}
+                prdSource={prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : null}
                 compileActiveStages={activeStages}
                 compileCompletedStages={completedStages}
                 validationCommands={validationCommands}
                 onAgentSelect={setSelectedAgentId}
               />
             )}
-            {entries.map(([planId]) => (
+            {!hasGlobalThreads && prdSource && (
+              <PlanRow
+                key="__resume_source__"
+                planId="Source"
+                threads={EMPTY_THREADS}
+                sessionStart={sessionStart}
+                totalSpan={totalSpan}
+                endTime={endTime}
+                disablePreview
+                hoveredStage={hoveredStage}
+                onStageHover={setHoveredStage}
+                eventsByAgent={eventsByAgent}
+                prdSource={{ label: prdSource.label, content: prdSource.content ?? '' }}
+                validationCommands={validationCommands}
+                onAgentSelect={setSelectedAgentId}
+              />
+            )}
+            {orderedPlanIds.map((planId) => (
               <PlanRow
                 key={planId}
                 planId={planId}

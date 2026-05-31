@@ -395,6 +395,8 @@ const PlanFileSchema = Type.Object({
   warnings: Type.Optional(Type.Array(Type.String())),
 });
 
+const OrchestrationPlanConfigSchema = Type.Object({ id: Type.String(), name: Type.String(), dependsOn: Type.Array(Type.String()), branch: Type.String(), build: Type.Array(BuildStageSpecSchema), review: ReviewProfileConfigSchema, maxContinuations: Type.Optional(Type.Number()), agents: Type.Optional(Type.Record(Type.String(), Type.Object({ effort: Type.Optional(Type.String()), thinking: Type.Optional(Type.Union([Type.Boolean(), Type.Record(Type.String(), Type.Unknown())])), rationale: Type.Optional(Type.String()), tier: Type.Optional(Type.String()) }))) });
+
 const OrchestrationConfigSchema = Type.Object({
   name: Type.String(),
   description: Type.String(),
@@ -408,33 +410,16 @@ const OrchestrationConfigSchema = Type.Object({
   /** When trunk sync selected a fetched commit SHA, this holds that SHA for diff/validation base computations. Landing/PR targeting always uses baseBranch. */
   diffBaseRef: Type.Optional(Type.String()),
   pipeline: PipelineCompositionSchema,
-  plans: Type.Array(
-    Type.Object({
-      id: Type.String(),
-      name: Type.String(),
-      dependsOn: Type.Array(Type.String()),
-      branch: Type.String(),
-      build: Type.Array(BuildStageSpecSchema),
-      review: ReviewProfileConfigSchema,
-      maxContinuations: Type.Optional(Type.Number()),
-      agents: Type.Optional(
-        Type.Record(
-          Type.String(),
-          Type.Object({
-            effort: Type.Optional(Type.String()),
-            thinking: Type.Optional(
-              Type.Union([Type.Boolean(), Type.Record(Type.String(), Type.Unknown())]),
-            ),
-            rationale: Type.Optional(Type.String()),
-            tier: Type.Optional(Type.String()),
-          }),
-        ),
-      ),
-    }),
-  ),
+  plans: Type.Array(OrchestrationPlanConfigSchema),
   validate: Type.Optional(Type.Array(Type.String())),
   warnings: Type.Optional(Type.Array(Type.String())),
 });
+
+// --- eforge:region plan-02-resume-artifacts-projection ---
+export const BuildResumeArtifactSourceSchema = Type.Object({ label: Type.String(), content: Type.Optional(Type.String()), path: Type.Optional(Type.String()) });
+export const BuildResumeArtifactPlanSchema = Type.Object({ id: Type.String(), name: Type.String(), body: Type.String(), dependsOn: Type.Array(Type.String()), branch: Type.Optional(Type.String()), build: Type.Optional(Type.Array(BuildStageSpecSchema)), review: Type.Optional(ReviewProfileConfigSchema) });
+export const BuildResumeArtifactsEventSchema = Type.Object({ type: Type.Literal('build:resume:artifacts'), prdId: Type.String(), setName: Type.String(), featureBranch: Type.String(), artifactSource: Type.Union([Type.Literal('merge-worktree'), Type.Literal('branch-history')]), artifactCommit: Type.Optional(Type.String()), source: BuildResumeArtifactSourceSchema, orchestration: OrchestrationConfigSchema, plans: Type.Array(BuildResumeArtifactPlanSchema) });
+// --- eforge:endregion plan-02-resume-artifacts-projection ---
 
 const PlanStatusSchema = Type.Union([
   Type.Literal('pending'),
@@ -2279,6 +2264,9 @@ const EforgeEventVariantsSchema = Type.Union([
     reason: Type.String(),
     checkedPath: Type.Optional(Type.String()),
   }),
+  // --- eforge:region plan-02-resume-artifacts-projection ---
+  BuildResumeArtifactsEventSchema,
+  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   Type.Object({
     type: Type.Literal('build:resume:complete'),
     prdId: Type.String(),
@@ -2352,6 +2340,11 @@ export type TerminalFailureEnvelope = Static<typeof TerminalFailureEnvelopeSchem
 export type BuildResumeStartEvent = Extract<EforgeEvent, { type: 'build:resume:start' }>;
 export type BuildResumeStateEvent = Extract<EforgeEvent, { type: 'build:resume:state' }>;
 export type BuildResumeIneligibleEvent = Extract<EforgeEvent, { type: 'build:resume:ineligible' }>;
+// --- eforge:region plan-02-resume-artifacts-projection ---
+export type BuildResumeArtifactSource = Static<typeof BuildResumeArtifactSourceSchema>;
+export type BuildResumeArtifactPlan = Static<typeof BuildResumeArtifactPlanSchema>;
+export type BuildResumeArtifactsEvent = Extract<EforgeEvent, { type: 'build:resume:artifacts' }>;
+// --- eforge:endregion plan-02-resume-artifacts-projection ---
 export type BuildResumeCompleteEvent = Extract<EforgeEvent, { type: 'build:resume:complete' }>;
 // --- eforge:endregion plan-01-engine-resume ---
 export type QueueEvent = Static<typeof QueueEventSchema>;

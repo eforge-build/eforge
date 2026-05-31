@@ -15,7 +15,7 @@ import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { buildFailureSummary } from '../recovery/failure-summary.js';
-import type { BuildFailureSummary, PlanSummaryEntry } from '../events.js';
+import type { BuildFailureSummary, PlanSummaryEntry, OrchestrationConfig, PlanFile, BuildResumeArtifactsEvent } from '../events.js';
 
 const exec = promisify(execFile);
 
@@ -269,6 +269,79 @@ export function deriveResumeSeedState(plans: PlanSummaryEntry[]): ResumeSeedStat
 
   return { seededMerged, seededPending };
 }
+
+// ---------------------------------------------------------------------------
+// Resume artifact projection
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-02-resume-artifacts-projection ---
+export type ResumeArtifactsProjection = Omit<BuildResumeArtifactsEvent, 'type' | 'timestamp' | 'sessionId' | 'runId'>;
+
+async function resolveResumeSource(opts: {
+  cwd: string;
+  prdId: string;
+  summary: BuildFailureSummary;
+}): Promise<BuildResumeArtifactsEvent['source']> {
+  if (opts.summary.prdContent !== undefined) {
+    return { label: `PRD ${opts.prdId}`, content: opts.summary.prdContent };
+  }
+
+  const candidates = [
+    join(opts.cwd, '.eforge', 'queue', 'failed', `${opts.prdId}.md`),
+    join(opts.cwd, '.eforge', 'queue', `${opts.prdId}.md`),
+  ];
+
+  for (const path of candidates) {
+    try {
+      return {
+        label: path.startsWith(opts.cwd) ? path.slice(opts.cwd.length + 1) : path,
+        path,
+        content: await readFile(path, 'utf-8'),
+      };
+    } catch {
+      // Try the next best-effort source path.
+    }
+  }
+
+  return { label: `PRD ${opts.prdId}` };
+}
+
+export async function buildResumeArtifactsProjection(opts: {
+  cwd: string;
+  prdId: string;
+  setName: string;
+  featureBranch: string;
+  artifactSource: 'merge-worktree' | 'branch-history';
+  artifactCommit?: string;
+  summary: BuildFailureSummary;
+  orchConfig: OrchestrationConfig;
+  planFileMap: Map<string, PlanFile>;
+}): Promise<ResumeArtifactsProjection> {
+  const source = await resolveResumeSource({ cwd: opts.cwd, prdId: opts.prdId, summary: opts.summary });
+
+  return {
+    prdId: opts.prdId,
+    setName: opts.setName,
+    featureBranch: opts.featureBranch,
+    artifactSource: opts.artifactSource,
+    ...(opts.artifactCommit !== undefined ? { artifactCommit: opts.artifactCommit } : {}),
+    source,
+    orchestration: opts.orchConfig,
+    plans: opts.orchConfig.plans.map((plan) => {
+      const planFile = opts.planFileMap.get(plan.id);
+      return {
+        id: plan.id,
+        name: plan.name,
+        body: planFile?.body ?? '',
+        dependsOn: plan.dependsOn,
+        ...(plan.branch ? { branch: plan.branch } : {}),
+        build: plan.build,
+        review: plan.review,
+      };
+    }),
+  };
+}
+// --- eforge:endregion plan-02-resume-artifacts-projection ---
 
 // ---------------------------------------------------------------------------
 // Resume context formatting

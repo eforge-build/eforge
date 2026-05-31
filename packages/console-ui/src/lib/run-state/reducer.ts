@@ -60,6 +60,10 @@ export const initialRunState: RunState = {
   expeditionModules: [],
   moduleStatuses: {},
   earlyOrchestration: null,
+  // --- eforge:region plan-02-resume-artifacts-projection ---
+  resumeArtifacts: [],
+  resumeSource: null,
+  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   profile: null,
   endTime: null,
   mergeCommits: {},
@@ -83,7 +87,7 @@ export type RunAction =
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {}, decisions: {} };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, resumeArtifacts: [], resumeSource: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {}, decisions: {} };
 
     case 'BATCH_LOAD': {
       // Replay all events through the handler registry, accumulating state.
@@ -92,6 +96,8 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
       let acc: RunState = {
         ...initialRunState,
         fileChanges: new Map(),
+        resumeArtifacts: [],
+        resumeSource: null,
         events: [],
       };
 
@@ -140,6 +146,8 @@ export function createInitialRunState(): RunState {
     expeditionModules: [],
     moduleStatuses: {},
     earlyOrchestration: null,
+    resumeArtifacts: [],
+    resumeSource: null,
     profile: null,
     mergeCommits: {},
     liveAgentUsage: {},

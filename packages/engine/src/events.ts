@@ -46,6 +46,11 @@ export type {
   BuildResumeStartEvent,
   BuildResumeStateEvent,
   BuildResumeIneligibleEvent,
+  // --- eforge:region plan-02-resume-artifacts-projection ---
+  BuildResumeArtifactSource,
+  BuildResumeArtifactPlan,
+  BuildResumeArtifactsEvent,
+  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   BuildResumeCompleteEvent,
   // --- eforge:endregion plan-01-engine-resume ---
 } from '@eforge-build/client';
@@ -60,6 +65,11 @@ export {
   TerminalFailureScopeSchema,
   TerminalFailureEnvelopeSchema,
   // --- eforge:endregion plan-01-terminal-failure-contract ---
+  // --- eforge:region plan-02-resume-artifacts-projection ---
+  BuildResumeArtifactSourceSchema,
+  BuildResumeArtifactPlanSchema,
+  BuildResumeArtifactsEventSchema,
+  // --- eforge:endregion plan-02-resume-artifacts-projection ---
 } from '@eforge-build/client';
 
 // Engine-only types not part of the wire protocol:
