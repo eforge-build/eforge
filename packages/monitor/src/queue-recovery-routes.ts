@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { API_ROUTES, type QueueRecoveryAnalyzeRequest, type QueueRecoveryApplyRequest, type QueueRecoveryOperation } from '@eforge-build/client';
@@ -107,4 +106,3 @@ function parseJsonBody(req: IncomingMessage): Promise<unknown> {
 function isValidPathSegment(value: string): boolean {
   return value.length > 0 && !value.includes('/') && !value.includes('\\') && !value.includes('..') && !value.includes('\0');
 }
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---

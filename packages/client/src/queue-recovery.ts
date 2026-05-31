@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 /** Shared queue recovery wire contract for daemon, Console, and client helpers. */
 
 export const QUEUE_RECOVERY_STRATEGY_RETRY_AND_REACTIVATE = 'retry-and-reactivate-descendants' as const;
@@ -100,4 +99,3 @@ export interface QueueRecoveryApplyResponse {
 export function isQueueRecoveryStrategy(value: unknown): value is QueueRecoveryStrategy {
   return value === QUEUE_RECOVERY_STRATEGY_RETRY_AND_REACTIVATE;
 }
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---

@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 /** Browser-safe fetch helpers for queue recovery routes. */
 
 import { API_ROUTES } from './routes.js';
@@ -38,4 +37,3 @@ export function applyQueueRecovery(
 ): Promise<QueueRecoveryApplyResponse> {
   return postJson<QueueRecoveryApplyResponse>(API_ROUTES.queueRecoveryApply, body, init);
 }
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---

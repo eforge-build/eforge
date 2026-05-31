@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 import { afterEach, describe, expect, it } from 'vitest';
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -127,4 +126,3 @@ describe('queue recovery daemon routes', () => {
     expect(wakeReasons).toEqual([]);
   });
 });
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---

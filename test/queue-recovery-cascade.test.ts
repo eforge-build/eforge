@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 import { describe, expect, it } from 'vitest';
 import { mkdir, rename, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -139,4 +138,3 @@ describe('queue recovery cascade engine', () => {
     expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.md'))).toBe(true);
   });
 });
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---

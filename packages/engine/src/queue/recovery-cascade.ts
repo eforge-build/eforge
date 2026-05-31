@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 /** Queue recovery cascade analysis and guarded filesystem apply. */
 
 import { access, lstat, mkdir, realpath, rename, rm } from 'node:fs/promises';
@@ -434,4 +433,3 @@ function warning(code: string, message: string, prdId?: string): QueueRecoveryNo
 function firstBlockerMessage(blockers: QueueRecoveryNotice[]): string {
   return blockers[0]?.message ?? 'Queue recovery is blocked';
 }
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---

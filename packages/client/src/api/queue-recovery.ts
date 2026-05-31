@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 /** Typed helpers for queue recovery daemon API endpoints. */
 
 import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
@@ -45,4 +44,3 @@ export function apiApplyQueueRecoveryIfRunning(opts: { cwd: string; body: QueueR
     opts.body,
   );
 }
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---
