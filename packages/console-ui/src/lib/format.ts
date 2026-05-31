@@ -107,3 +107,19 @@ export function pluralize(n: number, singular: string, plural?: string): string 
   const form = n === 1 ? singular : (plural ?? `${singular}s`);
   return `${n} ${form}`;
 }
+
+/**
+ * Compact a token/number count into a short human label.
+ *
+ * @example
+ * compactTokens(950)       // "950"
+ * compactTokens(12_400)    // "12.4K"
+ * compactTokens(1_395_018) // "1.4M"
+ */
+export function compactTokens(n: number): string {
+  if (!Number.isFinite(n)) return '0';
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return `${Math.round(n)}`;
+}

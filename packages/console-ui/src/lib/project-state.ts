@@ -86,6 +86,10 @@ export type ConsoleProjectAction =
   | {
       type: 'QUEUE_REFRESH_RECEIVED';
       queue: QueueItem[];
+    }
+  | {
+      type: 'SET_AUTO_BUILD';
+      autoBuild: AutoBuildState | null;
     };
 
 // ---------------------------------------------------------------------------
@@ -382,6 +386,12 @@ export function consoleProjectReducer(
           : state.latestHeartbeat,
       };
     }
+
+    case 'SET_AUTO_BUILD':
+      return {
+        ...state,
+        autoBuild: action.autoBuild,
+      };
 
     case 'STREAM_ERROR':
       return {

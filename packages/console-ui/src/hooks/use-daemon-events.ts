@@ -1,7 +1,7 @@
 // --- eforge:region console-shell ---
 import { useReducer, useEffect, useCallback } from 'react';
 import { API_ROUTES, subscribeWithSnapshot } from '@eforge-build/client/browser';
-import type { DaemonStreamSnapshot, EforgeEvent, QueueItem } from '@eforge-build/client/browser';
+import type { AutoBuildState, DaemonStreamSnapshot, EforgeEvent, QueueItem } from '@eforge-build/client/browser';
 import {
   consoleProjectReducer,
   initialConsoleProjectState,
@@ -13,6 +13,7 @@ export interface UseDaemonEventsResult {
   projectState: ConsoleProjectState;
   connectionStatus: ConnectionStatus;
   refreshQueue: () => Promise<void>;
+  setDaemonAutoBuild: (autoBuild: AutoBuildState | null) => void;
 }
 
 export function useDaemonEvents(): UseDaemonEventsResult {
@@ -29,6 +30,10 @@ export function useDaemonEvents(): UseDaemonEventsResult {
     }
     const queue = await response.json() as QueueItem[];
     dispatch({ type: 'QUEUE_REFRESH_RECEIVED', queue });
+  }, []);
+
+  const setDaemonAutoBuild = useCallback((autoBuild: AutoBuildState | null) => {
+    dispatch({ type: 'SET_AUTO_BUILD', autoBuild });
   }, []);
 
   useEffect(() => {
@@ -77,6 +82,7 @@ export function useDaemonEvents(): UseDaemonEventsResult {
     projectState,
     connectionStatus: projectState.connectionStatus,
     refreshQueue,
+    setDaemonAutoBuild,
   };
 }
 // --- eforge:endregion console-shell ---

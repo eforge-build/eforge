@@ -34,10 +34,10 @@ export function ActivityDrawerLauncher({ items, onOpen, now }: ActivityDrawerLau
   const preview = items.slice(0, LAUNCHER_PREVIEW_COUNT);
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex flex-col bg-card/50 border-border/60">
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Activity</CardTitle>
+          <CardTitle className="text-sm font-semibold text-muted-foreground">Activity</CardTitle>
           <Button
             variant="ghost"
             size="sm"

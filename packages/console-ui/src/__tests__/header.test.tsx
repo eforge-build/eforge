@@ -21,6 +21,12 @@ const stubState = {
     },
   ],
   lastSnapshotAt: FIXED_NOW - 30_000,
+  autoBuild: {
+    enabled: true,
+    watcher: { running: true, pid: 1234, sessionId: 'watcher-session-1' },
+    desired: 'enabled' as const,
+    mode: 'running' as const,
+  },
   latestHeartbeat: {
     at: FIXED_NOW - 10_000,
     payload: {
@@ -33,13 +39,22 @@ const stubState = {
   },
 };
 
-function renderShell(onNavigate = vi.fn()) {
+function renderShell(
+  onNavigate = vi.fn(),
+  onSetAutoBuildEnabled = vi.fn(),
+  projectState = stubState,
+) {
   render(
-    <ConsoleShell projectState={stubState} onNavigate={onNavigate}>
+    <ConsoleShell
+      projectState={projectState}
+      autoBuildToggling={false}
+      onSetAutoBuildEnabled={onSetAutoBuildEnabled}
+      onNavigate={onNavigate}
+    >
       <div>content</div>
     </ConsoleShell>,
   );
-  return { onNavigate };
+  return { onNavigate, onSetAutoBuildEnabled };
 }
 
 describe('ConsoleShell header', () => {
@@ -70,5 +85,39 @@ describe('ConsoleShell header', () => {
     fireEvent.click(screen.getByRole('button', { name: /^plans$/i }));
 
     expect(onNavigate).toHaveBeenCalledWith('/console/plans');
+  });
+
+  it('disables auto-build immediately without confirmation', () => {
+    const onSetAutoBuildEnabled = vi.fn();
+    renderShell(vi.fn(), onSetAutoBuildEnabled);
+
+    fireEvent.click(screen.getByRole('switch', { name: /auto-build toggle/i }));
+
+    expect(onSetAutoBuildEnabled).toHaveBeenCalledTimes(1);
+    expect(onSetAutoBuildEnabled).toHaveBeenCalledWith(false);
+    expect(screen.queryByText(/queued builds may start immediately/i)).toBeNull();
+  });
+
+  it('asks for confirmation before enabling auto-build', () => {
+    const onSetAutoBuildEnabled = vi.fn();
+    renderShell(vi.fn(), onSetAutoBuildEnabled, {
+      ...stubState,
+      autoBuild: {
+        ...stubState.autoBuild,
+        enabled: false,
+        desired: 'disabled' as const,
+        mode: 'disabled' as const,
+      },
+    });
+
+    fireEvent.click(screen.getByRole('switch', { name: /auto-build toggle/i }));
+
+    expect(screen.getByText(/queued builds may start immediately/i)).toBeDefined();
+    expect(onSetAutoBuildEnabled).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /^enable$/i }));
+
+    expect(onSetAutoBuildEnabled).toHaveBeenCalledTimes(1);
+    expect(onSetAutoBuildEnabled).toHaveBeenCalledWith(true);
   });
 });

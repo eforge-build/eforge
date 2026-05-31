@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import * as React from 'react';
-import { QueueStackCard } from '../queue-stack-card';
+import { QueueStacks } from '../queue-stack-card';
 import type { NowQueueStack } from '@/lib/selectors/now';
 
 function makeStack(): NowQueueStack {
@@ -53,14 +53,14 @@ function makeStack(): NowQueueStack {
   };
 }
 
-describe('QueueStackCard', () => {
+describe('QueueStacks', () => {
   it('renders nothing when there are no dependency-linked stacks', () => {
-    const { container } = render(<QueueStackCard stacks={[]} />);
+    const { container } = render(<QueueStacks stacks={[]} />);
     expect(container.firstChild).toBeNull();
   });
 
   it('renders all stack layers in unlock order', () => {
-    render(<QueueStackCard stacks={[makeStack()]} />);
+    render(<QueueStacks stacks={[makeStack()]} />);
 
     expect(screen.getByText('Build stack')).toBeDefined();
     expect(screen.getByText('Base Build')).toBeDefined();

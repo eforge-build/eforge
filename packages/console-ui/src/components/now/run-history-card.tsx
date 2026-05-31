@@ -232,10 +232,10 @@ export function RunHistoryCard({ runs, onNavigate }: RunHistoryCardProps) {
   const visibleRuns = expanded ? filteredRuns : runs.slice(0, DEFAULT_ROW_COUNT);
 
   return (
-    <Card>
+    <Card className="bg-card/50 border-border/60">
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Run history</CardTitle>
+          <CardTitle className="text-sm font-semibold text-muted-foreground">Run history</CardTitle>
           {runs.length > DEFAULT_ROW_COUNT && (
             <Button
               variant="ghost"

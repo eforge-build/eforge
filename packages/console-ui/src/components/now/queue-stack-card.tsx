@@ -1,10 +1,14 @@
+/**
+ * QueueStacks — presentational render of dependency-linked queued plans, shown
+ * in unlock order. Rendered as a subsection inside the merged QueueCard (no
+ * Card chrome of its own). Returns null when there are no multi-item stacks.
+ */
 import * as React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { NowQueueStack, NowQueueStackItem } from '@/lib/selectors/now';
 import { cn } from '@/lib/utils';
 
-interface QueueStackCardProps {
+interface QueueStacksProps {
   stacks: NowQueueStack[];
 }
 
@@ -66,29 +70,27 @@ function QueueStackItemRow({ item, isLast }: { item: NowQueueStackItem; isLast: 
   );
 }
 
-export function QueueStackCard({ stacks }: QueueStackCardProps) {
+export function QueueStacks({ stacks }: QueueStacksProps) {
   if (stacks.length === 0) return null;
 
   const totalPlans = stacks.reduce((sum, stack) => sum + stack.totalItems, 0);
 
   return (
-    <Card>
-      <CardHeader className="pb-2 pt-4 px-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <CardTitle className="text-sm font-semibold">Build stack</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Dependency-linked queued plans, shown in unlock order.
-            </p>
-          </div>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {totalPlans} stacked plan{totalPlans !== 1 ? 's' : ''}
-          </span>
+    <section aria-label="Build stack">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-foreground">Build stack</p>
+          <p className="text-xs text-muted-foreground">
+            Dependency-linked plans, shown in unlock order.
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4 px-4 pb-4">
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {totalPlans} stacked plan{totalPlans !== 1 ? 's' : ''}
+        </span>
+      </div>
+      <div className="space-y-4">
         {stacks.map((stack, stackIndex) => (
-          <section key={stack.id} aria-label={`Build stack ${stackIndex + 1}`}>
+          <div key={stack.id} aria-label={`Build stack ${stackIndex + 1}`}>
             {stacks.length > 1 && (
               <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span>Stack {stackIndex + 1}</span>
@@ -107,9 +109,9 @@ export function QueueStackCard({ stacks }: QueueStackCardProps) {
                 />
               ))}
             </ol>
-          </section>
+          </div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
