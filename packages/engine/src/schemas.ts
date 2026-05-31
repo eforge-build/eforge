@@ -197,7 +197,6 @@ export const recoveryVerdictSchema = Type.Object({
   recoveryError: Type.Optional(Type.String({
     description: 'Error message when recovery failed or context was incomplete',
   })),
-  // --- eforge:region plan-02-deterministic-recovery-verdicts ---
   recommendationSource: Type.Optional(Type.Union(
     [Type.Literal('deterministic'), Type.Literal('analyst'), Type.Literal('manual-fallback')],
     { description: 'Source of the final verdict: deterministic policy, validated analyst output, or manual fallback' },
@@ -208,7 +207,6 @@ export const recoveryVerdictSchema = Type.Object({
   verdictInvalidationReason: Type.Optional(Type.String({
     description: 'Reason the analyst verdict was rejected by invariant validation, if applicable',
   })),
-  // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 });
 
 // ---------------------------------------------------------------------------

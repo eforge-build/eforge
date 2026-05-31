@@ -112,12 +112,10 @@ export interface ParallelReviewerOptions extends SdkPassthroughConfig {
   perspectives?: string[];
   /** Override max conversation turns (default: review tier default) */
   maxTurns?: number;
-  // --- eforge:region plan-02-extension-perspective-runtime ---
   /** Extension reviewer perspective registrations from the native extension registry. */
   extensionReviewerPerspectives?: ReviewerPerspectiveRegistration[];
   /** Timeout for extension reviewer perspective applicability predicates. */
   extensionApplicabilityTimeoutMs?: number;
-  // --- eforge:endregion plan-02-extension-perspective-runtime ---
 }
 
 /** Map perspective names to prompt file names */
@@ -198,15 +196,12 @@ export async function* runParallelReview(
   // Above threshold (or forced parallel) - run parallel specialist reviewers
   // Use perspectives override if provided, otherwise determine from file categories
   let perspectives: string[];
-  // --- eforge:region plan-02-extension-perspective-runtime ---
   // Extension perspective lookup — built from the registry for fast retrieval in tasks
   const extensionPerspectiveByKey = new Map(
     (extensionReviewerPerspectives ?? []).map((r) => [r.value.key, r]),
   );
-  // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
   if (perspectivesOverride) {
-    // --- eforge:region plan-02-extension-perspective-runtime ---
     // Explicit mode: keep built-ins as-is, but route dynamic keys through the
     // extension selector so unknown/non-applicable/failing perspectives are
     // diagnosed and skipped rather than dispatched into the built-in maps.
@@ -228,7 +223,6 @@ export async function* runParallelReview(
       selectedExtensionPerspectives = selectionResult.selectedKeys;
     }
     perspectives = [...builtInPerspectives, ...selectedExtensionPerspectives];
-    // --- eforge:endregion plan-02-extension-perspective-runtime ---
   } else {
     const selection = selectInitialReviewPerspectives({ changedFiles, changedLines });
     perspectives = selection.perspectives;
@@ -242,7 +236,6 @@ export async function* runParallelReview(
       rules: selection.rules,
     });
 
-    // --- eforge:region plan-02-extension-perspective-runtime ---
     // Auto-select applicable extension perspectives and append them
     if (extensionReviewerPerspectives && extensionReviewerPerspectives.length > 0) {
       const applicabilityInput = { changedFiles, changedLines };
@@ -257,7 +250,6 @@ export async function* runParallelReview(
       }
       perspectives = [...perspectives, ...selectionResult.selectedKeys];
     }
-    // --- eforge:endregion plan-02-extension-perspective-runtime ---
   }
 
   if (perspectives.length === 0) {
@@ -295,7 +287,6 @@ export async function* runParallelReview(
     run: async function* (): AsyncGenerator<EforgeEvent> {
       yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:start', planId, perspective };
 
-      // --- eforge:region plan-02-extension-perspective-runtime ---
       if (!isBuiltInReviewPerspective(perspective)) {
         // Extension perspective dispatch: use generic reviewer prompt with fragment appended
         const registration = extensionPerspectiveByKey.get(perspective);
@@ -359,7 +350,6 @@ export async function* runParallelReview(
         }
         return;
       }
-      // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
       try {
         const prompt = await loadPrompt(PERSPECTIVE_PROMPTS[perspective], {

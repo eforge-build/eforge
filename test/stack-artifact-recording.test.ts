@@ -430,7 +430,6 @@ describe('recordArtifact — artifact registry writes', () => {
     expect(layer?.status).toBe('built');
   });
 
-  // --- eforge:region plan-03-parser-and-committed-work-hardening ---
   it('does not write builds.json after a no-committed-diff merge failure (no-op plan without waiver)', async () => {
     // When mergePlan() throws because the builtOnMerge plan has no committed changes
     // (and allowNoCommittedChanges is not set), executePlans() marks state.status='failed'.
@@ -465,9 +464,7 @@ describe('recordArtifact — artifact registry writes', () => {
     const registry = await loadArtifactRegistry(cwd);
     expect(registry.builds.find((b) => b.prdId === 'no-op-prd')).toBeUndefined();
   });
-  // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
 
-  // --- eforge:region plan-04-committed-work-artifact-safety ---
   it('refuses to write builds.json when the merge worktree has dirty tracked files', async () => {
     const cwd = await repo();
     // Stage a file but do NOT commit it (dirty tracked)
@@ -551,9 +548,7 @@ describe('recordArtifact — artifact registry writes', () => {
       message: expect.stringContaining('untracked-impl.ts'),
     }));
   });
-  // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
-  // --- eforge:region plan-02-final-validation-gates ---
   it('yields nothing and does not write builds.json when state.status is failed', async () => {
     // Simulate a post-gap-close rerun where validation or acceptance failed,
     // leaving state.status=failed. recordArtifact must short-circuit so the
@@ -678,5 +673,4 @@ describe('recordArtifact — artifact registry writes', () => {
     const registry = await loadArtifactRegistry(cwd);
     expect(registry.builds.find((b) => b.prdId === 'rerun-command-failed-prd')).toBeUndefined();
   });
-  // --- eforge:endregion plan-02-final-validation-gates ---
 });

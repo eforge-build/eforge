@@ -236,7 +236,6 @@ describe('POST /api/auto-build', () => {
 });
 
 describe('POST /api/enqueue', () => {
-  // --- eforge:region plan-01-semantic-enqueue-wake ---
   it('enqueue route does not pass an onExit callback to spawnWorker', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
@@ -376,9 +375,7 @@ describe('POST /api/enqueue', () => {
 
     db.close();
   });
-  // --- eforge:endregion plan-01-semantic-enqueue-wake ---
 
-  // --- eforge:region plan-02-enqueue-preprocessing-runtime ---
   it('passes the original source string to spawnWorker without route-side transformation', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
@@ -464,7 +461,6 @@ describe('POST /api/enqueue', () => {
 
     db.close();
   });
-  // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
 });
 
 describe('POST /api/scheduler/kick', () => {

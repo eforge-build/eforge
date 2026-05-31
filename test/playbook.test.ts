@@ -829,7 +829,6 @@ describe('bundled playbooks', () => {
     expect(parsed.mode).toBe('planning');
   });
 
-  // --- eforge:region plan-01-playbook-ac-quality-gates ---
   it('all bundled playbooks with acceptance criteria pass AC quality analysis', async () => {
     const playbooksDir = fileURLToPath(new URL('../eforge/playbooks', import.meta.url));
     const files = (await readdir(playbooksDir)).filter((f) => f.endsWith('.md'));
@@ -845,7 +844,6 @@ describe('bundled playbooks', () => {
       ).toBe(true);
     }
   });
-  // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
 
   it('dependency-update.md has valid, non-empty acceptance criteria with required evidence-artifact coverage', async () => {
     const playbooksDir = fileURLToPath(new URL('../eforge/playbooks', import.meta.url));

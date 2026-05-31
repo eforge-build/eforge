@@ -319,7 +319,6 @@ describe('native extension discovery', () => {
     }));
   });
 
-  // --- eforge:region plan-01-extension-package-foundation ---
   it('uses eforge.extension.name from package.json as the logical extension name', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
@@ -518,5 +517,4 @@ describe('native extension discovery', () => {
     expect(candidate?.entrypoint).toBe(resolve(extensions, 'plain-pkg', 'index.ts'));
     expect(candidate?.packageProvenance?.packageName).toBe('plain-pkg');
   });
-  // --- eforge:endregion plan-01-extension-package-foundation ---
 });

@@ -133,10 +133,8 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
 
   const failingPlan: FailingPlanEntry = eventFragment?.failingPlan ?? { planId: 'unknown' };
   const plans: PlanSummaryEntry[] = eventFragment?.plans ?? [];
-  // --- eforge:region plan-01-recovery-summary-reconstruction ---
   const failingPlans = eventFragment?.failingPlans;
   const reviewFailure = eventFragment?.reviewFailure;
-  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
   // failedAt derivation (Decision #11):
   // - If monitor DB has events → use the event timestamp
@@ -164,16 +162,12 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
     modelsUsed,
     failedAt,
     ...(prdContent !== undefined ? { prdContent } : {}),
-    // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
     ...(eventFragment?.terminalFailure !== undefined ? { terminalFailure: eventFragment.terminalFailure } : {}),
     ...(eventFragment?.acceptanceValidation !== undefined ? { acceptanceValidation: eventFragment.acceptanceValidation } : {}),
     ...(eventFragment?.validationCommands !== undefined ? { validationCommands: eventFragment.validationCommands } : {}),
     ...(eventFragment?.landing !== undefined ? { landing: eventFragment.landing } : {}),
-    // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
-    // --- eforge:region plan-01-recovery-summary-reconstruction ---
     ...(failingPlans !== undefined ? { failingPlans } : {}),
     ...(reviewFailure !== undefined ? { reviewFailure } : {}),
-    // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
   };
 
   // Set partial: true when no monitor DB events were found, or when the event fragment

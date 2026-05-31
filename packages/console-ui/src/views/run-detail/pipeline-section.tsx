@@ -1,4 +1,3 @@
-// --- eforge:region plan-06-build-detail-base ---
 import { useMemo } from 'react';
 import { ThreadPipeline } from '@/components/pipeline/thread-pipeline';
 import { FailureBanner } from '@/components/common/failure-banner';
@@ -74,4 +73,3 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
     </div>
   );
 }
-// --- eforge:endregion plan-06-build-detail-base ---

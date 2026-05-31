@@ -7,7 +7,6 @@ export interface HealthResponse {
 }
 
 // GET /api/auto-build, POST /api/auto-build
-// --- eforge:region plan-01-supervisor-foundation ---
 export type AutoBuildDesired = 'enabled' | 'disabled';
 export type AutoBuildRuntimeMode =
   | 'disabled'
@@ -36,7 +35,6 @@ export interface AutoBuildTransitionDetail {
   reason?: string;
   source: string;
 }
-// --- eforge:endregion plan-01-supervisor-foundation ---
 
 export interface AutoBuildState {
   enabled: boolean;
@@ -45,13 +43,11 @@ export interface AutoBuildState {
     pid: number | null;
     sessionId: string | null;
   };
-  // --- eforge:region plan-01-supervisor-foundation ---
   desired?: AutoBuildDesired;
   mode?: AutoBuildRuntimeMode;
   scheduler?: AutoBuildSchedulerState;
   lastTransition?: AutoBuildTransitionDetail;
   reason?: string;
-  // --- eforge:endregion plan-01-supervisor-foundation ---
 }
 
 // GET /api/project-context
@@ -63,7 +59,6 @@ export interface ProjectContext {
 // GET /api/config/show - opaque, full EforgeConfig has engine deps
 export type ConfigShowResponse = unknown;
 
-// --- eforge:region plan-01-unified-pi-landing-ux ---
 /**
  * Source provenance entry returned by GET /api/config/show?verbose=true.
  *
@@ -93,7 +88,6 @@ export interface ConfigShowVerboseResponse {
     user?: ConfigSourceInfo;
   };
 }
-// --- eforge:endregion plan-01-unified-pi-landing-ux ---
 
 // GET /api/config/validate
 export interface ConfigValidateResponse {
@@ -103,11 +97,9 @@ export interface ConfigValidateResponse {
   config?: unknown;
 }
 
-// --- eforge:region plan-02-extension-tooling-surfaces ---
 export type ExtensionScope = 'user' | 'project-team' | 'project-local' | 'external';
 export type ExtensionSource = 'auto' | 'explicit';
 
-// --- eforge:region plan-03-observability-docs-examples ---
 /**
  * Serializable summary of the declarative portion of a reviewer perspective's applicability
  * rules. Function-form applicability (`fn`) is not exposed; its presence is indicated by
@@ -140,9 +132,7 @@ export interface ReviewerPerspectiveDetail {
   extensionPath: string;
   applicability?: ReviewerPerspectiveApplicabilitySummary;
 }
-// --- eforge:endregion plan-03-observability-docs-examples ---
 
-// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
 /**
  * Safe metadata about a registered validation provider.
  *
@@ -159,7 +149,6 @@ export interface ValidationProviderDetail {
   extensionName: string;
   extensionPath: string;
 }
-// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 
 export type ExtensionStatus = 'pending' | 'loaded' | 'shadowed' | 'skipped' | 'error' | 'excluded';
 export type ExtensionDiagnosticSeverity = 'warning' | 'error';
@@ -167,10 +156,8 @@ export type ExtensionFormat = 'js' | 'mjs' | 'ts' | 'mts';
 export type ExtensionLayout = 'file' | 'directory';
 export type ExtensionTrust = 'trusted' | 'untrusted';
 export type ExtensionTrustState = 'not-required' | 'untrusted' | 'trusted' | 'changed';
-// --- eforge:region plan-01-extension-management-api ---
 export type ExtensionScaffoldScope = 'local' | 'project' | 'user';
 export type ExtensionScaffoldTemplate = 'event-logger' | 'blank';
-// --- eforge:endregion plan-01-extension-management-api ---
 
 export interface ExtensionDiagnostic {
   severity: ExtensionDiagnosticSeverity;
@@ -212,11 +199,8 @@ export interface ExtensionEntry {
   scope: ExtensionScope;
   source: ExtensionSource;
   status: ExtensionStatus;
-  // --- eforge:region plan-01-extension-management-api ---
   enabled?: boolean;
-  // --- eforge:endregion plan-01-extension-management-api ---
   trust?: ExtensionTrust;
-  // --- eforge:region plan-01-engine-trust-foundation ---
   /** Richer trust classification for project/team trust enforcement. */
   trustState?: ExtensionTrustState;
   /** SHA-256 hash of the extension content computed at discovery time (project-team candidates only). */
@@ -229,27 +213,20 @@ export interface ExtensionEntry {
   trustedBy?: string;
   /** Absolute local path to the trust store consulted by the engine, when exposed by engine projections. */
   trustStorePath?: string;
-  // --- eforge:endregion plan-01-engine-trust-foundation ---
   format?: ExtensionFormat;
   layout?: ExtensionLayout;
   strategy?: string;
   shadows: ExtensionShadow[];
   registrations: ExtensionRegistrationSummary;
   diagnostics: ExtensionDiagnostic[];
-  // --- eforge:region plan-03-observability-docs-examples ---
   /** Metadata for each reviewer perspective registered by this extension. Absent when the extension has no registered perspectives. */
   reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
-  // --- eforge:endregion plan-03-observability-docs-examples ---
-  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
   /** Metadata for each validation provider registered by this extension. Absent when the extension has no registered providers. */
   validationProviderDetails?: ValidationProviderDetail[];
-  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
-  // --- eforge:region plan-01-extension-package-foundation ---
   /** Package provenance, populated for directory-layout extensions with a `package.json`. */
   package?: ExtensionPackageProvenance;
   /** Install provenance, populated when a `.eforge-install.json` sidecar exists. */
   install?: ExtensionInstallProvenance;
-  // --- eforge:endregion plan-01-extension-package-foundation ---
 }
 
 export interface ExtensionListResponse {
@@ -268,7 +245,6 @@ export interface ExtensionValidateResponse {
   diagnostics: ExtensionDiagnostic[];
 }
 
-// --- eforge:region plan-01-engine-daemon-extension-replay ---
 export interface ExtensionTestRequest {
   name?: string;
   path?: string;
@@ -331,9 +307,7 @@ export interface ExtensionTestResponse {
   emittedDiagnostics: ExtensionTestDiagnosticEvent[];
   deferredRegistrations: ExtensionTestDeferredRegistrationSummary[];
 }
-// --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 
-// --- eforge:region plan-01-extension-package-foundation ---
 /**
  * Package provenance wire type — included in `ExtensionEntry` for directory-layout
  * extensions that have a `package.json`.
@@ -477,9 +451,7 @@ export interface ExtensionDemoteResponse {
   /** Human-readable message with next steps. */
   message: string;
 }
-// --- eforge:endregion plan-01-extension-package-foundation ---
 
-// --- eforge:region plan-02-management-surfaces ---
 /** POST /api/extensions/trust — trust a project-team extension by name or path. */
 export interface ExtensionTrustRequest {
   /** Extension name (targets a project-team candidate by name). Mutually exclusive with path. */
@@ -508,9 +480,7 @@ export interface ExtensionTrustResponse {
 
 /** Alias for trust/untrust response — same shape. */
 export type ExtensionUntrustResponse = ExtensionTrustResponse;
-// --- eforge:endregion plan-02-management-surfaces ---
 
-// --- eforge:region plan-01-extension-management-api ---
 export interface ExtensionNewRequest {
   name: string;
   scope?: ExtensionScaffoldScope;
@@ -544,8 +514,6 @@ export interface ExtensionReloadWatcherMetadata {
 export interface ExtensionReloadResponse extends ExtensionListResponse, ExtensionReloadWatcherMetadata {
   watcher: ExtensionReloadWatcherMetadata;
 }
-// --- eforge:endregion plan-01-extension-management-api ---
-// --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
 // GET /api/queue (array of these)
 export interface QueueItem {
@@ -806,7 +774,5 @@ export interface ModelListResponse {
   models: ModelInfo[];
 }
 
-// --- eforge:region plan-01-stack-contracts-config-state-events ---
 // Stack layer wire shapes — canonical source of truth for API responses.
 export type { StackProvider, LandingPublicationAction, StackLayerStatus, StackArtifactRef, StackLayerWire } from './events.js';
-// --- eforge:endregion plan-01-stack-contracts-config-state-events ---

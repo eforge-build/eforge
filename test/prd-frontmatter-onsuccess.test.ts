@@ -157,7 +157,6 @@ describe('enqueuePrd — landing frontmatter write', () => {
   });
 });
 
-// --- eforge:region plan-01-core-engine-auto-merge ---
 
 describe('prdFrontmatterSchema — landing_auto_merge validation', () => {
   it('accepts landing_auto_merge: true', () => {
@@ -267,4 +266,3 @@ describe('enqueuePrd — landing_auto_merge frontmatter write', () => {
   });
 });
 
-// --- eforge:endregion plan-01-core-engine-auto-merge ---

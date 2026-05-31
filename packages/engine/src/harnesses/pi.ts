@@ -23,12 +23,8 @@ import type { AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
 import type { AgentHarness, AgentRunOptions, ThinkingConfig, EffortLevel, HarnessDebugCallback, HarnessDebugPayload } from '../harness.js';
-// --- eforge:region plan-01-transport-resilience ---
 import { AgentTerminalError, isTransientTransportError } from '../harness.js';
-// --- eforge:endregion plan-01-transport-resilience ---
-// --- eforge:region plan-01-pi-headless-isolation ---
 import { isPiToolInfrastructureError } from '../harness.js';
-// --- eforge:endregion plan-01-pi-headless-isolation ---
 import type { PiConfig } from '../config.js';
 import { AsyncEventQueue } from '../concurrency.js';
 import { PiMcpBridge } from './pi-mcp-bridge.js';
@@ -224,7 +220,6 @@ function isPiToolExecutionInfrastructureError(event: unknown): boolean {
   return isPiToolInfrastructureError(stringifyToolResult(record.result));
 }
 
-// --- eforge:region plan-01-pi-headless-isolation ---
 
 /**
  * Counter snapshot from a `buildResourceLoaderOverrides` result.
@@ -332,17 +327,14 @@ function buildResourceLoaderOverrides(mode: 'isolated' | 'ambient'): {
     }),
   };
 }
-// --- eforge:endregion plan-01-pi-headless-isolation ---
 
 export const piHarnessInternalsForTest = {
   extractAssistantMessageText,
   extractLastAssistantMessageText,
   extractMessageUpdateText,
-  // --- eforge:region plan-01-pi-headless-isolation ---
   buildResourceLoaderOverrides,
   isPiToolInfrastructureError,
   isPiToolExecutionInfrastructureError,
-  // --- eforge:endregion plan-01-pi-headless-isolation ---
 };
 
 /**
@@ -548,21 +540,17 @@ export class PiHarness implements AgentHarness {
     }
 
     let error: string | undefined;
-    // --- eforge:region plan-01-pi-headless-isolation ---
     let infraError: AgentTerminalError | undefined;
-    // --- eforge:endregion plan-01-pi-headless-isolation ---
     const startTime = Date.now();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let session: any;
 
     try {
-      // --- eforge:region plan-01-pi-headless-isolation ---
       // Resolve effective isolation mode. 'isolated' is the deterministic default; 'ambient'
       // must be explicitly opted in via pi.resources: 'ambient' in config. When agents.bare
       // is true the registry already coerces resources to 'isolated' before constructing this
       // harness, but we defensively default here for any path that bypasses the registry.
       const mode: 'isolated' | 'ambient' = this.piConfig?.resources ?? 'isolated';
-      // --- eforge:endregion plan-01-pi-headless-isolation ---
 
       // Build file-backed auth storage (reads ~/.pi/agent/auth.json, env vars, and OAuth tokens)
       const authStorage = AuthStorage.create();
@@ -629,7 +617,6 @@ export class PiHarness implements AgentHarness {
       }
 
       // Collect extension tools (only for coding agents, skip in bare or isolated mode).
-      // --- eforge:region plan-01-pi-headless-isolation ---
       // In isolated mode (the default), discoverPiExtensions is skipped entirely —
       // no ambient project/user/global Pi extensions are loaded. discoverAndLoadExtensions
       // and session.bindExtensions() are similarly skipped below. See PiHarness architecture
@@ -638,7 +625,6 @@ export class PiHarness implements AgentHarness {
       if (isCoding && !this.bare && mode === 'ambient') {
         extensionPaths = await discoverPiExtensions(options.cwd, this.extensions);
       }
-      // --- eforge:endregion plan-01-pi-headless-isolation ---
 
       // Convert eforge CustomTools to Pi 0.68 ToolDefinition objects. The
       // execute callback matches Pi's arity-5 signature
@@ -707,9 +693,7 @@ export class PiHarness implements AgentHarness {
       // the full isolation contract. User-installed packages that are NOT pi-eforge are
       // preserved when mode === 'ambient', so users who explicitly opt in can still bring
       // their own skills / extensions into eforge agent contexts.
-      // --- eforge:region plan-01-pi-headless-isolation ---
       const overrideResult = buildResourceLoaderOverrides(mode);
-      // --- eforge:endregion plan-01-pi-headless-isolation ---
       const resourceLoader = new DefaultResourceLoader({
         cwd: options.cwd,
         agentDir: getAgentDir(),
@@ -887,7 +871,6 @@ export class PiHarness implements AgentHarness {
           error = errMsg;
         }
 
-        // --- eforge:region plan-01-pi-headless-isolation ---
         // Detect Pi tool-call infrastructure failures (e.g. global theme proxy accessed
         // without initTheme() in a headless SDK session). Classify the *raw* result before
         // truncation so the full message is available for pattern matching. When detected,
@@ -899,7 +882,6 @@ export class PiHarness implements AgentHarness {
           infraError = new AgentTerminalError('error_pi_tool_infrastructure', infraMsg);
           try { session.abort(); } catch { /* ignore abort errors */ }
         }
-        // --- eforge:endregion plan-01-pi-headless-isolation ---
 
         // Capture final result text from agent_end when Pi delivers it, but
         // do not rely on agent_end exclusively. Some provider/session paths can
@@ -947,9 +929,7 @@ export class PiHarness implements AgentHarness {
             isReadOnly,
             thinkingLevel,
             bare: this.bare,
-            // --- eforge:region plan-01-pi-headless-isolation ---
             resourcesMode: mode,
-            // --- eforge:endregion plan-01-pi-headless-isolation ---
             projectMcpServerNames: Object.keys(this.mcpServers ?? {}).sort(),
             extensionPathCount: extensionPaths.length,
             baseToolCount: filteredBaseTools.length,
@@ -977,14 +957,12 @@ export class PiHarness implements AgentHarness {
         if (!error) {
           const msg = err instanceof Error ? err.message : String(err);
           error = msg;
-          // --- eforge:region plan-01-pi-headless-isolation ---
           // Also classify prompt-level infra failures (e.g. Theme not initialized thrown
           // from session.prompt() itself rather than from a tool_execution_end event).
           if (isPiToolInfrastructureError(msg) && !infraError) {
             const infraMsg = `Pi tool-call infrastructure failure: ${msg}`;
             infraError = new AgentTerminalError('error_pi_tool_infrastructure', infraMsg);
           }
-          // --- eforge:endregion plan-01-pi-headless-isolation ---
         }
       }).finally(() => {
         unsubscribe();
@@ -1067,16 +1045,12 @@ export class PiHarness implements AgentHarness {
       yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agentId, agent, result: resultData };
 
       if (error) {
-        // --- eforge:region plan-01-pi-headless-isolation ---
         if (infraError) {
           throw infraError;
         }
-        // --- eforge:endregion plan-01-pi-headless-isolation ---
-        // --- eforge:region plan-01-transport-resilience ---
         if (isTransientTransportError(error)) {
           throw new AgentTerminalError('error_transient_transport', error);
         }
-        // --- eforge:endregion plan-01-transport-resilience ---
         throw new Error(error);
       }
 
@@ -1084,19 +1058,15 @@ export class PiHarness implements AgentHarness {
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
 
-      // --- eforge:region plan-01-pi-headless-isolation ---
       if (err instanceof AgentTerminalError && err.subtype === 'error_pi_tool_infrastructure') {
         throw err;
       }
-      // --- eforge:endregion plan-01-pi-headless-isolation ---
 
-      // --- eforge:region plan-01-transport-resilience ---
       if (isTransientTransportError(error)) {
         throw err instanceof AgentTerminalError
           ? err
           : new AgentTerminalError('error_transient_transport', error);
       }
-      // --- eforge:endregion plan-01-transport-resilience ---
 
       // Attempt fallback model if configured and this looks like a model error
       if (options.fallbackModel && isModelError(error)) {

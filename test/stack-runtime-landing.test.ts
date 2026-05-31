@@ -358,10 +358,8 @@ describe('executeStackLanding — PR URL discovery and persistence', () => {
     expect(layer?.landing?.prUrl).toBe(prUrl);
     expect(layer?.landing?.startedAt).toBeTruthy();
     expect(layer?.landing?.completedAt).toBeTruthy();
-    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
     // Layer status must transition to 'landed' on successful PR submission
     expect(layer?.status).toBe('landed');
-    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
   });
 
   it('persists landing state without prUrl when submit output has no URL', async () => {
@@ -505,7 +503,6 @@ describe('executeStackLanding — non-pr actions', () => {
     });
   });
 
-  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
   it('persists layer status as merged when landingAction is merge', async () => {
     const provider = makeStubProvider();
     await seedLayer(cwd);
@@ -547,7 +544,6 @@ describe('executeStackLanding — non-pr actions', () => {
     expect(layer?.landing?.action).toBe('leave');
     expect(layer?.landing?.status).toBe('skipped');
   });
-  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 });
 
 // ---------------------------------------------------------------------------
@@ -639,7 +635,6 @@ describe('executeStackLanding — failure handling', () => {
     expect(submitCalled).toBe(false);
   });
 
-  // --- eforge:region plan-01-restack-before-stacked-pr-submit ---
   it('emits stack:landing:update failed when restackBranch throws a generic error', async () => {
     const provider = makeStubProvider({
       restackBranch: async () => {
@@ -773,7 +768,6 @@ describe('executeStackLanding — failure handling', () => {
     expect(layer?.landing?.reason).toContain('restack error');
     expect(layer?.landing?.completedAt).toBeTruthy();
   });
-  // --- eforge:endregion plan-01-restack-before-stacked-pr-submit ---
 
   it('emits stack:landing:update failed when submitBranch throws', async () => {
     const provider = makeStubProvider({
@@ -827,10 +821,8 @@ describe('executeStackLanding — failure handling', () => {
     expect(layer?.landing?.status).toBe('failed');
     expect(layer?.landing?.reason).toContain('track error');
     expect(layer?.landing?.completedAt).toBeTruthy();
-    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
     // Layer status must transition to 'failed' when landing fails
     expect(layer?.status).toBe('failed');
-    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
   });
 });
 
@@ -969,7 +961,6 @@ describe('stackLanding phase — non-stacked builds', () => {
   });
 });
 
-// --- eforge:region plan-01-core-engine-auto-merge ---
 
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -1150,9 +1141,7 @@ describe('executeStackLanding — PR auto-merge', () => {
   });
 });
 
-// --- eforge:endregion plan-01-core-engine-auto-merge ---
 
-// --- eforge:region plan-01-pr-metadata ---
 
 import { readFileSync } from 'node:fs';
 import type { PullRequestMetadata } from '@eforge-build/engine/pr-metadata';
@@ -1299,4 +1288,3 @@ describe('executeStackLanding — PR metadata editing', () => {
   });
 });
 
-// --- eforge:endregion plan-01-pr-metadata ---

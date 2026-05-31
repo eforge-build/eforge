@@ -14,20 +14,15 @@ export {
   upsertArtifact,
   lookupArtifactByPrdId,
   hasUsableArtifact,
-  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
   updateArtifactRecord,
-  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 } from './registry.js';
 
 export type {
   ArtifactRecord,
   ArtifactRegistry,
-  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
   ArtifactRecordUpdates,
-  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 } from './registry.js';
 
-// --- eforge:region plan-01-runtime-artifact-diagnostics ---
 export {
   completionRegistryPath,
   loadCompletionRegistry,
@@ -37,4 +32,3 @@ export {
 } from './completions.js';
 
 export type { CompletionRecord, CompletionRegistry } from './completions.js';
-// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---

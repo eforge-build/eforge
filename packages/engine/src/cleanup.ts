@@ -11,6 +11,7 @@ import { promisify } from 'node:util';
 import type { EforgeEvent } from './events.js';
 import { forgeCommit, retryOnLock } from './git.js';
 import { composeCommitMessage } from './model-tracker.js';
+import { stripTemporaryEforgeRegionMarkers } from './region-marker-cleanup.js';
 
 const exec = promisify(execFile);
 
@@ -49,6 +50,16 @@ export async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir:
 
 
       } catch { /* PRD file may not exist or already removed */ }
+    }
+
+    try {
+      await stripTemporaryEforgeRegionMarkers(cwd);
+    } catch (err) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'planning:progress',
+        message: `Temporary eforge region marker cleanup failed (non-fatal): ${(err as Error).message}`,
+      };
     }
 
     const commitMsg = prdFilePath

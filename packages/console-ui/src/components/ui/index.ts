@@ -4,11 +4,8 @@ export * from './button';
 export * from './card';
 // --- eforge:endregion console-shell ---
 
-// --- eforge:region plan-05-system-activity-progressive-disclosure-and-guards ---
 export * from './sheet';
-// --- eforge:endregion plan-05-system-activity-progressive-disclosure-and-guards ---
 
-// --- eforge:region plan-02-deps-and-shadcn ---
 export * from './alert-dialog';
 export * from './checkbox';
 export * from './collapsible';
@@ -19,8 +16,5 @@ export * from './select';
 export * from './switch';
 export * from './table';
 export * from './tooltip';
-// --- eforge:endregion plan-02-deps-and-shadcn ---
 
-// --- eforge:region plan-06-build-detail-base ---
 export * from './resizable';
-// --- eforge:endregion plan-06-build-detail-base ---

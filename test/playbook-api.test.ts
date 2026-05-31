@@ -261,7 +261,6 @@ describe('POST /api/playbook/save', () => {
     expect(data.errors.some((e) => /goal/i.test(e))).toBe(true);
   });
 
-  // --- eforge:region plan-01-playbook-ac-quality-gates ---
 
   it('returns 400 and does not create file when acceptance criteria contain quality issues', async () => {
     const { tmpDir } = await setup();
@@ -326,7 +325,6 @@ describe('POST /api/playbook/save', () => {
     expect(fileContent).toBe(sentinelContent);
   });
 
-  // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
 
   it('writes the playbook file and returns its path', async () => {
     await setup();
@@ -529,7 +527,6 @@ describe('POST /api/playbook/run', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  // --- eforge:region plan-01-playbook-ac-quality-gates ---
 
   it('returns requires-agent for a planning-mode playbook with invalid acceptance criteria (AC gate must not apply to planning mode)', async () => {
     const { tmpDir, configDir } = await init();
@@ -640,7 +637,6 @@ describe('POST /api/playbook/run', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
 
   it('persists dependsOn in PRD frontmatter when afterQueueId is provided for autonomous playbook', async () => {
     const { tmpDir, configDir } = await init();
@@ -1001,7 +997,6 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  // --- eforge:region plan-02-playbook-placement-parity ---
 
   it('writes dependent PRD to waiting/ when autonomous upstream is active (in queue root)', async () => {
     const { tmpDir, configDir } = await init();
@@ -1197,7 +1192,6 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  // --- eforge:endregion plan-02-playbook-placement-parity ---
 
   it('save/show/list round-trip includes profile field and required mode', async () => {
     await setup();
@@ -1239,7 +1233,6 @@ describe('POST /api/playbook/run — profile field', () => {
   });
 });
 
-// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 
 // --- Helpers for enqueue-route tests (daemon mode requires workerTracker) ---
 
@@ -1379,9 +1372,7 @@ describe('POST /api/playbook/run - landingAutoMerge persistence', () => {
   });
 });
 
-// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
-// --- eforge:region plan-01-build-dependency-core ---
 
 // ---------------------------------------------------------------------------
 // Route: POST /api/enqueue — afterQueueId validation
@@ -1481,4 +1472,3 @@ describe('POST /api/enqueue - afterQueueId validation', () => {
   });
 });
 
-// --- eforge:endregion plan-01-build-dependency-core ---

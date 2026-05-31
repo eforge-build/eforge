@@ -205,7 +205,6 @@ export class GitSpiceAdapter {
     return this.run(cwd, ['upstack', 'onto', target]);
   }
 
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   /**
    * Return the dry-run command preview for the given argv.
    *
@@ -251,7 +250,6 @@ export class GitSpiceAdapter {
   redactMessage(message: string): string {
     return redactProviderMessage(message);
   }
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 // ---------------------------------------------------------------------------

@@ -13,17 +13,13 @@ export interface PrdValidatorOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Override max conversation turns (default: implementation tier default). */
   maxTurns?: number;
-  // --- eforge:region plan-02-engine-acceptance-gates ---
   /** Expected acceptance criteria inventory for prompt injection. When non-empty, the criteria are
    *  listed in the prompt so the validator knows which ACs to produce verdicts for. */
   expectedAcceptanceCriteria?: import('../validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
-  // --- eforge:endregion plan-02-engine-acceptance-gates ---
-  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
   /** Deterministic validation command results from the validate phase.
    *  When provided, the validator prompt includes a bounded evidence appendix so
    *  command-based acceptance criteria can cite successful command execution. */
   validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }>;
-  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 }
 
 /**
@@ -36,27 +32,19 @@ export async function* runPrdValidator(
 ): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' };
 
-  // --- eforge:region plan-02-engine-acceptance-gates ---
   const criteriaText = options.expectedAcceptanceCriteria && options.expectedAcceptanceCriteria.length > 0
     ? options.expectedAcceptanceCriteria.map((c) => `${c.id}: ${c.text}`).join('\n')
     : '';
-  // --- eforge:endregion plan-02-engine-acceptance-gates ---
-  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
   const validationEvidence = formatValidationCommandEvidence(options.validationCommandEvidence);
   const validationEvidenceInstruction = validationEvidence
     ? '10. When the **Deterministic Validation Command Evidence** section is present: a command with exit code 0 MAY serve as supporting evidence for a command-based acceptance criterion (e.g., a passing `pnpm type-check` supports "code must type-check"). A non-zero exit code or timeout is direct failure evidence. Absence of a command result means `unknown` — do not infer success'
     : '';
-  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   const prompt = await loadPrompt('prd-validator', {
     prd: options.prdContent,
     diff: options.diff,
-    // --- eforge:region plan-02-engine-acceptance-gates ---
     criteria: criteriaText,
-    // --- eforge:endregion plan-02-engine-acceptance-gates ---
-    // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
     validationEvidence,
     validationEvidenceInstruction,
-    // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   }, options.promptAppend);
 
   let gaps: PrdValidationGap[] = [];
@@ -134,7 +122,6 @@ export async function* runPrdValidator(
   };
 }
 
-// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 const MAX_COMMAND_OUTPUT_CHARS = 500;
 
 /**
@@ -172,7 +159,6 @@ export function formatValidationCommandEvidence(
 
   return lines.join('\n');
 }
-// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
 const VALID_COMPLEXITIES = new Set(['trivial', 'moderate', 'significant']);
 const VALID_CONFLICT_SCOPES = new Set(['narrow', 'broad', 'unknown']);
@@ -222,7 +208,6 @@ export function parseGaps(text: string): {
 function parseValidationGaps(rawGaps: unknown, unparseableGap: PrdValidationGap): PrdValidationGap[] {
   if (!Array.isArray(rawGaps)) return [unparseableGap];
 
-  // --- eforge:region plan-02-engine-acceptance-gates ---
   // Map instead of filter: malformed entries produce a synthetic failure gap rather than
   // being silently dropped. Dropping malformed entries would hide validator bugs and
   // allow a corrupted gap list to appear as "no gaps" (fail-open).
@@ -247,7 +232,6 @@ function parseValidationGaps(rawGaps: unknown, unparseableGap: PrdValidationGap)
       explanation: 'The validator returned a gap entry that could not be parsed; treating as a validation failure.',
     };
   });
-  // --- eforge:endregion plan-02-engine-acceptance-gates ---
 }
 
 function parseAcceptanceVerdicts(rawVerdicts: unknown): AcceptanceCriterionVerdict[] | undefined {

@@ -1,4 +1,3 @@
-// --- eforge:region plan-03-stack-daemon-ui ---
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { StackLayerWire } from '@/lib/types';
@@ -139,4 +138,3 @@ export function StackLayersCard({ layers }: StackLayersCardProps) {
     </Card>
   );
 }
-// --- eforge:endregion plan-03-stack-daemon-ui ---

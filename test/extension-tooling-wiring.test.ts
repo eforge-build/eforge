@@ -15,7 +15,6 @@ function readRepoFile(relative: string): string {
   return readFileSync(resolve(REPO_ROOT, relative), 'utf-8');
 }
 
-// --- eforge:region plan-02-enqueue-preprocessing-runtime ---
 describe('CLI enqueue preprocessing wiring', () => {
   const cliIndexSource = readRepoFile('packages/eforge/src/cli/index.ts');
 
@@ -34,7 +33,7 @@ describe('CLI enqueue preprocessing wiring', () => {
     // The preprocessing wrapper function must yield events before delegating to engine.enqueue
     const preprocessBlock = cliIndexSource.slice(
       cliIndexSource.indexOf('async function* preprocessAndEnqueue'),
-      cliIndexSource.lastIndexOf('// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---'),
+      cliIndexSource.lastIndexOf('// --- eforge:end' + 'region plan-02-enqueue-preprocessing-runtime ---'),
     );
     expect(preprocessBlock).toContain('preprocessResult.events');
     expect(preprocessBlock).toContain('yield { ...event, timestamp }');
@@ -48,7 +47,7 @@ describe('CLI enqueue preprocessing wiring', () => {
   it('on FatalPreprocessingError yields diagnostic event and enqueue:failed without calling engine', () => {
     const preprocessBlock = cliIndexSource.slice(
       cliIndexSource.indexOf('async function* preprocessAndEnqueue'),
-      cliIndexSource.lastIndexOf('// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---'),
+      cliIndexSource.lastIndexOf('// --- eforge:end' + 'region plan-02-enqueue-preprocessing-runtime ---'),
     );
     expect(preprocessBlock).toContain('FatalPreprocessingError');
     expect(preprocessBlock).toContain("'enqueue:failed'");
@@ -56,7 +55,6 @@ describe('CLI enqueue preprocessing wiring', () => {
     expect(preprocessBlock).toContain('return;');
   });
 });
-// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
 
 describe('extension tooling route constants and helpers', () => {
   it('declares extension route constants', () => {
@@ -89,7 +87,6 @@ describe('extension tooling route constants and helpers', () => {
     expect(source).toContain('apiUntrustExtension');
   });
 
-  // --- eforge:region plan-01-extension-package-foundation ---
   it('declares package-operation route constants without inline path literals', () => {
     expect(API_ROUTES.extensionInstall).toBe('/api/extensions/install');
     expect(API_ROUTES.extensionUpdate).toBe('/api/extensions/update');
@@ -179,7 +176,7 @@ describe('extension tooling route constants and helpers', () => {
     const monitorSource = readRepoFile('packages/monitor/src/server.ts');
     const loadResponseBlock = monitorSource.slice(
       monitorSource.indexOf('async function loadExtensionResponse'),
-      monitorSource.indexOf('// --- eforge:endregion plan-02-extension-tooling-surfaces ---'),
+      monitorSource.indexOf('// --- eforge:end' + 'region plan-02-extension-tooling-surfaces ---'),
     );
     expect(loadResponseBlock).toMatch(/package:\s*\{\s*\.\.\.candidate\.packageProvenance\s*\}/);
     expect(loadResponseBlock).toMatch(/install:\s*\{\s*\.\.\.candidate\.installProvenance\s*\}/);
@@ -192,7 +189,6 @@ describe('extension tooling route constants and helpers', () => {
     expect(projectExtensionsBlock).toMatch(/package:\s*\{\s*\.\.\.candidate\.packageProvenance\s*\}/);
     expect(projectExtensionsBlock).toMatch(/install:\s*\{\s*\.\.\.candidate\.installProvenance\s*\}/);
   });
-  // --- eforge:endregion plan-01-extension-package-foundation ---
 });
 
 describe('CLI extension command registration', () => {
@@ -336,14 +332,12 @@ describe('extension runtime documentation', () => {
     }
 
     // registerValidationProvider: plan-02 shipped the runtime — docs now reflect per-plan validate build stage dispatch.
-    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
     for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
       const validationRow = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerValidationProvider'));
       expect(validationRow, 'registerValidationProvider row').toBeDefined();
       expect(validationRow).not.toContain('Deferred');
       expect(validationRow).toContain('Yes');
     }
-    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 
     // registerProfileRouter: plan-02 shipped the runtime — all three sources now reflect pre-build dispatch.
     for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
@@ -765,7 +759,6 @@ describe('MCP/Pi eforge_extension parity', () => {
   });
 });
 
-// --- eforge:region plan-01-build-dependency-core ---
 describe('CLI --after flag wiring', () => {
   it('eforge enqueue command declares --after <queue-id> option', () => {
     const cliIndexSource = readRepoFile('packages/eforge/src/cli/index.ts');
@@ -824,4 +817,3 @@ describe('CLI --after flag wiring', () => {
     expect(eventsSource).toContain('afterQueueId?: string');
   });
 });
-// --- eforge:endregion plan-01-build-dependency-core ---

@@ -76,22 +76,18 @@ export interface LandingGateResult {
   landingAction?: LandingAction;
   cancelled?: boolean;
   configUpdated?: boolean;
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   /** When true, PR auto-merge should be enabled; when false, explicitly disabled. */
   landingAutoMerge?: boolean;
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 }
 
 export interface BuildLandingGateOptions {
   mode?: "selector" | "guard";
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   /**
    * Explicit `landingAutoMerge` value from the caller (tool parameter).
    * When `true` and the project policy is `'never'`, the gate throws in
    * non-interactive mode rather than silently dropping the intent.
    */
   landingAutoMergeOverride?: boolean;
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 }
 
 // ---------------------------------------------------------------------------
@@ -151,9 +147,7 @@ export async function promptForLandingSelection(
   const effectiveLanding = getEffectiveLandingAction(configuredLandingAction);
   const projectConfigPath = verboseConfig.sources?.project?.path ?? null;
 
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   const autoMergePolicy = (landing?.pr?.autoMerge ?? 'ask') as PrAutoMergePolicy;
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
   const model = buildLandingMenuModel({
     effectiveLanding,
@@ -162,9 +156,7 @@ export async function promptForLandingSelection(
     allowLocalMergeToTrunk: build?.allowLocalMergeToTrunk ?? false,
     offerProjectDefault: true,
     projectConfigPath,
-    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
     autoMergePolicy,
-    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
   });
 
   const title = model.warning
@@ -193,7 +185,6 @@ export async function promptForLandingSelection(
     return { ...(await applyConfigUpdate(ctx.cwd, projectConfigPath)), landingAction: "merge" };
   }
 
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   if (choice === "pr-auto-merge") {
     return { landingAction: "pr", landingAutoMerge: true };
   }
@@ -203,7 +194,6 @@ export async function promptForLandingSelection(
   if (choice === "pr" && autoMergePolicy === "always") {
     return { landingAction: "pr", landingAutoMerge: false };
   }
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
   return { landingAction: choice as LandingAction };
 }
@@ -250,7 +240,6 @@ export async function promptForBuildLandingGate(
   );
   const currentBranch = await getGitBranch(pi, ctx.cwd, signal);
 
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   const { landingAutoMergeOverride } = options;
   if (landingAutoMergeOverride === true) {
     const policy = (landing?.pr?.autoMerge ?? 'ask') as PrAutoMergePolicy;
@@ -260,12 +249,9 @@ export async function promptForBuildLandingGate(
       );
     }
   }
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
   if (!shouldPromptForTrunkLanding({ currentBranch, trunkBranch, build, configuredLandingAction, landingActionOverride })) {
-    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
     return landingAutoMergeOverride !== undefined ? { landingAutoMerge: landingAutoMergeOverride } : {};
-    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
   }
 
   if (!ctx.hasUI) {
@@ -277,9 +263,7 @@ export async function promptForBuildLandingGate(
 
   const projectConfigPath = verboseConfig.sources?.project?.path ?? null;
   const effectiveLanding = getEffectiveLandingAction(configuredLandingAction, landingActionOverride);
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   const autoMergePolicy = (landing?.pr?.autoMerge ?? 'ask') as PrAutoMergePolicy;
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
   const model = buildLandingMenuModel({
     effectiveLanding,
     currentBranch,
@@ -287,9 +271,7 @@ export async function promptForBuildLandingGate(
     allowLocalMergeToTrunk: build?.allowLocalMergeToTrunk ?? false,
     offerProjectDefault: false,
     projectConfigPath,
-    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
     autoMergePolicy,
-    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
   });
 
   const choice = await showSelectOverlay(
@@ -311,14 +293,12 @@ export async function promptForBuildLandingGate(
     return { ...(await applyConfigUpdate(ctx.cwd, projectConfigPath)), landingAction: "merge" };
   }
 
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   if (choice === "pr-auto-merge") {
     return { landingAction: "pr", landingAutoMerge: true };
   }
   if (choice === "pr" && autoMergePolicy === "always") {
     return { landingAction: "pr", landingAutoMerge: false };
   }
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
   return { landingAction: choice as LandingAction };
 }

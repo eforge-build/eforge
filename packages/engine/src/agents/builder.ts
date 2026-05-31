@@ -52,10 +52,8 @@ export interface BuilderOptions extends SdkPassthroughConfig {
     attempt: number;
     maxContinuations: number;
   };
-  // --- eforge:region plan-02-build-evaluator-enforcement ---
   /** Immutable evaluator snapshot captured by the engine before invoking the read-only evaluator. */
   evaluatorSnapshot?: EvaluationSnapshot;
-  // --- eforge:endregion plan-02-build-evaluator-enforcement ---
   /** Commit SHA captured before the implement stage — used as evaluator reset target */
   preImplementCommit?: string;
   /** Shard scope for this builder instance. When set, restricts the builder to a subset of files. */
@@ -123,7 +121,6 @@ ${scopeItems.join('\n')}
  */
 const exec = promisify(execFile);
 
-// --- eforge:region plan-01-transport-resilience ---
 async function revParseHead(cwd: string): Promise<string | undefined> {
   try {
     const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
@@ -138,7 +135,6 @@ async function hasHeadAdvanced(cwd: string, startingHead: string | undefined): P
   const currentHead = await revParseHead(cwd);
   return currentHead !== undefined && currentHead !== startingHead;
 }
-// --- eforge:endregion plan-01-transport-resilience ---
 
 export const STRICTNESS_BLOCKS: Record<string, string> = {
   strict: `\n### Strictness: Strict\n\nApply a high bar for acceptance. Only accept fixes that are unambiguously correct — fixing a clear bug, crash, or security vulnerability. When in doubt, reject. Treat "review" verdicts as rejects.\n`,
@@ -258,11 +254,9 @@ ${formatList(toolResultSnippets)}`
     continuation_context: continuationContextText,
   }, options.promptAppend);
 
-  // --- eforge:region plan-01-transport-resilience ---
   const startingHead = await revParseHead(options.cwd);
   let builderAgentId: string | undefined;
   let sawAgentResult = false;
-  // --- eforge:endregion plan-01-transport-resilience ---
   let builderStopError: string | undefined;
 
   try {
@@ -271,7 +265,6 @@ ${formatList(toolResultSnippets)}`
       'builder',
       plan.id,
     )) {
-      // --- eforge:region plan-01-transport-resilience ---
       if (event.type === 'agent:start' && event.agent === 'builder') {
         builderAgentId = event.agentId;
       }
@@ -279,7 +272,6 @@ ${formatList(toolResultSnippets)}`
         sawAgentResult = true;
         if (event.agentId) builderAgentId = event.agentId;
       }
-      // --- eforge:endregion plan-01-transport-resilience ---
       if (event.type === 'agent:stop' && event.agent === 'builder' && event.error !== undefined) {
         builderStopError = event.error;
       }
@@ -290,7 +282,6 @@ ${formatList(toolResultSnippets)}`
   } catch (err) {
     const terminalSubtype = classifyAgentTerminalSubtype(err);
     const message = err instanceof Error ? err.message : String(err);
-    // --- eforge:region plan-01-transport-resilience ---
     if (
       terminalSubtype === 'error_transient_transport' &&
       sawAgentResult &&
@@ -310,8 +301,6 @@ ${formatList(toolResultSnippets)}`
       yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: plan.id };
       return;
     }
-    // --- eforge:endregion plan-01-transport-resilience ---
-    // --- eforge:region plan-01-stage-local-retry-recovery ---
     if (
       terminalSubtype === 'error_pi_tool_infrastructure' &&
       sawAgentResult &&
@@ -331,7 +320,6 @@ ${formatList(toolResultSnippets)}`
       yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: plan.id };
       return;
     }
-    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: message, ...(terminalSubtype && { terminalSubtype }) };
     return;
   }
@@ -347,7 +335,6 @@ ${formatList(toolResultSnippets)}`
   yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: plan.id };
 }
 
-// --- eforge:region plan-02-build-evaluator-enforcement ---
 export interface BuilderEvaluationResult {
   verdicts: EvaluationVerdict[];
   source: 'structured' | 'xml' | 'none';
@@ -455,5 +442,4 @@ The previous evaluator run was interrupted before a final verdict submission was
 
   return { verdicts, source, failed: false, ...(evaluatorAgentId && { agentId: evaluatorAgentId }) };
 }
-// --- eforge:endregion plan-02-build-evaluator-enforcement ---
 

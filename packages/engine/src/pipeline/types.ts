@@ -48,15 +48,11 @@ export interface PipelineContext {
   /** Accumulates model IDs from agent:start events during this pipeline run. Used for Models-Used: commit trailer. */
   modelTracker: ModelTracker;
 
-  // --- eforge:region plan-02-extension-perspective-runtime ---
   /** Extension reviewer perspective registrations from loaded native extensions. */
   extensionReviewerPerspectives?: ReviewerPerspectiveRegistration[];
-  // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
-  // --- eforge:region plan-01-validation-provider-runtime ---
   /** Extension validation provider registrations from loaded native extensions. */
   extensionValidationProviders?: ValidationProviderRegistration[];
-  // --- eforge:endregion plan-01-validation-provider-runtime ---
 
   // Mutable state passed between stages
   plans: PlanFile[];
@@ -83,7 +79,6 @@ export interface BuildStageContext extends PipelineContext {
   buildFailed?: boolean;
   /** Commit SHA captured before the implement stage runs — used as reset target by the evaluator. */
   preImplementCommit?: string;
-  // --- eforge:region plan-01-engine-resume ---
   /**
    * Resume context injected into builder prompts during a compiled-build resume.
    * Describes what prior work exists on the feature branch so the builder can
@@ -91,7 +86,6 @@ export interface BuildStageContext extends PipelineContext {
    * When undefined, no resume context is appended to the builder prompt.
    */
   resumeContext?: string;
-  // --- eforge:endregion plan-01-engine-resume ---
 }
 
 export type CompileStage = (ctx: PipelineContext) => AsyncGenerator<EforgeEvent>;

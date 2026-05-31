@@ -5,7 +5,6 @@
 
 export type ReviewPerspective = 'code' | 'security' | 'api' | 'docs' | 'test' | 'verify';
 
-// --- eforge:region plan-01-dynamic-perspective-contracts ---
 /** The built-in review perspective names as a tuple for runtime use. */
 const BUILT_IN_PERSPECTIVES: readonly ReviewPerspective[] = [
   'code', 'security', 'api', 'docs', 'test', 'verify',
@@ -19,7 +18,6 @@ const BUILT_IN_PERSPECTIVES: readonly ReviewPerspective[] = [
 export function isBuiltInReviewPerspective(key: string): key is ReviewPerspective {
   return (BUILT_IN_PERSPECTIVES as readonly string[]).includes(key);
 }
-// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
 export interface FileCategories {
   code: string[];

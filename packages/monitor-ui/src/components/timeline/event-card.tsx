@@ -5,13 +5,11 @@ import { cn } from '@/lib/utils';
 import { usePlanPreview } from '@/components/preview';
 import { Button } from '@/components/ui/button';
 import { decisionSummary, decisionDetail } from '@/lib/decision-format';
-// --- eforge:region plan-04-monitor-ui ---
 import {
   RecoveryVerdictChip,
   type RecoveryVerdictValue,
   type RecoveryConfidenceValue,
 } from '@/components/recovery/verdict-chip';
-// --- eforge:endregion plan-04-monitor-ui ---
 
 interface EventCardProps {
   event: EforgeEvent;
@@ -26,33 +24,22 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
     return { cls: status === 'failed' ? 'failed' : 'complete', label: type };
   }
   if (type === 'validation:command:timeout') return { cls: 'failed', label: type };
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   if (type === 'extension:event-handler:failed') return { cls: 'failed', label: type };
   if (type === 'extension:event-handler:timeout') return { cls: 'failed', label: type };
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
-  // --- eforge:region plan-01-agent-context-runtime ---
   if (type === 'extension:agent-context:applied') return { cls: 'info', label: type };
   if (type === 'extension:agent-context:failed') return { cls: 'failed', label: type };
   if (type === 'extension:agent-context:timeout') return { cls: 'failed', label: type };
   if (type === 'extension:agent-context:unsupported') return { cls: 'warning', label: type };
-  // --- eforge:endregion plan-01-agent-context-runtime ---
-  // --- eforge:region plan-02-extension-perspective-runtime ---
   if (type === 'extension:reviewer-perspective:applied') return { cls: 'info', label: type };
   if (type === 'extension:reviewer-perspective:skipped') return { cls: 'info', label: type };
-  // --- eforge:endregion plan-02-extension-perspective-runtime ---
-  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
   if (type === 'extension:validation-provider:start') return { cls: 'start', label: type };
   if (type === 'extension:validation-provider:complete') return { cls: 'complete', label: type };
   if (type === 'extension:validation-provider:error') return { cls: 'failed', label: type };
   if (type === 'extension:validation-provider:timeout') return { cls: 'failed', label: type };
-  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
-  // --- eforge:region plan-04-monitor-ui ---
   if (type === 'recovery:start') return { cls: 'info', label: type };
   if (type === 'recovery:summary') return { cls: 'info', label: type };
   if (type === 'recovery:complete') return { cls: 'complete', label: type };
   if (type === 'recovery:error') return { cls: 'failed', label: type };
-  // --- eforge:endregion plan-04-monitor-ui ---
-  // --- eforge:region plan-04-rendering-and-docs ---
   if (type === 'gap_close:complete') {
     const passed = 'passed' in event ? (event as { passed?: boolean }).passed : undefined;
     return { cls: passed === false ? 'failed' : 'complete', label: type };
@@ -61,7 +48,6 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
     const passed = 'passed' in event ? (event as { passed?: boolean }).passed : undefined;
     return { cls: passed === false ? 'failed' : 'complete', label: type };
   }
-  // --- eforge:endregion plan-04-rendering-and-docs ---
   // Verdict-bearing :complete events must not use the generic success classification.
   // Check for a boolean passed field and classify as failed when passed === false.
   if (type.endsWith(':complete')) {
@@ -119,7 +105,6 @@ function eventSummary(event: EforgeEvent): string {
     case 'merge:finalize:start': return `Finalizing: ${event.featureBranch} → ${event.baseBranch}`;
     case 'merge:finalize:complete': return `Finalized: ${event.featureBranch} → ${event.baseBranch}`;
     case 'merge:finalize:skipped': return `Finalize skipped: ${event.reason}`;
-    // --- eforge:region plan-02-api-queue-and-ui ---
     case 'landing:start': return `Landing (${event.action}): ${event.featureBranch} → ${event.baseBranch}`;
     case 'landing:complete': {
       if (event.action === 'merge') {
@@ -131,7 +116,6 @@ function eventSummary(event: EforgeEvent): string {
       return `Branch ready: ${event.featureBranch}`;
     }
     case 'landing:skipped': return `Landing skipped (${event.action}): ${event.reason}`;
-    // --- eforge:endregion plan-02-api-queue-and-ui ---
     case 'expedition:architecture:complete': return `Architecture: ${event.modules?.length || 0} module(s)`;
     case 'expedition:module:start': return `Module planning: ${event.moduleId}`;
     case 'expedition:module:complete': return `Module complete: ${event.moduleId}`;
@@ -161,7 +145,6 @@ function eventSummary(event: EforgeEvent): string {
       const gaps = 'gaps' in event ? (event as { gaps?: unknown[] }).gaps : undefined;
       return `Gap close plan ready: ${gaps?.length || 0} gap(s) addressed`;
     }
-    // --- eforge:region plan-04-rendering-and-docs ---
     case 'gap_close:complete': return event.passed ? 'Gap closing complete' : 'Gap closing failed';
     case 'acceptance_validation:complete': {
       const verdicts = event.verdicts ?? [];
@@ -170,41 +153,30 @@ function eventSummary(event: EforgeEvent): string {
       const unknownCount = verdicts.filter((v) => v.verdict === 'unknown').length;
       return `Acceptance: ${passCount} pass, ${failCount} fail, ${unknownCount} unknown`;
     }
-    // --- eforge:endregion plan-04-rendering-and-docs ---
     case 'approval:needed': return `Approval needed: ${event.action}`;
     case 'approval:response': return event.approved ? 'Approved' : 'Rejected';
     case 'enqueue:start': return `Enqueuing from: ${event.source}`;
     case 'enqueue:complete': return `Enqueued: ${event.title} → ${event.filePath}`;
     case 'enqueue:failed': return `Enqueue failed: ${event.error}`;
-    // --- eforge:region plan-04-monitor-ui ---
     case 'recovery:start': return `Recovery started: ${event.prdId} (${event.setName})`;
     case 'recovery:summary': return `Recovery summary: ${event.prdId}`;
     case 'recovery:complete': return `Recovery complete: ${event.prdId}`;
     case 'recovery:error': return `Recovery failed: ${event.prdId} — ${event.error}`;
-    // --- eforge:endregion plan-04-monitor-ui ---
-    // --- eforge:region plan-01-native-event-runtime-foundation ---
     case 'extension:event-handler:failed': return `Extension hook failed: ${event.extensionName} (${event.pattern} on ${event.triggeringEventType}) — ${event.message}`;
     case 'extension:event-handler:timeout': return `Extension hook timed out: ${event.extensionName} (${event.pattern} on ${event.triggeringEventType}) after ${event.timeoutMs}ms`;
-    // --- eforge:endregion plan-01-native-event-runtime-foundation ---
-    // --- eforge:region plan-01-agent-context-runtime ---
     case 'extension:agent-context:applied': return `Extension applied: ${event.extensionName} appended ${event.promptCharCount} chars (${event.fragmentCount} fragment(s))`;
     case 'extension:agent-context:failed': return `Extension hook failed: ${event.extensionName} (${event.role}) — ${event.message}`;
     case 'extension:agent-context:timeout': return `Extension hook timed out: ${event.extensionName} (${event.role}) after ${event.timeoutMs}ms`;
     case 'extension:agent-context:unsupported': return `Extension returned unsupported fields: ${event.extensionName} — ${event.fields.join(', ')}`;
-    // --- eforge:endregion plan-01-agent-context-runtime ---
-    // --- eforge:region plan-02-extension-perspective-runtime ---
     case 'extension:reviewer-perspective:applied': return `Extension perspective applied: ${event.extensionName} "${event.perspectiveKey}"`;
     case 'extension:reviewer-perspective:skipped': {
       const source = event.extensionName ? `${event.extensionName} ` : '';
       return `Extension perspective skipped: ${source}"${event.perspectiveKey}" (${event.reason})${event.message ? ' — ' + event.message : ''}`;
     }
-    // --- eforge:endregion plan-02-extension-perspective-runtime ---
-    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
     case 'extension:validation-provider:start': return `Validation provider started: ${event.providerName} (${event.extensionName})`;
     case 'extension:validation-provider:complete': return `Validation provider ${event.status}: ${event.providerName} (${event.extensionName})`;
     case 'extension:validation-provider:error': return `Validation provider failed: ${event.providerName} (${event.extensionName}) — ${event.message}`;
     case 'extension:validation-provider:timeout': return `Validation provider timed out: ${event.providerName} (${event.extensionName}) after ${event.timeoutMs}ms`;
-    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
     case 'planning:decision': return `Planning decision: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     case 'plan:build:decision': return `Build decision [${event.planId}]: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     default: return event.type;
@@ -269,7 +241,6 @@ function eventDetail(event: EforgeEvent): string | null {
       return event.output || null;
     case 'validation:command:timeout':
       return `Command killed after ${event.timeoutMs}ms (pid ${event.pid}). The process group was terminated.`;
-    // --- eforge:region plan-04-monitor-ui ---
     case 'recovery:complete': {
       const v = event.verdict;
       const parts: string[] = [`Verdict: ${v.verdict} (${v.confidence} confidence)`, `Rationale: ${v.rationale}`];
@@ -297,7 +268,6 @@ function eventDetail(event: EforgeEvent): string | null {
       if (s.modelsUsed.length > 0) parts.push(`Models: ${s.modelsUsed.join(', ')}`);
       return parts.join('\n');
     }
-    // --- eforge:endregion plan-04-monitor-ui ---
     case 'prd_validation:complete': {
       if (event.passed) return 'All PRD requirements satisfied.';
       const gapParts: string[] = [];
@@ -315,7 +285,6 @@ function eventDetail(event: EforgeEvent): string | null {
         return `Requirement: ${g.requirement}${complexitySuffix}\n  Gap: ${g.explanation}`;
       }).join('\n\n');
     }
-    // --- eforge:region plan-03-observability-docs-examples ---
     case 'extension:reviewer-perspective:applied': {
       const parts = [
         `Extension: ${event.extensionName}`,
@@ -338,8 +307,6 @@ function eventDetail(event: EforgeEvent): string | null {
       if ('timeoutMs' in event && event.timeoutMs !== undefined) parts.push(`Timeout: ${event.timeoutMs}ms`);
       return parts.join('\n');
     }
-    // --- eforge:endregion plan-03-observability-docs-examples ---
-    // --- eforge:region plan-01-agent-context-runtime ---
     case 'extension:agent-context:applied': {
       const parts = [
         `Extension: ${event.extensionName}`,
@@ -364,8 +331,6 @@ function eventDetail(event: EforgeEvent): string | null {
       return `Extension: ${event.extensionName}\nPath: ${event.extensionPath}\nRole: ${event.role}\nTimeout: ${event.timeoutMs}ms`;
     case 'extension:agent-context:unsupported':
       return `Extension: ${event.extensionName}\nPath: ${event.extensionPath}\nRole: ${event.role}\nUnsupported fields: ${event.fields.join(', ')}`;
-    // --- eforge:endregion plan-01-agent-context-runtime ---
-    // --- eforge:region plan-01-native-event-runtime-foundation ---
     case 'extension:event-handler:failed': {
       const parts = [
         `Extension: ${event.extensionName}`,
@@ -379,8 +344,6 @@ function eventDetail(event: EforgeEvent): string | null {
     }
     case 'extension:event-handler:timeout':
       return `Extension: ${event.extensionName}\nPath: ${event.extensionPath}\nPattern: ${event.pattern}\nTriggering event: ${event.triggeringEventType}\nTimeout: ${event.timeoutMs}ms`;
-    // --- eforge:endregion plan-01-native-event-runtime-foundation ---
-    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
     case 'extension:validation-provider:error': {
       const parts = [
         `Extension: ${event.extensionName}`,
@@ -401,8 +364,6 @@ function eventDetail(event: EforgeEvent): string | null {
         `Timeout: ${event.timeoutMs}ms`,
         ...(event.command ? [`Command: ${event.command}`] : []),
       ].join('\n');
-    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
-    // --- eforge:region plan-04-rendering-and-docs ---
     case 'acceptance_validation:complete': {
       const verdicts = event.verdicts ?? [];
       const parts: string[] = [];
@@ -418,7 +379,6 @@ function eventDetail(event: EforgeEvent): string | null {
       }
       return parts.join('\n\n') || null;
     }
-    // --- eforge:endregion plan-04-rendering-and-docs ---
     case 'planning:decision':
       return decisionDetail(event.decision);
     case 'plan:build:decision':
@@ -442,7 +402,6 @@ function EventCardImpl({ event, startTime, showVerbose }: EventCardProps) {
   const isVerbose = event.type.startsWith('agent:');
   const planId = getEventPlanId(event);
 
-  // --- eforge:region plan-04-monitor-ui ---
   // Narrow the event to recovery:complete so we can render a verdict chip.
   const recoveryCompleteEvent =
     event.type === 'recovery:complete'
@@ -452,7 +411,6 @@ function EventCardImpl({ event, startTime, showVerbose }: EventCardProps) {
           verdict: { verdict: RecoveryVerdictValue; confidence: RecoveryConfidenceValue };
         })
       : null;
-  // --- eforge:endregion plan-04-monitor-ui ---
 
   // Hide verbose events when toggle is off
   if (isVerbose && !showVerbose) return null;
@@ -509,14 +467,12 @@ function EventCardImpl({ event, startTime, showVerbose }: EventCardProps) {
               view source
             </span>
           )}
-          {/* --- eforge:region plan-04-monitor-ui --- */}
           {recoveryCompleteEvent && (
             <RecoveryVerdictChip
               verdict={recoveryCompleteEvent.verdict.verdict}
               confidence={recoveryCompleteEvent.verdict.confidence}
             />
           )}
-          {/* --- eforge:endregion plan-04-monitor-ui --- */}
         </div>
         {detail && (
           <>

@@ -77,7 +77,6 @@ const NEW_VARIANT_TYPES = new Set([
   'merge:worktree:clear',
 ]);
 
-// --- eforge:region plan-01-native-event-runtime-foundation ---
 const extensionDiagnosticVariants: EforgeEvent[] = [
   {
     type: 'extension:event-handler:failed',
@@ -110,9 +109,7 @@ const extensionDiagnosticVariants: EforgeEvent[] = [
     timeoutMs: 5000,
   },
 ];
-// --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
-// --- eforge:region plan-01-policy-gate-foundation ---
 const extensionPolicyVariants: EforgeEvent[] = [
   {
     type: 'extension:policy:decision',
@@ -187,7 +184,6 @@ const extensionPolicyGateMatrixVariants: EforgeEvent[] = [
   },
 ];
 
-// --- eforge:endregion plan-01-policy-gate-foundation ---
 
 // ---------------------------------------------------------------------------
 // JSON round-trip tests
@@ -213,7 +209,6 @@ describe('new plan lifecycle + merge-worktree variants — JSON roundtrip', () =
 // ---------------------------------------------------------------------------
 
 describe('safeParseEforgeEvent — new variants', () => {
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   it('accepts extension event-handler diagnostics with required fields', () => {
     for (const event of extensionDiagnosticVariants) {
       const result = safeParseEforgeEvent(event);
@@ -226,9 +221,7 @@ describe('safeParseEforgeEvent — new variants', () => {
       expect(JSON.parse(JSON.stringify(event))).toEqual(event);
     }
   });
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
-  // --- eforge:region plan-01-policy-gate-foundation ---
   it('accepts extension policy decision, failure, and timeout events', () => {
     for (const event of extensionPolicyVariants) {
       const result = safeParseEforgeEvent(event);
@@ -248,7 +241,6 @@ describe('safeParseEforgeEvent — new variants', () => {
       expect(JSON.parse(JSON.stringify(event))).toEqual(event);
     }
   });
-  // --- eforge:endregion plan-01-policy-gate-foundation ---
 
   it('accepts plan:status:change with every valid status value', () => {
     const statuses = ['pending', 'running', 'completed', 'failed', 'blocked', 'merged'] as const;
@@ -323,7 +315,6 @@ describe('safeParseEforgeEvent — new variants', () => {
     expect(result.success).toBe(true);
   });
 
-  // --- eforge:region plan-01-engine-resume ---
   it('accepts build:resume:start with required fields', () => {
     const result = safeParseEforgeEvent({
       type: 'build:resume:start',
@@ -367,7 +358,6 @@ describe('safeParseEforgeEvent — new variants', () => {
     expect(result.success).toBe(true);
   });
 
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   it('accepts build:resume:artifacts with source, orchestration, and plan artifacts', () => {
     const result = safeParseEforgeEvent({
       type: 'build:resume:artifacts',
@@ -402,7 +392,6 @@ describe('safeParseEforgeEvent — new variants', () => {
     expect(eventRegistry['build:resume:artifacts'].scope).toBe('session');
     expect(eventRegistry['build:resume:artifacts'].persist).toBe(true);
   });
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
 
   it('accepts build:resume:complete with required fields', () => {
     const result = safeParseEforgeEvent({
@@ -424,14 +413,12 @@ describe('safeParseEforgeEvent — new variants', () => {
     });
     expect(result.success).toBe(true);
   });
-  // --- eforge:endregion plan-01-engine-resume ---
 });
 
 // ---------------------------------------------------------------------------
 // Event registry metadata
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-native-event-runtime-foundation ---
 describe('eventRegistry — extension diagnostics', () => {
   it('registers extension diagnostics as session-scoped, non-persistent events with summaries', () => {
     const failed = extensionDiagnosticVariants[0]!;
@@ -446,9 +433,7 @@ describe('eventRegistry — extension diagnostics', () => {
     );
   });
 });
-// --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
-// --- eforge:region plan-01-policy-gate-foundation ---
 describe('eventRegistry — extension policy gates', () => {
   it('registers policy events as session-scoped, non-persistent events with summaries', () => {
     for (const event of extensionPolicyVariants) {
@@ -465,9 +450,7 @@ describe('eventRegistry — extension policy gates', () => {
     );
   });
 });
-// --- eforge:endregion plan-01-policy-gate-foundation ---
 
-// --- eforge:region plan-01-supervisor-foundation ---
 describe('safeParseEforgeEvent — daemon:auto-build:transition', () => {
   it('accepts transition events with lifecycle detail', () => {
     const result = safeParseEforgeEvent({
@@ -508,9 +491,7 @@ describe('safeParseEforgeEvent — daemon:auto-build:transition', () => {
   });
 });
 
-// --- eforge:endregion plan-01-supervisor-foundation ---
 
-// --- eforge:region plan-01-supervisor-foundation ---
 describe('eventRegistry — daemon:auto-build:transition', () => {
   it('registers transition events as daemon-scoped, persisted, summarized, and projected', () => {
     expect(eventRegistry['daemon:auto-build:transition']).toMatchObject({
@@ -583,7 +564,6 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
     });
   });
 });
-// --- eforge:endregion plan-01-supervisor-foundation ---
 
 describe('eventRegistry — daemon:auto-build:disabled', () => {
   it('registers the disabled event as daemon-scoped, persisted, summarized, and projected', () => {
@@ -619,7 +599,6 @@ describe('eventRegistry — daemon:auto-build:disabled', () => {
 // Schema validation — invalid payloads rejected
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-supervisor-foundation ---
 describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
   it('accepts autoBuild lifecycle fields in daemon stream snapshots', () => {
     const snapshot = {
@@ -786,10 +765,8 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
     expect(result.success).toBe(false);
   });
 });
-// --- eforge:endregion plan-01-supervisor-foundation ---
 
 describe('safeParseEforgeEvent — rejection of invalid payloads', () => {
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   it('rejects extension:event-handler:failed missing message', () => {
     const result = safeParseEforgeEvent({
       type: 'extension:event-handler:failed',
@@ -814,9 +791,7 @@ describe('safeParseEforgeEvent — rejection of invalid payloads', () => {
     });
     expect(result.success).toBe(false);
   });
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
-  // --- eforge:region plan-01-policy-gate-foundation ---
   it('rejects extension:policy:decision with invalid decision literal', () => {
     const result = safeParseEforgeEvent({
       ...extensionPolicyVariants[0]!,
@@ -874,7 +849,6 @@ describe('safeParseEforgeEvent — rejection of invalid payloads', () => {
       baseBranch: undefined,
     }).success).toBe(false);
   });
-  // --- eforge:endregion plan-01-policy-gate-foundation ---
 
   it('rejects plan:status:change with an invalid status value', () => {
     const result = safeParseEforgeEvent({
@@ -957,7 +931,6 @@ describe('safeParseEforgeEvent — rejection of invalid payloads', () => {
 // agent:start — thinkingCoerced / thinkingOriginal fields (AC #8 precursor)
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-direct-pr-landing ---
 describe('safeParseEforgeEvent — landing workflow literals', () => {
   it('accepts landing:start with feature-pr workflow literal (direct non-trunk PR)', () => {
     const result = safeParseEforgeEvent({
@@ -1000,9 +973,7 @@ describe('safeParseEforgeEvent — landing workflow literals', () => {
     }
   });
 });
-// --- eforge:endregion plan-01-direct-pr-landing ---
 
-// --- eforge:region plan-01-core-engine-auto-merge ---
 describe('safeParseEforgeEvent — landing:auto-merge:* events', () => {
   it('accepts landing:auto-merge:start with featureBranch and prUrl', () => {
     const result = safeParseEforgeEvent({
@@ -1072,7 +1043,6 @@ describe('safeParseEforgeEvent — landing:auto-merge:* events', () => {
     expect(result.success).toBe(false);
   });
 });
-// --- eforge:endregion plan-01-core-engine-auto-merge ---
 
 describe('agent:start — runtime decision fields survive schema round-trip', () => {
   it('accepts agent:start with thinkingCoerced and thinkingOriginal', () => {
@@ -1363,7 +1333,6 @@ describe('safeParseEforgeEvent — agent:activity variant', () => {
   });
 });
 
-// --- eforge:region plan-01-agent-context-runtime ---
 
 // ---------------------------------------------------------------------------
 // extension:agent-context:* and extension:agent-tools:* variants
@@ -1768,9 +1737,7 @@ describe('eventRegistry — extension:agent-context:* diagnostics', () => {
   });
 });
 
-// --- eforge:endregion plan-01-agent-context-runtime ---
 
-// --- eforge:region plan-01-profile-router-events ---
 
 // ---------------------------------------------------------------------------
 // queue:profile:* variants (EXTEND_09)
@@ -2015,9 +1982,7 @@ describe('eventRegistry — queue:profile:* diagnostics', () => {
   });
 });
 
-// --- eforge:endregion plan-01-profile-router-events ---
 
-// --- eforge:region plan-01-extension-input-contracts ---
 
 // ---------------------------------------------------------------------------
 // extension:input-source:* and extension:prd-enricher:* variants
@@ -2221,9 +2186,7 @@ describe('eventRegistry — extension:input-source:* and extension:prd-enricher:
   });
 });
 
-// --- eforge:endregion plan-01-extension-input-contracts ---
 
-// --- eforge:region plan-01-dynamic-perspective-contracts ---
 
 // ---------------------------------------------------------------------------
 // Dynamic perspective key tests
@@ -2346,7 +2309,6 @@ describe('safeParseEforgeEvent — dynamic perspective keys', () => {
   });
 });
 
-// --- eforge:region plan-02-stack-provider-runtime ---
 describe('StackLayerWireSchema — extended landing field', () => {
   it('accepts a layer without a landing field', () => {
     const now = new Date().toISOString();
@@ -2464,7 +2426,6 @@ describe('StackLayerWireSchema — extended landing field', () => {
     expect(result).toBe(false);
   });
 });
-// --- eforge:endregion plan-02-stack-provider-runtime ---
 
 describe('safeParseEforgeEvent — dynamic perspective keys', () => {
 
@@ -2527,9 +2488,7 @@ describe('safeParseEforgeEvent — dynamic perspective keys', () => {
   });
 });
 
-// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
-// --- eforge:region plan-01-semantic-enqueue-wake ---
 
 // ---------------------------------------------------------------------------
 // enqueue:complete queue projector
@@ -2651,9 +2610,7 @@ describe('eventRegistry — enqueue:complete queue projector', () => {
   });
 });
 
-// --- eforge:endregion plan-01-semantic-enqueue-wake ---
 
-// --- eforge:region plan-01-durable-daemon-event-persistence ---
 
 // ---------------------------------------------------------------------------
 // isPersistedDaemonEventType predicate
@@ -2708,7 +2665,6 @@ describe('isPersistedDaemonEventType', () => {
   });
 });
 
-// --- eforge:region plan-02-extension-perspective-runtime ---
 describe('safeParseEforgeEvent — extension reviewer perspective events', () => {
   it('accepts extension:reviewer-perspective:applied with required fields', () => {
     const result = safeParseEforgeEvent({
@@ -2872,11 +2828,8 @@ describe('eventRegistry — extension reviewer perspective events', () => {
     expect(getEventSummary(skippedEvent)).toContain('not-applicable');
   });
 });
-// --- eforge:endregion plan-02-extension-perspective-runtime ---
 
-// --- eforge:endregion plan-01-durable-daemon-event-persistence ---
 
-// --- eforge:region plan-01-validation-evidence-contract ---
 describe('safeParseEforgeEvent — acceptance_validation:complete', () => {
   it('accepts a valid acceptance_validation:complete event with passing verdicts', () => {
     const event: EforgeEvent = {
@@ -3078,7 +3031,6 @@ describe('safeParseEforgeEvent — gap_close:complete requires passed', () => {
   });
 });
 
-// --- eforge:region plan-01-validation-evidence-contract ---
 describe('eventRegistry — validation evidence summaries', () => {
   it('summarizes gap_close:complete using the required passed verdict', () => {
     expect(getEventSummary({
@@ -3120,9 +3072,7 @@ describe('eventRegistry — validation evidence summaries', () => {
     })).toBe('Acceptance validation failed: 2 criterion/criteria not passed');
   });
 });
-// --- eforge:endregion plan-01-validation-evidence-contract ---
 
-// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 describe('recovery:summary event — optional BuildFailureSummary fields', () => {
   function makeBaseSummary() {
     return {
@@ -3266,10 +3216,7 @@ describe('recovery:summary event — optional BuildFailureSummary fields', () =>
     expect(result.success).toBe(true);
   });
 });
-// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
-// --- eforge:endregion plan-01-validation-evidence-contract ---
 
-// --- eforge:region plan-01-recovery-summary-reconstruction ---
 describe('recovery:summary event — multi-plan optional fields', () => {
   /**
    * Base summary with one failed plan — used as the foundation for optional-field tests.
@@ -3551,9 +3498,7 @@ describe('recovery:summary event — multi-plan optional fields', () => {
     expect(result.success).toBe(true);
   });
 });
-// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
-// --- eforge:region plan-01-review-fixer-continuation ---
 
 // ---------------------------------------------------------------------------
 // plan:build:review:fix:continuation and review-fixer agent:retry variants
@@ -3673,9 +3618,7 @@ describe('safeParseEforgeEvent — review-fixer agent:retry payload', () => {
   });
 });
 
-// --- eforge:endregion plan-01-review-fixer-continuation ---
 
-// --- eforge:region plan-01-recovery-summary-reconstruction ---
 
 // ---------------------------------------------------------------------------
 // recovery:summary — multi-failure and enriched plan entry fields
@@ -3831,9 +3774,7 @@ describe('safeParseEforgeEvent — recovery:summary with multi-failure fields', 
   });
 });
 
-// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
-// --- eforge:region plan-02-deterministic-recovery-verdicts ---
 
 // ---------------------------------------------------------------------------
 // recovery:complete — optional verdict source metadata fields
@@ -3955,7 +3896,6 @@ describe('recovery:complete event — optional RecoveryVerdict metadata fields',
   });
 });
 
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 describe('stack sync lifecycle event schema coverage', () => {
   const ts = '2025-06-01T12:00:00.000Z';
 
@@ -4137,6 +4077,4 @@ describe('stack sync lifecycle event schema coverage', () => {
     expect(isPersistedDaemonEventType('stack:sync:skipped')).toBe(true);
   });
 });
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
-// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---

@@ -21,20 +21,14 @@ import type { EforgeEvent } from '../events.js';
 import type { EforgeConfig } from '../config.js';
 import type { QueuedPrd } from '../prd-queue.js';
 import type { QueueOptions } from '../eforge.js';
-// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { loadArtifactRegistry, hasUsableArtifact } from '../artifacts/registry.js';
 import type { ArtifactRegistry } from '../artifacts/registry.js';
-// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-// --- eforge:region plan-01-runtime-artifact-diagnostics ---
 import { loadCompletionRegistry, upsertCompletion, lookupCompletion } from '../artifacts/completions.js';
 import type { CompletionRegistry } from '../artifacts/completions.js';
-// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
-// --- eforge:region plan-02-runtime-and-integration ---
 import type { NativeExtensionRegistry } from '../extensions/types.js';
 import type { ProfileUsageProvider } from '../profile-usage.js';
 import { executeProfileRouters } from '../extensions/profile-router-runtime.js';
 import { buildQueueDispatchPolicyGateContext, executePolicyGate } from '../extensions/policy-gate-runtime.js';
-// --- eforge:endregion plan-02-runtime-and-integration ---
 
 // ---------------------------------------------------------------------------
 // Scheduler child result type
@@ -81,9 +75,7 @@ type ConfigProfile = {
   config: unknown | null;
 };
 
-// --- eforge:region plan-02-policy-gate-engine-integration ---
 type SchedulerExtensionRegistry = Partial<Pick<NativeExtensionRegistry, 'profileRouters' | 'policyGates'>>;
-// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 // ---------------------------------------------------------------------------
 // Constructor options
@@ -112,14 +104,12 @@ export interface QueueSchedulerOptions {
   options: QueueOptions;
   /** Pre-loaded initial PRD list (already ordered and name-filtered). */
   initialPrds: QueuedPrd[];
-  // --- eforge:region plan-02-runtime-and-integration ---
   /** Optional extension registry for profile routers and policy gates. */
   extensionRegistry?: SchedulerExtensionRegistry;
   /** Optional usage provider for profile router context. */
   profileUsageProvider?: ProfileUsageProvider;
   /** Config directory used to validate router-selected profile names. */
   configDir?: string;
-  // --- eforge:endregion plan-02-runtime-and-integration ---
 }
 
 // ---------------------------------------------------------------------------
@@ -140,21 +130,15 @@ export class QueueScheduler {
   private readonly prdState = new Map<string, PrdRunState>();
   private orderedPrds: QueuedPrd[];
   private readonly semaphore: Semaphore;
-  // --- eforge:region plan-02-scheduler-emission ---
   private readonly parallelism: number;
-  // --- eforge:endregion plan-02-scheduler-emission ---
-  // --- eforge:region plan-02-runtime-and-integration ---
   /** PRD ids currently in the routing/launch async path — prevents duplicate launches. */
   private readonly launching = new Set<string>();
   private readonly extensionRegistry?: SchedulerExtensionRegistry;
   private readonly profileUsageProvider?: ProfileUsageProvider;
   private readonly configDir: string;
-  // --- eforge:endregion plan-02-runtime-and-integration ---
   private _processed = 0;
   private _skipped = 0;
-  // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
   private suspended = false;
-  // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
   constructor(opts: QueueSchedulerOptions) {
     this.bus = opts.bus;
@@ -168,14 +152,10 @@ export class QueueScheduler {
     this.options = opts.options;
     this.orderedPrds = [...opts.initialPrds];
     this.semaphore = new Semaphore(opts.parallelism);
-    // --- eforge:region plan-02-scheduler-emission ---
     this.parallelism = opts.parallelism;
-    // --- eforge:endregion plan-02-scheduler-emission ---
-    // --- eforge:region plan-02-runtime-and-integration ---
     this.extensionRegistry = opts.extensionRegistry;
     this.profileUsageProvider = opts.profileUsageProvider;
     this.configDir = opts.configDir ?? opts.cwd;
-    // --- eforge:endregion plan-02-runtime-and-integration ---
 
     // Initialise prdState from the pre-loaded initial PRD list.
     for (const prd of opts.initialPrds) {
@@ -209,7 +189,6 @@ export class QueueScheduler {
     }
   }
 
-  // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
   /** Returns true when the scheduler is suspended (no new PRDs will be launched). */
   get isSuspended(): boolean {
     return this.suspended;
@@ -250,7 +229,6 @@ export class QueueScheduler {
       } as EforgeEvent);
     });
   }
-  // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
   // ---------------------------------------------------------------------------
   // Public lifecycle
@@ -408,8 +386,6 @@ export class QueueScheduler {
     }
   }
 
-  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
   private isDependencyBlocking(dep: string, terminalIds: Set<string>, completionRegistry: CompletionRegistry): boolean {
     if (terminalIds.has(dep)) return true;
 
@@ -446,14 +422,12 @@ export class QueueScheduler {
     // separate queue instance): require a durable artifact registry entry.
     return hasUsableArtifact(artifactRegistry, dep);
   }
-  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
   private isReady(prdId: string, artifactRegistry: ArtifactRegistry, terminalIds: Set<string>, completionRegistry: CompletionRegistry): boolean {
     const state = this.prdState.get(prdId);
     if (!state || state.status !== 'pending') return false;
     return state.dependsOn.every((dep) => this.isDependencySatisfied(dep, artifactRegistry, terminalIds, completionRegistry));
   }
-  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
   private propagateBlocked(failedId: string): void {
     const queue = [failedId];
@@ -523,7 +497,6 @@ export class QueueScheduler {
     await this.reconcileQueueState(freshOrdered);
   }
 
-  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
   private async failDispatch(prd: QueuedPrd, message: string): Promise<void> {
     this.eventQueue.push({
       timestamp: new Date().toISOString(),
@@ -584,7 +557,6 @@ export class QueueScheduler {
 
     return prd;
   }
-  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
   /**
    * Iterate `orderedPrds` and spawn a child subprocess for every PRD whose
@@ -600,7 +572,6 @@ export class QueueScheduler {
    * triggering `onComplete()` which updates state and re-triggers `tick()`.
    */
   private async startReadyPrds(): Promise<void> {
-    // --- eforge:region plan-02-scheduler-emission ---
     // Per-tick dedup state: resets on every startReadyPrds() invocation.
     let runningCount = 0;
     for (const s of this.prdState.values()) {
@@ -608,42 +579,32 @@ export class QueueScheduler {
     }
     let capacityBlockedEmittedThisTick = false;
     const dependencyBlockedEmitted = new Set<string>();
-    // --- eforge:endregion plan-02-scheduler-emission ---
 
-    // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
     // When suspended, do not launch any new PRDs. onComplete() still runs to
     // finalize state — only new launches are gated here.
     if (this.suspended) return;
-    // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
-    // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
-    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
     const [artifactRegistry, completionRegistry] = await Promise.all([
       loadArtifactRegistry(this.cwd),
       loadCompletionRegistry(this.cwd),
     ]);
-    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
     const terminalIds = new Set<string>([
       ...(await loadQueue(`${this.queueDir}/failed`, this.cwd).catch((): QueuedPrd[] => [])).map((p) => p.id),
       ...(await loadQueue(`${this.queueDir}/skipped`, this.cwd).catch((): QueuedPrd[] => [])).map((p) => p.id),
     ]);
-    // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
     for (const prd of this.orderedPrds) {
       if (this.abortController.signal.aborted) break;
 
-      // --- eforge:region plan-02-scheduler-emission ---
       // Emit dependency-blocked once per (prdId, tick) for pending PRDs whose deps are unmet.
       const candidateState = this.prdState.get(prd.id);
       if (candidateState?.status === 'pending') {
-        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
         const blockingDeps = candidateState.dependsOn.filter((dep) => this.isDependencyBlocking(dep, terminalIds, completionRegistry));
         if (blockingDeps.length > 0) {
           candidateState.status = 'blocked';
           this.propagateBlocked(prd.id);
         }
         const unmetDeps = candidateState.dependsOn.filter((dep) => !this.isDependencySatisfied(dep, artifactRegistry, terminalIds, completionRegistry));
-        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
         if (unmetDeps.length > 0 && !dependencyBlockedEmitted.has(prd.id)) {
           dependencyBlockedEmitted.add(prd.id);
           this.eventQueue.push({
@@ -654,17 +615,13 @@ export class QueueScheduler {
           } as EforgeEvent);
         }
       }
-      // --- eforge:endregion plan-02-scheduler-emission ---
 
       if (!this.isReady(prd.id, artifactRegistry, terminalIds, completionRegistry)) continue;
 
-      // --- eforge:region plan-02-runtime-and-integration ---
       // Skip if already in routing/launch path (prevents duplicate launches
       // when onMutation and onComplete both fire while routing is in flight).
       if (this.launching.has(prd.id)) continue;
-      // --- eforge:endregion plan-02-runtime-and-integration ---
 
-      // --- eforge:region plan-02-scheduler-emission ---
       // Emit capacity-blocked once per tick when the concurrency limit is reached.
       if (runningCount >= this.parallelism) {
         if (!capacityBlockedEmittedThisTick) {
@@ -680,14 +637,10 @@ export class QueueScheduler {
         }
         continue;
       }
-      // --- eforge:endregion plan-02-scheduler-emission ---
 
       const state = this.prdState.get(prd.id)!;
       state.status = 'running';
-      // --- eforge:region plan-02-runtime-and-integration ---
       this.launching.add(prd.id);
-      // --- eforge:endregion plan-02-runtime-and-integration ---
-      // --- eforge:region plan-02-scheduler-emission ---
       runningCount++;
       const queueDepth = [...this.prdState.values()].filter((s) => s.status === 'pending').length;
       this.eventQueue.push({
@@ -697,7 +650,6 @@ export class QueueScheduler {
         queueDepth,
         capacityRemaining: this.parallelism - runningCount,
       } as EforgeEvent);
-      // --- eforge:endregion plan-02-scheduler-emission ---
 
       // Parent owns the sessionId: generate it here so it's available before
       // the async IIFE starts routing. session:start is emitted inside the IIFE
@@ -716,7 +668,6 @@ export class QueueScheduler {
         let routedProfileOverride: string | undefined;
 
         try {
-          // --- eforge:region plan-02-runtime-and-integration ---
           // Early abort check — bail without emitting session:start.
           if (this.abortController.signal.aborted) {
             this.launching.delete(currentPrd.id);
@@ -729,7 +680,6 @@ export class QueueScheduler {
             return;
           }
 
-          // --- eforge:region plan-02-policy-gate-engine-integration ---
           const policyGates = this.extensionRegistry?.policyGates;
           if (policyGates && policyGates.some((registration) => registration.gateKind === 'queue-dispatch')) {
             const policyResult = await executePolicyGate({
@@ -770,7 +720,6 @@ export class QueueScheduler {
               return;
             }
           }
-          // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
           // Profile routing: only runs when no explicit frontmatter.profile is set
           // and the registry has at least one router.
@@ -841,16 +790,13 @@ export class QueueScheduler {
             } as EforgeEvent);
             return;
           }
-          // --- eforge:endregion plan-02-runtime-and-integration ---
 
-          // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
           const stackValidatedPrd = await this.applyStackingDispatchValidation(currentPrd);
           if (!stackValidatedPrd) {
             this.launching.delete(currentPrd.id);
             return;
           }
           currentPrd = stackValidatedPrd;
-          // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
           // Emit session:start and session:profile now that the routed profile is known.
           // Use the persisted frontmatter.profile if set, else the in-memory override, else the config default.
@@ -898,9 +844,7 @@ export class QueueScheduler {
             status: 'failed',
           } as EforgeEvent);
         } finally {
-          // --- eforge:region plan-02-runtime-and-integration ---
           this.launching.delete(currentPrd.id);
-          // --- eforge:endregion plan-02-runtime-and-integration ---
           if (acquired) this.semaphore.release();
           this.eventQueue.removeProducer();
         }
@@ -940,7 +884,6 @@ export class QueueScheduler {
       this._processed++;
     }
 
-    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
     // Record terminal completion in the completion index before unblocking waiting
     // PRDs or propagating skips. This ensures the index is current when dependents
     // are evaluated.
@@ -970,10 +913,8 @@ export class QueueScheduler {
     } catch {
       // Non-fatal: completion index recording failure must not block scheduling.
     }
-    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
     // Filesystem state transitions (preserving plan-05 semantics).
-    // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
     if (status === 'completed') {
       try { await unblockWaiting(this.queueDir, this.cwd, prdId, { requireArtifacts: this.artifactAwareDependencies() }); } catch { /* non-fatal */ }
     } else if (status === 'failed') {
@@ -981,7 +922,6 @@ export class QueueScheduler {
     } else if (status === 'skipped') {
       try { await propagateSkip(this.queueDir, this.cwd, prdId, 'cancelled'); } catch { /* non-fatal */ }
     }
-    // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
     // Update prdState synchronously — must happen before discoverNewPrds.
     const finalState = this.prdState.get(prdId);

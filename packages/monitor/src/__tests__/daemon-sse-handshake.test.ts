@@ -398,7 +398,6 @@ describe('serveDaemonEventsSSE — subscriber lastSeenId after initial connect',
 
 // ---------------------------------------------------------------------------
 // (e) stream:hello includes stackLayers with canonical fields
-// --- eforge:region plan-03-stack-daemon-ui ---
 // ---------------------------------------------------------------------------
 
 describe('serveDaemonEventsSSE — stream:hello.stackLayers', () => {
@@ -487,9 +486,7 @@ describe('serveDaemonEventsSSE — stream:hello.stackLayers', () => {
     db.close();
   });
 });
-// --- eforge:endregion plan-03-stack-daemon-ui ---
 
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 // ---------------------------------------------------------------------------
 // (f) stream:hello includes stackSyncStatus when sync-status.json exists
 // ---------------------------------------------------------------------------
@@ -574,4 +571,3 @@ describe('serveDaemonEventsSSE — stream:hello.stackSyncStatus', () => {
     db.close();
   });
 });
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---

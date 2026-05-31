@@ -14,13 +14,11 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BuildFailureSummary } from '@eforge-build/engine/events';
-// --- eforge:region plan-02-deterministic-recovery-verdicts ---
 import {
   determineRecoveryRecommendation,
   validateAnalystVerdict,
   selectFinalVerdict,
 } from '@eforge-build/engine/recovery/recommendation';
-// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 import { synthesizeFromEvents } from '@eforge-build/engine/recovery/event-history';
 import { openDatabase } from '@eforge-build/monitor/db';
 
@@ -28,7 +26,6 @@ import { openDatabase } from '@eforge-build/monitor/db';
 // Deterministic recovery recommendation policy
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-02-deterministic-recovery-verdicts ---
 describe('determineRecoveryRecommendation — transient retry policy', () => {
   /**
    * All failed plans have terminalSubtype: error_transient_transport, zero tool use counts,
@@ -856,4 +853,3 @@ describe('selectFinalVerdict — analyst verdict invalidated', () => {
     expect(finalVerdict.verdict).not.toBe('split');
   });
 });
-// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---

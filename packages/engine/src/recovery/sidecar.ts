@@ -95,7 +95,6 @@ function buildMarkdown(
       `**⚠ Partial summary** — context was incomplete: ${verdict.recoveryError ?? 'some context was unavailable'}`,
       '',
     ] : []),
-    // --- eforge:region plan-02-deterministic-recovery-verdicts ---
     ...(verdict.recommendationSource !== undefined ? [
       `**Verdict Source:** ${verdict.recommendationSource}`,
       '',
@@ -108,7 +107,6 @@ function buildMarkdown(
       `**Deterministic Rationale:** ${escapeTableCell(verdict.recommendationRationale)}`,
       '',
     ] : []),
-    // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
     '## Rationale',
     '',
     verdict.rationale,
@@ -129,7 +127,6 @@ function buildMarkdown(
   }
   lines.push('');
 
-  // --- eforge:region plan-01-recovery-summary-reconstruction ---
   if (summary.failingPlans && summary.failingPlans.length > 0) {
     lines.push('## Failing Plans', '');
     lines.push('| Plan | Error | Terminal Subtype |');
@@ -173,7 +170,6 @@ function buildMarkdown(
       }
     }
   }
-  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
   if (summary.landedCommits.length > 0) {
     lines.push('## Landed Commits', '');
@@ -226,7 +222,6 @@ function buildMarkdown(
     lines.push('');
   }
 
-  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
   if (summary.partial === true) {
     lines.push(`**⚠ Partial analysis** — failure summary was reconstructed from incomplete event history. Some details may be missing.`);
     lines.push('');
@@ -295,7 +290,6 @@ function buildMarkdown(
     }
     lines.push('');
   }
-  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
   if (summary.diffStat) {
     lines.push('## Diff Stat', '');

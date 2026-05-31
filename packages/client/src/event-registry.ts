@@ -57,10 +57,8 @@ export interface ProjectableState {
       subscribers: number;
     };
   } | null;
-  // --- eforge:region plan-03-stack-daemon-ui ---
   /** Stack layer records keyed by prdId, or empty array when none have been recorded. */
   stackLayers: StackLayerWire[];
-  // --- eforge:endregion plan-03-stack-daemon-ui ---
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +172,6 @@ const eventRegistry = {
       `Module ${e.moduleId} emitted invalid <build-config> (${e.reason}): ${e.errors.join('; ')}`,
   },
 
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   'extension:event-handler:failed': {
     scope: 'session',
     persist: false,
@@ -188,9 +185,7 @@ const eventRegistry = {
     summary: (e) =>
       `Extension ${e.extensionName} event hook timed out after ${e.timeoutMs}ms (${e.pattern} on ${e.triggeringEventType})`,
   },
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
-  // --- eforge:region plan-01-agent-context-runtime ---
   'extension:agent-context:applied': {
     scope: 'session',
     persist: false,
@@ -225,9 +220,7 @@ const eventRegistry = {
     summary: (e) =>
       `Extension ${e.extensionName} applied tools for ${e.role}: ${e.toolCount} accepted, ${e.excludedToolCount} excluded`,
   },
-  // --- eforge:endregion plan-01-agent-context-runtime ---
 
-  // --- eforge:region plan-01-profile-router-events ---
   'queue:profile:selected': {
     scope: 'session',
     persist: false,
@@ -255,9 +248,7 @@ const eventRegistry = {
     summary: (e) =>
       `Profile router "${e.routerName}" (${e.extensionName}) returned unknown profile "${e.requestedProfile}" for ${e.prdId}: ${e.message}`,
   },
-  // --- eforge:endregion plan-01-profile-router-events ---
 
-  // --- eforge:region plan-01-policy-gate-foundation ---
   'extension:policy:decision': {
     scope: 'session',
     persist: false,
@@ -278,9 +269,7 @@ const eventRegistry = {
     summary: (e) =>
       `Policy gate ${e.method} (${e.extensionName}) timed out after ${e.timeoutMs}ms under ${e.failurePolicy}`,
   },
-  // --- eforge:endregion plan-01-policy-gate-foundation ---
 
-  // --- eforge:region plan-01-extension-input-contracts ---
   'extension:input-source:fetched': {
     scope: 'session',
     persist: false,
@@ -308,9 +297,7 @@ const eventRegistry = {
     summary: (e) =>
       `Extension ${e.extensionName} PRD enricher "${e.enricherName}" failed for "${e.sourceId}" (${e.reason}): ${e.message}`,
   },
-  // --- eforge:endregion plan-01-extension-input-contracts ---
 
-  // --- eforge:region plan-02-extension-perspective-runtime ---
   'extension:reviewer-perspective:applied': {
     scope: 'session',
     persist: false,
@@ -326,9 +313,7 @@ const eventRegistry = {
       return `${source} "${e.perspectiveKey}" skipped (${e.reason})${e.message ? `: ${e.message}` : ''}`;
     },
   },
-  // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
-  // --- eforge:region plan-01-validation-provider-runtime ---
   'extension:validation-provider:start': {
     scope: 'session',
     persist: false,
@@ -356,7 +341,6 @@ const eventRegistry = {
     summary: (e) =>
       `Extension ${e.extensionName} validation provider "${e.providerName}" timed out after ${e.timeoutMs}ms${e.command ? ` (command: ${e.command})` : ''}`,
   },
-  // --- eforge:endregion plan-01-validation-provider-runtime ---
 
   // -------------------------------------------------------------------------
   // Planning
@@ -818,7 +802,6 @@ const eventRegistry = {
         : `Failed to resolve merge conflicts for plan ${e.planId}`,
   },
 
-  // --- eforge:region plan-01-engine-config-and-landing ---
   'landing:start': {
     scope: 'session',
     persist: false,
@@ -845,9 +828,7 @@ const eventRegistry = {
     persist: false,
     summary: (e) => `Landing (${e.action}) skipped: ${e.reason}`,
   },
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
 
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   'landing:auto-merge:start': {
     scope: 'session',
     persist: false,
@@ -865,14 +846,11 @@ const eventRegistry = {
     persist: false,
     summary: (e) => `PR auto-merge skipped: ${e.reason}`,
   },
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   'stack:layer:recorded': {
     scope: 'session',
     persist: true,
     summary: (e) => `Stack layer recorded: ${e.prdId} (${e.status}) on ${e.branch}`,
-    // --- eforge:region plan-03-stack-daemon-ui ---
     project: (e, state) => {
       const existing = state.stackLayers.find((l) => l.prdId === e.prdId);
       if (existing) {
@@ -914,7 +892,6 @@ const eventRegistry = {
         ],
       };
     },
-    // --- eforge:endregion plan-03-stack-daemon-ui ---
   },
 
   'stack:provider:command': {
@@ -935,11 +912,9 @@ const eventRegistry = {
       if (e.reason) return `${base} — ${e.reason}`;
       return base;
     },
-    // --- eforge:region plan-03-stack-daemon-ui ---
     project: (e, state) => {
       const existing = state.stackLayers.find((l) => l.prdId === e.prdId);
       if (!existing) return undefined;
-      // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
       // Map landing event to layer status:
       //   complete + pr/leave   → 'landed'
       //   complete + merge      → 'merged'
@@ -963,15 +938,12 @@ const eventRegistry = {
           layerStatus = 'failed';
         }
       }
-      // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       return {
         stackLayers: state.stackLayers.map((l) =>
           l.prdId === e.prdId
             ? {
                 ...l,
-                // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
                 status: layerStatus,
-                // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
                 landing: {
                   action: e.action,
                   status: e.status,
@@ -989,9 +961,7 @@ const eventRegistry = {
         ),
       };
     },
-    // --- eforge:endregion plan-03-stack-daemon-ui ---
   },
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
   'merge:finalize:start': {
     scope: 'session',
@@ -1226,7 +1196,6 @@ const eventRegistry = {
     summary: (e) => e.passed ? 'Gap closing complete: all gaps resolved' : 'Gap closing complete: gaps remain',
   },
 
-  // --- eforge:region plan-01-validation-evidence-contract ---
   'acceptance_validation:complete': {
     scope: 'session',
     persist: false,
@@ -1237,7 +1206,6 @@ const eventRegistry = {
       return e.passed ? `Acceptance validation passed: ${e.verdicts.length} criterion/criteria verified${suffix}` : `Acceptance validation failed: ${failing} criterion/criteria not passed${suffix}`;
     },
   },
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
   // -------------------------------------------------------------------------
   // Reconciliation
@@ -1344,15 +1312,12 @@ const eventRegistry = {
   // Recovery analysis
   // -------------------------------------------------------------------------
 
-  // --- eforge:region plan-01-terminal-failure-contract ---
   'build:terminal-failure': {
     scope: 'session',
     persist: true,
     summary: (e) => `Build terminal failure (${e.failure.scope}): ${e.failure.message}`,
   },
-  // --- eforge:endregion plan-01-terminal-failure-contract ---
 
-  // --- eforge:region plan-01-engine-resume ---
   'build:resume:start': {
     scope: 'session',
     persist: true,
@@ -1367,7 +1332,6 @@ const eventRegistry = {
   'build:resume:ineligible': { scope: 'session', persist: true, summary: (e) => `Resume ineligible: ${e.reason}` },
   'build:resume:artifacts': { scope: 'session', persist: true, summary: (e) => `Recovered ${e.plans.length} compiled plan artifact(s) for PRD ${e.prdId}` },
   'build:resume:complete': { scope: 'session', persist: true, summary: (e) => `Build resume complete for PRD ${e.prdId}` },
-  // --- eforge:endregion plan-01-engine-resume ---
 
   'recovery:start': {
     scope: 'session',
@@ -1606,7 +1570,6 @@ const eventRegistry = {
     summary: (e) => `Auto-build triggered: ${e.prdsEnqueued} PRD(s) enqueued`,
   },
 
-  // --- eforge:region plan-01-supervisor-foundation ---
   'daemon:auto-build:transition': {
     scope: 'daemon',
     persist: true,
@@ -1636,7 +1599,6 @@ const eventRegistry = {
       };
     },
   },
-  // --- eforge:endregion plan-01-supervisor-foundation ---
 
   // -------------------------------------------------------------------------
   // Daemon recovery
@@ -1797,7 +1759,6 @@ const eventRegistry = {
     },
   },
 
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   // Stack sync lifecycle events are daemon-scoped and persisted so they appear
   // in the activity feed and can be correlated with other daemon events. The
   // project function returns undefined because stack sync status is loaded from
@@ -1838,7 +1799,6 @@ const eventRegistry = {
     persist: true,
     summary: (e) => `Stack sync skipped: ${e.reason}`,
   },
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 } satisfies EventRegistryShape;
 
 // ---------------------------------------------------------------------------

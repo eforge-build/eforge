@@ -22,7 +22,6 @@ export function apiValidateConfigIfRunning(opts: { cwd: string }) {
   return daemonRequestIfRunning<ConfigValidateResponse>(opts.cwd, 'GET', API_ROUTES.configValidate);
 }
 
-// --- eforge:region plan-01-unified-pi-landing-ux ---
 /**
  * Fetch the verbose config response from a live daemon (starts daemon if needed).
  *
@@ -50,4 +49,3 @@ export function apiShowConfigVerboseIfRunning(opts: { cwd: string }) {
     `${API_ROUTES.configShow}?verbose=true`,
   );
 }
-// --- eforge:endregion plan-01-unified-pi-landing-ux ---

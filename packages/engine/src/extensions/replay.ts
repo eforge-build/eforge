@@ -70,15 +70,11 @@ const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
   prdEnrichers: 0,
 };
 
-// --- eforge:region plan-03-observability-docs-examples ---
 // reviewerPerspectives is intentionally excluded: perspectives are runtime-supported
 // and execute during the review-cycle stage, not deferred event-replay hooks.
-// --- eforge:endregion plan-03-observability-docs-examples ---
-// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
 // validationProviders is retained in DEFERRED_FAMILIES for the API response so that
 // consumers can see the count; the CLI surfaces them as a "runtime-supported" section
 // and filters them from the "Deferred registrations:" display.
-// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 const DEFERRED_FAMILIES = [
   'agentRunHooks',
   'policyGates',
@@ -381,7 +377,6 @@ function computeMatches(
   return matches;
 }
 
-// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
 function collectValidationProviderDetails(
   registry: NativeExtensionRegistry,
   extensionName: string,
@@ -404,9 +399,7 @@ function collectValidationProviderDetails(
     });
   return details.length > 0 ? details : undefined;
 }
-// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 
-// --- eforge:region plan-03-observability-docs-examples ---
 function buildReviewerPerspectiveApplicabilitySummary(appliesTo: {
   fileGlobs?: string[];
   paths?: string[];
@@ -448,18 +441,13 @@ function collectReviewerPerspectiveDetails(
     }));
   return details.length > 0 ? details : undefined;
 }
-// --- eforge:endregion plan-03-observability-docs-examples ---
 
 function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boolean): ExtensionEntry[] {
   const loadedByKey = new Map(registry.extensions.map((extension) => [`${extension.name}\0${extension.path}`, extension]));
   return registry.candidates.map((candidate) => {
     const loaded = loadedByKey.get(`${candidate.name}\0${candidate.path}`);
-    // --- eforge:region plan-03-observability-docs-examples ---
     const reviewerPerspectiveDetails = collectReviewerPerspectiveDetails(registry, candidate.name, candidate.path);
-    // --- eforge:endregion plan-03-observability-docs-examples ---
-    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
     const validationProviderDetails = collectValidationProviderDetails(registry, candidate.name, candidate.path);
-    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
     return {
       name: candidate.name,
       path: candidate.path,
@@ -488,12 +476,8 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       })),
       registrations: loaded?.registrations ?? { ...EMPTY_EXTENSION_REGISTRATIONS },
       diagnostics: candidate.diagnostics.map(normalizeDiagnostic),
-      // --- eforge:region plan-03-observability-docs-examples ---
       ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
-      // --- eforge:endregion plan-03-observability-docs-examples ---
-      // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
       ...(validationProviderDetails !== undefined && { validationProviderDetails }),
-      // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
       ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
       ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
     } satisfies ExtensionEntry;

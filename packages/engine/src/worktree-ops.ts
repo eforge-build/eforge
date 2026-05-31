@@ -11,13 +11,10 @@ import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 
 import { retryOnLock, forgeCommit } from './git.js';
-// --- eforge:region plan-01-pr-metadata ---
 import type { PullRequestMetadata } from './pr-metadata.js';
-// --- eforge:endregion plan-01-pr-metadata ---
 
 const exec = promisify(execFile);
 
-// --- eforge:region plan-02-policy-gate-engine-integration ---
 export interface ExtensionDiff {
   files: Array<{
     path: string;
@@ -76,7 +73,6 @@ export async function getNameStatusDiff(
   const { stdout } = await exec('git', ['diff', '--name-status', '--find-renames', '-z', '--end-of-options', fromRef, toRef, '--'], { cwd });
   return parseGitNameStatus(stdout);
 }
-// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 /**
  * Compute the worktree base directory for a plan set.
@@ -274,11 +270,9 @@ export async function createMergeWorktree(
   const mergeWorktreePath = join(worktreeBase, '__merge__');
   await mkdir(worktreeBase, { recursive: true });
 
-  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
   if (!await refExists(repoRoot, baseBranch)) {
     throw new Error(`Cannot create merge worktree for '${featureBranch}': base ref '${baseBranch}' does not resolve. Rebuild or repair the stack artifact/base ref before retrying.`);
   }
-  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
   try {
     // Create a new feature branch from baseBranch in a worktree
@@ -452,7 +446,6 @@ export async function cleanupWorktrees(repoRoot: string, worktreeBase: string): 
   await rm(worktreeBase, { recursive: true, force: true });
 }
 
-// --- eforge:region plan-01-engine-config-and-landing ---
 
 /**
  * Ensure `gh` CLI is available in PATH.
@@ -512,7 +505,6 @@ export async function createPullRequest(
   }
 }
 
-// --- eforge:region plan-01-pr-metadata ---
 /**
  * Edit an existing pull request's title and body via `gh pr edit`.
  * Uses a temp body file (written, passed as `--body-file`, deleted in `finally`).
@@ -539,7 +531,6 @@ export async function editPullRequest(
     await rm(tempDir, { recursive: true, force: true });
   }
 }
-// --- eforge:endregion plan-01-pr-metadata ---
 
 /**
  * Retrieve the URL of an existing PR for the given branch.
@@ -588,9 +579,7 @@ export async function enablePullRequestAutoMerge(cwd: string, selector: string):
   await exec('gh', ['pr', 'merge', selector, '--auto', '--merge'], { cwd });
 }
 
-// --- eforge:endregion plan-01-engine-config-and-landing ---
 
-// --- eforge:region plan-04-committed-work-artifact-safety ---
 /**
  * Return porcelain status lines for all dirty tracked and untracked files in
  * a worktree (output of `git status --porcelain --untracked-files=all`).
@@ -601,9 +590,7 @@ export async function getWorktreeDirtyFiles(cwd: string): Promise<string[]> {
   const { stdout } = await exec('git', ['status', '--porcelain', '--untracked-files=all'], { cwd });
   return stdout.trim().split('\n').filter(Boolean);
 }
-// --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
-// --- eforge:region plan-02-git-spice-provider-and-git-primitives ---
 
 /**
  * Check whether a local branch exists in the given repository.
@@ -642,4 +629,3 @@ export async function getRefSha(cwd: string, ref: string): Promise<string> {
   return stdout.trim();
 }
 
-// --- eforge:endregion plan-02-git-spice-provider-and-git-primitives ---

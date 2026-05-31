@@ -7,16 +7,12 @@ import { useActiveSessionStreams } from '@/hooks/use-active-session-streams';
 import { selectActiveSessionIds } from '@/lib/selectors';
 import { parseConsoleRoute, toConsolePath } from '@/lib/navigation';
 import type { ConsoleRouteId } from '@/lib/navigation';
-// --- eforge:region plan-06-build-detail-base ---
 const RunDetailView = lazy(() =>
   import('@/views/run-detail').then((m) => ({ default: m.RunDetailView })),
 );
-// --- eforge:endregion plan-06-build-detail-base ---
-// --- eforge:region plan-02-console-plans-workspace ---
 const PlansView = lazy(() =>
   import('@/views/plans').then((m) => ({ default: m.PlansView })),
 );
-// --- eforge:endregion plan-02-console-plans-workspace ---
 // --- eforge:region now-dashboard ---
 import { NowDashboard } from './views/now-dashboard';
 // --- eforge:endregion now-dashboard ---
@@ -74,7 +70,6 @@ export function App() {
     }
     // --- eforge:endregion system-configuration-view ---
 
-    // --- eforge:region plan-02-console-plans-workspace ---
     if (currentRoute === 'plans') {
       return (
         <Suspense fallback={<div className="flex items-center justify-center h-full text-text-dim text-sm">Loading...</div>}>
@@ -82,9 +77,7 @@ export function App() {
         </Suspense>
       );
     }
-    // --- eforge:endregion plan-02-console-plans-workspace ---
 
-    // --- eforge:region plan-06-build-detail-base ---
     if (typeof currentRoute === 'object' && currentRoute.id === 'runDetail') {
       const { detailId } = currentRoute;
       const isLive = activeSessionIds.includes(detailId);
@@ -102,7 +95,6 @@ export function App() {
         </Suspense>
       );
     }
-    // --- eforge:endregion plan-06-build-detail-base ---
     return null;
   })();
 

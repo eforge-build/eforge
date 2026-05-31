@@ -206,7 +206,6 @@ describe('build evaluator enforcement stage', () => {
     expect(await committedFile(repo, 'src.txt')).not.toContain('rejected reviewer line 18');
   });
 
-  // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
   it('fails the build without an evaluation commit when there are candidate changes but the evaluator produces no verdicts', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src.txt', 'base\n');
@@ -410,7 +409,6 @@ describe('build evaluator enforcement stage', () => {
     expect(events.find(e => e.type === 'plan:build:failed')).toBeDefined();
     expect(ctx.buildFailed).toBe(true);
   });
-  // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
 
   it('fails the build without an evaluation commit when the evaluator mutates the captured diff without verdicts', async () => {
     const repo = await initRepo(makeTempDir());
@@ -700,7 +698,6 @@ describe('build evaluator enforcement stage', () => {
     expect(ctx.buildFailed).toBeFalsy();
   });
 
-  // --- eforge:region plan-03-reviewer-contract-hardening ---
   it('review-cycle does not terminate on no-issues when reviewer omits the terminal XML block', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src.txt', 'base\n');
@@ -815,7 +812,6 @@ describe('build evaluator enforcement stage', () => {
     expect(termination).toBeDefined();
     expect((termination!.decision as { reason: string }).reason).toBe('max-rounds');
   });
-  // --- eforge:endregion plan-03-reviewer-contract-hardening ---
 
   it('creates build-stage evaluation commits with forged attribution and model trailers', async () => {
     const repo = await initRepo(makeTempDir());

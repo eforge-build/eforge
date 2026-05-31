@@ -6,7 +6,6 @@
  * so no real GitHub credentials are needed.
  */
 
-// --- eforge:region plan-01-engine-config-and-landing ---
 
 import { describe, it, expect } from 'vitest';
 import { execFile, execFileSync } from 'node:child_process';
@@ -356,7 +355,6 @@ describe('executeLandingAction', () => {
       expect(result.landingSucceeded).toBe(false);
     });
 
-    // --- eforge:region plan-03-branch-aware-landing ---
     it('rejects merge-to-base-branch when baseBranch is trunk and allowLocalMergeToTrunk is false', async () => {
       const dir = makeTempDir();
       const repoRoot = await initRepo(dir);
@@ -534,7 +532,6 @@ describe('executeLandingAction', () => {
         .then(() => 'exists' as const, () => 'missing' as const);
       expect(featureOnMain).toBe('missing');
     });
-    // --- eforge:endregion plan-03-branch-aware-landing ---
   });
 
   describe('leave-branch', () => {
@@ -573,10 +570,8 @@ describe('executeLandingAction', () => {
       const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
       expect(landingComplete.action).toBe('leave');
 
-      // --- eforge:region plan-03-branch-aware-landing ---
       const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
       expect(landingStart.workflow).toBe('leave-branch');
-      // --- eforge:endregion plan-03-branch-aware-landing ---
 
       expect(result.landingSucceeded).toBe(true);
     });
@@ -664,9 +659,7 @@ describe('executeLandingAction', () => {
         expect(eventTypes).not.toContain('landing:skipped');
 
         const landingStart = events.find((e) => e.type === 'landing:start') as Extract<EforgeEvent, { type: 'landing:start' }>;
-        // --- eforge:region plan-03-branch-aware-landing ---
         expect(landingStart.workflow).toBe('trunk-pr');
-        // --- eforge:endregion plan-03-branch-aware-landing ---
 
         const landingComplete = events.find((e) => e.type === 'landing:complete') as Extract<EforgeEvent, { type: 'landing:complete' }>;
         expect(landingComplete.action).toBe('pr');
@@ -725,7 +718,6 @@ describe('executeLandingAction', () => {
       }
     });
 
-    // --- eforge:region plan-03-branch-aware-landing ---
     it('non-trunk issue-pr: direct PR — pushes eforge artifact branch, opens PR targeting base feature branch', async () => {
       const dir = makeTempDir();
       const repoRoot = await initRepo(dir);
@@ -830,7 +822,6 @@ describe('executeLandingAction', () => {
         process.env.PATH = origPath;
       }
     });
-    // --- eforge:endregion plan-03-branch-aware-landing ---
 
     it('detects existing PR via stubbed gh and reports URL on landing:complete', async () => {
       const dir = makeTempDir();
@@ -877,7 +868,6 @@ describe('executeLandingAction', () => {
       }
     });
 
-    // --- eforge:region plan-01-pr-metadata ---
 
     it('direct PR create uses --title and --body-file, does not use --fill', async () => {
       const dir = makeTempDir();
@@ -1040,9 +1030,7 @@ describe('executeLandingAction', () => {
       }
     });
 
-    // --- eforge:endregion plan-01-pr-metadata ---
 
-    // --- eforge:region plan-01-core-engine-auto-merge ---
 
     it('pr with policy=always emits landing:auto-merge:start and landing:auto-merge:complete when gh pr merge succeeds', async () => {
       const dir = makeTempDir();
@@ -1331,8 +1319,6 @@ process.exit(1);
       }
     });
 
-    // --- eforge:endregion plan-01-core-engine-auto-merge ---
   });
 });
 
-// --- eforge:endregion plan-01-engine-config-and-landing ---

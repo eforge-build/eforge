@@ -20,7 +20,6 @@ import type { PlanSummaryEntry, BuildFailureSummary, EforgeEvent } from '@eforge
 import { StubHarness } from './stub-harness.js';
 import { useTempDir } from './test-tmpdir.js';
 
-// --- eforge:region plan-01-engine-resume ---
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -506,7 +505,6 @@ describe('checkResumeEligibility — ineligibility and artifact recovery', () =>
 // buildResumeArtifactsProjection
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-02-resume-artifacts-projection ---
 describe('buildResumeArtifactsProjection — recovered resume artifacts', () => {
   const review = { strategy: 'auto' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
   const orchConfig = {
@@ -601,7 +599,6 @@ describe('buildResumeArtifactsProjection — recovered resume artifacts', () => 
     expect('content' in projection.source).toBe(false);
   });
 });
-// --- eforge:endregion plan-02-resume-artifacts-projection ---
 
 // ---------------------------------------------------------------------------
 // EforgeEngine.resumeBuild compile-free execution
@@ -651,4 +648,3 @@ describe('EforgeEngine.resumeBuild — compile-free execution', () => {
   });
 });
 
-// --- eforge:endregion plan-01-engine-resume ---

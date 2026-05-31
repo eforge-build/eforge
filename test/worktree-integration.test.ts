@@ -12,9 +12,7 @@ import {
   createMergeWorktree,
   mergeFeatureBranchToBase,
   cleanupWorktrees,
-  // --- eforge:region plan-02-policy-gate-engine-integration ---
   getNameStatusDiff,
-  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 } from '@eforge-build/engine/worktree-ops';
 
 const exec = promisify(execFile);
@@ -57,7 +55,6 @@ describe('worktree integration', () => {
     expect(base).toBe('/home/user/projects/my-app-plan-set-1-worktrees');
   });
 
-  // --- eforge:region plan-02-policy-gate-engine-integration ---
   it('computes git name-status diff summaries for added, modified, deleted, and renamed files', async () => {
     const baseDir = makeTempDir();
     const { repoRoot } = await setupRepo(baseDir);
@@ -85,7 +82,6 @@ describe('worktree integration', () => {
       { path: 'new-name.txt', status: 'renamed' },
     ]);
   });
-  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
   it('createWorktree creates a new worktree and returns its path', async () => {
     const baseDir = makeTempDir();
@@ -598,7 +594,6 @@ describe('worktree integration', () => {
     expect(status.trim()).toBe('');
   });
 
-  // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
   it('createMergeWorktree with a commit SHA base creates the merge worktree on the feature branch', async () => {
     // Regression: when trunk sync selects a fetched SHA as the compile base,
     // createMergeWorktree must accept a commit SHA (not just a branch name) as
@@ -634,5 +629,4 @@ describe('worktree integration', () => {
     });
     expect(worktreeShaRaw.trim()).toBe(headSha);
   });
-  // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 });

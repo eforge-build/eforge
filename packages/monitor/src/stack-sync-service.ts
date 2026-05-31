@@ -14,7 +14,6 @@
  * so the status route can serve durable state after a daemon restart.
  */
 
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 
 import { randomBytes } from 'node:crypto';
 import type { MonitorDB } from './db.js';
@@ -402,4 +401,3 @@ export function loadSyncStatusForRouteSync(cwd: string): StackSyncStatusFile {
   }
 }
 
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---

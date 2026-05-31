@@ -56,7 +56,6 @@ export class DaemonInWorktreeError extends Error {
   }
 }
 
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 
 /**
  * Error thrown when a wet stack sync is attempted from an agent worktree
@@ -127,7 +126,6 @@ export async function daemonRequestFromWorktree<T = unknown>(
   return daemonRequestIfRunning<T>(projectRoot, method, path, body);
 }
 
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
 export async function ensureDaemon(cwd: string): Promise<number> {
   const existing = readLockfile(cwd);

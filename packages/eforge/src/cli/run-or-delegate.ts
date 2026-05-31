@@ -48,9 +48,7 @@ import {
 } from './display.js';
 import { createClarificationHandler, createApprovalHandler, confirmTrunkLanding, type TrunkLandingChoice } from './interactive.js';
 import { formatCliError } from './errors.js';
-// --- eforge:region plan-04-consumer-surfaces ---
 import { resolveAndValidateLandingFlags, CLILandingFlagError } from './landing-options.js';
-// --- eforge:endregion plan-04-consumer-surfaces ---
 
 // ---------------------------------------------------------------------------
 // Types
@@ -79,18 +77,14 @@ export interface BuildRunOpts {
     profile?: string;
     /** Landing action for this build (pr|merge|leave). */
     landingAction?: 'pr' | 'merge' | 'leave';
-    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
     /** Per-run PR auto-merge intent override. Requires landingAction: 'pr'. */
     landingAutoMerge?: boolean;
-    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-    // --- eforge:region plan-01-build-dependency-core ---
     /**
      * Explicit upstream queue item id. When provided, the enqueued PRD gains
      * `depends_on: [afterQueueId]` and is placed in waiting/ until the upstream
      * completes. Overrides automatic dependency detection.
      */
     afterQueueId?: string;
-    // --- eforge:endregion plan-01-build-dependency-core ---
   };
   abortController?: AbortController;
   /** Called with the active monitor on start and undefined on teardown. */
@@ -112,10 +106,8 @@ export interface QueueRunOpts {
     pollInterval?: number;
     /** Override the project-level landing action for this queue run. */
     landingAction?: 'pr' | 'merge' | 'leave';
-    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
     /** Per-run PR auto-merge intent override. Requires effective landing action to be 'pr'. */
     landingAutoMerge?: boolean;
-    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
   };
   abortController?: AbortController;
   /** Called with the active monitor on start and undefined on teardown. */
@@ -337,12 +329,8 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
             // Pass explicit profile to daemon; daemon handles inherited agent_profile detection
             ...(options.profile && { profile: options.profile }),
             ...(options.landingAction && { landingAction: options.landingAction }),
-            // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
             ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
-            // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-            // --- eforge:region plan-01-build-dependency-core ---
             ...(options.afterQueueId !== undefined && { afterQueueId: options.afterQueueId }),
-            // --- eforge:endregion plan-01-build-dependency-core ---
           },
         });
         const result = data as EnqueueResponse;
@@ -396,7 +384,6 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
     ...(effectiveProfile && { profileOverride: effectiveProfile }),
   });
 
-  // --- eforge:region plan-04-ux-init-build-and-docs ---
   // Interactive trunk landing confirmation (in-process, non-auto runs only).
   // When `--auto` is set or the daemon handled the request (Path 1), the engine's
   // runtime rejection handles the trunk policy violation instead.
@@ -437,14 +424,11 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
       }
     }
   }
-  // --- eforge:endregion plan-04-ux-init-build-and-docs ---
 
   // Phase 1: Enqueue (with build-source preprocessing for session-plan and enricher support)
   let enqueuedName: string | undefined;
   let enqueueResult: 'completed' | 'failed' | 'skipped' = 'completed';
-  // --- eforge:region plan-01-build-dependency-core ---
   let enqueuedFilePath: string | undefined;
-  // --- eforge:endregion plan-01-build-dependency-core ---
   const enqueueSessionId = randomUUID();
 
   await withRunMonitor(options.monitor === false, async (monitor) => {
@@ -479,12 +463,8 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
         abortController,
         ...(effectiveProfile && { profile: effectiveProfile }),
         ...(options.landingAction && { landingAction: options.landingAction }),
-        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
-        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-        // --- eforge:region plan-01-build-dependency-core ---
         ...(options.afterQueueId !== undefined && { afterQueueId: options.afterQueueId }),
-        // --- eforge:endregion plan-01-build-dependency-core ---
       });
     }
 
@@ -504,9 +484,7 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
       renderEvent(event);
       if (event.type === 'enqueue:complete') {
         enqueuedName = options.name ?? event.id;
-        // --- eforge:region plan-01-build-dependency-core ---
         enqueuedFilePath = event.filePath;
-        // --- eforge:endregion plan-01-build-dependency-core ---
       }
       if (event.type === 'session:end') {
         enqueueResult = event.result.status;
@@ -519,7 +497,6 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
     return { code: 1 };
   }
 
-  // --- eforge:region plan-01-build-dependency-core ---
   // When afterQueueId is provided AND the PRD was placed in waiting/ (active
   // upstream), do not attempt to run it immediately — the queue scheduler will
   // unblock it when the upstream completes.
@@ -532,7 +509,6 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
     console.log(chalk.dim(`PRD enqueued and waiting for upstream "${options.afterQueueId}" to complete.`));
     return { code: 0 };
   }
-  // --- eforge:endregion plan-01-build-dependency-core ---
 
   // Path 2: --dry-run
   if (options.dryRun) {
@@ -589,9 +565,7 @@ async function runQueue(opts: QueueRunOpts): Promise<CliExitInfo> {
       abortController,
       ...(options.pollInterval !== undefined && { pollIntervalMs: options.pollInterval }),
       ...(options.landingAction !== undefined && { landingAction: options.landingAction }),
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     };
 
     const queueEvents = options.watch

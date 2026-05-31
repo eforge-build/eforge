@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -22,4 +21,3 @@ describe('queue recovery client contract', () => {
     expect(source.match(/API_ROUTES\.queueRecoveryApply/g)).toHaveLength(2);
   });
 });
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---

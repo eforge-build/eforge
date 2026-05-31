@@ -7,9 +7,7 @@ import { stat as fsStat, readFile as fsReadFile } from 'node:fs/promises';
 declare const EFORGE_VERSION: string;
 
 import { EforgeEngine } from '@eforge-build/engine/eforge';
-// --- eforge:region plan-02-enqueue-preprocessing-runtime ---
 import { preprocessBuildSource, normalizeBuildSource, FatalPreprocessingError } from '@eforge-build/input';
-// --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
 import { QueueExecExitCode, queueExecExitCode } from '@eforge-build/engine/prd-queue';
 import type { EforgeConfig, HookConfig } from '@eforge-build/engine/config';
 import type { EforgeEvent } from '@eforge-build/engine/events';
@@ -37,18 +35,15 @@ import {
   apiReloadExtensions,
   apiTrustExtension,
   apiUntrustExtension,
-  // --- eforge:region plan-03-extension-package-surfaces-docs ---
   apiInstallExtension,
   apiUpdateExtension,
   apiRemoveExtension,
   apiPromoteExtension,
   apiDemoteExtension,
-  // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
   type ExtensionEntry,
   type ExtensionNewRequest,
   type ExtensionTestRequest,
   type ExtensionTestResponse,
-  // --- eforge:region plan-03-extension-package-surfaces-docs ---
   type ExtensionInstallRequest,
   type ExtensionInstallResponse,
   type ExtensionUpdateRequest,
@@ -56,26 +51,17 @@ import {
   type ExtensionRemoveResponse,
   type ExtensionPromoteResponse,
   type ExtensionDemoteResponse,
-  // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
-  // --- eforge:region plan-01-stack-sync-daemon-cli ---
   apiStackSync,
   apiStackSyncIfRunning,
   type StackSyncResponse,
-  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   daemonRequestFromWorktree,
   DaemonNotDiscoverableError,
   API_ROUTES,
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 } from '@eforge-build/client';
 import { runOrDelegate } from './run-or-delegate.js';
 import { formatCliError } from './errors.js';
-// --- eforge:region plan-04-consumer-surfaces ---
 import { resolveAndValidateLandingFlags, CLILandingFlagError } from './landing-options.js';
-// --- eforge:endregion plan-04-consumer-surfaces ---
-// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 import { resolveAndValidateLandingAutoMergeFlags } from './landing-options.js';
-// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -190,7 +176,6 @@ async function consumeEvents(
   return result;
 }
 
-// --- eforge:region plan-02-extension-tooling-surfaces ---
 function extensionRegistrationSummary(entry: ExtensionEntry): string {
   const parts = Object.entries(entry.registrations)
     .filter(([, count]) => count > 0)
@@ -257,7 +242,6 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
     if (entry.trustedAt) console.log(`  Trusted at:    ${entry.trustedAt}`);
     if (entry.trustedBy) console.log(`  Trusted by:    ${entry.trustedBy}`);
   }
-  // --- eforge:region plan-03-extension-package-surfaces-docs ---
   if (entry.package) {
     const pkg = entry.package;
     if (pkg.packageName) console.log(`  Package:       ${pkg.packageName}${pkg.version ? `@${pkg.version}` : ''}`);
@@ -269,8 +253,6 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
     console.log(`  Installed from: ${inst.sourceKind}:${inst.sourceSpec}`);
     if (inst.installedAt) console.log(`  Installed at:  ${inst.installedAt}`);
   }
-  // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
-  // --- eforge:region plan-03-observability-docs-examples ---
   if (entry.reviewerPerspectiveDetails && entry.reviewerPerspectiveDetails.length > 0) {
     console.log('  Reviewer perspectives:');
     for (const perspective of entry.reviewerPerspectiveDetails) {
@@ -289,8 +271,6 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
       }
     }
   }
-  // --- eforge:endregion plan-03-observability-docs-examples ---
-  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
   if (entry.validationProviderDetails && entry.validationProviderDetails.length > 0) {
     console.log('  Validation providers:');
     for (const provider of entry.validationProviderDetails) {
@@ -301,7 +281,6 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
       console.log(chalk.dim(`      Kind: ${kindLabel}`));
     }
   }
-  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
   if (entry.shadows.length > 0) {
     console.log('  Shadows:');
     for (const shadow of entry.shadows) {
@@ -317,7 +296,6 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
   }
 }
 
-// --- eforge:region plan-03-extension-package-surfaces-docs ---
 function renderInstallNextSteps(entry: ExtensionEntry): void {
   if (entry.trustState === 'untrusted' || entry.trustState === 'changed') {
     console.log(chalk.dim(`Next: eforge extension trust ${entry.name}`));
@@ -325,7 +303,6 @@ function renderInstallNextSteps(entry: ExtensionEntry): void {
   console.log(chalk.dim(`Next: eforge extension validate ${entry.name}`));
   console.log(chalk.dim('Next: eforge extension reload'));
 }
-// --- eforge:endregion plan-03-extension-package-surfaces-docs ---
 
 function formatExtensionTestSource(source: ExtensionTestResponse['source']): string {
   const parts: string[] = [source.kind];
@@ -360,12 +337,9 @@ function renderExtensionTestResult(data: ExtensionTestResponse): void {
     }
   }
 
-  // --- eforge:region plan-03-observability-docs-examples ---
-  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
   // Filter out validationProviders from the deferred display — they are runtime-supported
   // and shown in their own section below. The API response still carries the count.
   const RUNTIME_SUPPORTED_FAMILIES = new Set(['validationProviders']);
-  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
   const deferredEntries = data.deferredRegistrations.filter((entry) => entry.count > 0 && !RUNTIME_SUPPORTED_FAMILIES.has(entry.family));
   if (deferredEntries.length > 0) {
     console.log('  Deferred registrations:');
@@ -383,8 +357,6 @@ function renderExtensionTestResult(data: ExtensionTestResponse): void {
       console.log(`    - ${p.key} [${p.extensionName}]: ${p.label}`);
     }
   }
-  // --- eforge:endregion plan-03-observability-docs-examples ---
-  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
   // Surface runtime-supported validation providers from the extension entries
   const allValidationProviders = data.extensions.flatMap((ext) => ext.validationProviderDetails ?? []);
   const validationProviderCount = data.extensions.reduce((sum, ext) => sum + (ext.registrations.validationProviders), 0);
@@ -398,7 +370,6 @@ function renderExtensionTestResult(data: ExtensionTestResponse): void {
       console.log(`    - ${p.name} [${p.extensionName}]: ${p.description} (${kindLabel})`);
     }
   }
-  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 
   if (data.diagnostics.length > 0) {
     console.log('  Diagnostics:');
@@ -422,9 +393,7 @@ function renderExtensionTestResult(data: ExtensionTestResponse): void {
 function isExtensionPathArg(value: string): boolean {
   return /[\\/]/.test(value) || /\.(?:mjs|mts|js|ts)$/.test(value);
 }
-// --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
-// --- eforge:region plan-01-stack-sync-daemon-cli ---
 function renderStackSyncReport(report: StackSyncResponse, _dryRun: boolean): void {
   const outcomeColor =
     report.outcome === 'complete'
@@ -478,7 +447,6 @@ function renderStackSyncReport(report: StackSyncResponse, _dryRun: boolean): voi
     console.error(chalk.red(`  Error: ${report.error}`));
   }
 }
-// --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
 export function createProgram(abortController?: AbortController, version?: string): Command {
   const program = new Command();
@@ -496,13 +464,9 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--no-plugins', 'Disable plugin loading')
     .option('--profile <name>', 'Override active profile for this enqueue + build')
     .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
-    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
     .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
     .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
-    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-    // --- eforge:region plan-01-build-dependency-core ---
     .option('--after <queue-id>', 'Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact')
-    // --- eforge:endregion plan-01-build-dependency-core ---
     .action(
       async (
         source: string,
@@ -512,12 +476,8 @@ export function createProgram(abortController?: AbortController, version?: strin
           plugins?: boolean;
           profile?: string;
           landingAction?: string;
-          // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
           landingAutoMerge?: boolean;
-          // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-          // --- eforge:region plan-01-build-dependency-core ---
           after?: string;
-          // --- eforge:endregion plan-01-build-dependency-core ---
         },
       ) => {
         let resolvedLandingAction: 'pr' | 'merge' | 'leave' | undefined;
@@ -530,9 +490,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
           throw err;
         }
-        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         const resolvedLandingAutoMerge = resolveAndValidateLandingAutoMergeFlags({ landingAutoMerge: options.landingAutoMerge });
-        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         initDisplay({ verbose: options.verbose });
 
         const configOverrides = buildConfigOverrides(options);
@@ -559,7 +517,6 @@ export function createProgram(abortController?: AbortController, version?: strin
         await withMonitor(true /* noServer */, async (monitor) => {
           const sessionId = randomUUID();
 
-          // --- eforge:region plan-02-enqueue-preprocessing-runtime ---
           async function* preprocessAndEnqueue(): AsyncGenerator<EforgeEvent> {
             let normalizedSource: string;
             try {
@@ -594,15 +551,10 @@ export function createProgram(abortController?: AbortController, version?: strin
               abortController,
               ...(effectiveProfile && { profile: effectiveProfile }),
               ...(resolvedLandingAction && { landingAction: resolvedLandingAction }),
-              // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
               ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
-              // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-              // --- eforge:region plan-01-build-dependency-core ---
               ...(options.after !== undefined && { afterQueueId: options.after }),
-              // --- eforge:endregion plan-01-build-dependency-core ---
             });
           }
-          // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
 
           await consumeEvents(
             wrapEvents(runSession(preprocessAndEnqueue(), sessionId), {
@@ -636,13 +588,9 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--poll-interval <ms>', 'Poll interval in milliseconds for watch mode', parseInt)
     .option('--profile <name>', 'Override active profile for this build')
     .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
-    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
     .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
     .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
-    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-    // --- eforge:region plan-01-build-dependency-core ---
     .option('--after <queue-id>', 'Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact')
-    // --- eforge:endregion plan-01-build-dependency-core ---
     .action(
       async (
         source: string | undefined,
@@ -661,12 +609,8 @@ export function createProgram(abortController?: AbortController, version?: strin
           pollInterval?: number;
           profile?: string;
           landingAction?: string;
-          // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
           landingAutoMerge?: boolean;
-          // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-          // --- eforge:region plan-01-build-dependency-core ---
           after?: string;
-          // --- eforge:endregion plan-01-build-dependency-core ---
         },
       ) => {
         let resolvedLandingActionBuild: 'pr' | 'merge' | 'leave' | undefined;
@@ -679,9 +623,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
           throw err;
         }
-        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         const resolvedLandingAutoMergeBuild = resolveAndValidateLandingAutoMergeFlags({ landingAutoMerge: options.landingAutoMerge });
-        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         if (resolvedLandingActionBuild !== undefined) {
           options.landingAction = resolvedLandingActionBuild;
         }
@@ -708,9 +650,7 @@ export function createProgram(abortController?: AbortController, version?: strin
               abortController,
               ...(options.pollInterval !== undefined && { pollIntervalMs: options.pollInterval }),
               ...(options.landingAction && { landingAction: options.landingAction as 'pr' | 'merge' | 'leave' }),
-              // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
               ...(resolvedLandingAutoMergeBuild !== undefined && { landingAutoMerge: resolvedLandingAutoMergeBuild }),
-              // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
             };
 
             const queueEvents = options.watch
@@ -757,12 +697,8 @@ export function createProgram(abortController?: AbortController, version?: strin
               maxConcurrentBuilds: options.maxConcurrentBuilds,
               profile: options.profile,
               landingAction: resolvedLandingActionBuild,
-              // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
               landingAutoMerge: resolvedLandingAutoMergeBuild,
-              // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-              // --- eforge:region plan-01-build-dependency-core ---
               afterQueueId: options.after,
-              // --- eforge:endregion plan-01-build-dependency-core ---
             },
             abortController,
             onMonitor: (m) => { activeMonitor = m; },
@@ -840,14 +776,12 @@ export function createProgram(abortController?: AbortController, version?: strin
       const queueDir = config.prdQueue.dir;
 
       // Load PRDs from main queue dir and subdirectories
-      // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
       const [allPending, failed, skipped, waiting] = await Promise.all([
         loadQueue(queueDir, cwd),
         loadQueue(`${queueDir}/failed`, cwd),
         loadQueue(`${queueDir}/skipped`, cwd),
         loadQueue(`${queueDir}/waiting`, cwd).catch(() => [] as Awaited<ReturnType<typeof loadQueue>>),
       ]);
-      // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
       // Split pending into running vs pending by checking lock files
       const pending: typeof allPending = [];
@@ -860,9 +794,7 @@ export function createProgram(abortController?: AbortController, version?: strin
         }
       }
 
-      // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
       renderQueueList({ pending, running, failed, skipped, waiting });
-      // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
     });
 
   queue
@@ -877,10 +809,8 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--watch', 'Watch mode: continuously poll the queue for new PRDs')
     .option('--poll-interval <ms>', 'Poll interval in milliseconds for watch mode', parseInt)
     .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
-    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
     .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
     .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
-    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
     .action(
       async (
         name: string | undefined,
@@ -894,9 +824,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           watch?: boolean;
           pollInterval?: number;
           landingAction?: string;
-          // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
           landingAutoMerge?: boolean;
-          // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         },
       ) => {
         let resolvedLandingActionQueue: 'pr' | 'merge' | 'leave' | undefined;
@@ -909,7 +837,6 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
           throw err;
         }
-        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         let resolvedLandingAutoMergeQueue: boolean | undefined;
         try {
           resolvedLandingAutoMergeQueue = resolveAndValidateLandingAutoMergeFlags({ landingAutoMerge: options.landingAutoMerge });
@@ -920,7 +847,6 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
           throw err;
         }
-        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         if (resolvedLandingActionQueue !== undefined) {
           options.landingAction = resolvedLandingActionQueue;
         }
@@ -945,9 +871,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--session-id <uuid>', 'Session ID injected by parent scheduler (skips child session:start emission)')
     .option('--profile <name>', 'Override active profile for this build')
     .option('--landing-action <action>', 'Landing action for this build (pr|merge|leave)')
-    // --- eforge:region plan-01-core-engine-auto-merge ---
     .option('--landing-auto-merge <bool>', 'Enable PR auto-merge for this build (true|false)')
-    // --- eforge:endregion plan-01-core-engine-auto-merge ---
     .action(
       async (
         prdId: string,
@@ -959,9 +883,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           sessionId?: string;
           profile?: string;
           landingAction?: string;
-          // --- eforge:region plan-01-core-engine-auto-merge ---
           landingAutoMerge?: string;
-          // --- eforge:endregion plan-01-core-engine-auto-merge ---
         },
       ) => {
         let resolvedLandingActionExec: 'pr' | 'merge' | 'leave' | undefined;
@@ -977,7 +899,6 @@ export function createProgram(abortController?: AbortController, version?: strin
         if (resolvedLandingActionExec !== undefined) {
           options.landingAction = resolvedLandingActionExec;
         }
-        // --- eforge:region plan-01-core-engine-auto-merge ---
         let resolvedLandingAutoMerge: boolean | undefined;
         if (options.landingAutoMerge !== undefined) {
           if (options.landingAutoMerge === 'true') resolvedLandingAutoMerge = true;
@@ -987,7 +908,6 @@ export function createProgram(abortController?: AbortController, version?: strin
             process.exit(QueueExecExitCode.Failed);
           }
         }
-        // --- eforge:endregion plan-01-core-engine-auto-merge ---
         process.title = `eforge-build:${prdId}`;
         initDisplay({ verbose: options.verbose });
 
@@ -1017,9 +937,7 @@ export function createProgram(abortController?: AbortController, version?: strin
             verbose: options.verbose,
             abortController,
             ...(options.landingAction && { landingAction: options.landingAction as 'pr' | 'merge' | 'leave' }),
-            // --- eforge:region plan-01-core-engine-auto-merge ---
             ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
-            // --- eforge:endregion plan-01-core-engine-auto-merge ---
           }, options.sessionId);
 
           const wrapped = wrapEvents(buildEvents, {
@@ -1054,7 +972,6 @@ export function createProgram(abortController?: AbortController, version?: strin
       },
     );
 
-  // --- eforge:region plan-02-extension-tooling-surfaces ---
   const extension = program
     .command('extension')
     .description('Manage native eforge extensions');
@@ -1223,7 +1140,6 @@ export function createProgram(abortController?: AbortController, version?: strin
       }
     });
 
-  // --- eforge:region plan-02-management-surfaces ---
   extension
     .command('trust <nameOrPath>')
     .description('Trust a project-team native extension by name or path')
@@ -1275,9 +1191,7 @@ export function createProgram(abortController?: AbortController, version?: strin
         process.exit(exitCode);
       }
     });
-  // --- eforge:endregion plan-02-management-surfaces ---
 
-  // --- eforge:region plan-03-extension-package-surfaces-docs ---
   extension
     .command('install <source>')
     .description('Install a native extension package from an npm package, local path, or tarball')
@@ -1424,8 +1338,6 @@ export function createProgram(abortController?: AbortController, version?: strin
         process.exit(exitCode);
       }
     });
-  // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
-  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
   // Config commands
   const config = program
@@ -1734,7 +1646,6 @@ export function createProgram(abortController?: AbortController, version?: strin
       }
     });
 
-  // --- eforge:region plan-02-cli-and-engine-api ---
   program
     .command('recover <setName> <prdId>')
     .description('Analyse a failed build and write recovery sidecar files')
@@ -1786,9 +1697,7 @@ export function createProgram(abortController?: AbortController, version?: strin
         }
       },
     );
-  // --- eforge:endregion plan-02-cli-and-engine-api ---
 
-  // --- eforge:region plan-01-backend-apply-recovery ---
   program
     .command('apply-recovery <prdId>')
     .description('Apply the recovery verdict for a failed build plan (requeue, enqueue successor, or abandon)')
@@ -1833,9 +1742,7 @@ export function createProgram(abortController?: AbortController, version?: strin
         }
       },
     );
-  // --- eforge:endregion plan-01-backend-apply-recovery ---
 
-  // --- eforge:region plan-02-api-cli ---
   program
     .command('resume <prdId>')
     .description('Resume a compiled build that previously failed')
@@ -1891,11 +1798,8 @@ export function createProgram(abortController?: AbortController, version?: strin
         }
       },
     );
-  // --- eforge:endregion plan-02-api-cli ---
 
-  // --- eforge:region plan-03-cli-playbook-commands ---
   registerPlaybookCommand(program);
-  // --- eforge:endregion plan-03-cli-playbook-commands ---
 
   // MCP proxy command — runs the stdio MCP server that bridges to the daemon
   program
@@ -1907,7 +1811,6 @@ export function createProgram(abortController?: AbortController, version?: strin
       await runMcpProxy(process.cwd());
     });
 
-  // --- eforge:region plan-01-stack-sync-daemon-cli ---
   {
     const stackCmd = program.command('stack').description('Stack management commands');
 
@@ -1922,7 +1825,6 @@ export function createProgram(abortController?: AbortController, version?: strin
         const inWorktree = isAgentWorktreeCwd(cwd);
 
         try {
-          // --- eforge:region plan-01-core-daemon-stack-sync ---
           // Wet sync always requires the daemon — never run local mutation
           // from agent worktrees, and auto-start the daemon for normal roots.
           if (!dryRun) {
@@ -1954,7 +1856,6 @@ export function createProgram(abortController?: AbortController, version?: strin
               return;
             }
           }
-          // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
           // Dry-run path: prefer live daemon, fall back to local (without
           // active-build knowledge when daemon is not running).
@@ -2008,7 +1909,6 @@ export function createProgram(abortController?: AbortController, version?: strin
         }
       });
   }
-  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
   return program;
 }

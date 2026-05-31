@@ -4,7 +4,6 @@
  * Uses a fake `gh` script to avoid real GitHub CLI calls.
  */
 
-// --- eforge:region plan-01-core-engine-auto-merge ---
 
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -164,4 +163,3 @@ process.exit(0);
   });
 });
 
-// --- eforge:endregion plan-01-core-engine-auto-merge ---

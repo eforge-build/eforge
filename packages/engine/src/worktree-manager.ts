@@ -15,30 +15,18 @@ import {
   mergeFeatureBranchToBase,
   recoverDriftedWorktree,
   cleanupWorktrees,
-  // --- eforge:region plan-02-policy-gate-engine-integration ---
   getNameStatusDiff,
   type ExtensionDiff,
-  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
-  // --- eforge:region plan-04-committed-work-artifact-safety ---
   getWorktreeDirtyFiles,
-  // --- eforge:endregion plan-04-committed-work-artifact-safety ---
   type MergeResolver,
-  // --- eforge:region plan-01-engine-config-and-landing ---
   pushFeatureBranch as pushFeatureBranchOp,
   createPullRequest as createPullRequestOp,
   getExistingPullRequestUrl,
   ensureGhAvailable,
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   enablePullRequestAutoMerge,
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
-  // --- eforge:region plan-01-pr-metadata ---
   editPullRequest as editPullRequestOp,
-  // --- eforge:endregion plan-01-pr-metadata ---
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
 } from './worktree-ops.js';
-// --- eforge:region plan-01-pr-metadata ---
 import type { PullRequestMetadata } from './pr-metadata.js';
-// --- eforge:endregion plan-01-pr-metadata ---
 import type { ModelTracker } from './model-tracker.js';
 import { composeCommitMessage } from './model-tracker.js';
 import type { EforgeEvent, EforgeState, ReconciliationReport } from './events.js';
@@ -61,10 +49,8 @@ export interface ManagedWorktree {
   status: WorktreeStatus;
   /** True if the plan was built directly on the merge worktree (no dedicated worktree). */
   builtOnMerge: boolean;
-  // --- eforge:region plan-02-policy-gate-engine-integration ---
   /** Base commit captured before plan build mutations for policy diff summaries. */
   baseSha?: string;
-  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 }
 
 /** Result of cleanupAll() - reports what happened during cleanup. */
@@ -106,14 +92,12 @@ export class WorktreeManager {
     branch: string,
     needsPlanWorktrees: boolean,
   ): Promise<string> {
-    // --- eforge:region plan-02-policy-gate-engine-integration ---
     const { stdout: baseShaOut } = await exec(
       'git',
       ['rev-parse', needsPlanWorktrees ? this.featureBranch : 'HEAD'],
       { cwd: needsPlanWorktrees ? this.repoRoot : this.mergeWorktreePath },
     );
     const baseSha = baseShaOut.trim();
-    // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
     if (needsPlanWorktrees) {
       const worktreePath = await createWorktree(
@@ -129,9 +113,7 @@ export class WorktreeManager {
         branch,
         status: 'active',
         builtOnMerge: false,
-        // --- eforge:region plan-02-policy-gate-engine-integration ---
         baseSha,
-        // --- eforge:endregion plan-02-policy-gate-engine-integration ---
       });
       return worktreePath;
     }
@@ -144,9 +126,7 @@ export class WorktreeManager {
       branch,
       status: 'active',
       builtOnMerge: true,
-      // --- eforge:region plan-02-policy-gate-engine-integration ---
       baseSha,
-      // --- eforge:endregion plan-02-policy-gate-engine-integration ---
     });
     return this.mergeWorktreePath;
   }
@@ -174,7 +154,6 @@ export class WorktreeManager {
     return this.worktrees.get(planId)?.builtOnMerge ?? false;
   }
 
-  // --- eforge:region plan-02-policy-gate-engine-integration ---
   /**
    * Return the path/status diff a plan would contribute before merge mutation.
    */
@@ -204,7 +183,6 @@ export class WorktreeManager {
     const mergeBase = mergeBaseOut.trim();
     return getNameStatusDiff(this.repoRoot, mergeBase, this.featureBranch);
   }
-  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
   /**
    * Merge a completed plan into the feature branch.
@@ -222,7 +200,6 @@ export class WorktreeManager {
       recentlyMergedIds?: string[];
       planMap?: Map<string, { name: string }>;
       modelTracker?: ModelTracker;
-      // --- eforge:region plan-03-parser-and-committed-work-hardening ---
       /** When true, a builtOnMerge plan with no committed changes since baseSha is allowed to proceed. */
       allowNoCommittedChanges?: boolean;
       /** Human-readable reason for the allowNoCommittedChanges waiver. */
@@ -232,7 +209,6 @@ export class WorktreeManager {
        * Callers can use this to emit a planning:progress waiver event after the merge resolves.
        */
       onNoCommittedChangesWaiver?: () => void;
-      // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
     } = {},
   ): Promise<string> {
     const managed = this.worktrees.get(planId);
@@ -244,7 +220,6 @@ export class WorktreeManager {
       // Recover from any branch drift first, then capture HEAD SHA.
       await recoverDriftedWorktree(this.mergeWorktreePath, this.featureBranch, commitMessage);
 
-      // --- eforge:region plan-04-committed-work-artifact-safety ---
       // Reject dirty tracked or untracked changes — all implementation work must be
       // committed so that validation and artifact recording operate on committed state.
       const dirtyFiles = await getWorktreeDirtyFiles(this.mergeWorktreePath);
@@ -257,12 +232,10 @@ export class WorktreeManager {
           `Dirty files:\n${preview}${suffix}`,
         );
       }
-      // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
       const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: this.mergeWorktreePath });
       const currentSha = shaOut.trim();
 
-      // --- eforge:region plan-03-parser-and-committed-work-hardening ---
       // Enforce committed diff: builtOnMerge plans must have at least one committed file
       // change since baseSha so that validation and artifact recording operate on non-trivial
       // state. Dirty-work is already rejected above; this gate catches clean no-op builds,
@@ -284,7 +257,6 @@ export class WorktreeManager {
           opts.onNoCommittedChangesWaiver?.();
         }
       }
-      // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
 
       if (managed) managed.status = 'merged';
       return currentSha;
@@ -340,7 +312,6 @@ export class WorktreeManager {
     );
   }
 
-  // --- eforge:region plan-01-engine-config-and-landing ---
   /**
    * Push the feature branch to the remote with tracking set.
    */
@@ -361,30 +332,25 @@ export class WorktreeManager {
    */
   async issuePr(opts: {
     baseBranch: string;
-    // --- eforge:region plan-01-pr-metadata ---
     metadata?: PullRequestMetadata;
-    // --- eforge:endregion plan-01-pr-metadata ---
   }): Promise<{ url: string }> {
     await ensureGhAvailable(this.mergeWorktreePath);
 
     // Direct PR workflow: push featureBranch, open PR featureBranch -> baseBranch
     await pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch);
     try {
-      // --- eforge:region plan-01-pr-metadata ---
       const metadata = opts.metadata ?? { title: this.featureBranch, body: '' };
       return await createPullRequestOp(this.mergeWorktreePath, {
         baseBranch: opts.baseBranch,
         featureBranch: this.featureBranch,
         metadata,
       });
-      // --- eforge:endregion plan-01-pr-metadata ---
     } catch (err) {
       // PR may already exist — retrieve its URL
       const existing = await getExistingPullRequestUrl(this.mergeWorktreePath, this.featureBranch, {
         baseBranch: opts.baseBranch,
       });
       if (existing) {
-        // --- eforge:region plan-01-pr-metadata ---
         // Best-effort metadata repair on the existing PR.
         if (opts.metadata) {
           try {
@@ -393,7 +359,6 @@ export class WorktreeManager {
             // Non-fatal: preserve existing URL even when metadata edit fails.
           }
         }
-        // --- eforge:endregion plan-01-pr-metadata ---
         return { url: existing };
       }
       throw err;
@@ -408,7 +373,6 @@ export class WorktreeManager {
     // No-op: branch remains for manual inspection or follow-up
   }
 
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   /**
    * Enable GitHub PR auto-merge via `gh pr merge --auto --merge`.
    *
@@ -420,8 +384,6 @@ export class WorktreeManager {
   async enablePrAutoMerge(prUrlOrBranch: string): Promise<void> {
     return enablePullRequestAutoMerge(this.mergeWorktreePath, prUrlOrBranch);
   }
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
 
   /**
    * Reconcile persisted state with the actual filesystem and git state.

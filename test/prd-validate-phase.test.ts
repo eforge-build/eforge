@@ -72,7 +72,6 @@ function makeCtx(stateDir: string, prdValidator: PhaseContext['prdValidator']): 
   };
 }
 
-// --- eforge:region plan-02-final-validation-gates ---
 describe('prdValidate phase — acceptance gate', () => {
   const makeTempDir = useTempDir();
 
@@ -249,9 +248,7 @@ describe('prdValidate phase — gap close strict handling', () => {
     expect(ctx.state.status).not.toBe('failed');
   });
 });
-// --- eforge:endregion plan-02-final-validation-gates ---
 
-// --- eforge:region plan-02-engine-acceptance-gates ---
 describe('prdValidate phase — expectedAcceptanceCriteria synthesis', () => {
   const makeTempDir = useTempDir();
 
@@ -648,7 +645,6 @@ describe('prdValidate phase — expectedAcceptanceCriteria synthesis', () => {
     expect(typedAcceptance.verdicts.every((v) => v.verdict === 'pass')).toBe(true);
   });
 });
-// --- eforge:endregion plan-02-engine-acceptance-gates ---
 
 describe('prdValidate phase error propagation', () => {
   const makeTempDir = useTempDir();
@@ -704,7 +700,6 @@ describe('prdValidate phase error propagation', () => {
   });
 });
 
-// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 describe('prdValidate phase — validationCommandEvidence plumbing', () => {
   const makeTempDir = useTempDir();
 
@@ -830,4 +825,3 @@ describe('prdValidate phase — validationCommandEvidence plumbing', () => {
     expect((acceptance as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>).passed).toBe(false);
   });
 });
-// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---

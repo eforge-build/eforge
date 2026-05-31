@@ -195,7 +195,6 @@ describe('daemon:run:upsert live projection parity', () => {
   });
 });
 
-// --- eforge:region plan-01-semantic-enqueue-wake ---
 
 // ---------------------------------------------------------------------------
 // enqueue:complete parity
@@ -270,7 +269,6 @@ describe('enqueue:complete live projection parity', () => {
   });
 });
 
-// --- eforge:endregion plan-01-semantic-enqueue-wake ---
 
 // ---------------------------------------------------------------------------
 // Queue lifecycle parity

@@ -100,7 +100,6 @@ const variants: EforgeEvent[] = [
     trigger: 'file',
     prdsEnqueued: 2,
   },
-  // --- eforge:region plan-01-supervisor-foundation ---
   {
     type: 'daemon:auto-build:transition',
     timestamp: '2025-01-01T00:02:03.000Z',
@@ -110,7 +109,6 @@ const variants: EforgeEvent[] = [
     reason: 'watcher started',
     source: 'watcher',
   },
-  // --- eforge:endregion plan-01-supervisor-foundation ---
 
   // Daemon recovery
   {
@@ -184,9 +182,7 @@ const EXPECTED_LITERALS = new Set([
   'daemon:auto-build:disabled',
   'daemon:auto-build:resumed',
   'daemon:auto-build:triggered',
-  // --- eforge:region plan-01-supervisor-foundation ---
   'daemon:auto-build:transition',
-  // --- eforge:endregion plan-01-supervisor-foundation ---
   'daemon:recovery:start',
   'daemon:recovery:run-marked-failed',
   'daemon:recovery:lock-removed',

@@ -36,7 +36,7 @@ Use `pnpm complexity:scan` to identify the highest-complexity hotspots.
 
 ## Region Markers for Large Files
 
-Any implementation file that legitimately exceeds 300 lines (with a baseline exception or during planned incremental refactoring) must use eforge region markers to logically partition its sections:
+Any implementation file that legitimately exceeds 300 lines (with a baseline exception or during planned incremental refactoring) must use durable semantic eforge region markers to logically partition its sections:
 
 ```ts
 // --- eforge:region <slug> ---
@@ -44,11 +44,15 @@ Any implementation file that legitimately exceeds 300 lines (with a baseline exc
 // --- eforge:endregion <slug> ---
 ```
 
+Durable marker slugs describe long-lived source organization, such as `api-routes`, `queue-projection`, or `validation-helpers`. They are source comments and remain in the repository.
+
+Temporary build-coordination markers use plan-ID slugs matching `plan-\d{2}-...`. They are emitted only to coordinate edits in shared files during a build. Supported whole-line forms use a plan-id slug in normal JS/TS line comments or JSX block comments. Cleanup strips both temporary whole-line marker comment forms from tracked JavaScript/TypeScript-family files after successful landing when the slug matches `plan-\d{2}-...`, and never removes the code between those marker lines.
+
 Rules:
-- Every `// --- eforge:region <slug> ---` must have a matching `// --- eforge:endregion <slug> ---` with the same slug, and markers must not be crossed (i.e., regions must be properly nested or sequential, not interleaved).
+- Every `// --- eforge:region <slug> ---` must have a matching `// --- eforge:endregion <slug> ---` with the same slug, and markers must not be crossed (i.e., regions must be nested or sequential, not interleaved).
 - Multiple sequential (non-nested) blocks with the same slug are permitted when a plan contributes several separate sections across a large file; each block must be individually closed before the next one opens.
-- Agents must only edit code within their declared region when working in a shared file (a file touched by multiple parallel plans).
-- `pnpm maintainability:check` validates marker balance in TypeScript/JavaScript files under `packages/`, `test/`, `scripts/`, `web/`, and `eforge-plugin/`.
+- Agents must only edit code within their declared temporary region when working in a shared file (a file touched by multiple parallel plans).
+- `pnpm maintainability:check` validates marker balance in TypeScript/JavaScript files under `packages/`, `test/`, `scripts/`, `web/`, and `eforge-plugin/`. It does not require temporary plan-ID markers to remain after cleanup.
 
 ## Route Contract and Daemon Wire Shape Ownership
 

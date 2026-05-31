@@ -348,7 +348,6 @@ describe('handleBuildCommand - profile override preservation', () => {
   });
 });
 
-// --- eforge:region plan-03-consumer-surfaces-docs ---
 
 // ---------------------------------------------------------------------------
 // Tests: active-build wait selection (--after <queue-id>)
@@ -458,9 +457,7 @@ describe('handleBuildCommand - active-build wait selection', () => {
   });
 });
 
-// --- eforge:endregion plan-03-consumer-surfaces-docs ---
 
-// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 
 // ---------------------------------------------------------------------------
 // Tests: PR auto-merge selection forwarding
@@ -535,4 +532,3 @@ describe('handleBuildCommand - PR auto-merge selection', () => {
   });
 });
 
-// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

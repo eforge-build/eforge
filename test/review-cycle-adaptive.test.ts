@@ -102,7 +102,6 @@ function makeContext(repo: string, harness: StubHarness, preImplementCommit: str
   };
 }
 
-// --- eforge:region plan-01-dynamic-perspective-contracts ---
 function makeDynamicKeyContext(repo: string, harness: StubHarness, preImplementCommit: string): BuildStageContext {
   const planId = 'plan-01-dynamic-perspective-test';
   const review: ReviewProfileConfig = {
@@ -158,7 +157,6 @@ function makeDynamicKeyContext(repo: string, harness: StubHarness, preImplementC
     preImplementCommit,
   };
 }
-// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
 describe('adaptive review-cycle perspective selection', () => {
   const makeTempDir = useTempDir('eforge-review-cycle-adaptive-');
@@ -248,7 +246,6 @@ describe('adaptive review-cycle perspective selection', () => {
     expect(termDecision.rationale).toContain('no review perspectives remain relevant after evaluation');
   });
 
-  // --- eforge:region plan-01-adaptive-review-policy ---
   it('terminates early after round 1 when verify passed and all fixes accepted', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
@@ -468,9 +465,7 @@ describe('adaptive review-cycle perspective selection', () => {
     expect(round2Respawned?.dropped).toContain('docs');
     expect(round2Respawned?.dropped).toContain('api');
   });
-  // --- eforge:endregion plan-01-adaptive-review-policy ---
 
-  // --- eforge:region plan-03-reviewer-contract-hardening ---
   it('does not terminate on no-issues when reviewer output lacks terminal XML block', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
@@ -509,9 +504,7 @@ describe('adaptive review-cycle perspective selection', () => {
     // critical issue from the contract violation prevented no-issues termination.
     expect(termDecision.reason).toBe('max-rounds');
   });
-  // --- eforge:endregion plan-03-reviewer-contract-hardening ---
 
-  // --- eforge:region plan-01-dynamic-perspective-contracts ---
   it('diagnoses and skips unregistered dynamic perspective keys in review-cycle', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
@@ -550,5 +543,4 @@ describe('adaptive review-cycle perspective selection', () => {
     );
     expect(reviewStart?.perspectives).toEqual(['code']);
   });
-  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 });

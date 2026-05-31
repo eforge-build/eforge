@@ -80,7 +80,6 @@ describe('WorktreeManager', () => {
     expect(wm.isBuiltOnMerge('plan-01')).toBe(true);
   });
 
-  // --- eforge:region plan-02-policy-gate-engine-integration ---
   it('captures direct-on-merge base SHA and computes plan diff statuses', async () => {
     const baseDir = makeTempDir();
     const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
@@ -154,7 +153,6 @@ describe('WorktreeManager', () => {
     const diff = await wm.getFinalMergeDiff(baseBranch);
     expect(diff.files).toEqual([{ path: 'feature-only.txt', status: 'added' }]);
   });
-  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
   it('releaseForPlan removes dedicated worktree but not merge worktree', async () => {
     const baseDir = makeTempDir();
@@ -330,7 +328,6 @@ describe('WorktreeManager', () => {
     expect(commitMsg).not.toContain('Models-Used:');
   });
 
-  // --- eforge:region plan-04-committed-work-artifact-safety ---
   it('mergePlan throws when builtOnMerge plan has uncommitted tracked changes', async () => {
     const baseDir = makeTempDir();
     const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
@@ -366,7 +363,6 @@ describe('WorktreeManager', () => {
     )).rejects.toThrow('untracked-impl.ts');
   });
 
-  // --- eforge:region plan-03-parser-and-committed-work-hardening ---
   it('mergePlan throws when builtOnMerge plan has an empty commit (HEAD advances but no file diff)', async () => {
     const baseDir = makeTempDir();
     const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
@@ -450,7 +446,6 @@ describe('WorktreeManager', () => {
     expect(sha).toBeTruthy();
     expect(waiverCalled).toBe(true);
   });
-  // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
 
   it('mergePlan succeeds and returns HEAD SHA when builtOnMerge plan changes are committed', async () => {
     const baseDir = makeTempDir();
@@ -476,7 +471,6 @@ describe('WorktreeManager', () => {
     expect(sha).toBe(expectedSha);
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
   });
-  // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
   it('mergePlan omits Models-Used: trailer when no modelTracker provided', async () => {
     const baseDir = makeTempDir();

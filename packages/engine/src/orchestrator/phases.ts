@@ -19,44 +19,23 @@ import { cleanupPlanFiles } from '../cleanup.js';
 import { execWithTimeout } from '../exec-with-timeout.js';
 import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS } from '../config.js';
 import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
-// --- eforge:region plan-01-engine-config-and-landing ---
 import { executeLandingAction, type LandingResult } from '../landing.js';
-// --- eforge:endregion plan-01-engine-config-and-landing ---
-// --- eforge:region plan-01-pr-metadata ---
 import { renderPullRequestMetadata } from '../pr-metadata.js';
-// --- eforge:endregion plan-01-pr-metadata ---
 import { collectBuildArtifactProvenance } from '../provenance.js';
-// --- eforge:region plan-03-branch-aware-landing ---
 import type { EforgeConfig, LandingConfig } from '../config.js';
-// --- eforge:endregion plan-03-branch-aware-landing ---
-// --- eforge:region plan-02-final-validation-gates ---
 import type { ValidationConfig } from '../config.js';
-// --- eforge:endregion plan-02-final-validation-gates ---
-// --- eforge:region plan-02-engine-acceptance-gates ---
 import { synthesizeMissingVerdicts } from '../validation/acceptance-criteria.js';
 import { buildAcceptanceValidationEvents } from './acceptance-conflict-policy.js';
-// --- eforge:endregion plan-02-engine-acceptance-gates ---
-// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
 import { upsertArtifact } from '../artifacts/registry.js';
 import { getRefSha } from '../worktree-ops.js';
-// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-// --- eforge:region plan-04-committed-work-artifact-safety ---
 import { getWorktreeDirtyFiles } from '../worktree-ops.js';
-// --- eforge:endregion plan-04-committed-work-artifact-safety ---
-// --- eforge:region plan-01-runtime-artifact-diagnostics ---
 import { updateArtifactRecord } from '../artifacts/registry.js';
-// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
-// --- eforge:region plan-02-stack-provider-runtime ---
 import { executeStackLanding } from '../stacking/landing.js';
 import { updateStackLayerLanding } from '../stacking/state.js';
 import type { StackProviderAdapter } from '../stacking/provider.js';
-// --- eforge:endregion plan-02-stack-provider-runtime ---
-// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
 import { updateStackLayerStatusAndLanding } from '../stacking/state.js';
-// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
-// --- eforge:region plan-02-policy-gate-engine-integration ---
 import {
   buildFinalMergePolicyGateContext,
   buildPlanMergePolicyGateContext,
@@ -64,7 +43,6 @@ import {
   type PolicyGateFailurePolicy,
 } from '../extensions/policy-gate-runtime.js';
 import type { NativeExtensionRegistry } from '../extensions/types.js';
-// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 /**
  * Shared context passed between phase functions.
@@ -94,10 +72,8 @@ export interface PhaseContext {
   failedMerges: Set<string>;
   /** Tracks recently merged plan IDs for merge resolver context enrichment */
   recentlyMergedIds: string[];
-  // --- eforge:region plan-01-engine-config-and-landing ---
   /** Whether the landing action completed successfully (replaces featureBranchMerged). */
   landingSucceeded: boolean;
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
   /** Accumulates model IDs from agent:start events across all phases. Used for the final merge commit's Models-Used: trailer. */
   modelTracker: ModelTracker;
   /** Whether to run cleanup on the feature branch before the final merge. */
@@ -108,53 +84,37 @@ export interface PhaseContext {
   cleanupOutputDir?: string;
   /** Path to the PRD file to remove during cleanup. */
   cleanupPrdFilePath?: string;
-  // --- eforge:region plan-02-policy-gate-engine-integration ---
   /** Optional extension registry for policy gates. */
   extensionRegistry?: Pick<NativeExtensionRegistry, 'policyGates'>;
   /** Timeout in milliseconds for policy gate handlers. */
   policyGateTimeoutMs?: number;
   /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
   policyGateFailurePolicy?: PolicyGateFailurePolicy;
-  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
-  // --- eforge:region plan-03-branch-aware-landing ---
   /** EforgeConfig subset for trunk policy resolution in executeLandingAction. */
   engineConfig?: Pick<EforgeConfig, 'build'>;
-  // --- eforge:endregion plan-03-branch-aware-landing ---
-  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
   /** Queued PRD id for stack artifact recording. */
   prdId?: string;
   /** Resolved stack context for queued stacked builds. */
   stackContext?: StackBaseContext;
   /** Which post-build landing action to execute (canonical: pr | merge | leave). */
   landingAction: LandingConfig['action'];
-  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   /** Configured PR auto-merge policy (from landing.pr.autoMerge). Defaults to 'ask'. */
   prAutoMergePolicy?: 'ask' | 'always' | 'never';
   /** Per-run PR auto-merge intent (from landingAutoMerge option/frontmatter). */
   landingAutoMerge?: boolean;
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
-  // --- eforge:region plan-02-stack-provider-runtime ---
   /** Instantiated stack provider adapter for git-spice landing (stacked builds only). */
   stackProvider?: StackProviderAdapter;
-  // --- eforge:endregion plan-02-stack-provider-runtime ---
-  // --- eforge:region plan-02-final-validation-gates ---
   /** Explicit validation waivers (allowNoCommands, allowEmptyPrdDiff). Absent means no waivers active. */
   validationPolicy?: ValidationConfig;
-  // --- eforge:endregion plan-02-final-validation-gates ---
-  // --- eforge:region plan-02-engine-acceptance-gates ---
   /** Expected acceptance criteria inventory derived from PRD or plan files.
    *  When defined, prdValidate synthesizes unknown verdicts for any expected criterion not
    *  covered by the validator output, and fails the build when no prdValidator is configured
    *  (unless a waiver is active). When undefined, no enforcement is applied. */
   expectedAcceptanceCriteria?: import('../validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
-  // --- eforge:endregion plan-02-engine-acceptance-gates ---
-  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
   /** Validation command results accumulated during the validate phase.
    *  Reset at the start of each validate attempt, then passed to prdValidate so the
    *  PRD validator can cite deterministic command execution as evidence. */
   validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }>;
-  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 }
 
 /**
@@ -226,7 +186,6 @@ export function shouldSkipMerge(
   return null;
 }
 
-// --- eforge:region plan-02-policy-gate-engine-integration ---
 function policyBlockReason(prefix: string, decision: { decision: string; reason?: string }): string {
   const reason = decision.reason ?? decision.decision;
   return `${prefix}: ${reason}`;
@@ -235,7 +194,6 @@ function policyBlockReason(prefix: string, decision: { decision: string; reason?
 function hasPolicyGates(ctx: PhaseContext, gateKind: 'plan-merge' | 'final-merge'): boolean {
   return (ctx.extensionRegistry?.policyGates ?? []).some((registration) => registration.gateKind === gateKind);
 }
-// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 /**
  * Compute the maximum number of plans that could run concurrently
@@ -439,9 +397,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
       if (signal?.aborted) {
         break;
       }
-      // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
       if (!(event.type === 'plan:status:change' && event.status === 'completed' && state.plans[event.planId]?.status === 'failed')) yield event; // drop stale completed (merge-failure race)
-      // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
       // Check if any running plans just finished (completed or failed — NOT pending,
       // which is the initial state before the async plan runner updates it to running)
       const justCompleted: string[] = [];
@@ -481,7 +437,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         try {
           const plan = planMap.get(planId)!;
 
-          // --- eforge:region plan-02-policy-gate-engine-integration ---
           if (hasPolicyGates(ctx, 'plan-merge')) {
             const diff = await ctx.worktreeManager.getPlanDiff(planId, plan);
             const policyResult = await executePolicyGate({
@@ -505,11 +460,8 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
               continue;
             }
           }
-          // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
-          // --- eforge:region plan-03-parser-and-committed-work-hardening ---
           let noCommittedChangesWaiverApplied = false;
-          // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
 
           const commitSha = await ctx.worktreeManager.mergePlan(planId, plan, {
             mode: config.mode,
@@ -517,11 +469,9 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
             recentlyMergedIds: ctx.recentlyMergedIds,
             planMap,
             modelTracker: perPlanTrackers.get(planId),
-            // --- eforge:region plan-03-parser-and-committed-work-hardening ---
             allowNoCommittedChanges: ctx.validationPolicy?.allowNoCommittedChanges,
             noCommittedChangesReason: ctx.validationPolicy?.noCommittedChangesReason,
             onNoCommittedChangesWaiver: () => { noCommittedChangesWaiverApplied = true; },
-            // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
           });
 
           yield* transitionPlan(state, planId, 'merged');
@@ -530,7 +480,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
 
           yield { timestamp: new Date().toISOString(), type: 'plan:merge:complete', planId, commitSha };
 
-          // --- eforge:region plan-03-parser-and-committed-work-hardening ---
           if (noCommittedChangesWaiverApplied) {
             yield {
               timestamp: new Date().toISOString(),
@@ -538,7 +487,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
               message: `No committed changes waiver (allowNoCommittedChanges): ${ctx.validationPolicy?.noCommittedChangesReason ?? '(no reason provided)'}`,
             } as EforgeEvent;
           }
-          // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
         } catch (err) {
           ctx.failedMerges.add(planId);
           yield* transitionPlan(state, planId, 'failed', { error: `Merge failed: ${(err as Error).message}` });
@@ -603,7 +551,6 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
   if (!allMerged || signal?.aborted) return;
   if (allValidationCommands.length === 0) {
-    // --- eforge:region plan-02-final-validation-gates ---
     const policy = ctx.validationPolicy;
     if (policy?.allowNoCommands && policy.noCommandsReason?.trim()) {
       yield { timestamp: new Date().toISOString(), type: 'validation:start', commands: [] };
@@ -619,7 +566,6 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       state.status = 'failed';
       state.completedAt = new Date().toISOString();
     }
-    // --- eforge:endregion plan-02-final-validation-gates ---
     return;
   }
 
@@ -645,11 +591,9 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       } as EforgeEvent;
     }
 
-    // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
     // Reset evidence accumulator at the start of each attempt so the final attempt's
     // results are what gets passed to the PRD validator.
     ctx.validationCommandEvidence = [];
-    // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
     yield { timestamp: new Date().toISOString(), type: 'validation:start', commands: allValidationCommands };
     const failures: Array<{ command: string; exitCode: number; output: string }> = [];
@@ -672,27 +616,21 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         };
         const output = `[timed out after ${effectiveTimeoutMs}ms]`;
         yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 124, output };
-        // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
         ctx.validationCommandEvidence!.push({ command: cmd, exitCode: 124, output });
-        // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
         failures.push({ command: cmd, exitCode: 124, output });
         validationPassed = false;
         break; // Stop on timeout, same as non-zero exit
       } else if (result.exitCode !== 0) {
         const output = (result.stdout + result.stderr).trim();
         yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: result.exitCode, output };
-        // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
         ctx.validationCommandEvidence!.push({ command: cmd, exitCode: result.exitCode, output });
-        // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
         failures.push({ command: cmd, exitCode: result.exitCode, output });
         validationPassed = false;
         break; // Stop on first non-zero exit code
       } else {
         const output = (result.stdout + result.stderr).trim();
         yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 0, output };
-        // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
         ctx.validationCommandEvidence!.push({ command: cmd, exitCode: 0, output });
-        // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
       }
     }
 
@@ -716,12 +654,10 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
   }
 
   if (!passed) {
-    // --- eforge:region plan-01-engine-config-and-landing ---
     yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action: ctx.landingAction, featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'Validation failed' };
     if (ctx.landingAction === 'merge') {
       yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'Validation failed' };
     }
-    // --- eforge:endregion plan-01-engine-config-and-landing ---
     state.status = 'failed';
     state.completedAt = new Date().toISOString();
   }
@@ -736,7 +672,6 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
   const { state, prdValidator } = ctx;
 
   if (!prdValidator) {
-    // --- eforge:region plan-02-engine-acceptance-gates ---
     // When expected acceptance criteria are defined and no validator is configured,
     // fail the build unless an explicit allowNoAcceptanceCriteria waiver is active.
     if (ctx.expectedAcceptanceCriteria !== undefined) {
@@ -782,27 +717,21 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
         state.completedAt = new Date().toISOString();
       }
     }
-    // --- eforge:endregion plan-02-engine-acceptance-gates ---
     return;
   }
   if ((state.status as string) === 'failed') return;
 
   let terminalEmitted = false;
-  // --- eforge:region plan-02-final-validation-gates ---
   let prdValidationPassed: boolean | undefined;
   let acceptanceReceived = false;
   let acceptancePassed = false;
   let gapClosePerformedThisRun = false;
-  // --- eforge:endregion plan-02-final-validation-gates ---
   try {
-    // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
     const validatorContext = ctx.validationCommandEvidence !== undefined
       ? { validationCommandEvidence: ctx.validationCommandEvidence }
       : undefined;
-    // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
     for await (const event of prdValidator(ctx.mergeWorktreePath, validatorContext)) {
       if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
-      // --- eforge:region plan-02-engine-acceptance-gates ---
       // When the expected criteria inventory is defined but empty, a validator-produced
       // passing verdict cannot be trusted — there was nothing to verify. Fail-closed
       // unless an allowNoAcceptanceCriteria waiver is active.
@@ -837,7 +766,6 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
         acceptanceReceived = true; acceptancePassed = adjusted.passed;
         continue;
       }
-      // --- eforge:endregion plan-02-engine-acceptance-gates ---
       if (event.type === 'acceptance_validation:complete') {
         const adjusted = buildAcceptanceValidationEvents(event, ctx);
         for (const adjustedEvent of adjusted.events) yield adjustedEvent;
@@ -847,12 +775,8 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
       yield event;
       if (event.type === 'prd_validation:complete') {
         terminalEmitted = true;
-        // --- eforge:region plan-02-final-validation-gates ---
         prdValidationPassed = event.passed;
-        // --- eforge:endregion plan-02-final-validation-gates ---
       }
-      // --- eforge:region plan-02-final-validation-gates ---
-      // --- eforge:endregion plan-02-final-validation-gates ---
 
       // If PRD validation fails, check viability gate before attempting gap closing
       if (event.type === 'prd_validation:complete' && !event.passed) {
@@ -862,18 +786,14 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
         } else if (ctx.gapCloser && !ctx.gapClosePerformed) {
-          // --- eforge:region plan-02-final-validation-gates ---
           let gapCloseTerminalPassed: boolean | undefined;
-          // --- eforge:endregion plan-02-final-validation-gates ---
           try {
             for await (const gapEvent of ctx.gapCloser(ctx.mergeWorktreePath, event.gaps, event.completionPercent)) {
               if (gapEvent.type === 'agent:start') ctx.modelTracker.record(gapEvent.model);
               yield gapEvent;
-              // --- eforge:region plan-02-final-validation-gates ---
               if (gapEvent.type === 'gap_close:complete') {
                 gapCloseTerminalPassed = gapEvent.passed;
               }
-              // --- eforge:endregion plan-02-final-validation-gates ---
             }
           } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') throw err;
@@ -881,7 +801,6 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
             state.status = 'failed';
             state.completedAt = new Date().toISOString();
           }
-          // --- eforge:region plan-02-final-validation-gates ---
           if ((state.status as string) !== 'failed') {
             if (gapCloseTerminalPassed === true) {
               ctx.gapClosePerformed = true;
@@ -896,7 +815,6 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
               state.completedAt = new Date().toISOString();
             }
           }
-          // --- eforge:endregion plan-02-final-validation-gates ---
         } else {
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
@@ -925,7 +843,6 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     state.completedAt = new Date().toISOString();
   }
 
-  // --- eforge:region plan-02-final-validation-gates ---
   if (!terminalEmitted && (state.status as string) !== 'failed') {
     yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'PRD validation failed — validator did not emit a terminal verdict' } as EforgeEvent;
     yield {
@@ -956,10 +873,8 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
       state.completedAt = new Date().toISOString();
     }
   }
-  // --- eforge:endregion plan-02-final-validation-gates ---
 }
 
-// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 /**
  * Record a successful queued build artifact before landing starts.
  *
@@ -981,7 +896,6 @@ export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeE
     const now = new Date().toISOString();
     const commitSha = await getRefSha(ctx.mergeWorktreePath, 'HEAD');
 
-    // --- eforge:region plan-04-committed-work-artifact-safety ---
     // Reject dirty merge worktree — artifact recording must reflect committed state only.
     // Dirty tracked or untracked files mean the implementation was not fully committed,
     // so the recorded commitSha would not represent the full build output.
@@ -993,7 +907,6 @@ export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeE
         `Cannot record artifact: merge worktree has ${dirtyFiles.length} uncommitted file(s).\n${preview}${suffix}`,
       );
     }
-    // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
     // 1. Write to the provider-neutral artifact registry for all queued builds.
     await upsertArtifact(ctx.repoRoot, {
@@ -1036,9 +949,7 @@ export async function* recordArtifact(ctx: PhaseContext): AsyncGenerator<EforgeE
     } as EforgeEvent;
   }
 }
-// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
-// --- eforge:region plan-02-stack-provider-runtime ---
 /**
  * Run git-spice stack landing for stacked PR builds.
  *
@@ -1067,18 +978,15 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
       : undefined;
   if (preLandingSkipReason !== undefined) {
     const now = new Date().toISOString();
-    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
     // Pre-landing skip (build failed or aborted): update layer status to 'failed'
     // atomically with the skipped landing record.
     await updateStackLayerStatusAndLanding(ctx.repoRoot, prdId, 'failed', {
-    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       action: effectiveLandingAction,
       status: 'skipped',
       reason: preLandingSkipReason,
       startedAt: now,
       completedAt: now,
     });
-    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
     // Record skipped landing metadata on the artifact record when build fails
     // before landing could be attempted. The pre-landing artifact record remains
     // usable (hasUsableArtifact still returns true) — only landing metadata is added.
@@ -1093,7 +1001,6 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
         // Non-fatal.
       }
     }
-    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
     yield {
       timestamp: now,
       type: 'stack:landing:update',
@@ -1117,40 +1024,30 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
   // a successful PR landing.
   let stackPrLandingCompleted = false;
   let stackPrLandingFailure: string | undefined;
-  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
   let stackPrLandingPrUrl: string | undefined;
-  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
   for await (const event of executeStackLanding({
     cwd: ctx.repoRoot,
     mergeWorktreePath: ctx.mergeWorktreePath,
     stackContext: ctx.stackContext,
     landingAction: effectiveLandingAction,
     provider: ctx.stackProvider,
-    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
     shouldCleanup: ctx.shouldCleanup,
     cleanupPlanSet: ctx.cleanupPlanSet,
     cleanupOutputDir: ctx.cleanupOutputDir,
     cleanupPrdFilePath: ctx.cleanupPrdFilePath,
-    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
-    // --- eforge:region plan-01-core-engine-auto-merge ---
     prAutoMergePolicy: ctx.prAutoMergePolicy,
     landingAutoMerge: ctx.landingAutoMerge,
-    // --- eforge:endregion plan-01-core-engine-auto-merge ---
-    // --- eforge:region plan-01-build-artifact-provenance ---
     // Static metadata is the base; metadataFactory adds provenance when cleanup context is available.
     metadata: renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker }),
     metadataFactory: ctx.cleanupPlanSet && ctx.cleanupOutputDir ? async () => {
       const r = await collectBuildArtifactProvenance(ctx.mergeWorktreePath, { planSetName: ctx.cleanupPlanSet!, outputDir: ctx.cleanupOutputDir!, prdArtifactPath: ctx.cleanupPrdFilePath }).catch(() => []);
       return renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker, provenanceRefs: r.length > 0 ? r : undefined });
     } : undefined,
-    // --- eforge:endregion plan-01-build-artifact-provenance ---
   })) {
     if (event.type === 'stack:landing:update' && effectiveLandingAction === 'pr') {
       if (event.status === 'complete') {
         stackPrLandingCompleted = true;
-        // --- eforge:region plan-01-runtime-artifact-diagnostics ---
         stackPrLandingPrUrl = (event as { prUrl?: string }).prUrl;
-        // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
       }
       if (event.status === 'failed') stackPrLandingFailure = event.reason ?? 'Stack landing failed';
     }
@@ -1162,7 +1059,6 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
   if (effectiveLandingAction === 'pr') {
     if (stackPrLandingCompleted) {
       ctx.landingSucceeded = true;
-      // --- eforge:region plan-01-runtime-artifact-diagnostics ---
       // Finalize artifact record with landing metadata after stacked PR landing completes.
       if (ctx.prdId) {
         try {
@@ -1187,10 +1083,8 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
           // Non-fatal: artifact metadata update failure must not affect landing outcome.
         }
       }
-      // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
     } else {
       const reason = stackPrLandingFailure ?? 'Stack landing did not complete';
-      // --- eforge:region plan-01-runtime-artifact-diagnostics ---
       // Record landing failure metadata on the artifact record.
       if (ctx.prdId) {
         try {
@@ -1203,12 +1097,9 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
           // Non-fatal.
         }
       }
-      // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
       if (stackPrLandingFailure === undefined) {
         const now = new Date().toISOString();
-        // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
         await updateStackLayerStatusAndLanding(ctx.repoRoot, prdId, 'failed', {
-        // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
           action: effectiveLandingAction,
           status: 'failed',
           reason,
@@ -1231,7 +1122,6 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     }
   }
 }
-// --- eforge:endregion plan-02-stack-provider-runtime ---
 
 /**
  * Final landing of the feature branch and status determination.
@@ -1241,9 +1131,7 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
 export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   const { state, config, signal, featureBranch } = ctx;
   const allMerged = Object.values(state.plans).every((p) => p.status === 'merged');
-  // --- eforge:region plan-01-engine-config-and-landing ---
   const action = ctx.landingAction;
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
 
   if (allMerged && !signal?.aborted) {
     // Build commit message body; rawCommitBody preserved so landing can recompose with provenance trailers.
@@ -1254,7 +1142,6 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       : `${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}`;
     const commitMessage = composeCommitMessage(rawCommitBody, ctx.modelTracker);
 
-    // --- eforge:region plan-02-policy-gate-engine-integration ---
     // Policy gate applies only to merge; stays here per plan spec.
     if (action === 'merge' && hasPolicyGates(ctx, 'final-merge')) {
       const diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch);
@@ -1278,11 +1165,8 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
       if (policyResult.blocked) {
         const reason = policyBlockReason('Policy gate blocked final merge', policyResult.decision);
-        // --- eforge:region plan-01-engine-config-and-landing ---
         yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason };
         yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason };
-        // --- eforge:endregion plan-01-engine-config-and-landing ---
-        // --- eforge:region plan-01-runtime-artifact-diagnostics ---
         // Record skipped landing metadata when policy gate blocks the build.
         if (ctx.prdId) {
           try {
@@ -1295,7 +1179,6 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
             // Non-fatal.
           }
         }
-        // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
         state.status = 'failed';
         state.completedAt = new Date().toISOString();
         if (ctx.stackContext) {
@@ -1321,10 +1204,7 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         return;
       }
     }
-    // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
-    // --- eforge:region plan-01-engine-config-and-landing ---
-    // --- eforge:region plan-02-stack-provider-runtime ---
     // For stacked builds with pr, git-spice already submitted the PR in the
     // stackLanding phase (which set ctx.landingSucceeded = true). Skip the
     // executeLandingAction PR publication to avoid a duplicate gh pr create call.
@@ -1332,7 +1212,6 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       // Stack landing already completed; finalize considers this a success.
       // No additional events — stack:landing:update already covers the outcome.
     } else {
-    // --- eforge:endregion plan-02-stack-provider-runtime ---
     // Delegate to executeLandingAction for dirty-tree check, cleanup, and the chosen action.
     const landingGen = executeLandingAction({
       action,
@@ -1352,13 +1231,9 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       cleanupPrdFilePath: ctx.cleanupPrdFilePath,
       state,
       config,
-      // --- eforge:region plan-03-branch-aware-landing ---
       engineConfig: ctx.engineConfig,
-      // --- eforge:endregion plan-03-branch-aware-landing ---
-      // --- eforge:region plan-01-core-engine-auto-merge ---
       prAutoMergePolicy: ctx.prAutoMergePolicy,
       landingAutoMerge: ctx.landingAutoMerge,
-      // --- eforge:endregion plan-01-core-engine-auto-merge ---
     });
 
     // Manually iterate to capture the generator return value (LandingResult).
@@ -1377,7 +1252,6 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     }
     ctx.landingSucceeded = landingResult.landingSucceeded;
 
-    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
     // Finalize artifact metadata after generic landing for queued builds.
     // Runs for all landing actions (pr, merge, leave) when prdId is present.
     if (ctx.prdId) {
@@ -1409,7 +1283,6 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         // Non-fatal: artifact metadata update failure must not affect landing outcome.
       }
     }
-    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
     if (ctx.stackContext && action !== 'pr') {
       const completedAt = new Date().toISOString();
@@ -1435,31 +1308,22 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         ...(landingTerminalReason !== undefined && { reason: landingTerminalReason }),
       } as EforgeEvent;
     }
-    // --- eforge:region plan-02-stack-provider-runtime ---
     } // end stacked PR gate
-    // --- eforge:endregion plan-02-stack-provider-runtime ---
-    // --- eforge:endregion plan-01-engine-config-and-landing ---
   } else if (!allMerged) {
     // Not all plans merged — skip landing, leave feature branch for inspection.
-    // --- eforge:region plan-01-engine-config-and-landing ---
     yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
     if (action === 'merge') {
       yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
     }
-    // --- eforge:endregion plan-01-engine-config-and-landing ---
   } else if (signal?.aborted) {
     // Aborted before finalize — leave feature branch for inspection.
-    // --- eforge:region plan-01-engine-config-and-landing ---
     yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
     if (action === 'merge') {
       yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
     }
-    // --- eforge:endregion plan-01-engine-config-and-landing ---
   }
 
-  // --- eforge:region plan-01-engine-config-and-landing ---
   // Determine final status — completed only when the landing action succeeded.
   state.status = ctx.landingSucceeded ? 'completed' : 'failed';
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
   state.completedAt = new Date().toISOString();
 }

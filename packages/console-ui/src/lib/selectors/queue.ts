@@ -1,4 +1,3 @@
-// --- eforge:region plan-02-queue-view ---
 /**
  * Queue view selectors: UI-derived types and pure functions for summarising,
  * grouping, sorting, and filtering QueueItem[] data.
@@ -209,4 +208,3 @@ export function selectQueueStatusGroups(items: QueueItem[]): QueueStatusGroup[] 
 export function selectQueueItemDisplayLabel(item: QueueItem): string {
   return selectPrdDisplayLabel(item.title, item.id);
 }
-// --- eforge:endregion plan-02-queue-view ---

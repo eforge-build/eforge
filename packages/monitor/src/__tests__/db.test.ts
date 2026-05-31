@@ -148,7 +148,6 @@ describe('getDaemonEventsAfter — new persisted event types', () => {
   });
 });
 
-// --- eforge:region plan-01-durable-daemon-event-persistence ---
 
 // ---------------------------------------------------------------------------
 // Schema: nullable run_id and origin column
@@ -511,4 +510,3 @@ describe('legacy DB migration — NOT NULL run_id rebuilt to nullable with origi
   });
 });
 
-// --- eforge:endregion plan-01-durable-daemon-event-persistence ---

@@ -485,7 +485,6 @@ describe('applyRecovery — error paths', () => {
 // Backward compatibility: sidecars with optional verdict metadata fields
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-02-deterministic-recovery-verdicts ---
 describe('applyRecovery — backward compatibility with optional verdict metadata fields', () => {
   const makeTempDir = useTempDir('eforge-apply-verdict-metadata-compat-');
 
@@ -695,4 +694,3 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     expect(result.commitSha).toBe('');
   });
 });
-// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---

@@ -60,10 +60,8 @@ export const initialRunState: RunState = {
   expeditionModules: [],
   moduleStatuses: {},
   earlyOrchestration: null,
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   resumeArtifacts: [],
   resumeSource: null,
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   profile: null,
   endTime: null,
   mergeCommits: {},

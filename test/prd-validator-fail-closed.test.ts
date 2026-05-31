@@ -78,7 +78,6 @@ describe('runPrdValidator fail-closed behavior', () => {
   });
 });
 
-// --- eforge:region plan-02-engine-acceptance-gates ---
 describe('runPrdValidator malformed gap entries behavior', () => {
   it('produces synthetic failure gaps for malformed gap entries instead of silently dropping them', async () => {
     const backend = new StubHarness([
@@ -128,9 +127,7 @@ describe('runPrdValidator expectedAcceptanceCriteria synthesis behavior', () => 
     expect(acceptance!.verdicts[0]).toMatchObject({ criterion: 'Must support login', verdict: 'pass' });
   });
 });
-// --- eforge:endregion plan-02-engine-acceptance-gates ---
 
-// --- eforge:region plan-01-validation-evidence-contract ---
 describe('runPrdValidator acceptance_validation:complete behavior', () => {
   it('emits acceptance_validation:complete with passed=false and unknown verdict when agent JSON omits the verdict array', async () => {
     const backend = new StubHarness([
@@ -257,9 +254,7 @@ describe('runPrdValidator acceptance_validation:complete behavior', () => {
     expect(acceptance!.verdicts[0].verdict).toBe('unknown');
   });
 });
-// --- eforge:endregion plan-01-validation-evidence-contract ---
 
-// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 describe('runPrdValidator — deterministic validation command evidence', () => {
   it('includes command evidence in the prompt when validationCommandEvidence is provided', async () => {
     const backend = new StubHarness([
@@ -347,4 +342,3 @@ describe('runPrdValidator — deterministic validation command evidence', () => 
     expect(prompt).not.toContain('Deterministic Validation Command Evidence');
   });
 });
-// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---

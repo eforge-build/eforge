@@ -512,7 +512,6 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.dim(`    Branch ${chalk.cyan(event.featureBranch)} left for inspection`));
       break;
 
-    // --- eforge:region plan-04-consumer-surfaces ---
     // Landing lifecycle events — show PR URLs prominently
     case 'landing:start':
       startSpinner('landing', `Landing (${event.action}): ${chalk.cyan(event.featureBranch)} → ${chalk.cyan(event.baseBranch)}...`);
@@ -559,7 +558,6 @@ export function renderEvent(event: EforgeEvent): void {
       }
       break;
     }
-    // --- eforge:endregion plan-04-consumer-surfaces ---
 
     // Expedition planning phases
     case 'expedition:architecture:complete':
@@ -909,7 +907,6 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.yellow(`  ⚠ Auto-build paused: ${event.reason}`));
       break;
 
-    // --- eforge:region plan-01-native-event-runtime-foundation ---
     case 'extension:event-handler:failed':
       console.log(chalk.red(`  ✗ Extension ${event.extensionName} hook failed [${event.pattern} on ${event.triggeringEventType}]: ${event.message}`));
       break;
@@ -917,9 +914,7 @@ export function renderEvent(event: EforgeEvent): void {
     case 'extension:event-handler:timeout':
       console.log(chalk.yellow(`  ⚠ Extension ${event.extensionName} hook timed out after ${event.timeoutMs}ms [${event.pattern} on ${event.triggeringEventType}]`));
       break;
-    // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
-    // --- eforge:region plan-02-enqueue-preprocessing-runtime ---
     case 'extension:input-source:fetched':
       console.log(chalk.dim(`  ↓ Input source [${event.adapterName}] fetched "${event.sourceId}" (${event.contentLength} chars)`));
       break;
@@ -939,9 +934,7 @@ export function renderEvent(event: EforgeEvent): void {
     case 'extension:prd-enricher:failed':
       console.log(chalk.yellow(`  ⚠ Enricher [${event.enricherName}] failed for "${event.sourceId}" (${event.reason}): ${event.message}`));
       break;
-    // --- eforge:endregion plan-02-enqueue-preprocessing-runtime ---
 
-    // --- eforge:region plan-01-types-and-daemon-emission ---
     case 'daemon:warning':
       console.log(chalk.yellow(`  ⚠ Daemon warning [${event.source}]: ${event.message}`));
       break;
@@ -949,9 +942,7 @@ export function renderEvent(event: EforgeEvent): void {
     case 'daemon:error':
       console.log(chalk.red(`  ✗ Daemon error [${event.source}]: ${event.message}`));
       break;
-    // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
-    // --- eforge:region plan-04-rendering-and-docs ---
     case 'acceptance_validation:complete': {
       const verdicts = event.verdicts ?? [];
       const passCount = verdicts.filter((v) => v.verdict === 'pass').length;
@@ -974,7 +965,6 @@ export function renderEvent(event: EforgeEvent): void {
       }
       break;
     }
-    // --- eforge:endregion plan-04-rendering-and-docs ---
 
     default: {
       // Daemon-internal events, plan lifecycle state events, and any other
@@ -1037,9 +1027,7 @@ export function renderQueueList(groups: {
   running: QueuedPrd[];
   failed: QueuedPrd[];
   skipped: QueuedPrd[];
-  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
   waiting?: QueuedPrd[];
-  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 }): void {
   const total = groups.pending.length + groups.running.length + groups.failed.length + groups.skipped.length + (groups.waiting?.length ?? 0);
   if (total === 0) {
@@ -1054,7 +1042,6 @@ export function renderQueueList(groups: {
     return chalk.red(padded);
   }
 
-  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
   /**
    * Build a parent-to-children map for nesting display.
    * A PRD is a child if its `depends_on` references another PRD in the same group.
@@ -1074,7 +1061,6 @@ export function renderQueueList(groups: {
     }
     return childOf;
   }
-  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
   function renderGroup(group: QueuedPrd[], label: string, dim: boolean): void {
     if (group.length === 0) return;
@@ -1089,7 +1075,6 @@ export function renderQueueList(groups: {
     console.log(chalk.dim('  --------  -----------------------------  -----------  -----  ----------'));
 
     const TITLE_COL_WIDTH = 29;
-    // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
     const childOf = buildChildMap(group);
     const rendered = new Set<string>();
 
@@ -1140,14 +1125,11 @@ export function renderQueueList(groups: {
         renderPrd(prd, false);
       }
     }
-    // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
   }
 
   renderGroup(groups.running, 'Running', false);
   renderGroup(groups.pending, 'Pending', false);
-  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
   renderGroup(groups.waiting ?? [], 'Waiting (blocked by upstream)', false);
-  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
   renderGroup(groups.failed, 'Failed', true);
   renderGroup(groups.skipped, 'Skipped', true);
 }

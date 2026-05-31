@@ -21,9 +21,7 @@ import {
 } from '../../retry.js';
 import { builderImplement, builderEvaluate, type BuilderEvaluationResult } from '../../agents/builder.js';
 import { runParallelReview } from '../../agents/parallel-reviewer.js';
-// --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
 import { selectNextReviewPerspectives, shouldTerminateCycleEarly } from '../../review-cycle-perspectives.js';
-// --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 import { runReviewFixer } from '../../agents/review-fixer.js';
 import { runDocAuthor } from '../../agents/doc-author.js';
 import { runDocSyncer } from '../../agents/doc-syncer.js';
@@ -33,28 +31,20 @@ import type { ResolvedAgentConfig } from '../../config.js';
 import { runParallel } from '../../concurrency.js';
 import { forgeCommit } from '../../git.js';
 import { composeCommitMessage } from '../../model-tracker.js';
-// --- eforge:region plan-02-build-evaluator-enforcement ---
 import {
   applyEvaluationVerdicts,
   assertNoEvaluationDrift,
   prepareEvaluationSnapshot,
   restoreEvaluationSnapshotAfterFailure,
   type EvaluationSnapshot,
-  // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
   type EvaluationFileVerdictSummary,
-  // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 } from '../../evaluation/index.js';
 import { countEvaluationIssueOutcomes, type EvaluationIssueOutcomeCounts } from '../../evaluation/issue-outcomes.js';
-// --- eforge:endregion plan-02-build-evaluator-enforcement ---
-// --- eforge:region plan-01-reviewer-isolation ---
 import { captureEvaluationSnapshot, EvaluationInvariantError } from '../../evaluation/index.js';
-// --- eforge:endregion plan-01-reviewer-isolation ---
 
 import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
-// --- eforge:region plan-01-runtime-recovery ---
 import { runValidationProviderRecoveryStage } from './validation-provider-recovery.js';
-// --- eforge:endregion plan-01-runtime-recovery ---
 import { resolveAgentConfig } from '../agent-config.js';
 import { appendPromptSection, buildReviewCycleFeedback, getReviewCycleFeedback, renderReviewFixerEvaluatorFeedback, renderReviewerPriorOutcomeContext, setReviewCycleFeedback, summarizeEvaluationVerdicts } from '../review-cycle-feedback.js';
 import { isMaxTurnsError } from '../../harness.js';
@@ -189,15 +179,12 @@ async function* runEvaluatorAttempt(
 // Inner stage helpers (called by composite stages)
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-02-build-evaluator-enforcement ---
 type LastBuildEvaluation = {
   ran: boolean;
   accepted: number;
   rejected: number;
-  // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
   review: number;
   files: EvaluationFileVerdictSummary[];
-  // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 } & EvaluationIssueOutcomeCounts;
 
 type BuildStageContextWithEvaluation = BuildStageContext & {
@@ -212,7 +199,6 @@ function getLastBuildEvaluation(ctx: BuildStageContext): LastBuildEvaluation | u
   return (ctx as BuildStageContextWithEvaluation).__plan02LastBuildEvaluation;
 }
 
-// --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
 function emptyIssueOutcomeCounts(): EvaluationIssueOutcomeCounts {
   return {
     resolvedIssueOutcomes: 0,
@@ -229,13 +215,10 @@ function emptyIssueOutcomeCounts(): EvaluationIssueOutcomeCounts {
 function lastBuildEvaluationNotRun(): LastBuildEvaluation {
   return { ran: false, accepted: 0, rejected: 0, review: 0, files: [], ...emptyIssueOutcomeCounts() };
 }
-// --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
-// --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
 function formatNoVerdictsFailureMessage(s: EvaluationSnapshot, r: string): string {
   const p = s.files.map((f) => f.path).join(', ');
   return p ? `${r} Candidate files with uncommitted changes: ${p}` : r;
 }
-// --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
 async function restoreOriginalBuilderCommitState(snapshot: EvaluationSnapshot): Promise<void> {
   await restoreEvaluationSnapshotAfterFailure(snapshot);
   if (snapshot.originalHead) {
@@ -261,9 +244,7 @@ async function restoreOriginalBuilderCommitStateUnlessDrifted(
   await restoreOriginalBuilderCommitState(snapshot);
   return undefined;
 }
-// --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
-// --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
 type ReviewStageMetadata = {
   parallel: boolean;
   activePerspectives: string[];
@@ -271,7 +252,6 @@ type ReviewStageMetadata = {
   perspectiveErrors: string[];
   completeIssueCount: number;
 };
-// --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 
 async function* reviewStageInner(
   ctx: BuildStageContext,
@@ -279,7 +259,6 @@ async function* reviewStageInner(
 ): AsyncGenerator<EforgeEvent, ReviewStageMetadata> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
-  // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
   const metadata: ReviewStageMetadata = {
     parallel: false,
     activePerspectives: [],
@@ -287,7 +266,6 @@ async function* reviewStageInner(
     perspectiveErrors: [],
     completeIssueCount: 0,
   };
-  // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 
   // Emit review-strategy decision before dispatching to the reviewer
   if (strategy === 'auto') {
@@ -319,7 +297,6 @@ async function* reviewStageInner(
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
   const reviewTracker = createToolTracker(reviewSpan);
 
-  // --- eforge:region plan-01-reviewer-isolation ---
   // Capture a worktree snapshot before dispatching reviewers so we can detect
   // and discard any mutations they make (reviewers must be non-mutating).
   // Non-git directories (e.g. narrow unit tests) cannot be snapshotted, but a
@@ -345,7 +322,6 @@ async function* reviewStageInner(
   }
   // Buffer the aggregate complete event; yield lifecycle/perspective events normally.
   let bufferedReviewComplete: Extract<EforgeEvent, { type: 'plan:build:review:complete' }> | undefined;
-  // --- eforge:endregion plan-01-reviewer-isolation ---
 
   try {
     for await (const event of runParallelReview({
@@ -357,10 +333,8 @@ async function* reviewStageInner(
       abortController: ctx.abortController,
       strategy,
       perspectives,
-      // --- eforge:region plan-02-extension-perspective-runtime ---
       extensionReviewerPerspectives: ctx.extensionReviewerPerspectives,
       extensionApplicabilityTimeoutMs: ctx.config.extensions.eventHookTimeoutMs,
-      // --- eforge:endregion plan-02-extension-perspective-runtime ---
       ...reviewerAgentConfig,
       promptAppend: reviewerPromptAppend,
       phase: 'build',
@@ -368,15 +342,12 @@ async function* reviewStageInner(
       harness: reviewerHarness,
     })) {
       reviewTracker.handleEvent(event);
-      // --- eforge:region plan-01-reviewer-isolation ---
       if (event.type === 'plan:build:review:complete') {
         // Buffer — yield after drift check below.
         bufferedReviewComplete = event;
       } else {
         yield event;
       }
-      // --- eforge:endregion plan-01-reviewer-isolation ---
-      // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
       if (event.type === 'plan:build:review:parallel:start') {
         metadata.parallel = true;
         metadata.activePerspectives = event.perspectives;
@@ -387,7 +358,6 @@ async function* reviewStageInner(
       if (event.type === 'plan:build:review:parallel:perspective:error') {
         metadata.perspectiveErrors.push(event.perspective);
       }
-      // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
     }
     reviewTracker.cleanup();
     reviewSpan.end();
@@ -415,7 +385,6 @@ async function* reviewStageInner(
     };
   }
 
-  // --- eforge:region plan-01-reviewer-isolation ---
   // Check for reviewer-introduced worktree mutations and restore if found.
   let driftIssue: ReviewIssue | undefined;
   if (reviewWorktreeSnapshot !== undefined) {
@@ -438,9 +407,7 @@ async function* reviewStageInner(
         // build so mutated reviewer work cannot silently reach evaluation.
         ctx.buildFailed = true;
         yield toBuildFailedEvent(ctx.planId, restoreErr);
-        // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
         return metadata;
-        // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
       }
     }
   }
@@ -455,15 +422,10 @@ async function* reviewStageInner(
     : { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId: ctx.planId, issues: finalIssues };
 
   ctx.reviewIssues = completeEvent.issues;
-  // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
   metadata.completeIssueCount = completeEvent.issues.length;
-  // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
   yield completeEvent;
-  // --- eforge:endregion plan-01-reviewer-isolation ---
 
-  // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
   return metadata;
-  // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 }
 
 async function* evaluateStageInner(
@@ -548,10 +510,8 @@ async function* evaluateStageInner(
       yield driftFailure;
       return;
     }
-    // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
     yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: formatNoVerdictsFailureMessage(snapshot, err instanceof Error ? err.message : String(err)) } as EforgeEvent;
     ctx.buildFailed = true;
-    // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
     return;
   }
 
@@ -561,10 +521,8 @@ async function* evaluateStageInner(
       yield driftFailure;
       return;
     }
-    // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
     yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: formatNoVerdictsFailureMessage(snapshot, suppressedTerminalFailure?.error ?? result?.error ?? 'Evaluator produced no verdicts; review-fixer changes remain uncommitted.') } as EforgeEvent;
     ctx.buildFailed = true;
-    // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
     return;
   }
 
@@ -901,7 +859,6 @@ registerBuildStage({
 
   // Resolve maxContinuations: per-plan > global config > default (3)
   const baseAgentConfig = resolveAgentConfig('builder', ctx.config, ctx.planFile);
-  // --- eforge:region plan-01-engine-resume ---
   // Inject resume context into the builder prompt when resuming a compiled build.
   const agentConfig = ctx.resumeContext
     ? {
@@ -909,7 +866,6 @@ registerBuildStage({
         promptAppend: [baseAgentConfig.promptAppend, ctx.resumeContext].filter(Boolean).join('\n\n'),
       }
     : baseAgentConfig;
-  // --- eforge:endregion plan-01-engine-resume ---
   const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
   const parallelStages = ctx.build.filter((spec): spec is string[] => Array.isArray(spec));
   const verificationScope = hasTestStages(ctx.build) ? 'build-only' : 'full';
@@ -1141,47 +1097,35 @@ registerBuildStage({
   const maxRounds = ctx.review.maxRounds;
   const strategy = ctx.review.strategy;
   const strictness = ctx.review.evaluatorStrictness;
-  // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
   const initialConfiguredPerspectives: string[] | undefined = ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined;
   let initialPerspectiveOrder: string[] | undefined = initialConfiguredPerspectives;
   let activePerspectivesForRound: string[] | undefined = initialConfiguredPerspectives;
   let droppedForRound: string[] = [];
   let adaptiveRationaleForRound: string | undefined;
-  // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 
   setReviewCycleFeedback(ctx, undefined);
 
   let terminationReason: 'no-issues' | 'max-rounds' | null = null;
-  // --- eforge:region plan-02-build-evaluator-enforcement ---
   let lastReviewIssueCount = 0;
-  // --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
   for (let round = 0; round < maxRounds; round++) {
     // Emit perspectives-respawned at the start of each review round
     yield emitBuildDecision(ctx, {
       kind: 'perspectives-respawned',
-      // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
       rationale: adaptiveRationaleForRound
         ? `Starting review round ${round + 1} of ${maxRounds}: ${adaptiveRationaleForRound}`
         : `Starting review round ${round + 1} of ${maxRounds}`,
-      // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
       round,
-      // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
       perspectives: activePerspectivesForRound ?? [],
       dropped: droppedForRound,
-      // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
     });
 
-    // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
     const reviewMetadata = yield* reviewStageInner(ctx, { strategy, perspectives: activePerspectivesForRound });
     if (ctx.buildFailed) return;
     if (!initialPerspectiveOrder && reviewMetadata.activePerspectives.length > 0) {
       initialPerspectiveOrder = reviewMetadata.activePerspectives;
     }
-    // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
-    // --- eforge:region plan-02-build-evaluator-enforcement ---
     lastReviewIssueCount = reviewMetadata.completeIssueCount;
-    // --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
     if (ctx.reviewIssues.length === 0 && reviewMetadata.perspectiveErrors.length === 0) {
       yield emitBuildDecision(ctx, {
@@ -1199,7 +1143,6 @@ registerBuildStage({
     yield* evaluateStageInner(ctx, { strictness });
     if (ctx.buildFailed) return;
 
-    // --- eforge:region plan-01-adaptive-review-cycle-perspectives ---
     if (round < maxRounds - 1) {
       const previousActiveForSelection = reviewMetadata.activePerspectives.length > 0
         ? reviewMetadata.activePerspectives
@@ -1258,7 +1201,6 @@ registerBuildStage({
         break;
       }
     }
-    // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
   }
 
   // If all rounds exhausted without finding no-issues, emit max-rounds termination.
@@ -1266,7 +1208,6 @@ registerBuildStage({
   // cycle to terminate, and `round: maxRounds - 1` would be `-1`, failing
   // BuildDecisionSchema's `nonnegative()` check and crashing the build.
   if (terminationReason === null && maxRounds > 0) {
-    // --- eforge:region plan-02-build-evaluator-enforcement ---
     const finalEvaluation = getLastBuildEvaluation(ctx);
     const finalEvaluationText = finalEvaluation?.ran
       ? `; final evaluation accepted ${finalEvaluation.accepted} and rejected ${finalEvaluation.rejected}; blocking issue outcomes ${finalEvaluation.blockingIssueOutcomes}`
@@ -1289,8 +1230,6 @@ registerBuildStage({
         finalEvaluationBlocking: finalEvaluation.blockingIssueOutcomes,
       }),
     } as unknown as Parameters<typeof emitBuildDecision>[1]);
-    // --- eforge:endregion plan-02-build-evaluator-enforcement ---
-    // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
     // Use lastReviewIssueCount rather than ctx.reviewIssues.length because
     // evaluateStageInner clears ctx.reviewIssues after verdict application.
     // Fail only when the final evaluator did not run or explicit issue outcomes
@@ -1305,7 +1244,6 @@ registerBuildStage({
       yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg } as EforgeEvent;
       ctx.buildFailed = true;
     }
-    // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
   }
 });
 
@@ -1318,20 +1256,16 @@ registerBuildStage({
   predecessors: ['implement'],
   parallelizable: false,
 }, async function* validateStage(ctx) {
-  // --- eforge:region plan-01-changedfiles-extension-contexts ---
   // No-op when no validation providers are registered — skip the diff computation entirely.
   const validationProviders = ctx.extensionValidationProviders;
   if (!validationProviders || validationProviders.length === 0) return;
   // Compute the plan changed files once and pass a cloned list to each provider invocation.
   const validationSnapshot = await computeReviewThresholdSnapshot(ctx.worktreePath, ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch);
   const validationChangedFiles = [...validationSnapshot.changedFiles];
-  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
-  // --- eforge:region plan-01-runtime-recovery ---
   yield* runValidationProviderRecoveryStage(ctx, {
     runReviewFix: () => reviewFixStageInner(ctx),
     runEvaluate: (overrides) => evaluateStageInner(ctx, overrides),
   }, validationChangedFiles);
-  // --- eforge:endregion plan-01-runtime-recovery ---
 });
 
 registerBuildStage({

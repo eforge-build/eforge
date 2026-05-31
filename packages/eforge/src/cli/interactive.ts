@@ -58,7 +58,6 @@ export function createApprovalHandler(
   };
 }
 
-// --- eforge:region plan-04-ux-init-build-and-docs ---
 
 /** Possible outcomes from the trunk landing confirmation prompt. */
 export type TrunkLandingChoice = 'switch-to-pr' | 'cancel' | 'feature-branch' | 'solo-dev';
@@ -96,4 +95,3 @@ export async function confirmTrunkLanding(trunkBranch: string): Promise<TrunkLan
   }
 }
 
-// --- eforge:endregion plan-04-ux-init-build-and-docs ---

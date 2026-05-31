@@ -25,9 +25,7 @@ import {
   stackStateSchema,
   updateStackLayerLanding,
   markStackLayerFailed,
-  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
   updateStackLayerStatusAndLanding,
-  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 } from '@eforge-build/engine/stacking';
 import type { StackLayer, StackLayerLanding } from '@eforge-build/engine/stacking';
 
@@ -486,7 +484,6 @@ describe('updateStackLayerLanding', () => {
   });
 });
 
-// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
 // ---------------------------------------------------------------------------
 // updateStackLayerStatusAndLanding
 // ---------------------------------------------------------------------------
@@ -588,7 +585,6 @@ describe('updateStackLayerStatusAndLanding', () => {
     expect(state.layers).toHaveLength(0);
   });
 });
-// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
 // ---------------------------------------------------------------------------
 // markStackLayerFailed

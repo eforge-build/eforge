@@ -323,7 +323,7 @@ When `allowLocalMergeToTrunk` is `false` and the CLI is running interactively on
 
 ### Merge-strategy tradeoff and provenance preservation
 
-eforge builds plan branches that squash-merge into the artifact branch. When the artifact branch lands into the base branch via `--no-ff`, the resulting merge commit retains the full intermediate history. This keeps every commit that added or modified plan artifacts — PRD copies in `eforge/prds/`, compiled plan files in `eforge/plans/{planSet}/`, and `orchestration.yaml` — reachable from the base branch even after `cleanupPlanFiles` removes those paths from `HEAD`.
+eforge builds plan branches that squash-merge into the artifact branch. When the artifact branch lands into the base branch via `--no-ff`, the resulting merge commit retains the full intermediate history. This keeps every commit that added or modified plan artifacts — PRD copies in `eforge/prds/`, compiled plan files in `eforge/plans/{planSet}/`, and `orchestration.yaml` — reachable from the base branch even after `cleanupPlanFiles` removes those paths from `HEAD`. The same cleanup pass strips temporary plan-ID eforge region marker comment lines from tracked JavaScript/TypeScript-family source files while preserving semantic markers and marked code.
 
 The durable provenance guarantee is Git history, not the final tree. Artifact references use commit SHAs (`git show <sha>:<path>`) rather than branch-relative paths so they survive cleanup. A `git show <sha>:<path>` reference points to the commit that last added or modified the file, not a branch tip — so it stays valid regardless of subsequent commits or cleanups.
 

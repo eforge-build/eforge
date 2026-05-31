@@ -35,7 +35,6 @@ function compareSemver(a: string, b: string): number {
   return 0;
 }
 
-// --- eforge:region plan-03-observability-docs-examples ---
 describe('reviewer perspective example and observability', () => {
   it('provides a reviewer-perspective.ts example using public SDK APIs', () => {
     const examplePath = repoPath('examples/extensions/reviewer-perspective.ts');
@@ -55,7 +54,6 @@ describe('reviewer perspective example and observability', () => {
     expect(source).not.toContain("from '@eforge-build/monitor'");
   });
 });
-// --- eforge:endregion plan-03-observability-docs-examples ---
 
 describe('/eforge:extend skill files and manifests', () => {
   it('declares the Claude Code plugin authoring skill with required frontmatter', () => {

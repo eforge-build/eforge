@@ -410,7 +410,6 @@ describe('selectNextReviewPerspectives', () => {
   });
 });
 
-// --- eforge:region plan-01-dynamic-perspective-contracts ---
 describe('selectNextReviewPerspectives — dynamic perspective key handling', () => {
   it('drops a dynamic key with only warning prior issues (critical-only retention)', () => {
     // Warning issues no longer retain perspectives — only critical severity does.
@@ -520,9 +519,7 @@ describe('selectNextReviewPerspectives — dynamic perspective key handling', ()
     expect(result.dropped).toContain('performance-review');
   });
 });
-// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
-// --- eforge:region plan-01-adaptive-review-policy ---
 describe('selectNextReviewPerspectives — unresolved-risk retention policy', () => {
   it('retains docs when accepted warning fixes touch the docs concern area', () => {
     // Prior warning issue for docs. Warning-only issues are not sufficient to retain,
@@ -917,4 +914,3 @@ describe('shouldTerminateCycleEarly', () => {
     expect(result.rationale).toContain('docs/guide.md');
   });
 });
-// --- eforge:endregion plan-01-adaptive-review-policy ---

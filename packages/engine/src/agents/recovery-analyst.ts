@@ -13,9 +13,7 @@ import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { getRecoveryVerdictSchemaYaml } from '../schemas.js';
 import { parseRecoveryVerdictBlock } from './common.js';
-// --- eforge:region plan-02-deterministic-recovery-verdicts ---
 import { determineRecoveryRecommendation } from '../recovery/recommendation.js';
-// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 
 // ---------------------------------------------------------------------------
 // Options
@@ -69,7 +67,6 @@ export async function* runRecoveryAnalyst(
     ? 'Note: this summary is partial (some context was unavailable); prefer verdict=manual and document missing context in the rationale.'
     : '';
 
-  // --- eforge:region plan-02-deterministic-recovery-verdicts ---
   const deterministicRec = determineRecoveryRecommendation(summary);
   const deterministicRecommendation =
     `Deterministic policy recommendation: **${deterministicRec.verdict}**\n\n` +
@@ -88,7 +85,6 @@ export async function* runRecoveryAnalyst(
   const failedPlanIdsList = failingPlanIds.length > 0
     ? failingPlanIds.join(', ')
     : '(none identified — use partial context indicators in the summary)';
-  // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 
   const prompt = await loadPrompt(
     'recovery-analyst',
@@ -97,10 +93,8 @@ export async function* runRecoveryAnalyst(
       summary: JSON.stringify(summary, null, 2),
       recovery_schema: getRecoveryVerdictSchemaYaml(),
       partialHint,
-      // --- eforge:region plan-02-deterministic-recovery-verdicts ---
       deterministicRecommendation,
       failedPlanIdsList,
-      // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
     },
     options.promptAppend,
   );

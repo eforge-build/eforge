@@ -1305,7 +1305,6 @@ describe('effort/thinking fields on AgentThread', () => {
 // ---------------------------------------------------------------------------
 
 describe('event-registry run projection via daemon:run:upsert', () => {
-  // --- eforge:region plan-01-semantic-enqueue-wake ---
   it('daemon:run:upsert is the only run-state projector; enqueue:complete projects queue only', async () => {
     const { eventRegistry } = await import('@eforge-build/client');
 
@@ -1350,7 +1349,6 @@ describe('event-registry run projection via daemon:run:upsert', () => {
 
     // daemon:run:upsert has the project function and updates state.runs
     expect(eventRegistry['daemon:run:upsert'].project).toBeDefined();
-  // --- eforge:endregion plan-01-semantic-enqueue-wake ---
 
     const runId = 'run-enqueue-001';
     const state = {

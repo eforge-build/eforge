@@ -10,10 +10,8 @@
 
 import type { LandingAction } from './trunk-landing.js';
 
-// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 /** Allowed values for `landing.pr.autoMerge` in the project config. */
 export type PrAutoMergePolicy = 'ask' | 'always' | 'never';
-// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
 // ---------------------------------------------------------------------------
 // Output types
@@ -84,7 +82,6 @@ export interface LandingMenuModelInput {
    * in remediationChoices.
    */
   projectConfigPath?: string | null;
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   /**
    * The resolved `landing.pr.autoMerge` policy from project config.
    * - `'ask'` (default): offer the PR auto-merge choice alongside plain PR.
@@ -93,7 +90,6 @@ export interface LandingMenuModelInput {
    * Omitting this field behaves the same as `'ask'`.
    */
   autoMergePolicy?: PrAutoMergePolicy;
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 }
 
 // ---------------------------------------------------------------------------
@@ -124,13 +120,11 @@ const CANCEL_CHOICE: LandingMenuChoice = {
   description: 'Do not proceed',
 };
 
-// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 const PR_AUTO_MERGE_CHOICE: LandingMenuChoice = {
   value: 'pr-auto-merge',
   label: 'Open a pull request with auto-merge enabled',
   description: "Create a GitHub PR and enable auto-merge — it will be merged automatically once all checks pass",
 };
-// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
 const UPDATE_CONFIG_CHOICE: LandingMenuChoice = {
   value: 'update-config',
@@ -177,15 +171,11 @@ export function buildLandingMenuModel(input: LandingMenuModelInput): LandingMenu
     allowLocalMergeToTrunk,
     offerProjectDefault,
     projectConfigPath,
-    // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
     autoMergePolicy,
-    // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
   } = input;
 
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   // Offer the PR auto-merge choice unless policy is explicitly 'never'.
   const offerPrAutoMerge = autoMergePolicy !== 'never';
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
   // Trunk protection fires whenever the current branch is trunk and
   // local-trunk merge opt-in is not enabled. Unknown/null branch is treated as
@@ -227,9 +217,7 @@ export function buildLandingMenuModel(input: LandingMenuModelInput): LandingMenu
     const remediationChoices: LandingMenuChoice[] = [
       ...safeDefaultChoices,
       PR_CHOICE,
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       ...(offerPrAutoMerge ? [PR_AUTO_MERGE_CHOICE] : []),
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       LEAVE_CHOICE,
       ...(projectConfigPath ? [UPDATE_CONFIG_CHOICE] : []),
       CANCEL_CHOICE,
@@ -241,9 +229,7 @@ export function buildLandingMenuModel(input: LandingMenuModelInput): LandingMenu
     const normalChoices: LandingMenuChoice[] = [
       ...safeDefaultChoices,
       PR_CHOICE,
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       ...(offerPrAutoMerge ? [PR_AUTO_MERGE_CHOICE] : []),
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       LEAVE_CHOICE,
       CANCEL_CHOICE,
     ];
@@ -262,9 +248,7 @@ export function buildLandingMenuModel(input: LandingMenuModelInput): LandingMenu
     });
   }
 
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   normalChoices.push(PR_CHOICE, ...(offerPrAutoMerge ? [PR_AUTO_MERGE_CHOICE] : []), MERGE_CHOICE, LEAVE_CHOICE, CANCEL_CHOICE);
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
   return {
     normalChoices,

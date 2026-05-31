@@ -13,7 +13,6 @@ const exec = promisify(execFile);
 /** Max byte length for diff context injected into reviewer prompts. */
 const DIFF_CONTEXT_MAX_BYTES = 80_000;
 
-// --- eforge:region plan-01-generated-artifact-review-filter ---
 const GENERATED_REVIEW_ARTIFACT_PATH_PREFIXES = [
   'eforge/plans/',
   'eforge/prds/',
@@ -47,7 +46,6 @@ export function getReviewDiffPathspecArgs(): string[] {
     ':(exclude)web/public/llms-full.txt',
   ];
 }
-// --- eforge:endregion plan-01-generated-artifact-review-filter ---
 
 /**
  * Compute the changed-files list and a bounded diff for injection into reviewer prompts.
@@ -64,17 +62,13 @@ export async function computeReviewContext(
   baseBranch: string,
 ): Promise<{ changedFiles: string; changedFilesList: string[]; diffContext: string }> {
   let changedFiles = '';
-  // --- eforge:region plan-01-changedfiles-extension-contexts ---
   let changedFilesList: string[] = [];
-  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
   let diffContext = '';
 
   try {
     const { stdout } = await exec('git', ['diff', '--no-ext-diff', '--no-textconv', '--name-only', '--end-of-options', `${baseBranch}...HEAD`, ...getReviewDiffPathspecArgs()], { cwd });
-    // --- eforge:region plan-01-changedfiles-extension-contexts ---
     changedFilesList = filterGeneratedReviewArtifactPaths(stdout.trim().split('\n').filter(Boolean));
     changedFiles = changedFilesList.join('\n');
-    // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
   } catch {
     // Not a git repo or git unavailable — leave empty
   }
@@ -136,9 +130,7 @@ export async function composeReviewPrompt(
     diff_context: diffContext,
     review_issue_schema: getReviewIssueSchemaYaml(),
   }, append);
-  // --- eforge:region plan-01-changedfiles-extension-contexts ---
   return { prompt, changedFiles: changedFilesList };
-  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
 }
 
 /**
@@ -449,9 +441,7 @@ export async function* runReview(
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId };
 
-  // --- eforge:region plan-01-changedfiles-extension-contexts ---
   const { prompt, changedFiles } = await composeReviewPrompt(planContent, baseBranch, cwd, options.promptAppend);
-  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
 
   let fullText = '';
 

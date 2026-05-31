@@ -238,7 +238,6 @@ export function getParentArtifactBranch(state: StackState, childPrdId: string): 
   return parent.artifact?.branch ?? parent.branch;
 }
 
-// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 /**
  * Strictly return a recorded artifact branch/ref for `prdId`.
  * Status alone is not sufficient for downstream readiness.
@@ -246,7 +245,6 @@ export function getParentArtifactBranch(state: StackState, childPrdId: string): 
 export function getRecordedArtifactRef(state: StackState, prdId: string): string | undefined {
   return lookupLayerByPrdId(state, prdId)?.artifact?.branch;
 }
-// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 // ---------------------------------------------------------------------------
 // Artifact availability
@@ -265,7 +263,6 @@ export function isArtifactAvailable(state: StackState, prdId: string): boolean {
 // Landing state helpers
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
 /**
  * Atomically update the `status`, `landing`, and `updatedAt` fields for the
  * layer identified by `prdId`.
@@ -304,7 +301,6 @@ export async function updateStackLayerStatusAndLanding(
     return updatedState;
   });
 }
-// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
 /**
  * Update the durable landing record for the layer identified by `prdId`.

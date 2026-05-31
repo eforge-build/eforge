@@ -117,7 +117,6 @@ async function getCurrentBranch(cwd: string): Promise<string> {
 describe('prepareTrunkSyncBase', () => {
   const makeTempDir = useTempDir('eforge-trunk-sync-');
 
-  // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
 
   it('disabled config returns original base without fetching', async () => {
     const baseDir = makeTempDir();
@@ -363,5 +362,4 @@ describe('prepareTrunkSyncBase', () => {
     expect(cmds.some((c) => c.includes('eforge stack sync'))).toBe(false);
   });
 
-  // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 });

@@ -13,69 +13,43 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as sdk from '@eforge-build/extension-sdk';
 
-// --- eforge:region plan-02-docs-examples ---
 import agentTools from '../examples/extensions/agent-tools.js';
-// --- eforge:endregion plan-02-docs-examples ---
 
 // Import example default exports so TypeScript verifies they conform to the
 // SDK factory contract. The `void` references below exist solely to keep the
 // imports from being elided by tree-shakers while keeping eslint/no-unused happy.
 import minimalEventLogger from '../examples/extensions/minimal-event-logger.js';
 import protectedPaths from '../examples/extensions/protected-paths.js';
-// --- eforge:region plan-02-runtime-and-integration ---
 import profileRouter from '../examples/extensions/profile-router.js';
-// --- eforge:endregion plan-02-runtime-and-integration ---
-// --- eforge:region plan-01-extension-docs-examples-sync ---
 import agentContext from '../examples/extensions/agent-context.js';
 import slackWebhookNotifier from '../examples/extensions/slack-webhook-notifier.js';
-// --- eforge:endregion plan-01-extension-docs-examples-sync ---
-// --- eforge:region plan-01-docs-example-and-skills ---
 import issueTracker from '../examples/extensions/issue-tracker.js';
-// --- eforge:endregion plan-01-docs-example-and-skills ---
-// --- eforge:region plan-03-observability-docs-examples ---
 import reviewerPerspective from '../examples/extensions/reviewer-perspective.js';
-// --- eforge:endregion plan-03-observability-docs-examples ---
-// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
 import validationProvider from '../examples/extensions/validation-provider.js';
-// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 
 const EXTENSION_EXAMPLE_DIR = resolve(fileURLToPath(new URL('../examples/extensions', import.meta.url)));
 const importedExampleFiles = [
   'agent-context.ts',
-  // --- eforge:region plan-02-docs-examples ---
   'agent-tools.ts',
-  // --- eforge:endregion plan-02-docs-examples ---
-  // --- eforge:region plan-01-docs-example-and-skills ---
   'issue-tracker.ts',
-  // --- eforge:endregion plan-01-docs-example-and-skills ---
   'minimal-event-logger.ts',
   'profile-router.ts',
   'protected-paths.ts',
-  // --- eforge:region plan-03-observability-docs-examples ---
   'reviewer-perspective.ts',
-  // --- eforge:endregion plan-03-observability-docs-examples ---
   'slack-webhook-notifier.ts',
-  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
   'validation-provider.ts',
-  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 ].sort();
 
 const _factoryCheck1: sdk.EforgeExtensionFactory = minimalEventLogger;
 const _factoryCheck2: sdk.EforgeExtensionFactory = protectedPaths;
-// --- eforge:region plan-02-docs-examples ---
 const _factoryCheck7: sdk.EforgeExtensionFactory = agentTools;
 void _factoryCheck7;
-// --- eforge:endregion plan-02-docs-examples ---
-// --- eforge:region plan-02-runtime-and-integration ---
 const _factoryCheck4: sdk.EforgeExtensionFactory = profileRouter;
 void _factoryCheck4;
-// --- eforge:endregion plan-02-runtime-and-integration ---
-// --- eforge:region plan-01-extension-docs-examples-sync ---
 const _factoryCheck5: sdk.EforgeExtensionFactory = agentContext;
 const _factoryCheck6: sdk.EforgeExtensionFactory = slackWebhookNotifier;
 void _factoryCheck5;
 void _factoryCheck6;
-// --- eforge:endregion plan-01-extension-docs-examples-sync ---
 const _factoryCheck3: sdk.EforgeExtensionFactory = (api) => {
   api.registerTool({
     name: 'test:noop',
@@ -84,23 +58,16 @@ const _factoryCheck3: sdk.EforgeExtensionFactory = (api) => {
     handler: () => 'ok',
   });
 };
-// --- eforge:region plan-01-docs-example-and-skills ---
 const _factoryCheckIssueTracker: sdk.EforgeExtensionFactory = issueTracker;
 void _factoryCheckIssueTracker;
-// --- eforge:endregion plan-01-docs-example-and-skills ---
-// --- eforge:region plan-03-observability-docs-examples ---
 const _factoryCheckReviewerPerspective: sdk.EforgeExtensionFactory = reviewerPerspective;
 void _factoryCheckReviewerPerspective;
-// --- eforge:endregion plan-03-observability-docs-examples ---
-// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
 const _factoryCheckValidationProvider: sdk.EforgeExtensionFactory = validationProvider;
 void _factoryCheckValidationProvider;
-// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 void _factoryCheck1;
 void _factoryCheck2;
 void _factoryCheck3;
 
-// --- eforge:region plan-01-sdk-and-wire-contracts ---
 // Type-check stub: selectBuildProfile with ProfileRouterContext
 const _profileRouterStub: sdk.EforgeExtensionFactory = (api) => {
   api.registerProfileRouter({
@@ -146,9 +113,7 @@ const _policyGateStub: sdk.EforgeExtensionFactory = (api) => {
   });
 };
 void _policyGateStub;
-// --- eforge:endregion plan-01-sdk-and-wire-contracts ---
 
-// --- eforge:region plan-01-extension-input-contracts ---
 
 // Compile-time examples: old one-argument input source remains compatible
 const _oldInputSourceStub: sdk.EforgeExtensionFactory = (api) => {
@@ -203,9 +168,7 @@ const _prdEnricherStub: sdk.EforgeExtensionFactory = (api) => {
 };
 void _prdEnricherStub;
 
-// --- eforge:endregion plan-01-extension-input-contracts ---
 
-// --- eforge:region plan-02-extension-perspective-runtime ---
 // Compile-time example: reviewer perspective with applicability rules
 const _reviewerPerspectiveStub: sdk.EforgeExtensionFactory = (api) => {
   api.registerReviewerPerspective({
@@ -242,7 +205,6 @@ const _applicabilityTypeCheck: sdk.ReviewerPerspectiveApplicability = {
   },
 };
 void _applicabilityTypeCheck;
-// --- eforge:endregion plan-02-extension-perspective-runtime ---
 
 function captureSlackPlanErrorHandler(): sdk.EventHookHandler<'plan:error:set'> {
   let handler: sdk.EventHookHandler<'plan:error:set'> | undefined;

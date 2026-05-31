@@ -312,7 +312,6 @@ export interface EforgeExtensionAPI {
    */
   registerValidationProvider(spec: ValidationProviderSpec): void;
 
-  // --- eforge:region plan-01-extension-runtime-foundation ---
   /**
    * Register a custom agent tool contributed by this extension.
    *
@@ -321,7 +320,6 @@ export interface EforgeExtensionAPI {
    * the specific runs that should receive it.
    */
   registerTool(tool: ExtensionTool): void;
-  // --- eforge:endregion plan-01-extension-runtime-foundation ---
 }
 
 /**

@@ -2,12 +2,8 @@
  * Missing request type shapes not yet declared in types.ts.
  * Re-export from index so callers can import the request/response pair together.
  */
-// --- eforge:region plan-03-stack-daemon-ui ---
 import type { StackLayerWire } from './events.js';
-// --- eforge:endregion plan-03-stack-daemon-ui ---
-// --- eforge:region plan-01-recovery-summary-reconstruction ---
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
-// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 /** POST /api/enqueue */
 export interface EnqueueRequest {
   source: string;
@@ -16,11 +12,8 @@ export interface EnqueueRequest {
   profile?: string;
   /** Override the project-level landing action for this build. */
   landingAction?: 'pr' | 'merge' | 'leave';
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   /** When true, enable GitHub PR auto-merge after PR creation (requires the effective landing action to be 'pr', whether supplied via landingAction or resolved from project config). */
   landingAutoMerge?: boolean;
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
-  // --- eforge:region plan-01-build-dependency-core ---
   /**
    * Optional upstream queue item id. When provided, the enqueued PRD gains
    * `depends_on: [afterQueueId]` in its frontmatter. Placement depends on the
@@ -37,7 +30,6 @@ export interface EnqueueRequest {
    * detection performed during enqueue.
    */
   afterQueueId?: string;
-  // --- eforge:endregion plan-01-build-dependency-core ---
 }
 /** POST /api/auto-build */
 export interface AutoBuildSetRequest {
@@ -76,14 +68,12 @@ export interface ReadSidecarRequest {
  * Legacy sidecars without the new optional fields still parse because all added
  * fields are optional.
  */
-// --- eforge:region plan-01-recovery-summary-reconstruction ---
 export interface RecoveryVerdictSidecar {
   schemaVersion: number;
   generatedAt: string;
   summary: BuildFailureSummary;
   verdict: RecoveryVerdict;
 }
-// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
 /** Response for GET /api/recovery/sidecar */
 export interface ReadSidecarResponse {
@@ -91,7 +81,6 @@ export interface ReadSidecarResponse {
   json: RecoveryVerdictSidecar;
 }
 
-// --- eforge:region plan-02-api-cli ---
 /** POST /api/recover/resume-build */
 export interface ResumeBuildRequest {
   prdId: string;
@@ -104,7 +93,6 @@ export interface ResumeBuildResponse {
   sessionId: string;
   pid: number;
 }
-// --- eforge:endregion plan-02-api-cli ---
 
 /** POST /api/recover/apply */
 export interface ApplyRecoveryRequest {
@@ -159,33 +147,21 @@ export const API_ROUTES = {
   version: '/api/version',
   configShow: '/api/config/show',
   configValidate: '/api/config/validate',
-  // --- eforge:region plan-02-extension-tooling-surfaces ---
   extensionList: '/api/extensions/list',
   extensionShow: '/api/extensions/show',
   extensionValidate: '/api/extensions/validate',
-  // --- eforge:region plan-01-engine-daemon-extension-replay ---
   extensionTest: '/api/extensions/test',
-  // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
-  // --- eforge:region plan-02-management-surfaces ---
   extensionTrust: '/api/extensions/trust',
   extensionUntrust: '/api/extensions/untrust',
-  // --- eforge:endregion plan-02-management-surfaces ---
-  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
-  // --- eforge:region plan-01-extension-management-api ---
   extensionNew: '/api/extensions/new',
   extensionReload: '/api/extensions/reload',
-  // --- eforge:endregion plan-01-extension-management-api ---
-  // --- eforge:region plan-01-extension-package-foundation ---
   extensionInstall: '/api/extensions/install',
   extensionUpdate: '/api/extensions/update',
   extensionRemove: '/api/extensions/remove',
   extensionPromote: '/api/extensions/promote',
   extensionDemote: '/api/extensions/demote',
-  // --- eforge:endregion plan-01-extension-package-foundation ---
   queue: '/api/queue',
-  // --- eforge:region plan-01-queue-recovery-api-engine ---
   queueRecoveryAnalyze: '/api/queue/recovery/analyze', queueRecoveryApply: '/api/queue/recovery/apply',
-  // --- eforge:endregion plan-01-queue-recovery-api-engine ---
   sessionMetadata: '/api/session-metadata',
   runs: '/api/runs',
   events: '/api/events/:runId',
@@ -196,9 +172,7 @@ export const API_ROUTES = {
   recover: '/api/recover',
   readRecoverySidecar: '/api/recovery/sidecar',
   applyRecovery: '/api/recover/apply',
-  // --- eforge:region plan-02-api-cli ---
   resumeBuild: '/api/recover/resume-build',
-  // --- eforge:endregion plan-02-api-cli ---
   schedulerKick: '/api/scheduler/kick',
   playbookList: '/api/playbook/list',
   playbookShow: '/api/playbook/show',
@@ -219,13 +193,9 @@ export const API_ROUTES = {
   sessionPlanMigrateLegacy: '/api/session-plan/migrate-legacy',
   sessionPlanCreateFromPlaybook: '/api/session-plan/create-from-playbook',
   daemonEvents: '/api/daemon-events',
-  // --- eforge:region plan-03-stack-daemon-ui ---
   stackLayers: '/api/stack/layers',
-  // --- eforge:endregion plan-03-stack-daemon-ui ---
-  // --- eforge:region plan-01-stack-sync-daemon-cli ---
   stackSync: '/api/stack/sync',
   stackSyncStatus: '/api/stack/sync/status',
-  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 } as const;
 
 /** Response body for GET /api/version */
@@ -418,10 +388,8 @@ export interface PlaybookRunRequest {
   afterQueueId?: string;
   /** Override the project-level landing action for this autonomous playbook run. */
   landingAction?: 'pr' | 'merge' | 'leave';
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   /** When true, enable GitHub PR auto-merge after PR creation (requires the effective landing action to be 'pr', whether supplied via landingAction or resolved from project config). */
   landingAutoMerge?: boolean;
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }
 
 /** Response for POST /api/playbook/run when the playbook is autonomous */
@@ -470,14 +438,11 @@ export interface SessionPlanMigrateLegacyResponse {
   migrated: boolean;
 }
 
-// --- eforge:region plan-03-stack-daemon-ui ---
 /** Response for GET /api/stack/layers */
 export interface StackLayersResponse {
   layers: StackLayerWire[];
 }
-// --- eforge:endregion plan-03-stack-daemon-ui ---
 
-// --- eforge:region plan-01-stack-sync-daemon-cli ---
 /** A single provider command recorded in a POST /api/stack/sync response. */
 export interface StackSyncProviderCommandWire {
   /** The resolved executable path. */
@@ -607,7 +572,6 @@ export interface StackSyncResponse {
   /** ISO timestamp when the sync completed (present when routed through the daemon service). */
   completedAt?: string;
 }
-// --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];
 

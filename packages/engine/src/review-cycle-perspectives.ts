@@ -34,7 +34,6 @@ export interface ReviewCycleEvaluationSummary {
   blockingIssueOutcomes?: number;
 }
 
-// --- eforge:region plan-01-dynamic-perspective-contracts ---
 export interface SelectNextReviewPerspectivesInput {
   /** Stable ordering from the first review round; may include dynamic keys. */
   initialOrder: string[];
@@ -61,7 +60,6 @@ export interface SelectNextReviewPerspectivesResult {
   rationale: string;
   fallback: boolean;
 }
-// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
 // ---------------------------------------------------------------------------
 // Early termination
@@ -354,7 +352,6 @@ function verifyKeepRationale(
   return 'Dropped verify: no accepted command/integration-risk files';
 }
 
-// --- eforge:region plan-01-dynamic-perspective-contracts ---
 /**
  * Derive which built-in concern perspectives apply to the files touched by
  * evaluation verdicts. Returns a Set of strings (built-in names) for
@@ -383,7 +380,6 @@ function concernPerspectives(evaluation: ReviewCycleEvaluationSummary): Set<stri
   return new Set<string>(determineApplicableReviewsWithRules(categories).perspectives);
 }
 
-// --- eforge:region plan-02-extension-perspective-runtime ---
 /**
  * Returns true when the perspective key is a built-in perspective name.
  * Extension perspectives are not built-in.
@@ -391,8 +387,6 @@ function concernPerspectives(evaluation: ReviewCycleEvaluationSummary): Set<stri
 function isBuiltInKey(key: string): boolean {
   return isBuiltInReviewPerspective(key);
 }
-// --- eforge:endregion plan-02-extension-perspective-runtime ---
-// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
 export function selectNextReviewPerspectives(
   input: SelectNextReviewPerspectivesInput,
@@ -438,12 +432,10 @@ export function selectNextReviewPerspectives(
   for (const perspective of stableOrder) {
     const isMandatory = mandatorySet.has(perspective);
     const keepForCritical = hasCriticalIssues(perspective, issuesByPerspective);
-    // --- eforge:region plan-02-extension-perspective-runtime ---
     // For extension perspectives (non-built-in keys), concern inference via file categories
     // does not apply — they are retained only when they have critical issues or are mandatory.
     // Built-in perspectives may also be retained by concern overlap or verify logic.
     const keepForConcern = !isBuiltInKey(perspective) ? false : overlappingConcerns.has(perspective);
-    // --- eforge:endregion plan-02-extension-perspective-runtime ---
     const keepForVerify = perspective === 'verify' && (keepForCritical || keepVerifyForAcceptedChanges || isMandatory);
 
     const reason = keepReason(perspective, keepForCritical, keepForConcern, keepForVerify, isMandatory);

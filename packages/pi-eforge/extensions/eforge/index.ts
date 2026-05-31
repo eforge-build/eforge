@@ -58,9 +58,7 @@ import {
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
   buildPath,
-  // --- eforge:region plan-02-pi-workflow-wizard-and-stack-sync ---
   apiStackSyncIfRunning,
-  // --- eforge:endregion plan-02-pi-workflow-wizard-and-stack-sync ---
 } from '@eforge-build/client';
 import { requireDaemon, piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
 import { deriveProfileName } from '@eforge-build/engine/config';
@@ -84,10 +82,8 @@ import { handlePlaybookCommand } from './playbook-commands';
 import { handlePlanCommand } from './plan-command';
 import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
-// --- eforge:region plan-02-pi-workflow-wizard-and-stack-sync ---
 import { handleWorkflowCommand, handleWorkflowInitCommand, handleWorkflowReconfigureCommand } from './workflow-wizard';
 import { handleStackSyncCommand } from './stack-sync-command';
-// --- eforge:endregion plan-02-pi-workflow-wizard-and-stack-sync ---
 import { showSelectPanel, type UIContext } from './ui-helpers';
 import {
   type LandingAction,
@@ -331,16 +327,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'], {
         description: "Override the project-level landing action for this build. 'pr' opens a PR targeting the resolved base branch (requires gh CLI). 'merge' auto-merges the artifact branch into the base branch. 'leave' commits to the artifact branch and exits without merging or opening a PR.",
       })),
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       landingAutoMerge: Type.Optional(Type.Boolean({
         description: "When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge — the PR will be merged automatically once all required checks pass. When false, explicitly disable auto-merge even if the project default is 'always'. Omit to use the project default.",
       })),
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-      // --- eforge:region plan-03-consumer-surfaces-docs ---
       afterQueueId: Type.Optional(Type.String({
         description: "Optional upstream queue entry ID. When provided, the enqueued PRD gains depends_on: [afterQueueId]. Active upstream items (pending/running/waiting) are held in waiting/ and start when the upstream completes. Completed upstream items with a usable artifact are enqueued immediately as eligible dependents. Failed, skipped, and unknown IDs are rejected.",
       })),
-      // --- eforge:endregion plan-03-consumer-surfaces-docs ---
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const policyChoice = await promptForBuildLandingGate(
@@ -348,9 +340,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         ctx as unknown as UIContext,
         params.landingAction as LandingAction | undefined,
         signal,
-        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         { landingAutoMergeOverride: params.landingAutoMerge },
-        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       );
       if (policyChoice.cancelled) {
         return jsonResult({ status: "cancelled", message: "Build cancelled before enqueue." });
@@ -360,13 +350,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       if (params.profile) body.profile = params.profile;
       const effectiveLandingAction = policyChoice.landingAction ?? (params.landingAction as LandingAction | undefined);
       if (effectiveLandingAction) body.landingAction = effectiveLandingAction;
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       const effectiveLandingAutoMerge = policyChoice.landingAutoMerge ?? params.landingAutoMerge;
       if (effectiveLandingAutoMerge !== undefined) body.landingAutoMerge = effectiveLandingAutoMerge;
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-      // --- eforge:region plan-03-consumer-surfaces-docs ---
       if (params.afterQueueId !== undefined) body.afterQueueId = params.afterQueueId;
-      // --- eforge:endregion plan-03-consumer-surfaces-docs ---
       const { data, port } = await requireDaemon<EnqueueResponse>(
         ctx.cwd,
         "POST",
@@ -817,7 +803,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   // ------------------------------------------------------------------
   // Tool: eforge_extension
   // ------------------------------------------------------------------
-  // --- eforge:region plan-02-extension-tooling-surfaces ---
   pi.registerTool({
     name: "eforge_extension",
     label: "eforge extension",
@@ -982,7 +967,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (newResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
         return jsonResult(newResult.data);
       }
-      // --- eforge:region plan-02-management-surfaces ---
       if (params.action === "trust") {
         if (!params.name && !params.path) {
           throw new Error('"name" or "path" is required when action is "trust"');
@@ -1033,8 +1017,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (untrustResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
         return jsonResult(untrustResult.data);
       }
-      // --- eforge:endregion plan-02-management-surfaces ---
-      // --- eforge:region plan-03-extension-package-surfaces-docs ---
       if (params.action === "install") {
         if (params.source === undefined) {
           throw new Error('"source" is required when action is "install"');
@@ -1148,7 +1130,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (demoteResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
         return jsonResult(demoteResult.data);
       }
-      // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
       if (params.name !== undefined || params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
         throw new Error('"reload" does not accept name, path, scope, template, or force');
       }
@@ -1169,7 +1150,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       return jsonResult(reloadResult.data);
     },
   });
-  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_models
@@ -1387,7 +1367,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'], {
         description: "Landing action to persist in eforge/config.yaml under landing.action. 'pr' opens a PR targeting the resolved base branch (requires gh CLI). 'merge' auto-merges the artifact branch into the base branch. 'leave' commits to the artifact branch and exits without merging or opening a PR.",
       })),
-      // --- eforge:region plan-04-ux-init-build-and-docs ---
       trunkBranch: Type.Optional(
         Type.String({
           description: "The trunk branch name (e.g. 'main', 'master'). Stored as build.trunkBranch in eforge/config.yaml. When omitted, eforge resolves trunk via git symbolic-ref at runtime.",
@@ -1408,7 +1387,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           description: "Persist stacking.gitSpice.command (path or command name for the git-spice executable).",
         }),
       ),
-      // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       migrate: Type.Optional(
         Type.Boolean({
           description:
@@ -1587,10 +1565,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const existingProfileConfigData: Record<string, unknown> = {};
         const existingProfileBuildBlock: Record<string, unknown> = {};
         if (params.postMergeCommands && params.postMergeCommands.length > 0) existingProfileBuildBlock.postMergeCommands = params.postMergeCommands;
-        // --- eforge:region plan-04-ux-init-build-and-docs ---
         if (params.trunkBranch) existingProfileBuildBlock.trunkBranch = params.trunkBranch;
         if (params.allowLocalMergeToTrunk !== undefined) existingProfileBuildBlock.allowLocalMergeToTrunk = params.allowLocalMergeToTrunk;
-        // --- eforge:endregion plan-04-ux-init-build-and-docs ---
         if (Object.keys(existingProfileBuildBlock).length > 0) existingProfileConfigData.build = existingProfileBuildBlock;
         if (params.landingAction) existingProfileConfigData.landing = { action: params.landingAction };
         if (params.stackingEnabled !== undefined || params.gitSpiceCommand !== undefined) {
@@ -1734,10 +1710,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const configData: Record<string, unknown> = {};
       const buildBlock: Record<string, unknown> = {};
       if (params.postMergeCommands && params.postMergeCommands.length > 0) buildBlock.postMergeCommands = params.postMergeCommands;
-      // --- eforge:region plan-04-ux-init-build-and-docs ---
       if (params.trunkBranch) buildBlock.trunkBranch = params.trunkBranch;
       if (params.allowLocalMergeToTrunk !== undefined) buildBlock.allowLocalMergeToTrunk = params.allowLocalMergeToTrunk;
-      // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       if (Object.keys(buildBlock).length > 0) configData.build = buildBlock;
       if (params.landingAction) configData.landing = { action: params.landingAction };
       if (params.stackingEnabled !== undefined || params.gitSpiceCommand !== undefined) {
@@ -1857,7 +1831,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:region plan-03-daemon-mcp-pi ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_recover
@@ -1910,7 +1883,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:region plan-01-backend-apply-recovery ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_apply_recovery
@@ -1940,9 +1912,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:endregion plan-01-backend-apply-recovery ---
 
-  // --- eforge:region plan-03-consumer-parity ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_resume_build
@@ -1973,11 +1943,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:endregion plan-03-consumer-parity ---
 
-  // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
-  // --- eforge:region plan-02-daemon-http-and-mcp-tool ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_playbook
@@ -2029,11 +1996,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'] as const, {
         description: "Override the project-level landing action for this run (optional, 'run' only for autonomous playbooks). 'pr' opens a PR targeting the resolved base branch. 'merge' auto-merges. 'leave' commits and exits without merging or opening a PR.",
       })),
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       landingAutoMerge: Type.Optional(Type.Boolean({
         description: "When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge for this playbook run. When false, explicitly disable auto-merge. Omit to use the project default. Only applies to autonomous playbooks via 'run'.",
       })),
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       raw: Type.Optional(
         Type.String({
           description: 'Raw Markdown playbook string (required for "validate")',
@@ -2070,9 +2035,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
         if (landingAction !== undefined) body.landingAction = landingAction;
-        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         if (landingAutoMerge !== undefined) body.landingAutoMerge = landingAutoMerge;
-        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookRun, body);
         return jsonResult(data);
       }
@@ -2152,9 +2115,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:endregion plan-02-daemon-http-and-mcp-tool ---
 
-  // --- eforge:region plan-03-tools-and-skills ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_session_plan
@@ -2398,7 +2359,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:endregion plan-03-tools-and-skills ---
 
   // ------------------------------------------------------------------
   // Command aliases — map /eforge:* to /skill:eforge-*
@@ -2441,13 +2401,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       description: "Initialize eforge in the current project",
       skill: "eforge-init",
     },
-    // --- eforge:region plan-01-extend-authoring-ux ---
     {
       name: "eforge:extend",
       description: "Author eforge TypeScript extensions",
       skill: "eforge-extend",
     },
-    // --- eforge:endregion plan-01-extend-authoring-ux ---
     {
       name: "eforge:update",
       description: "Check for eforge updates and guide through updating",
@@ -2506,7 +2464,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:region plan-04-skills-handheld-uis ---
 
   pi.registerCommand("eforge:playbook", {
     description: "Create, edit, run, list, and promote eforge playbooks",
@@ -2515,9 +2472,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:endregion plan-04-skills-handheld-uis ---
 
-  // --- eforge:region plan-02-pi-workflow-wizard-and-stack-sync ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_stack_sync
@@ -2590,5 +2545,4 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:endregion plan-02-pi-workflow-wizard-and-stack-sync ---
 }

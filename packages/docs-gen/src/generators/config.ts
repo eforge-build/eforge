@@ -80,7 +80,6 @@ export async function generateConfig(opts: {
   }
 
   lines.push('');
-  // --- eforge:region plan-01-reference-and-mirror-content ---
   lines.push('## Toolbelts');
   lines.push('');
   lines.push('`tools.toolbelts` declares named bundles of project MCP servers that tiers can opt into with `agents.tiers.<tier>.toolbelt`. Toolbelts are intended for profiles that need a focused capability set, such as browser automation for UI implementation and review.');
@@ -141,7 +140,6 @@ export async function generateConfig(opts: {
   lines.push('');
   lines.push('Hook commands run asynchronously from the pipeline path. Use them for best-effort side effects, not required validation or build steps.');
   lines.push('');
-  // --- eforge:endregion plan-01-reference-and-mirror-content ---
   lines.push('## Landing Action');
   lines.push('');
   lines.push('`landing.action` controls what happens after a successful build. Values: `pr` (open a GitHub pull request), `merge` (merge the artifact branch into the base branch), `leave` (leave the artifact branch in place). Default: `merge`.');

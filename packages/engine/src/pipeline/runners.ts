@@ -73,7 +73,6 @@ export interface ReviewCycleConfig {
   };
 }
 
-// --- eforge:region plan-01-stage-local-retry-recovery ---
 /**
  * Compile reviewer roles that receive one infrastructure/transport retry.
  * Other reviewer roles (e.g. `reviewer` in build stages) use the non-retry path.
@@ -83,7 +82,6 @@ const RETRIABLE_REVIEWER_ROLES = new Set<AgentRole>([
   'architecture-reviewer',
   'cohesion-reviewer',
 ]);
-// --- eforge:endregion plan-01-stage-local-retry-recovery ---
 
 /**
  * Run a review -> evaluate cycle. The reviewer runs first (non-fatal on error).
@@ -98,7 +96,6 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
   reviewSpan.setInput(config.reviewer.metadata);
   const reviewTracker = createToolTracker(reviewSpan);
   try {
-    // --- eforge:region plan-01-stage-local-retry-recovery ---
     if (RETRIABLE_REVIEWER_ROLES.has(config.reviewer.role)) {
       // Compile reviewers get one infrastructure/transport retry before swallowing failure.
       const reviewerRetryPolicy: RetryPolicy<unknown> = {
@@ -123,7 +120,6 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
         yield event;
       }
     }
-    // --- eforge:endregion plan-01-stage-local-retry-recovery ---
     reviewTracker.cleanup();
     reviewSpan.end();
   } catch (err) {
@@ -311,7 +307,6 @@ export async function* runBuildPipeline(
     if (ctx.buildFailed) return;
   }
 
-  // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
   // Final guard: fail the pipeline when the plan worktree has uncommitted changes at
   // the end of all build stages. A dirty worktree means implementation work was not
   // committed, which would produce a silent no-op merge. Non-git contexts (unit tests
@@ -371,7 +366,6 @@ export async function* runBuildPipeline(
       return;
     }
   }
-  // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:complete', planId: ctx.planId };
 }

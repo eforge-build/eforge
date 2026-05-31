@@ -536,7 +536,6 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
   });
 });
 
-// --- eforge:region plan-01-durable-daemon-event-persistence ---
 
 describe('stream:hello queue parity with live queue:prd:discovered projection', () => {
   it('live queue:prd:discovered projection equals stream:hello.queue for a newly discovered PRD', async () => {
@@ -620,9 +619,7 @@ describe('stream:hello queue parity with live queue:prd:discovered projection', 
   });
 });
 
-// --- eforge:endregion plan-01-durable-daemon-event-persistence ---
 
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 
 describe('stream:hello stackSyncStatus parity with GET /api/stack/sync/status', () => {
   it('stackSyncStatus absent from stream:hello when no sync-status.json exists', async () => {
@@ -712,4 +709,3 @@ describe('stream:hello stackSyncStatus parity with GET /api/stack/sync/status', 
   });
 });
 
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---

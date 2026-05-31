@@ -1,4 +1,3 @@
-// --- eforge:region plan-06-build-detail-base ---
 import { useEffect } from 'react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,9 +6,7 @@ import { BottomTabPanel } from './bottom-tab-panel';
 import { useHybridRunDetail } from '@/hooks/use-run-detail';
 import { extractPrdTitle } from '@/lib/plan-content';
 import type { RunState } from '@/lib/run-state';
-// --- eforge:region plan-07-build-detail-tabs ---
 import { PlanPreviewProvider, PlanPreviewPanel, usePlanPreview } from '@/components/preview';
-// --- eforge:endregion plan-07-build-detail-tabs ---
 
 interface RunDetailViewProps {
   /** Session/run ID being viewed. */
@@ -29,7 +26,6 @@ export function RunDetailView({ detailId, isLive, liveRunState, onBack }: RunDet
     liveRunState,
   );
 
-  // --- eforge:region plan-07-build-detail-tabs ---
   return (
     <PlanPreviewProvider>
       <RunDetailContent
@@ -43,7 +39,6 @@ export function RunDetailView({ detailId, isLive, liveRunState, onBack }: RunDet
       />
     </PlanPreviewProvider>
   );
-  // --- eforge:endregion plan-07-build-detail-tabs ---
 }
 
 interface RunDetailContentProps {
@@ -145,4 +140,3 @@ function RunDetailContent({ detailId, isLive, runState, plans, isLoading, error,
     </div>
   );
 }
-// --- eforge:endregion plan-06-build-detail-base ---

@@ -17,21 +17,13 @@ import type { ProviderCommandResult, StackProviderAdapter } from './provider.js'
 import type { StackBaseContext } from './base-resolver.js';
 import type { LandingPublicationAction, StackLayer } from './types.js';
 import { updateStackLayerLanding, updateStackLayerStatusAndLanding } from './state.js';
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 // PR URL parsing and redaction are delegated to provider helpers (parsePrUrl, isValidPrUrl, redactMessage)
 // to avoid direct git-spice imports in orchestration code.
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---
-// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
 import { runCleanup } from '../landing.js';
-// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
-// --- eforge:region plan-01-core-engine-auto-merge ---
 import { resolvePrAutoMergeIntent } from '../config.js';
 import { enablePullRequestAutoMerge } from '../worktree-ops.js';
-// --- eforge:endregion plan-01-core-engine-auto-merge ---
-// --- eforge:region plan-01-pr-metadata ---
 import { editPullRequest } from '../worktree-ops.js';
 import type { PullRequestMetadata } from '../pr-metadata.js';
-// --- eforge:endregion plan-01-pr-metadata ---
 
 const execFileAsync = promisify(execFile);
 
@@ -99,7 +91,6 @@ export interface StackLandingOptions {
   landingAction: LandingPublicationAction;
   /** Instantiated provider adapter. */
   provider: StackProviderAdapter;
-  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
   /** Whether to run cleanup on the feature branch before provider.submitBranch. */
   shouldCleanup?: boolean;
   /** Plan set name for cleanup commit message. */
@@ -108,18 +99,12 @@ export interface StackLandingOptions {
   cleanupOutputDir?: string;
   /** Path to the PRD file to remove during cleanup. */
   cleanupPrdFilePath?: string;
-  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   /** Configured PR auto-merge policy (from landing.pr.autoMerge). Defaults to 'ask'. */
   prAutoMergePolicy?: 'ask' | 'always' | 'never';
   /** Per-run PR auto-merge intent (from landingAutoMerge option). */
   landingAutoMerge?: boolean;
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
-  // --- eforge:region plan-01-pr-metadata ---
   /** Optional deterministic PR metadata to apply via `gh pr edit` after URL discovery. */
   metadata?: PullRequestMetadata;
-  // --- eforge:endregion plan-01-pr-metadata ---
-  // --- eforge:region plan-01-build-artifact-provenance ---
   /**
    * Optional lazy metadata factory called after cleanup and the PR URL discovery
    * attempt, and before `gh pr edit`. Takes precedence over `metadata` when both
@@ -128,7 +113,6 @@ export interface StackLandingOptions {
    * back to `metadata` if present, or skip the edit entirely.
    */
   metadataFactory?: () => Promise<PullRequestMetadata>;
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
 }
 
 // ---------------------------------------------------------------------------
@@ -179,25 +163,15 @@ async function discoverPrUrlViaGh(
  * applicable, emits `stack:landing:update` skipped and returns.
  */
 export async function* executeStackLanding(opts: StackLandingOptions): AsyncGenerator<EforgeEvent> {
-  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
   const { cwd, mergeWorktreePath, stackContext, landingAction, provider,
     shouldCleanup, cleanupPlanSet, cleanupOutputDir, cleanupPrdFilePath } = opts;
-  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   const { prAutoMergePolicy = 'ask', landingAutoMerge } = opts;
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
-  // --- eforge:region plan-01-pr-metadata ---
   const { metadata } = opts;
-  // --- eforge:endregion plan-01-pr-metadata ---
-  // --- eforge:region plan-01-build-artifact-provenance ---
   const { metadataFactory } = opts;
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
   const { prdId, stackId, branch, baseBranch, provider: providerName } = stackContext;
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   // Use provider-level helpers for redaction, PR URL parsing, and validation
   // to avoid direct git-spice imports in orchestration code.
   const redact = provider.redactMessage.bind(provider);
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
   const ts = (): string => new Date().toISOString();
   const startedAt = ts();
@@ -205,11 +179,9 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   if (landingAction !== 'pr') {
     // Non-PR landing action: skip git-spice submission and persist the outcome.
     const completedAt = ts();
-    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
     // Non-PR actions produce terminal layer statuses: merge→'merged', leave→'landed'.
     const layerStatusForSkip: StackLayer['status'] = landingAction === 'merge' ? 'merged' : 'landed';
     await updateStackLayerStatusAndLanding(cwd, prdId, layerStatusForSkip, {
-    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       action: landingAction,
       status: 'skipped',
       reason: `Landing action is '${landingAction}', not 'pr'`,
@@ -257,9 +229,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     if (commandEvent) yield commandEvent;
     const reason = redact(err instanceof Error ? err.message : String(err));
     const failedAt = ts();
-    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
     await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
-    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       action: landingAction,
       status: 'failed',
       reason,
@@ -279,7 +249,6 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     return;
   }
 
-  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
   // Step 2 (pre-submit): Run cleanup before submitting the PR, if configured.
   if (shouldCleanup && cleanupPlanSet && cleanupOutputDir) {
     for await (const event of runCleanup(
@@ -293,9 +262,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
       yield event;
     }
   }
-  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
-  // --- eforge:region plan-01-restack-before-stacked-pr-submit ---
   // Step 3: Restack branch so it sits atop the latest base tip before submit
   let restackResult: ProviderCommandResult;
   try {
@@ -325,7 +292,6 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     } as EforgeEvent;
     return;
   }
-  // --- eforge:endregion plan-01-restack-before-stacked-pr-submit ---
 
   // Step 4: Submit the branch as a PR
   let submitResult: ProviderCommandResult;
@@ -337,9 +303,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     if (commandEvent) yield commandEvent;
     const reason = redact(err instanceof Error ? err.message : String(err));
     const failedAt = ts();
-    // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
     await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
-    // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
       action: landingAction,
       status: 'failed',
       reason,
@@ -360,13 +324,10 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   }
 
   // Step 5: Discover PR URL — parse from submit output, then gh fallback
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   const prUrl =
     provider.parsePrUrl(submitResult.stdout) ??
     (await discoverPrUrlViaGh(mergeWorktreePath, branch, provider.isValidPrUrl.bind(provider)));
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
-  // --- eforge:region plan-01-build-artifact-provenance ---
   // Resolve metadata: prefer lazy factory (called after cleanup) over static metadata.
   let resolvedMetadata: PullRequestMetadata | undefined = metadata;
   if (metadataFactory !== undefined) {
@@ -376,8 +337,6 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
       // Best-effort: fall back to static metadata (or skip edit if also absent)
     }
   }
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
-  // --- eforge:region plan-01-pr-metadata ---
   // Step 5a: Apply deterministic PR metadata via gh pr edit (non-fatal).
   if (prUrl !== undefined && resolvedMetadata !== undefined) {
     try {
@@ -390,13 +349,10 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
       } as EforgeEvent;
     }
   }
-  // --- eforge:endregion plan-01-pr-metadata ---
 
   // Step 6: Persist complete landing state with layer status transition to 'landed'
   const completedAt = ts();
-  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
   await updateStackLayerStatusAndLanding(cwd, prdId, 'landed', {
-  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
     action: landingAction,
     status: 'complete',
     ...(prUrl !== undefined && { prUrl }),
@@ -415,7 +371,6 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     ...(prUrl !== undefined && { prUrl }),
   } as EforgeEvent;
 
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   // Step 7: Attempt PR auto-merge (non-fatal) after successful PR landing.
   const shouldAutoMerge = resolvePrAutoMergeIntent(prAutoMergePolicy, landingAutoMerge);
   if (shouldAutoMerge) {
@@ -471,5 +426,4 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
       reason: skipReason,
     } as unknown as EforgeEvent;
   }
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }

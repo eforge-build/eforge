@@ -1,4 +1,3 @@
-// --- eforge:region plan-05-system-activity-progressive-disclosure-and-guards ---
 /**
  * system-view — Models section provider disclosure and search assertions.
  */
@@ -173,4 +172,3 @@ describe('ModelsSection — model search input', () => {
     expect(queryByText(/openai/)).toBeNull();
   });
 });
-// --- eforge:endregion plan-05-system-activity-progressive-disclosure-and-guards ---

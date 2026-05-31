@@ -10,10 +10,8 @@
 
 import type { OrchestrationConfig } from './events.js';
 import type { ModelTracker } from './model-tracker.js';
-// --- eforge:region plan-01-build-artifact-provenance ---
 import type { BuildArtifactProvenanceRef } from './provenance.js';
 import { renderProvenanceSection } from './provenance.js';
-// --- eforge:endregion plan-01-build-artifact-provenance ---
 
 export interface PullRequestMetadata {
   /** Single-line PR title (newlines stripped). */
@@ -27,10 +25,8 @@ export interface PullRequestMetadataInput {
   featureBranch: string;
   baseBranch: string;
   modelTracker?: ModelTracker;
-  // --- eforge:region plan-01-build-artifact-provenance ---
   /** Optional build artifact provenance references to include in the PR body. */
   provenanceRefs?: BuildArtifactProvenanceRef[];
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
 }
 
 /**
@@ -43,9 +39,7 @@ export interface PullRequestMetadataInput {
  * in the body — those remain in git commit messages only.
  */
 export function renderPullRequestMetadata(input: PullRequestMetadataInput): PullRequestMetadata {
-  // --- eforge:region plan-01-build-artifact-provenance ---
   const { config, featureBranch, baseBranch, modelTracker, provenanceRefs } = input;
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
 
   // Title: use description when non-empty, else name; strip newlines
   const titleBase = config.description.trim() || config.name;
@@ -73,12 +67,10 @@ export function renderPullRequestMetadata(input: PullRequestMetadataInput): Pull
   }
   lines.push('');
 
-  // --- eforge:region plan-01-build-artifact-provenance ---
   // Eforge provenance (commit-pinned artifact references; no branch-relative links)
   if (provenanceRefs && provenanceRefs.length > 0) {
     lines.push(renderProvenanceSection(provenanceRefs));
   }
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
 
   // Models used (only when tracker has models; no raw trailer labels)
   if (modelTracker && modelTracker.size > 0) {

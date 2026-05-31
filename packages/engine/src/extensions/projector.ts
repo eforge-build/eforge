@@ -10,12 +10,8 @@ export interface NativeExtensionRegistryProjection {
     source: string;
     strategy: string;
     registrations: Record<string, number>;
-    // --- eforge:region plan-03-observability-docs-examples ---
     reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
-    // --- eforge:endregion plan-03-observability-docs-examples ---
-    // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
     validationProviderDetails?: ValidationProviderDetail[];
-    // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
     packageProvenance?: NativeExtensionPackageProvenance;
     installProvenance?: NativeExtensionInstallProvenance;
   }>;
@@ -51,7 +47,6 @@ export interface NativeExtensionRegistryProjection {
   };
 }
 
-// --- eforge:region plan-03-observability-docs-examples ---
 function buildApplicabilitySummary(appliesTo: {
   fileGlobs?: string[];
   paths?: string[];
@@ -93,9 +88,7 @@ function buildReviewerPerspectiveDetails(
     }));
   return details.length > 0 ? details : undefined;
 }
-// --- eforge:endregion plan-03-observability-docs-examples ---
 
-// --- eforge:region plan-02-validation-provider-projections-ui-docs ---
 function buildValidationProviderDetails(
   registry: NativeExtensionRegistry,
   extensionName: string,
@@ -118,17 +111,12 @@ function buildValidationProviderDetails(
     });
   return details.length > 0 ? details : undefined;
 }
-// --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 
 export function projectExtensionRegistry(registry: NativeExtensionRegistry): NativeExtensionRegistryProjection {
   return {
     extensions: registry.extensions.map((extension) => {
-      // --- eforge:region plan-03-observability-docs-examples ---
       const reviewerPerspectiveDetails = buildReviewerPerspectiveDetails(registry, extension.name, extension.path);
-      // --- eforge:endregion plan-03-observability-docs-examples ---
-      // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
       const validationProviderDetails = buildValidationProviderDetails(registry, extension.name, extension.path);
-      // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
       return {
         name: extension.name,
         path: extension.path,
@@ -137,12 +125,8 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
         source: extension.source,
         strategy: extension.strategy,
         registrations: { ...extension.registrations },
-        // --- eforge:region plan-03-observability-docs-examples ---
         ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
-        // --- eforge:endregion plan-03-observability-docs-examples ---
-        // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
         ...(validationProviderDetails !== undefined && { validationProviderDetails }),
-        // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
         ...(extension.packageProvenance !== undefined && { packageProvenance: { ...extension.packageProvenance } }),
         ...(extension.installProvenance !== undefined && { installProvenance: { ...extension.installProvenance } }),
       };

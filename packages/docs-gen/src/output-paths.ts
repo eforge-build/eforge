@@ -55,20 +55,14 @@ export function getOutputPaths(repoRoot: string) {
     publicDocsGettingStarted: join(webPublicDocs, 'getting-started.md'),
     publicDocsConcepts: join(webPublicDocs, 'concepts.md'),
     publicDocsConfiguration: join(webPublicDocs, 'configuration.md'),
-    // --- eforge:region plan-01-reference-and-mirror-content ---
     publicDocsExtensions: join(webPublicDocs, 'extensions.md'),
     publicDocsExtensionsApi: join(webPublicDocs, 'extensions-api.md'),
-    // --- eforge:endregion plan-01-reference-and-mirror-content ---
     publicDocsGlossary: join(webPublicDocs, 'glossary.md'),
-    // --- eforge:region plan-01-public-docs-audit-and-fill-gaps ---
     publicDocsProfiles: join(webPublicDocs, 'profiles.md'),
     publicDocsPlaybooks: join(webPublicDocs, 'playbooks.md'),
     publicDocsIntegrations: join(webPublicDocs, 'integrations.md'),
     publicDocsTroubleshooting: join(webPublicDocs, 'troubleshooting.md'),
-    // --- eforge:endregion plan-01-public-docs-audit-and-fill-gaps ---
-    // --- eforge:region plan-05-docs-and-dogfood-config ---
     publicDocsStacking: join(webPublicDocs, 'stacking.md'),
-    // --- eforge:endregion plan-05-docs-and-dogfood-config ---
 
     // JSON Schemas
     schemaEvents: join(webPublicSchemas, 'events.schema.json'),

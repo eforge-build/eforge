@@ -168,7 +168,6 @@ describe('runReviewFixer', () => {
   });
 });
 
-// --- eforge:region plan-03-reviewer-contract-hardening ---
 describe('runParallelReview — strict contract on parallel perspectives', () => {
   it('aggregate includes synthetic critical issue when one perspective returns no XML', async () => {
     // Route each perspective to a specific stub text to test the strict parser
@@ -366,9 +365,7 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
     ]));
   });
 });
-// --- eforge:endregion plan-03-reviewer-contract-hardening ---
 
-// --- eforge:region plan-01-reviewer-isolation ---
 describe('runParallelReview — read-only tool preset', () => {
   it('dispatches built-in perspective reviewers with read-only tools', async () => {
     const backend = new StubHarness([
@@ -429,4 +426,3 @@ describe('runParallelReview — read-only tool preset', () => {
     expect(backend.calls[0].tools).toBe('read-only');
   });
 });
-// --- eforge:endregion plan-01-reviewer-isolation ---

@@ -106,7 +106,6 @@ describe('EventCard recovery:complete rendering branch', () => {
     expect(getRecoveryVerdictProps(event)).toBeNull();
   });
 
-  // --- eforge:region plan-04-rendering-and-docs ---
 
 describe('EventCard gap_close:complete rendering branch', () => {
   it('classifies passed gap_close:complete as complete', () => {
@@ -188,7 +187,6 @@ describe('EventCard acceptance_validation:complete rendering branch', () => {
   });
 });
 
-// --- eforge:endregion plan-04-rendering-and-docs ---
 
   it('chip styling is valid for all verdict/confidence combinations from recovery events', () => {
     const verdicts: RecoveryVerdictValue[] = ['retry', 'split', 'abandon', 'manual'];

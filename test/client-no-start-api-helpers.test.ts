@@ -32,9 +32,7 @@ import {
   apiEnqueueIfRunning,
   apiGetQueueIfRunning,
   apiShowConfigVerboseIfRunning,
-  // --- eforge:region plan-01-stack-sync-daemon-cli ---
   apiStackSyncIfRunning,
-  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
@@ -123,7 +121,6 @@ function startTestServer(): Promise<TestServer> {
         return;
       }
 
-      // --- eforge:region plan-01-stack-sync-daemon-cli ---
       if (url === API_ROUTES.stackSync) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
@@ -136,7 +133,6 @@ function startTestServer(): Promise<TestServer> {
         }));
         return;
       }
-      // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Not Found');
@@ -229,9 +225,7 @@ const noStartRouteHelperCases: RouteHelperCase[] = [
   { name: 'apiReadRecoverySidecarIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1' }) },
   { name: 'apiApplyRecoveryIfRunning', opts: (cwd) => ({ cwd, body: { prdId: 'prd-1' } }) },
   { name: 'apiStopDaemonIfRunning', opts: (cwd) => ({ cwd, body: {} }) },
-  // --- eforge:region plan-01-stack-sync-daemon-cli ---
   { name: 'apiStackSyncIfRunning', opts: (cwd) => ({ cwd, body: { dryRun: true } }) },
-  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 ];
 
 function invokeClientHelper(name: string, opts: Record<string, unknown>): Promise<unknown> {
@@ -453,7 +447,6 @@ describe('helper import discipline', () => {
     });
   });
 
-  // --- eforge:region plan-01-stack-sync-daemon-cli ---
   it('(6e) apiStackSyncIfRunning sends POST to API_ROUTES.stackSync with JSON body when live', async () => {
     writeLockfile(tmpDir, {
       pid: process.pid,
@@ -471,5 +464,4 @@ describe('helper import discipline', () => {
       bodyText: JSON.stringify(syncBody),
     });
   });
-  // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 });

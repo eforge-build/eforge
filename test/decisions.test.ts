@@ -53,7 +53,6 @@ describe('BuildDecisionSchema — valid kinds', () => {
     expect(result.perspectives).toEqual(['security', 'api']);
   });
 
-  // --- eforge:region plan-01-dynamic-perspective-contracts ---
   it('parses perspectives-inferred with a dynamic perspective key', () => {
     const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'perspectives-inferred',
@@ -78,7 +77,6 @@ describe('BuildDecisionSchema — valid kinds', () => {
     expect(result.perspectives).toContain('accessibility');
     expect(result.dropped).toContain('performance-review');
   });
-  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
   it('parses cycle-terminated (no-issues)', () => {
     const result = parseWithSchema(BuildDecisionSchema,{
@@ -470,7 +468,6 @@ describe('emitBuildDecisionForPlan', () => {
   });
 });
 
-// --- eforge:region plan-02-build-evaluator-enforcement ---
 describe('BuildDecisionSchema — enriched cycle-terminated decisions', () => {
   it('parses max-round termination with final evaluation metadata', () => {
     const result = parseWithSchema(BuildDecisionSchema, {
@@ -489,9 +486,7 @@ describe('BuildDecisionSchema — enriched cycle-terminated decisions', () => {
     expect(result.finalEvaluationRan).toBe(true);
   });
 });
-// --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
-// --- eforge:region plan-01-adaptive-review-policy ---
 describe('BuildDecisionSchema — cycle-terminated with early-termination rationale', () => {
   it('parses early-termination no-issues with rationale naming accepted verdicts', () => {
     // No schema change for early termination — uses existing no-issues shape.
@@ -524,4 +519,3 @@ describe('BuildDecisionSchema — cycle-terminated with early-termination ration
     expect('lastReviewIssueCount' in result).toBe(false);
   });
 });
-// --- eforge:endregion plan-01-adaptive-review-policy ---

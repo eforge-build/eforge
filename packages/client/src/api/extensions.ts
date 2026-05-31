@@ -66,13 +66,10 @@ export function apiReloadExtensions(opts: { cwd: string }) {
   return daemonRequest<ExtensionReloadResponse>(opts.cwd, 'POST', API_ROUTES.extensionReload, {});
 }
 
-// --- eforge:region plan-01-engine-daemon-extension-replay ---
 export function apiTestExtension(opts: { cwd: string; body: ExtensionTestRequest }) {
   return daemonRequest<ExtensionTestResponse>(opts.cwd, 'POST', API_ROUTES.extensionTest, opts.body);
 }
-// --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 
-// --- eforge:region plan-02-management-surfaces ---
 export function apiTrustExtension(opts: { cwd: string; body: ExtensionTrustRequest }) {
   return daemonRequest<ExtensionTrustResponse>(opts.cwd, 'POST', API_ROUTES.extensionTrust, opts.body);
 }
@@ -80,9 +77,7 @@ export function apiTrustExtension(opts: { cwd: string; body: ExtensionTrustReque
 export function apiUntrustExtension(opts: { cwd: string; body: ExtensionUntrustRequest }) {
   return daemonRequest<ExtensionUntrustResponse>(opts.cwd, 'POST', API_ROUTES.extensionUntrust, opts.body);
 }
-// --- eforge:endregion plan-02-management-surfaces ---
 
-// --- eforge:region plan-01-no-start-client-helpers ---
 export function apiListExtensionsIfRunning(opts: { cwd: string }) {
   return daemonRequestIfRunning<ExtensionListResponse>(opts.cwd, 'GET', API_ROUTES.extensionList);
 }
@@ -126,9 +121,7 @@ export function apiTrustExtensionIfRunning(opts: { cwd: string; body: ExtensionT
 export function apiUntrustExtensionIfRunning(opts: { cwd: string; body: ExtensionUntrustRequest }) {
   return daemonRequestIfRunning<ExtensionUntrustResponse>(opts.cwd, 'POST', API_ROUTES.extensionUntrust, opts.body);
 }
-// --- eforge:endregion plan-01-no-start-client-helpers ---
 
-// --- eforge:region plan-01-extension-package-foundation ---
 export function apiInstallExtension(opts: { cwd: string; body: ExtensionInstallRequest }) {
   return daemonRequest<ExtensionInstallResponse>(opts.cwd, 'POST', API_ROUTES.extensionInstall, opts.body);
 }
@@ -168,4 +161,3 @@ export function apiPromoteExtensionIfRunning(opts: { cwd: string; body: Extensio
 export function apiDemoteExtensionIfRunning(opts: { cwd: string; body: ExtensionDemoteRequest }) {
   return daemonRequestIfRunning<ExtensionDemoteResponse>(opts.cwd, 'POST', API_ROUTES.extensionDemote, opts.body);
 }
-// --- eforge:endregion plan-01-extension-package-foundation ---
