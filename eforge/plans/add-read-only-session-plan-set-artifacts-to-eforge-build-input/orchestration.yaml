@@ -1,0 +1,66 @@
+name: add-read-only-session-plan-set-artifacts-to-eforge-build-input
+description: Add the read-only session plan-set artifact protocol to
+  @eforge-build/input while preserving flat session-plan behavior.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test -- test/session-plan-set.test.ts test/session-plan.test.ts
+    test/session-plan-helpers.test.ts test/normalize-build-source.test.ts
+plans:
+  - id: plan-01-input-session-plan-sets
+    name: Read-Only Input Session Plan Sets
+    depends_on: []
+    branch: add-read-only-session-plan-set-artifacts-to-eforge-build-input/plan-01-input-session-plan-sets
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Adds a new public artifact API with schema, safe path resolution,
+          deterministic loading/validation, JSON-safe summaries, and
+          compatibility constraints across several small modules.
+      reviewer:
+        effort: high
+        rationale: Review needs to verify public API shape, manifest source-of-truth
+          boundaries, traversal guards, and that flat session-plan behavior
+          remains unchanged.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - validate
+      - doc-sync
+      - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: "This is excursion-scale: it is architecture-sensitive and touches
+    multiple files, but remains confined to @eforge-build/input and can be
+    planned by one planner. A plan review cycle helps prevent renewed scope
+    creep and source-of-truth ambiguity. The build includes documentation and
+    targeted tests, runs the registered maintainability validation gate after
+    implementation, then exercises tests before a strict code/API review cycle
+    for path safety, public exports, schemas, and compatibility."
+diff_base_ref: 84c16d1715f5a0b7b12e7fbc4c38a8bad91674b5
