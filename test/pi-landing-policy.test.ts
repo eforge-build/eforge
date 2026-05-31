@@ -318,7 +318,6 @@ describe('buildLandingMenuModel - unknown currentBranch', () => {
   });
 });
 
-// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 
 // ---------------------------------------------------------------------------
 // autoMergePolicy - pr-auto-merge choice inclusion/exclusion
@@ -418,4 +417,3 @@ describe('buildLandingMenuModel - autoMergePolicy: never', () => {
   });
 });
 
-// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

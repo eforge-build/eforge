@@ -7,7 +7,6 @@
  * the verification command `pnpm test -- landing-actions` picks it up.
  */
 
-// --- eforge:region plan-01-build-artifact-provenance ---
 
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -161,4 +160,3 @@ describe('executeLandingAction — Eforge provenance', () => {
   });
 });
 
-// --- eforge:endregion plan-01-build-artifact-provenance ---

@@ -1,4 +1,3 @@
-// --- eforge:region plan-06-build-detail-base ---
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { ConsolePanel } from '@/components/console/console-panel';
@@ -7,11 +6,9 @@ import { Timeline } from '@/components/timeline/timeline';
 import { PipelineSection } from './pipeline-section';
 import type { RunState, EforgeEvent } from '@/lib/run-state';
 import type { PlanInfo } from '@eforge-build/client/browser';
-// --- eforge:region plan-07-build-detail-tabs ---
 import { FileHeatmap } from '@/components/heatmap';
 import { DependencyGraph } from '@/components/graph';
 import { PlanTab } from '@/components/console/plan-tab';
-// --- eforge:endregion plan-07-build-detail-tabs ---
 
 // PlansResponse is PlanInfo[]
 type PlansResponse = PlanInfo[];
@@ -74,7 +71,6 @@ export function BottomTabPanel({ runState, plans, detailId }: BottomTabPanelProp
   const graphEnabled = hasOrchestrationEdges(runState);
   const planEnabled = runState.earlyOrchestration !== null;
 
-  // --- eforge:region plan-07-build-detail-tabs ---
   // Merged plan IDs: plans whose mergeCommit has been recorded
   const mergedPlanIds = useMemo(
     () => new Set(Object.keys(runState.mergeCommits)),
@@ -91,7 +87,6 @@ export function BottomTabPanel({ runState, plans, detailId }: BottomTabPanelProp
     }
     return null;
   }, [runState.events]);
-  // --- eforge:endregion plan-07-build-detail-tabs ---
 
   const pipelineDefaultSize = consoleCollapsed ? 92 : DEFAULT_LAYOUT[0];
   const consoleDefaultSize = consoleCollapsed ? 8 : DEFAULT_LAYOUT[1];
@@ -106,7 +101,6 @@ export function BottomTabPanel({ runState, plans, detailId }: BottomTabPanelProp
         />
       );
     }
-    // --- eforge:region plan-07-build-detail-tabs ---
     if (lowerTab === 'changes') {
       if (runState.fileChanges.size === 0) {
         return (
@@ -135,7 +129,6 @@ export function BottomTabPanel({ runState, plans, detailId }: BottomTabPanelProp
         />
       );
     }
-    // --- eforge:endregion plan-07-build-detail-tabs ---
     return null;
   })();
 
@@ -182,4 +175,3 @@ export function BottomTabPanel({ runState, plans, detailId }: BottomTabPanelProp
     </ResizablePanelGroup>
   );
 }
-// --- eforge:endregion plan-06-build-detail-base ---

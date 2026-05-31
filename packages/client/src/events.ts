@@ -11,10 +11,8 @@
  */
 
 export type {
-  // --- eforge:region plan-01-terminal-failure-contract ---
   TerminalFailureScope,
   TerminalFailureEnvelope,
-  // --- eforge:endregion plan-01-terminal-failure-contract ---
   EforgeEvent,
   DaemonRunUpsertEvent,
   AgentRole,
@@ -28,10 +26,8 @@ export type {
   EforgeState,
   ExpeditionModule,
   PrdValidationGap,
-  // --- eforge:region plan-01-validation-evidence-contract ---
   AcceptanceCriterionVerdict,
   AcceptanceCriteriaConflict,
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
   TestIssue,
   BuildFailureSummary,
   LandedCommit,
@@ -46,39 +42,29 @@ export type {
   // --- eforge:region build-completion-recovery ---
   EvaluationIssueOutcome,
   // --- eforge:endregion build-completion-recovery ---
-  // --- eforge:region plan-01-dynamic-perspective-contracts ---
   ReviewPerspectiveKey,
-  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
   AgentTerminalSubtype,
   ShardScope,
   PipelineComposition,
   BuildDecision,
   PlanningDecision,
   PlanningDecisionEvent,
-  // --- eforge:region plan-01-supervisor-foundation ---
   AutoBuildDesired,
   AutoBuildRuntimeMode,
   AutoBuildSchedulerState,
   AutoBuildTransitionDetail,
-  // --- eforge:endregion plan-01-supervisor-foundation ---
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   StackProvider,
   LandingPublicationAction,
   StackLayerStatus,
   StackArtifactRef,
   StackLayerWire,
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
-  // --- eforge:region plan-01-engine-resume ---
   BuildResumeStartEvent,
   BuildResumeStateEvent,
   BuildResumeIneligibleEvent,
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   BuildResumeArtifactSource,
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   BuildResumeCompleteEvent,
-  // --- eforge:endregion plan-01-engine-resume ---
 } from './events.schemas.js';
 
 export {
@@ -91,34 +77,24 @@ export {
   // --- eforge:endregion build-completion-recovery ---
   BuildDecisionSchema,
   PlanningDecisionSchema,
-  // --- eforge:region plan-01-validation-evidence-contract ---
   AcceptanceCriterionVerdictSchema,
   AcceptanceCriteriaConflictSchema,
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
   safeParseEforgeEvent,
   parseEforgeEvent,
   safeParseDaemonStreamSnapshot,
   safeParseSessionStreamSnapshot,
-  // --- eforge:region plan-01-dynamic-perspective-contracts ---
   ReviewPerspectiveKeySchema,
   isBuiltInReviewPerspective,
-  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   StackProviderSchema,
   LandingPublicationActionSchema,
   StackLayerStatusSchema,
   StackArtifactRefSchema,
   StackLayerWireSchema,
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
-  // --- eforge:region plan-01-terminal-failure-contract ---
   TerminalFailureScopeSchema,
   TerminalFailureEnvelopeSchema,
-  // --- eforge:endregion plan-01-terminal-failure-contract ---
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   BuildResumeArtifactSourceSchema,
   BuildResumeArtifactPlanSchema,
   BuildResumeArtifactsEventSchema,
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
 } from './events.schemas.js';
 
 export { EforgeEventSchema } from './events.schemas.js';

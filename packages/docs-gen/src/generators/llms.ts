@@ -113,7 +113,6 @@ async function mirrorGuideMarkdown(repoRoot: string, outputPaths: OutputPaths): 
       source: join(repoRoot, 'web', 'content', 'docs', 'configuration.md'),
       target: outputPaths.publicDocsConfiguration,
     },
-    // --- eforge:region plan-01-reference-and-mirror-content ---
     {
       source: join(repoRoot, 'web', 'content', 'docs', 'extensions.md'),
       target: outputPaths.publicDocsExtensions,
@@ -122,12 +121,10 @@ async function mirrorGuideMarkdown(repoRoot: string, outputPaths: OutputPaths): 
       source: join(repoRoot, 'web', 'content', 'docs', 'extensions-api.md'),
       target: outputPaths.publicDocsExtensionsApi,
     },
-    // --- eforge:endregion plan-01-reference-and-mirror-content ---
     {
       source: join(repoRoot, 'web', 'content', 'docs', 'glossary.md'),
       target: outputPaths.publicDocsGlossary,
     },
-    // --- eforge:region plan-01-public-docs-audit-and-fill-gaps ---
     {
       source: join(repoRoot, 'web', 'content', 'docs', 'profiles.md'),
       target: outputPaths.publicDocsProfiles,
@@ -144,13 +141,10 @@ async function mirrorGuideMarkdown(repoRoot: string, outputPaths: OutputPaths): 
       source: join(repoRoot, 'web', 'content', 'docs', 'troubleshooting.md'),
       target: outputPaths.publicDocsTroubleshooting,
     },
-    // --- eforge:endregion plan-01-public-docs-audit-and-fill-gaps ---
-    // --- eforge:region plan-05-docs-and-dogfood-config ---
     {
       source: join(repoRoot, 'web', 'content', 'docs', 'stacking.md'),
       target: outputPaths.publicDocsStacking,
     },
-    // --- eforge:endregion plan-05-docs-and-dogfood-config ---
   ];
 
   for (const mirror of guideMirrors) {

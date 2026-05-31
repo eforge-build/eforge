@@ -29,18 +29,13 @@ import type {
   ExtensionTestRequest,
   ExtensionTestResponse,
   RunSummary,
-  // --- eforge:region plan-03-stack-daemon-ui ---
   StackLayerWire,
-  // --- eforge:endregion plan-03-stack-daemon-ui ---
 } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent, parseWithSchema,
-  // --- eforge:region plan-03-stack-daemon-ui ---
   StackLayerWireSchema, safeParseWithSchema,
-  // --- eforge:endregion plan-03-stack-daemon-ui ---
 } from '@eforge-build/client';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { AutoBuildController, AutoBuildQueueMutationReason } from './auto-build-supervisor.js';
-// --- eforge:region plan-01-fix-recovery-ux ---
 import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
 import {
   applyRecoveryRetry,
@@ -48,14 +43,8 @@ import {
   applyRecoveryAbandon,
   applyRecoveryManual,
 } from '@eforge-build/engine/recovery/apply';
-// --- eforge:endregion plan-01-fix-recovery-ux ---
-// --- eforge:region plan-01-handshake-primitive-additive ---
 import { writeHello } from './sse-handshake.js';
-// --- eforge:endregion plan-01-handshake-primitive-additive ---
-// --- eforge:region plan-01-semantic-enqueue-wake ---
 import { reactToDaemonEvent } from './daemon-event-reactions.js';
-// --- eforge:endregion plan-01-semantic-enqueue-wake ---
-// --- eforge:region plan-02-extension-package-daemon-operations ---
 import type {
   ExtensionInstallRequest,
   ExtensionUpdateRequest,
@@ -71,13 +60,8 @@ import {
   promoteExtensionPackage,
   demoteExtensionPackage,
 } from './extension-package-management.js';
-// --- eforge:endregion plan-02-extension-package-daemon-operations ---
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 import { runStackSync, loadSyncStatusForRoute, loadSyncStatusForRouteSync } from './stack-sync-service.js';
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 import { handleQueueRecoveryRoutes } from './queue-recovery-routes.js';
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
 // Derived prefix constants for parameterised routes (used in startsWith checks)
@@ -88,7 +72,6 @@ const RUN_SUMMARY_BASE = API_ROUTES.runSummary.slice(0, API_ROUTES.runSummary.in
 const RUN_STATE_BASE = API_ROUTES.runState.slice(0, API_ROUTES.runState.indexOf('/:'));
 const PLANS_BASE = API_ROUTES.plans.slice(0, API_ROUTES.plans.indexOf('/:'));
 const DIFF_BASE = API_ROUTES.diff.slice(0, API_ROUTES.diff.indexOf('/:'));
-// --- eforge:region plan-03-daemon-mcp-pi ---
 const RECOVERY_SIDECAR_BASE = API_ROUTES.readRecoverySidecar;
 
 /**
@@ -112,7 +95,6 @@ function isWithinDir(resolvedPath: string, baseDir: string): boolean {
   const base = resolve(baseDir) + sep;
   return resolvedPath.startsWith(base);
 }
-// --- eforge:endregion plan-03-daemon-mcp-pi ---
 /**
  * Notify the auto-build controller about a queue mutation so it can wake the
  * active scheduler or repair a desired-enabled watcher that is not running.
@@ -616,7 +598,6 @@ export async function startServer(
       'Access-Control-Allow-Origin': '*',
     });
 
-    // --- eforge:region plan-01-handshake-primitive-additive ---
     // stream:hello: per-session snapshot as the first frame on every connection.
     // cursor = max event id for this session at connect time.
     const allSessionEvents = db.getEventsBySession(sessionId);
@@ -638,7 +619,6 @@ export async function startServer(
       events: allSessionEvents.map((evt) => ({ id: evt.id, data: evt.data })),
     };
     writeHello(res, sessionCursor, sessionSnapshot);
-    // --- eforge:endregion plan-01-handshake-primitive-additive ---
 
     // Terminal sessions: close after stream:hello. The snapshot carries the full
     // event history; no live subscription is needed.
@@ -788,7 +768,6 @@ export async function startServer(
       'Access-Control-Allow-Origin': '*',
     });
 
-    // --- eforge:region plan-01-handshake-primitive-additive ---
     // stream:hello: daemon-events snapshot as the first frame on every connection.
     // cursor = max daemon-wide event id at connect time.
     const helloCursor = db.getMaxDaemonEventId();
@@ -805,9 +784,7 @@ export async function startServer(
     const snapshotCwd = options?.cwd;
     const snapshotQueueDir = snapshotCwd ? resolve(snapshotCwd, options?.queueDir ?? '.eforge/queue') : '';
     const snapshotLockDir = snapshotCwd ? resolve(snapshotCwd, '.eforge', 'queue-locks') : '';
-    // --- eforge:region plan-01-core-daemon-stack-sync ---
     const stackSyncStatusSnapshot = snapshotCwd ? loadSyncStatusForRouteSync(snapshotCwd) : { version: 1 as const };
-    // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     const daemonSnapshot = {
       liveness: buildHeartbeatObject(),
       recentActivity,
@@ -815,17 +792,12 @@ export async function startServer(
       queue: snapshotCwd ? loadQueueItemsSync(snapshotQueueDir, snapshotLockDir) : [],
       sessionMetadata: db.getSessionMetadataBatch(),
       autoBuild: autoBuildStateToWire(options?.daemonState),
-      // --- eforge:region plan-03-stack-daemon-ui ---
       stackLayers: snapshotCwd ? stackLayersToWire(snapshotCwd) : [],
-      // --- eforge:endregion plan-03-stack-daemon-ui ---
-      // --- eforge:region plan-01-core-daemon-stack-sync ---
       ...(stackSyncStatusSnapshot.last !== undefined || stackSyncStatusSnapshot.current !== undefined
         ? { stackSyncStatus: { last: stackSyncStatusSnapshot.last, current: stackSyncStatusSnapshot.current } }
         : {}),
-      // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     };
     writeHello(res, helloCursor, daemonSnapshot);
-    // --- eforge:endregion plan-01-handshake-primitive-additive ---
 
     const rawLastEventId = req.headers['last-event-id']
       ? parseInt(req.headers['last-event-id'] as string, 10)
@@ -885,14 +857,11 @@ export async function startServer(
 
   // Poll loop: check DB for new events and push to SSE subscribers
   const POLL_INTERVAL_MS = 200;
-  // --- eforge:region plan-01-semantic-enqueue-wake ---
   // Initialize the reaction cursor at the current DB high-water mark so the
   // daemon does not replay enqueue:complete events from before server start.
   // Pending files from older events are the watcher startup scan's responsibility.
   let reactionCursor = db.getMaxDaemonEventId();
-  // --- eforge:endregion plan-01-semantic-enqueue-wake ---
   const pollTimer = setInterval(() => {
-    // --- eforge:region plan-01-semantic-enqueue-wake ---
     // Semantic-event reaction scan: process newly persisted daemon events for
     // side effects (e.g. auto-build wake on enqueue:complete). Runs before
     // subscriber delivery so subscriber errors cannot block the reaction cursor.
@@ -914,7 +883,6 @@ export async function startServer(
         // Best-effort: don't let reaction errors affect subscriber delivery.
       }
     }
-    // --- eforge:endregion plan-01-semantic-enqueue-wake ---
     for (const subscriber of subscribers) {
       try {
         const newEvents = db.getEventsBySession(subscriber.sessionId, subscriber.lastSeenId);
@@ -953,7 +921,6 @@ export async function startServer(
   }, POLL_INTERVAL_MS);
   pollTimer.unref();
 
-  // --- eforge:region plan-01-types-and-daemon-emission ---
   // Heartbeat timer: pushes live-only daemon:heartbeat events directly to active SSE
   // subscribers approximately every 10 seconds, bypassing the DB poll loop.
   // Heartbeats are stateless and historically uninteresting — omitting the SSE
@@ -1011,7 +978,6 @@ export async function startServer(
     }
   }, HEARTBEAT_INTERVAL_MS);
   heartbeatTimer.unref();
-  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
   type PlanResponse = { id: string; name: string; body: string; dependsOn: string[]; type: 'architecture' | 'module' | 'plan'; build?: BuildStageSpec[]; review?: ReviewProfileConfig };
 
@@ -1296,7 +1262,6 @@ export async function startServer(
     return result;
   }
 
-  // --- eforge:region plan-01-handshake-primitive-additive ---
   /**
    * Build a canonical `QueueItem` from parsed frontmatter and a resolved status.
    * Shared by `loadQueueItemsSync` and `loadQueueItems` so item-shaping is never
@@ -1398,7 +1363,6 @@ export async function startServer(
     return items;
   }
 
-  // --- eforge:region plan-03-stack-daemon-ui ---
   /**
    * Synchronously load stack layer records from `.eforge/stacks/layers.json`.
    * Returns an empty array when the file is absent, unreadable, or invalid.
@@ -1437,7 +1401,6 @@ export async function startServer(
     }
     return layers;
   }
-  // --- eforge:endregion plan-03-stack-daemon-ui ---
 
   /**
    * Asynchronously load queue items matching the shape of `GET /api/queue`.
@@ -1475,7 +1438,6 @@ export async function startServer(
           }
 
           let recoveryVerdict: QueueItem['recoveryVerdict'] | undefined;
-          // --- eforge:region plan-01-fix-recovery-ux ---
           if (derivedStatus === 'failed') {
             try {
               const sidecarPath = resolve(dir, `${id}.recovery.json`);
@@ -1489,7 +1451,6 @@ export async function startServer(
               // silently omit — missing or malformed sidecar is normal (recovery pending)
             }
           }
-          // --- eforge:endregion plan-01-fix-recovery-ux ---
 
           items.push(buildQueueItem(id, fm, status, recoveryVerdict));
         } catch {
@@ -1501,14 +1462,11 @@ export async function startServer(
     await loadFromDir(queueDir, 'pending');
     await loadFromDir(resolve(queueDir, 'failed'), 'failed');
     await loadFromDir(resolve(queueDir, 'skipped'), 'skipped');
-    // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
     await loadFromDir(resolve(queueDir, 'waiting'), 'waiting');
-    // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
     postProcessQueueDependsOn(items);
     return items;
   }
-  // --- eforge:endregion plan-01-handshake-primitive-additive ---
 
   async function serveQueue(_req: IncomingMessage, res: ServerResponse): Promise<void> {
     const cwd = options?.cwd;
@@ -1710,7 +1668,6 @@ export async function startServer(
     return {};
   }
 
-  // --- eforge:region plan-02-extension-tooling-surfaces ---
   const EXTENSION_NAME_RE = /^[A-Za-z0-9._-]+$/;
 
   const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
@@ -1771,7 +1728,6 @@ export async function startServer(
     }
   }
 
-  // --- eforge:region plan-01-engine-daemon-extension-replay ---
   function sourceResolutionDiagnostic(message: string): ExtensionDiagnostic {
     return {
       severity: 'error',
@@ -1807,9 +1763,7 @@ export async function startServer(
       return parsed ? [parsed] : [];
     });
   }
-  // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 
-  // --- eforge:region plan-02-extension-package-daemon-operations ---
   function validateBooleanField(body: Record<string, unknown>, field: string): string | undefined {
     return body[field] !== undefined && typeof body[field] !== 'boolean'
       ? `Invalid field: ${field} must be boolean`
@@ -1849,7 +1803,6 @@ export async function startServer(
     }
     return undefined;
   }
-  // --- eforge:endregion plan-02-extension-package-daemon-operations ---
 
   function selectExtensionByName(extensions: ExtensionEntry[], name: string): ExtensionEntry | undefined {
     const matches = extensions.filter((entry) => entry.name === name);
@@ -1858,11 +1811,9 @@ export async function startServer(
       ?? matches[0];
   }
 
-  // --- eforge:region plan-01-extension-management-api ---
   function extensionEntryEnabled(status: ExtensionEntry['status'], globalEnabled: boolean): boolean {
     return globalEnabled && status !== 'shadowed' && status !== 'excluded';
   }
-  // --- eforge:endregion plan-01-extension-management-api ---
 
   async function loadExtensionResponse(opts: { path?: string; discoverOnly?: boolean } = {}): Promise<ExtensionListResponse> {
     if (!cwd) throw new Error('Working directory not configured');
@@ -1883,7 +1834,6 @@ export async function startServer(
       }
       : config.extensions;
 
-    // --- eforge:region plan-01-extension-management-api ---
     if (opts.discoverOnly || (!opts.path && !config.extensions.enabled)) {
       const discovery = await discoverNativeExtensions({
         cwd,
@@ -1902,14 +1852,12 @@ export async function startServer(
         status: candidate.status,
         enabled: opts.discoverOnly ? extensionEntryEnabled(candidate.status, extensionConfig.enabled) : false,
         trust: candidate.trust,
-        // --- eforge:region plan-02-management-surfaces ---
         ...(candidate.trustState !== undefined && { trustState: candidate.trustState as ExtensionEntry['trustState'] }),
         ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
         ...(candidate.trustedHash !== undefined && { trustedHash: candidate.trustedHash }),
         ...(candidate.trustedAt !== undefined && { trustedAt: candidate.trustedAt }),
         ...(candidate.trustedBy !== undefined && { trustedBy: candidate.trustedBy }),
         ...(candidate.trustStorePath !== undefined && { trustStorePath: candidate.trustStorePath }),
-        // --- eforge:endregion plan-02-management-surfaces ---
         ...(candidate.format !== undefined && { format: candidate.format }),
         ...(candidate.layout !== undefined && { layout: candidate.layout }),
         shadows: candidate.shadows.map((shadow) => ({
@@ -1932,7 +1880,6 @@ export async function startServer(
         totals: { ...EMPTY_EXTENSION_REGISTRATIONS },
       };
     }
-    // --- eforge:endregion plan-01-extension-management-api ---
 
     const loadResult = await loadNativeExtensions({ cwd, configDir, config: extensionConfig });
     const projection = projectExtensionRegistry(loadResult.registry);
@@ -1947,18 +1894,14 @@ export async function startServer(
         scope: candidate.scope as ExtensionEntry['scope'],
         source: candidate.source,
         status: candidate.status,
-        // --- eforge:region plan-01-extension-management-api ---
         enabled: extensionEntryEnabled(candidate.status, extensionConfig.enabled),
-        // --- eforge:endregion plan-01-extension-management-api ---
         trust: candidate.trust,
-        // --- eforge:region plan-02-management-surfaces ---
         ...(candidate.trustState !== undefined && { trustState: candidate.trustState as ExtensionEntry['trustState'] }),
         ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
         ...(candidate.trustedHash !== undefined && { trustedHash: candidate.trustedHash }),
         ...(candidate.trustedAt !== undefined && { trustedAt: candidate.trustedAt }),
         ...(candidate.trustedBy !== undefined && { trustedBy: candidate.trustedBy }),
         ...(candidate.trustStorePath !== undefined && { trustStorePath: candidate.trustStorePath }),
-        // --- eforge:endregion plan-02-management-surfaces ---
         ...(candidate.format !== undefined && { format: candidate.format }),
         ...(candidate.layout !== undefined && { layout: candidate.layout }),
         ...(loaded?.strategy !== undefined && { strategy: loaded.strategy }),
@@ -1972,12 +1915,8 @@ export async function startServer(
         })),
         registrations: (loaded?.registrations as ExtensionRegistrationSummary | undefined) ?? { ...EMPTY_EXTENSION_REGISTRATIONS },
         diagnostics: candidate.diagnostics.map(normalizeExtensionDiagnostic),
-        // --- eforge:region plan-03-observability-docs-examples ---
         ...(loaded?.reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails: loaded.reviewerPerspectiveDetails }),
-        // --- eforge:endregion plan-03-observability-docs-examples ---
-        // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
         ...(loaded?.validationProviderDetails !== undefined && { validationProviderDetails: loaded.validationProviderDetails }),
-        // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
         ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
         ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
       };
@@ -2003,18 +1942,14 @@ export async function startServer(
           scope: candidate.scope as ExtensionEntry['scope'],
           source: candidate.source,
           status: 'excluded',
-          // --- eforge:region plan-01-extension-management-api ---
           enabled: false,
-          // --- eforge:endregion plan-01-extension-management-api ---
           trust: candidate.trust,
-          // --- eforge:region plan-02-management-surfaces ---
           ...(candidate.trustState !== undefined && { trustState: candidate.trustState as ExtensionEntry['trustState'] }),
           ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
           ...(candidate.trustedHash !== undefined && { trustedHash: candidate.trustedHash }),
           ...(candidate.trustedAt !== undefined && { trustedAt: candidate.trustedAt }),
           ...(candidate.trustedBy !== undefined && { trustedBy: candidate.trustedBy }),
           ...(candidate.trustStorePath !== undefined && { trustStorePath: candidate.trustStorePath }),
-          // --- eforge:endregion plan-02-management-surfaces ---
           ...(candidate.format !== undefined && { format: candidate.format }),
           ...(candidate.layout !== undefined && { layout: candidate.layout }),
           shadows: candidate.shadows.map((shadow) => ({
@@ -2040,7 +1975,6 @@ export async function startServer(
       totals: projection.totals as ExtensionRegistrationSummary,
     };
   }
-  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
   let keepAliveCallback: (() => void) | null = null;
 
@@ -2079,7 +2013,6 @@ export async function startServer(
     return true;
   }
   // --- eforge:endregion monitor-route-dispatch ---
-  // --- eforge:region plan-03-control-plane-profile-routes ---
   async function handleControlPlaneRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     // --- Control-plane POST routes (daemon mode) ---
     if (req.method === 'POST' && url === API_ROUTES.enqueue) {
@@ -2113,7 +2046,6 @@ export async function startServer(
           }
           explicitLandingAction = body.landingAction as LandingActionValue;
         }
-        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         let explicitLandingAutoMerge: boolean | undefined;
         if (body.landingAutoMerge !== undefined) {
           if (typeof body.landingAutoMerge !== 'boolean') {
@@ -2147,8 +2079,6 @@ export async function startServer(
           }
           explicitLandingAutoMerge = body.landingAutoMerge;
         }
-        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-        // --- eforge:region plan-01-build-dependency-core ---
         // Validate afterQueueId: reject non-string, validate string values by
         // classifying the upstream state. The worker re-runs classification
         // on spawn to handle races where the upstream completes in between.
@@ -2183,8 +2113,6 @@ export async function startServer(
           }
           validatedAfterQueueId = body.afterQueueId;
         }
-        // --- eforge:endregion plan-01-build-dependency-core ---
-        // --- eforge:region plan-01-per-build-profile-override ---
         // Validate explicit profile override before spawning any worker.
         let explicitProfileName: string | undefined;
         if (body.profile !== undefined) {
@@ -2202,8 +2130,6 @@ export async function startServer(
             return true;
           }
         }
-        // --- eforge:endregion plan-01-per-build-profile-override ---
-        // --- eforge:region plan-04-daemon-cli-wiring ---
         // For session-plan file sources (.eforge/session-plans/*.md), perform
         // synchronous normalizeBuildSource as prevalidation only — to surface
         // malformed session plans as 400 errors before the worker is spawned.
@@ -2238,8 +2164,6 @@ export async function startServer(
             }
           }
         }
-        // --- eforge:endregion plan-04-daemon-cli-wiring ---
-        // --- eforge:region plan-01-core-profile-propagation ---
         // When no explicit profile was provided, validate the inherited agent_profile from the session plan.
         if (explicitProfileName === undefined && inheritedAgentProfile) {
           const { getConfigDir, getConventionalConfigDir, loadProfile } = await import('@eforge-build/engine/config');
@@ -2251,38 +2175,28 @@ export async function startServer(
             return true;
           }
         }
-        // --- eforge:endregion plan-01-core-profile-propagation ---
         // Worker always receives the original source string — not normalized content.
         const args = [body.source, ...(body.flags ?? [])];
-        // --- eforge:region plan-01-core-profile-propagation ---
         // Effective profile: explicit request profile takes precedence over inherited agent_profile.
         const effectiveEnqueueProfile = explicitProfileName ?? inheritedAgentProfile;
         if (effectiveEnqueueProfile) {
           args.push('--profile', effectiveEnqueueProfile);
         }
-        // --- eforge:endregion plan-01-core-profile-propagation ---
         if (explicitLandingAction) {
           args.push('--landing-action', explicitLandingAction);
         }
-        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         if (explicitLandingAutoMerge === true) {
           args.push('--landing-auto-merge');
         } else if (explicitLandingAutoMerge === false) {
           args.push('--no-landing-auto-merge');
         }
-        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-        // --- eforge:region plan-01-build-dependency-core ---
         if (validatedAfterQueueId) {
           args.push('--after', validatedAfterQueueId);
         }
-        // --- eforge:endregion plan-01-build-dependency-core ---
-        // --- eforge:region plan-01-semantic-enqueue-wake ---
         // Wake is now driven by the persisted enqueue:complete DB event via the
         // daemon semantic-event reaction path (daemon-event-reactions.ts).
         // No onExit callback needed here.
         const result = options.workerTracker.spawnWorker('enqueue', args);
-        // --- eforge:endregion plan-01-semantic-enqueue-wake ---
-        // --- eforge:region plan-02-daemon-routes ---
         // After successful spawn, if source is a session-plan file under THIS
         // project's .eforge/session-plans/ directory, mark it submitted.
         // Failures must not fail the enqueue — log and continue.
@@ -2312,7 +2226,6 @@ export async function startServer(
             }
           }
         }
-        // --- eforge:endregion plan-02-daemon-routes ---
         sendJson(res, {
           sessionId: result.sessionId,
           pid: result.pid,
@@ -2343,7 +2256,6 @@ export async function startServer(
       return true;
     }
 
-    // --- eforge:region plan-03-daemon-mcp-pi ---
     if (req.method === 'POST' && url === API_ROUTES.recover) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
@@ -2385,13 +2297,9 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
-    // --- eforge:region plan-01-queue-recovery-api-engine ---
     if (await handleQueueRecoveryRoutes(req, res, url, { cwd: options?.cwd, queueDir: options?.queueDir, daemonState: options?.daemonState, sendJson, sendJsonError, rejectUnsafeMutationRequest: rejectUnsafeExtensionMutationRequest, notifyQueueMutation })) return true;
-    // --- eforge:endregion plan-01-queue-recovery-api-engine ---
 
-    // --- eforge:region plan-01-fix-recovery-ux ---
     if (req.method === 'POST' && url === API_ROUTES.applyRecovery) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
@@ -2499,9 +2407,7 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:endregion plan-01-fix-recovery-ux ---
 
-    // --- eforge:region plan-02-api-cli ---
     if (req.method === 'POST' && url === API_ROUTES.resumeBuild) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
@@ -2545,7 +2451,6 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:endregion plan-02-api-cli ---
 
     // --- Auto-build API routes ---
     if (req.method === 'POST' && url === API_ROUTES.daemonStop) {
@@ -2840,9 +2745,7 @@ export async function startServer(
 
     return false;
   }
-  // --- eforge:endregion plan-03-control-plane-profile-routes ---
   async function handleExtensionManagementRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
-    // --- eforge:region plan-01-extension-management-api ---
     if (req.method === 'POST' && url === API_ROUTES.extensionNew) {
       if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
@@ -2907,12 +2810,10 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:endregion plan-01-extension-management-api ---
     return false;
   }
 
   async function handleExtensionReplayRoute(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
-    // --- eforge:region plan-01-engine-daemon-extension-replay ---
     if (req.method === 'POST' && url === API_ROUTES.extensionTest) {
       if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
@@ -3012,7 +2913,6 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
     return false;
   }
 
@@ -3107,7 +3007,6 @@ export async function startServer(
   }
 
   async function handleExtensionTrustRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
-    // --- eforge:region plan-02-management-surfaces ---
     if (req.method === 'POST' && url === API_ROUTES.extensionTrust) {
       if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) {
@@ -3404,12 +3303,10 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:endregion plan-02-management-surfaces ---
     return false;
   }
 
   async function handleExtensionPackageRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
-    // --- eforge:region plan-02-extension-package-daemon-operations ---
     if (req.method === 'POST' && url === API_ROUTES.extensionInstall) {
       if (rejectUnsafeExtensionMutationRequest(req, res)) return true;
       if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
@@ -3608,21 +3505,17 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:endregion plan-02-extension-package-daemon-operations ---
     return false;
   }
 
   async function handleExtensionRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
-    // --- eforge:region plan-02-extension-tooling-surfaces ---
     if (await handleExtensionManagementRoutes(req, res, url)) return true;
     if (await handleExtensionReplayRoute(req, res, url)) return true;
     if (await handleExtensionReadRoutes(req, res, url)) return true;
     if (await handleExtensionTrustRoutes(req, res, url)) return true;
     if (await handleExtensionPackageRoutes(req, res, url)) return true;
-    // --- eforge:endregion plan-02-extension-tooling-surfaces ---
     return false;
   }
-  // --- eforge:region plan-05-playbook-session-plan-routes ---
   const PLAYBOOK_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
   const SESSION_PLAN_ID_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
   async function handlePlaybookContentRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
@@ -3740,7 +3633,6 @@ export async function startServer(
           acceptanceCriteria: (bdTyped.acceptanceCriteria as string | undefined) ?? '',
           plannerNotes: (bdTyped.plannerNotes as string | undefined) ?? '',
         };
-        // --- eforge:region plan-01-playbook-ac-quality-gates ---
         // AC quality gate: validate acceptance criteria before writing
         if (playbook.acceptanceCriteria) {
           const acQuality = analyzeAcceptanceCriteria(playbook.acceptanceCriteria);
@@ -3749,7 +3641,6 @@ export async function startServer(
             return true;
           }
         }
-        // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
         const configDir = await getConfigDir(cwd);
         const result = await writePlaybook({ configDir: configDir ?? cwd, cwd, scope: body.scope, playbook });
         sendJson(res, { path: result.path });
@@ -3797,7 +3688,6 @@ export async function startServer(
         }
         playbookLandingAction = body.landingAction as PlaybookLandingActionValue;
       }
-      // --- eforge:region plan-01-core-engine-auto-merge ---
       let playbookLandingAutoMerge: boolean | undefined;
       if (body.landingAutoMerge !== undefined) {
         if (typeof body.landingAutoMerge !== 'boolean') {
@@ -3806,8 +3696,6 @@ export async function startServer(
         }
         playbookLandingAutoMerge = body.landingAutoMerge;
       }
-      // --- eforge:endregion plan-01-core-engine-auto-merge ---
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       if (playbookLandingAutoMerge === true) {
         if (cwd) {
           try {
@@ -3833,7 +3721,6 @@ export async function startServer(
           return true;
         }
       }
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
         const { loadPlaybook, playbookToBuildSource, analyzeAcceptanceCriteriaInBody, formatAcDiagnostics } = await import('@eforge-build/input');
@@ -3856,15 +3743,12 @@ export async function startServer(
           });
         } else {
           // Autonomous-mode: enqueue as PRD
-          // --- eforge:region plan-01-playbook-ac-quality-gates ---
           const plan = playbookToBuildSource(playbook);
           const acQuality = analyzeAcceptanceCriteriaInBody(plan.source);
           if (acQuality && !acQuality.valid) {
             sendJsonError(res, 400, `Playbook acceptance criteria quality gate failed:\n${formatAcDiagnostics(acQuality.diagnostics)}`);
             return true;
           }
-          // --- eforge:endregion plan-01-playbook-ac-quality-gates ---
-          // --- eforge:region plan-01-core-profile-propagation ---
           // Validate the playbook's profile before enqueueing.
           if (playbook.profile) {
             const { getConfigDir, getConventionalConfigDir, loadProfile } = await import('@eforge-build/engine/config');
@@ -3876,14 +3760,10 @@ export async function startServer(
               return true;
             }
           }
-          // --- eforge:endregion plan-01-core-profile-propagation ---
-          // --- eforge:region plan-02-playbook-placement-parity ---
           const { enqueuePrd, inferTitle, classifyAfterQueueId: classifyPlaybookUpstream } = await import('@eforge-build/engine/prd-queue');
-          // --- eforge:endregion plan-02-playbook-placement-parity ---
           const queueDir = options?.queueDir ?? '.eforge/queue';
           const title = inferTitle(plan.source, plan.name);
 
-          // --- eforge:region plan-02-playbook-placement-parity ---
           // Classify upstream state and determine placement; reject with 404 if the
           // upstream is invalid or non-actionable (failed, skipped, unknown, or
           // completed without a usable artifact).
@@ -3900,7 +3780,6 @@ export async function startServer(
               return true;
             }
           }
-          // --- eforge:endregion plan-02-playbook-placement-parity ---
 
           const result = await enqueuePrd({
             body: plan.source,
@@ -3908,17 +3787,11 @@ export async function startServer(
             queueDir,
             cwd,
             depends_on: playbookDependsOn,
-            // --- eforge:region plan-02-playbook-placement-parity ---
             intoWaiting: playbookIntoWaiting,
-            // --- eforge:endregion plan-02-playbook-placement-parity ---
             postMerge: plan.postMerge,
-            // --- eforge:region plan-01-core-profile-propagation ---
             profile: plan.profile,
-            // --- eforge:endregion plan-01-core-profile-propagation ---
             ...(playbookLandingAction !== undefined && { landingAction: playbookLandingAction }),
-            // --- eforge:region plan-01-core-engine-auto-merge ---
             ...(playbookLandingAutoMerge !== undefined && { landingAutoMerge: playbookLandingAutoMerge }),
-            // --- eforge:endregion plan-01-core-engine-auto-merge ---
           });
           // Enqueue is filesystem-only — queue state is runtime, not tracked in git.
           notifyQueueMutation(options.daemonState, 'playbook-enqueue');
@@ -4310,9 +4183,7 @@ export async function startServer(
           planningType: body.planning_type as typeof VALID_PLANNING_TYPES[number] | undefined,
           planningDepth: body.planning_depth as typeof VALID_PLANNING_DEPTHS[number] | undefined,
           profile: body.profile as typeof VALID_PROFILES[number] | null | undefined,
-          // --- eforge:region plan-01-core-profile-propagation ---
           agentProfile: body.agent_profile as string | undefined,
-          // --- eforge:endregion plan-01-core-profile-propagation ---
         });
         await writeSessionPlan({ cwd, plan });
         const path = resolveSessionPlanPath({ cwd, session: body.session });
@@ -4621,7 +4492,6 @@ export async function startServer(
     }
     return false;
   }
-  // --- eforge:endregion plan-05-playbook-session-plan-routes ---
   async function handleModelRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     if (req.method === 'GET' && (url === API_ROUTES.modelProviders || url.startsWith(`${API_ROUTES.modelProviders}?`))) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
@@ -4709,7 +4579,6 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:region plan-03-daemon-mcp-pi ---
     if (req.method === 'GET' && (url === RECOVERY_SIDECAR_BASE || url.startsWith(`${RECOVERY_SIDECAR_BASE}?`))) {
       if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       const prdQueueDir = options?.config?.prdQueue?.dir ?? '.eforge/queue';
@@ -4739,14 +4608,10 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:endregion plan-03-daemon-mcp-pi ---
     return false;
   }
   async function handleStackRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
-    // --- eforge:region plan-03-stack-daemon-ui ---
     if (req.method === 'GET' && url === API_ROUTES.stackLayers) { sendJson(res, { layers: cwd ? stackLayersToWire(cwd) : [] }); return true; }
-    // --- eforge:endregion plan-03-stack-daemon-ui ---
-    // --- eforge:region plan-01-stack-sync-daemon-cli ---
     if (req.method === 'GET' && url === API_ROUTES.stackSyncStatus) {
       const syncCwd = options?.cwd;
       if (!syncCwd) { sendJson(res, { version: 1 }); return true; }
@@ -4803,7 +4668,6 @@ export async function startServer(
       }
       return true;
     }
-    // --- eforge:endregion plan-01-stack-sync-daemon-cli ---
     return false;
   }
   async function handleMonitorDataRoutes(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
@@ -4886,9 +4750,7 @@ export async function startServer(
 
     if (await handleProfileRoutes(req, res, url)) return;
 
-    // --- eforge:region plan-04-extension-routes ---
     if (await handleExtensionRoutes(req, res, url)) return;
-    // --- eforge:endregion plan-04-extension-routes ---
 
     if (await handlePlaybookContentRoutes(req, res, url)) return;
     if (await handlePlaybookManagementRoutes(req, res, url)) return;
@@ -4927,9 +4789,7 @@ export async function startServer(
 
     stop(): Promise<void> {
       clearInterval(pollTimer);
-      // --- eforge:region plan-01-types-and-daemon-emission ---
       clearInterval(heartbeatTimer);
-      // --- eforge:endregion plan-01-types-and-daemon-emission ---
       return new Promise((resolveStop) => {
         // Close all per-session SSE connections
         for (const subscriber of subscribers) {

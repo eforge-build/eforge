@@ -50,7 +50,6 @@ function insertPhaseEnd(db: ReturnType<typeof openDatabase>, runId: string, stat
 // Recovery run selection
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-recovery-run-selection ---
 describe('recovery run selection', () => {
   const makeTempDir = useTempDir('eforge-recovery-run-selection-');
 
@@ -95,7 +94,6 @@ describe('recovery run selection', () => {
     expect(fragment!.failingPlan?.errorMessage).toBe('Fallback run failure evidence');
   });
 });
-// --- eforge:endregion plan-01-recovery-run-selection ---
 
 // ---------------------------------------------------------------------------
 // Authoritative precedence

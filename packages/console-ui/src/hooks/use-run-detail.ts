@@ -3,10 +3,8 @@ import { useState, useEffect, useRef } from 'react';
 import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
 import type { RunSummary, RunState, PlansResponse } from '@eforge-build/client/browser';
 import { fetchJson } from '@/lib/fetch-json';
-// --- eforge:region plan-06-build-detail-base ---
 import { eforgeReducer, createInitialRunState } from '@/lib/run-state';
 import type { RunState as LocalRunState } from '@/lib/run-state';
-// --- eforge:endregion plan-06-build-detail-base ---
 
 export type ResourceState<T> =
   | { status: 'idle'; data: null; error: null }
@@ -118,7 +116,6 @@ export function useRunDetail(
 }
 // --- eforge:endregion runs-build-entrypoints ---
 
-// --- eforge:region plan-06-build-detail-base ---
 
 export interface HybridRunDetailResult {
   /** Fully-reduced local RunState for pipeline/timeline rendering. */
@@ -233,4 +230,3 @@ export function useHybridRunDetail(
 
   return { runState, plans, isLoading, error };
 }
-// --- eforge:endregion plan-06-build-detail-base ---

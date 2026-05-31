@@ -1,4 +1,3 @@
-// --- eforge:region plan-06-build-detail-base ---
 import { SummaryCards } from '@/components/common/summary-cards';
 import { getSummaryStats } from '@/lib/run-state';
 import type { RunState } from '@/lib/run-state';
@@ -19,4 +18,3 @@ export function SummaryChips({ runState }: SummaryChipsProps) {
     />
   );
 }
-// --- eforge:endregion plan-06-build-detail-base ---

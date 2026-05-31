@@ -182,22 +182,16 @@ export const handlerRegistry = {
 export const IGNORED_EVENT_TYPES = [
   'phase:end',
   'planning:module:build-config:invalid',
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   'extension:event-handler:failed',
   'extension:event-handler:timeout',
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
-  // --- eforge:region plan-01-agent-context-runtime ---
   'extension:agent-context:applied',
   'extension:agent-context:failed',
   'extension:agent-context:timeout',
   'extension:agent-context:unsupported',
   'extension:agent-tools:applied',
-  // --- eforge:endregion plan-01-agent-context-runtime ---
-  // --- eforge:region plan-01-policy-gate-foundation ---
   'extension:policy:decision',
   'extension:policy:failed',
   'extension:policy:timeout',
-  // --- eforge:endregion plan-01-policy-gate-foundation ---
   'planning:start',
   'planning:skip',
   'planning:submission',
@@ -256,10 +250,8 @@ export const IGNORED_EVENT_TYPES = [
   'gap_close:start',
   'gap_close:plan_ready',
   'gap_close:complete',
-  // --- eforge:region plan-01-validation-evidence-contract ---
   // Acceptance validation event — monitor UI rendering is future work.
   'acceptance_validation:complete',
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
   'reconciliation:start',
   'reconciliation:complete',
   'cleanup:start',
@@ -281,15 +273,12 @@ export const IGNORED_EVENT_TYPES = [
   'queue:prd:commit-failed',
   'queue:prd:complete',
   'queue:complete',
-  // --- eforge:region plan-01-sdk-and-wire-contracts ---
   // Profile router diagnostic events — session-scoped, non-persistent.
   // Monitor UI rendering is out of scope for this plan.
   'queue:profile:selected',
   'queue:profile:router-failed',
   'queue:profile:router-timeout',
   'queue:profile:invalid-selection',
-  // --- eforge:endregion plan-01-sdk-and-wire-contracts ---
-  // --- eforge:region plan-01-types-and-daemon-emission ---
   // New daemon-scoped event types — monitor UI handling is plan-03's responsibility.
   // Listed here so the exhaustive check passes without requiring plan-03 to land first.
   'daemon:lifecycle:starting',
@@ -306,9 +295,7 @@ export const IGNORED_EVENT_TYPES = [
   'daemon:auto-build:disabled',
   'daemon:auto-build:resumed',
   'daemon:auto-build:triggered',
-  // --- eforge:region plan-01-supervisor-foundation ---
   'daemon:auto-build:transition',
-  // --- eforge:endregion plan-01-supervisor-foundation ---
   'daemon:recovery:start',
   'daemon:recovery:run-marked-failed',
   'daemon:recovery:lock-removed',
@@ -316,81 +303,58 @@ export const IGNORED_EVENT_TYPES = [
   'daemon:orphan:reaped',
   'daemon:warning',
   'daemon:error',
-  // --- eforge:endregion plan-01-types-and-daemon-emission ---
-  // --- eforge:region plan-01-daemon-run-state-events ---
   // daemon:run:upsert is a daemon-scoped event handled by the daemonReducer,
   // not the per-session eforgeReducer. Added to the ignore list so the
   // exhaustiveness check passes.
   'daemon:run:upsert',
-  // --- eforge:endregion plan-01-daemon-run-state-events ---
-  // --- eforge:region plan-01-extension-input-contracts ---
   // Input-source and PRD-enricher provenance events — session-scoped, non-persistent.
   // Monitor UI rendering is out of scope for this plan.
   'extension:input-source:fetched',
   'extension:input-source:failed',
   'extension:prd-enricher:applied',
   'extension:prd-enricher:failed',
-  // --- eforge:endregion plan-01-extension-input-contracts ---
-  // --- eforge:region plan-02-extension-perspective-runtime ---
   // Extension reviewer perspective provenance/diagnostic events — session-scoped, non-persistent.
   'extension:reviewer-perspective:applied',
   'extension:reviewer-perspective:skipped',
-  // --- eforge:endregion plan-02-extension-perspective-runtime ---
-  // --- eforge:region plan-01-validation-provider-runtime ---
   // Validation provider lifecycle events — session-scoped, non-persistent.
   'extension:validation-provider:start',
   'extension:validation-provider:complete',
   'extension:validation-provider:error',
   'extension:validation-provider:timeout',
-  // --- eforge:endregion plan-01-validation-provider-runtime ---
-  // --- eforge:region plan-01-engine-config-and-landing ---
   // Landing action events — monitor UI rendering is plan-02's responsibility.
   // Listed here so the exhaustive check passes without requiring plan-02 to land first.
   'landing:start',
   'landing:complete',
   'landing:skipped',
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   // Stack layer and provider command events — projected into DaemonState via
   // daemonHandlerRegistry (plan-03-stack-daemon-ui). The per-session eforgeReducer
   // intentionally does not handle these; daemon projection covers the live-update path.
   'stack:layer:recorded',
   'stack:provider:command',
   'stack:landing:update',
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   // PR auto-merge lifecycle events — monitor UI rendering is future work.
   // Listed here so the exhaustive check passes without that work landing first.
   'landing:auto-merge:start',
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   // Daemon-scoped stack sync lifecycle events — projected via daemonHandlerRegistry.
   // The per-session eforgeReducer does not handle these.
   'stack:sync:start',
   'stack:sync:complete',
   'stack:sync:failed',
   'stack:sync:deferred',
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
-  // --- eforge:region plan-03-docs-and-workflow-guidance ---
   // stack:sync:skipped — emitted when sync is skipped (stacking disabled or no candidates).
   // Daemon-scoped; handled by daemonHandlerRegistry, not per-session eforgeReducer.
   'stack:sync:skipped',
-  // --- eforge:endregion plan-03-docs-and-workflow-guidance ---
-  // --- eforge:region plan-01-terminal-failure-contract ---
   // build:terminal-failure — run-level authoritative terminal failure event.
   // Monitor UI rendering is future work; session reducer does not handle it.
   'build:terminal-failure',
-  // --- eforge:endregion plan-01-terminal-failure-contract ---
-  // --- eforge:region plan-01-engine-resume ---
   // build:resume:* — resume lifecycle events. Monitor UI rendering is future work.
   'build:resume:start',
   'build:resume:state',
   'build:resume:ineligible',
   'build:resume:artifacts',
   'build:resume:complete',
-  // --- eforge:endregion plan-01-engine-resume ---
 ] as const;
 
 // ---------------------------------------------------------------------------

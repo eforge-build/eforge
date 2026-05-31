@@ -158,7 +158,6 @@ describe('SCHEDULER_INPUT_TYPES', () => {
   });
 });
 
-// --- eforge:region plan-02-policy-gate-engine-integration ---
 describe('QueueScheduler — queue dispatch policy gates', () => {
   it('blocks before profile routing, session start, semaphore acquisition, or spawn', async () => {
     const { cwd, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
@@ -286,7 +285,6 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
     eventQueue.removeProducer();
   });
 });
-// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 // ---------------------------------------------------------------------------
 // Test 1: queue:mutation triggers discovery and spawn

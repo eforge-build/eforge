@@ -14,20 +14,12 @@ export default defineConfig({
     include: [
       'test/**/*.test.ts',
       'packages/engine/test/**/*.test.ts',
-      // --- eforge:region plan-02-web-site ---
       'web/__tests__/**/*.test.ts',
-      // --- eforge:endregion plan-02-web-site ---
-      // --- eforge:region plan-04-monitor-ui ---
       'packages/monitor-ui/src/**/*.test.tsx',
       'packages/monitor-ui/src/**/*.test.ts',
       'packages/monitor-ui/test/**/*.test.ts',
-      // --- eforge:endregion plan-04-monitor-ui ---
-      // --- eforge:region plan-04-daemon-events-server ---
       'packages/client/src/__tests__/**/*.test.ts',
-      // --- eforge:endregion plan-04-daemon-events-server ---
-      // --- eforge:region plan-01-types-and-daemon-emission ---
       'packages/monitor/src/__tests__/**/*.test.ts',
-      // --- eforge:endregion plan-01-types-and-daemon-emission ---
     ],
     server: {
       deps: {
@@ -50,10 +42,8 @@ export default defineConfig({
       { find: '@eforge-build/extension-sdk', replacement: resolve(root, 'packages/extension-sdk/src/index.ts') },
       { find: /^@eforge-build\/input\/(.*)$/, replacement: resolve(root, 'packages/input/src/$1') },
       { find: '@eforge-build/input', replacement: resolve(root, 'packages/input/src/index.ts') },
-      // --- eforge:region plan-04-monitor-ui ---
       // @/ alias for monitor-ui src root — used by monitor-ui component test files.
       { find: /^@\/(.*)$/, replacement: resolve(root, 'packages/monitor-ui/src/$1') },
-      // --- eforge:endregion plan-04-monitor-ui ---
       // @modelcontextprotocol/sdk is installed in packages/eforge/node_modules only; map sub-paths
       // to the ESM dist so test files can import from it directly.
       {

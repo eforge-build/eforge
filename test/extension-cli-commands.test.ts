@@ -236,7 +236,6 @@ describe('extension CLI commands', () => {
     expect(stdout).toContain('inputSources: 1');
   });
 
-  // --- eforge:region plan-01-extension-input-contracts ---
   it('extension test non-JSON output includes prdEnrichers count in deferred registrations', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
@@ -254,7 +253,6 @@ describe('extension CLI commands', () => {
     expect(stdout).toContain('Deferred registrations:');
     expect(stdout).toContain('prdEnrichers: 1');
   });
-  // --- eforge:endregion plan-01-extension-input-contracts ---
 
   it('extension test treats path-like nameOrPath arguments as ad-hoc extension paths', async () => {
     const tmpDir = makeTempDir();
@@ -617,7 +615,6 @@ describe('extension CLI commands', () => {
     expect(stdout).toContain('Trusted by:    reviewer');
   });
 
-  // --- eforge:region plan-03-observability-docs-examples ---
   it('extension show non-JSON output includes reviewer perspective key, label, and description when registered', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
@@ -707,9 +704,7 @@ describe('extension CLI commands', () => {
     // promptFragment must NOT be exposed
     expect(JSON.stringify(data)).not.toContain('secret prompt text');
   });
-  // --- eforge:endregion plan-03-observability-docs-examples ---
 
-  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
   it('extension test non-JSON output lists validation providers as runtime-supported, not deferred', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
@@ -786,5 +781,4 @@ describe('extension CLI commands', () => {
     // commandCount for function form should be absent
     expect(data.extension.validationProviderDetails![0].commandCount).toBeUndefined();
   });
-  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
 });

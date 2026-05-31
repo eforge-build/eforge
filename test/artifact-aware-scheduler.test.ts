@@ -275,7 +275,6 @@ describe('QueueScheduler artifact-aware readiness', () => {
   });
 });
 
-// --- eforge:region plan-01-runtime-artifact-diagnostics ---
 
 describe('QueueScheduler — completion index recording', () => {
   it('records a completed entry in the completion index when upstream completes with artifact', async () => {
@@ -479,4 +478,3 @@ describe('EforgeEngine.runQueue — completion index recording', () => {
   });
 });
 
-// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---

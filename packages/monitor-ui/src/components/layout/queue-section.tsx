@@ -13,9 +13,7 @@ import { RecoverySidecarSheet } from '@/components/recovery/sidecar-sheet';
 const STATUS_ORDER: Record<string, number> = {
   running: 0,
   pending: 1,
-  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
   waiting: 2,
-  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 };
 
 function statusDotClass(status: string): string {
@@ -30,10 +28,8 @@ function statusDotClass(status: string): string {
       return 'bg-red';
     case 'skipped':
       return 'bg-text-dim';
-    // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
     case 'waiting':
       return 'bg-text-dim/50';
-    // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
     default:
       return 'bg-text-dim';
   }
@@ -73,30 +69,23 @@ function sortQueueItems(items: QueueItem[]): QueueItem[] {
  *   item.recoveryVerdict absent   → show "recovery pending" indicator
  */
 function RecoveryRow({ item, isChild }: { item: QueueItem; isChild: boolean }) {
-  // --- eforge:region plan-01-fix-recovery-ux ---
   const rv = item.recoveryVerdict;
   const isRecoveryPending = item.status === 'failed' && !rv;
-  // --- eforge:endregion plan-01-fix-recovery-ux ---
 
   return (
     <div
-      // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
       className={cn('py-1.5 rounded-md mb-0.5', isChild ? 'pl-5 pr-2.5' : 'px-2.5')}
-      // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
     >
       <div className="flex items-center gap-2">
-        {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}
         {isChild && (
           <CornerDownRight className="h-3 w-3 text-text-dim/60 flex-shrink-0 shrink-0" />
         )}
-        {/* --- eforge:endregion plan-05-piggyback-and-queue-scheduling --- */}
         <span
           className={cn('w-2 h-2 rounded-full flex-shrink-0', statusDotClass(item.status))}
         />
         <span className="text-[11px] text-foreground truncate flex-1">
           {item.title}
         </span>
-        {/* --- eforge:region plan-01-fix-recovery-ux --- */}
         {rv != null && (
           <RecoveryVerdictChip
             verdict={rv.verdict as RecoveryVerdictValue}
@@ -106,25 +95,20 @@ function RecoveryRow({ item, isChild }: { item: QueueItem; isChild: boolean }) {
         {isRecoveryPending && (
           <span className="text-[10px] text-text-dim/60 italic">recovery pending</span>
         )}
-        {/* --- eforge:endregion plan-01-fix-recovery-ux --- */}
         {item.priority !== undefined && !rv && (
           <span className="text-[10px] text-text-dim">
             p{item.priority}
           </span>
         )}
       </div>
-      {/* --- eforge:region plan-01-fix-recovery-ux --- */}
       {rv != null && (
         <div className="pl-[calc(8px+0.5rem)] mt-0.5">
           <RecoverySidecarSheet prdId={item.id} />
         </div>
       )}
-      {/* --- eforge:endregion plan-01-fix-recovery-ux --- */}
       {item.dependsOn && item.dependsOn.length > 0 && (
         <div className="pl-[calc(8px+0.5rem)] text-[11px] text-text-dim truncate">
-          {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}
           {item.status === 'waiting' ? 'waiting for: ' : 'blocked by: '}
-          {/* --- eforge:endregion plan-05-piggyback-and-queue-scheduling --- */}
           {item.dependsOn.join(', ')}
         </div>
       )}
@@ -147,7 +131,6 @@ export function QueueSection({ items }: QueueSectionProps) {
   const sorted = useMemo(() => sortQueueItems(pendingItems), [pendingItems]);
   const pendingCount = pendingItems.length;
 
-  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
   // Build parent-child map for nested rendering: childId -> parentId
   const childOf = useMemo(() => {
     const itemIds = new Set(sorted.map((i) => i.id));
@@ -164,7 +147,6 @@ export function QueueSection({ items }: QueueSectionProps) {
     }
     return map;
   }, [sorted]);
-  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
   if (pendingCount === 0) return null;
 
@@ -188,9 +170,7 @@ export function QueueSection({ items }: QueueSectionProps) {
       </Collapsible.Trigger>
       <Collapsible.Content>
         {sorted.map((item) => {
-          // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
           const isChild = childOf.has(item.id);
-          // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
           if (item.status === 'failed') {
             return <RecoveryRow key={item.id} item={item} isChild={isChild} />;
@@ -199,16 +179,12 @@ export function QueueSection({ items }: QueueSectionProps) {
           return (
             <div
               key={item.id}
-              // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
               className={cn('py-1.5 rounded-md mb-0.5', isChild ? 'pl-5 pr-2.5' : 'px-2.5')}
-              // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
             >
               <div className="flex items-center gap-2">
-                {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}
                 {isChild && (
                   <CornerDownRight className="h-3 w-3 text-text-dim/60 flex-shrink-0 shrink-0" />
                 )}
-                {/* --- eforge:endregion plan-05-piggyback-and-queue-scheduling --- */}
                 <span
                   className={cn('w-2 h-2 rounded-full flex-shrink-0', statusDotClass(item.status))}
                 />
@@ -220,17 +196,13 @@ export function QueueSection({ items }: QueueSectionProps) {
                     p{item.priority}
                   </span>
                 )}
-                {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}
                 {item.status === 'waiting' && (
                   <span className="text-[10px] text-text-dim/60 italic">waiting</span>
                 )}
-                {/* --- eforge:endregion plan-05-piggyback-and-queue-scheduling --- */}
               </div>
               {item.dependsOn && item.dependsOn.length > 0 && (
                 <div className="pl-[calc(8px+0.5rem)] text-[11px] text-text-dim truncate">
-                  {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}
                   {item.status === 'waiting' ? 'waiting for: ' : 'blocked by: '}
-                  {/* --- eforge:endregion plan-05-piggyback-and-queue-scheduling --- */}
                   {item.dependsOn.join(', ')}
                 </div>
               )}

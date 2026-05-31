@@ -12,14 +12,12 @@
  * The generator returns a `LandingResult` capturing whether landing
  * succeeded and optional metadata (PR URL, commit SHA).
  *
- * --- eforge:region plan-03-branch-aware-landing ---
  * Branch-aware workflow classification:
  *   - `trunk-pr`: pr when baseBranch is trunk
  *   - `trunk-local-merge`: merge when baseBranch is trunk + opt-in
  *   - `feature-pr`: pr when baseBranch is non-trunk feature branch (direct PR: featureBranch → baseBranch)
  *   - `feature-local-merge`: merge when baseBranch is non-trunk feature branch
  *   - `leave-branch`: no landing action
- * --- eforge:endregion plan-03-branch-aware-landing ---
  */
 
 import { execFile } from 'node:child_process';
@@ -31,19 +29,11 @@ import type { MergeResolver } from './worktree-ops.js';
 import type { ModelTracker } from './model-tracker.js';
 import { composeCommitMessage, buildProvenanceTrailers } from './model-tracker.js';
 import { cleanupPlanFiles } from './cleanup.js';
-// --- eforge:region plan-01-pr-metadata ---
 import { renderPullRequestMetadata } from './pr-metadata.js';
-// --- eforge:endregion plan-01-pr-metadata ---
-// --- eforge:region plan-01-build-artifact-provenance ---
 import { collectBuildArtifactProvenance, type BuildArtifactProvenanceRef } from './provenance.js';
-// --- eforge:endregion plan-01-build-artifact-provenance ---
-// --- eforge:region plan-03-branch-aware-landing ---
 import { resolveTrunkBranch, isTrunkBranch } from './branch-policy.js';
 import type { EforgeConfig } from './config.js';
-// --- eforge:endregion plan-03-branch-aware-landing ---
-// --- eforge:region plan-01-core-engine-auto-merge ---
 import { resolvePrAutoMergeIntent } from './config.js';
-// --- eforge:endregion plan-01-core-engine-auto-merge ---
 
 const exec = promisify(execFile);
 
@@ -53,7 +43,6 @@ const exec = promisify(execFile);
 
 export type LandingAction = 'pr' | 'merge' | 'leave';
 
-// --- eforge:region plan-03-branch-aware-landing ---
 /**
  * Classified workflow derived from the action + trunk policy.
  */
@@ -63,7 +52,6 @@ export type LandingWorkflow =
   | 'feature-pr'
   | 'feature-local-merge'
   | 'leave-branch';
-// --- eforge:endregion plan-03-branch-aware-landing ---
 
 export interface LandingActionOptions {
   action: LandingAction;
@@ -76,14 +64,12 @@ export interface LandingActionOptions {
   modelTracker: ModelTracker;
   /** Commit message used for merge action (pre-composed, used as fallback). */
   commitMessage: string;
-  // --- eforge:region plan-01-build-artifact-provenance ---
   /**
    * Raw commit body (before trailer composition) for the merge action.
    * When provided, landing recomposes the commit message with provenance trailers
    * after cleanup/provenance collection. Falls back to `commitMessage` when absent.
    */
   rawCommitBody?: string;
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
   signal?: AbortSignal;
   shouldCleanup?: boolean;
   cleanupPlanSet?: string;
@@ -91,16 +77,12 @@ export interface LandingActionOptions {
   cleanupPrdFilePath?: string;
   state: EforgeState;
   config: OrchestrationConfig;
-  // --- eforge:region plan-03-branch-aware-landing ---
   /** EforgeConfig subset for trunk policy resolution. When omitted, trunk defaults to "main". */
   engineConfig?: Pick<EforgeConfig, 'build'>;
-  // --- eforge:endregion plan-03-branch-aware-landing ---
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   /** Configured PR auto-merge policy (from landing.pr.autoMerge). Defaults to 'ask'. */
   prAutoMergePolicy?: 'ask' | 'always' | 'never';
   /** Per-run PR auto-merge intent (from landingAutoMerge build option / PRD frontmatter). */
   landingAutoMerge?: boolean;
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }
 
 export interface LandingResult {
@@ -113,14 +95,12 @@ export interface LandingResult {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-03-branch-aware-landing ---
 /**
  * Run cleanup on the feature branch in the merge worktree.
  * Non-fatal: emits a progress event on failure and continues.
  *
  * Exported for reuse by stacked PR landing (plan-03-stack-landing-lifecycle-cleanup).
  */
-// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
 export async function* runCleanup(
   mergeWorktreePath: string,
   featureBranch: string,
@@ -147,7 +127,6 @@ export async function* runCleanup(
     } as EforgeEvent;
   }
 }
-// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
 /**
  * Dirty-tree detection and auto-recovery on repoRoot.
@@ -187,7 +166,6 @@ async function* recoverDirtyTree(
     timestamp: ts(),
   } as EforgeEvent;
 }
-// --- eforge:endregion plan-03-branch-aware-landing ---
 
 // ---------------------------------------------------------------------------
 // executeLandingAction
@@ -221,22 +199,17 @@ export async function* executeLandingAction(
     worktreeManager,
     mergeResolver,
     commitMessage,
-    // --- eforge:region plan-01-build-artifact-provenance ---
     rawCommitBody,
-    // --- eforge:endregion plan-01-build-artifact-provenance ---
     shouldCleanup,
     cleanupPlanSet,
     cleanupOutputDir,
     cleanupPrdFilePath,
-    // --- eforge:region plan-01-core-engine-auto-merge ---
     prAutoMergePolicy = 'ask',
     landingAutoMerge,
-    // --- eforge:endregion plan-01-core-engine-auto-merge ---
   } = opts;
 
   const ts = (): string => new Date().toISOString();
 
-  // --- eforge:region plan-03-branch-aware-landing ---
   // Resolve trunk branch and classify the workflow before emitting landing:start.
   const trunk = await resolveTrunkBranch(opts.engineConfig, repoRoot);
   const baseBranchIsTrunk = isTrunkBranch(baseBranch, trunk);
@@ -251,21 +224,17 @@ export async function* executeLandingAction(
     // pr
     workflow = baseBranchIsTrunk ? 'trunk-pr' : 'feature-pr';
   }
-  // --- eforge:endregion plan-03-branch-aware-landing ---
 
   yield {
     type: 'landing:start' as const,
     action,
     featureBranch,
     baseBranch,
-    // --- eforge:region plan-03-branch-aware-landing ---
     trunkBranch: trunk,
     workflow,
-    // --- eforge:endregion plan-03-branch-aware-landing ---
     timestamp: ts(),
   } as EforgeEvent;
 
-  // --- eforge:region plan-03-branch-aware-landing ---
   // Reject merge when baseBranch is trunk and opt-in is absent.
   if (action === 'merge' && baseBranchIsTrunk && !allowLocalMergeToTrunk) {
     const reason = `Local merge to trunk '${trunk}' is not permitted (set allowLocalMergeToTrunk: true to opt in)`;
@@ -286,7 +255,6 @@ export async function* executeLandingAction(
     } as EforgeEvent;
     return { landingSucceeded: false };
   }
-  // --- eforge:endregion plan-03-branch-aware-landing ---
 
   // ---------------------------------------------------------------------------
   // merge
@@ -302,13 +270,10 @@ export async function* executeLandingAction(
 
     try {
       // Pre-merge dirty tree detection and auto-recovery on repoRoot
-      // --- eforge:region plan-03-branch-aware-landing ---
       for await (const event of recoverDirtyTree(repoRoot, ts)) {
         yield event;
       }
-      // --- eforge:endregion plan-03-branch-aware-landing ---
 
-      // --- eforge:region plan-03-branch-aware-landing ---
       // Run cleanup BEFORE the final merge (for both trunk and non-trunk paths).
       if (shouldCleanup && cleanupPlanSet && cleanupOutputDir) {
         for await (const event of runCleanup(
@@ -322,9 +287,7 @@ export async function* executeLandingAction(
           yield event;
         }
       }
-      // --- eforge:endregion plan-03-branch-aware-landing ---
 
-      // --- eforge:region plan-01-build-artifact-provenance ---
       // After cleanup, collect provenance and compose the final commit message
       // with Eforge-Source-* trailers when a raw commit body was provided.
       let finalCommitMessage = commitMessage;
@@ -341,7 +304,6 @@ export async function* executeLandingAction(
           // Best-effort: provenance failure must not block the merge
         }
       }
-      // --- eforge:endregion plan-01-build-artifact-provenance ---
 
       const commitSha = await worktreeManager.mergeToBase(baseBranch, finalCommitMessage, mergeResolver);
 
@@ -389,7 +351,6 @@ export async function* executeLandingAction(
   // ---------------------------------------------------------------------------
 
   if (action === 'pr') {
-    // --- eforge:region plan-03-branch-aware-landing ---
     // Run cleanup BEFORE issuing the PR for both trunk-pr and feature-pr.
     if (shouldCleanup && cleanupPlanSet && cleanupOutputDir) {
       for await (const event of runCleanup(
@@ -403,9 +364,7 @@ export async function* executeLandingAction(
         yield event;
       }
     }
-    // --- eforge:endregion plan-03-branch-aware-landing ---
 
-    // --- eforge:region plan-01-build-artifact-provenance ---
     // Collect build artifact provenance after cleanup and before PR creation (best-effort).
     // Uses git history so it works regardless of whether cleanup removed files from HEAD.
     let provenanceRefs: BuildArtifactProvenanceRef[] = [];
@@ -420,21 +379,16 @@ export async function* executeLandingAction(
         // Best-effort: provenance failure must not fail landing
       }
     }
-    // --- eforge:endregion plan-01-build-artifact-provenance ---
 
     try {
       // Direct PR workflow: always publish featureBranch -> baseBranch
-      // --- eforge:region plan-01-pr-metadata ---
       const prMetadata = renderPullRequestMetadata({
         config: opts.config,
         featureBranch,
         baseBranch,
         modelTracker: opts.modelTracker,
-        // --- eforge:region plan-01-build-artifact-provenance ---
         provenanceRefs: provenanceRefs.length > 0 ? provenanceRefs : undefined,
-        // --- eforge:endregion plan-01-build-artifact-provenance ---
       });
-      // --- eforge:endregion plan-01-pr-metadata ---
       const prResult = await worktreeManager.issuePr({ baseBranch, metadata: prMetadata });
       const url = prResult.url;
 
@@ -447,7 +401,6 @@ export async function* executeLandingAction(
         timestamp: ts(),
       } as EforgeEvent;
 
-      // --- eforge:region plan-01-core-engine-auto-merge ---
       // Attempt PR auto-merge (non-fatal) after successful PR creation.
       const shouldAutoMerge = resolvePrAutoMergeIntent(prAutoMergePolicy, landingAutoMerge);
       if (shouldAutoMerge) {
@@ -492,7 +445,6 @@ export async function* executeLandingAction(
           timestamp: ts(),
         } as unknown as EforgeEvent;
       }
-      // --- eforge:endregion plan-01-core-engine-auto-merge ---
 
       return { landingSucceeded: true, prUrl: url };
     } catch (err) {

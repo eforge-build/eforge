@@ -14,9 +14,7 @@ import { resolveTrunkBranch } from '../branch-policy.js';
 import { createProvider } from './provider.js';
 import { loadStackState } from './state.js';
 import type { ProviderCommandResult } from './provider.js';
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 import type { StackSyncTrigger, StackSyncActiveBuildPolicy } from './sync-state.js';
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
 const execFileAsync = promisify(execFile);
 
@@ -69,12 +67,10 @@ export interface StackSyncReport {
   providerCommands: StackSyncProviderCommand[];
   /** Error message when outcome is 'failed' or 'conflict'. */
   error?: string;
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   /** The trigger that initiated this sync, when set by the caller. */
   trigger?: StackSyncTrigger;
   /** The active-build policy used, when set by the caller. */
   activeBuildPolicy?: StackSyncActiveBuildPolicy;
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 /** Options for `performStackSync`. */
@@ -89,7 +85,6 @@ export interface StackSyncOptions {
    * `<prefix>/` for any entry in this list.
    */
   excludedBranchPrefixes?: string[];
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   /** The trigger that initiated this sync (propagated to the report). */
   trigger?: StackSyncTrigger;
   /**
@@ -102,7 +97,6 @@ export interface StackSyncOptions {
    * Dry-runs always use 'skip' semantics since they do not execute commands.
    */
   activeBuildPolicy?: StackSyncActiveBuildPolicy;
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 // ---------------------------------------------------------------------------
@@ -176,9 +170,7 @@ export async function performStackSync(
   config: EforgeConfig,
   opts: StackSyncOptions,
 ): Promise<StackSyncReport> {
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   const { cwd, dryRun = false, excludedBranchPrefixes = [], trigger, activeBuildPolicy = 'skip' } = opts;
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
   const providerCommands: StackSyncProviderCommand[] = [];
 
   // Resolve trunk branch and get SHAs for fast-forward reporting
@@ -214,12 +206,10 @@ export async function performStackSync(
       ),
   );
 
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   // Use provider for command previews (no hard-coded argv outside the adapter)
   const provider = createProvider(config.stacking);
   const syncRepoPreview = provider.syncRepoPreview();
   const restackStackPreview = provider.restackStackPreview();
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
   // Compute exclusion state up-front so dry-run and wet-run use the same logic.
   const hasExcludedCandidates = allCandidates.length > restackCandidates.length;
@@ -230,13 +220,11 @@ export async function performStackSync(
       ? 'stack restack skipped: active-build branches overlap the stack; restack cannot be scoped to exclude them'
       : undefined;
 
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   // Common metadata fields to spread into every return value.
   const metaFields = {
     ...(trigger !== undefined && { trigger }),
     ...(activeBuildPolicy !== 'skip' && { activeBuildPolicy }),
   };
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
   // Build the command list
   const syncRepoDryRecord: StackSyncProviderCommand = {
@@ -273,7 +261,6 @@ export async function performStackSync(
     };
   }
 
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   // Wet sync: short-circuit before any provider mutation when active-build
   // branches overlap the stack candidates.
   if (hasExcludedCandidates) {
@@ -309,7 +296,6 @@ export async function performStackSync(
       };
     }
   }
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
   // Wet run: execute repo sync
   try {

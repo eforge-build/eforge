@@ -237,7 +237,6 @@ describe('native extension replay harness', () => {
 
     expect(result.valid).toBe(true);
     expect(result.matches).toEqual([]);
-    // --- eforge:region plan-03-observability-docs-examples ---
     // reviewerPerspectives is runtime-supported and no longer listed as deferred
     const deferredByFamily = Object.fromEntries(result.deferredRegistrations.map((entry) => [entry.family, entry.count]));
     expect(deferredByFamily).toMatchObject({
@@ -262,10 +261,8 @@ describe('native extension replay harness', () => {
         extensionName: 'deferred',
       }),
     ]);
-    // --- eforge:endregion plan-03-observability-docs-examples ---
   });
 
-  // --- eforge:region plan-01-extension-input-contracts ---
   it('includes PRD enrichers in deferred registration summary and does not invoke enrich during replay', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
@@ -296,5 +293,4 @@ describe('native extension replay harness', () => {
       expect.objectContaining({ name: 'enricher-replay', count: 1 }),
     ]);
   });
-  // --- eforge:endregion plan-01-extension-input-contracts ---
 });

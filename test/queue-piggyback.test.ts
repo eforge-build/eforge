@@ -532,7 +532,6 @@ describe('validateDependsOnExists', () => {
     ).rejects.toThrow(/unknown queue item/);
   });
 
-  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
 
   it('throws with "artifact" message when completion index has failed entry even with stale registry artifact', async () => {
     const dir = makeTempDir();
@@ -652,7 +651,6 @@ describe('validateDependsOnExists', () => {
     ).resolves.toBeUndefined();
   });
 
-  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 });
 
 // ---------------------------------------------------------------------------
@@ -725,7 +723,6 @@ describe('enqueuePrd with intoWaiting', () => {
 // classifyAfterQueueId — placement helper
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-build-dependency-core ---
 describe('classifyAfterQueueId', () => {
   const makeTempDir = useTempDir('eforge-classify-after-');
 
@@ -916,4 +913,3 @@ describe('classifyAfterQueueId', () => {
     ).rejects.toThrow('stale-completed-no-artifact');
   });
 });
-// --- eforge:endregion plan-01-build-dependency-core ---

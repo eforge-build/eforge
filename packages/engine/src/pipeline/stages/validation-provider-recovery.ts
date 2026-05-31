@@ -37,9 +37,7 @@ export function validationFailureToReviewIssues(
 export async function* runValidationProviderRecoveryStage(
   ctx: BuildStageContext,
   callbacks: ValidationProviderRecoveryCallbacks,
-  // --- eforge:region plan-01-changedfiles-extension-contexts ---
   changedFiles?: string[],
-  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
 ): AsyncGenerator<EforgeEvent> {
   const providers = ctx.extensionValidationProviders;
   if (!providers || providers.length === 0) return;
@@ -62,10 +60,8 @@ export async function* runValidationProviderRecoveryStage(
           planOutputDir: ctx.worktreePath,
           worktreePath: ctx.worktreePath,
           signal: ctx.abortController?.signal,
-          // --- eforge:region plan-01-changedfiles-extension-contexts ---
           // Fresh clone per provider so a provider mutating ctx.changedFiles cannot leak across providers.
           ...(changedFiles !== undefined && { changedFiles: [...changedFiles] }),
-          // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
         },
         { timeoutMs },
       );

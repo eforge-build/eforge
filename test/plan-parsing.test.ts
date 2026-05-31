@@ -119,7 +119,6 @@ describe('parseOrchestrationConfig', () => {
     expect(config.pipeline.rationale).toBe('test pipeline');
   });
 
-  // --- eforge:region plan-01-dynamic-perspective-contracts ---
   it('accepts a dynamic perspective key in per-plan review config', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'eforge-dyn-persp-'));
     const yamlPath = join(dir, 'orchestration.yaml');
@@ -186,7 +185,6 @@ describe('parseOrchestrationConfig', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
   it('throws on missing name', async () => {
     await expect(
@@ -406,7 +404,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
     expect(config.baseBranch).toBe('main');
   });
 
-  // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
 
   it('propagates diffBaseRef separately from baseBranch when trunk sync selects a fetched SHA', async () => {
     // Simulates the scenario where local main is stale and trunk sync resolved a fetched commit SHA.
@@ -462,7 +459,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
     expect(config.diffBaseRef).toBeUndefined();
   });
 
-  // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 });
 
 // --- Per-plan agents tuning ---

@@ -19,7 +19,6 @@ export interface SynthesizeOptions {
   dbPath?: string;
 }
 
-// --- eforge:region plan-01-transport-resilience ---
 interface EventHistoryRow {
   id: number;
   planId: string | null;
@@ -41,7 +40,6 @@ function terminalSubtypeFromMessage(message: string | undefined): string | undef
   if (!message) return undefined;
   return classifyAgentTerminalSubtype(new Error(message));
 }
-// --- eforge:endregion plan-01-transport-resilience ---
 
 /**
  * Synthesize a partial BuildFailureSummary fragment from monitor.db event history.
@@ -58,7 +56,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
   try {
     const db = new DatabaseSync(dbPath);
     try {
-      // --- eforge:region plan-01-recovery-run-selection ---
       // Prefer the latest failed build run for this setName. A newer running
       // resume run can share the same plan_set, but recovery summaries need the
       // original failed build evidence that made the set resumable.
@@ -69,7 +66,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         `SELECT id, command, started_at as startedAt FROM runs WHERE plan_set = ? ORDER BY started_at DESC LIMIT 1`,
       );
       const run = (failedBuildRunStmt.get(setName) ?? newestRunStmt.get(setName)) as { id: string; command: string; startedAt: string } | undefined;
-      // --- eforge:endregion plan-01-recovery-run-selection ---
 
       if (!run) return null;
 
@@ -96,7 +92,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
       // false when plan:build:failed events provide direct evidence without a phase:end context.
       let isLegacyFallback = false;
 
-      // --- eforge:region plan-01-terminal-failure-contract ---
       // Step 1: Find the latest failed phase:end to bound the authoritative lookup window.
       const failedPhaseRows = db.prepare(
         `SELECT id, data, timestamp FROM events WHERE run_id = ? AND type = 'phase:end' ORDER BY id DESC LIMIT 20`,
@@ -122,7 +117,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         // phase:end found but no authoritative terminal event — legacy fallback applies.
         isLegacyFallback = true;
       }
-      // --- eforge:endregion plan-01-terminal-failure-contract ---
 
       let failingPlan: FailingPlanEntry;
       let plans: PlanSummaryEntry[];
@@ -130,7 +124,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
       let failingPlans: FailingPlanEntry[] | undefined;
       let reviewFailure: BuildFailureSummary['reviewFailure'];
 
-      // --- eforge:region plan-01-recovery-summary-reconstruction ---
       // Query ALL plan:build:failed events for the run (ordered by id ASC; latest = last element).
       const allFailedStmt = db.prepare(
         `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'plan:build:failed' ORDER BY id ASC`,
@@ -305,9 +298,7 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           reviewFailure = extractReviewFailureDetails(db, runId, latestFailedEvent.planId, latestFailedEvent.id);
         }
       }
-      // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
       else {
-        // --- eforge:region plan-01-transport-resilience ---
         const phaseStmt = db.prepare(
           `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'phase:end' ORDER BY id DESC LIMIT 20`,
         );
@@ -330,7 +321,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         const phaseSummary = typeof phaseResult.summary === 'string' ? phaseResult.summary : undefined;
         const phaseStatus = typeof phaseResult.status === 'string' ? phaseResult.status : undefined;
 
-        // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
         // Prefer PRD-validation terminal failures over acceptance failures. runPrdValidator
         // can emit acceptance_validation:complete even when PRD validation failed; reporting
         // those runs as acceptance-validation failures hides the real terminal gate.
@@ -490,7 +480,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
             };
           }
         }
-        // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
         // Check for well-known non-plan terminal failure patterns (artifact-recording,
         // landing, post-merge-validation) before falling back to agent:stop evidence.
@@ -555,7 +544,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           ...(terminalSubtype && { terminalSubtype }),
         }];
         failedAt = failedPhase.timestamp;
-        // --- eforge:endregion plan-01-transport-resilience ---
       }
 
       return {
@@ -565,10 +553,8 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         baseBranch: 'main',
         plans,
         failingPlan,
-        // --- eforge:region plan-01-recovery-summary-reconstruction ---
         ...(failingPlans !== undefined ? { failingPlans } : {}),
         ...(reviewFailure !== undefined ? { reviewFailure } : {}),
-        // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
         landedCommits: [] as LandedCommit[],
         diffStat: '',
         modelsUsed,

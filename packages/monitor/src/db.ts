@@ -644,7 +644,6 @@ export function openDatabase(dbPath: string): MonitorDB {
       }
     },
 
-    // --- eforge:region plan-02-runtime-and-integration ---
     getProfileUsageSummary(profileName, windowMs) {
       const cutoff = new Date(Date.now() - windowMs).toISOString();
 
@@ -734,7 +733,6 @@ export function openDatabase(dbPath: string): MonitorDB {
         recentQuotaErrors: quotaRow.count ?? 0,
       };
     },
-    // --- eforge:endregion plan-02-runtime-and-integration ---
 
     close() {
       db.close();

@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-schema-utility ---
 export {
   safeParseWithSchema,
   parseWithSchema,
@@ -6,7 +5,6 @@ export {
   getSchemaYaml,
 } from './schema-utils.js';
 export type { SafeParseResult, SchemaError, ValueError } from './schema-utils.js';
-// --- eforge:endregion plan-01-schema-utility ---
 
 export { API_ROUTES, buildPath } from './routes.js';
 export type {
@@ -80,29 +78,19 @@ export {
   apiShowConfigIfRunning,
   apiValidateConfig,
   apiValidateConfigIfRunning,
-  // --- eforge:region plan-01-unified-pi-landing-ux ---
   apiShowConfigVerbose,
   apiShowConfigVerboseIfRunning,
-  // --- eforge:endregion plan-01-unified-pi-landing-ux ---
 } from './api/config.js';
 
-// --- eforge:region plan-02-extension-tooling-surfaces ---
 export {
   apiListExtensions,
   apiShowExtension,
   apiValidateExtensions,
-  // --- eforge:region plan-01-extension-management-api ---
   apiNewExtension,
   apiReloadExtensions,
-  // --- eforge:endregion plan-01-extension-management-api ---
-  // --- eforge:region plan-01-engine-daemon-extension-replay ---
   apiTestExtension,
-  // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
-  // --- eforge:region plan-02-management-surfaces ---
   apiTrustExtension,
   apiUntrustExtension,
-  // --- eforge:endregion plan-02-management-surfaces ---
-  // --- eforge:region plan-01-no-start-client-helpers ---
   apiListExtensionsIfRunning,
   apiShowExtensionIfRunning,
   apiValidateExtensionsIfRunning,
@@ -111,8 +99,6 @@ export {
   apiTestExtensionIfRunning,
   apiTrustExtensionIfRunning,
   apiUntrustExtensionIfRunning,
-  // --- eforge:endregion plan-01-no-start-client-helpers ---
-  // --- eforge:region plan-01-extension-package-foundation ---
   apiInstallExtension,
   apiInstallExtensionIfRunning,
   apiUpdateExtension,
@@ -123,9 +109,7 @@ export {
   apiPromoteExtensionIfRunning,
   apiDemoteExtension,
   apiDemoteExtensionIfRunning,
-  // --- eforge:endregion plan-01-extension-package-foundation ---
 } from './api/extensions.js';
-// --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
 export {
   apiListModelProviders,
@@ -145,7 +129,6 @@ export { apiReadRecoverySidecar, apiReadRecoverySidecarIfRunning } from './api/r
 
 export { apiApplyRecovery, apiApplyRecoveryIfRunning } from './api/apply-recovery.js';
 
-// --- eforge:region plan-01-queue-recovery-api-engine ---
 export type {
   QueueRecoveryStrategy,
   QueueRecoveryStrategyWire,
@@ -175,7 +158,6 @@ export {
   apiApplyQueueRecovery,
   apiApplyQueueRecoveryIfRunning,
 } from './api/queue-recovery.js';
-// --- eforge:endregion plan-01-queue-recovery-api-engine ---
 
 export {
   apiPlaybookList,
@@ -222,12 +204,9 @@ export type {
   PlaybookRunRequiresAgentResponse,
 } from './routes.js';
 
-// --- eforge:region plan-03-stack-daemon-ui ---
 export type { StackLayersResponse } from './routes.js';
 export { apiGetStackLayers, apiGetStackLayersIfRunning } from './api/stack.js';
-// --- eforge:endregion plan-03-stack-daemon-ui ---
 
-// --- eforge:region plan-01-stack-sync-daemon-cli ---
 export type {
   StackSyncRequest,
   StackSyncResponse,
@@ -248,7 +227,6 @@ export {
   discoverProjectRootCwd,
   daemonRequestFromWorktree,
 } from './daemon-client.js';
-// --- eforge:endregion plan-01-stack-sync-daemon-cli ---
 
 export {
   apiSessionPlanList,
@@ -302,10 +280,8 @@ export type {
 
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
 
-// --- eforge:region plan-02-api-cli ---
 export type { ResumeBuildRequest, ResumeBuildResponse } from './routes.js';
 export { apiResumeBuild, apiResumeBuildIfRunning } from './api/resume-build.js';
-// --- eforge:endregion plan-02-api-cli ---
 
 export {
   type LockfileData,
@@ -379,10 +355,8 @@ export type {
   EforgeState,
   ExpeditionModule,
   PrdValidationGap,
-  // --- eforge:region plan-01-validation-evidence-contract ---
   AcceptanceCriterionVerdict,
   AcceptanceCriteriaConflict,
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
   TestIssue,
   BuildFailureSummary,
   LandedCommit,
@@ -397,74 +371,50 @@ export type {
   // --- eforge:region build-completion-recovery ---
   EvaluationIssueOutcome,
   // --- eforge:endregion build-completion-recovery ---
-  // --- eforge:region plan-01-dynamic-perspective-contracts ---
   ReviewPerspectiveKey,
-  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
   AgentTerminalSubtype,
   ShardScope,
   PipelineComposition,
   BuildDecision,
   PlanningDecision,
   PlanningDecisionEvent,
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   StackProvider,
   LandingPublicationAction,
   StackLayerStatus,
   StackArtifactRef,
   StackLayerWire,
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
-  // --- eforge:region plan-01-terminal-failure-contract ---
   TerminalFailureScope,
   TerminalFailureEnvelope,
-  // --- eforge:endregion plan-01-terminal-failure-contract ---
-  // --- eforge:region plan-01-engine-resume ---
   BuildResumeStartEvent,
   BuildResumeStateEvent,
   BuildResumeIneligibleEvent,
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   BuildResumeArtifactSource,
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   BuildResumeCompleteEvent,
-  // --- eforge:endregion plan-01-engine-resume ---
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, EvaluationIssueOutcomeSchema, BuildDecisionSchema, PlanningDecisionSchema,
-  // --- eforge:region plan-01-validation-evidence-contract ---
   AcceptanceCriterionVerdictSchema, AcceptanceCriteriaConflictSchema,
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
   safeParseEforgeEvent, parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseSessionStreamSnapshot,
-  // --- eforge:region plan-01-dynamic-perspective-contracts ---
   ReviewPerspectiveKeySchema, isBuiltInReviewPerspective,
-  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   StackProviderSchema, LandingPublicationActionSchema, StackLayerStatusSchema, StackArtifactRefSchema, StackLayerWireSchema,
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
-  // --- eforge:region plan-01-terminal-failure-contract ---
   TerminalFailureScopeSchema, TerminalFailureEnvelopeSchema,
-  // --- eforge:endregion plan-01-terminal-failure-contract ---
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   BuildResumeArtifactSourceSchema, BuildResumeArtifactPlanSchema, BuildResumeArtifactsEventSchema,
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
 } from './events.js';
 
 export type {
   HealthResponse,
   AutoBuildState,
-  // --- eforge:region plan-01-supervisor-foundation ---
   AutoBuildDesired,
   AutoBuildRuntimeMode,
   AutoBuildSchedulerState,
   AutoBuildTransitionDetail,
-  // --- eforge:endregion plan-01-supervisor-foundation ---
   ProjectContext,
   ConfigShowResponse,
   ConfigValidateResponse,
-  // --- eforge:region plan-01-unified-pi-landing-ux ---
   ConfigSourceInfo,
   ConfigShowVerboseResponse,
-  // --- eforge:endregion plan-01-unified-pi-landing-ux ---
   ExtensionScope,
   ExtensionSource,
   ExtensionStatus,
@@ -472,28 +422,19 @@ export type {
   ExtensionFormat,
   ExtensionLayout,
   ExtensionTrust,
-  // --- eforge:region plan-01-engine-trust-foundation ---
   ExtensionTrustState,
-  // --- eforge:endregion plan-01-engine-trust-foundation ---
-  // --- eforge:region plan-01-extension-management-api ---
   ExtensionScaffoldScope,
   ExtensionScaffoldTemplate,
-  // --- eforge:endregion plan-01-extension-management-api ---
   ExtensionDiagnostic,
   ExtensionShadow,
   ExtensionRegistrationSummary,
-  // --- eforge:region plan-03-observability-docs-examples ---
   ReviewerPerspectiveApplicabilitySummary,
   ReviewerPerspectiveDetail,
-  // --- eforge:endregion plan-03-observability-docs-examples ---
-  // --- eforge:region plan-02-validation-provider-projections-ui-docs ---
   ValidationProviderDetail,
-  // --- eforge:endregion plan-02-validation-provider-projections-ui-docs ---
   ExtensionEntry,
   ExtensionListResponse,
   ExtensionShowResponse,
   ExtensionValidateResponse,
-  // --- eforge:region plan-01-engine-daemon-extension-replay ---
   ExtensionTestRequest,
   ExtensionTestSource,
   ExtensionTestReplayCounts,
@@ -502,20 +443,14 @@ export type {
   ExtensionTestDeferredRegistrationFamily,
   ExtensionTestDeferredRegistrationSummary,
   ExtensionTestResponse,
-  // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
-  // --- eforge:region plan-01-extension-management-api ---
   ExtensionNewRequest,
   ExtensionNewResponse,
   ExtensionReloadWatcherMetadata,
   ExtensionReloadResponse,
-  // --- eforge:endregion plan-01-extension-management-api ---
-  // --- eforge:region plan-02-management-surfaces ---
   ExtensionTrustRequest,
   ExtensionTrustResponse,
   ExtensionUntrustRequest,
   ExtensionUntrustResponse,
-  // --- eforge:endregion plan-02-management-surfaces ---
-  // --- eforge:region plan-01-extension-package-foundation ---
   ExtensionPackageProvenance,
   ExtensionInstallProvenance,
   ExtensionInstallRequest,
@@ -528,7 +463,6 @@ export type {
   ExtensionPromoteResponse,
   ExtensionDemoteRequest,
   ExtensionDemoteResponse,
-  // --- eforge:endregion plan-01-extension-package-foundation ---
   QueueItem,
   SessionMetadata,
   RunInfo,

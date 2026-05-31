@@ -19,7 +19,6 @@ import type { BuildFailureSummary, PlanSummaryEntry, OrchestrationConfig, PlanFi
 
 const exec = promisify(execFile);
 
-// --- eforge:region plan-01-engine-resume ---
 
 // ---------------------------------------------------------------------------
 // Types
@@ -274,7 +273,6 @@ export function deriveResumeSeedState(plans: PlanSummaryEntry[]): ResumeSeedStat
 // Resume artifact projection
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-02-resume-artifacts-projection ---
 export type ResumeArtifactsProjection = Omit<BuildResumeArtifactsEvent, 'type' | 'timestamp' | 'sessionId' | 'runId'>;
 
 async function resolveResumeSource(opts: {
@@ -341,7 +339,6 @@ export async function buildResumeArtifactsProjection(opts: {
     }),
   };
 }
-// --- eforge:endregion plan-02-resume-artifacts-projection ---
 
 // ---------------------------------------------------------------------------
 // Resume context formatting
@@ -426,4 +423,3 @@ export async function getPlanMarkdownPath(opts: {
   }
 }
 
-// --- eforge:endregion plan-01-engine-resume ---

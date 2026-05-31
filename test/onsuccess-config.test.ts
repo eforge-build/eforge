@@ -5,7 +5,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveConfig, DEFAULT_CONFIG, eforgeConfigSchema, resolvePrAutoMergeIntent } from '@eforge-build/engine/config';
 
-// --- eforge:region plan-01-engine-config-and-landing ---
 
 describe('landing.action config', () => {
   it('DEFAULT_CONFIG.landing.action is merge', () => {
@@ -64,9 +63,7 @@ describe('landing.action config', () => {
   });
 });
 
-// --- eforge:endregion plan-01-engine-config-and-landing ---
 
-// --- eforge:region plan-01-core-engine-auto-merge ---
 
 describe('landing.pr.autoMerge config', () => {
   it('DEFAULT_CONFIG.landing.pr.autoMerge is ask', () => {
@@ -152,4 +149,3 @@ describe('resolvePrAutoMergeIntent', () => {
   });
 });
 
-// --- eforge:endregion plan-01-core-engine-auto-merge ---

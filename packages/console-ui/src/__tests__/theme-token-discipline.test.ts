@@ -1,5 +1,4 @@
 // @vitest-environment node
-// --- eforge:region plan-05-system-activity-progressive-disclosure-and-guards ---
 /**
  * theme-token-discipline — source-grep enforcement for theme token discipline.
  *
@@ -115,4 +114,3 @@ describe('Theme token discipline — no arbitrary pixel text-size classes', () =
     expect(violations).toHaveLength(0);
   });
 });
-// --- eforge:endregion plan-05-system-activity-progressive-disclosure-and-guards ---

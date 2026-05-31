@@ -31,7 +31,6 @@ export interface SdkPassthroughConfig {
   disallowedTools?: string[];
   /** Text appended to the agent prompt after variable substitution. Not passed to the backend SDK. */
   promptAppend?: string;
-  // --- eforge:region plan-01-agent-context-runtime ---
   /**
    * Build phase context for extension hooks. Values: 'compile' | 'build' | 'standalone'.
    * Not forwarded to the backend SDK.
@@ -42,7 +41,6 @@ export interface SdkPassthroughConfig {
    * Not forwarded to the backend SDK.
    */
   stage?: string;
-  // --- eforge:endregion plan-01-agent-context-runtime ---
 }
 
 /**
@@ -159,7 +157,6 @@ export interface AgentRunOptions {
   projectMcpSelection?: 'all' | 'none' | 'toolbelt';
   /** Sorted names of the project MCP servers passed to this tier's harness. */
   projectMcpServerNames?: string[];
-  // --- eforge:region plan-01-agent-context-runtime ---
   /**
    * Build phase for this agent run. Populated by build and compile stage
    * call sites; undefined for programmatic/standalone invocations.
@@ -173,8 +170,6 @@ export interface AgentRunOptions {
    * Not forwarded to the backend SDK.
    */
   stage?: string;
-  // --- eforge:endregion plan-01-agent-context-runtime ---
-  // --- eforge:region plan-01-changedfiles-extension-contexts ---
   /**
    * Changed files for this agent run, relative to the repo root. Engine-owned
    * metadata for wrappers and extension hooks (e.g. reviewer agents supply their
@@ -182,7 +177,6 @@ export interface AgentRunOptions {
    * construct provider requests from explicit known fields only.
    */
   changedFiles?: string[];
-  // --- eforge:endregion plan-01-changedfiles-extension-contexts ---
 }
 
 /**
@@ -258,7 +252,6 @@ export type AgentTerminalSubtype =
   | 'error_max_budget_usd'
   | 'error_max_structured_output_retries'
   | 'error_during_execution'
-  // --- eforge:region plan-01-pi-headless-isolation ---
   /**
    * A Pi tool-call hook handler (e.g. `session_start`, `tool_call`) threw before the model
    * could receive the tool result. The most common cause is a project-local Pi extension
@@ -270,10 +263,7 @@ export type AgentTerminalSubtype =
    * `ctx.ui.theme` access for headless SDK contexts.
    */
   | 'error_pi_tool_infrastructure'
-  // --- eforge:endregion plan-01-pi-headless-isolation ---
-  // --- eforge:region plan-01-transport-resilience ---
   | 'error_transient_transport';
-  // --- eforge:endregion plan-01-transport-resilience ---
 
 /**
  * Thrown by backends when an agent run ends with a terminal SDK error.
@@ -293,7 +283,6 @@ export function isMaxTurnsError(err: unknown): err is AgentTerminalError {
   return err instanceof AgentTerminalError && err.subtype === 'error_max_turns';
 }
 
-// --- eforge:region plan-01-transport-resilience ---
 /**
  * Matches `Backend error: WebSocket closed <code>` messages from the backend SDK,
  * where <code> is any numeric WebSocket close code (e.g. 1000, 1012).
@@ -336,14 +325,10 @@ export function classifyAgentTerminalSubtype(err: unknown): AgentTerminalSubtype
   }
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : undefined;
   if (message && isTransientTransportError(message)) return 'error_transient_transport';
-  // --- eforge:region plan-01-pi-headless-isolation ---
   if (message && isPiToolInfrastructureError(message)) return 'error_pi_tool_infrastructure';
-  // --- eforge:endregion plan-01-pi-headless-isolation ---
   return undefined;
 }
-// --- eforge:endregion plan-01-transport-resilience ---
 
-// --- eforge:region plan-01-pi-headless-isolation ---
 /**
  * Pattern that matches Pi tool-call infrastructure failures caused by the global theme
  * proxy being accessed before `initTheme()` is called. These errors appear as tool-result
@@ -378,7 +363,6 @@ const PI_TOOL_INFRA_WRAPPER_RE = /^\s*(?:error:\s*)?pi\s+tool-call\s+infrastruct
 export function isPiToolInfrastructureError(message: string): boolean {
   return PI_TOOL_INFRA_THEME_RE.test(message) || PI_TOOL_INFRA_WRAPPER_RE.test(message);
 }
-// --- eforge:endregion plan-01-pi-headless-isolation ---
 
 /**
  * Thrown by the planner agent runner when the agent stream ends without ever

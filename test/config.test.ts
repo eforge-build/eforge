@@ -161,7 +161,6 @@ describe('resolveConfig', () => {
     expect(Object.isFrozen(config.agents)).toBe(true);
   });
 
-  // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
   describe('build.trunkSync defaults', () => {
     it('resolveConfig({}) returns default trunkSync values', () => {
       const config = resolveConfig({}, {});
@@ -220,7 +219,6 @@ describe('resolveConfig', () => {
       expect(config.build.trunkSync.enabled).toBe(false);
     });
   });
-  // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 });
 
 describe('getUserConfigPath', () => {
@@ -832,7 +830,6 @@ describe('extensions.trustProjectExtensions stripping from project/team config',
   });
 });
 
-// --- eforge:region plan-02-final-validation-gates ---
 describe('validation waiver config — schema validation and merge/defaults', () => {
   it('rejects allowNoCommands: true without noCommandsReason', () => {
     const result = eforgeConfigSchema.safeParse({
@@ -932,9 +929,7 @@ describe('validation waiver config — schema validation and merge/defaults', ()
     });
   });
 });
-// --- eforge:endregion plan-02-final-validation-gates ---
 
-// --- eforge:region plan-01-acceptance-evidence-model ---
 describe('validation waiver config — acceptance criteria and committed changes waivers', () => {
   it('resolveConfig sets allowNoAcceptanceCriteria to false by default', () => {
     const config = resolveConfig({}, {});
@@ -1057,7 +1052,6 @@ describe('validation waiver config — acceptance criteria and committed changes
   });
 });
 
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 describe('stacking.sync.afterBuild config', () => {
   it('DEFAULT_CONFIG.stacking.sync.afterBuild defaults to false', () => {
     expect(DEFAULT_CONFIG.stacking.sync.afterBuild).toBe(false);
@@ -1101,5 +1095,3 @@ describe('stacking.sync.afterBuild config', () => {
     expect(merged.stacking?.sync?.afterBuild).toBe(true);
   });
 });
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---
-// --- eforge:endregion plan-01-acceptance-evidence-model ---

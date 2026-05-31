@@ -85,7 +85,6 @@ export interface StackProviderAdapter {
    */
   upstackOnto(cwd: string, target: string): Promise<ProviderCommandResult>;
 
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   /**
    * Return the dry-run command preview for the given argv.
    *
@@ -121,7 +120,6 @@ export interface StackProviderAdapter {
    * displaying it.
    */
   redactMessage(message: string): string;
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 // ---------------------------------------------------------------------------

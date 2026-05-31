@@ -24,9 +24,7 @@ import {
   getPipelineCompositionSchemaYaml,
 } from '@eforge-build/engine/schemas';
 import { safeParseWithSchema } from '@eforge-build/client';
-// --- eforge:region plan-01-evaluation-application-core ---
 import { getEvaluationSubmissionSchemaYaml } from '@eforge-build/engine/schemas';
-// --- eforge:endregion plan-01-evaluation-application-core ---
 
 describe('getSchemaYaml', () => {
   it('returns YAML string containing expected fields', () => {
@@ -349,7 +347,6 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('review');
   });
 
-  // --- eforge:region plan-01-evaluation-application-core ---
   it('getEvaluationSubmissionSchemaYaml contains verdict submission fields', () => {
     const yaml = getEvaluationSubmissionSchemaYaml();
     expect(yaml).toContain('verdicts');
@@ -358,7 +355,6 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('reason');
     expect(yaml).toContain('hunk');
   });
-  // --- eforge:endregion plan-01-evaluation-application-core ---
 
   it('getClarificationSchemaYaml contains question fields', () => {
     const yaml = getClarificationSchemaYaml();

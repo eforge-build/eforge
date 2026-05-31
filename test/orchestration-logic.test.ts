@@ -51,7 +51,6 @@ function makeState(
 const TEST_REVIEW = { strategy: 'auto' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
 const TEST_BUILD = ['implement', 'review-cycle'];
 
-// --- eforge:region plan-02-policy-gate-engine-integration ---
 function makePolicyGate(
   gateKind: PolicyGateKind,
   method: PolicyGateMethod,
@@ -67,7 +66,6 @@ function makePolicyGate(
     registrationIndex: 0,
   };
 }
-// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 function makePlans(
   specs: Array<{ id: string; dependsOn?: string[] }>,
@@ -396,7 +394,6 @@ describe('executePlans - build:failed handling', () => {
     expect(state.status).toBe('failed');
   });
 
-  // --- eforge:region plan-02-policy-gate-engine-integration ---
   it('blocks plan merge before mergePlan and propagates dependent failures', async () => {
     const config = makeConfig({
       plans: [
@@ -547,9 +544,7 @@ describe('executePlans - build:failed handling', () => {
     ]);
     expect(state.status).toBe('failed');
   });
-  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
-  // --- eforge:region plan-03-parser-and-committed-work-hardening ---
   it('clean no-op builtOnMerge (no committed diff, no waiver) fails merge and emits plan:build:failed', async () => {
     const config = makeConfig({
       plans: [
@@ -675,9 +670,7 @@ describe('executePlans - build:failed handling', () => {
       (e as Extract<EforgeEvent, { type: 'planning:progress' }>).message.includes('Config-only change recorded in parent PR'),
     )).toBe(true);
   });
-  // --- eforge:endregion plan-03-parser-and-committed-work-hardening ---
 
-  // --- eforge:region plan-04-committed-work-artifact-safety ---
   it('dirty builtOnMerge merge failure emits plan:build:failed and does not emit validation:start', async () => {
     const config = makeConfig({
       plans: [
@@ -736,14 +729,11 @@ describe('executePlans - build:failed handling', () => {
     expect(events.some((e) => e.type === 'stack:layer:recorded' || e.type === 'daemon:error')).toBe(false);
     // overall build status must be failed
     expect(state.status).toBe('failed');
-    // --- eforge:region plan-01-review-cycle-dirty-worktree-safety ---
     const pscA = events.filter((e): e is Extract<EforgeEvent, { type: 'plan:status:change' }> => e.type === 'plan:status:change' && 'planId' in e && (e as Extract<EforgeEvent, { type: 'plan:status:change' }>).planId === 'plan-a');
     const fi = pscA.findIndex((e) => e.status === 'failed');
     expect(fi).not.toBe(-1);
     expect(pscA.slice(fi + 1).some((e) => e.status === 'completed')).toBe(false);
-    // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
   });
-  // --- eforge:endregion plan-04-committed-work-artifact-safety ---
 
   it('promotes plan failure to run-level state.status without requiring finalize', async () => {
     // Regression: after the throw->stream switch for build:failed, executePlans
@@ -1071,7 +1061,6 @@ describe('initializeState — concurrent execution isolation', () => {
   });
 });
 
-// --- eforge:region plan-02-final-validation-gates ---
 describe('validation no-command policy', () => {
   it('fails closed when all plans are merged and no validation commands or waiver are configured', async () => {
     const state = makeState({});
@@ -1388,9 +1377,7 @@ describe('gap-close: clean review does not bypass acceptance gate', () => {
   });
 });
 // --- eforge:endregion gap-close ---
-// --- eforge:endregion plan-02-final-validation-gates ---
 
-// --- eforge:region plan-02-engine-acceptance-gates ---
 describe('prdValidate — no-validator acceptance gate', () => {
   function makeBaseCtx(overrides: Partial<PhaseContext> = {}): PhaseContext {
     const state = makeState({});
@@ -1577,9 +1564,7 @@ describe('prdValidate — no-validator acceptance gate', () => {
     expect(unknownVerdict!.evidence).toContain('ac-003');
   });
 });
-// --- eforge:endregion plan-02-engine-acceptance-gates ---
 
-// --- eforge:region plan-01-engine-resume ---
 
 describe('applyResumeSeed — resume state seeding', () => {
   it('seeds a merged dependency and leaves dependents pending', () => {
@@ -1708,4 +1693,3 @@ describe('applyResumeSeed — resume state seeding', () => {
     expect(state.completedPlans).toContain('plan-02');
   });
 });
-// --- eforge:endregion plan-01-engine-resume ---

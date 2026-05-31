@@ -54,7 +54,6 @@ export class CLILandingFlagError extends Error {
   }
 }
 
-// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 /**
  * Resolve paired boolean auto-merge flags into a `boolean | undefined`.
  *
@@ -72,4 +71,3 @@ export function resolveAndValidateLandingAutoMergeFlags(opts: {
 }): boolean | undefined {
   return opts.landingAutoMerge;
 }
-// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

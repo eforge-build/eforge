@@ -53,7 +53,6 @@ export class ModelTracker {
   }
 }
 
-// --- eforge:region plan-01-build-artifact-provenance ---
 /**
  * Optional settings for composeCommitMessage.
  */
@@ -95,7 +94,6 @@ export function buildProvenanceTrailers(
   }
   return lines;
 }
-// --- eforge:endregion plan-01-build-artifact-provenance ---
 
 /**
  * Compose a commit message body with optional provenance trailers and Models-Used trailer.
@@ -116,17 +114,12 @@ export function buildProvenanceTrailers(
 export function composeCommitMessage(
   body: string,
   tracker?: ModelTracker,
-  // --- eforge:region plan-01-build-artifact-provenance ---
   options?: ComposeCommitMessageOptions,
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
 ): string {
-  // --- eforge:region plan-01-build-artifact-provenance ---
   const provenanceTrailers = options?.provenanceTrailers ?? [];
   const hasProvenance = provenanceTrailers.length > 0;
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
   const hasModels = tracker && tracker.size > 0;
 
-  // --- eforge:region plan-01-build-artifact-provenance ---
   if (!hasProvenance && !hasModels) return body;
 
   const trailerLines: string[] = [];
@@ -136,5 +129,4 @@ export function composeCommitMessage(
   if (hasModels) trailerLines.push(tracker!.toTrailer());
 
   return `${body}\n\n${trailerLines.join('\n')}`;
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
 }

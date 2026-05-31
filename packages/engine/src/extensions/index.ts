@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-engine-trust-foundation ---
 export { hashExtensionDirectory, hashExtensionFile } from './hash.js';
 export {
   getTrustRecord,
@@ -10,8 +9,6 @@ export {
   TRUST_STORE_FILENAME,
 } from './trust-store.js';
 export type { ExtensionTrustRecord, ExtensionTrustStore } from './trust-store.js';
-// --- eforge:endregion plan-01-engine-trust-foundation ---
-// --- eforge:region plan-01-extension-package-foundation ---
 export { parsePackageManifest } from './package-manifest.js';
 export type {
   EforgeExtensionManifest,
@@ -32,7 +29,6 @@ export type {
   InstallTargetScope,
   ReadInstallSidecarResult,
 } from './install-metadata.js';
-// --- eforge:endregion plan-01-extension-package-foundation ---
 export type {
   NativeExtensionCandidate,
   NativeExtensionDiagnostic,
@@ -80,7 +76,6 @@ export type {
   EventHookExecResult,
   NativeEventHookRuntimeOptions,
 } from './event-runtime.js';
-// --- eforge:region plan-01-agent-context-runtime ---
 export {
   withAgentContextHooks,
   executeAgentRunHooks,
@@ -89,8 +84,6 @@ export type {
   AgentContextHookRuntimeOptions,
   AgentRunHooksExecutionResult,
 } from './agent-context-runtime.js';
-// --- eforge:endregion plan-01-agent-context-runtime ---
-// --- eforge:region plan-02-runtime-and-integration ---
 export {
   executeProfileRouters,
   buildProfileRouterContext,
@@ -101,8 +94,6 @@ export type {
   ExecuteProfileRoutersOptions,
   BuildProfileRouterContextDeps,
 } from './profile-router-runtime.js';
-// --- eforge:endregion plan-02-runtime-and-integration ---
-// --- eforge:region plan-01-policy-gate-foundation ---
 export {
   buildFinalMergePolicyGateContext,
   buildPlanMergePolicyGateContext,
@@ -126,10 +117,8 @@ export type {
   QueueDispatchPolicyGateContext,
   QueueDispatchPolicyGateTarget,
 } from './policy-gate-runtime.js';
-// --- eforge:endregion plan-01-policy-gate-foundation ---
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
-// --- eforge:region plan-01-engine-daemon-extension-replay ---
 export {
   parseExtensionEventFixtureFile,
   replayNativeExtensionEvents,
@@ -146,8 +135,6 @@ export type {
   NativeExtensionReplayResult,
   NativeExtensionReplaySource,
 } from './replay.js';
-// --- eforge:endregion plan-01-engine-daemon-extension-replay ---
-// --- eforge:region plan-01-extension-management-api ---
 export {
   SUPPORTED_EXTENSION_SCAFFOLD_TEMPLATES,
   ScaffoldNativeExtensionError,
@@ -160,8 +147,6 @@ export type {
   ScaffoldNativeExtensionOptions,
   ScaffoldNativeExtensionResult,
 } from './scaffold.js';
-// --- eforge:endregion plan-01-extension-management-api ---
-// --- eforge:region plan-02-extension-perspective-runtime ---
 export {
   evaluateApplicability,
   selectExtensionPerspectives,
@@ -174,9 +159,7 @@ export type {
   SelectExtensionPerspectivesOptions,
   SelectExtensionPerspectivesResult,
 } from './reviewer-perspective-runtime.js';
-// --- eforge:endregion plan-02-extension-perspective-runtime ---
 
-// --- eforge:region plan-01-validation-provider-runtime ---
 export {
   runValidationProvider,
   normalizeValidationResult,
@@ -189,4 +172,3 @@ export type {
   RunValidationProviderOptions,
   RunValidationProviderResult,
 } from './validation-provider-runtime.js';
-// --- eforge:endregion plan-01-validation-provider-runtime ---

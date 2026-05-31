@@ -131,7 +131,6 @@ describe('resolveDisallowedTools', () => {
   });
 });
 
-// --- eforge:region plan-01-reviewer-isolation ---
 describe('read-only mode denylist constants', () => {
   it('MUTATION_TOOL_DENYLIST_CLAUDE covers expected PascalCase tools', () => {
     expect(MUTATION_TOOL_DENYLIST_CLAUDE).toContain('Write');
@@ -164,4 +163,3 @@ describe('read-only mode denylist constants', () => {
     }
   });
 });
-// --- eforge:endregion plan-01-reviewer-isolation ---

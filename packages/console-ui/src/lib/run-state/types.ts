@@ -19,11 +19,9 @@ export type {
   PlanState,
   EforgeState,
   ExpeditionModule,
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   BuildResumeArtifactSource,
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
 } from '@eforge-build/client/browser';
 
 // Shared types owned by @eforge-build/client; re-export so every
@@ -156,10 +154,8 @@ export interface RunState {
   expeditionModules: import('@eforge-build/client/browser').ExpeditionModule[];
   moduleStatuses: Record<string, ModuleStatus>;
   earlyOrchestration: import('@eforge-build/client/browser').OrchestrationConfig | null;
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   resumeArtifacts: import('@eforge-build/client/browser').BuildResumeArtifactPlan[];
   resumeSource: import('@eforge-build/client/browser').BuildResumeArtifactSource | null;
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   profile: SessionProfile | null;
   endTime: number | null;
   mergeCommits: Record<string, string>;

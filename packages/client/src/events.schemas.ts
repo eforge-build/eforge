@@ -56,12 +56,8 @@ const AgentTerminalSubtypeSchema = Type.Union([
   Type.Literal('error_max_budget_usd'),
   Type.Literal('error_max_structured_output_retries'),
   Type.Literal('error_during_execution'),
-  // --- eforge:region plan-01-pi-headless-isolation ---
   Type.Literal('error_pi_tool_infrastructure'),
-  // --- eforge:endregion plan-01-pi-headless-isolation ---
-  // --- eforge:region plan-01-transport-resilience ---
   Type.Literal('error_transient_transport'),
-  // --- eforge:endregion plan-01-transport-resilience ---
 ]);
 
 export const REVIEW_PERSPECTIVES = ['code', 'security', 'api', 'docs', 'test', 'verify'] as const;
@@ -74,7 +70,6 @@ const ReviewPerspectiveSchema = Type.Union([
   Type.Literal('verify'),
 ]);
 
-// --- eforge:region plan-01-dynamic-perspective-contracts ---
 /**
  * Schema for a dynamic review perspective key.
  * A lowercase slug starting with a letter, containing lowercase letters, digits,
@@ -85,19 +80,15 @@ export const ReviewPerspectiveKeySchema = Type.String({
   pattern: '^[a-z][a-z0-9-]{0,63}$',
   description: 'A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. "code", "accessibility")',
 });
-// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
-// --- eforge:region plan-01-engine-config-and-landing ---
 export const LandingActionSchema = Type.Union([
   Type.Literal('pr'),
   Type.Literal('merge'),
   Type.Literal('leave'),
 ]);
-// --- eforge:endregion plan-01-engine-config-and-landing ---
 
 export const EvaluationIssueOutcomeSchema = Type.Union(['resolved', 'false_positive', 'unresolved', 'unresolved_blocking', 'unresolved_nonblocking', 'needs_human_review', 'accepted_risk', 'split_to_followup'].map(v => Type.Literal(v)), { description: 'Evaluator issue disposition separate from patch action. Missing values are interpreted conservatively by the engine.' });
 
-// --- eforge:region plan-01-stack-contracts-config-state-events ---
 /** Wire schema for the supported stack providers. */
 export const StackProviderSchema = Type.Literal('git-spice');
 
@@ -158,7 +149,6 @@ export const StackLayerWireSchema = Type.Object({
   recordedAt: Type.String(),
   updatedAt: Type.String(),
 });
-// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
 const StalenessVerdictSchema = Type.Union([
   Type.Literal('proceed'),
@@ -181,7 +171,6 @@ const RecoveryVerdictSchema = Type.Object({
   suggestedSuccessorPrd: Type.Optional(Type.String()),
   partial: Type.Optional(Type.Boolean()),
   recoveryError: Type.Optional(Type.String()),
-  // --- eforge:region plan-02-deterministic-recovery-verdicts ---
   recommendationSource: Type.Optional(Type.Union([
     Type.Literal('deterministic'),
     Type.Literal('analyst'),
@@ -189,7 +178,6 @@ const RecoveryVerdictSchema = Type.Object({
   ])),
   recommendationRationale: Type.Optional(Type.String()),
   verdictInvalidationReason: Type.Optional(Type.String()),
-  // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 });
 
 const ShardScopeSchema = Type.Object({
@@ -200,7 +188,6 @@ const ShardScopeSchema = Type.Object({
 
 const BuildStageSpecSchema = Type.Union([Type.String(), Type.Array(Type.String())]);
 
-// --- eforge:region plan-01-policy-gate-foundation ---
 const PolicyGateKindSchema = Type.Union([
   Type.Literal('queue-dispatch'),
   Type.Literal('plan-merge'),
@@ -263,7 +250,6 @@ const FinalMergePolicyGateProvenanceFields = {
   baseBranch: Type.String(),
   planIds: Type.Optional(Type.Array(Type.String())),
 };
-// --- eforge:endregion plan-01-policy-gate-foundation ---
 
 const ReviewProfileConfigSchema = Type.Object({
   strategy: Type.Union([Type.Literal('auto'), Type.Literal('single'), Type.Literal('parallel')]),
@@ -300,7 +286,6 @@ const PrdValidationGapSchema = Type.Object({
   ),
 });
 
-// --- eforge:region plan-01-validation-evidence-contract ---
 /**
  * A per-criterion acceptance verdict produced by the PRD validator.
  * Missing or unparseable evidence yields `verdict: 'unknown'` (fail-closed).
@@ -322,7 +307,6 @@ export const AcceptanceCriteriaConflictSchema = Type.Object({
   scope: Type.Union([Type.Literal('narrow'), Type.Literal('broad'), Type.Literal('unknown')]),
   recommendedAction: Type.Union([Type.Literal('revise_acceptance_criteria'), Type.Literal('manual_review')]),
 });
-// --- eforge:endregion plan-01-validation-evidence-contract ---
 
 const ExpeditionModuleSchema = Type.Object({
   id: Type.String(),
@@ -423,11 +407,9 @@ const OrchestrationConfigSchema = Type.Object({
   warnings: Type.Optional(Type.Array(Type.String())),
 });
 
-// --- eforge:region plan-02-resume-artifacts-projection ---
 export const BuildResumeArtifactSourceSchema = Type.Object({ label: Type.String(), content: Type.Optional(Type.String()), path: Type.Optional(Type.String()) });
 export const BuildResumeArtifactPlanSchema = Type.Object({ id: Type.String(), name: Type.String(), body: Type.String(), dependsOn: Type.Array(Type.String()), branch: Type.Optional(Type.String()), build: Type.Optional(Type.Array(BuildStageSpecSchema)), review: Type.Optional(ReviewProfileConfigSchema) });
 export const BuildResumeArtifactsEventSchema = Type.Object({ type: Type.Literal('build:resume:artifacts'), prdId: Type.String(), setName: Type.String(), featureBranch: Type.String(), artifactSource: Type.Union([Type.Literal('merge-worktree'), Type.Literal('branch-history')]), artifactCommit: Type.Optional(Type.String()), source: BuildResumeArtifactSourceSchema, orchestration: OrchestrationConfigSchema, plans: Type.Array(BuildResumeArtifactPlanSchema) });
-// --- eforge:endregion plan-02-resume-artifacts-projection ---
 
 const PlanStatusSchema = Type.Union([
   Type.Literal('pending'),
@@ -516,13 +498,11 @@ const PlanSummaryEntrySchema = Type.Object({
   mergedAt: Type.Optional(Type.String()),
   error: Type.Optional(Type.String()),
   terminalSubtype: Type.Optional(Type.String()),
-  // --- eforge:region plan-01-recovery-summary-reconstruction ---
   commitSha: Type.Optional(Type.String()),
   testPassed: Type.Optional(Type.Integer({ minimum: 0 })),
   testFailed: Type.Optional(Type.Integer({ minimum: 0 })),
   completedAt: Type.Optional(Type.String()),
   toolUseCount: Type.Optional(Type.Integer({ minimum: 0 })),
-  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
 const FailingPlanEntrySchema = Type.Object({
@@ -531,15 +511,12 @@ const FailingPlanEntrySchema = Type.Object({
   agentRole: Type.Optional(Type.String()),
   errorMessage: Type.Optional(Type.String()),
   terminalSubtype: Type.Optional(Type.String()),
-  // --- eforge:region plan-01-recovery-summary-reconstruction ---
   toolUseCount: Type.Optional(Type.Integer({ minimum: 0 })),
-  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
 const ReviewFailureActionSchema = Type.Union([Type.Literal('accept'), Type.Literal('reject'), Type.Literal('review')]);
 const ReviewFailureEvaluationVerdictSchema = Type.Object({ file: Type.String(), action: ReviewFailureActionSchema, reason: Type.String(), hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema), retryGuidance: Type.Optional(Type.String()) });
 const ReviewFailureDetailsSchema = Type.Object({ planId: Type.String(), issues: Type.Array(ReviewIssueSchema), evaluation: Type.Optional(Type.Object({ accepted: Type.Integer({ minimum: 0 }), rejected: Type.Integer({ minimum: 0 }), review: Type.Integer({ minimum: 0 }), verdicts: Type.Array(ReviewFailureEvaluationVerdictSchema) })) });
-// --- eforge:region plan-01-terminal-failure-contract ---
 export const TerminalFailureScopeSchema = Type.Union([Type.Literal('plan'), Type.Literal('post-merge-validation'), Type.Literal('prd-validation'), Type.Literal('acceptance-validation'), Type.Literal('artifact-recording'), Type.Literal('landing'), Type.Literal('daemon'), Type.Literal('compile'), Type.Literal('unknown')]);
 const TFLandingSchema = Type.Object({ status: Type.String(), action: Type.Optional(Type.String()), reason: Type.Optional(Type.String()) });
 export const TerminalFailureEnvelopeSchema = Type.Object({
@@ -550,7 +527,6 @@ export const TerminalFailureEnvelopeSchema = Type.Object({
   sourceEventType: Type.Optional(Type.String()), sourceEventId: Type.Optional(Type.Integer()), sourceEventTimestamp: Type.Optional(Type.String()),
   landing: Type.Optional(TFLandingSchema), validationPassed: Type.Optional(Type.Boolean()), prdValidationPassed: Type.Optional(Type.Boolean()), acceptanceValidationPassed: Type.Optional(Type.Boolean()),
 });
-// --- eforge:endregion plan-01-terminal-failure-contract ---
 
 const BuildFailureSummarySchema = Type.Object({
   prdId: Type.String(),
@@ -565,10 +541,7 @@ const BuildFailureSummarySchema = Type.Object({
   failedAt: Type.String(),
   partial: Type.Optional(Type.Boolean()),
   prdContent: Type.Optional(Type.String()),
-  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
-  // --- eforge:region plan-01-terminal-failure-contract ---
   terminalFailure: Type.Optional(Type.Partial(TerminalFailureEnvelopeSchema)),
-  // --- eforge:endregion plan-01-terminal-failure-contract ---
   acceptanceValidation: Type.Optional(Type.Object({
     passed: Type.Boolean(),
     total: Type.Number(),
@@ -584,14 +557,10 @@ const BuildFailureSummarySchema = Type.Object({
     output: Type.Optional(Type.String()),
   }))),
   landing: Type.Optional(TFLandingSchema),
-  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
-  // --- eforge:region plan-01-recovery-summary-reconstruction ---
   failingPlans: Type.Optional(Type.Array(FailingPlanEntrySchema)),
   reviewFailure: Type.Optional(ReviewFailureDetailsSchema),
-  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
-// --- eforge:region plan-01-supervisor-foundation ---
 const AutoBuildDesiredSchema = Type.Union([
   Type.Literal('enabled'),
   Type.Literal('disabled'),
@@ -631,7 +600,6 @@ const AutoBuildDetailFields = {
   lastTransition: Type.Optional(AutoBuildTransitionDetailSchema),
   reason: Type.Optional(Type.String()),
 };
-// --- eforge:endregion plan-01-supervisor-foundation ---
 
 // ---------------------------------------------------------------------------
 // Queue event schemas
@@ -838,10 +806,8 @@ export const BuildDecisionSchema = Type.Union([
     round: Type.Integer({ minimum: 0 }),
     reason: Type.Union([Type.Literal('no-issues'), Type.Literal('max-rounds')]),
     issuesRemaining: Type.Integer({ minimum: 0 }),
-    // --- eforge:region plan-02-build-evaluator-enforcement ---
     lastReviewIssueCount: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationAccepted: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationRejected: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationRan: Type.Optional(Type.Boolean()),
     finalEvaluationResolved: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationFalsePositive: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationUnresolved: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationNeedsHumanReview: Type.Optional(Type.Integer({ minimum: 0 })), finalEvaluationBlocking: Type.Optional(Type.Integer({ minimum: 0 })),
-    // --- eforge:endregion plan-02-build-evaluator-enforcement ---
   }),
   // Perspectives respawned for next review round
   Type.Object({
@@ -952,7 +918,6 @@ const EforgeEventVariantsSchema = Type.Union([
     errors: Type.Array(Type.String()),
   }),
 
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   // Native extension event-hook diagnostics
   Type.Object({
     type: Type.Literal('extension:event-handler:failed'),
@@ -971,9 +936,7 @@ const EforgeEventVariantsSchema = Type.Union([
     triggeringEventType: Type.String(),
     timeoutMs: Type.Number(),
   }),
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
-  // --- eforge:region plan-01-agent-context-runtime ---
   // Native extension agent-context hook diagnostics and tool decisions
   Type.Object({
     type: Type.Literal('extension:agent-context:applied'),
@@ -1087,9 +1050,7 @@ const EforgeEventVariantsSchema = Type.Union([
     disallowedToolCount: Type.Integer({ minimum: 0 }),
     excludedToolCount: Type.Integer({ minimum: 0 }),
   }),
-  // --- eforge:endregion plan-01-agent-context-runtime ---
 
-  // --- eforge:region plan-01-profile-router-events ---
   // Profile router dispatch diagnostics (EXTEND_09)
   Type.Object({
     type: Type.Literal('queue:profile:selected'),
@@ -1134,9 +1095,7 @@ const EforgeEventVariantsSchema = Type.Union([
     reason: Type.Union([Type.Literal('not-found'), Type.Literal('load-error')]),
     message: Type.String(),
   }),
-  // --- eforge:endregion plan-01-profile-router-events ---
 
-  // --- eforge:region plan-01-policy-gate-foundation ---
   // Blocking policy-gate decisions and diagnostics. Keep these as top-level
   // variants so generated event documentation lists each public wire shape.
   Type.Object({
@@ -1217,9 +1176,7 @@ const EforgeEventVariantsSchema = Type.Union([
     ...FinalMergePolicyGateProvenanceFields,
     timeoutMs: Type.Integer({ minimum: 0 }),
   }),
-  // --- eforge:endregion plan-01-policy-gate-foundation ---
 
-  // --- eforge:region plan-01-extension-input-contracts ---
   // Input source and PRD enricher provenance/diagnostic events
   Type.Object({
     type: Type.Literal('extension:input-source:fetched'),
@@ -1270,9 +1227,7 @@ const EforgeEventVariantsSchema = Type.Union([
     stack: Type.Optional(Type.String()),
     timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
   }),
-  // --- eforge:endregion plan-01-extension-input-contracts ---
 
-  // --- eforge:region plan-02-extension-perspective-runtime ---
   // Extension reviewer perspective provenance/diagnostic events
   Type.Object({
     type: Type.Literal('extension:reviewer-perspective:applied'),
@@ -1307,9 +1262,7 @@ const EforgeEventVariantsSchema = Type.Union([
       planId: Type.Optional(Type.String()),
     }),
   ]),
-  // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
-  // --- eforge:region plan-01-validation-provider-runtime ---
   // Extension validation provider lifecycle events
   Type.Object({
     type: Type.Literal('extension:validation-provider:start'),
@@ -1350,7 +1303,6 @@ const EforgeEventVariantsSchema = Type.Union([
     timeoutMs: Type.Integer({ minimum: 0 }),
     command: Type.Optional(Type.String()),
   }),
-  // --- eforge:endregion plan-01-validation-provider-runtime ---
 
   // Planning
   Type.Object({
@@ -1684,7 +1636,6 @@ const EforgeEventVariantsSchema = Type.Union([
     reason: Type.String(),
   }),
 
-  // --- eforge:region plan-01-engine-config-and-landing ---
   // Landing action lifecycle events — uniform family for all three landing actions.
   // merge:finalize:* is additionally emitted for the merge action (backward compat).
   Type.Object({
@@ -1692,7 +1643,6 @@ const EforgeEventVariantsSchema = Type.Union([
     action: LandingActionSchema,
     featureBranch: Type.String(),
     baseBranch: Type.String(),
-    // --- eforge:region plan-03-branch-aware-landing ---
     trunkBranch: Type.Optional(Type.String()),
     workflow: Type.Optional(Type.Union([
       Type.Literal('trunk-pr'),
@@ -1701,7 +1651,6 @@ const EforgeEventVariantsSchema = Type.Union([
       Type.Literal('feature-local-merge'),
       Type.Literal('leave-branch'),
     ])),
-    // --- eforge:endregion plan-03-branch-aware-landing ---
   }),
   Type.Object({
     type: Type.Literal('landing:complete'),
@@ -1718,9 +1667,7 @@ const EforgeEventVariantsSchema = Type.Union([
     baseBranch: Type.String(),
     reason: Type.String(),
   }),
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
 
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   // PR auto-merge lifecycle events — emitted after `landing:complete` (action=pr) when
   // auto-merge is attempted. Non-fatal: `landingSucceeded` remains true even on failure.
   Type.Object({
@@ -1742,7 +1689,6 @@ const EforgeEventVariantsSchema = Type.Union([
     prUrl: Type.Optional(Type.String()),
     reason: Type.String(),
   }),
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 
   // Merge worktree lifecycle events
   Type.Object({
@@ -1924,7 +1870,6 @@ const EforgeEventVariantsSchema = Type.Union([
     passed: Type.Boolean(),
   }),
 
-  // --- eforge:region plan-01-validation-evidence-contract ---
   // Acceptance criteria validation verdict event — terminal evidence from the PRD validator.
   Type.Object({
     type: Type.Literal('acceptance_validation:complete'),
@@ -1934,7 +1879,6 @@ const EforgeEventVariantsSchema = Type.Union([
     acceptanceConflicts: Type.Optional(Type.Array(AcceptanceCriteriaConflictSchema)),
     source: Type.String({ minLength: 1 }),
   }),
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
   // Reconciliation
   Type.Object({ type: Type.Literal('reconciliation:start') }),
@@ -2068,9 +2012,7 @@ const EforgeEventVariantsSchema = Type.Union([
     autoBuild: Type.Object({
     enabled: Type.Boolean(),
     paused: Type.Boolean(),
-    // --- eforge:region plan-01-supervisor-foundation ---
     ...AutoBuildDetailFields,
-    // --- eforge:endregion plan-01-supervisor-foundation ---
   }),
     subscribers: Type.Number(),
   }),
@@ -2105,7 +2047,6 @@ const EforgeEventVariantsSchema = Type.Union([
     trigger: Type.String(),
     prdsEnqueued: Type.Number(),
   }),
-  // --- eforge:region plan-01-supervisor-foundation ---
   Type.Object({
     type: Type.Literal('daemon:auto-build:transition'),
     previousMode: AutoBuildRuntimeModeSchema,
@@ -2114,7 +2055,6 @@ const EforgeEventVariantsSchema = Type.Union([
     reason: Type.Optional(Type.String()),
     source: Type.String(),
   }),
-  // --- eforge:endregion plan-01-supervisor-foundation ---
 
   // Daemon recovery
   Type.Object({ type: Type.Literal('daemon:recovery:start') }),
@@ -2172,7 +2112,6 @@ const EforgeEventVariantsSchema = Type.Union([
   // Plan-phase (planner) decision events
   PlanningDecisionEventSchema,
 
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   // Stack layer lifecycle and provider command events
   Type.Object({
     type: Type.Literal('stack:layer:recorded'),
@@ -2204,8 +2143,6 @@ const EforgeEventVariantsSchema = Type.Union([
     prUrl: Type.Optional(Type.String()),
     reason: Type.Optional(Type.String()),
   }),
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   Type.Object({
     type: Type.Literal('stack:sync:start'),
     syncId: Type.String(),
@@ -2249,12 +2186,8 @@ const EforgeEventVariantsSchema = Type.Union([
     restackCandidates: Type.Array(Type.String()),
     excludedCandidates: Type.Array(Type.String()),
   }),
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
-  // --- eforge:region plan-01-terminal-failure-contract ---
   Type.Object({ type: Type.Literal('build:terminal-failure'), runId: Type.String(),
     failure: TerminalFailureEnvelopeSchema }),
-  // --- eforge:endregion plan-01-terminal-failure-contract ---
-  // --- eforge:region plan-01-engine-resume ---
   Type.Object({
     type: Type.Literal('build:resume:start'),
     prdId: Type.String(),
@@ -2274,15 +2207,12 @@ const EforgeEventVariantsSchema = Type.Union([
     reason: Type.String(),
     checkedPath: Type.Optional(Type.String()),
   }),
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   BuildResumeArtifactsEventSchema,
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   Type.Object({
     type: Type.Literal('build:resume:complete'),
     prdId: Type.String(),
     setName: Type.String(),
   }),
-  // --- eforge:endregion plan-01-engine-resume ---
 ]);
 
 // ---------------------------------------------------------------------------
@@ -2301,7 +2231,6 @@ export type AgentRole = Static<typeof AgentRoleSchema>;
 export type AgentTerminalSubtype = Static<typeof AgentTerminalSubtypeSchema>;
 export type ReviewPerspective = Static<typeof ReviewPerspectiveSchema>;
 export type EvaluationIssueOutcome = Static<typeof EvaluationIssueOutcomeSchema>;
-// --- eforge:region plan-01-dynamic-perspective-contracts ---
 /**
  * A dynamic review perspective key. Matches the bounded slug pattern:
  * lowercase letters/digits/hyphens, starting with a letter, 1–64 chars.
@@ -2317,16 +2246,13 @@ export type ReviewPerspectiveKey = string;
 export function isBuiltInReviewPerspective(key: string): key is ReviewPerspective {
   return (REVIEW_PERSPECTIVES as readonly string[]).includes(key);
 }
-// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 export type StalenessVerdict = Static<typeof StalenessVerdictSchema>;
 export type RecoveryVerdict = Static<typeof RecoveryVerdictSchema>;
 export type ShardScope = Static<typeof ShardScopeSchema>;
 export type PipelineComposition = Static<typeof PipelineCompositionSchema>;
 export type PrdValidationGap = Static<typeof PrdValidationGapSchema>;
-// --- eforge:region plan-01-validation-evidence-contract ---
 export type AcceptanceCriterionVerdict = Static<typeof AcceptanceCriterionVerdictSchema>;
 export type AcceptanceCriteriaConflict = Static<typeof AcceptanceCriteriaConflictSchema>;
-// --- eforge:endregion plan-01-validation-evidence-contract ---
 export type ExpeditionModule = Static<typeof ExpeditionModuleSchema>;
 export type EforgeResult = Static<typeof EforgeResultSchema>;
 export type ClarificationQuestion = Static<typeof ClarificationQuestionSchema>;
@@ -2343,40 +2269,27 @@ export type LandedCommit = Static<typeof LandedCommitSchema>;
 export type PlanSummaryEntry = Static<typeof PlanSummaryEntrySchema>;
 export type FailingPlanEntry = Static<typeof FailingPlanEntrySchema>;
 export type BuildFailureSummary = Static<typeof BuildFailureSummarySchema>;
-// --- eforge:region plan-01-terminal-failure-contract ---
 export type TerminalFailureScope = Static<typeof TerminalFailureScopeSchema>;
 export type TerminalFailureEnvelope = Static<typeof TerminalFailureEnvelopeSchema>;
-// --- eforge:endregion plan-01-terminal-failure-contract ---
-// --- eforge:region plan-01-engine-resume ---
 export type BuildResumeStartEvent = Extract<EforgeEvent, { type: 'build:resume:start' }>;
 export type BuildResumeStateEvent = Extract<EforgeEvent, { type: 'build:resume:state' }>;
 export type BuildResumeIneligibleEvent = Extract<EforgeEvent, { type: 'build:resume:ineligible' }>;
-// --- eforge:region plan-02-resume-artifacts-projection ---
 export type BuildResumeArtifactSource = Static<typeof BuildResumeArtifactSourceSchema>;
 export type BuildResumeArtifactPlan = Static<typeof BuildResumeArtifactPlanSchema>;
 export type BuildResumeArtifactsEvent = Extract<EforgeEvent, { type: 'build:resume:artifacts' }>;
-// --- eforge:endregion plan-02-resume-artifacts-projection ---
 export type BuildResumeCompleteEvent = Extract<EforgeEvent, { type: 'build:resume:complete' }>;
-// --- eforge:endregion plan-01-engine-resume ---
 export type QueueEvent = Static<typeof QueueEventSchema>;
 export type PlanningDecisionEvent = Static<typeof PlanningDecisionEventSchema>;
-// --- eforge:region plan-01-supervisor-foundation ---
 export type AutoBuildDesired = Static<typeof AutoBuildDesiredSchema>;
 export type AutoBuildRuntimeMode = Static<typeof AutoBuildRuntimeModeSchema>;
 export type AutoBuildSchedulerState = Static<typeof AutoBuildSchedulerStateSchema>;
 export type AutoBuildTransitionDetail = Static<typeof AutoBuildTransitionDetailSchema>;
-// --- eforge:endregion plan-01-supervisor-foundation ---
-// --- eforge:region plan-01-engine-config-and-landing ---
 export type LandingAction = Static<typeof LandingActionSchema>;
-// --- eforge:endregion plan-01-engine-config-and-landing ---
-// --- eforge:region plan-01-stack-contracts-config-state-events ---
 export type StackProvider = Static<typeof StackProviderSchema>;
 export type LandingPublicationAction = Static<typeof LandingPublicationActionSchema>;
 export type StackLayerStatus = Static<typeof StackLayerStatusSchema>;
 export type StackArtifactRef = Static<typeof StackArtifactRefSchema>;
 export type StackLayerWire = Static<typeof StackLayerWireSchema>;
-// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 export type StackSyncTriggerWire = 'manual' | 'after-build' | 'scheduled' | 'retry-deferred';
 export type StackSyncActiveBuildPolicyWire = 'skip' | 'defer';
 export type StackSyncOutcomeWire = 'skipped' | 'complete' | 'failed' | 'conflict' | 'deferred';
@@ -2409,7 +2322,6 @@ export interface StackSyncStatusWire {
     exitCode?: number;
   }>;
 }
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---
 
 // ---------------------------------------------------------------------------
 // Re-export constants and utilities
@@ -2457,9 +2369,7 @@ const DaemonStreamLivenessSchema = Type.Object({
   autoBuild: Type.Object({
     enabled: Type.Boolean(),
     paused: Type.Boolean(),
-    // --- eforge:region plan-01-supervisor-foundation ---
     ...AutoBuildDetailFields,
-    // --- eforge:endregion plan-01-supervisor-foundation ---
   }),
   subscribers: Type.Number(),
 });
@@ -2522,9 +2432,7 @@ const DaemonAutoBuildSchema = Type.Object({
     pid: Type.Union([Type.Number(), Type.Null()]),
     sessionId: Type.Union([Type.String(), Type.Null()]),
   }),
-  // --- eforge:region plan-01-supervisor-foundation ---
   ...AutoBuildDetailFields,
-  // --- eforge:endregion plan-01-supervisor-foundation ---
 });
 
 /**
@@ -2545,10 +2453,7 @@ export const DaemonStreamSnapshotSchema = Type.Object({
   queue: Type.Array(DaemonQueueItemSchema),
   sessionMetadata: Type.Record(Type.String(), DaemonSessionMetadataItemSchema),
   autoBuild: DaemonAutoBuildSchema,
-  // --- eforge:region plan-03-stack-daemon-ui ---
   stackLayers: Type.Array(StackLayerWireSchema),
-  // --- eforge:endregion plan-03-stack-daemon-ui ---
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   stackSyncStatus: Type.Optional(Type.Object({
     last: Type.Optional(Type.Object({
       id: Type.String(),
@@ -2637,7 +2542,6 @@ export const DaemonStreamSnapshotSchema = Type.Object({
       }))),
     })),
   })),
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 });
 
 /**

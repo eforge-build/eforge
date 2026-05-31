@@ -92,7 +92,6 @@ describe('Console source guards', () => {
 });
 // --- eforge:endregion console-shell ---
 
-// --- eforge:region plan-02-queue-view ---
 describe('Queue view architecture guards', () => {
   const queueFiles = collectSourceFilesUnder('views/queue');
 
@@ -216,4 +215,3 @@ describe('Queue view architecture guards', () => {
     expect(violations).toHaveLength(0);
   });
 });
-// --- eforge:endregion plan-02-queue-view ---

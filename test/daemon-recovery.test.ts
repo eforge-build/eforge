@@ -496,7 +496,6 @@ describe('EforgeEngine.recover() with no state.json + populated event db', () =>
 // Multi-plan sidecar content (fallback/manual verdict)
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-recovery-summary-reconstruction ---
 describe('multi-plan sidecar content when verdict is fallback manual', () => {
   const makeTestDir = useTempDir('eforge-multi-plan-sidecar-test-');
 
@@ -677,13 +676,11 @@ describe('multi-plan sidecar content when verdict is fallback manual', () => {
     expect(parsed.summary.failingPlan.planId).toBe('plan-06-static-serving-package-integration');
   });
 });
-// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
 // ---------------------------------------------------------------------------
 // EforgeEngine.recover() fallback: multi-plan DB + unparsable analyst output
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-recovery-summary-reconstruction ---
 describe('EforgeEngine.recover() fallback: multi-plan DB + unparsable analyst output', () => {
   const makeTestDir = useTempDir('eforge-recover-fallback-multiplan-');
 
@@ -834,7 +831,6 @@ describe('EforgeEngine.recover() fallback: multi-plan DB + unparsable analyst ou
     expect(md).toContain('plan-06-static-serving');
   });
 });
-// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
 // ---------------------------------------------------------------------------
 // 5. EforgeEngine.recover() with no state.json AND no event db
@@ -887,7 +883,6 @@ describe('EforgeEngine.recover() with no state.json AND no event db', () => {
 // Deterministic recovery verdict source metadata in sidecars
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-02-deterministic-recovery-verdicts ---
 describe('sidecar verdict source metadata — deterministic path', () => {
   const makeTestDir = useTempDir('eforge-sidecar-source-metadata-');
 
@@ -1108,13 +1103,11 @@ describe('sidecar verdict source metadata — deterministic path', () => {
     expect(md).toContain('plan-01-alpha');
   });
 });
-// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 
 // ---------------------------------------------------------------------------
 // Inline queue finalization: recovery runs in the queue parent's finalize handler
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-02-deterministic-recovery-verdicts ---
 describe('inline queue finalization: recovery sidecar written on build failure', () => {
   // Point EFORGE_CLI_PATH at the cli-stub-fail.mjs fixture so the subprocess
   // exits immediately with code 1, triggering the failed-path inline recovery.
@@ -1227,4 +1220,3 @@ describe('inline queue finalization: recovery sidecar written on build failure',
     expect(sidecarContent.verdict.recoveryError).toBeTruthy();
   });
 });
-// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---

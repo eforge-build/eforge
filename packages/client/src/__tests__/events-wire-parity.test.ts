@@ -93,7 +93,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       errors: ['unexpected token'],
     },
   },
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   {
     label: 'extension:event-handler:failed',
     payload: {
@@ -119,9 +118,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       timeoutMs: 5000,
     },
   },
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
-  // --- eforge:region plan-01-extension-input-contracts ---
   {
     label: 'extension:input-source:fetched',
     payload: {
@@ -174,7 +171,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       message: 'Enricher threw an unexpected error',
     },
   },
-  // --- eforge:endregion plan-01-extension-input-contracts ---
 
   // Planning
   {
@@ -438,7 +434,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       perspectives: ['code', 'security'],
     },
   },
-  // --- eforge:region plan-01-dynamic-perspective-contracts ---
   {
     label: 'plan:build:review:parallel:start (with dynamic accessibility key)',
     payload: {
@@ -448,7 +443,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       perspectives: ['code', 'accessibility'],
     },
   },
-  // --- eforge:endregion plan-01-dynamic-perspective-contracts ---
   {
     label: 'plan:build:review:parallel:perspective:start',
     payload: {
@@ -989,7 +983,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
     label: 'gap_close:complete',
     payload: { type: 'gap_close:complete', timestamp: '2025-01-01T00:00:00.000Z', passed: true },
   },
-  // --- eforge:region plan-01-validation-evidence-contract ---
   {
     label: 'acceptance_validation:complete (passed)',
     payload: {
@@ -1015,7 +1008,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       source: 'prd',
     },
   },
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
   // Reconciliation
   {
@@ -1111,7 +1103,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       },
     },
   },
-  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
   {
     label: 'recovery:summary (with acceptance validation evidence and inconclusive verdicts)',
     payload: {
@@ -1159,7 +1150,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       },
     },
   },
-  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
   {
     label: 'recovery:complete',
     payload: {
@@ -1290,7 +1280,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       autoBuild: {
         enabled: true,
         paused: false,
-        // --- eforge:region plan-01-supervisor-foundation ---
         desired: 'enabled',
         mode: 'running',
         scheduler: { alive: true, paused: false, runningCount: 1, limit: 2 },
@@ -1303,7 +1292,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
           reason: 'watcher started',
         },
         reason: 'watcher started',
-        // --- eforge:endregion plan-01-supervisor-foundation ---
       },
       subscribers: 2,
     },
@@ -1362,7 +1350,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       prdsEnqueued: 1,
     },
   },
-  // --- eforge:region plan-01-supervisor-foundation ---
   {
     label: 'daemon:auto-build:transition',
     payload: {
@@ -1375,7 +1362,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       source: 'watcher',
     },
   },
-  // --- eforge:endregion plan-01-supervisor-foundation ---
 
   // Daemon recovery
   {
@@ -1548,7 +1534,6 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
     },
   },
 
-  // --- eforge:region plan-01-engine-config-and-landing ---
   {
     label: 'landing:start',
     payload: {
@@ -1602,9 +1587,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       reason: 'Validation failed',
     },
   },
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
 
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   {
     label: 'landing:auto-merge:start',
     payload: {
@@ -1642,9 +1625,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       reason: 'No PR URL discovered',
     },
   },
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 
-  // --- eforge:region plan-02-extension-perspective-runtime ---
   {
     label: 'extension:reviewer-perspective:applied',
     payload: {
@@ -1668,9 +1649,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       reason: 'not-applicable',
     },
   },
-  // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
-  // --- eforge:region plan-02-stack-provider-runtime ---
   {
     label: 'stack:layer:recorded',
     payload: {
@@ -1759,9 +1738,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       reason: 'git-spice branch submit exited with code 1',
     },
   },
-  // --- eforge:endregion plan-02-stack-provider-runtime ---
 
-  // --- eforge:region plan-01-engine-resume ---
   // Build resume lifecycle
   {
     label: 'build:resume:start',
@@ -1814,11 +1791,8 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       checkedPath: '/project/.worktrees/feature-x-merge/orchestration.yaml',
     },
   },
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   { label: 'build:resume:artifacts', payload: { type: 'build:resume:artifacts', timestamp: '2025-01-01T00:00:00.000Z', prdId: 'prd-feature-x', setName: 'feature-x', featureBranch: 'eforge/feature-x', artifactSource: 'merge-worktree', source: { label: 'Recovered PRD', content: '# PRD' }, orchestration: { name: 'feature-x', description: 'Feature X', created: '2025-01-01T00:00:00.000Z', mode: 'excursion', baseBranch: 'main', pipeline: { scope: 'excursion', compile: [], defaultBuild: [], defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' }, rationale: 'resume' }, plans: [{ id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }, { id: 'plan-02', name: 'Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review: { strategy: 'single', perspectives: ['security'], maxRounds: 2, evaluatorStrictness: 'strict' } }] }, plans: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }, { id: 'plan-02', name: 'Plan 02', body: '# Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review: { strategy: 'single', perspectives: ['security'], maxRounds: 2, evaluatorStrictness: 'strict' } }] } },
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
   { label: 'build:resume:complete', payload: { type: 'build:resume:complete', timestamp: '2025-01-01T00:00:00.000Z', prdId: 'prd-feature-x', setName: 'feature-x' } },
-  // --- eforge:endregion plan-01-engine-resume ---
 ];
 
 // ---------------------------------------------------------------------------
@@ -1889,7 +1863,6 @@ describe('events-wire-parity — invalid payloads (missing required field)', () 
     expect(result.success).toBe(false);
   });
 
-  // --- eforge:region plan-01-validation-evidence-contract ---
   it('rejects gap_close:complete missing required passed field', () => {
     const result = safeParseEforgeEvent({
       type: 'gap_close:complete',
@@ -1897,9 +1870,7 @@ describe('events-wire-parity — invalid payloads (missing required field)', () 
     });
     expect(result.success).toBe(false);
   });
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   it('rejects extension:event-handler:failed missing extensionName', () => {
     const result = safeParseEforgeEvent({
       type: 'extension:event-handler:failed',
@@ -1923,7 +1894,6 @@ describe('events-wire-parity — invalid payloads (missing required field)', () 
     });
     expect(result.success).toBe(false);
   });
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
   it('rejects any event missing timestamp (required envelope field)', () => {
     const result = safeParseEforgeEvent({
@@ -1994,7 +1964,6 @@ describe('events-wire-parity — invalid payloads (wrong literal)', () => {
   });
 });
 
-// --- eforge:region plan-01-engine-config-and-landing ---
 describe('events-wire-parity — invalid payloads (landing action)', () => {
   it('rejects landing:start with invalid action value', () => {
     const result = safeParseEforgeEvent({
@@ -2029,9 +1998,7 @@ describe('events-wire-parity — invalid payloads (landing action)', () => {
     expect(result.success).toBe(false);
   });
 });
-// --- eforge:endregion plan-01-engine-config-and-landing ---
 
-// --- eforge:region plan-02-stack-provider-runtime ---
 describe('events-wire-parity — invalid payloads (stack events)', () => {
   it('rejects stack:landing:update with invalid status literal', () => {
     const result = safeParseEforgeEvent({
@@ -2082,7 +2049,6 @@ describe('events-wire-parity — invalid payloads (stack events)', () => {
     expect(result.success).toBe(false);
   });
 });
-// --- eforge:endregion plan-02-stack-provider-runtime ---
 
 describe('events-wire-parity — invalid payloads (unknown discriminant)', () => {
   it('rejects an event with a completely unknown type', () => {
@@ -2121,7 +2087,6 @@ describe('events-wire-parity — invalid payloads (unknown discriminant)', () =>
   });
 });
 
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 describe('events-wire-parity — stack sync lifecycle events', () => {
   const ts = '2025-06-01T12:00:00.000Z';
 
@@ -2258,4 +2223,3 @@ describe('events-wire-parity — stack sync lifecycle events', () => {
     expect(result.success).toBe(false);
   });
 });
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---

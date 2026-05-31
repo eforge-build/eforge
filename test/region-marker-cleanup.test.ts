@@ -104,6 +104,27 @@ describe('stripTemporaryEforgeRegionMarkerLines', () => {
 
     expect(stripped).toBe(content);
   });
+
+  it('preserves marker-looking lines inside template strings', () => {
+    const content = [
+      'const text = `',
+      lineMarker('region'),
+      'literal content',
+      lineMarker('endregion'),
+      '`;',
+      lineMarker('region'),
+      'export const kept = true;',
+      lineMarker('endregion'),
+    ].join('\n') + '\n';
+
+    const stripped = stripTemporaryEforgeRegionMarkerLines(content);
+
+    expect(stripped).toBe(
+      ['const text = `', lineMarker('region'), 'literal content', lineMarker('endregion'), '`;', 'export const kept = true;'].join(
+        '\n',
+      ) + '\n',
+    );
+  });
 });
 
 describe('stripTemporaryEforgeRegionMarkers', () => {

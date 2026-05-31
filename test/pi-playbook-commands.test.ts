@@ -424,7 +424,6 @@ describe('Pi handlePlaybookCommand - explicit leave propagation', () => {
   });
 });
 
-// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 
 // ---------------------------------------------------------------------------
 // Tests: landingAutoMerge propagation — immediate, delayed, fallback
@@ -526,4 +525,3 @@ describe('Pi handlePlaybookCommand - landingAutoMerge propagation', () => {
   });
 });
 
-// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

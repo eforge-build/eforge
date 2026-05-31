@@ -322,7 +322,6 @@ describe('daemonReducer', () => {
   // ---------------------------------------------------------------------------
   // queue events
   // ---------------------------------------------------------------------------
-  // --- eforge:region plan-01-semantic-enqueue-wake ---
   describe('ADD_EVENT: enqueue:complete', () => {
     it('inserts a minimal pending queue item using event.id', () => {
       const event = makeEvent('enqueue:complete', {
@@ -390,7 +389,6 @@ describe('daemonReducer', () => {
       expect(next.runs).toEqual(state.runs);
     });
   });
-  // --- eforge:endregion plan-01-semantic-enqueue-wake ---
 
   describe('ADD_EVENT: queue:prd:discovered', () => {
     it('adds a new pending queue item', () => {
@@ -416,7 +414,6 @@ describe('daemonReducer', () => {
       expect(next.daemonActivity[0].id).toBe('e1');
     });
 
-    // --- eforge:region plan-01-durable-daemon-event-persistence ---
     it('live queue:prd:discovered projection deep-equals a snapshot-shaped QueueItem', () => {
       // This regression asserts that applying a queue:prd:discovered event to an
       // empty queue produces a QueueItem identical in shape to what stream:hello.queue
@@ -438,7 +435,6 @@ describe('daemonReducer', () => {
       };
       expect(next.queue[0]).toEqual(expectedItem);
     });
-    // --- eforge:endregion plan-01-durable-daemon-event-persistence ---
   });
 
   describe('ADD_EVENT: queue:prd:complete', () => {
@@ -1140,7 +1136,6 @@ describe('ADD_EVENT: daemon:warning / daemon:error', () => {
 
 // ---------------------------------------------------------------------------
 // Stack layers — BATCH_SEED seeding and live event projection
-// --- eforge:region plan-03-stack-daemon-ui ---
 // ---------------------------------------------------------------------------
 
 function makeStackLayer(overrides: Partial<StackLayerWire> = {}): StackLayerWire {
@@ -1350,7 +1345,6 @@ describe('ADD_EVENT: stack:landing:update — live projection', () => {
     expect(next.daemonActivity).toHaveLength(1);
   });
 
-  // --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
   it('complete: transitions layer status to landed and preserves prUrl', () => {
     const existing = makeStackLayer({ prdId: 'prd-complete', status: 'built' });
     const startState = { ...initialDaemonState, stackLayers: [existing] };
@@ -1477,10 +1471,8 @@ describe('ADD_EVENT: stack:landing:update — live projection', () => {
     expect(next.stackLayers[0]?.status).toBe('built');
     expect(next.stackLayers[0]?.landing?.status).toBe('started');
   });
-  // --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 });
 
-// --- eforge:endregion plan-03-stack-daemon-ui ---
 
 // ---------------------------------------------------------------------------
 // selectDaemonActivity
@@ -1586,7 +1578,6 @@ describe('selectHeartbeatStaleness', () => {
 
 // ---------------------------------------------------------------------------
 // selectStackLayers
-// --- eforge:region plan-03-stack-daemon-ui ---
 // ---------------------------------------------------------------------------
 
 describe('selectStackLayers', () => {
@@ -1600,4 +1591,3 @@ describe('selectStackLayers', () => {
     expect(selectStackLayers(initialDaemonState)).toEqual([]);
   });
 });
-// --- eforge:endregion plan-03-stack-daemon-ui ---

@@ -9,7 +9,6 @@
  * returns `undefined` when the file does not exist or contains invalid JSON.
  */
 
-// --- eforge:region plan-01-core-daemon-stack-sync ---
 
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
@@ -203,4 +202,3 @@ export async function completeCurrentSyncStatus(cwd: string, completed: StackSyn
   await saveStackSyncStatus(cwd, { ...existing, last: completed, current: undefined });
 }
 
-// --- eforge:endregion plan-01-core-daemon-stack-sync ---

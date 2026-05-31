@@ -21,7 +21,7 @@ const SKIPPED_PATH_SEGMENTS = new Set([
   'build',
 ]);
 
-const TEMPORARY_EFORGE_REGION_MARKER_LINE = /^[\t ]*(?:(?:\/\/[\t ]*---[\t ]*eforge:(?:end)?region[\t ]+plan-\d{2}-\S+[\t ]*---)|(?:\{\/\*[\t ]*---[\t ]*eforge:(?:end)?region[\t ]+plan-\d{2}-\S+[\t ]*---[\t ]*\*\/\})|(?:\/\*[\t ]*---[\t ]*eforge:(?:end)?region[\t ]+plan-\d{2}-\S+[\t ]*---[\t ]*\*\/))[\t ]*(?:\r?\n|$)/gm;
+const TEMPORARY_EFORGE_REGION_MARKER_LINE = /^[\t ]*(?:(?:\/\/[\t ]*---[\t ]*eforge:(?:end)?region[\t ]+plan-\d{2}-\S+[\t ]*---)|(?:\{\/\*[\t ]*---[\t ]*eforge:(?:end)?region[\t ]+plan-\d{2}-\S+[\t ]*---[\t ]*\*\/\})|(?:\/\*[\t ]*---[\t ]*eforge:(?:end)?region[\t ]+plan-\d{2}-\S+[\t ]*---[\t ]*\*\/))[\t ]*$/;
 
 export interface TemporaryEforgeRegionMarkerCleanupSummary {
   filesScanned: number;
@@ -35,7 +35,7 @@ export interface TemporaryEforgeRegionMarkerCleanupSummary {
  * Code inside the marked region and durable semantic marker slugs are preserved.
  */
 export function stripTemporaryEforgeRegionMarkerLines(content: string): string {
-  return content.replace(TEMPORARY_EFORGE_REGION_MARKER_LINE, '');
+  return stripTemporaryEforgeRegionMarkerLinesWithCount(content).content;
 }
 
 /**
@@ -53,14 +53,14 @@ export async function stripTemporaryEforgeRegionMarkers(cwd: string): Promise<Te
     if (!stat.isFile()) continue;
 
     const content = await readFile(absolutePath, 'utf8');
-    const markerCount = countTemporaryMarkerLines(content);
-    if (markerCount === 0) continue;
+    const stripped = stripTemporaryEforgeRegionMarkerLinesWithCount(content);
+    if (stripped.markersRemoved === 0) continue;
 
     fileChanges.push({
       filePath,
       originalContent: content,
-      content: stripTemporaryEforgeRegionMarkerLines(content),
-      markersRemoved: markerCount,
+      content: stripped.content,
+      markersRemoved: stripped.markersRemoved,
     });
   }
 
@@ -112,8 +112,80 @@ async function rollbackWrittenChanges(
   }
 }
 
-function countTemporaryMarkerLines(content: string): number {
-  return Array.from(content.matchAll(TEMPORARY_EFORGE_REGION_MARKER_LINE)).length;
+function stripTemporaryEforgeRegionMarkerLinesWithCount(content: string): { content: string; markersRemoved: number } {
+  const lines = content.match(/.*(?:\r?\n|$)/g) ?? [];
+  if (lines.at(-1) === '') lines.pop();
+
+  const state: LexicalState = { blockComment: false, quote: null, escaped: false };
+  let markersRemoved = 0;
+  let stripped = '';
+
+  for (const line of lines) {
+    if (isOutsideStringOrComment(state) && TEMPORARY_EFORGE_REGION_MARKER_LINE.test(stripLineEnding(line))) {
+      markersRemoved += 1;
+      continue;
+    }
+
+    stripped += line;
+    updateLexicalState(state, line);
+  }
+
+  return { content: stripped, markersRemoved };
+}
+
+type Quote = '"' | "'" | '`';
+
+interface LexicalState {
+  blockComment: boolean;
+  quote: Quote | null;
+  escaped: boolean;
+}
+
+function isOutsideStringOrComment(state: LexicalState): boolean {
+  return !state.blockComment && state.quote === null;
+}
+
+function stripLineEnding(line: string): string {
+  return line.replace(/\r?\n$/, '');
+}
+
+function updateLexicalState(state: LexicalState, line: string): void {
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (state.blockComment) {
+      if (char === '*' && next === '/') {
+        state.blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (state.quote !== null) {
+      if (state.escaped) {
+        state.escaped = false;
+      } else if (char === '\\') {
+        state.escaped = true;
+      } else if (char === state.quote) {
+        state.quote = null;
+      } else if (state.quote !== '`' && (char === '\n' || char === '\r')) {
+        state.quote = null;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') return;
+    if (char === '/' && next === '*') {
+      state.blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      state.quote = char;
+      state.escaped = false;
+    }
+  }
 }
 
 function splitNul(output: string): string[] {

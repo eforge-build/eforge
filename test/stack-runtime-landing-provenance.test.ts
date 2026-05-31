@@ -10,7 +10,6 @@
  * `pnpm test -- stack-runtime-landing` picks it up.
  */
 
-// --- eforge:region plan-01-build-artifact-provenance ---
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtemp } from 'node:fs/promises';
@@ -319,4 +318,3 @@ describe('executeStackLanding — Eforge provenance section in stacked PR body',
   });
 });
 
-// --- eforge:endregion plan-01-build-artifact-provenance ---

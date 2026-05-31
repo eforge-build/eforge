@@ -165,9 +165,7 @@ export const handlerRegistry = {
   'merge:worktree:set': handleMergeWorktreeSet,
   'merge:worktree:clear': handleMergeWorktreeClear,
 
-  // --- eforge:region plan-02-resume-artifacts-projection ---
   'build:resume:artifacts': handleBuildResumeArtifacts,
-  // --- eforge:endregion plan-02-resume-artifacts-projection ---
 
   // Validation lifecycle
   'validation:start': handleValidationStart,
@@ -332,19 +330,15 @@ export const IGNORED_EVENT_TYPES = [
   'landing:auto-merge:start',
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',
-  // --- eforge:region plan-01-terminal-failure-contract ---
   // build:terminal-failure — run-level authoritative terminal failure event.
   // Monitor UI rendering is future work; session reducer does not handle it.
   'build:terminal-failure',
-  // --- eforge:endregion plan-01-terminal-failure-contract ---
-  // --- eforge:region plan-01-engine-resume ---
   // build:resume:* — lifecycle-only resume events. Recovered artifacts are
   // handled by `build:resume:artifacts` above.
   'build:resume:start',
   'build:resume:state',
   'build:resume:ineligible',
   'build:resume:complete',
-  // --- eforge:endregion plan-01-engine-resume ---
 ] as const;
 
 // ---------------------------------------------------------------------------

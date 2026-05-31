@@ -17,12 +17,8 @@ import { composeCommitMessage } from './model-tracker.js';
 import type { ModelTracker } from './model-tracker.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
-// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
-// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-// --- eforge:region plan-01-runtime-artifact-diagnostics ---
 import { loadCompletionRegistry, lookupCompletion } from './artifacts/completions.js';
-// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
 const exec = promisify(execFile);
 
@@ -37,15 +33,11 @@ const prdFrontmatterSchema = z.object({
   depends_on: z.array(z.string()).optional(),
   skip_reason: z.string().optional(),
   profile: z.string().optional(),
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   stack_id: z.string().optional(),
   stack_parent: z.string().optional(),
   stack_provider: z.literal('git-spice').optional(),
   landing: z.enum(['pr', 'merge', 'leave']).optional(),
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   landing_auto_merge: z.boolean().optional(),
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -646,10 +638,8 @@ export interface EnqueuePrdOptions {
   profile?: string;
   /** Landing action to persist in PRD frontmatter (canonical: pr | merge | leave). */
   landingAction?: 'pr' | 'merge' | 'leave';
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   /** Per-run PR auto-merge intent to persist in PRD frontmatter. */
   landingAutoMerge?: boolean;
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
   /** Logical stack identifier to persist in PRD frontmatter. */
   stack_id?: string;
   /** Parent PRD id for this stack layer, if any. */
@@ -702,9 +692,7 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     postMerge,
     profile,
     landingAction,
-    // --- eforge:region plan-01-core-engine-auto-merge ---
     landingAutoMerge,
-    // --- eforge:endregion plan-01-core-engine-auto-merge ---
     stack_id,
     stack_parent,
     stack_provider,
@@ -750,9 +738,7 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     ...(stack_parent !== undefined && { stack_parent }),
     ...(stack_provider !== undefined && { stack_provider }),
     ...(landingAction !== undefined && { landing: landingAction }),
-    // --- eforge:region plan-01-core-engine-auto-merge ---
     ...(landingAutoMerge !== undefined && { landing_auto_merge: landingAutoMerge }),
-    // --- eforge:endregion plan-01-core-engine-auto-merge ---
   };
   const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
   if (!frontmatterResult.success) {
@@ -788,11 +774,9 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (landingAction !== undefined) {
     fmLines.push(`landing: ${landingAction}`);
   }
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   if (landingAutoMerge !== undefined) {
     fmLines.push(`landing_auto_merge: ${landingAutoMerge}`);
   }
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;
   const filePath = resolve(absDir, `${slug}.md`);
@@ -833,7 +817,6 @@ export async function setQueuedPrdProfile(
   };
 }
 
-// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 async function setQueuedPrdFrontmatterString(
   prd: QueuedPrd,
   field: string,
@@ -877,13 +860,11 @@ export async function setQueuedPrdStackParent(
     frontmatter: { ...updated.frontmatter, stack_parent: stackParent },
   };
 }
-// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 // ---------------------------------------------------------------------------
 // Piggyback scheduling helpers
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-build-dependency-core ---
 /**
  * Result of classifying an explicit `afterQueueId` dependency.
  */
@@ -1006,7 +987,6 @@ export async function classifyAfterQueueId(
     `Only pending, running, waiting, or completed-with-artifact queue items can be used as upstream dependencies.`,
   );
 }
-// --- eforge:endregion plan-01-build-dependency-core ---
 
 /**
  * Find all PRDs in the given array that list `upstreamId` in their `depends_on`.
@@ -1060,7 +1040,6 @@ export async function validateDependsOnExists(
     ...waitingPrds.map((p) => p.id),
   ]);
 
-  // --- eforge:region plan-02-artifact-registry-dependency-readiness ---
   const registry = await loadArtifactRegistry(cwd);
 
   // Collect known terminal ids (failed/ or skipped/) for richer error messages.
@@ -1072,10 +1051,7 @@ export async function validateDependsOnExists(
     ...failedPrds.map((p) => p.id),
     ...skippedPrds.map((p) => p.id),
   ]);
-  // --- eforge:endregion plan-02-artifact-registry-dependency-readiness ---
-  // --- eforge:region plan-01-runtime-artifact-diagnostics ---
   const completionRegistry = await loadCompletionRegistry(cwd);
-  // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
   for (const dep of depends_on) {
     // 1. Active root/waiting queue item: accept.
@@ -1085,7 +1061,6 @@ export async function validateDependsOnExists(
     // eslint-disable-next-line no-await-in-loop
     const lockStatus = await readPrdLockStatus(dep, cwd);
     if (lockStatus.state === 'live') continue;
-    // --- eforge:region plan-02-artifact-registry-dependency-readiness ---
     // 3. Failed/skipped queue directory item: error containing "artifact".
     // Failed/skipped queue items never satisfy dependencies, even if an old
     // artifact record is still present from an earlier successful attempt.
@@ -1096,8 +1071,6 @@ export async function validateDependsOnExists(
         `Re-run the dependency to produce a usable artifact before adding dependents.`,
       );
     }
-    // --- eforge:endregion plan-02-artifact-registry-dependency-readiness ---
-    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
     const completionRecord = lookupCompletion(completionRegistry, dep);
     // 3. Completion index status failed/skipped: error containing "artifact".
     if (completionRecord?.status === 'failed' || completionRecord?.status === 'skipped') {
@@ -1115,12 +1088,8 @@ export async function validateDependsOnExists(
         `Re-run the dependency to produce a usable artifact before adding dependents.`,
       );
     }
-    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
     // 5. Usable artifact registry record: accept.
-    // --- eforge:region plan-02-artifact-registry-dependency-readiness ---
     if (hasUsableArtifact(registry, dep)) continue;
-    // --- eforge:endregion plan-02-artifact-registry-dependency-readiness ---
-    // --- eforge:region plan-01-runtime-artifact-diagnostics ---
     // 6. Completion index status completed (no usable artifact in registry): error containing "artifact".
     if (completionRecord?.status === 'completed') {
       throw new Error(
@@ -1129,7 +1098,6 @@ export async function validateDependsOnExists(
         `Re-run the dependency to produce a usable artifact before adding dependents.`,
       );
     }
-    // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
     // 7. Otherwise: unknown queue item.
     throw new Error(
       `depends_on references unknown queue item: "${dep}". ` +
@@ -1216,7 +1184,6 @@ export async function unblockWaiting(
   // The just-completed PRD is no longer active
   stillActiveIds.delete(completedId);
 
-  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
   // Default requireArtifacts to true: artifact registry is the source of truth.
   const requireArtifacts = options.requireArtifacts ?? true;
   const registry = requireArtifacts ? await loadArtifactRegistry(cwd) : undefined;
@@ -1232,7 +1199,6 @@ export async function unblockWaiting(
     if (terminalIds?.has(dep)) return false;
     return hasUsableArtifact(registry, dep);
   };
-  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
   const queueRoot = resolve(cwd, queueDir);
   const unblocked: string[] = [];

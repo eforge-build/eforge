@@ -62,9 +62,7 @@ export function useDaemonEvents(): UseDaemonEventsResult {
                   subscribers: snapshot.liveness.subscribers,
                 },
               },
-              // --- eforge:region plan-03-stack-daemon-ui ---
               stackLayers: snapshot.stackLayers,
-              // --- eforge:endregion plan-03-stack-daemon-ui ---
             });
             dispatch({ type: 'SET_CONNECTION_STATUS', status: 'connected' });
           } else if (frame.kind === 'event') {

@@ -13,16 +13,13 @@
  * Follows AGENTS.md conventions: no mocks, real code, inline data.
  */
 
-// --- eforge:region plan-04-consumer-surfaces ---
 
 import { describe, it, expect } from 'vitest';
 import {
   resolveLandingAction,
   resolveAndValidateLandingFlags,
   CLILandingFlagError,
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   resolveAndValidateLandingAutoMergeFlags,
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 } from '../packages/eforge/src/cli/landing-options.js';
 
 describe('resolveLandingAction', () => {
@@ -79,9 +76,7 @@ describe('resolveAndValidateLandingFlags', () => {
   });
 });
 
-// --- eforge:endregion plan-04-consumer-surfaces ---
 
-// --- eforge:region plan-02-request-surfaces-and-pi-ux ---
 
 describe('resolveAndValidateLandingAutoMergeFlags', () => {
   it('returns undefined when landingAutoMerge is not provided', () => {
@@ -101,4 +96,3 @@ describe('resolveAndValidateLandingAutoMergeFlags', () => {
   });
 });
 
-// --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---

@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 import { describe, it, expect } from 'vitest';
 import { countVerdicts, formatAcceptanceFailureSummary } from '@eforge-build/engine/validation/acceptance-summary';
 import type { AcceptanceCriterionVerdict } from '@eforge-build/client';
@@ -93,4 +92,3 @@ describe('formatAcceptanceFailureSummary', () => {
     expect(result).toContain('Acceptance criteria validation failed');
   });
 });
-// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---

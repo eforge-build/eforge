@@ -18,18 +18,14 @@ import { runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evalua
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runArchitectureReview } from '@eforge-build/engine/agents/architecture-reviewer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
-// --- eforge:region plan-02-engine-acceptance-gates ---
 import type { ExpectedAcceptanceCriterion } from '@eforge-build/engine/validation/acceptance-criteria';
-// --- eforge:endregion plan-02-engine-acceptance-gates ---
 import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
 import { DEFAULT_CONFIG, resolveConfig, loadConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import { singletonRegistry, buildAgentRuntimeRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
-// --- eforge:region plan-01-agent-context-runtime ---
 import { withAgentContextHooks } from '@eforge-build/engine/extensions';
 import type { AgentRunRegistration, NativeExtensionRegistry } from '@eforge-build/engine/extensions';
 import { Type } from '@eforge-build/extension-sdk';
-// --- eforge:endregion plan-01-agent-context-runtime ---
 
 // --- Planner ---
 
@@ -404,7 +400,6 @@ describe('runReview wiring', () => {
     expect(complete!.issues[0].category).toBe('review-contract');
   });
 
-  // --- eforge:region plan-01-reviewer-isolation ---
   it('dispatches the reviewer with read-only tools', async () => {
     const backend = new StubHarness([{
       text: '<review-issues></review-issues>',
@@ -421,7 +416,6 @@ describe('runReview wiring', () => {
     expect(backend.calls).toHaveLength(1);
     expect(backend.calls[0].tools).toBe('read-only');
   });
-  // --- eforge:endregion plan-01-reviewer-isolation ---
 });
 
 // --- Builder ---
@@ -633,10 +627,8 @@ describe('builderEvaluate wiring', () => {
       'list_evaluation_files',
       'submit_evaluation_verdicts',
     ]);
-    // --- eforge:region plan-01-reviewer-isolation ---
     // Denylist must include both Claude-cased and Pi-lowercase mutation tool names.
     expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'write', 'edit', 'bash']));
-    // --- eforge:endregion plan-01-reviewer-isolation ---
     expect(result?.source).toBe('structured');
     expect(result?.verdicts).toEqual([{ file: 'a.ts', hunk: 1, action: 'accept', reason: 'Correct' }]);
   });
@@ -706,7 +698,6 @@ describe('runPlanReview wiring', () => {
     expect(complete!.issues[0].category).toBe('scope');
   });
 
-  // --- eforge:region plan-01-reviewer-isolation ---
   it('includes both Claude-cased and Pi-lowercase mutation tools in denylist', async () => {
     const backend = new StubHarness([{
       text: '<review-issues></review-issues>',
@@ -723,7 +714,6 @@ describe('runPlanReview wiring', () => {
       expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'write', 'edit', 'bash']),
     );
   });
-  // --- eforge:endregion plan-01-reviewer-isolation ---
 });
 
 // --- Plan Evaluator ---
@@ -803,10 +793,8 @@ describe('runPlanEvaluate wiring', () => {
       'list_evaluation_files',
       'submit_evaluation_verdicts',
     ]);
-    // --- eforge:region plan-01-reviewer-isolation ---
     // Denylist must include both Claude-cased and Pi-lowercase mutation tool names.
     expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'write', 'edit', 'bash']));
-    // --- eforge:endregion plan-01-reviewer-isolation ---
     expect(events.find(e => e.type === 'planning:error')).toBeDefined();
   });
 
@@ -1085,12 +1073,10 @@ describe('runPrdValidator wiring', () => {
     expect(complete).toBeDefined();
     expect(complete!.passed).toBe(true);
     expect(complete!.gaps).toEqual([]);
-    // --- eforge:region plan-01-validation-evidence-contract ---
     const acceptance = findEvent(events, 'acceptance_validation:complete');
     expect(acceptance).toBeDefined();
     expect(acceptance!.passed).toBe(true);
     expect(acceptance!.source).toBe('prd');
-    // --- eforge:endregion plan-01-validation-evidence-contract ---
   });
 
   it('emits prd_validation:complete with gaps when agent finds issues', async () => {
@@ -1128,13 +1114,11 @@ describe('runPrdValidator wiring', () => {
     expect(complete!.gaps).toHaveLength(2);
     expect(complete!.gaps[0].requirement).toBe('Login page should support OAuth');
     expect(complete!.gaps[1].explanation).toContain('Error handling');
-    // --- eforge:region plan-01-validation-evidence-contract ---
     const acceptance = findEvent(events, 'acceptance_validation:complete');
     expect(acceptance).toBeDefined();
     expect(acceptance!.passed).toBe(false);
     expect(acceptance!.verdicts).toHaveLength(2);
     expect(acceptance!.source).toBe('prd');
-    // --- eforge:endregion plan-01-validation-evidence-contract ---
   });
 
   it('re-throws non-abort agent errors (fail-closed)', async () => {
@@ -1168,7 +1152,6 @@ describe('runPrdValidator wiring', () => {
     expect(findEvent(events, 'agent:result')).toBeDefined();
   });
 
-  // --- eforge:region plan-02-engine-acceptance-gates ---
   it('passes expectedAcceptanceCriteria and emits per-criterion verdicts from agent response', async () => {
     const expectedCriteria: ExpectedAcceptanceCriterion[] = [
       { id: 'ac-001', text: 'Must support login', raw: '- Must support login' },
@@ -1230,7 +1213,6 @@ describe('runPrdValidator wiring', () => {
     expect(acceptance!.passed).toBe(false);
     expect(acceptance!.verdicts[0]).toMatchObject({ verdict: 'unknown' });
   });
-  // --- eforge:endregion plan-02-engine-acceptance-gates ---
 });
 
 // --- Stage Descriptor Metadata ---
@@ -2288,7 +2270,6 @@ describe('AgentRuntimeRegistry profile override threading', () => {
   });
 });
 
-// --- eforge:region plan-01-agent-context-runtime ---
 
 // --- withAgentContextHooks registry decorator wiring ---
 
@@ -2449,4 +2430,3 @@ describe('withAgentContextHooks — registry decorator wiring (agent-wiring)', (
   });
 });
 
-// --- eforge:endregion plan-01-agent-context-runtime ---

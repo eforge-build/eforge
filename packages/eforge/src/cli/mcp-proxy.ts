@@ -12,9 +12,7 @@ import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiTestExtension, apiNewExtension, apiReloadExtensions, apiTrustExtension, apiUntrustExtension, apiInstallExtension, apiUpdateExtension, apiRemoveExtension, apiPromoteExtension, apiDemoteExtension, apiStackSync,
-  // --- eforge:region plan-02-api-cli ---
   apiResumeBuild,
-  // --- eforge:endregion plan-02-api-cli ---
 } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
@@ -213,18 +211,14 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         .enum(['pr', 'merge', 'leave'])
         .optional()
         .describe("Landing action for this build. 'pr' opens a PR from the artifact branch. 'merge' auto-merges into the base branch. 'leave' commits to the artifact branch without merging or opening a PR."),
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       landingAutoMerge: z
         .boolean()
         .optional()
         .describe("When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge. When false, explicitly disable auto-merge even if the project default is 'always'. Omit to use the project default."),
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-      // --- eforge:region plan-03-consumer-surfaces-docs ---
       afterQueueId: z
         .string()
         .optional()
         .describe("Optional upstream queue entry ID. When provided, the enqueued PRD gains depends_on: [afterQueueId]. Active upstream items (pending/running/waiting) are held in waiting/ and start when the upstream completes. Completed upstream items with a usable artifact are enqueued immediately as eligible dependents. Failed, skipped, and unknown IDs are rejected."),
-      // --- eforge:endregion plan-03-consumer-surfaces-docs ---
     },
     handler: async ({ source, profile, landingAction, landingAutoMerge, afterQueueId }, { cwd: toolCwd }) => {
       const { resolveAndValidateLandingFlags: resolveFlags, CLILandingFlagError: LandingFlagError } = await import('./landing-options.js');
@@ -238,12 +232,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const body: EnqueueRequest = { source };
       if (profile) body.profile = profile;
       if (resolvedLandingAction) body.landingAction = resolvedLandingAction;
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       if (landingAutoMerge !== undefined) body.landingAutoMerge = landingAutoMerge;
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
-      // --- eforge:region plan-03-consumer-surfaces-docs ---
       if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
-      // --- eforge:endregion plan-03-consumer-surfaces-docs ---
       const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, body);
       return { ...data, monitorUrl: `http://localhost:${port}` };
     },
@@ -421,7 +411,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // --- eforge:region plan-02-extension-tooling-surfaces ---
   // Tool: eforge_extension
   createDaemonTool(server, cwd, {
     name: 'eforge_extension',
@@ -499,7 +488,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const { data } = await apiNewExtension({ cwd: toolCwd, body });
         return data;
       }
-      // --- eforge:region plan-02-management-surfaces ---
       if (action === 'trust') {
         if (!name && !path) throw new Error('"name" or "path" is required when action is "trust"');
         if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for trust');
@@ -526,8 +514,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const { data } = await apiUntrustExtension({ cwd: toolCwd, body });
         return data;
       }
-      // --- eforge:endregion plan-02-management-surfaces ---
-      // --- eforge:region plan-03-extension-package-surfaces-docs ---
       if (action === 'install') {
         if (source === undefined) throw new Error('"source" is required when action is "install"');
         if (path !== undefined) throw new Error('"install" does not accept path');
@@ -594,7 +580,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const { data } = await apiDemoteExtension({ cwd: toolCwd, body });
         return data;
       }
-      // --- eforge:endregion plan-03-extension-package-surfaces-docs ---
       if (name !== undefined || path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"reload" does not accept name, path, scope, template, or force');
       if (source !== undefined) throw new Error('"reload" does not accept source');
       if (trust !== undefined) throw new Error('"reload" does not accept trust');
@@ -604,7 +589,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       return data;
     },
   });
-  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
   // Tool: eforge_models
   createDaemonTool(server, cwd, {
@@ -716,12 +700,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         .enum(['pr', 'merge', 'leave'])
         .optional()
         .describe("Landing action to persist as landing.action in eforge/config.yaml. Values: 'pr' (open a GitHub PR), 'merge' (merge the artifact branch into the base branch), 'leave' (leave the artifact branch in place)."),
-      // --- eforge:region plan-04-ux-init-build-and-docs ---
       trunkBranch: z.string().optional().describe("The trunk branch name (e.g. 'main', 'master'). Stored as build.trunkBranch in eforge/config.yaml. When omitted, eforge resolves trunk via git symbolic-ref at runtime."),
       allowLocalMergeToTrunk: z.boolean().optional().describe("When true, landing.action: merge is allowed to land directly on the trunk branch without a PR. Default: false (trunk is protected). Enable only for solo developers on unprotected branches."),
       stackingEnabled: z.boolean().optional().describe('Persist stacking.enabled for git-spice-backed stacked PR workflows.'),
       gitSpiceCommand: z.string().optional().describe('Persist stacking.gitSpice.command (path or command name for the git-spice executable).'),
-      // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       existingProfile: z.object({
         name: z.string().describe('Name of the existing local- or user-scope profile to activate.'),
         scope: z.enum(['local', 'user']).describe('Scope of the existing profile.'),
@@ -808,10 +790,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const existingProfileConfigData: Record<string, unknown> = {};
         const existingProfileBuildBlock: Record<string, unknown> = {};
         if (postMergeCommands && postMergeCommands.length > 0) existingProfileBuildBlock.postMergeCommands = postMergeCommands;
-        // --- eforge:region plan-04-ux-init-build-and-docs ---
         if (trunkBranch) existingProfileBuildBlock.trunkBranch = trunkBranch;
         if (allowLocalMergeToTrunk !== undefined) existingProfileBuildBlock.allowLocalMergeToTrunk = allowLocalMergeToTrunk;
-        // --- eforge:endregion plan-04-ux-init-build-and-docs ---
         if (Object.keys(existingProfileBuildBlock).length > 0) existingProfileConfigData.build = existingProfileBuildBlock;
         if (resolvedInitLandingAction) existingProfileConfigData.landing = { action: resolvedInitLandingAction };
         if (stackingEnabled !== undefined || gitSpiceCommand !== undefined) {
@@ -913,10 +893,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const configData: Record<string, unknown> = {};
       const buildBlock: Record<string, unknown> = {};
       if (postMergeCommands && postMergeCommands.length > 0) buildBlock.postMergeCommands = postMergeCommands;
-      // --- eforge:region plan-04-ux-init-build-and-docs ---
       if (trunkBranch) buildBlock.trunkBranch = trunkBranch;
       if (allowLocalMergeToTrunk !== undefined) buildBlock.allowLocalMergeToTrunk = allowLocalMergeToTrunk;
-      // --- eforge:endregion plan-04-ux-init-build-and-docs ---
       if (Object.keys(buildBlock).length > 0) configData.build = buildBlock;
       if (resolvedInitLandingAction) configData.landing = { action: resolvedInitLandingAction };
       if (stackingEnabled !== undefined || gitSpiceCommand !== undefined) {
@@ -953,7 +931,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // --- eforge:region plan-03-daemon-mcp-pi ---
 
   // Tool: eforge_recover
   createDaemonTool(server, cwd, {
@@ -982,7 +959,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // --- eforge:region plan-01-backend-apply-recovery ---
 
   // Tool: eforge_apply_recovery
   createDaemonTool(server, cwd, {
@@ -997,9 +973,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // --- eforge:endregion plan-01-backend-apply-recovery ---
 
-  // --- eforge:region plan-02-api-cli ---
 
   // Tool: eforge_resume_build
   createDaemonTool(server, cwd, {
@@ -1017,11 +991,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // --- eforge:endregion plan-02-api-cli ---
 
-  // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
-  // --- eforge:region plan-02-daemon-http-and-mcp-tool ---
 
   // Tool: eforge_playbook
   createDaemonTool(server, cwd, {
@@ -1053,9 +1024,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       }).optional().describe('Playbook content (required for "save")'),
       afterQueueId: z.string().optional().describe('Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].'),
       landingAction: z.enum(['pr', 'merge', 'leave']).optional().describe("Landing action for this run (optional, 'run' only for autonomous playbooks). 'pr' opens a PR, 'merge' auto-merges, 'leave' commits without merging."),
-      // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
       landingAutoMerge: z.boolean().optional().describe("When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge for this playbook run. When false, explicitly disable auto-merge. Omit to use the project default. Only applies to autonomous playbooks via 'run'."),
-      // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
       raw: z.string().optional().describe('Raw Markdown playbook string (required for "validate")'),
     },
     handler: async ({ action, name, scope, playbook, afterQueueId, landingAction, landingAutoMerge, raw }, { cwd: toolCwd }) => {
@@ -1090,9 +1059,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const body: Record<string, unknown> = { name };
         if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
         if (resolvedPlaybookLandingAction !== undefined) body.landingAction = resolvedPlaybookLandingAction;
-        // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
         if (landingAutoMerge !== undefined) body.landingAutoMerge = landingAutoMerge;
-        // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
         const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookRun, body);
         return data;
       }
@@ -1116,9 +1083,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // --- eforge:endregion plan-02-daemon-http-and-mcp-tool ---
 
-  // --- eforge:region plan-03-tools-and-skills ---
 
   // Tool: eforge_session_plan
   createDaemonTool(server, cwd, {
@@ -1236,9 +1201,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // --- eforge:endregion plan-03-tools-and-skills ---
 
-  // --- eforge:region plan-03-plugin-docs-and-generated-reference ---
 
   // Tool: eforge_stack_sync
   createDaemonTool(server, cwd, {
@@ -1265,7 +1228,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // --- eforge:endregion plan-03-plugin-docs-and-generated-reference ---
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

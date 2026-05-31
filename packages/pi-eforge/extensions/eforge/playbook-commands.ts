@@ -298,9 +298,7 @@ async function handleRunBranch(
   const landingResult = await promptForPlaybookLandingGate(pi, ctx);
   if (landingResult.cancelled) return;
   const landingAction: LandingAction | undefined = landingResult.landingAction;
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   const landingAutoMerge: boolean | undefined = landingResult.landingAutoMerge;
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
   // Step 3b: Check for in-flight builds (autonomous playbooks only)
   const { runningItems } = await withLoader(
@@ -362,7 +360,6 @@ async function handleRunBranch(
   }
 
   // Step 4: Enqueue
-  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
   let runResult: PlaybookRunResponse | null = null;
   try {
     const enqueueBody = afterQueueId
@@ -420,7 +417,6 @@ async function handleRunBranch(
       return;
     }
   }
-  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
   if (runResult === null) return;
 

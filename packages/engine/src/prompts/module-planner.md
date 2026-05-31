@@ -128,10 +128,8 @@ In the "Files > Modify" section:
 
 In code examples:
 ```typescript
-// --- eforge:region plan-01-auth ---
 export { AuthProvider } from './auth/provider.js'
 export { validateToken } from './auth/token.js'
-// --- eforge:endregion plan-01-auth ---
 ```
 
 Shared-file region declarations are build-coordination instructions for parallel builders, not permanent source organization. Cleanup-targeted source marker slugs must use compiled plan IDs matching `plan-\d{2}-...`; durable source sections need semantic slugs that describe the code they organize.

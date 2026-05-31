@@ -15,9 +15,7 @@ import { join } from 'node:path';
 
 const exec = promisify(execFile);
 import type { EforgeEvent, OrchestrationConfig, EforgeState, PlanState } from './events.js';
-// --- eforge:region plan-01-engine-resume ---
 import { updatePlanStatus } from './state.js';
-// --- eforge:endregion plan-01-engine-resume ---
 import {
   computeWorktreeBase,
   type MergeResolver,
@@ -25,22 +23,12 @@ import {
 import { WorktreeManager } from './worktree-manager.js';
 import { executePlans, validate, prdValidate, recordArtifact, stackLanding, finalize, type PhaseContext } from './orchestrator/phases.js';
 import { ModelTracker } from './model-tracker.js';
-// --- eforge:region plan-02-policy-gate-engine-integration ---
 import type { NativeExtensionRegistry } from './extensions/types.js';
 import type { PolicyGateFailurePolicy } from './extensions/policy-gate-runtime.js';
-// --- eforge:endregion plan-02-policy-gate-engine-integration ---
-// --- eforge:region plan-03-branch-aware-landing ---
 import type { EforgeConfig, LandingConfig } from './config.js';
-// --- eforge:endregion plan-03-branch-aware-landing ---
-// --- eforge:region plan-02-final-validation-gates ---
 import type { ValidationConfig } from './config.js';
-// --- eforge:endregion plan-02-final-validation-gates ---
-// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import type { StackBaseContext } from './stacking/base-resolver.js';
-// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-// --- eforge:region plan-02-stack-provider-runtime ---
 import type { StackProviderAdapter } from './stacking/provider.js';
-// --- eforge:endregion plan-02-stack-provider-runtime ---
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -70,12 +58,10 @@ export type ValidationFixer = (
  * @param cwd - Working directory (merge worktree path)
  * @param context - Optional context carrying deterministic validation evidence
  */
-// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 export type PrdValidator = (
   cwd: string,
   context?: { validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }> },
 ) => AsyncGenerator<EforgeEvent>;
-// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
 /**
  * Callback that attempts to close PRD validation gaps.
@@ -113,52 +99,36 @@ export interface OrchestratorOptions {
   cleanupOutputDir?: string;
   /** Path to the PRD file to remove during cleanup. */
   cleanupPrdFilePath?: string;
-  // --- eforge:region plan-02-policy-gate-engine-integration ---
   /** Optional extension registry for policy gates. */
   extensionRegistry?: Pick<NativeExtensionRegistry, 'policyGates'>;
   /** Timeout in milliseconds for policy gate handlers. */
   policyGateTimeoutMs?: number;
   /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
   policyGateFailurePolicy?: PolicyGateFailurePolicy;
-  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
-  // --- eforge:region plan-03-branch-aware-landing ---
   /** EforgeConfig subset for trunk policy resolution. When omitted, trunk defaults to "main". */
   engineConfig?: Pick<EforgeConfig, 'build'>;
-  // --- eforge:endregion plan-03-branch-aware-landing ---
-  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
   /** Queued PRD id for stack artifact recording. */
   prdId?: string;
   /** Resolved stack context for queued stacked builds. */
   stackContext?: StackBaseContext;
   /** Landing action for this build (canonical: pr | merge | leave). */
   landingAction?: LandingConfig['action'];
-  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   /** Configured PR auto-merge policy (from landing.pr.autoMerge). */
   prAutoMergePolicy?: 'ask' | 'always' | 'never';
   /** Per-run PR auto-merge intent (from landingAutoMerge option/frontmatter). */
   landingAutoMerge?: boolean;
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
-  // --- eforge:region plan-02-stack-provider-runtime ---
   /** Instantiated stack provider adapter for git-spice landing (stacked builds only). */
   stackProvider?: StackProviderAdapter;
-  // --- eforge:endregion plan-02-stack-provider-runtime ---
-  // --- eforge:region plan-02-final-validation-gates ---
   /** Resolved validation waiver config for allowNoCommands and allowEmptyPrdDiff gates. */
   validationPolicy?: ValidationConfig;
-  // --- eforge:endregion plan-02-final-validation-gates ---
-  // --- eforge:region plan-02-engine-acceptance-gates ---
   /** Expected acceptance criteria derived from the PRD or plan files. When defined, the
    *  prdValidate phase enforces that every criterion receives a verdict (synthesizing
    *  unknown for any not covered by the validator). When no prdValidator is configured
    *  and this array is defined, the build fails unless an explicit waiver is active. */
   expectedAcceptanceCriteria?: import('./validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
-  // --- eforge:endregion plan-02-engine-acceptance-gates ---
-  // --- eforge:region plan-01-engine-resume ---
   /** Resume seed for compiled-build resume. When provided, merged plans are seeded from prior
    *  build evidence and resume context is injected into builder prompts. */
   resumeSeed?: ResumeSeedOptions;
-  // --- eforge:endregion plan-01-engine-resume ---
 }
 
 /**
@@ -201,7 +171,6 @@ export function initializeState(
   return { state };
 }
 
-// --- eforge:region plan-01-engine-resume ---
 /**
  * Options for seeding orchestrator state from a prior compiled-build run.
  * Passed from the resume entry point after eligibility is confirmed.
@@ -237,7 +206,6 @@ export function applyResumeSeed(state: EforgeState, seed: ResumeSeedOptions): vo
     plan.merged = true;
   }
 }
-// --- eforge:endregion plan-01-engine-resume ---
 
 export class Orchestrator {
   private readonly options: OrchestratorOptions;
@@ -249,12 +217,10 @@ export class Orchestrator {
   async *execute(config: OrchestrationConfig): AsyncGenerator<EforgeEvent> {
     const { repoRoot, signal } = this.options;
     const { state } = initializeState(config, repoRoot);
-    // --- eforge:region plan-01-engine-resume ---
     // Apply resume seed when the caller has reconstructed prior build state.
     if (this.options.resumeSeed) {
       applyResumeSeed(state, this.options.resumeSeed);
     }
-    // --- eforge:endregion plan-01-engine-resume ---
     const featureBranch = `eforge/${config.name}`;
     // Compute mergeWorktreePath deterministically; options.mergeWorktreePath overrides for testing
     const mergeWorktreePath = this.options.mergeWorktreePath ?? join(computeWorktreeBase(repoRoot, config.name), '__merge__');
@@ -275,62 +241,40 @@ export class Orchestrator {
       modelTracker: new ModelTracker(),
       shouldCleanup: this.options.shouldCleanup, cleanupPlanSet: this.options.cleanupPlanSet,
       cleanupOutputDir: this.options.cleanupOutputDir, cleanupPrdFilePath: this.options.cleanupPrdFilePath,
-      // --- eforge:region plan-02-policy-gate-engine-integration ---
       extensionRegistry: this.options.extensionRegistry,
       policyGateTimeoutMs: this.options.policyGateTimeoutMs,
       policyGateFailurePolicy: this.options.policyGateFailurePolicy,
-      // --- eforge:endregion plan-02-policy-gate-engine-integration ---
-      // --- eforge:region plan-03-branch-aware-landing ---
       engineConfig: this.options.engineConfig,
-      // --- eforge:endregion plan-03-branch-aware-landing ---
-      // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
       prdId: this.options.prdId,
       stackContext: this.options.stackContext,
       landingAction: this.options.landingAction ?? 'merge',
-      // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-      // --- eforge:region plan-01-core-engine-auto-merge ---
       prAutoMergePolicy: this.options.prAutoMergePolicy,
       landingAutoMerge: this.options.landingAutoMerge,
-      // --- eforge:endregion plan-01-core-engine-auto-merge ---
-      // --- eforge:region plan-02-stack-provider-runtime ---
       stackProvider: this.options.stackProvider,
-      // --- eforge:endregion plan-02-stack-provider-runtime ---
-      // --- eforge:region plan-02-final-validation-gates ---
       validationPolicy: this.options.validationPolicy,
-      // --- eforge:endregion plan-02-final-validation-gates ---
-      // --- eforge:region plan-02-engine-acceptance-gates ---
       expectedAcceptanceCriteria: this.options.expectedAcceptanceCriteria,
-      // --- eforge:endregion plan-02-engine-acceptance-gates ---
     };
     try {
       yield* executePlans(ctx);
       if ((state.status as string) !== 'failed') yield* validate(ctx);
       if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
-      // --- eforge:region plan-02-final-validation-gates ---
       // After gap close, rerun both validate and prdValidate to confirm the fixes
       // satisfy both validation commands and acceptance criteria.
       if ((state.status as string) !== 'failed' && ctx.gapClosePerformed) {
         yield* validate(ctx);
         if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
       }
-      // --- eforge:endregion plan-02-final-validation-gates ---
-      // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
       if ((state.status as string) !== 'failed') yield* recordArtifact(ctx);
-      // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-      // --- eforge:region plan-02-stack-provider-runtime ---
       // Stack landing runs unconditionally so it can persist skipped outcomes
       // when the build failed before landing could be attempted.
       yield* stackLanding(ctx);
-      // --- eforge:endregion plan-02-stack-provider-runtime ---
       if ((state.status as string) !== 'failed') yield* finalize(ctx);
     } finally {
       await wm.cleanupAll();
       for (const [, plan] of planMap) { try { await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot }); } catch { /* best-effort */ } }
-      // --- eforge:region plan-01-engine-config-and-landing ---
       // Only delete the feature branch when it was merged into base — for pr and leave
       // the branch must be preserved so the PR or manual workflow can reference it.
       if (ctx.landingSucceeded && ctx.landingAction === 'merge') { try { await exec('git', ['branch', '-D', featureBranch], { cwd: repoRoot }); } catch { /* best-effort */ } }
-      // --- eforge:endregion plan-01-engine-config-and-landing ---
     }
   }
 }

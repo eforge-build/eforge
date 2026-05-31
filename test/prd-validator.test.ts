@@ -134,7 +134,6 @@ describe('parseGaps', () => {
     expect(result.completionPercent).toBeUndefined();
   });
 
-  // --- eforge:region plan-01-validation-evidence-contract ---
   it('returns acceptanceVerdicts: undefined when JSON has no acceptanceVerdicts key', () => {
     const input = '```json\n{"completionPercent": 100, "gaps": []}\n```';
     const result = parseGaps(input);
@@ -270,9 +269,7 @@ describe('parseGaps', () => {
     expect(result.gaps).toEqual([]);
     expect(result.acceptanceVerdicts?.[0].verdict).toBe('pass');
   });
-  // --- eforge:endregion plan-01-validation-evidence-contract ---
 
-  // --- eforge:region plan-02-engine-acceptance-gates ---
   it('synthesizes a failure gap for malformed gap entries instead of silently filtering', () => {
     const input = '```json\n{"completionPercent": 80, "gaps": [null, 42, {"requirement": "valid req", "explanation": "valid exp"}]}\n```';
     const result = parseGaps(input);
@@ -288,7 +285,6 @@ describe('parseGaps', () => {
     expect(result.gaps).toHaveLength(1);
     expect(result.gaps[0]).toMatchObject({ requirement: 'Malformed PRD validation gap entry' });
   });
-  // --- eforge:endregion plan-02-engine-acceptance-gates ---
 });
 
 describe('prdValidate viability gate', () => {
@@ -387,7 +383,6 @@ describe('prdValidate viability gate', () => {
     expect(ctx.minCompletionPercent).toBe(75);
   });
 
-  // --- eforge:region plan-02-final-validation-gates ---
   it('fails build when gap_close:complete has passed=false', async () => {
     const ctx = makePhaseContext({
       minCompletionPercent: 75,
@@ -431,5 +426,4 @@ describe('prdValidate viability gate', () => {
     const progress = events.find((e) => e.type === 'planning:progress' && 'message' in e && (e as { message: string }).message.includes('Gap closing failed'));
     expect(progress).toBeDefined();
   });
-  // --- eforge:endregion plan-02-final-validation-gates ---
 });

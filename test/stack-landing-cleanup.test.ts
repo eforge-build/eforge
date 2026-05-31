@@ -12,7 +12,6 @@
  *   4. Cleanup runs exactly once per executeStackLanding call.
  */
 
-// --- eforge:region plan-03-stack-landing-lifecycle-cleanup ---
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtemp } from 'node:fs/promises';
@@ -261,13 +260,11 @@ describe('executeStackLanding — cleanup runs exactly once', () => {
   });
 });
 
-// --- eforge:endregion plan-03-stack-landing-lifecycle-cleanup ---
 
 // ---------------------------------------------------------------------------
 // Stack landing exposes PR URL and status for artifact finalization
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-runtime-artifact-diagnostics ---
 
 describe('executeStackLanding — PR URL and status in stack:landing:update events', () => {
   it('emits stack:landing:update complete with prUrl from submit output', async () => {
@@ -348,4 +345,3 @@ describe('executeStackLanding — PR URL and status in stack:landing:update even
   });
 });
 
-// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---

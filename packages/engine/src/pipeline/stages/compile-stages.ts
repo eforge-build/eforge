@@ -225,7 +225,6 @@ registerCompileStage({
   // Run pipeline composition first (fast LLM call to determine scope and stages)
   const { harness: composerHarness, toolbeltSummary: composerTb } = ctx.agentRuntimes.forRoleResolved('pipeline-composer');
   const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb);
-  // --- eforge:region plan-01-stage-local-retry-recovery ---
   const composerOptions: PipelineComposerOptions = {
     source: ctx.sourceContent,
     cwd: ctx.cwd,
@@ -235,9 +234,7 @@ registerCompileStage({
     phase: 'compile',
     stage: 'pipeline-composer',
     harness: composerHarness,
-    // --- eforge:region plan-01-validation-provider-runtime ---
     validationProviders: ctx.extensionValidationProviders,
-    // --- eforge:endregion plan-01-validation-provider-runtime ---
   };
   const composerRetryPolicy = DEFAULT_RETRY_POLICIES['pipeline-composer'] as RetryPolicy<PipelineComposerOptions>;
   yield* withRetry(
@@ -259,7 +256,6 @@ registerCompileStage({
     composerRetryPolicy,
     composerOptions,
   );
-  // --- eforge:endregion plan-01-stage-local-retry-recovery ---
 
   // Guard: if the composer replaced the compile pipeline without 'planner', delegate.
   if (!ctx.pipeline.compile.includes('planner')) {

@@ -32,7 +32,6 @@ import { AutoBuildSupervisor, type AutoBuildWatcherState } from './auto-build-su
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
 
-// --- eforge:region plan-02-runtime-and-integration ---
 /** Cooldown window applied after a quota error is detected (10 minutes). */
 export const COOLDOWN_WINDOW_MS = 10 * 60 * 1000;
 /** Default rolling window for usage queries when callers don't specify one (24 hours). */
@@ -83,7 +82,6 @@ function createProfileUsageProvider(db: MonitorDB): ProfileUsageProvider {
     },
   };
 }
-// --- eforge:endregion plan-02-runtime-and-integration ---
 
 const WATCHER_DRAIN_TIMEOUT_MS = 5000;
 const ORPHAN_CHECK_INTERVAL_MS = 5000;
@@ -162,7 +160,6 @@ export function evaluateStateCheck(ctx: StateCheckContext): {
   return { state, lastActivityTimestamp, hasSeenActivity };
 }
 
-// --- eforge:region plan-01-types-and-daemon-emission ---
 
 /**
  * Structured report returned by `reconcileOrphanedState`.
@@ -209,7 +206,6 @@ export function writeDaemonEvent(
   }
 }
 
-// --- eforge:endregion plan-01-types-and-daemon-emission ---
 
 /**
  * Reconcile orphaned queue state on daemon startup.
@@ -375,11 +371,9 @@ async function main(): Promise<void> {
   const preferredPort = parseInt(portStr, 10);
   const db = openDatabase(dbPath);
 
-  // --- eforge:region plan-01-types-and-daemon-emission ---
   // Stable session id for all daemon-scoped events in this process lifetime.
   // FK is OFF in the DB so an unmatched run_id is safe (see PRAGMA in db.ts).
   const daemonSessionId = `daemon-${process.pid}-${Date.now()}`;
-  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
   // Pre-flight: refuse to start if a live daemon already owns this cwd
   const existingLock = readLockfile(cwd);
@@ -595,9 +589,7 @@ async function main(): Promise<void> {
 
     let engine: EforgeEngine;
     try {
-      // --- eforge:region plan-02-runtime-and-integration ---
       const profileUsageProvider = createProfileUsageProvider(db);
-      // --- eforge:endregion plan-02-runtime-and-integration ---
       engine = await EforgeEngine.create({ cwd, profileUsageProvider });
     } catch (err) {
       if (watcherAbort === controller && generation === watcherGeneration) {
@@ -607,14 +599,12 @@ async function main(): Promise<void> {
         setWatcher({ running: false, pid: null, sessionId: null });
         const errMsg = err instanceof Error ? err.message : String(err);
         const reason = `Watcher failed to initialize: ${errMsg}`;
-        // --- eforge:region plan-01-types-and-daemon-emission ---
         writeDaemonEvent(db, {
           type: 'daemon:error',
           source: 'watcher:init',
           message: reason,
           ...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
         }, daemonSessionId);
-        // --- eforge:endregion plan-01-types-and-daemon-emission ---
         supervisor.fault(reason, 'watcher');
       }
       return;
@@ -644,13 +634,11 @@ async function main(): Promise<void> {
                 schedulerInject = inject;
               }
             },
-            // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
             onSchedulerControlRegister: (control: SchedulerControl) => {
               if (watcherAbort === controller && generation === watcherGeneration) {
                 schedulerControl = control;
               }
             },
-            // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
           }),
           db,
           cwd,
@@ -670,7 +658,6 @@ async function main(): Promise<void> {
         };
         for await (const event of events) {
           maybePauseOnFailure(event, pauseCtx);
-          // --- eforge:region plan-01-types-and-daemon-emission ---
           // Emit daemon:auto-build:triggered when a queue scan cycle produces builds.
           if (event.type === 'queue:complete' && event.processed > 0) {
             writeDaemonEvent(db, {
@@ -679,8 +666,6 @@ async function main(): Promise<void> {
               prdsEnqueued: event.processed,
             }, daemonSessionId);
           }
-          // --- eforge:endregion plan-01-types-and-daemon-emission ---
-          // --- eforge:region plan-01-core-daemon-stack-sync ---
           // Trigger daemon-owned after-build sync when configured and a build
           // session reaches any terminal state (completed, failed, or skipped).
           // This ensures deferred syncs are retried after any blocking build ends,
@@ -708,7 +693,6 @@ async function main(): Promise<void> {
               }
             })();
           }
-          // --- eforge:endregion plan-01-core-daemon-stack-sync ---
         }
       } catch (err) {
         // Only fault if this controller is still the active one — otherwise
@@ -716,14 +700,12 @@ async function main(): Promise<void> {
         if (watcherAbort === controller && generation === watcherGeneration) {
           const errMsg = err instanceof Error ? err.message : String(err);
           const reason = `Watcher crashed: ${errMsg}`;
-          // --- eforge:region plan-01-types-and-daemon-emission ---
           writeDaemonEvent(db, {
             type: 'daemon:error',
             source: 'watcher',
             message: errMsg,
             ...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
           }, daemonSessionId);
-          // --- eforge:endregion plan-01-types-and-daemon-emission ---
           supervisor.fault(reason, 'watcher');
         }
       } finally {
@@ -761,13 +743,11 @@ async function main(): Promise<void> {
     await startWatcher(options.reloadConfig ? config?.hooks ?? [] : hooks);
   }
 
-  // --- eforge:region plan-01-extension-management-api ---
   function reloadExtensionsWatcher(): void {
     // The supervisor calls this hook before invoking restartWatcher(). Runtime
     // config reload is performed inside restartWatcher({ reloadConfig: true })
     // so the replacement watcher uses the refreshed hook list.
   }
-  // --- eforge:endregion plan-01-extension-management-api ---
 
   const autoBuildSupervisor = persistent ? new AutoBuildSupervisor({
     initialState: {
@@ -786,9 +766,7 @@ async function main(): Promise<void> {
       resumeScheduler: () => schedulerControl?.resume(),
       emitSchedulerMutation,
       reloadExtensions: reloadExtensionsWatcher,
-      // --- eforge:region plan-01-types-and-daemon-emission ---
       emitEvent: (event) => writeDaemonEvent(db, event as { type: string } & Record<string, unknown>, daemonSessionId),
-      // --- eforge:endregion plan-01-types-and-daemon-emission ---
     },
   }) : undefined;
 
@@ -821,7 +799,6 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  // --- eforge:region plan-01-types-and-daemon-emission ---
   // Emit lifecycle:starting now that port is known (server was just started above).
   writeDaemonEvent(db, {
     type: 'daemon:lifecycle:starting',
@@ -830,7 +807,6 @@ async function main(): Promise<void> {
     version: typeof EFORGE_VERSION !== 'undefined' ? EFORGE_VERSION : 'unknown',
     mode: persistent ? 'persistent' : 'ephemeral',
   }, daemonSessionId);
-  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
   // Write lockfile
   writeLockfile(cwd, {
@@ -845,7 +821,6 @@ async function main(): Promise<void> {
   // One-shot reconciliation for state left behind by a previous crash or
   // hard-kill. Runs after we own the lockfile so no other daemon instance
   // can be touching the same files.
-  // --- eforge:region plan-01-types-and-daemon-emission ---
   writeDaemonEvent(db, { type: 'daemon:recovery:start' }, daemonSessionId);
   const reconcileReport = reconcileOrphanedState(db, cwd);
   for (const run of reconcileReport.runsFailed) {
@@ -879,7 +854,6 @@ async function main(): Promise<void> {
     mode: persistent ? 'persistent' : 'ephemeral',
     recoveryDurationMs: reconcileReport.durationMs,
   }, daemonSessionId);
-  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
   // Declare state-machine variables before use (setupStateMachine assigns stateTimer)
   let stateTimer: ReturnType<typeof setInterval> | undefined;
@@ -905,7 +879,6 @@ async function main(): Promise<void> {
       for (const run of runningRuns) {
         if (run.pid && !isPidAlive(run.pid)) {
           db.updateRunStatus(run.id, 'killed');
-          // --- eforge:region plan-01-types-and-daemon-emission ---
           // Only emit orphan:reaped when a run is actually marked killed (not on every tick).
           writeDaemonEvent(db, {
             type: 'daemon:orphan:reaped',
@@ -914,7 +887,6 @@ async function main(): Promise<void> {
             planSet: run.planSet,
             pid: run.pid,
           }, daemonSessionId);
-          // --- eforge:endregion plan-01-types-and-daemon-emission ---
         }
       }
     } catch {
@@ -987,9 +959,7 @@ async function main(): Promise<void> {
           const elapsed = Date.now() - countdownStartedAt;
           if (elapsed >= countdownDurationMs()) {
             state = 'SHUTDOWN';
-            // --- eforge:region plan-01-types-and-daemon-emission ---
             shutdown('none', 'idle timeout');
-            // --- eforge:endregion plan-01-types-and-daemon-emission ---
           }
         }
       } catch {
@@ -1004,20 +974,16 @@ async function main(): Promise<void> {
     setupStateMachine(IDLE_FALLBACK_MS);
   }
 
-  // --- eforge:region plan-01-types-and-daemon-emission ---
   function shutdown(signal = 'none', reason = 'process signal'): void {
-  // --- eforge:endregion plan-01-types-and-daemon-emission ---
     if (isShuttingDown) return;
     isShuttingDown = true;
 
-    // --- eforge:region plan-01-types-and-daemon-emission ---
     writeDaemonEvent(db, {
       type: 'daemon:lifecycle:shutdown:start',
       signal,
       reason,
     }, daemonSessionId);
     const shutdownStartedAt = Date.now();
-    // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
     clearInterval(orphanTimer);
     if (stateTimer) clearInterval(stateTimer);
@@ -1032,13 +998,11 @@ async function main(): Promise<void> {
       removeLockfile(cwd);
 
       server.stop().then(() => {
-        // --- eforge:region plan-01-types-and-daemon-emission ---
         // Write shutdown:complete before closing the DB so the event is persisted.
         writeDaemonEvent(db, {
           type: 'daemon:lifecycle:shutdown:complete',
           durationMs: Date.now() - shutdownStartedAt,
         }, daemonSessionId);
-        // --- eforge:endregion plan-01-types-and-daemon-emission ---
         db.close();
         process.exit(0);
       }).catch(() => {
@@ -1050,15 +1014,11 @@ async function main(): Promise<void> {
 
   // Wire onShutdown callback so the HTTP endpoint can trigger graceful shutdown
   if (daemonState) {
-    // --- eforge:region plan-01-types-and-daemon-emission ---
     daemonState.onShutdown = () => shutdown('none', 'HTTP request');
-    // --- eforge:endregion plan-01-types-and-daemon-emission ---
   }
 
-  // --- eforge:region plan-01-types-and-daemon-emission ---
   process.on('SIGTERM', () => shutdown('SIGTERM', 'process signal'));
   process.on('SIGINT', () => shutdown('SIGINT', 'process signal'));
-  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
   // Disconnect stdio so the parent process can exit
   if (process.stdout.isTTY === false || process.send === undefined) {

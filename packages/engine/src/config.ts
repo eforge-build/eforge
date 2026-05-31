@@ -151,12 +151,10 @@ export const sdkPassthroughConfigSchema = z.object({
 const STRATEGIES = ['auto', 'single', 'parallel'] as const;
 const STRICTNESS = ['strict', 'standard', 'lenient'] as const;
 
-// --- eforge:region plan-01-dynamic-perspective-contracts ---
 /** Safe key rule for review perspective identifiers: lowercase slug 1–64 chars. */
 const reviewPerspectiveKeySchema = z
   .string()
   .regex(/^[a-z][a-z0-9-]{0,63}$/, 'Perspective key must be a lowercase slug starting with a letter (e.g. "code", "accessibility")');
-// --- eforge:endregion plan-01-dynamic-perspective-contracts ---
 
 // Bound to `z.ZodType<ReviewProfileConfig>` so a drift between this schema and
 // the shared TypeScript type in `@eforge-build/client` produces a compile error.
@@ -187,31 +185,19 @@ const pluginConfigSchema = z.object({
   paths: z.array(z.string()).optional(),
 });
 
-// --- eforge:region plan-01-extension-runtime-foundation ---
 export const extensionConfigSchema = z.object({
   enabled: z.boolean().optional().describe('Enable native eforge extension discovery and loading'),
   include: z.array(z.string()).optional().describe('Native extension names to include during auto-discovery'),
   exclude: z.array(z.string()).optional().describe('Native extension names to exclude during auto-discovery'),
   paths: z.array(z.string()).optional().describe('Explicit native extension module paths to load'),
   trustProjectExtensions: z.boolean().optional().describe('Trust checked-in project-team native extensions'),
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   eventHookTimeoutMs: z.number().int().positive().optional().describe('Default timeout in milliseconds for native extension event-hook handlers'),
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
-  // --- eforge:region plan-01-agent-context-runtime ---
   agentContextHookTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for agent-context hook handlers (defaults to eventHookTimeoutMs)'),
-  // --- eforge:endregion plan-01-agent-context-runtime ---
-  // --- eforge:region plan-01-policy-gate-foundation ---
   policyGateTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for policy gate handlers (defaults to eventHookTimeoutMs)'),
   policyGateFailurePolicy: z.enum(['fail-open', 'fail-closed']).optional().describe('Failure policy for thrown, timed-out, or invalid policy gate handlers'),
-  // --- eforge:endregion plan-01-policy-gate-foundation ---
-  // --- eforge:region plan-02-runtime-and-integration ---
   profileRouterTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for profile router handlers (defaults to eventHookTimeoutMs)'),
-  // --- eforge:endregion plan-02-runtime-and-integration ---
-  // --- eforge:region plan-01-validation-provider-runtime ---
   validationProviderTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for validation provider handlers and commands (defaults to eventHookTimeoutMs)'),
-  // --- eforge:endregion plan-01-validation-provider-runtime ---
 }).describe('Native eforge extension configuration');
-// --- eforge:endregion plan-01-extension-runtime-foundation ---
 
 const SETTING_SOURCES = ['user', 'project', 'local'] as const;
 
@@ -230,11 +216,9 @@ export const piConfigSchema = z.object({
   provider: z.string().optional().describe('Pi provider name (required when used in a pi tier)'),
   apiKey: z.string().optional().describe('API key for the Pi provider'),
   thinkingLevel: piThinkingLevelSchema.optional().describe('Thinking level for Pi agents'),
-  // --- eforge:region plan-01-pi-headless-isolation ---
   resources: z.enum(['isolated', 'ambient']).optional().describe(
     "Whether ambient Pi resources (project/user/global extensions, skills, prompts, themes) are loaded into eforge agent sessions. Default 'isolated' suppresses all ambient resources; 'ambient' opts in to loading them (use with care — project-local Pi extensions must guard TUI state access for headless SDK contexts).",
   ),
-  // --- eforge:endregion plan-01-pi-headless-isolation ---
   extensions: z.object({
     autoDiscover: z.boolean().optional().describe('Automatically discover Pi extensions'),
     include: z.array(z.string()).optional().describe('Extension names to include'),
@@ -322,7 +306,6 @@ const roleOverrideSchema = z.object({
   shards: z.array(localShardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
 });
 
-// --- eforge:region plan-01-stack-contracts-config-state-events ---
 /** Zod schema for the stacking subsystem config. */
 const stackingConfigSchema = z.object({
   enabled: z.boolean().optional().describe(
@@ -336,13 +319,11 @@ const stackingConfigSchema = z.object({
       'Path or name of the git-spice executable. Defaults to "git-spice" on PATH. Set this if git-spice is installed to a non-standard location or you use a wrapper script.',
     ),
   }).optional().describe('git-spice provider settings.'),
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   sync: z.object({
     afterBuild: z.boolean().optional().describe(
       'When true and stacking is enabled, the daemon automatically triggers a stack sync after each successful build session completes. The sync runs as a daemon-owned operation with full active-build awareness. Default: false.',
     ),
   }).optional().describe('Stack sync scheduling settings.'),
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }).describe(
   'Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology.',
 );
@@ -367,19 +348,15 @@ const landingConfigSchema = z.object({
   action: z.enum(['pr', 'merge', 'leave']).optional().describe(
     'Landing action after a successful build. "pr" opens a GitHub pull request from the artifact branch targeting the resolved base branch (current base branch for non-stacked builds, parent artifact branch for stacked builds). "merge" merges the artifact branch into the base branch directly. "leave" commits to the artifact branch and exits without merging or opening a PR. Default: "merge".',
   ),
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   pr: z.object({
     autoMerge: z.enum(['ask', 'always', 'never']).optional().describe(
       'GitHub PR auto-merge policy. "always": enable auto-merge on every PR unless the per-run landingAutoMerge flag is explicitly false. "ask": enable auto-merge only when the per-run landingAutoMerge flag is explicitly true. "never": never enable auto-merge and emit a skipped event. Default: "ask".',
     ),
   }).optional(),
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }).describe(
   'Publication action taken after all plans complete and validation passes.',
 );
-// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
-// --- eforge:region plan-02-final-validation-gates ---
 /**
  * Explicit validation waiver config. Allows specific validation requirements to be
  * waived for builds that cannot satisfy standard requirements. Every waiver must
@@ -398,13 +375,11 @@ const validationWaiverConfigSchema = z.object({
   emptyPrdDiffReason: z.string().optional().describe(
     'Required human-readable reason when allowEmptyPrdDiff is true.',
   ),
-  // --- eforge:region plan-01-acceptance-evidence-model ---
   allowNoAcceptanceCriteria: z.boolean().optional().describe('Allow builds with no extractable acceptance criteria to pass instead of failing. Requires noAcceptanceCriteriaReason.'),
   noAcceptanceCriteriaReason: z.string().optional().describe('Required human-readable reason when allowNoAcceptanceCriteria is true.'),
   acceptanceConflictPolicy: z.enum(['fail', 'manual', 'auto-waive-narrow']).optional().describe('Handle validator-reported acceptance criteria conflicts. Default: "manual".'),
   allowNoCommittedChanges: z.boolean().optional().describe('Allow builds that produce no committed changes to pass instead of failing. Requires noCommittedChangesReason.'),
   noCommittedChangesReason: z.string().optional().describe('Required human-readable reason when allowNoCommittedChanges is true.'),
-  // --- eforge:endregion plan-01-acceptance-evidence-model ---
 }).superRefine((data, ctx) => {
   if (data.allowNoCommands && !data.noCommandsReason?.trim()) {
     ctx.addIssue({
@@ -420,7 +395,6 @@ const validationWaiverConfigSchema = z.object({
       path: ['emptyPrdDiffReason'],
     });
   }
-  // --- eforge:region plan-01-acceptance-evidence-model ---
   if (data.allowNoAcceptanceCriteria && !data.noAcceptanceCriteriaReason?.trim()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -435,9 +409,7 @@ const validationWaiverConfigSchema = z.object({
       path: ['noCommittedChangesReason'],
     });
   }
-  // --- eforge:endregion plan-01-acceptance-evidence-model ---
 }).describe('Explicit validation waivers. Each waiver boolean requires a non-empty reason string.');
-// --- eforge:endregion plan-02-final-validation-gates ---
 
 /** Base object schema without refinements — .partial() is derived from this. */
 const eforgeConfigBaseSchema = z.object({
@@ -464,32 +436,22 @@ const eforgeConfigBaseSchema = z.object({
     postMergeCommandTimeoutMs: z.number().int().positive().optional(),
     maxValidationRetries: z.number().int().nonnegative().optional(),
     cleanupPlanFiles: z.boolean().optional(),
-    // --- eforge:region plan-01-engine-config-and-landing ---
     onSuccess: z.never({ error: LEGACY_BUILD_ON_SUCCESS_MIGRATION_MESSAGE }).optional(),
-    // --- eforge:region plan-01-config-and-trunk-resolution ---
     trunkBranch: z.string().optional(),
     allowLocalMergeToTrunk: z.boolean().optional(),
-    // --- eforge:endregion plan-01-config-and-trunk-resolution ---
-    // --- eforge:endregion plan-01-engine-config-and-landing ---
-    // --- eforge:region plan-02-final-validation-gates ---
     validation: validationWaiverConfigSchema.optional(),
-    // --- eforge:endregion plan-02-final-validation-gates ---
-    // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
     trunkSync: z.object({
       enabled: z.boolean().optional().describe('Enable pre-compile trunk freshness gate. When true (default), fetches remote trunk before compile and uses the fetched SHA as the compile base when remote is ahead. Set false to disable for offline or local-only workflows.'),
       remote: z.string().optional().describe('Git remote to fetch the trunk branch from. Default: "origin".'),
       strategy: z.literal('fetchedRemoteRef').optional().describe('Base selection strategy. Only "fetchedRemoteRef" is supported: use the exact fetched commit SHA so the compile base is reproducible if the remote branch moves during the run. Default: "fetchedRemoteRef".'),
       onDiverged: z.enum(['warn', 'fail', 'use-remote']).optional().describe('Policy when local and remote trunk have diverged (neither is an ancestor of the other). "warn": emit a diagnostic and fall back to local trunk (default). "fail": fail the build before compile. "use-remote": use the fetched remote SHA with a diagnostic.'),
     }).optional().describe('Pre-compile trunk freshness gate. Fetches remote trunk before compile and selects a reproducible base SHA when the remote is ahead of the local trunk.'),
-    // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
   }).optional(),
   plan: z.object({
     outputDir: z.string().optional(),
   }).optional(),
   plugins: pluginConfigSchema.optional(),
-  // --- eforge:region plan-01-extension-runtime-foundation ---
   extensions: extensionConfigSchema.optional(),
-  // --- eforge:endregion plan-01-extension-runtime-foundation ---
   prdQueue: z.object({
     dir: z.string().optional(),
     autoBuild: z.boolean().optional(),
@@ -503,10 +465,8 @@ const eforgeConfigBaseSchema = z.object({
   }).optional(),
   hooks: z.array(hookConfigSchema).optional(),
   tools: toolsConfigSchema.optional(),
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   stacking: stackingConfigSchema.optional(),
   landing: landingConfigSchema.optional(),
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 });
 
 /** Exported schema. Cross-field validation is performed in tierConfigSchema. */
@@ -521,54 +481,36 @@ export type ToolPresetConfig = z.output<typeof toolPresetConfigSchema>;
 // and re-exported at the top of this file.
 export type HookConfig = z.output<typeof hookConfigSchema>;
 export type PluginConfig = z.output<typeof pluginConfigSchema>;
-// --- eforge:region plan-01-extension-runtime-foundation ---
 export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {
   enabled: boolean;
   trustProjectExtensions: boolean;
-  // --- eforge:region plan-01-native-event-runtime-foundation ---
   eventHookTimeoutMs: number;
-  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
-  // --- eforge:region plan-01-agent-context-runtime ---
   agentContextHookTimeoutMs: number;
-  // --- eforge:endregion plan-01-agent-context-runtime ---
-  // --- eforge:region plan-01-policy-gate-foundation ---
   policyGateTimeoutMs: number;
   policyGateFailurePolicy: 'fail-open' | 'fail-closed';
-  // --- eforge:endregion plan-01-policy-gate-foundation ---
-  // --- eforge:region plan-02-runtime-and-integration ---
   profileRouterTimeoutMs: number;
-  // --- eforge:endregion plan-02-runtime-and-integration ---
-  // --- eforge:region plan-01-validation-provider-runtime ---
   validationProviderTimeoutMs: number;
-  // --- eforge:endregion plan-01-validation-provider-runtime ---
 };
-// --- eforge:endregion plan-01-extension-runtime-foundation ---
 export type TierConfig = z.output<typeof tierConfigSchema>;
 
-// --- eforge:region plan-01-stack-contracts-config-state-events ---
-// --- eforge:region plan-02-final-validation-gates ---
 /** Resolved validation waiver config. All fields have explicit defaults (false/undefined). */
 export interface ValidationConfig {
   allowNoCommands: boolean;
   noCommandsReason?: string;
   allowEmptyPrdDiff: boolean;
   emptyPrdDiffReason?: string;
-  // --- eforge:region plan-01-acceptance-evidence-model ---
   allowNoAcceptanceCriteria: boolean;
   noAcceptanceCriteriaReason?: string;
   acceptanceConflictPolicy: 'fail' | 'manual' | 'auto-waive-narrow';
   allowNoCommittedChanges: boolean;
   noCommittedChangesReason?: string;
-  // --- eforge:endregion plan-01-acceptance-evidence-model ---
 }
-// --- eforge:endregion plan-02-final-validation-gates ---
 
 /** Resolved stacking subsystem config. */
 export interface StackingConfig {
   enabled: boolean;
   provider: 'git-spice';
   gitSpice: { command?: string };
-  // --- eforge:region plan-01-core-daemon-stack-sync ---
   /** Stack sync scheduling settings. */
   sync: {
     /**
@@ -578,21 +520,17 @@ export interface StackingConfig {
      */
     afterBuild: boolean;
   };
-  // --- eforge:endregion plan-01-core-daemon-stack-sync ---
 }
 
 /** Resolved landing publication config. */
 export interface LandingConfig {
   action: 'pr' | 'merge' | 'leave';
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   pr: {
     /** GitHub PR auto-merge policy. Default: 'ask'. */
     autoMerge: 'ask' | 'always' | 'never';
   };
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 }
 
-// --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
 /** Resolved pre-compile trunk sync gate config. */
 export interface TrunkSyncConfig {
   enabled: boolean;
@@ -600,9 +538,7 @@ export interface TrunkSyncConfig {
   strategy: 'fetchedRemoteRef';
   onDiverged: 'warn' | 'fail' | 'use-remote';
 }
-// --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 
-// --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
 /**
  * Resolved agent config for a specific role, combining tier recipe + role/plan
@@ -667,7 +603,6 @@ export interface PiConfig {
   /** Optional provider override. */
   provider?: string;
   thinkingLevel: 'off' | 'low' | 'medium' | 'high' | 'xhigh';
-  // --- eforge:region plan-01-pi-headless-isolation ---
   /**
    * Whether ambient Pi resources (project/user/global extensions, skills, prompts, themes)
    * are loaded into eforge agent sessions. Required (defaulted to 'isolated' by buildPiConfig).
@@ -675,7 +610,6 @@ export interface PiConfig {
    * 'ambient' opts in — project-local Pi extensions must guard TUI state for headless contexts.
    */
   resources: 'isolated' | 'ambient';
-  // --- eforge:endregion plan-01-pi-headless-isolation ---
   extensions: { autoDiscover: boolean; include?: string[]; exclude?: string[]; paths?: string[] };
   compaction: { enabled: boolean; threshold: number };
   retry: { maxRetries: number; backoffMs: number };
@@ -700,30 +634,20 @@ export interface EforgeConfig {
     tiers: Partial<Record<AgentTier, TierConfig>>;
     roles?: Partial<Record<AgentRole, z.output<typeof roleOverrideSchema>>>;
   };
-  // --- eforge:region plan-01-engine-config-and-landing ---
   build: {
     worktreeDir?: string;
     postMergeCommands?: string[];
     postMergeCommandTimeoutMs?: number;
     maxValidationRetries: number;
     cleanupPlanFiles: boolean;
-    // --- eforge:region plan-01-config-and-trunk-resolution ---
     trunkBranch?: string;
     allowLocalMergeToTrunk: boolean;
-    // --- eforge:endregion plan-01-config-and-trunk-resolution ---
-    // --- eforge:region plan-02-final-validation-gates ---
     validation: ValidationConfig;
-    // --- eforge:endregion plan-02-final-validation-gates ---
-    // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
     trunkSync: TrunkSyncConfig;
-    // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
   };
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: { outputDir: string };
   plugins: PluginConfig;
-  // --- eforge:region plan-01-extension-runtime-foundation ---
   extensions: ExtensionConfig;
-  // --- eforge:endregion plan-01-extension-runtime-foundation ---
   prdQueue: { dir: string; autoBuild: boolean; watchPollIntervalMs: number };
   daemon: { idleShutdownMs: number };
   monitor: { retentionCount: number };
@@ -731,10 +655,8 @@ export interface EforgeConfig {
   tools: {
     toolbelts: Record<string, { description?: string; mcpServers: string[] }>;
   };
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   stacking: StackingConfig;
   landing: LandingConfig;
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 }
 
 /** Deep-partial version of EforgeConfig used for parsing and merging — derived from the zod schema. */
@@ -904,76 +826,50 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     bare: false,
     tiers: DEFAULT_TIER_RECIPES,
   }),
-  // --- eforge:region plan-01-engine-config-and-landing ---
   build: Object.freeze({
     worktreeDir: undefined,
     postMergeCommands: undefined,
     postMergeCommandTimeoutMs: 300_000,
     maxValidationRetries: 2,
     cleanupPlanFiles: true,
-    // --- eforge:region plan-01-config-and-trunk-resolution ---
     trunkBranch: undefined as string | undefined,
     allowLocalMergeToTrunk: false,
-    // --- eforge:endregion plan-01-config-and-trunk-resolution ---
-    // --- eforge:region plan-02-final-validation-gates ---
     validation: Object.freeze({
       allowNoCommands: false,
       allowEmptyPrdDiff: false,
-      // --- eforge:region plan-01-acceptance-evidence-model ---
       allowNoAcceptanceCriteria: false,
       acceptanceConflictPolicy: 'manual',
       allowNoCommittedChanges: false,
-      // --- eforge:endregion plan-01-acceptance-evidence-model ---
     } as ValidationConfig),
-    // --- eforge:endregion plan-02-final-validation-gates ---
-    // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
     trunkSync: Object.freeze({
       enabled: true,
       remote: 'origin',
       strategy: 'fetchedRemoteRef' as const,
       onDiverged: 'warn' as const,
     } as TrunkSyncConfig),
-    // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
   }),
-  // --- eforge:endregion plan-01-engine-config-and-landing ---
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
   plugins: Object.freeze({ enabled: true }),
-  // --- eforge:region plan-01-extension-runtime-foundation ---
   extensions: Object.freeze({
     enabled: true,
     trustProjectExtensions: false,
-    // --- eforge:region plan-01-native-event-runtime-foundation ---
     eventHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
-    // --- eforge:endregion plan-01-native-event-runtime-foundation ---
-    // --- eforge:region plan-01-agent-context-runtime ---
     agentContextHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
-    // --- eforge:endregion plan-01-agent-context-runtime ---
-    // --- eforge:region plan-01-policy-gate-foundation ---
     policyGateTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
     policyGateFailurePolicy: 'fail-closed' as const,
-    // --- eforge:endregion plan-01-policy-gate-foundation ---
-    // --- eforge:region plan-02-runtime-and-integration ---
     profileRouterTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
-    // --- eforge:endregion plan-02-runtime-and-integration ---
-    // --- eforge:region plan-01-validation-provider-runtime ---
     validationProviderTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
-    // --- eforge:endregion plan-01-validation-provider-runtime ---
   }),
-  // --- eforge:endregion plan-01-extension-runtime-foundation ---
   prdQueue: Object.freeze({ dir: '.eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   monitor: Object.freeze({ retentionCount: 20 }),
   hooks: Object.freeze([]),
   tools: Object.freeze({ toolbelts: {} }),
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   stacking: Object.freeze({ enabled: false, provider: 'git-spice' as const, gitSpice: Object.freeze({}) as { command?: string }, sync: Object.freeze({ afterBuild: false }) }),
   landing: Object.freeze({
     action: 'merge' as const,
-    // --- eforge:region plan-01-core-engine-auto-merge ---
     pr: Object.freeze({ autoMerge: 'ask' as const }),
-    // --- eforge:endregion plan-01-core-engine-auto-merge ---
   }),
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 });
 
 /**
@@ -1061,35 +957,25 @@ export function resolveConfig(
       postMergeCommandTimeoutMs: fileConfig.build?.postMergeCommandTimeoutMs ?? DEFAULT_CONFIG.build.postMergeCommandTimeoutMs,
       maxValidationRetries: fileConfig.build?.maxValidationRetries ?? DEFAULT_CONFIG.build.maxValidationRetries,
       cleanupPlanFiles: fileConfig.build?.cleanupPlanFiles ?? DEFAULT_CONFIG.build.cleanupPlanFiles,
-      // --- eforge:region plan-01-engine-config-and-landing ---
-      // --- eforge:region plan-01-config-and-trunk-resolution ---
       trunkBranch: fileConfig.build?.trunkBranch,
       allowLocalMergeToTrunk: fileConfig.build?.allowLocalMergeToTrunk ?? DEFAULT_CONFIG.build.allowLocalMergeToTrunk,
-      // --- eforge:endregion plan-01-config-and-trunk-resolution ---
-      // --- eforge:endregion plan-01-engine-config-and-landing ---
-      // --- eforge:region plan-02-final-validation-gates ---
       validation: Object.freeze({
         allowNoCommands: fileConfig.build?.validation?.allowNoCommands ?? false,
         noCommandsReason: fileConfig.build?.validation?.noCommandsReason,
         allowEmptyPrdDiff: fileConfig.build?.validation?.allowEmptyPrdDiff ?? false,
         emptyPrdDiffReason: fileConfig.build?.validation?.emptyPrdDiffReason,
-        // --- eforge:region plan-01-acceptance-evidence-model ---
         allowNoAcceptanceCriteria: fileConfig.build?.validation?.allowNoAcceptanceCriteria ?? false,
         noAcceptanceCriteriaReason: fileConfig.build?.validation?.noAcceptanceCriteriaReason,
         acceptanceConflictPolicy: fileConfig.build?.validation?.acceptanceConflictPolicy ?? DEFAULT_CONFIG.build.validation.acceptanceConflictPolicy,
         allowNoCommittedChanges: fileConfig.build?.validation?.allowNoCommittedChanges ?? false,
         noCommittedChangesReason: fileConfig.build?.validation?.noCommittedChangesReason,
-        // --- eforge:endregion plan-01-acceptance-evidence-model ---
       } as ValidationConfig),
-      // --- eforge:endregion plan-02-final-validation-gates ---
-      // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
       trunkSync: Object.freeze({
         enabled: fileConfig.build?.trunkSync?.enabled ?? DEFAULT_CONFIG.build.trunkSync.enabled,
         remote: fileConfig.build?.trunkSync?.remote ?? DEFAULT_CONFIG.build.trunkSync.remote,
         strategy: (fileConfig.build?.trunkSync?.strategy ?? DEFAULT_CONFIG.build.trunkSync.strategy) as 'fetchedRemoteRef',
         onDiverged: (fileConfig.build?.trunkSync?.onDiverged ?? DEFAULT_CONFIG.build.trunkSync.onDiverged) as 'warn' | 'fail' | 'use-remote',
       } as TrunkSyncConfig),
-      // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
     }),
     plan: Object.freeze({
       outputDir: fileConfig.plan?.outputDir ?? DEFAULT_CONFIG.plan.outputDir,
@@ -1100,31 +986,19 @@ export function resolveConfig(
       exclude: fileConfig.plugins?.exclude,
       paths: fileConfig.plugins?.paths,
     }),
-    // --- eforge:region plan-01-extension-runtime-foundation ---
     extensions: Object.freeze({
       enabled: fileConfig.extensions?.enabled ?? DEFAULT_CONFIG.extensions.enabled,
       trustProjectExtensions: fileConfig.extensions?.trustProjectExtensions ?? DEFAULT_CONFIG.extensions.trustProjectExtensions,
-      // --- eforge:region plan-01-native-event-runtime-foundation ---
       eventHookTimeoutMs: fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.eventHookTimeoutMs,
-      // --- eforge:endregion plan-01-native-event-runtime-foundation ---
-      // --- eforge:region plan-01-agent-context-runtime ---
       agentContextHookTimeoutMs: fileConfig.extensions?.agentContextHookTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.agentContextHookTimeoutMs,
-      // --- eforge:endregion plan-01-agent-context-runtime ---
-      // --- eforge:region plan-01-policy-gate-foundation ---
       policyGateTimeoutMs: fileConfig.extensions?.policyGateTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.policyGateTimeoutMs,
       policyGateFailurePolicy: fileConfig.extensions?.policyGateFailurePolicy ?? DEFAULT_CONFIG.extensions.policyGateFailurePolicy,
-      // --- eforge:endregion plan-01-policy-gate-foundation ---
-      // --- eforge:region plan-02-runtime-and-integration ---
       profileRouterTimeoutMs: fileConfig.extensions?.profileRouterTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.profileRouterTimeoutMs,
-      // --- eforge:endregion plan-02-runtime-and-integration ---
-      // --- eforge:region plan-01-validation-provider-runtime ---
       validationProviderTimeoutMs: fileConfig.extensions?.validationProviderTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.validationProviderTimeoutMs,
-      // --- eforge:endregion plan-01-validation-provider-runtime ---
       include: fileConfig.extensions?.include,
       exclude: fileConfig.extensions?.exclude,
       paths: fileConfig.extensions?.paths,
     }),
-    // --- eforge:endregion plan-01-extension-runtime-foundation ---
     prdQueue: Object.freeze({
       dir: fileConfig.prdQueue?.dir ?? DEFAULT_CONFIG.prdQueue.dir,
       autoBuild: fileConfig.prdQueue?.autoBuild ?? DEFAULT_CONFIG.prdQueue.autoBuild,
@@ -1140,32 +1014,25 @@ export function resolveConfig(
     tools: Object.freeze({
       toolbelts: fileConfig.tools?.toolbelts ?? DEFAULT_CONFIG.tools.toolbelts,
     }),
-    // --- eforge:region plan-01-stack-contracts-config-state-events ---
     stacking: Object.freeze({
       enabled: fileConfig.stacking?.enabled ?? DEFAULT_CONFIG.stacking.enabled,
       provider: (fileConfig.stacking?.provider ?? DEFAULT_CONFIG.stacking.provider) as 'git-spice',
       gitSpice: Object.freeze({
         command: fileConfig.stacking?.gitSpice?.command,
       }),
-      // --- eforge:region plan-01-core-daemon-stack-sync ---
       sync: Object.freeze({
         afterBuild: fileConfig.stacking?.sync?.afterBuild ?? DEFAULT_CONFIG.stacking.sync.afterBuild,
       }),
-      // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     }),
     landing: Object.freeze({
       action: landingAction,
-      // --- eforge:region plan-01-core-engine-auto-merge ---
       pr: Object.freeze({
         autoMerge: fileConfig.landing?.pr?.autoMerge ?? DEFAULT_CONFIG.landing.pr.autoMerge,
       }),
-      // --- eforge:endregion plan-01-core-engine-auto-merge ---
     }),
-    // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
   });
 }
 
-// --- eforge:region plan-01-core-engine-auto-merge ---
 /**
  * Resolve whether GitHub PR auto-merge should be enabled for this landing.
  *
@@ -1186,7 +1053,6 @@ export function resolvePrAutoMergeIntent(
   // 'ask': only enable when explicitly requested
   return requested === true;
 }
-// --- eforge:endregion plan-01-core-engine-auto-merge ---
 
 /**
  * Error thrown when config.yaml contains a legacy field that must be migrated.
@@ -1397,18 +1263,14 @@ export function mergePartialConfigs(
     const mergedValidation = (global.build?.validation || project.build?.validation)
       ? { ...global.build?.validation, ...project.build?.validation }
       : undefined;
-    // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
     const mergedTrunkSync = (global.build?.trunkSync || project.build?.trunkSync)
       ? { ...global.build?.trunkSync, ...project.build?.trunkSync }
       : undefined;
-    // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
     result.build = {
       ...global.build,
       ...project.build,
       ...(mergedValidation !== undefined ? { validation: mergedValidation } : {}),
-      // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
       ...(mergedTrunkSync !== undefined ? { trunkSync: mergedTrunkSync } : {}),
-      // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
     };
   }
   if (global.plan || project.plan) {
@@ -1417,11 +1279,9 @@ export function mergePartialConfigs(
   if (global.plugins || project.plugins) {
     result.plugins = { ...global.plugins, ...project.plugins };
   }
-  // --- eforge:region plan-01-extension-runtime-foundation ---
   if (global.extensions || project.extensions) {
     result.extensions = { ...global.extensions, ...project.extensions };
   }
-  // --- eforge:endregion plan-01-extension-runtime-foundation ---
   if (global.prdQueue || project.prdQueue) {
     result.prdQueue = { ...global.prdQueue, ...project.prdQueue };
   }
@@ -1446,29 +1306,23 @@ export function mergePartialConfigs(
     };
   }
 
-  // --- eforge:region plan-01-stack-contracts-config-state-events ---
   if (global.stacking || project.stacking) {
     const mergedGitSpice = (global.stacking?.gitSpice || project.stacking?.gitSpice)
       ? { ...global.stacking?.gitSpice, ...project.stacking?.gitSpice }
       : undefined;
-    // --- eforge:region plan-01-core-daemon-stack-sync ---
     const mergedSync = (global.stacking?.sync || project.stacking?.sync)
       ? { ...global.stacking?.sync, ...project.stacking?.sync }
       : undefined;
-    // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     result.stacking = {
       ...global.stacking,
       ...project.stacking,
       ...(mergedGitSpice !== undefined ? { gitSpice: mergedGitSpice } : {}),
-      // --- eforge:region plan-01-core-daemon-stack-sync ---
       ...(mergedSync !== undefined ? { sync: mergedSync } : {}),
-      // --- eforge:endregion plan-01-core-daemon-stack-sync ---
     };
   }
   if (global.landing || project.landing) {
     result.landing = { ...global.landing, ...project.landing };
   }
-  // --- eforge:endregion plan-01-stack-contracts-config-state-events ---
 
   return result;
 }

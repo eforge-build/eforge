@@ -192,7 +192,6 @@ describe('loadConfig — build.onSuccess deprecation warning', () => {
     expect(hasWarning).toBe(false);
   });
 
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   it('resolves landing.pr.autoMerge from config file', async () => {
     await writeFile(
       join(cwd, 'eforge', 'config.yaml'),
@@ -223,5 +222,4 @@ describe('loadConfig — build.onSuccess deprecation warning', () => {
     expect(config.landing.action).toBe('leave');
     expect(config.landing.pr.autoMerge).toBe('never');
   });
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
 });

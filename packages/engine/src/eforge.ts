@@ -31,9 +31,7 @@ import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual } from './recovery/apply.js';
 import { recoveryVerdictSchema } from './schemas.js';
-// --- eforge:region plan-02-deterministic-recovery-verdicts ---
 import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/recommendation.js';
-// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { emitBuildDecisionForPlan } from './decisions.js';
@@ -55,9 +53,7 @@ import { runPrdValidator } from './agents/prd-validator.js';
 import { buildPrdValidatorDiff } from './prd-validator-diff.js';
 import { runGapCloser } from './agents/gap-closer.js';
 import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser } from './orchestrator.js';
-// --- eforge:region plan-01-terminal-failure-contract ---
 import { createBuildTerminalFailureTracker } from './terminal-failure.js';
-// --- eforge:endregion plan-01-terminal-failure-contract ---
 import type { MergeResolver } from './worktree-ops.js';
 import { computeWorktreeBase, createMergeWorktree } from './worktree-ops.js';
 import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
@@ -69,40 +65,23 @@ import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { withRunId } from './session.js';
 import { applyShardedPlanGuard } from './sharded-plan-guard.js';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
-// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { resolveStackBaseContext, type StackBaseContext } from './stacking/base-resolver.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import type { ArtifactRegistry } from './artifacts/registry.js';
-// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-// --- eforge:region plan-01-runtime-artifact-diagnostics ---
 import { loadCompletionRegistry, lookupCompletion, upsertCompletion } from './artifacts/completions.js';
 import type { CompletionRegistry } from './artifacts/completions.js';
-// --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
-// --- eforge:region plan-02-stack-provider-runtime ---
 import { createProvider } from './stacking/provider.js';
 import type { StackProviderAdapter } from './stacking/provider.js';
-// --- eforge:endregion plan-02-stack-provider-runtime ---
-// --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
 import { prepareTrunkSyncBase } from './trunk-sync.js';
 import { resolveTrunkBranch } from './branch-policy.js';
-// --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
-// --- eforge:region plan-02-runtime-and-integration ---
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
-// --- eforge:endregion plan-02-runtime-and-integration ---
-// --- eforge:region plan-02-engine-acceptance-gates ---
 import { extractExpectedAcceptanceCriteria, type ExpectedAcceptanceCriterion } from './validation/acceptance-criteria.js';
-// --- eforge:endregion plan-02-engine-acceptance-gates ---
-// --- eforge:region plan-01-complete-ac-quality-gate ---
 import { analyzeAcceptanceCriteriaInBody, formatAcDiagnostics } from './validation/acceptance-criteria.js';
-// --- eforge:endregion plan-01-complete-ac-quality-gate ---
-// --- eforge:region plan-01-recovery-and-acceptance-reporting ---
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
-// --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 
 const exec = promisify(execFile);
 
-// --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
 /**
  * Collect the events produced by a `TrunkSyncResult` and the failure summary (if any).
  *
@@ -133,7 +112,6 @@ function collectTrunkSyncEvents(
   }
   return { events };
 }
-// --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 
 export interface EforgeEngineOptions {
   /** Working directory (defaults to process.cwd()) */
@@ -154,14 +132,12 @@ export interface EforgeEngineOptions {
   onApproval?: (action: string, details: string) => Promise<boolean>;
   /** Override the active profile for this engine instance. Takes precedence over marker-chain resolution. */
   profileOverride?: string;
-  // --- eforge:region plan-02-runtime-and-integration ---
   /**
    * Optional usage provider for profile routers.
    * The daemon supplies a MonitorDB-backed implementation; CLI/direct runs omit
    * this so routers receive `{ dataSource: 'none' }` for all profiles.
    */
   profileUsageProvider?: ProfileUsageProvider;
-  // --- eforge:endregion plan-02-runtime-and-integration ---
 }
 
 export interface QueueOptions {
@@ -188,25 +164,18 @@ export interface QueueOptions {
    * on fs.watch. The inject function is a no-op after the watcher is aborted.
    */
   onInjectEventRegister?: (inject: (event: SchedulerInputEvent) => void) => void;
-  // --- eforge:region plan-02-api-queue-and-ui ---
   /** Override the project-level landing action for this build. */
   landingAction?: 'pr' | 'merge' | 'leave';
-  // --- eforge:endregion plan-02-api-queue-and-ui ---
-  // --- eforge:region plan-01-core-engine-auto-merge ---
   /** Per-run PR auto-merge intent override. Resolved against `landing.pr.autoMerge` policy. */
   landingAutoMerge?: boolean;
-  // --- eforge:endregion plan-01-core-engine-auto-merge ---
-  // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
   /**
    * Callback invoked once the scheduler is ready, passing a control object
    * that lets the daemon pause/resume launches and check liveness.
    * Mirrors the `onInjectEventRegister` pattern.
    */
   onSchedulerControlRegister?: (control: SchedulerControl) => void;
-  // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 }
 
-// --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
 /**
  * Control handle for the QueueScheduler passed to the daemon via
  * `onSchedulerControlRegister`. Lets the daemon pause/resume new PRD launches
@@ -220,7 +189,6 @@ export type SchedulerControl = {
   /** Returns true while the watcher's AbortController is not yet aborted. */
   isAlive: () => boolean;
 };
-// --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
 export interface RecoveryOptions {
   /** Stream verbose agent output */
@@ -267,27 +235,19 @@ export class EforgeEngine {
   private readonly configWarnings: string[];
   /** Profile data collected during loadConfig — emitted as session:profile event. */
   private readonly configProfile: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null };
-  // --- eforge:region plan-01-extension-runtime-foundation ---
   private readonly extensionRegistry: NativeExtensionRegistry;
   private readonly extensionDiagnostics: NativeExtensionDiagnostic[];
-  // --- eforge:endregion plan-01-extension-runtime-foundation ---
-  // --- eforge:region plan-02-runtime-and-integration ---
   private readonly profileUsageProvider?: ProfileUsageProvider;
-  // --- eforge:endregion plan-02-runtime-and-integration ---
 
   private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }, extensionRegistry?: NativeExtensionRegistry, extensionDiagnostics: NativeExtensionDiagnostic[] = []) {
     this.config = config;
     this.configWarnings = configWarnings;
     this.configProfile = configProfile ?? { name: null, source: 'none', scope: null, config: null };
-    // --- eforge:region plan-01-extension-runtime-foundation ---
     this.extensionRegistry = extensionRegistry ?? {
       extensions: [], candidates: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], prdEnrichers: [], reviewerPerspectives: [], validationProviders: [], tools: [], diagnostics: [],
     };
     this.extensionDiagnostics = extensionDiagnostics;
-    // --- eforge:endregion plan-01-extension-runtime-foundation ---
-    // --- eforge:region plan-02-runtime-and-integration ---
     this.profileUsageProvider = options.profileUsageProvider;
-    // --- eforge:endregion plan-02-runtime-and-integration ---
     this.cwd = options.cwd ?? process.cwd();
     // agentRuntimes is always resolved to a registry by create() before reaching the constructor
     this.agentRuntimes = options.agentRuntimes as AgentRuntimeRegistry;
@@ -300,7 +260,6 @@ export class EforgeEngine {
     return this.config;
   }
 
-  // --- eforge:region plan-01-extension-runtime-foundation ---
   get nativeExtensionRegistry(): NativeExtensionRegistry {
     return this.extensionRegistry;
   }
@@ -321,7 +280,6 @@ export class EforgeEngine {
         })),
     ];
   }
-  // --- eforge:endregion plan-01-extension-runtime-foundation ---
 
   /**
    * Async factory — loads config, applies overrides, returns engine.
@@ -339,14 +297,12 @@ export class EforgeEngine {
     // Wire project-level prompt directory override
     setPromptDir(config.agents.promptDir, cwd);
 
-    // --- eforge:region plan-01-extension-runtime-foundation ---
     const extensionConfigDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
     const extensionLoadResult = await loadNativeExtensions({
       cwd,
       configDir: extensionConfigDir,
       config: config.extensions,
     });
-    // --- eforge:endregion plan-01-extension-runtime-foundation ---
 
     // Auto-load MCP servers from .mcp.json if not explicitly provided
     if (!options.mcpServers && !options.agentRuntimes) {
@@ -381,7 +337,6 @@ export class EforgeEngine {
         toolbelts: config.tools.toolbelts,
       });
     }
-    // --- eforge:region plan-01-agent-context-runtime ---
     // Wrap the registry with the agent-context hook decorator so every harness
     // returned by forRole/forRoleResolved executes registered agentRunHooks.
     agentRuntimes = withAgentContextHooks(agentRuntimes, {
@@ -390,7 +345,6 @@ export class EforgeEngine {
       cwd,
       timeoutMs: config.extensions.agentContextHookTimeoutMs,
     });
-    // --- eforge:endregion plan-01-agent-context-runtime ---
 
     options = { ...options, agentRuntimes };
 
@@ -447,11 +401,8 @@ export class EforgeEngine {
       }
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
-      // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
       const baseBranch = options.baseBranchOverride ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })).stdout.trim();
-      // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       const worktreeBase = computeWorktreeBase(cwd, planSetName);
-      // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
       // Use worktreeBaseRefOverride (fetched SHA) when provided; fall back to logical baseBranch.
       // This keeps the commit SHA separate from the landing/orchestration base branch name.
       const worktreeBaseRef = options.worktreeBaseRefOverride ?? baseBranch;
@@ -461,7 +412,6 @@ export class EforgeEngine {
       const diffBaseRef = options.worktreeBaseRefOverride !== undefined && options.worktreeBaseRefOverride !== baseBranch
         ? options.worktreeBaseRefOverride
         : undefined;
-      // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
       const mergeWorktreePath = await createMergeWorktree(cwd, worktreeBase, featureBranch, worktreeBaseRef);
 
       // Default pipeline — the planner stage's composePipeline() call will update ctx.pipeline
@@ -482,9 +432,7 @@ export class EforgeEngine {
         cwd: mergeWorktreePath,
         planCommitCwd: mergeWorktreePath,
         baseBranch,
-        // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
         ...(diffBaseRef !== undefined && { diffBaseRef }),
-        // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
         planSetName,
         sourceContent,
         verbose: options.verbose,
@@ -495,12 +443,8 @@ export class EforgeEngine {
         plans: [],
         expeditionModules: [],
         moduleBuildConfigs: new Map(),
-        // --- eforge:region plan-02-extension-perspective-runtime ---
         extensionReviewerPerspectives: this.extensionRegistry.reviewerPerspectives,
-        // --- eforge:endregion plan-02-extension-perspective-runtime ---
-        // --- eforge:region plan-01-validation-provider-runtime ---
         extensionValidationProviders: this.extensionRegistry.validationProviders,
-        // --- eforge:endregion plan-01-validation-provider-runtime ---
       };
 
       // Run compile pipeline
@@ -574,7 +518,6 @@ export class EforgeEngine {
       // Infer title from formatted content (or from name override)
       const title = options.name ?? inferTitle(formattedBody, !source.includes('\n') ? source : undefined);
 
-      // --- eforge:region plan-01-complete-ac-quality-gate ---
       // Run AC quality gate: reject before any queue write when formatted PRD
       // contains grouping labels, bare command fragments, or vague criteria.
       const acQualityResult = analyzeAcceptanceCriteriaInBody(formattedBody);
@@ -583,9 +526,7 @@ export class EforgeEngine {
         yield { timestamp: new Date().toISOString(), type: 'enqueue:failed', error: errorMsg };
         return;
       }
-      // --- eforge:endregion plan-01-complete-ac-quality-gate ---
 
-      // --- eforge:region plan-01-build-dependency-core ---
       // When an explicit afterQueueId is provided, classify the upstream and
       // skip dependency-detector output. Otherwise, run dependency detection.
       let dependsOn: string[] = [];
@@ -637,7 +578,6 @@ export class EforgeEngine {
           dependsOn = [];
         }
       }
-      // --- eforge:endregion plan-01-build-dependency-core ---
 
       // Write to queue (filesystem-only — queue state is runtime, not tracked in git)
       const enqueueResult = await enqueuePrd({
@@ -646,14 +586,10 @@ export class EforgeEngine {
         queueDir: this.config.prdQueue.dir,
         cwd,
         depends_on: dependsOn,
-        // --- eforge:region plan-01-build-dependency-core ---
         ...(intoWaiting && { intoWaiting: true }),
-        // --- eforge:endregion plan-01-build-dependency-core ---
         ...(options.profile !== undefined && { profile: options.profile }),
         ...(options.landingAction !== undefined && { landingAction: options.landingAction }),
-        // --- eforge:region plan-01-core-engine-auto-merge ---
         ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
-        // --- eforge:endregion plan-01-core-engine-auto-merge ---
         ...(options.stack_id !== undefined && { stack_id: options.stack_id }),
         ...(options.stack_parent !== undefined && { stack_parent: options.stack_parent }),
         ...(options.stack_provider !== undefined && { stack_provider: options.stack_provider }),
@@ -684,9 +620,7 @@ export class EforgeEngine {
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Build complete';
-    // --- eforge:region plan-01-terminal-failure-contract ---
     const terminalTracker = createBuildTerminalFailureTracker(runId);
-    // --- eforge:endregion plan-01-terminal-failure-contract ---
 
     // Emit profile info before config warnings
     yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
@@ -752,12 +686,8 @@ export class EforgeEngine {
       const agentRuntimes = this.agentRuntimes;
       const verbose = options.verbose;
       const abortController = options.abortController;
-      // --- eforge:region plan-02-extension-perspective-runtime ---
       const extensionReviewerPerspectives = this.extensionRegistry.reviewerPerspectives;
-      // --- eforge:endregion plan-02-extension-perspective-runtime ---
-      // --- eforge:region plan-01-validation-provider-runtime ---
       const extensionValidationProviders = this.extensionRegistry.validationProviders;
-      // --- eforge:endregion plan-01-validation-provider-runtime ---
 
       // Use the pipeline persisted in orchestration.yaml during compile
       const buildPipeline = orchConfig.pipeline;
@@ -815,12 +745,8 @@ export class EforgeEngine {
           reviewIssues: [],
           build: planBuild,
           review: planReview,
-          // --- eforge:region plan-02-extension-perspective-runtime ---
           extensionReviewerPerspectives: extensionReviewerPerspectives,
-          // --- eforge:endregion plan-02-extension-perspective-runtime ---
-          // --- eforge:region plan-01-validation-provider-runtime ---
           extensionValidationProviders: extensionValidationProviders,
-          // --- eforge:endregion plan-01-validation-provider-runtime ---
         };
 
         yield* runBuildPipeline(buildCtx);
@@ -893,10 +819,7 @@ export class EforgeEngine {
       };
 
       // Create PRD validator closure
-      // --- eforge:region plan-02-final-validation-gates ---
       const validationPolicy = this.config.build.validation;
-      // --- eforge:endregion plan-02-final-validation-gates ---
-      // --- eforge:region plan-02-engine-acceptance-gates ---
       // Pre-derive expected acceptance criteria before validator closure construction.
       // PRD builds extract from the PRD content; non-PRD builds aggregate from plan file bodies.
       let expectedAcceptanceCriteria: ExpectedAcceptanceCriterion[];
@@ -919,22 +842,17 @@ export class EforgeEngine {
         }
         expectedAcceptanceCriteria = allCriteria;
       }
-      // --- eforge:endregion plan-02-engine-acceptance-gates ---
-      // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
       const prdValidator: PrdValidator | undefined = options.prdFilePath ? async function* (validatorCwd, validatorContext) {
-      // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
         // Read PRD content
         let prdContent: string;
         try {
           prdContent = await readFile(resolve(cwd, options.prdFilePath!), 'utf-8');
         } catch {
-          // --- eforge:region plan-02-final-validation-gates ---
           // Fail closed: emit events so the orchestrator marks the build as failed.
           yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
           yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'PRD file unreadable', explanation: 'Failed to read the PRD file; cannot validate implementation.' }] } as EforgeEvent;
           yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'PRD file could not be read.' }], source: 'prd' } as EforgeEvent;
           return;
-          // --- eforge:endregion plan-02-final-validation-gates ---
         }
 
         // Build diff: per-file budgeted, no global truncation
@@ -942,32 +860,26 @@ export class EforgeEngine {
         try {
           built = await buildPrdValidatorDiff({ cwd: validatorCwd, baseRef: orchConfig.diffBaseRef ?? orchConfig.baseBranch });
         } catch {
-          // --- eforge:region plan-02-final-validation-gates ---
           // Fail closed: emit events so the orchestrator marks the build as failed.
           yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
           yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'Implementation diff unavailable', explanation: 'Failed to build the implementation diff; cannot validate PRD coverage.' }] } as EforgeEvent;
           yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Implementation diff could not be computed.' }], source: 'prd' } as EforgeEvent;
           return;
-          // --- eforge:endregion plan-02-final-validation-gates ---
         }
 
         if (!built.renderedText.trim()) {
-          // --- eforge:region plan-02-final-validation-gates ---
           if (validationPolicy?.allowEmptyPrdDiff && validationPolicy.emptyPrdDiffReason?.trim()) {
             yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
             yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
-            // --- eforge:region plan-02-engine-acceptance-gates ---
             // Use waivers field instead of a synthetic pass verdict — a waived empty diff cannot
             // certify acceptance criteria as met, so verdicts are unknown with an explicit waiver.
             yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: true, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No implementation diff to evaluate (waived).' }], waivers: [validationPolicy.emptyPrdDiffReason!], source: 'prd' } as EforgeEvent;
-            // --- eforge:endregion plan-02-engine-acceptance-gates ---
           } else {
             yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
             yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'Empty implementation diff', explanation: 'No changes were found in the implementation diff; cannot validate PRD coverage.' }] } as EforgeEvent;
             yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No implementation changes to evaluate.' }], source: 'prd' } as EforgeEvent;
           }
           return;
-          // --- eforge:endregion plan-02-final-validation-gates ---
         }
         const diff = built.renderedText;
 
@@ -994,12 +906,8 @@ export class EforgeEngine {
             abortController,
             phase: 'standalone',
             harness: agentRuntimes.forRole('prd-validator'),
-            // --- eforge:region plan-02-engine-acceptance-gates ---
             expectedAcceptanceCriteria,
-            // --- eforge:endregion plan-02-engine-acceptance-gates ---
-            // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
             validationCommandEvidence: validatorContext?.validationCommandEvidence,
-            // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
           })) {
             prdTracker.handleEvent(event);
             yield event;
@@ -1087,16 +995,12 @@ export class EforgeEngine {
       // Create and run orchestrator
       const signal = abortController?.signal;
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
-      // --- eforge:region plan-01-engine-config-and-landing ---
       const effectiveLandingAction = options.landingAction ?? this.config.landing.action;
-      // --- eforge:endregion plan-01-engine-config-and-landing ---
-      // --- eforge:region plan-01-core-engine-auto-merge ---
       if (options.landingAutoMerge === true && effectiveLandingAction !== 'pr') {
         status = 'failed';
         summary = `landingAutoMerge: true is only valid when the effective landing action is 'pr' (got '${effectiveLandingAction}')`;
         return;
       }
-      // --- eforge:endregion plan-01-core-engine-auto-merge ---
       const orchestrator = new Orchestrator({
         repoRoot: cwd,
         planRunner,
@@ -1114,32 +1018,18 @@ export class EforgeEngine {
         cleanupPlanSet: planSet,
         cleanupOutputDir: this.config.plan.outputDir,
         cleanupPrdFilePath,
-        // --- eforge:region plan-02-policy-gate-engine-integration ---
         extensionRegistry: this.extensionRegistry,
         policyGateTimeoutMs: this.config.extensions.policyGateTimeoutMs,
         policyGateFailurePolicy: this.config.extensions.policyGateFailurePolicy,
-        // --- eforge:endregion plan-02-policy-gate-engine-integration ---
-        // --- eforge:region plan-03-branch-aware-landing ---
         engineConfig: config,
-        // --- eforge:endregion plan-03-branch-aware-landing ---
-        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
         prdId: options.prdId,
         stackContext: options.stackContext,
         landingAction: effectiveLandingAction,
-        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-        // --- eforge:region plan-01-core-engine-auto-merge ---
         prAutoMergePolicy: this.config.landing.pr.autoMerge,
         ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
-        // --- eforge:endregion plan-01-core-engine-auto-merge ---
-        // --- eforge:region plan-02-stack-provider-runtime ---
         ...(options.stackProvider !== undefined && { stackProvider: options.stackProvider }),
-        // --- eforge:endregion plan-02-stack-provider-runtime ---
-        // --- eforge:region plan-02-final-validation-gates ---
         validationPolicy,
-        // --- eforge:endregion plan-02-final-validation-gates ---
-        // --- eforge:region plan-02-engine-acceptance-gates ---
         expectedAcceptanceCriteria,
-        // --- eforge:endregion plan-02-engine-acceptance-gates ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
@@ -1148,9 +1038,7 @@ export class EforgeEngine {
           yield mergeEvents.shift()!;
         }
         yield event;
-        // --- eforge:region plan-01-terminal-failure-contract ---
         terminalTracker.observe(event);
-        // --- eforge:endregion plan-01-terminal-failure-contract ---
         if (event.type === 'plan:build:failed') { status = 'failed'; summary = event.error.startsWith('Merge failed') ? `Merge failed for ${event.planId}` : `Build failed for ${event.planId}`; }
         if (event.type === 'validation:complete') { status = event.passed ? 'completed' : 'failed'; summary = event.passed ? 'Build complete' : 'Post-merge validation failed'; }
         if (event.type === 'prd_validation:complete') {
@@ -1159,19 +1047,14 @@ export class EforgeEngine {
             summary = `PRD validation failed: ${event.gaps.length} gap(s) found`;
           }
         }
-        // --- eforge:region plan-02-final-validation-gates ---
         if (event.type === 'acceptance_validation:complete') {
           const failCount = event.verdicts.filter((v) => v.verdict !== 'pass').length;
           const hasWaiver = (event.waivers ?? []).some((waiver) => waiver.trim().length > 0);
           if (!event.passed || (failCount > 0 && !hasWaiver)) {
             status = 'failed';
-            // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
             summary = formatAcceptanceFailureSummary(event.verdicts, event.acceptanceConflicts);
-            // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
           }
         }
-        // --- eforge:endregion plan-02-final-validation-gates ---
-        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
         if (event.type === 'daemon:error' && event.source === 'stack:artifact-recording') {
           status = 'failed';
           summary = event.message;
@@ -1180,7 +1063,6 @@ export class EforgeEngine {
           status = 'failed';
           summary = event.reason ? `Stack landing failed: ${event.reason}` : 'Stack landing failed';
         }
-        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
       }
 
       // Drain any remaining merge resolution events after orchestrator completes
@@ -1193,10 +1075,8 @@ export class EforgeEngine {
       summary = (err as Error).message;
     } finally {
       tracing?.setOutput({ status, summary });
-      // --- eforge:region plan-01-terminal-failure-contract ---
       const terminalEvt = terminalTracker.toEvent(status, summary);
       if (terminalEvt) yield terminalEvt;
-      // --- eforge:endregion plan-01-terminal-failure-contract ---
       yield {
         type: 'phase:end',
         runId,
@@ -1337,7 +1217,6 @@ export class EforgeEngine {
       let planSkipped = false;
       let skipReason = '';
       const planSetName = options.name ?? prd.id;
-      // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
       let stackContext: StackBaseContext | undefined;
       if (this.config.stacking.enabled) {
         try {
@@ -1350,8 +1229,6 @@ export class EforgeEngine {
           return;
         }
       }
-      // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-      // --- eforge:region plan-02-stack-provider-runtime ---
       // For stacked PRDs, instantiate the provider and gate on availability
       // before compile so the error surfaces early (before planning:start).
       let stackProvider: StackProviderAdapter | undefined;
@@ -1367,9 +1244,7 @@ export class EforgeEngine {
           return;
         }
       }
-      // --- eforge:endregion plan-02-stack-provider-runtime ---
 
-      // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
       // Compute the worktree base ref via trunk sync, applying the gate only to
       // root builds (stacked root or non-stacked on trunk). Child stacked PRDs
       // and non-trunk feature branches skip the helper unchanged.
@@ -1439,7 +1314,6 @@ export class EforgeEngine {
       }
       // Stacked child PRDs (stackContext.parentPrdId !== undefined): no override
       // here; the plan-02 region below passes stackContext.baseBranch unchanged.
-      // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
 
       for await (const event of withRunId(this.compile(prd.filePath, {
         name: planSetName,
@@ -1447,14 +1321,10 @@ export class EforgeEngine {
         verbose,
         cwd,
         abortController,
-        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
         ...(stackContext !== undefined && { baseBranchOverride: stackContext.baseBranch }),
-        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-        // --- eforge:region plan-01-pre-compile-trunk-sync-gate ---
         // Pass the fetched SHA as worktreeBaseRefOverride (for createMergeWorktree only),
         // never as baseBranchOverride, so orchestration/landing always gets the branch name.
         ...(compileWorktreeBaseRefOverride !== undefined && { worktreeBaseRefOverride: compileWorktreeBaseRefOverride }),
-        // --- eforge:endregion plan-01-pre-compile-trunk-sync-gate ---
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
@@ -1479,9 +1349,7 @@ export class EforgeEngine {
       // Build the plan — PRD cleanup flows through build()
       // Resolve landing precedence: explicit options.landingAction > PRD landing frontmatter.
       const resolvedLandingAction = options.landingAction ?? prd.frontmatter.landing;
-      // --- eforge:region plan-01-core-engine-auto-merge ---
       const resolvedLandingAutoMerge = options.landingAutoMerge ?? prd.frontmatter.landing_auto_merge;
-      // --- eforge:endregion plan-01-core-engine-auto-merge ---
       let buildFailed = false;
       for await (const event of withRunId(this.build(planSetName, {
         auto: options.auto,
@@ -1489,17 +1357,11 @@ export class EforgeEngine {
         cwd,
         abortController,
         prdFilePath: prd.filePath,
-        // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
         prdId: prd.id,
         ...(stackContext !== undefined && { stackContext }),
-        // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
-        // --- eforge:region plan-02-stack-provider-runtime ---
         ...(stackProvider !== undefined && { stackProvider }),
-        // --- eforge:endregion plan-02-stack-provider-runtime ---
         ...(resolvedLandingAction !== undefined && { landingAction: resolvedLandingAction }),
-        // --- eforge:region plan-01-core-engine-auto-merge ---
         ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
-        // --- eforge:endregion plan-01-core-engine-auto-merge ---
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
@@ -1545,9 +1407,7 @@ export class EforgeEngine {
     options: QueueOptions,
     prdSessionId: string,
     pushEvent: (event: EforgeEvent) => void,
-    // --- eforge:region plan-02-runtime-and-integration ---
     routedProfileOverride?: string,
-    // --- eforge:endregion plan-02-runtime-and-integration ---
   ): Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'> {
     const cwd = this.cwd;
     const agentRuntimes = this.agentRuntimes; // captured for inline recovery
@@ -1561,7 +1421,6 @@ export class EforgeEngine {
       // a routed override was provided as fallback), validate it before spawning
       // the worker. On miss, hard-fail the PRD.
       const preflightAndSpawn = async (): Promise<void> => {
-        // --- eforge:region plan-02-runtime-and-integration ---
         // Effective profile: frontmatter.profile (persisted) takes precedence,
         // then the in-memory routedProfileOverride (persist-failed fallback).
         const effectiveProfile = prd.frontmatter.profile ?? routedProfileOverride;
@@ -1594,30 +1453,25 @@ export class EforgeEngine {
             return;
           }
         }
-        // --- eforge:endregion plan-02-runtime-and-integration ---
 
         const args = ['queue', 'exec', prdId];
         if (options.auto) args.push('--auto');
         if (options.verbose) args.push('--verbose');
         args.push('--no-monitor');
         args.push('--session-id', prdSessionId);
-        // --- eforge:region plan-02-runtime-and-integration ---
         if (prd.frontmatter.profile) {
           args.push('--profile', prd.frontmatter.profile);
         } else if (routedProfileOverride) {
           args.push('--profile', routedProfileOverride);
         }
-        // --- eforge:endregion plan-02-runtime-and-integration ---
         const childLandingAction = options.landingAction ?? prd.frontmatter.landing;
         if (childLandingAction) {
           args.push('--landing-action', childLandingAction);
         }
-        // --- eforge:region plan-01-core-engine-auto-merge ---
         const childLandingAutoMerge = options.landingAutoMerge ?? prd.frontmatter.landing_auto_merge;
         if (childLandingAutoMerge !== undefined) {
           args.push('--landing-auto-merge', String(childLandingAutoMerge));
         }
-        // --- eforge:endregion plan-01-core-engine-auto-merge ---
         doSpawn(args);
       };
 
@@ -1738,17 +1592,13 @@ export class EforgeEngine {
             const recoveryModelTracker = new ModelTracker();
             const recoveryAbort = new AbortController();
             const recoveryTimer = setTimeout(() => recoveryAbort.abort(), 90_000);
-            // --- eforge:region plan-02-deterministic-recovery-verdicts ---
             const inlineDeterministicRec = determineRecoveryRecommendation(summary);
-            // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
             try {
               let verdictResult: RecoveryVerdict | null = null;
               const harness = agentRuntimes.forRole('recovery-analyst');
               const agentConfig = resolveAgentConfig('recovery-analyst', config);
-              // --- eforge:region plan-02-deterministic-recovery-verdicts ---
               let inlineAgentError: string | undefined;
               let inlineParseError: string | undefined;
-              // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 
               try {
                 for await (const event of runRecoveryAnalyst({
@@ -1764,22 +1614,17 @@ export class EforgeEngine {
                   if (event.type === 'recovery:complete') {
                     verdictResult = event.verdict;
                   }
-                  // --- eforge:region plan-02-deterministic-recovery-verdicts ---
                   if (event.type === 'recovery:error') {
                     inlineParseError = event.error;
                   }
-                  // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
                   if (event.type === 'agent:start' && 'model' in event && typeof event.model === 'string') {
                     recoveryModelTracker.record(event.model);
                   }
                 }
               } catch (agentErr) {
-                // --- eforge:region plan-02-deterministic-recovery-verdicts ---
                 inlineAgentError = agentErr instanceof Error ? agentErr.message : String(agentErr);
-                // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
               }
 
-              // --- eforge:region plan-02-deterministic-recovery-verdicts ---
               verdict = selectFinalVerdict({
                 deterministicRecommendation: inlineDeterministicRec,
                 analystVerdict: verdictResult,
@@ -1787,7 +1632,6 @@ export class EforgeEngine {
                 parseError: inlineParseError,
                 summary,
               });
-              // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
             } finally {
               clearTimeout(recoveryTimer);
             }
@@ -2122,7 +1966,6 @@ export class EforgeEngine {
         // Keep the queue open during discovery so pushed events are not dropped
         eventQueue.addProducer();
 
-        // --- eforge:region plan-01-runtime-artifact-diagnostics ---
         // Record terminal completion in the completion index before unblocking
         // waiting PRDs or propagating skips.
         try {
@@ -2150,9 +1993,7 @@ export class EforgeEngine {
         } catch {
           // Non-fatal: completion index recording failure must not block scheduling.
         }
-        // --- eforge:endregion plan-01-runtime-artifact-diagnostics ---
 
-        // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
         // Transition filesystem state for waiting PRDs before discovering new ones.
         // This ensures discoverNewPrds() finds any newly unblocked PRDs.
         if (completionStatus === 'completed') {
@@ -2174,7 +2015,6 @@ export class EforgeEngine {
             // Non-fatal
           }
         }
-        // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
         // Discover any new PRDs enqueued mid-cycle, then launch newly-ready PRDs
         await discoverNewPrds();
@@ -2238,13 +2078,11 @@ export class EforgeEngine {
     const bus = new EventEmitter();
     const eventQueue = new AsyncEventQueue<EforgeEvent>();
 
-    // --- eforge:region plan-02-runtime-and-integration ---
     // Resolve configDir needed by profile routers in the scheduler.
     const schedulerConfigDir = await (async () => {
       const { getConfigDir, getConventionalConfigDir } = await import('./config.js');
       return (await getConfigDir(cwd)) ?? getConventionalConfigDir(cwd);
     })();
-    // --- eforge:endregion plan-02-runtime-and-integration ---
 
     const scheduler = new QueueScheduler({
       bus,
@@ -2258,11 +2096,9 @@ export class EforgeEngine {
       spawnPrdChild: (prd, opts, sessionId, routedProfileOverride) => this.spawnPrdChild(prd, opts, sessionId, (event) => eventQueue.push(event), routedProfileOverride),
       options,
       initialPrds: orderedPrds,
-      // --- eforge:region plan-02-runtime-and-integration ---
       extensionRegistry: this.extensionRegistry,
       profileUsageProvider: this.profileUsageProvider,
       configDir: schedulerConfigDir,
-      // --- eforge:endregion plan-02-runtime-and-integration ---
     });
 
     // Wire the inject callback BEFORE yielding queue:start so callers that
@@ -2270,7 +2106,6 @@ export class EforgeEngine {
     // HTTP routes use this to wake the scheduler without relying on fs.watch.
     options.onInjectEventRegister?.((event) => bus.emit(event.type, event));
 
-    // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
     // Register the scheduler control handle so the daemon can pause/resume
     // new PRD launches without aborting the watcher generator.
     options.onSchedulerControlRegister?.({
@@ -2278,7 +2113,6 @@ export class EforgeEngine {
       resume: () => scheduler.resume(),
       isAlive: () => !abortController.signal.aborted,
     });
-    // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
     yield {
       timestamp: new Date().toISOString(),
@@ -2306,7 +2140,6 @@ export class EforgeEngine {
     // Initial scan + launch ready PRDs.
     await scheduler.start();
 
-    // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
     // Thin pump: emit scheduler-relevant events onto the bus BEFORE yielding
     // to the outer caller. This ensures QueueScheduler.onComplete() is queued
     // (as a microtask via the bus handler) before the consumer's synchronous
@@ -2320,7 +2153,6 @@ export class EforgeEngine {
       }
       yield event;
     }
-    // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
     // Finalize: count blocked PRDs as skipped, then emit the terminal event.
     scheduler.finalizeBlockedAsSkipped();
@@ -2437,9 +2269,7 @@ export class EforgeEngine {
       let parseError: string | undefined;
       let agentError: string | undefined;
 
-      // --- eforge:region plan-02-deterministic-recovery-verdicts ---
       const deterministicRec = determineRecoveryRecommendation(summary);
-      // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 
       try {
         for await (const event of runRecoveryAnalyst({
@@ -2467,7 +2297,6 @@ export class EforgeEngine {
         agentError = err instanceof Error ? err.message : String(err);
       }
 
-      // --- eforge:region plan-02-deterministic-recovery-verdicts ---
       // Determine final verdict using deterministic recommendation + analyst output
       const verdict: RecoveryVerdict = selectFinalVerdict({
         deterministicRecommendation: deterministicRec,
@@ -2476,7 +2305,6 @@ export class EforgeEngine {
         parseError,
         summary,
       });
-      // --- eforge:endregion plan-02-deterministic-recovery-verdicts ---
 
       // Write sidecar files
       const { mdPath, jsonPath } = await writeRecoverySidecar({
@@ -2671,7 +2499,6 @@ export class EforgeEngine {
     }
   }
 
-  // --- eforge:region plan-01-engine-resume ---
   /**
    * Resume a compiled build that previously failed.
    *
@@ -2803,9 +2630,7 @@ export class EforgeEngine {
         planFileMap.set(plan.id, planFile);
       }
 
-      // --- eforge:region plan-02-resume-artifacts-projection ---
       yield { timestamp: ts(), type: 'build:resume:artifacts', ...(await buildResumeArtifactsProjection({ cwd, prdId, setName, featureBranch, artifactSource: eligibility.artifactSource, ...(eligibility.artifactCommit !== undefined ? { artifactCommit: eligibility.artifactCommit } : {}), summary, orchConfig, planFileMap })) };
-      // --- eforge:endregion plan-02-resume-artifacts-projection ---
 
       const config = this.config;
       const agentRuntimes = this.agentRuntimes;
@@ -2866,9 +2691,7 @@ export class EforgeEngine {
           review: planReview,
           extensionReviewerPerspectives,
           extensionValidationProviders,
-          // --- eforge:region plan-01-engine-resume ---
           resumeContext: resumeContextByPlan.get(planId),
-          // --- eforge:endregion plan-01-engine-resume ---
         };
 
         yield* runBuildPipeline(buildCtx);
@@ -2969,9 +2792,7 @@ export class EforgeEngine {
         landingAction: effectiveLandingAction,
         prAutoMergePolicy: this.config.landing.pr.autoMerge,
         validationPolicy,
-        // --- eforge:region plan-01-engine-resume ---
         resumeSeed,
-        // --- eforge:endregion plan-01-engine-resume ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
@@ -3039,7 +2860,6 @@ export class EforgeEngine {
       };
     }
   }
-  // --- eforge:endregion plan-01-engine-resume ---
 
   /**
    * Status: returns idle shape. Active build state lives in memory only;

@@ -387,7 +387,6 @@ describe('writeRecoverySidecar', () => {
     }
   });
 
-  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
   function makeSummaryWithAcceptanceFailure(): BuildFailureSummary {
     return {
       ...makeSummary(),
@@ -499,7 +498,6 @@ describe('writeRecoverySidecar', () => {
     expect(parsed.summary.landing).toBeDefined();
     expect(parsed.summary.landing.status).toBe('skipped');
   });
-  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 });
 
 // ---------------------------------------------------------------------------
@@ -688,7 +686,6 @@ describe('buildFailureSummary', () => {
     expect(summary.failedAt.length).toBeGreaterThan(0);
   });
 
-  // --- eforge:region plan-01-recovery-and-acceptance-reporting ---
   /**
    * Seed a monitor DB with a build run that failed at acceptance validation:
    * - Passing validation commands (pnpm type-check, pnpm test)
@@ -962,14 +959,12 @@ describe('buildFailureSummary', () => {
     expect(summary.failingPlan.planId).not.toBe('compile');
     expect(summary.plans[0].planId).toBe('prd-validator');
   });
-  // --- eforge:endregion plan-01-recovery-and-acceptance-reporting ---
 });
 
 // ---------------------------------------------------------------------------
 // buildFailureSummary multi-plan reconstruction
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-recovery-summary-reconstruction ---
 describe('buildFailureSummary multi-plan reconstruction', () => {
   const makeTempDir = useTempDir('eforge-recovery-multi-plan-test-');
 
@@ -1550,7 +1545,6 @@ describe('buildFailureSummary multi-plan reconstruction', () => {
     expect(planBeta!.status).toBe('failed');
   });
 });
-// --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 
 // ---------------------------------------------------------------------------
 // runRecoveryAnalyst (agent wiring)
@@ -1837,7 +1831,6 @@ describe('runRecoveryAnalyst wiring', () => {
     expect(complete!.verdict.verdict).toBe('manual');
   });
 
-  // --- eforge:region plan-01-recovery-summary-reconstruction ---
   it('parses recovery block from agent:result.resultText when no agent:message content is emitted', async () => {
     // StubHarness constructed with { resultText } only (no text field) emits agent:result
     // with resultText but does NOT emit any agent:message events.
@@ -1866,7 +1859,6 @@ describe('runRecoveryAnalyst wiring', () => {
     // No recovery:error should be emitted when resultText fallback succeeds
     expect(findEvent(events, 'recovery:error')).toBeUndefined();
   });
-  // --- eforge:endregion plan-01-recovery-summary-reconstruction ---
 });
 
 // ---------------------------------------------------------------------------
@@ -2186,7 +2178,6 @@ describe('BuildFailureSummary schema: count fields reject negative and fractiona
   });
 });
 
-// --- eforge:region plan-02-deterministic-recovery-verdicts ---
 // ---------------------------------------------------------------------------
 // EforgeEngine.recover() — deterministic verdict integration
 // Unit tests for determineRecoveryRecommendation / validateAnalystVerdict /
@@ -2551,4 +2542,3 @@ describe('EforgeEngine.recover() — deterministic verdict with all-transient fa
     expect(String(sidecarContent.verdict.verdictInvalidationReason)).toMatch(/plan-01-alpha/i);
   });
 });
-// --- eforge:endregion plan-02-deterministic-recovery-verdicts ---

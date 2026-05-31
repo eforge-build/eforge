@@ -73,12 +73,9 @@ function hasProfileOverride(args: string): boolean {
  * --landing-auto-merge, --no-landing-auto-merge, landingAutoMerge.
  */
 function hasLandingOverride(args: string): boolean {
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   return /(?:^|\s)(--landing-action|landingAction|--landing-auto-merge|--no-landing-auto-merge|landingAutoMerge)(?:\s|=|:|$)/.test(args);
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 }
 
-// --- eforge:region plan-03-consumer-surfaces-docs ---
 
 /**
  * Returns true when args already contain an explicit --after override so the
@@ -137,7 +134,6 @@ async function selectActiveBuildsForDependency(ctx: UIContext, args: string): Pr
   return `${args} --after ${quoteSkillArg(choice)}`;
 }
 
-// --- eforge:endregion plan-03-consumer-surfaces-docs ---
 
 async function selectProfileArgs(ctx: UIContext, args: string): Promise<string | null> {
   if (hasProfileOverride(args)) return args;
@@ -253,12 +249,10 @@ export async function handleBuildCommand(
 
   // If explicit landing override already in args, bypass the landing selector
   if (hasLandingOverride(argsWithProfile)) {
-    // --- eforge:region plan-03-consumer-surfaces-docs ---
     const afterArgsWithLanding = await selectActiveBuildsForDependency(ctx, argsWithProfile);
     if (afterArgsWithLanding === null) return;
     sendBuildSkill(pi, afterArgsWithLanding);
     return;
-    // --- eforge:endregion plan-03-consumer-surfaces-docs ---
   }
 
   // Landing selection: show the full selector with "Use project default"
@@ -269,17 +263,13 @@ export async function handleBuildCommand(
   if (landingResult.landingAction) {
     finalArgs = `${finalArgs} --landing-action ${landingResult.landingAction}`;
   }
-  // --- eforge:region plan-02-request-surfaces-and-pi-ux ---
   if (landingResult.landingAutoMerge === true) {
     finalArgs = `${finalArgs} --landing-auto-merge`;
   } else if (landingResult.landingAutoMerge === false) {
     finalArgs = `${finalArgs} --no-landing-auto-merge`;
   }
-  // --- eforge:endregion plan-02-request-surfaces-and-pi-ux ---
 
-  // --- eforge:region plan-03-consumer-surfaces-docs ---
   const finalArgsWithDep = await selectActiveBuildsForDependency(ctx, finalArgs);
   if (finalArgsWithDep === null) return;
   sendBuildSkill(pi, finalArgsWithDep);
-  // --- eforge:endregion plan-03-consumer-surfaces-docs ---
 }

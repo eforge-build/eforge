@@ -12,9 +12,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { materializePrdArtifact } from '@eforge-build/engine/prd-queue';
 import { cleanupPlanFiles } from '@eforge-build/engine/cleanup';
-// --- eforge:region plan-01-build-artifact-provenance ---
 import { collectBuildArtifactProvenance } from '@eforge-build/engine/provenance';
-// --- eforge:endregion plan-01-build-artifact-provenance ---
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -140,7 +138,6 @@ describe('materializePrdArtifact', () => {
     expect(fullLog).toContain('cleanup(my-plan-set): remove plan files and PRD provenance artifact');
   });
 
-  // --- eforge:region plan-01-build-artifact-provenance ---
   it('(e) collected provenance SHA is usable with git show after cleanup removes the artifact from HEAD', async () => {
     const dir = makeTempDir();
     setupGitRepo(dir);
@@ -185,5 +182,4 @@ describe('materializePrdArtifact', () => {
     // Sanity: the gitShowRef string matches the format `git show <sha>:<path>`
     expect(prdRef!.gitShowRef).toBe(`git show ${prdRef!.commitSha}:${prdRef!.path}`);
   });
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
 });

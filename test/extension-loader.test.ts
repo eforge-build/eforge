@@ -426,7 +426,6 @@ describe('native extension loader', () => {
     ]));
   });
 
-  // --- eforge:region plan-02-extension-perspective-runtime ---
   it('rejects reviewer perspectives missing description', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
@@ -541,7 +540,6 @@ describe('native extension loader', () => {
       message: expect.stringContaining('appliesTo'),
     }));
   });
-  // --- eforge:endregion plan-02-extension-perspective-runtime ---
 
   it('captures all registration families', async () => {
     const root = makeTempDir();
@@ -739,7 +737,6 @@ describe('native extension loader', () => {
     });
   });
 
-  // --- eforge:region plan-01-sdk-and-wire-contracts ---
 
   it('registers a selectBuildProfile-shaped profile router and preserves both callables', async () => {
     const root = makeTempDir();
@@ -804,9 +801,7 @@ describe('native extension loader', () => {
     expect(invalidDiagnostics[0]!.message).toContain('selectBuildProfile');
   });
 
-  // --- eforge:endregion plan-01-sdk-and-wire-contracts ---
 
-  // --- eforge:region plan-01-extension-input-contracts ---
 
   it('registers a valid PRD enricher and records counts correctly', async () => {
     const root = makeTempDir();
@@ -885,5 +880,4 @@ describe('native extension loader', () => {
     }));
   });
 
-  // --- eforge:endregion plan-01-extension-input-contracts ---
 });

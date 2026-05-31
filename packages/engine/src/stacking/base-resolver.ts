@@ -3,9 +3,7 @@ import type { EforgeConfig } from '../config.js';
 import type { QueuedPrd } from '../prd-queue.js';
 import { refExists } from '../worktree-ops.js';
 import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from './state.js';
-// --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
 import { loadArtifactRegistry, lookupArtifactByPrdId } from '../artifacts/registry.js';
-// --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
 export interface StackBaseContext {
   prdId: string;
@@ -39,23 +37,19 @@ export async function resolveStackBaseContext(options: {
     };
   }
 
-  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
   // Resolve parent artifact ref: check the provider-neutral artifact registry
   // first (written for all queued builds), then fall back to the stack layer
   // projection (written only for stacked builds).
   const artifactRegistry = await loadArtifactRegistry(cwd);
   const parentArtifactRecord = lookupArtifactByPrdId(artifactRegistry, parentPrdId);
-  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
   // Load stack state for stackId resolution and as fallback artifact ref.
   const stackState = await loadStackState(cwd);
   const parentLayer = lookupLayerByPrdId(stackState, parentPrdId);
 
-  // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
   // Prefer artifact registry; fall back to stack layer projection.
   const artifactRef = (parentArtifactRecord?.status === 'built' ? parentArtifactRecord.artifactBranch : undefined)
     ?? getRecordedArtifactRef(stackState, parentPrdId);
-  // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
 
   if (!artifactRef) {
     throw new Error(
@@ -66,10 +60,8 @@ export async function resolveStackBaseContext(options: {
 
   let baseBranch = artifactRef;
   if (!await refExists(cwd, artifactRef)) {
-    // --- eforge:region plan-02-artifact-aware-queue-base-resolution ---
     // Try commitSha from registry first, then stack layer fallback.
     const commitSha = parentArtifactRecord?.commitSha ?? parentLayer?.artifact?.commitSha;
-    // --- eforge:endregion plan-02-artifact-aware-queue-base-resolution ---
     if (commitSha && await refExists(cwd, commitSha)) {
       baseBranch = commitSha;
     } else {

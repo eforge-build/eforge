@@ -334,7 +334,6 @@ describe('serveSSE — reconnect with Last-Event-ID', () => {
   });
 });
 
-// --- eforge:region plan-01-profile-replay-and-plan-tab ---
 
 // ---------------------------------------------------------------------------
 // session:profile replay and metadata — queued child ordering
@@ -447,4 +446,3 @@ describe('session:profile replay — queued child ordering', () => {
   });
 });
 
-// --- eforge:endregion plan-01-profile-replay-and-plan-tab ---

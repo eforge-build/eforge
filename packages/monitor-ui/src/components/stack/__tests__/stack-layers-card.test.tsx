@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-// --- eforge:region plan-03-stack-daemon-ui ---
 import { afterEach, describe, it, expect } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { StackLayersCard } from '../stack-layers-card';
@@ -187,4 +186,3 @@ describe('StackLayersCard with multiple layers', () => {
     expect(screen.getByText('prd-003')).toBeDefined();
   });
 });
-// --- eforge:endregion plan-03-stack-daemon-ui ---

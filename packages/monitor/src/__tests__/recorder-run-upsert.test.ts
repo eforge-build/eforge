@@ -287,7 +287,6 @@ describe('withRecording() phase-driven build sequence', () => {
   });
 });
 
-// --- eforge:region plan-01-profile-replay-and-plan-tab ---
 
 // ---------------------------------------------------------------------------
 // session:profile buffering and flush
@@ -425,9 +424,7 @@ describe('withRecording() session:profile buffering — enqueue sequence', () =>
   });
 });
 
-// --- eforge:endregion plan-01-profile-replay-and-plan-tab ---
 
-// --- eforge:region plan-01-durable-daemon-event-persistence ---
 
 // ---------------------------------------------------------------------------
 // Regression: no-run-id queue/scheduler events are persisted as daemon-owned rows
@@ -564,4 +561,3 @@ describe('withRecording() daemon event persistence — no active run', () => {
   });
 });
 
-// --- eforge:endregion plan-01-durable-daemon-event-persistence ---

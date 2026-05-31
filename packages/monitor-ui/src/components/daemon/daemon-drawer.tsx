@@ -60,7 +60,6 @@ function getEventMeta(type: string): { label: string; colorClass: string } {
   return { label: type, colorClass: 'text-text-dim' };
 }
 
-// --- eforge:region plan-03-monitor-ui-fsm-card ---
 type SchedulerWithCapacity = NonNullable<AutoBuildState['scheduler']> & {
   capacity?: number;
   capacityRemaining?: number;
@@ -150,7 +149,6 @@ function isSchedulerActivity(entry: DaemonActivityEntry): boolean {
   }
   return false;
 }
-// --- eforge:endregion plan-03-monitor-ui-fsm-card ---
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -165,7 +163,6 @@ function MetricsRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// --- eforge:region plan-03-monitor-ui-fsm-card ---
 function StatusChip({ mode }: { mode: AutoBuildState['mode'] | undefined }) {
   const chip = getModeChip(mode);
   return (
@@ -222,7 +219,6 @@ function SchedulerStatusCard({
     </div>
   );
 }
-// --- eforge:endregion plan-03-monitor-ui-fsm-card ---
 
 function HeartbeatPanel({
   latestHeartbeat,

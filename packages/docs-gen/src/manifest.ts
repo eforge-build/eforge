@@ -50,7 +50,6 @@ export const LLMS_MANIFEST: LlmsManifest = {
       url: '/docs/configuration.md',
       description: 'Practical setup and tuning guidance before using the full config reference',
     },
-    // --- eforge:region plan-01-reference-and-mirror-content ---
     {
       title: 'Extensions guide',
       url: '/docs/extensions.md',
@@ -81,7 +80,6 @@ export const LLMS_MANIFEST: LlmsManifest = {
       url: '/docs/troubleshooting.md',
       description: 'Recover from failed builds, docs drift, invalid profiles, and other common issues',
     },
-    // --- eforge:endregion plan-01-reference-and-mirror-content ---
   ],
   entries: [
     {

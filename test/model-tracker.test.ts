@@ -153,7 +153,6 @@ describe('composeCommitMessage', () => {
     expect(parts[1]).toBe('Models-Used: model-x');
   });
 
-  // --- eforge:region plan-01-build-artifact-provenance ---
 
   it('returns body unchanged when options has empty provenanceTrailers and no tracker', () => {
     const body = 'feat(plan-01): implement feature';
@@ -213,5 +212,4 @@ describe('composeCommitMessage', () => {
     );
   });
 
-  // --- eforge:endregion plan-01-build-artifact-provenance ---
 });
