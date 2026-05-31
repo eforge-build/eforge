@@ -57,7 +57,9 @@ function parseEvaluationVerdicts(raw: unknown): ReviewFailureEvaluationVerdict[]
     return typeof r.file === 'string' &&
       (r.action === 'accept' || r.action === 'reject' || r.action === 'review') &&
       typeof r.reason === 'string' &&
-      (r.hunk === undefined || Number.isInteger(r.hunk));
+      (r.hunk === undefined || Number.isInteger(r.hunk)) &&
+      (r.issueOutcome === undefined || typeof r.issueOutcome === 'string') &&
+      (r.retryGuidance === undefined || typeof r.retryGuidance === 'string');
   });
 }
 

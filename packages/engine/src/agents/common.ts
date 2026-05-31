@@ -235,6 +235,17 @@ export type EvaluationEvidence = Static<typeof evaluationEvidenceSchema>;
  */
 export type EvaluationVerdict = Static<typeof evaluationVerdictSchema>;
 
+const VALID_EVALUATION_ISSUE_OUTCOMES = new Set([
+  'resolved',
+  'false_positive',
+  'unresolved',
+  'unresolved_blocking',
+  'unresolved_nonblocking',
+  'needs_human_review',
+  'accepted_risk',
+  'split_to_followup',
+]);
+
 /**
  * Extract text content of a child element from XML content.
  * Returns undefined if the element is not found.
@@ -296,9 +307,15 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
       const action = actionMatch[1];
       if (action !== 'accept' && action !== 'reject' && action !== 'review') continue;
 
-      // Extract optional hunk attribute
+      // Extract optional hunk, issue outcome, and retry guidance attributes
       const hunkMatch = attrs.match(/hunk="(\d+)"/);
       const hunk = hunkMatch ? parseInt(hunkMatch[1], 10) : undefined;
+      const issueOutcomeMatch = attrs.match(/issueOutcome="([^"]+)"/) ?? attrs.match(/issue-outcome="([^"]+)"/);
+      const rawIssueOutcome = issueOutcomeMatch?.[1]?.trim();
+      const issueOutcome = rawIssueOutcome && VALID_EVALUATION_ISSUE_OUTCOMES.has(rawIssueOutcome)
+        ? rawIssueOutcome as EvaluationVerdict['issueOutcome']
+        : undefined;
+      const retryGuidanceAttrMatch = attrs.match(/retryGuidance="([^"]+)"/) ?? attrs.match(/retry-guidance="([^"]+)"/);
 
       // Try to extract structured evidence child elements
       const staged = extractChildElement(innerContent, 'staged') ?? extractChildElement(innerContent, 'original');
@@ -306,6 +323,7 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
       const rationale = extractChildElement(innerContent, 'rationale');
       const ifAccepted = extractChildElement(innerContent, 'if-accepted');
       const ifRejected = extractChildElement(innerContent, 'if-rejected');
+      const retryGuidance = (extractChildElement(innerContent, 'retry-guidance') ?? extractChildElement(innerContent, 'retryGuidance') ?? retryGuidanceAttrMatch?.[1])?.trim();
 
       // Build evidence if structured elements are present
       let evidence: EvaluationEvidence | undefined;
@@ -324,13 +342,25 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
           .replace(/<rationale>[\s\S]*?<\/rationale>/g, '')
           .replace(/<if-accepted>[\s\S]*?<\/if-accepted>/g, '')
           .replace(/<if-rejected>[\s\S]*?<\/if-rejected>/g, '')
+          .replace(/<retry-guidance>[\s\S]*?<\/retry-guidance>/g, '')
+          .replace(/<retryGuidance>[\s\S]*?<\/retryGuidance>/g, '')
           .trim();
         // If no remaining text after stripping, use rationale as reason
         if (!reason) {
           reason = rationale!;
         }
       } else {
-        reason = innerContent.trim();
+        const stripped = innerContent
+          .replace(/<staged>[\s\S]*?<\/staged>/g, '')
+          .replace(/<original>[\s\S]*?<\/original>/g, '')
+          .replace(/<fix>[\s\S]*?<\/fix>/g, '')
+          .replace(/<rationale>[\s\S]*?<\/rationale>/g, '')
+          .replace(/<if-accepted>[\s\S]*?<\/if-accepted>/g, '')
+          .replace(/<if-rejected>[\s\S]*?<\/if-rejected>/g, '')
+          .replace(/<retry-guidance>[\s\S]*?<\/retry-guidance>/g, '')
+          .replace(/<retryGuidance>[\s\S]*?<\/retryGuidance>/g, '')
+          .trim();
+        reason = stripped || rationale || innerContent.trim();
       }
 
       verdicts.push({
@@ -339,6 +369,8 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
         reason,
         ...(evidence && { evidence }),
         ...(hunk !== undefined && { hunk }),
+        ...(issueOutcome !== undefined && { issueOutcome }),
+        ...(retryGuidance !== undefined && retryGuidance.length > 0 && { retryGuidance }),
       });
     }
   }

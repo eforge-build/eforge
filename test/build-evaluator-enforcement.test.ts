@@ -135,6 +135,36 @@ describe('build evaluator enforcement stage', () => {
     expect(ctx.reviewIssues).toHaveLength(0);
   });
 
+  it('emits issue outcomes in completion summaries', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+    await writeRepoFile(repo, 'src.txt', 'implementation\nreview fix\n');
+
+    const harness = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_evaluation_verdicts',
+        toolUseId: 'eval-1',
+        input: { verdicts: [{ file: 'src.txt', action: 'reject', issueOutcome: 'false_positive', reason: 'Reviewer issue is invalid' }] },
+        output: '',
+      }],
+    }]);
+    const ctx = makeCtx(repo, harness, resetTarget);
+
+    const events = await collect(getBuildStage('evaluate')(ctx));
+    const complete = events.find(e => e.type === 'plan:build:evaluate:complete');
+
+    expect(complete).toMatchObject({
+      rejected: 1,
+      falsePositiveIssueOutcomes: 1,
+      blockingIssueOutcomes: 0,
+      verdicts: [{ file: 'src.txt', action: 'reject', issueOutcome: 'false_positive', reason: 'Reviewer issue is invalid' }],
+    });
+  });
+
   it('preserves hunk metadata in completion summaries', async () => {
     const repo = await initRepo(makeTempDir());
     const base = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`);
@@ -490,6 +520,120 @@ describe('build evaluator enforcement stage', () => {
     expect(ctx.buildFailed).toBe(true);
     expect(events.find(e => e.type === 'plan:build:evaluate:complete')).toBeUndefined();
     expect(await head(repo)).toBe(builderHead);
+  });
+
+  it('does not fail review-cycle when final rejected fixes are false-positive issue outcomes', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+
+    const reviewIssueXml = '<review-issues><issue severity="warning" category="bugs" file="src.txt">false alarm</issue></review-issues>';
+
+    class FixingHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'review-fixer') {
+            const current = await readFile(join(repo, 'src.txt'), 'utf8');
+            await writeRepoFile(repo, 'src.txt', `${current.trimEnd()}\nunsafe review fix\n`);
+          }
+        }
+      }
+    }
+
+    const harness = new FixingHarness([
+      { text: reviewIssueXml },
+      { text: 'Applied fix.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'src.txt', action: 'reject', issueOutcome: 'false_positive', reason: 'The reviewer issue is not valid.' }] }, output: '' }] },
+    ]);
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.build = ['review-cycle'];
+    ctx.review = { ...DEFAULT_REVIEW, strategy: 'single', maxRounds: 1 };
+
+    const events = await collect(getBuildStage('review-cycle')(ctx));
+    const termination = events.find(
+      (event): event is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        event.type === 'plan:build:decision' &&
+        event.decision.kind === 'cycle-terminated' &&
+        event.decision.reason === 'max-rounds',
+    );
+
+    expect(termination).toBeDefined();
+    expect(termination!.decision).toMatchObject({
+      finalEvaluationRejected: 1,
+      finalEvaluationFalsePositive: 1,
+      finalEvaluationBlocking: 0,
+    });
+    expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
+    expect(ctx.buildFailed).toBeFalsy();
+  });
+
+  it('passes evaluator feedback to the next review-fixer and nonblocking hints to the next reviewer', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await writeRepoFile(repo, 'noisy.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await writeRepoFile(repo, 'noisy.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+
+    const firstReview = `<review-issues>
+  <issue severity="warning" category="bugs" file="src.txt">real issue<fix>Fix narrowly</fix></issue>
+  <issue severity="warning" category="bugs" file="noisy.txt">false alarm<fix>Do not actually fix</fix></issue>
+</review-issues>`;
+    const secondReview = '<review-issues><issue severity="warning" category="bugs" file="src.txt">real issue remains<fix>Fix narrowly</fix></issue></review-issues>';
+
+    class FixingHarness extends StubHarness {
+      private fixCount = 0;
+
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'review-fixer') {
+            this.fixCount += 1;
+            const src = await readFile(join(repo, 'src.txt'), 'utf8');
+            await writeRepoFile(repo, 'src.txt', `${src.trimEnd()}\nreview fix ${this.fixCount}\n`);
+            if (this.fixCount === 1) {
+              const noisy = await readFile(join(repo, 'noisy.txt'), 'utf8');
+              await writeRepoFile(repo, 'noisy.txt', `${noisy.trimEnd()}\nbad false-positive fix\n`);
+            }
+          }
+        }
+      }
+    }
+
+    const harness = new FixingHarness([
+      { text: firstReview },
+      { text: 'Applied broad fix.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [
+        { file: 'src.txt', action: 'reject', issueOutcome: 'unresolved_blocking', retryGuidance: 'Retry narrowly by editing only src.txt; do not touch noisy.txt.', reason: 'The attempted fix is too broad.' },
+        { file: 'noisy.txt', action: 'reject', issueOutcome: 'false_positive', reason: 'The reviewer issue is invalid.' },
+      ] }, output: '' }] },
+      { text: secondReview },
+      { text: 'Applied narrow fix.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-2', input: { verdicts: [
+        { file: 'src.txt', action: 'accept', issueOutcome: 'resolved', reason: 'Narrow fix is correct.' },
+      ] }, output: '' }] },
+    ]);
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.build = ['review-cycle'];
+    ctx.review = { ...DEFAULT_REVIEW, strategy: 'single', maxRounds: 2 };
+
+    const events = await collect(getBuildStage('review-cycle')(ctx));
+
+    const secondReviewerPrompt = harness.prompts[3];
+    const secondFixerPrompt = harness.prompts[4];
+    expect(secondReviewerPrompt).toContain('Prior Evaluator Issue Outcomes');
+    expect(secondReviewerPrompt).toContain('noisy.txt');
+    expect(secondReviewerPrompt).not.toContain('Retry narrowly by editing only src.txt');
+    expect(secondFixerPrompt).toContain('Previous Evaluator Feedback');
+    expect(secondFixerPrompt).toContain('Retry narrowly by editing only src.txt; do not touch noisy.txt.');
+    expect(secondFixerPrompt).toContain('noisy.txt');
+    expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
   });
 
   it('reports max-round review-cycle termination with final evaluation metadata instead of stale review issues', async () => {

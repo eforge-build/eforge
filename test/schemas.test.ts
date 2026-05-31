@@ -162,6 +162,17 @@ describe('other schemas export and validate', () => {
     expect(result.success).toBe(true);
   });
 
+  it('evaluationVerdictSchema accepts issue outcomes', () => {
+    const result = safeParseWithSchema(evaluationVerdictSchema, {
+      file: 'src/foo.ts',
+      action: 'reject',
+      reason: 'Reviewer issue is a false positive',
+      issueOutcome: 'false_positive',
+      retryGuidance: 'Do not retry unless new evidence appears',
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('evaluationEvidenceSchema accepts valid evidence', () => {
     const result = safeParseWithSchema(evaluationEvidenceSchema, {
       staged: 'Original code does X',

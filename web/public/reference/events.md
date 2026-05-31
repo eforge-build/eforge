@@ -100,7 +100,7 @@ Total variants: 211
 | `plan:build:review:fix:continuation` | `attempt`, `maxContinuations`, `planId` |
 | `plan:build:evaluate:start` | `planId` |
 | `plan:build:evaluate:continuation` | `attempt`, `maxContinuations`, `planId` |
-| `plan:build:evaluate:complete` | `accepted`, `planId`, `rejected`, `verdicts` |
+| `plan:build:evaluate:complete` | `accepted`, `acceptedRiskIssueOutcomes`, `blockingIssueOutcomes`, `falsePositiveIssueOutcomes`, `needsHumanReviewIssueOutcomes`, `planId`, `rejected`, `resolvedIssueOutcomes`, `splitToFollowupIssueOutcomes`, `unresolvedIssueOutcomes`, `unresolvedNonBlockingIssueOutcomes`, `verdicts` |
 | `plan:build:doc-author:start` | `planId` |
 | `plan:build:doc-author:complete` | `docsAuthored`, `planId` |
 | `plan:build:doc-sync:start` | `planId` |

@@ -11,9 +11,11 @@ export interface ReviewCycleEvaluationFileSummary {
   file: string;
   mode: 'file' | 'hunks';
   action?: 'accept' | 'reject' | 'review';
+  issueOutcome?: string;
   acceptedHunks: number[];
   rejectedHunks: number[];
   reviewHunks: number[];
+  blockingIssueHunks?: number[];
 }
 
 export interface ReviewCycleEvaluationSummary {
@@ -22,6 +24,14 @@ export interface ReviewCycleEvaluationSummary {
   rejected: number;
   review: number;
   files: ReviewCycleEvaluationFileSummary[];
+  resolvedIssueOutcomes?: number;
+  falsePositiveIssueOutcomes?: number;
+  unresolvedIssueOutcomes?: number;
+  unresolvedNonBlockingIssueOutcomes?: number;
+  needsHumanReviewIssueOutcomes?: number;
+  acceptedRiskIssueOutcomes?: number;
+  splitToFollowupIssueOutcomes?: number;
+  blockingIssueOutcomes?: number;
 }
 
 // --- eforge:region plan-01-dynamic-perspective-contracts ---
@@ -100,16 +110,26 @@ export function shouldTerminateCycleEarly(
     return { terminate: false, rationale: 'No evaluation ran; cannot terminate early' };
   }
 
-  // Cannot terminate if any fixes were rejected or flagged for review
-  if (evaluation.rejected > 0 || evaluation.review > 0) {
+  // Cannot terminate if issue-outcome semantics say blocking issues remain.
+  // Legacy evaluations do not include outcome counts, so retain the old
+  // action-count behavior for backwards compatibility.
+  if (evaluation.blockingIssueOutcomes === undefined) {
+    if (evaluation.rejected > 0 || evaluation.review > 0) {
+      return {
+        terminate: false,
+        rationale: `${evaluation.rejected} fix(es) rejected, ${evaluation.review} flagged for review — cycle must continue`,
+      };
+    }
+  } else if (evaluation.blockingIssueOutcomes > 0) {
     return {
       terminate: false,
-      rationale: `${evaluation.rejected} fix(es) rejected, ${evaluation.review} flagged for review — cycle must continue`,
+      rationale: `${evaluation.blockingIssueOutcomes} blocking issue outcome(s) remain — cycle must continue`,
     };
   }
 
-  // Cannot terminate if no changes were accepted (nothing resolved)
-  if (evaluation.accepted === 0) {
+  // Cannot terminate if no changes were accepted and the evaluator did not
+  // provide issue outcomes proving the reviewer issues are non-blocking.
+  if (evaluation.accepted === 0 && evaluation.blockingIssueOutcomes === undefined) {
     return { terminate: false, rationale: 'No fixer changes were accepted; issues may be unresolved' };
   }
 
@@ -132,9 +152,17 @@ export function shouldTerminateCycleEarly(
     };
   }
 
-  // All fixes accepted and no critical concerns — check command/integration confidence
-
+  // All blocking concerns cleared — check command/integration confidence.
+  // If no fixer changes were accepted, then all candidate changes were rejected
+  // as false-positive/nonblocking/accepted-risk/split outcomes, so there is no
+  // accepted code delta that needs command confirmation.
   const acceptedFiles = evaluation.files.filter(hasAcceptedVerdict).map(s => s.file);
+  if (acceptedFiles.length === 0 && evaluation.blockingIssueOutcomes === 0) {
+    return {
+      terminate: true,
+      rationale: 'Terminated: evaluator classified all reviewer issues as non-blocking and no fixer changes were accepted',
+    };
+  }
 
   // Docs-only accepted changes: no command/runtime risk
   if (acceptedFiles.length > 0 && acceptedFiles.every(isDocsPath)) {
@@ -220,8 +248,15 @@ function hasAcceptedVerdict(summary: ReviewCycleEvaluationFileSummary): boolean 
   return summary.acceptedHunks.length > 0;
 }
 
-function hasRejectedOrReviewVerdict(summary: ReviewCycleEvaluationFileSummary): boolean {
-  if (summary.mode === 'file') return summary.action === 'reject' || summary.action === 'review';
+function hasBlockingRejectedOrReviewVerdict(summary: ReviewCycleEvaluationFileSummary): boolean {
+  if (summary.mode === 'file') {
+    if (summary.action !== 'reject' && summary.action !== 'review') return false;
+    if (summary.issueOutcome === undefined) return true;
+    return summary.issueOutcome === 'unresolved' ||
+      summary.issueOutcome === 'unresolved_blocking' ||
+      summary.issueOutcome === 'needs_human_review';
+  }
+  if (summary.blockingIssueHunks !== undefined) return summary.blockingIssueHunks.length > 0;
   return summary.rejectedHunks.length > 0 || summary.reviewHunks.length > 0;
 }
 
@@ -334,7 +369,7 @@ function verifyKeepRationale(
  */
 function concernPerspectives(evaluation: ReviewCycleEvaluationSummary): Set<string> {
   const nonAcceptedFiles = evaluation.files
-    .filter(hasRejectedOrReviewVerdict)
+    .filter(hasBlockingRejectedOrReviewVerdict)
     .map(summary => summary.file);
   const acceptedFiles = evaluation.files
     .filter(hasAcceptedVerdict)

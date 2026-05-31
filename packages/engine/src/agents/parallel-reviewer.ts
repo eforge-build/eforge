@@ -162,6 +162,7 @@ export async function* runParallelReview(
       cwd,
       verbose,
       abortController,
+      promptAppend: options.promptAppend,
       ...pickSdkOptions(options),
     });
     return;
@@ -183,6 +184,7 @@ export async function* runParallelReview(
       cwd,
       verbose,
       abortController,
+      promptAppend: options.promptAppend,
       ...pickSdkOptions(options),
     });
     return;
@@ -276,6 +278,7 @@ export async function* runParallelReview(
       cwd,
       verbose,
       abortController,
+      promptAppend: options.promptAppend,
       ...pickSdkOptions(options),
     });
     return;

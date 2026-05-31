@@ -8,6 +8,8 @@ The following issues were identified by specialist reviewers, sorted by severity
 
 {{issues}}
 
+{{evaluator_feedback_context}}
+
 {{continuation_context}}
 
 # Instructions
@@ -19,6 +21,7 @@ The following issues were identified by specialist reviewers, sorted by severity
 5. **Do NOT commit.** Do not run `git commit`.
 6. Keep fixes minimal - only change what is necessary to resolve each issue.
 7. Do not alter the implementation's design or architecture.
+8. If previous evaluator feedback is provided, use it to avoid repeating rejected broad fixes. Retry unresolved blocking issues narrowly according to the guidance. Do not fix issues previously classified as false-positive, accepted-risk, nonblocking, or split-to-follow-up unless the current reviewer issue includes materially new evidence.
 
 # Cross-Diff Fixes
 
