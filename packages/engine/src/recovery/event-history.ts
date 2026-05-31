@@ -58,11 +58,18 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
   try {
     const db = new DatabaseSync(dbPath);
     try {
-      // Find the most recent run for this setName
-      const runStmt = db.prepare(
+      // --- eforge:region plan-01-recovery-run-selection ---
+      // Prefer the latest failed build run for this setName. A newer running
+      // resume run can share the same plan_set, but recovery summaries need the
+      // original failed build evidence that made the set resumable.
+      const failedBuildRunStmt = db.prepare(
+        `SELECT id, command, started_at as startedAt FROM runs WHERE plan_set = ? AND command = 'build' AND status = 'failed' ORDER BY started_at DESC LIMIT 1`,
+      );
+      const newestRunStmt = db.prepare(
         `SELECT id, command, started_at as startedAt FROM runs WHERE plan_set = ? ORDER BY started_at DESC LIMIT 1`,
       );
-      const run = runStmt.get(setName) as { id: string; command: string; startedAt: string } | undefined;
+      const run = (failedBuildRunStmt.get(setName) ?? newestRunStmt.get(setName)) as { id: string; command: string; startedAt: string } | undefined;
+      // --- eforge:endregion plan-01-recovery-run-selection ---
 
       if (!run) return null;
 

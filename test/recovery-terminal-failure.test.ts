@@ -47,6 +47,57 @@ function insertPhaseEnd(db: ReturnType<typeof openDatabase>, runId: string, stat
 }
 
 // ---------------------------------------------------------------------------
+// Recovery run selection
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-recovery-run-selection ---
+describe('recovery run selection', () => {
+  const makeTempDir = useTempDir('eforge-recovery-run-selection-');
+
+  it('uses the failed build run when a newer running resume run exists for the same plan set', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'run-selection.db');
+    const db = openDatabase(dbPath);
+
+    db.insertRun({ id: 'run-build-failed', sessionId: 'session-build-failed', planSet: 'selection-set', command: 'build', status: 'failed', startedAt: new Date('2026-01-01T10:00:00.000Z').toISOString(), cwd: dir, pid: 9999 });
+    db.insertEvent({ runId: 'run-build-failed', type: 'plan:status:change', planId: 'plan-failed', data: JSON.stringify({ status: 'failed' }), timestamp: new Date('2026-01-01T10:20:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-build-failed', type: 'plan:build:failed', planId: 'plan-failed', data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-failed', error: 'Build failed in original build run' }), timestamp: new Date('2026-01-01T10:30:00.000Z').toISOString() });
+    insertPhaseEnd(db, 'run-build-failed', 'failed');
+
+    db.insertRun({ id: 'run-resume-running', sessionId: 'session-resume-running', planSet: 'selection-set', command: 'resume', status: 'running', startedAt: new Date('2026-01-01T12:00:00.000Z').toISOString(), cwd: dir, pid: 9998 });
+    db.close();
+
+    const summary = await buildFailureSummary({ setName: 'selection-set', prdId: 'selection-prd', cwd: dir, dbPath });
+
+    expect(summary.failingPlan.planId).toBe('plan-failed');
+    expect(summary.failingPlan.errorMessage).toBe('Build failed in original build run');
+    expect(summary.plans).toContainEqual(expect.objectContaining({ planId: 'plan-failed', status: 'failed' }));
+  });
+
+  it('falls back to the newest run when no failed build run exists', async () => {
+    const dir = makeTempDir();
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'run-selection-fallback.db');
+    const db = openDatabase(dbPath);
+
+    db.insertRun({ id: 'run-resume-fallback', sessionId: 'session-resume-fallback', planSet: 'selection-fallback-set', command: 'resume', status: 'running', startedAt: new Date('2026-01-01T12:00:00.000Z').toISOString(), cwd: dir, pid: 9998 });
+    db.insertEvent({ runId: 'run-resume-fallback', type: 'plan:status:change', planId: 'plan-fallback', data: JSON.stringify({ status: 'failed' }), timestamp: new Date('2026-01-01T12:20:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-resume-fallback', type: 'plan:build:failed', planId: 'plan-fallback', data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-fallback', error: 'Fallback run failure evidence' }), timestamp: new Date('2026-01-01T12:30:00.000Z').toISOString() });
+    insertPhaseEnd(db, 'run-resume-fallback', 'failed');
+    db.close();
+
+    const fragment = synthesizeFromEvents({ setName: 'selection-fallback-set', prdId: 'selection-fallback-prd', dbPath });
+
+    expect(fragment).not.toBeNull();
+    expect(fragment!.failingPlan?.planId).toBe('plan-fallback');
+    expect(fragment!.failingPlan?.errorMessage).toBe('Fallback run failure evidence');
+  });
+});
+// --- eforge:endregion plan-01-recovery-run-selection ---
+
+// ---------------------------------------------------------------------------
 // Authoritative precedence
 // ---------------------------------------------------------------------------
 
