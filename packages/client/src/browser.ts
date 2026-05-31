@@ -235,6 +235,11 @@ export type {
   TerminalFailureScope,
   TerminalFailureEnvelope,
   // --- eforge:endregion plan-01-terminal-failure-contract ---
+  // --- eforge:region plan-02-resume-artifacts-projection ---
+  BuildResumeArtifactSource,
+  BuildResumeArtifactPlan,
+  BuildResumeArtifactsEvent,
+  // --- eforge:endregion plan-02-resume-artifacts-projection ---
 } from './events.js';
 
 // --- eforge:region system-configuration-view ---
@@ -264,4 +269,7 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_
   // --- eforge:region plan-01-terminal-failure-contract ---
   TerminalFailureScopeSchema, TerminalFailureEnvelopeSchema,
   // --- eforge:endregion plan-01-terminal-failure-contract ---
+  // --- eforge:region plan-02-resume-artifacts-projection ---
+  BuildResumeArtifactSourceSchema, BuildResumeArtifactPlanSchema, BuildResumeArtifactsEventSchema,
+  // --- eforge:endregion plan-02-resume-artifacts-projection ---
 } from './events.js';

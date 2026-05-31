@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { deriveResumeSeedState, formatResumeContext, checkResumeEligibility } from '@eforge-build/engine/resume/compiled-build';
+import { deriveResumeSeedState, formatResumeContext, checkResumeEligibility, buildResumeArtifactsProjection } from '@eforge-build/engine/resume/compiled-build';
 import { applyResumeSeed, initializeState, type ResumeSeedOptions } from '@eforge-build/engine/orchestrator';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
@@ -502,6 +502,107 @@ describe('checkResumeEligibility — ineligibility and artifact recovery', () =>
 });
 
 // ---------------------------------------------------------------------------
+// buildResumeArtifactsProjection
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-02-resume-artifacts-projection ---
+describe('buildResumeArtifactsProjection — recovered resume artifacts', () => {
+  const review = { strategy: 'auto' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
+  const orchConfig = {
+    name: 'feature-x',
+    description: 'Feature X',
+    created: '2026-01-01T00:00:00.000Z',
+    mode: 'excursion' as const,
+    baseBranch: 'main',
+    pipeline: { scope: 'excursion' as const, compile: [], defaultBuild: [], defaultReview: review, rationale: 'resume' },
+    plans: [
+      { id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review },
+      { id: 'plan-02', name: 'Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review },
+    ],
+  };
+
+  function planFileMap() {
+    return new Map([
+      ['plan-01', { id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'feature-x/plan-01', body: '# Plan 01', filePath: '/tmp/plan-01.md' }],
+      ['plan-02', { id: 'plan-02', name: 'Plan 02', dependsOn: [], branch: 'feature-x/plan-02', body: '# Plan 02', filePath: '/tmp/plan-02.md' }],
+    ] as const);
+  }
+
+  it('includes plan ids, names, bodies, dependencies, branches, build config, review config, orchestration, and artifact metadata', async () => {
+    const projection = await buildResumeArtifactsProjection({
+      cwd: makeTempDir(),
+      prdId: 'prd-feature-x',
+      setName: 'feature-x',
+      featureBranch: 'eforge/feature-x',
+      artifactSource: 'branch-history',
+      artifactCommit: 'abc123',
+      summary: makeFailureSummary(),
+      orchConfig,
+      planFileMap: planFileMap(),
+    });
+
+    expect(projection.artifactSource).toBe('branch-history');
+    expect(projection.artifactCommit).toBe('abc123');
+    expect(projection.orchestration.pipeline.scope).toBe('excursion');
+    expect(projection.plans).toEqual([
+      { id: 'plan-01', name: 'Plan 01', body: '# Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review },
+      { id: 'plan-02', name: 'Plan 02', body: '# Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review },
+    ]);
+  });
+
+  it('uses summary PRD content before filesystem lookup', async () => {
+    const projection = await buildResumeArtifactsProjection({
+      cwd: makeTempDir(),
+      prdId: 'prd-feature-x',
+      setName: 'feature-x',
+      featureBranch: 'eforge/feature-x',
+      artifactSource: 'merge-worktree',
+      summary: makeFailureSummary({ prdContent: '# Summary PRD' }),
+      orchConfig,
+      planFileMap: planFileMap(),
+    });
+
+    expect(projection.source).toEqual({ label: 'PRD prd-feature-x', content: '# Summary PRD' });
+  });
+
+  it('returns source content when .eforge/queue/failed/<prdId>.md exists', async () => {
+    const cwd = makeTempDir();
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', 'prd-feature-x.md'), '# Failed Queue PRD');
+
+    const projection = await buildResumeArtifactsProjection({
+      cwd,
+      prdId: 'prd-feature-x',
+      setName: 'feature-x',
+      featureBranch: 'eforge/feature-x',
+      artifactSource: 'merge-worktree',
+      summary: makeFailureSummary(),
+      orchConfig,
+      planFileMap: planFileMap(),
+    });
+
+    expect(projection.source.label).toBe('.eforge/queue/failed/prd-feature-x.md');
+    expect(projection.source.content).toBe('# Failed Queue PRD');
+  });
+
+  it('returns a stable source label and omits content when the PRD source is absent', async () => {
+    const projection = await buildResumeArtifactsProjection({
+      cwd: makeTempDir(),
+      prdId: 'prd-missing',
+      setName: 'feature-x',
+      featureBranch: 'eforge/feature-x',
+      artifactSource: 'merge-worktree',
+      summary: makeFailureSummary({ prdId: 'prd-missing' }),
+      orchConfig,
+      planFileMap: planFileMap(),
+    });
+
+    expect(projection.source).toEqual({ label: 'PRD prd-missing' });
+    expect('content' in projection.source).toBe(false);
+  });
+});
+// --- eforge:endregion plan-02-resume-artifacts-projection ---
+
+// ---------------------------------------------------------------------------
 // EforgeEngine.resumeBuild compile-free execution
 // ---------------------------------------------------------------------------
 
@@ -539,6 +640,12 @@ describe('EforgeEngine.resumeBuild — compile-free execution', () => {
     expect(phaseStarts.map((event) => event.command)).toContain('resume');
     expect(phaseStarts.map((event) => event.command)).not.toContain('compile');
     expect(events.some((event) => event.type === 'planning:start')).toBe(false);
+    expect(events.some((event) => event.type === 'planning:complete')).toBe(false);
+    console.log('RESUME_EVENTS', JSON.stringify(events, null, 2));
+    const artifactIndex = events.findIndex((event) => event.type === 'build:resume:artifacts');
+    expect(artifactIndex).toBeGreaterThan(-1);
+    const firstBuildIndex = events.findIndex((event) => event.type === 'plan:build:start');
+    if (firstBuildIndex !== -1) expect(artifactIndex).toBeLessThan(firstBuildIndex);
     expect(events.some((event) => event.type === 'build:resume:state')).toBe(true);
   });
 });

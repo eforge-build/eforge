@@ -595,7 +595,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 211
+Total variants: 212
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -809,6 +809,7 @@ Total variants: 211
 | `build:resume:start` | `featureBranch`, `prdId`, `setName` |
 | `build:resume:state` | `diffStat`, `featureBranch`, `landedCommitCount`, `seededMerged`, `seededPending` |
 | `build:resume:ineligible` | `checkedPath`, `reason` |
+| `build:resume:artifacts` | `artifactCommit`, `artifactSource`, `featureBranch`, `orchestration`, `plans`, `prdId`, `setName`, `source` |
 | `build:resume:complete` | `prdId`, `setName` |
 
 ## JSON Schema

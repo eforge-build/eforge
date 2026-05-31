@@ -10911,6 +10911,468 @@
           "required": [
             "type",
             "prdId",
+            "setName",
+            "featureBranch",
+            "artifactSource",
+            "source",
+            "orchestration",
+            "plans"
+          ],
+          "properties": {
+            "type": {
+              "const": "build:resume:artifacts",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "artifactSource": {
+              "anyOf": [
+                {
+                  "const": "merge-worktree",
+                  "type": "string"
+                },
+                {
+                  "const": "branch-history",
+                  "type": "string"
+                }
+              ]
+            },
+            "artifactCommit": {
+              "type": "string"
+            },
+            "source": {
+              "type": "object",
+              "required": [
+                "label"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            },
+            "orchestration": {
+              "type": "object",
+              "required": [
+                "name",
+                "description",
+                "created",
+                "mode",
+                "baseBranch",
+                "pipeline",
+                "plans"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "created": {
+                  "type": "string"
+                },
+                "mode": {
+                  "anyOf": [
+                    {
+                      "const": "errand",
+                      "type": "string"
+                    },
+                    {
+                      "const": "excursion",
+                      "type": "string"
+                    },
+                    {
+                      "const": "expedition",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "baseBranch": {
+                  "type": "string"
+                },
+                "diffBaseRef": {
+                  "type": "string"
+                },
+                "pipeline": {
+                  "type": "object",
+                  "required": [
+                    "scope",
+                    "compile",
+                    "defaultBuild",
+                    "defaultReview",
+                    "rationale"
+                  ],
+                  "properties": {
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "errand",
+                          "type": "string"
+                        },
+                        {
+                          "const": "excursion",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expedition",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "compile": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "defaultBuild": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "defaultReview": {
+                      "type": "object",
+                      "required": [
+                        "strategy",
+                        "perspectives",
+                        "maxRounds",
+                        "evaluatorStrictness"
+                      ],
+                      "properties": {
+                        "strategy": {
+                          "anyOf": [
+                            {
+                              "const": "auto",
+                              "type": "string"
+                            },
+                            {
+                              "const": "single",
+                              "type": "string"
+                            },
+                            {
+                              "const": "parallel",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "perspectives": {
+                          "type": "array",
+                          "items": {
+                            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                            "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                            "type": "string"
+                          }
+                        },
+                        "maxRounds": {
+                          "type": "number"
+                        },
+                        "evaluatorStrictness": {
+                          "anyOf": [
+                            {
+                              "const": "strict",
+                              "type": "string"
+                            },
+                            {
+                              "const": "standard",
+                              "type": "string"
+                            },
+                            {
+                              "const": "lenient",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "rationale": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "plans": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "name",
+                      "dependsOn",
+                      "branch",
+                      "build",
+                      "review"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "dependsOn": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "branch": {
+                        "type": "string"
+                      },
+                      "build": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "review": {
+                        "type": "object",
+                        "required": [
+                          "strategy",
+                          "perspectives",
+                          "maxRounds",
+                          "evaluatorStrictness"
+                        ],
+                        "properties": {
+                          "strategy": {
+                            "anyOf": [
+                              {
+                                "const": "auto",
+                                "type": "string"
+                              },
+                              {
+                                "const": "single",
+                                "type": "string"
+                              },
+                              {
+                                "const": "parallel",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "perspectives": {
+                            "type": "array",
+                            "items": {
+                              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                              "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                              "type": "string"
+                            }
+                          },
+                          "maxRounds": {
+                            "type": "number"
+                          },
+                          "evaluatorStrictness": {
+                            "anyOf": [
+                              {
+                                "const": "strict",
+                                "type": "string"
+                              },
+                              {
+                                "const": "standard",
+                                "type": "string"
+                              },
+                              {
+                                "const": "lenient",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "maxContinuations": {
+                        "type": "number"
+                      },
+                      "agents": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {
+                            "type": "object",
+                            "properties": {
+                              "effort": {
+                                "type": "string"
+                              },
+                              "thinking": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "patternProperties": {
+                                      "^(.*)$": {}
+                                    }
+                                  }
+                                ]
+                              },
+                              "rationale": {
+                                "type": "string"
+                              },
+                              "tier": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "validate": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "plans": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "name",
+                  "body",
+                  "dependsOn"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "dependsOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "branch": {
+                    "type": "string"
+                  },
+                  "build": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "review": {
+                    "type": "object",
+                    "required": [
+                      "strategy",
+                      "perspectives",
+                      "maxRounds",
+                      "evaluatorStrictness"
+                    ],
+                    "properties": {
+                      "strategy": {
+                        "anyOf": [
+                          {
+                            "const": "auto",
+                            "type": "string"
+                          },
+                          {
+                            "const": "single",
+                            "type": "string"
+                          },
+                          {
+                            "const": "parallel",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "perspectives": {
+                        "type": "array",
+                        "items": {
+                          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                          "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
+                          "type": "string"
+                        }
+                      },
+                      "maxRounds": {
+                        "type": "number"
+                      },
+                      "evaluatorStrictness": {
+                        "anyOf": [
+                          {
+                            "const": "strict",
+                            "type": "string"
+                          },
+                          {
+                            "const": "standard",
+                            "type": "string"
+                          },
+                          {
+                            "const": "lenient",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
             "setName"
           ],
           "properties": {

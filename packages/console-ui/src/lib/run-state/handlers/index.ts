@@ -61,6 +61,7 @@ import {
 } from './handle-enqueue';
 import { handleConfigWarning, handlePlanningWarning } from './handle-misc';
 import { handleDaemonAutoBuildPaused, handleDaemonAutoBuildResumed } from './handle-daemon';
+import { handleBuildResumeArtifacts } from './handle-resume';
 import { handlePlanBuildDecision, handlePlanningDecision } from './handle-decisions';
 import {
   handlePlanStatusChange,
@@ -163,6 +164,10 @@ export const handlerRegistry = {
   'plan:error:clear': handlePlanErrorClear,
   'merge:worktree:set': handleMergeWorktreeSet,
   'merge:worktree:clear': handleMergeWorktreeClear,
+
+  // --- eforge:region plan-02-resume-artifacts-projection ---
+  'build:resume:artifacts': handleBuildResumeArtifacts,
+  // --- eforge:endregion plan-02-resume-artifacts-projection ---
 
   // Validation lifecycle
   'validation:start': handleValidationStart,
@@ -333,7 +338,8 @@ export const IGNORED_EVENT_TYPES = [
   'build:terminal-failure',
   // --- eforge:endregion plan-01-terminal-failure-contract ---
   // --- eforge:region plan-01-engine-resume ---
-  // build:resume:* — resume lifecycle events. Monitor UI rendering is future work.
+  // build:resume:* — lifecycle-only resume events. Recovered artifacts are
+  // handled by `build:resume:artifacts` above.
   'build:resume:start',
   'build:resume:state',
   'build:resume:ineligible',

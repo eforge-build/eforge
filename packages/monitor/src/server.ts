@@ -1214,21 +1214,11 @@ export async function startServer(
           }
         }
 
-        if (!resolvedPlanDir) {
-          sendJson(res, compiledPlans);
-          return;
+        if (resolvedPlanDir) {
+          let modules: Array<{ id: string; description: string; dependsOn: string[] }> = [];
+          try { modules = JSON.parse(archEvents[0].data).modules || []; } catch { /* ignore */ }
+          expeditionFiles = await readExpeditionFiles(resolvedPlanDir, new Map(modules.map((m) => [m.id, m])));
         }
-
-        // Parse module metadata from the architecture event
-        let modules: Array<{ id: string; description: string; dependsOn: string[] }> = [];
-        try {
-          const archData = JSON.parse(archEvents[0].data);
-          modules = archData.modules || [];
-        } catch {
-          // ignore
-        }
-
-        expeditionFiles = await readExpeditionFiles(resolvedPlanDir, new Map(modules.map((m) => [m.id, m])));
       }
     }
 
@@ -1253,7 +1243,19 @@ export async function startServer(
       }
     }
 
-    const allPlans = [...expeditionFiles, ...compiledPlans, ...gapClosePlans];
+    let allPlans = [...expeditionFiles, ...compiledPlans, ...gapClosePlans];
+
+    // --- eforge:region plan-02-resume-artifacts-projection ---
+    if (allPlans.length === 0) {
+      const row = db.getEventsByTypeForSession(sessionId, 'build:resume:artifacts').at(-1);
+      if (row) {
+        const parsed = parseEventRow(row.data, row.timestamp, row.type, row.id);
+        if (parsed?.type === 'build:resume:artifacts') {
+          allPlans = parsed.plans.map((p) => ({ id: p.id, name: p.name, body: p.body, dependsOn: p.dependsOn, type: 'plan' as const, ...(p.build !== undefined ? { build: p.build } : {}), ...(p.review !== undefined ? { review: p.review } : {}) }));
+        }
+      }
+    }
+    // --- eforge:endregion plan-02-resume-artifacts-projection ---
 
     // Enrich plans with per-plan build/review config from orchestration.yaml
     const buildConfigMap = await readBuildConfigFromOrchestration(sessionId);
@@ -1261,8 +1263,8 @@ export async function startServer(
       for (const plan of allPlans) {
         const config = buildConfigMap.get(plan.id);
         if (config) {
-          plan.build = config.build;
-          plan.review = config.review;
+          if (plan.build === undefined) plan.build = config.build;
+          if (plan.review === undefined) plan.review = config.review;
         }
       }
     }

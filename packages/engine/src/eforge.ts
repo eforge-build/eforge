@@ -2681,7 +2681,7 @@ export class EforgeEngine {
    * invoking any compile/planner stages.
    *
    * Emits: build:resume:start → build:resume:state OR build:resume:ineligible →
-   *        (build pipeline events) → build:resume:complete
+   *        build:resume:artifacts → (build pipeline events) → build:resume:complete
    */
   async *resumeBuild(
     prdId: string,
@@ -2732,7 +2732,7 @@ export class EforgeEngine {
       tracing.setInput({ planSet: setName, prdId, resumeMode: true });
 
       // Eligibility check runs inside the phase so failures are correlated with runId.
-      const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext } = await import('./resume/compiled-build.js');
+      const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext, buildResumeArtifactsProjection } = await import('./resume/compiled-build.js');
       const eligibility = await checkResumeEligibility({
         cwd, setName, prdId, mergeWorktreePath,
         outputDir: this.config.plan.outputDir, dbPath,
@@ -2802,6 +2802,10 @@ export class EforgeEngine {
         }
         planFileMap.set(plan.id, planFile);
       }
+
+      // --- eforge:region plan-02-resume-artifacts-projection ---
+      yield { timestamp: ts(), type: 'build:resume:artifacts', ...(await buildResumeArtifactsProjection({ cwd, prdId, setName, featureBranch, artifactSource: eligibility.artifactSource, ...(eligibility.artifactCommit !== undefined ? { artifactCommit: eligibility.artifactCommit } : {}), summary, orchConfig, planFileMap })) };
+      // --- eforge:endregion plan-02-resume-artifacts-projection ---
 
       const config = this.config;
       const agentRuntimes = this.agentRuntimes;
