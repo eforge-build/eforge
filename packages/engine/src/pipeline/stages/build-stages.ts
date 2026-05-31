@@ -12,6 +12,7 @@ import { computeReviewThresholdSnapshot } from '../../agents/parallel-reviewer.j
 import {
   withRetry,
   DEFAULT_RETRY_POLICIES,
+  EvaluatorNoVerdictsError,
   type RetryPolicy,
   type BuilderContinuationInput,
   type BuilderShardContinuationInput,
@@ -129,6 +130,17 @@ async function* runBuilderAttempt(
 }
 
 /** Per-retry evaluator span + event processing. Span and tracker created per-attempt. */
+function isRetryableNoVerdictsResult(
+  result: BuilderEvaluationResult | undefined,
+  input: EvaluatorContinuationInput,
+): result is BuilderEvaluationResult {
+  return result !== undefined &&
+    !result.failed &&
+    result.source === 'none' &&
+    result.verdicts.length === 0 &&
+    (input.evaluationSnapshot?.files.length ?? 0) > 0;
+}
+
 async function* runEvaluatorAttempt(
   input: EvaluatorContinuationInput,
   ctx: BuildStageContext,
@@ -159,9 +171,13 @@ async function* runEvaluatorAttempt(
     while (true) {
       const next = await evaluator.next();
       if (next.done) {
+        const result = next.value;
+        if (isRetryableNoVerdictsResult(result, input)) {
+          throw new EvaluatorNoVerdictsError();
+        }
         evalTracker.cleanup();
         evalSpan.end();
-        return next.value;
+        return result;
       }
       const event = next.value;
       evalTracker.handleEvent(event);
