@@ -613,17 +613,22 @@ describe('parseEvaluationBlock', () => {
     expect(result[0].hunk).toBe(2);
   });
 
-  it('extracts issueOutcome attributes from verdicts', () => {
+  it('extracts issueOutcome and retry guidance from verdicts', () => {
     const text = `
 <evaluation>
   <verdict file="src/app.ts" action="reject" issueOutcome="false_positive">Reviewer issue is invalid</verdict>
-  <verdict file="src/handler.ts" action="review" issue-outcome="needs_human_review">Ambiguous</verdict>
+  <verdict file="src/handler.ts" action="review" issue-outcome="needs_human_review" retry-guidance="Retry only the null guard">Ambiguous</verdict>
+  <verdict file="src/store.ts" action="reject" issueOutcome="unresolved_blocking">
+    <rationale>Patch is too broad</rationale>
+    <retry-guidance>Retry with only the no-clobber check</retry-guidance>
+  </verdict>
 </evaluation>`;
 
     const result = parseEvaluationBlock(text);
     expect(result).toEqual([
       { file: 'src/app.ts', action: 'reject', issueOutcome: 'false_positive', reason: 'Reviewer issue is invalid' },
-      { file: 'src/handler.ts', action: 'review', issueOutcome: 'needs_human_review', reason: 'Ambiguous' },
+      { file: 'src/handler.ts', action: 'review', issueOutcome: 'needs_human_review', retryGuidance: 'Retry only the null guard', reason: 'Ambiguous' },
+      { file: 'src/store.ts', action: 'reject', issueOutcome: 'unresolved_blocking', retryGuidance: 'Retry with only the no-clobber check', reason: 'Patch is too broad' },
     ]);
   });
 

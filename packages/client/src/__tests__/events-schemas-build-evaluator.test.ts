@@ -14,7 +14,7 @@ describe('safeParseEforgeEvent — build evaluator enriched payloads', () => {
       blockingIssueOutcomes: 0,
       verdicts: [
         { file: 'src/foo.ts', hunk: 1, action: 'accept', issueOutcome: 'resolved', reason: 'Correct fix' },
-        { file: 'src/foo.ts', hunk: 2, action: 'reject', issueOutcome: 'false_positive', reason: 'Alters intent' },
+        { file: 'src/foo.ts', hunk: 2, action: 'reject', issueOutcome: 'false_positive', retryGuidance: 'Do not retry without new evidence', reason: 'Alters intent' },
       ],
     };
 

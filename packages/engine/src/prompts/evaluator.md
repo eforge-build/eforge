@@ -32,6 +32,8 @@ For every candidate file or hunk, make two separate judgments:
 
 A rejected patch can still have `issueOutcome: false_positive` when the reviewer issue is invalid. A rejected patch can also have `issueOutcome: unresolved_blocking` when the issue is real but the attempted fix is unsafe or too broad.
 
+When rejecting or flagging a patch because it is too broad, unsafe, incomplete, or based on the wrong assumption, include `retryGuidance` with a concise instruction for the next fixer attempt. The guidance should say what a narrower safe retry should do and what it must avoid.
+
 ### PRD-Aware Evaluation
 
 Evaluate fixes against the plan's stated intent and acceptance criteria, not only against crash/security/type-error evidence. Public API, event-schema, documentation, generated artifact, or contract changes may be valid strict improvements when they are explicitly required by the plan or by project policy.
@@ -106,7 +108,9 @@ Backward compatibility: if you omit `issueOutcome`, the engine treats `accept` a
 
 ## Narrow Retry Guidance
 
-When rejecting a candidate because it is too broad, say exactly what a narrower safe retry would do. For example: "Retry narrowly by adding a no-clobber target-path check only; do not extract modules or alter queue semantics." This lets recovery tooling pivot without lowering quality.
+When rejecting a candidate because it is too broad, set `retryGuidance` to exactly what a narrower safe retry would do. For example: "Retry narrowly by adding a no-clobber target-path check only; do not extract modules or alter queue semantics." This lets recovery tooling pivot without lowering quality.
+
+Use `retryGuidance` for `unresolved_blocking` and `needs_human_review` outcomes when a next automated attempt could safely make progress. Omit it when the issue is a confirmed false positive or when no safe automated retry is available.
 
 ## Per-Hunk Evaluation
 

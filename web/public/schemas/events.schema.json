@@ -4603,6 +4603,9 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "retryGuidance": {
+                    "type": "string"
                   }
                 }
               }
@@ -8449,6 +8452,9 @@
                                     "type": "string"
                                   }
                                 ]
+                              },
+                              "retryGuidance": {
+                                "type": "string"
                               }
                             }
                           }

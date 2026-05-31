@@ -27,6 +27,8 @@ export interface ReviewFixerOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Continuation context when this is not the first attempt */
   continuationContext?: ReviewFixerContinuationContext;
+  /** Prior evaluator feedback from earlier review-cycle rounds. */
+  evaluatorFeedbackContext?: string;
 }
 
 /**
@@ -144,7 +146,7 @@ function renderContinuationContext(ctx: ReviewFixerContinuationContext | undefin
 export async function* runReviewFixer(
   options: ReviewFixerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { harness, planId, cwd, issues, verbose, abortController, continuationContext } = options;
+  const { harness, planId, cwd, issues, verbose, abortController, continuationContext, evaluatorFeedbackContext } = options;
   const maxTurns = options.maxTurns ?? 80;
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:start', planId, issueCount: issues.length };
@@ -153,6 +155,7 @@ export async function* runReviewFixer(
   const continuationText = renderContinuationContext(continuationContext);
   const prompt = await loadPrompt('review-fixer', {
     issues: issuesText,
+    evaluator_feedback_context: evaluatorFeedbackContext ?? '',
     continuation_context: continuationText,
   }, options.promptAppend);
 

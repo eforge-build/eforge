@@ -44,7 +44,6 @@ import {
   type EvaluationFileVerdictSummary,
   // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
 } from '../../evaluation/index.js';
-import type { EvaluationVerdict } from '../../schemas.js';
 import { countEvaluationIssueOutcomes, type EvaluationIssueOutcomeCounts } from '../../evaluation/issue-outcomes.js';
 // --- eforge:endregion plan-02-build-evaluator-enforcement ---
 // --- eforge:region plan-01-reviewer-isolation ---
@@ -57,6 +56,7 @@ import { registerBuildStage } from '../registry.js';
 import { runValidationProviderRecoveryStage } from './validation-provider-recovery.js';
 // --- eforge:endregion plan-01-runtime-recovery ---
 import { resolveAgentConfig } from '../agent-config.js';
+import { appendPromptSection, buildReviewCycleFeedback, getReviewCycleFeedback, renderReviewFixerEvaluatorFeedback, renderReviewerPriorOutcomeContext, setReviewCycleFeedback, summarizeEvaluationVerdicts } from '../review-cycle-feedback.js';
 import { isMaxTurnsError } from '../../harness.js';
 import { createToolTracker } from '../span-wiring.js';
 import { withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../git-helpers.js';
@@ -236,16 +236,6 @@ function formatNoVerdictsFailureMessage(s: EvaluationSnapshot, r: string): strin
   return p ? `${r} Candidate files with uncommitted changes: ${p}` : r;
 }
 // --- eforge:endregion plan-01-review-cycle-dirty-worktree-safety ---
-function summarizeEvaluationVerdicts(verdicts: EvaluationVerdict[]) {
-  return verdicts.map(v => ({
-    file: v.file,
-    action: v.action,
-    reason: v.reason,
-    ...(v.hunk !== undefined && { hunk: v.hunk }),
-    ...(v.issueOutcome !== undefined && { issueOutcome: v.issueOutcome }),
-  }));
-}
-
 async function restoreOriginalBuilderCommitState(snapshot: EvaluationSnapshot): Promise<void> {
   await restoreEvaluationSnapshotAfterFailure(snapshot);
   if (snapshot.originalHead) {
@@ -324,6 +314,7 @@ async function* reviewStageInner(
 
   const { harness: reviewerHarness, toolbeltSummary: reviewerTb } = ctx.agentRuntimes.forRoleResolved('reviewer', ctx.planFile);
   const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.planFile, reviewerTb);
+  const reviewerPromptAppend = appendPromptSection(reviewerAgentConfig.promptAppend, renderReviewerPriorOutcomeContext(getReviewCycleFeedback(ctx)));
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
   const reviewTracker = createToolTracker(reviewSpan);
@@ -371,6 +362,7 @@ async function* reviewStageInner(
       extensionApplicabilityTimeoutMs: ctx.config.extensions.eventHookTimeoutMs,
       // --- eforge:endregion plan-02-extension-perspective-runtime ---
       ...reviewerAgentConfig,
+      promptAppend: reviewerPromptAppend,
       phase: 'build',
       stage: 'review',
       harness: reviewerHarness,
@@ -583,6 +575,7 @@ async function* evaluateStageInner(
     });
     ctx.reviewIssues = [];
     const issueOutcomeCounts = countEvaluationIssueOutcomes(result.verdicts);
+    setReviewCycleFeedback(ctx, buildReviewCycleFeedback(result.verdicts));
     setLastBuildEvaluation(ctx, {
       ran: true,
       accepted: application.accepted,
@@ -628,6 +621,7 @@ async function* runReviewFixerAttempt(
       planId: input.planId,
       cwd: input.cwd,
       issues: ctx.reviewIssues,
+      evaluatorFeedbackContext: renderReviewFixerEvaluatorFeedback(getReviewCycleFeedback(ctx)),
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...fixerConfigWithPhase,
@@ -1154,6 +1148,8 @@ registerBuildStage({
   let droppedForRound: string[] = [];
   let adaptiveRationaleForRound: string | undefined;
   // --- eforge:endregion plan-01-adaptive-review-cycle-perspectives ---
+
+  setReviewCycleFeedback(ctx, undefined);
 
   let terminationReason: 'no-issues' | 'max-rounds' | null = null;
   // --- eforge:region plan-02-build-evaluator-enforcement ---

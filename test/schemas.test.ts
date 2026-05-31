@@ -168,6 +168,7 @@ describe('other schemas export and validate', () => {
       action: 'reject',
       reason: 'Reviewer issue is a false positive',
       issueOutcome: 'false_positive',
+      retryGuidance: 'Do not retry unless new evidence appears',
     });
     expect(result.success).toBe(true);
   });

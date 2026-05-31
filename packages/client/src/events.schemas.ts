@@ -544,7 +544,7 @@ const FailingPlanEntrySchema = Type.Object({
 });
 
 const ReviewFailureActionSchema = Type.Union([Type.Literal('accept'), Type.Literal('reject'), Type.Literal('review')]);
-const ReviewFailureEvaluationVerdictSchema = Type.Object({ file: Type.String(), action: ReviewFailureActionSchema, reason: Type.String(), hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema) });
+const ReviewFailureEvaluationVerdictSchema = Type.Object({ file: Type.String(), action: ReviewFailureActionSchema, reason: Type.String(), hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema), retryGuidance: Type.Optional(Type.String()) });
 const ReviewFailureDetailsSchema = Type.Object({ planId: Type.String(), issues: Type.Array(ReviewIssueSchema), evaluation: Type.Optional(Type.Object({ accepted: Type.Integer({ minimum: 0 }), rejected: Type.Integer({ minimum: 0 }), review: Type.Integer({ minimum: 0 }), verdicts: Type.Array(ReviewFailureEvaluationVerdictSchema) })) });
 // --- eforge:region plan-01-terminal-failure-contract ---
 export const TerminalFailureScopeSchema = Type.Union([Type.Literal('plan'), Type.Literal('post-merge-validation'), Type.Literal('prd-validation'), Type.Literal('acceptance-validation'), Type.Literal('artifact-recording'), Type.Literal('landing'), Type.Literal('daemon'), Type.Literal('compile'), Type.Literal('unknown')]);
@@ -1592,7 +1592,7 @@ const EforgeEventVariantsSchema = Type.Union([
       Type.Array(
         Type.Object({
           file: Type.String(), action: Type.Union([Type.Literal('accept'), Type.Literal('reject'), Type.Literal('review')]), reason: Type.String(),
-          hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema),
+          hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema), retryGuidance: Type.Optional(Type.String()),
         }),
       ),
     ),
