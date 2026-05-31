@@ -148,7 +148,6 @@ export type {
 // Session plan-set exports (read-only)
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-input-session-plan-sets ---
 export {
   // Constants / schemas
   SESSION_PLAN_SET_MANIFEST_FILENAME,
@@ -206,7 +205,6 @@ export type {
   LoadSessionPlanSetOpts,
   ValidateSessionPlanSetOpts,
 } from './session-plan-set.js';
-// --- eforge:endregion plan-01-input-session-plan-sets ---
 
 // ---------------------------------------------------------------------------
 // Acceptance criteria quality exports
