@@ -46,7 +46,7 @@ Any implementation file that legitimately exceeds 300 lines (with a baseline exc
 
 Durable marker slugs describe long-lived source organization, such as `api-routes`, `queue-projection`, or `validation-helpers`. They are source comments and remain in the repository.
 
-Temporary build-coordination markers use plan-ID slugs matching `plan-\d{2}-...`. They are emitted only to coordinate edits in shared files during a build. Supported whole-line forms are `// --- eforge:region plan-01-example ---` / `// --- eforge:endregion plan-01-example ---` for JS/TS code and `{/* --- eforge:region plan-01-example --- */}` / `{/* --- eforge:endregion plan-01-example --- */}` inside JSX markup. Cleanup strips both temporary whole-line marker comment forms from tracked JavaScript/TypeScript-family files after successful landing when the slug matches `plan-\d{2}-...`, and never removes the code between those marker lines.
+Temporary build-coordination markers use plan-ID slugs matching `plan-\d{2}-...`. They are emitted only to coordinate edits in shared files during a build. Supported whole-line forms use a plan-id slug in normal JS/TS line comments or JSX block comments. Cleanup strips both temporary whole-line marker comment forms from tracked JavaScript/TypeScript-family files after successful landing when the slug matches `plan-\d{2}-...`, and never removes the code between those marker lines.
 
 Rules:
 - Every `// --- eforge:region <slug> ---` must have a matching `// --- eforge:endregion <slug> ---` with the same slug, and markers must not be crossed (i.e., regions must be nested or sequential, not interleaved).

@@ -46,7 +46,7 @@ Primary implementation targets:
 - New focused helper, likely `packages/engine/src/region-marker-cleanup.ts`
   - Export a pure content helper such as `stripTemporaryEforgeRegionMarkerLines(content)` for unit tests.
   - Export a repo helper such as `stripTemporaryEforgeRegionMarkers(cwd)` that scans tracked source files via `git ls-files -z`, filters supported JS/TS extensions, skips generated/vendor directories, rewrites only changed files, stages those files, and returns a small summary for optional progress/debug use.
-  - Match temporary marker lines using whole-line patterns for `// --- eforge:region plan-01-... ---`, `// --- eforge:endregion plan-01-... ---`, and JSX/TSX block-comment marker lines like `{/* --- eforge:region plan-01-... --- */}`.
+  - Match temporary marker lines using whole-line patterns for JS/TS line comments and JSX/TSX block-comment marker lines whose slug matches `plan-\d{2}-...`.
   - Preserve non-temporary slugs and all non-marker content.
 
 - `packages/engine/src/prompts/builder.md`
@@ -111,8 +111,8 @@ Out of scope:
 
 ## Acceptance Criteria
 
-- `stripTemporaryEforgeRegionMarkerLines` removes whole-line `// --- eforge:region plan-01-example ---` comments from JavaScript/TypeScript content.
-- `stripTemporaryEforgeRegionMarkerLines` removes whole-line `// --- eforge:endregion plan-01-example ---` comments from JavaScript/TypeScript content.
+- `stripTemporaryEforgeRegionMarkerLines` removes whole-line start-marker comments whose slug matches `plan-\d{2}-...` from JavaScript/TypeScript content.
+- `stripTemporaryEforgeRegionMarkerLines` removes whole-line end-marker comments whose slug matches `plan-\d{2}-...` from JavaScript/TypeScript content.
 - `stripTemporaryEforgeRegionMarkerLines` removes whole-line JSX marker comments whose slug matches `plan-\d{2}-...`.
 - `stripTemporaryEforgeRegionMarkerLines` preserves all non-marker code lines between removed marker comments.
 - `stripTemporaryEforgeRegionMarkerLines` preserves marker comments whose slug does not match `plan-\d{2}-...`.
