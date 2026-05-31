@@ -26,7 +26,7 @@
   },
   "homepage": "https://eforge.build",
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsc --emitDeclarationOnly",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
