@@ -1,13 +1,3 @@
-/**
- * Synthesize a partial BuildFailureSummary from monitor.db event history.
- *
- * Used when state.json is unavailable (e.g. when running manual recovery
- * after the build process has already cleaned up). Opens the SQLite DB
- * read-only and queries recent plan:build:failed + agent:start events.
- *
- * Never throws — returns null on any error or when no relevant events exist.
- */
-
 import { DatabaseSync } from 'node:sqlite';
 import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit, AcceptanceCriteriaConflict, AcceptanceCriterionVerdict } from '../events.js';
 import { classifyAgentTerminalSubtype } from '../harness.js';
@@ -25,6 +15,40 @@ interface EventHistoryRow {
   agent: string | null;
   data: string;
   timestamp: string;
+}
+
+interface SelectedRunRow {
+  id: string;
+  command: string;
+  startedAt: string;
+}
+
+function selectRunForEventHistory(db: DatabaseSync, setName: string): SelectedRunRow | undefined {
+  const failedEvidenceRunStmt = db.prepare(
+    `SELECT r.id, r.command, r.started_at AS startedAt
+     FROM runs r
+     WHERE r.plan_set = ?
+       AND r.command IN ('build', 'resume')
+       AND r.status = 'failed'
+       AND EXISTS (
+         SELECT 1
+         FROM events e
+         WHERE e.run_id = r.id
+           AND e.type IN ('plan:status:change', 'plan:build:failed', 'plan:merge:complete')
+       )
+     ORDER BY r.started_at DESC, r.id DESC
+     LIMIT 1`,
+  );
+  const failedBuildRunStmt = db.prepare(
+    `SELECT id, command, started_at AS startedAt FROM runs WHERE plan_set = ? AND command = 'build' AND status = 'failed' ORDER BY started_at DESC LIMIT 1`,
+  );
+  const newestRunStmt = db.prepare(
+    `SELECT id, command, started_at AS startedAt FROM runs WHERE plan_set = ? ORDER BY started_at DESC LIMIT 1`,
+  );
+
+  return (failedEvidenceRunStmt.get(setName)
+    ?? failedBuildRunStmt.get(setName)
+    ?? newestRunStmt.get(setName)) as SelectedRunRow | undefined;
 }
 
 function parseEventData(data: string): Record<string, unknown> {
@@ -56,16 +80,7 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
   try {
     const db = new DatabaseSync(dbPath);
     try {
-      // Prefer the latest failed build run for this setName. A newer running
-      // resume run can share the same plan_set, but recovery summaries need the
-      // original failed build evidence that made the set resumable.
-      const failedBuildRunStmt = db.prepare(
-        `SELECT id, command, started_at as startedAt FROM runs WHERE plan_set = ? AND command = 'build' AND status = 'failed' ORDER BY started_at DESC LIMIT 1`,
-      );
-      const newestRunStmt = db.prepare(
-        `SELECT id, command, started_at as startedAt FROM runs WHERE plan_set = ? ORDER BY started_at DESC LIMIT 1`,
-      );
-      const run = (failedBuildRunStmt.get(setName) ?? newestRunStmt.get(setName)) as { id: string; command: string; startedAt: string } | undefined;
+      const run = selectRunForEventHistory(db, setName);
 
       if (!run) return null;
 

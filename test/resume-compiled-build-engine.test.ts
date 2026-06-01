@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { synthesizeFromEvents } from '@eforge-build/engine/recovery/event-history';
 import { deriveResumeSeedState, formatResumeContext, checkResumeEligibility, buildResumeArtifactsProjection, projectResumeEligibility, resolveResumeSetName } from '@eforge-build/engine/resume/compiled-build';
 import { applyResumeSeed, initializeState, type ResumeSeedOptions } from '@eforge-build/engine/orchestrator';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
@@ -143,6 +144,51 @@ function seedFailedRunEvidence(cwd: string, setName: string): string {
   return dbPath;
 }
 
+function insertRecoverySelectionEvent(
+  db: ReturnType<typeof openDatabase>,
+  runId: string,
+  type: string,
+  planId: string | undefined,
+  timestamp: string,
+  data: Record<string, unknown> = {},
+): void {
+  db.insertEvent({
+    runId,
+    type,
+    ...(planId ? { planId } : {}),
+    data: JSON.stringify({ type, ...(planId ? { planId } : {}), ...data, timestamp }),
+    timestamp,
+  });
+}
+
+function seedRecoveryRunSelectionFixture(cwd: string, setName: string, newerResumeStatus: 'failed' | 'running'): string {
+  const dbPath = join(cwd, '.eforge', 'monitor.db');
+  const db = openDatabase(dbPath);
+  const buildRunId = `run-${setName}-build`;
+  const resumeRunId = `run-${setName}-resume`;
+  const t0 = '2026-01-01T00:00:00.000Z';
+  const t1 = '2026-01-01T01:00:00.000Z';
+
+  db.insertRun({ id: buildRunId, planSet: setName, command: 'build', status: 'failed', startedAt: t0, cwd });
+  insertRecoverySelectionEvent(db, buildRunId, 'plan:status:change', 'plan-05', t0, { status: 'failed' });
+  insertRecoverySelectionEvent(db, buildRunId, 'plan:build:failed', 'plan-05', t0, { error: 'original build failure' });
+  insertRecoverySelectionEvent(db, buildRunId, 'phase:end', undefined, t0, { runId: buildRunId, result: { status: 'failed', summary: 'failed' } });
+
+  db.insertRun({ id: resumeRunId, planSet: setName, command: 'resume', status: newerResumeStatus, startedAt: t1, cwd });
+  insertRecoverySelectionEvent(db, resumeRunId, 'plan:status:change', 'plan-05', t1, { status: 'merged' });
+  insertRecoverySelectionEvent(db, resumeRunId, 'plan:merge:complete', 'plan-05', t1, { commitSha: 'abc005' });
+  insertRecoverySelectionEvent(db, resumeRunId, 'plan:status:change', 'plan-06', t1, { status: 'merged' });
+  insertRecoverySelectionEvent(db, resumeRunId, 'plan:merge:complete', 'plan-06', t1, { commitSha: 'abc006' });
+  insertRecoverySelectionEvent(db, resumeRunId, 'plan:status:change', 'plan-07', t1, { status: 'failed' });
+  insertRecoverySelectionEvent(db, resumeRunId, 'plan:build:failed', 'plan-07', t1, { error: 'resume failure' });
+  if (newerResumeStatus === 'failed') {
+    insertRecoverySelectionEvent(db, resumeRunId, 'phase:end', undefined, t1, { runId: resumeRunId, result: { status: 'failed', summary: 'failed' } });
+  }
+
+  db.close();
+  return dbPath;
+}
+
 function createFeatureBranchWithArtifacts(cwd: string, setName: string, opts: { removeArtifactsAtTip?: boolean } = {}): void {
   git(cwd, ['switch', '-c', `eforge/${setName}`]);
   writeCompiledPlanSet(cwd, setName);
@@ -223,6 +269,36 @@ describe('deriveResumeSeedState — plan-state derivation from failure summary',
     const result = deriveResumeSeedState(plans);
     expect(result.seededPending).toContain('plan-05');
     expect(result.seededMerged).not.toContain('plan-05');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// synthesizeFromEvents
+// ---------------------------------------------------------------------------
+
+describe('synthesizeFromEvents — resume run selection', () => {
+  it('selects a newer failed resume run with plan-state evidence over the original failed build', () => {
+    const cwd = makeTempDir();
+    const setName = 'repeated-resume-selection';
+    const dbPath = seedRecoveryRunSelectionFixture(cwd, setName, 'failed');
+
+    const fragment = synthesizeFromEvents({ setName, prdId: setName, dbPath });
+
+    expect(fragment?.failingPlan?.planId).toBe('plan-07');
+    const seed = deriveResumeSeedState(fragment?.plans ?? []);
+    expect(seed.seededMerged).toEqual(expect.arrayContaining(['plan-05', 'plan-06']));
+    expect(seed.seededPending).toContain('plan-07');
+  });
+
+  it('ignores a newer running resume run and keeps the failed build fragment', () => {
+    const cwd = makeTempDir();
+    const setName = 'running-resume-guard';
+    const dbPath = seedRecoveryRunSelectionFixture(cwd, setName, 'running');
+
+    const fragment = synthesizeFromEvents({ setName, prdId: setName, dbPath });
+
+    expect(fragment?.failingPlan?.planId).toBe('plan-05');
+    expect(fragment?.plans.map((plan) => plan.planId)).not.toContain('plan-07');
   });
 });
 
