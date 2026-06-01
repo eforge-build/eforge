@@ -4,7 +4,8 @@ description: Behavior-preserving monitor daemon architecture migration that
   HTTP primitives, typed context, feature route modules, stream modules,
   reusable projections, and compatibility exports.
 created: 2026-06-01
-status: draft
+status: compiled
+compiled: "2026-06-01"
 mode: expedition
 validate:
   - pnpm type-check

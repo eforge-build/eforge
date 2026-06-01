@@ -1,0 +1,114 @@
+name: migrate-monitor-server-to-a-maintainable-architecture
+description: Behavior-preserving monitor daemon architecture migration that
+  turns packages/monitor/src/server.ts into a small composition root with shared
+  HTTP primitives, typed context, feature route modules, stream modules,
+  reusable projections, and compatibility exports.
+created: 2026-06-01
+compiled: 2026-06-01
+mode: expedition
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+plans:
+  - id: plan-01-foundation-http-context
+    name: Create MonitorContext, public monitor types, and shared HTTP
+      router/request/response/security/static primitives without moving feature
+      routes yet.
+    depends_on: []
+    branch: migrate-monitor-server-to-a-maintainable-architecture/foundation-http-context
+    build: &a1
+      - implement
+      - test-write
+      - validate
+      - review-cycle
+      - test-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - api
+        - security
+      maxRounds: 3
+      evaluatorStrictness: strict
+  - id: plan-02-projections-read-models
+    name: Extract reusable read-side projections for run summaries, run state,
+      plans, queue items, stack layers, auto-build state, config redaction, and
+      event hydration.
+    depends_on: []
+    branch: migrate-monitor-server-to-a-maintainable-architecture/projections-read-models
+    build: *a1
+    review: *a2
+  - id: plan-03-config-profile-stack-routes
+    name: Create registered route modules for health/version/project context,
+      config, profiles, models, stack layers, and stack sync/status.
+    depends_on:
+      - plan-01-foundation-http-context
+      - plan-02-projections-read-models
+    branch: migrate-monitor-server-to-a-maintainable-architecture/config-profile-stack-routes
+    build: *a1
+    review: *a2
+  - id: plan-04-extension-content-routes
+    name: Create registered route modules and narrow services for extensions,
+      playbooks, session plans, and session plan sets.
+    depends_on:
+      - plan-01-foundation-http-context
+      - plan-02-projections-read-models
+    branch: migrate-monitor-server-to-a-maintainable-architecture/extension-content-routes
+    build: *a1
+    review: *a2
+  - id: plan-05-stream-hub
+    name: Extract session and daemon SSE streams, event parsing, polling, heartbeat,
+      semantic daemon-event reactions, broadcast, and subscriber cleanup into
+      stream-focused modules.
+    depends_on:
+      - plan-01-foundation-http-context
+      - plan-02-projections-read-models
+    branch: migrate-monitor-server-to-a-maintainable-architecture/stream-hub
+    build: *a1
+    review: *a2
+  - id: plan-06-control-monitor-routes
+    name: Create registered route modules for control-plane, recovery/resume, queue
+      recovery, monitor data, run details, plans, diffs, and SSE attach routes.
+    depends_on:
+      - plan-01-foundation-http-context
+      - plan-02-projections-read-models
+      - plan-05-stream-hub
+    branch: migrate-monitor-server-to-a-maintainable-architecture/control-monitor-routes
+    build: *a1
+    review: *a2
+  - id: plan-07-server-composition-coverage
+    name: Wire the final router and stream hub in server.ts, preserve compatibility
+      exports, trim server.ts, add registry/security/static/compatibility
+      coverage, and satisfy maintainability marker gates.
+    depends_on:
+      - plan-01-foundation-http-context
+      - plan-02-projections-read-models
+      - plan-05-stream-hub
+      - plan-06-control-monitor-routes
+      - plan-03-config-profile-stack-routes
+      - plan-04-extension-content-routes
+    branch: migrate-monitor-server-to-a-maintainable-architecture/server-composition-coverage
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: This is an expedition because the migration spans several high-risk
+    subsystems—HTTP routing/security/static assets, SSE stream lifecycle, shared
+    projections, feature route modules, and regression coverage—and requires
+    coordinated module planning to preserve the daemon contract. The compile
+    pipeline includes architecture, module, and cohesion review before producing
+    build plans. The build pipeline implements, writes required regression
+    tests, runs the registered maintainability validation gate before review,
+    then applies strict iterative review and final test cycles. API and security
+    perspectives are selected because the work must preserve HTTP/SSE contracts
+    while centralizing local-only, cross-site, and static-file protections.
+diff_base_ref: 636639d5d8783422422c77eef0d25d56b82dfa1a
