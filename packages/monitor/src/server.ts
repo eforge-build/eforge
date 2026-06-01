@@ -43,8 +43,6 @@ import {
   applyRecoveryAbandon,
   applyRecoveryManual,
 } from '@eforge-build/engine/recovery/apply';
-import { projectResumeEligibility, resolveResumeSetName } from '@eforge-build/engine/resume/compiled-build';
-import { computeWorktreeBase } from '@eforge-build/engine/worktree-ops';
 import { writeHello } from './sse-handshake.js';
 import { reactToDaemonEvent } from './daemon-event-reactions.js';
 import type {
@@ -64,6 +62,7 @@ import {
 } from './extension-package-management.js';
 import { runStackSync, loadSyncStatusForRoute, loadSyncStatusForRouteSync } from './stack-sync-service.js';
 import { handleQueueRecoveryRoutes } from './queue-recovery-routes.js';
+import { handleResumeEligibilityRoute } from './resume-eligibility-route.js';
 import { handleSessionPlanSetRoutes } from './session-plan-set-routes.js';
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -2519,92 +2518,16 @@ export async function startServer(
       return true;
     }
 
-    // Read-only resume eligibility preflight. Deliberately does NOT require a
-    // workerTracker and never spawns a worker, creates a merge worktree, or
-    // materializes recovery artifacts.
-    if (
-      req.method === 'GET' &&
-      (url === API_ROUTES.resumeEligibility || url.startsWith(`${API_ROUTES.resumeEligibility}?`))
-    ) {
-      // Returns repository recovery metadata (feature branch, diff stats,
-      // failing plan IDs). The daemon is browser-reachable with permissive CORS
-      // and listens on all interfaces, so require a local/same-origin request
-      // before doing any git/DB work.
-      if (rejectUnsafeExtensionMutationRequest(req, res, 'Resume eligibility checks')) return true;
-      if (rejectCrossSiteBrowserRequest(req, res, 'Resume eligibility checks')) return true;
-      if (!cwd) {
-        sendJsonError(res, 503, 'No working directory configured');
-        return true;
-      }
-      const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
-      const params = new URLSearchParams(queryString);
-      const prdId = params.get('prdId');
-      if (!prdId) {
-        sendJsonError(res, 400, 'Missing required query param: prdId');
-        return true;
-      }
-      if (!isValidPathSegment(prdId)) {
-        sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
-        return true;
-      }
-      const setNameParam = params.get('setName');
-      if (setNameParam !== null && !isValidPathSegment(setNameParam)) {
-        sendJsonError(res, 400, 'Invalid setName: must not contain path separators or traversal sequences');
-        return true;
-      }
-      try {
-        const prdQueueDir = options?.config?.prdQueue?.dir ?? options?.queueDir ?? '.eforge/queue';
-        const failedDir = resolve(cwd, prdQueueDir, 'failed');
-        const setName = setNameParam ?? (await resolveResumeSetName({ prdId, failedDir }));
-        if (!isValidPathSegment(setName)) {
-          sendJsonError(res, 400, 'Resolved setName is invalid: must not contain path separators or traversal sequences');
-          return true;
-        }
-        const outputDir = options?.config?.plan?.outputDir ?? options?.planOutputDir ?? 'eforge/plans';
-        const trunkBranch = options?.config?.build?.trunkBranch;
-        const mergeWorktreePath = join(computeWorktreeBase(cwd, setName), '__merge__');
-        const dbPath = resolve(cwd, '.eforge', 'monitor.db');
-        const projection = await projectResumeEligibility({
-          cwd,
-          setName,
-          prdId,
-          mergeWorktreePath,
-          outputDir,
-          dbPath,
-          trunkBranch,
-        });
-        if (projection.eligible) {
-          sendJson(res, {
-            eligible: true,
-            prdId,
-            setName,
-            featureBranch: projection.featureBranch,
-            artifactAvailability: projection.artifactAvailability,
-            ...(projection.artifactCommit !== undefined ? { artifactCommit: projection.artifactCommit } : {}),
-            landedCommitCount: projection.landedCommitCount,
-            diffStat: projection.diffStat,
-            ...(projection.failingPlanId !== undefined ? { failingPlanId: projection.failingPlanId } : {}),
-            ...(projection.partial !== undefined ? { partial: projection.partial } : {}),
-          });
-        } else {
-          sendJson(res, {
-            eligible: false,
-            prdId,
-            setName,
-            featureBranch: projection.featureBranch,
-            reason: projection.reason,
-            // Avoid leaking absolute filesystem paths to (possibly remote)
-            // callers; report the checked path relative to the project root.
-            ...(projection.checkedPath !== undefined
-              ? { checkedPath: relative(cwd, projection.checkedPath) }
-              : {}),
-          });
-        }
-      } catch (err) {
-        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to check resume eligibility');
-      }
-      return true;
-    }
+    if (await handleResumeEligibilityRoute(req, res, url, {
+      cwd,
+      queueDir: options?.queueDir,
+      planOutputDir: options?.planOutputDir,
+      config: options?.config,
+      sendJson,
+      sendJsonError,
+      rejectUnsafeRequest: rejectUnsafeExtensionMutationRequest,
+      rejectCrossSiteBrowserRequest,
+    })) return true;
 
     // --- Auto-build API routes ---
     if (req.method === 'POST' && url === API_ROUTES.daemonStop) {

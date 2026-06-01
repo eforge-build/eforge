@@ -105,10 +105,8 @@ export interface ResumeEligibilityRequest {
   setName?: string;
 }
 
-/** Where compiled-build resume artifacts can be sourced from. */
 export type ResumeArtifactAvailability = 'merge-worktree' | 'feature-branch' | 'branch-history';
 
-/** Identity fields shared by both resume eligibility outcomes. */
 interface ResumeEligibilityIdentity {
   prdId: string;
   setName: string;
