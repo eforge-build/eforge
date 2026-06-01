@@ -1,441 +1,66 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { StringEnum } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, Text, truncateToWidth, wrapTextWithAnsi, type AutocompleteItem } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text, type AutocompleteItem } from "@earendil-works/pi-tui";
+import { showBacklogBrowser, showBacklogItem, showPanel, type BacklogBrowserAction } from "./browser";
+import { AddParams, ListParams, ShowParams, UpdateParams } from "./schemas";
+import {
+	BACKLOG_ACTIONS,
+	CLOSED_STATUSES,
+	PRIORITY_VALUES,
+	STATUS_VALUES,
+	appendToSection,
+	blockedBy,
+	createItem,
+	filterBlockedItems,
+	filterItems,
+	filterReadyItems,
+	formatDependencyGraph,
+	formatSummaryList,
+	isStale,
+	isStatus,
+	itemById,
+	listItems,
+	readItem,
+	sectionContent,
+	serializeItem,
+	summarize,
+	today,
+	uniqueValues,
+	writeItem,
+	type BacklogItem,
+	type BacklogStatus,
+	type BacklogSummary,
+} from "./store";
 
-type BacklogStatus = "candidate" | "planned" | "active" | "shipped" | "stale" | "superseded";
-type BacklogPriority = "low" | "medium" | "high";
-type BacklogSource = "conversation" | "review" | "build" | "roadmap" | "manual";
-
-type BacklogItem = {
-	id: string;
-	title: string;
-	status: BacklogStatus;
-	priority: BacklogPriority;
-	source: BacklogSource;
-	created: string;
-	updated: string;
-	last_checked?: string;
-	stale_after?: string;
-	tags: string[];
-	depends_on: string[];
-	epic?: string;
-	body: string;
-};
-
-type BacklogSummary = Omit<BacklogItem, "body"> & { stale: boolean };
-
-const STATUS_VALUES = ["candidate", "planned", "active", "shipped", "stale", "superseded"] as const;
-const PRIORITY_VALUES = ["low", "medium", "high"] as const;
-const SOURCE_VALUES = ["conversation", "review", "build", "roadmap", "manual"] as const;
-const BACKLOG_ACTIONS = ["list", "add", "show", "status", "stale", "depends", "review", "analyze", "analyze-all", "promote", "curate"] as const;
-const CLOSED_STATUSES = new Set<BacklogStatus>(["shipped", "stale", "superseded"]);
-const SATISFIED_DEPENDENCY_STATUSES = new Set<BacklogStatus>(["shipped", "superseded"]);
-const DEFAULT_STALE_DAYS = 14;
-const MAX_PANEL_ROWS_FALLBACK = 20;
-
-const AddParams = Type.Object({
-	title: Type.String({ description: "Short title for the backlog item" }),
-	claim: Type.Optional(Type.String({ description: "What should be remembered or investigated" })),
-	evidence: Type.Optional(Type.String({ description: "Evidence, source, or why this matters" })),
-	tags: Type.Optional(Type.Array(Type.String())),
-	dependsOn: Type.Optional(Type.Array(Type.String(), { description: "Backlog item IDs this item depends on" })),
-	priority: Type.Optional(StringEnum(PRIORITY_VALUES)),
-	source: Type.Optional(StringEnum(SOURCE_VALUES)),
-	staleAfter: Type.Optional(Type.String({ description: "YYYY-MM-DD date when this item should be rechecked" })),
-});
-
-const ListParams = Type.Object({
-	status: Type.Optional(StringEnum(STATUS_VALUES)),
-	query: Type.Optional(Type.String()),
-	tag: Type.Optional(Type.String()),
-	includeClosed: Type.Optional(Type.Boolean()),
-});
-
-const ShowParams = Type.Object({ id: Type.String() });
-
-const UpdateParams = Type.Object({
-	id: Type.String(),
-	status: Type.Optional(StringEnum(STATUS_VALUES)),
-	priority: Type.Optional(StringEnum(PRIORITY_VALUES)),
-	claim: Type.Optional(Type.String()),
-	addEvidence: Type.Optional(Type.String()),
-	addRecheck: Type.Optional(Type.String()),
-	tags: Type.Optional(Type.Array(Type.String())),
-	dependsOn: Type.Optional(Type.Array(Type.String(), { description: "Replace dependency list with these backlog item IDs" })),
-	addDependsOn: Type.Optional(Type.Array(Type.String(), { description: "Add backlog item IDs as dependencies" })),
-	removeDependsOn: Type.Optional(Type.Array(Type.String(), { description: "Remove backlog item IDs from dependencies" })),
-	epic: Type.Optional(Type.String()),
-	lastChecked: Type.Optional(Type.String({ description: "YYYY-MM-DD date" })),
-	staleAfter: Type.Optional(Type.String({ description: "YYYY-MM-DD date" })),
-});
-
-function backlogDir(cwd: string): string {
-	return join(cwd, ".eforge", "backlog", "items");
+// --- eforge:region command-runtime ---
+async function handleBrowserAction(pi: ExtensionAPI, ctx: ExtensionContext, action: BacklogBrowserAction | undefined): Promise<void> {
+	if (!action) return;
+	if (action.kind === "analyze") return sendAgentPrompt(pi, ctx, buildAnalyzePrompt(action.id));
+	if (action.kind === "promote") return prefillPromotePrompt(ctx, action.id);
+	if (action.kind === "cycle-status") return cycleOpenStatus(ctx, action.id);
+	if (action.kind === "cycle-priority") return cyclePriority(ctx, action.id);
 }
 
-function today(): string {
-	return new Date().toISOString().slice(0, 10);
+async function prefillPromotePrompt(ctx: ExtensionContext, id: string): Promise<void> {
+	const item = await readItem(ctx.cwd, id);
+	ctx.ui.setEditorText(buildPromotePrompt(item));
+	ctx.ui.notify(`Prefilled editor with /eforge:plan for ${id}`, "info");
 }
 
-function addDays(date: string, days: number): string {
-	const parsed = new Date(`${date}T00:00:00.000Z`);
-	parsed.setUTCDate(parsed.getUTCDate() + days);
-	return parsed.toISOString().slice(0, 10);
+async function cycleOpenStatus(ctx: ExtensionContext, id: string): Promise<void> {
+	const item = await readItem(ctx.cwd, id);
+	const openStatuses: BacklogStatus[] = ["candidate", "planned", "active"];
+	item.status = openStatuses[(openStatuses.indexOf(item.status) + 1) % openStatuses.length] ?? "candidate";
+	item.body = appendToSection(item.body, "Evidence", `${today()}: quick browser status change to ${item.status}`);
+	await writeItem(ctx.cwd, item);
+	ctx.ui.notify(`Backlog item ${id} marked ${item.status}`, "info");
 }
 
-function slugify(input: string): string {
-	return input
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 60) || "item";
-}
-
-async function nextId(cwd: string, title: string): Promise<string> {
-	const base = `backlog-${today()}-${slugify(title)}`;
-	let candidate = base;
-	let suffix = 2;
-	while (await exists(itemPath(cwd, candidate))) {
-		candidate = `${base}-${suffix}`;
-		suffix += 1;
-	}
-	return candidate;
-}
-
-async function exists(path: string): Promise<boolean> {
-	try {
-		await readFile(path, "utf8");
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-function itemPath(cwd: string, id: string): string {
-	return join(backlogDir(cwd), `${id}.md`);
-}
-
-function parseInlineList(value: string | undefined): string[] {
-	if (!value) return [];
-	const trimmed = value.trim();
-	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return [];
-	const inner = trimmed.slice(1, -1).trim();
-	if (!inner) return [];
-	return inner.split(",").map((part) => part.trim().replace(/^['\"]|['\"]$/g, "")).filter(Boolean);
-}
-
-function uniqueValues(values: string[]): string[] {
-	return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
-}
-
-function parseFrontmatter(content: string): { attrs: Record<string, string>; body: string } {
-	if (!content.startsWith("---\n")) return { attrs: {}, body: content };
-	const end = content.indexOf("\n---\n", 4);
-	if (end === -1) return { attrs: {}, body: content };
-	const raw = content.slice(4, end).split("\n");
-	const attrs: Record<string, string> = {};
-	for (const line of raw) {
-		const index = line.indexOf(":");
-		if (index === -1) continue;
-		const key = line.slice(0, index).trim();
-		const value = line.slice(index + 1).trim();
-		attrs[key] = value.replace(/^['\"]|['\"]$/g, "");
-	}
-	return { attrs, body: content.slice(end + 5) };
-}
-
-function titleFromBody(body: string, fallback: string): string {
-	const match = body.match(/^#\s+(.+)$/m);
-	return match?.[1]?.trim() || fallback;
-}
-
-function isStatus(value: string | undefined): value is BacklogStatus {
-	return STATUS_VALUES.includes(value as BacklogStatus);
-}
-
-function isPriority(value: string | undefined): value is BacklogPriority {
-	return PRIORITY_VALUES.includes(value as BacklogPriority);
-}
-
-function isSource(value: string | undefined): value is BacklogSource {
-	return SOURCE_VALUES.includes(value as BacklogSource);
-}
-
-function parseItem(content: string, fallbackId: string): BacklogItem {
-	const { attrs, body } = parseFrontmatter(content);
-	return {
-		id: attrs.id || fallbackId,
-		title: titleFromBody(body, attrs.title || fallbackId),
-		status: isStatus(attrs.status) ? attrs.status : "candidate",
-		priority: isPriority(attrs.priority) ? attrs.priority : "medium",
-		source: isSource(attrs.source) ? attrs.source : "manual",
-		created: attrs.created || today(),
-		updated: attrs.updated || attrs.created || today(),
-		last_checked: attrs.last_checked || undefined,
-		stale_after: attrs.stale_after || undefined,
-		tags: parseInlineList(attrs.tags),
-		depends_on: uniqueValues(parseInlineList(attrs.depends_on || attrs.dependsOn)),
-		epic: attrs.epic || undefined,
-		body: body.trimEnd() + "\n",
-	};
-}
-
-function serializeList(values: string[]): string {
-	return `[${values.map((value) => JSON.stringify(value)).join(", ")}]`;
-}
-
-function serializeItem(item: BacklogItem): string {
-	const attrs = [
-		"---",
-		`id: ${item.id}`,
-		`status: ${item.status}`,
-		`priority: ${item.priority}`,
-		`source: ${item.source}`,
-		`created: ${item.created}`,
-		`updated: ${item.updated}`,
-		...(item.last_checked ? [`last_checked: ${item.last_checked}`] : []),
-		...(item.stale_after ? [`stale_after: ${item.stale_after}`] : []),
-		`tags: ${serializeList(item.tags)}`,
-		...(item.depends_on.length ? [`depends_on: ${serializeList(item.depends_on)}`] : []),
-		...(item.epic ? [`epic: ${JSON.stringify(item.epic)}`] : []),
-		"---",
-		"",
-	];
-	return attrs.join("\n") + item.body.trimEnd() + "\n";
-}
-
-async function ensureBacklogDir(cwd: string): Promise<void> {
-	await mkdir(backlogDir(cwd), { recursive: true });
-}
-
-async function readItem(cwd: string, id: string): Promise<BacklogItem> {
-	const content = await readFile(itemPath(cwd, id), "utf8");
-	return parseItem(content, id);
-}
-
-async function writeItem(cwd: string, item: BacklogItem): Promise<void> {
-	await ensureBacklogDir(cwd);
-	await writeFile(itemPath(cwd, item.id), serializeItem({ ...item, updated: today() }), "utf8");
-}
-
-async function listItems(cwd: string): Promise<BacklogItem[]> {
-	await ensureBacklogDir(cwd);
-	const names = await readdir(backlogDir(cwd));
-	const items = await Promise.all(
-		names
-			.filter((name) => name.endsWith(".md"))
-			.map(async (name) => parseItem(await readFile(join(backlogDir(cwd), name), "utf8"), name.replace(/\.md$/, ""))),
-	);
-	return items.sort((a, b) => b.updated.localeCompare(a.updated) || a.id.localeCompare(b.id));
-}
-
-function isStale(item: BacklogItem): boolean {
-	if (["shipped", "stale", "superseded"].includes(item.status)) return false;
-	return item.stale_after !== undefined && item.stale_after < today();
-}
-
-function summarize(item: BacklogItem): BacklogSummary {
-	const { body: _body, ...rest } = item;
-	return { ...rest, stale: isStale(item) };
-}
-
-function defaultBody(title: string, claim?: string, evidence?: string): string {
-	return `# ${title}\n\n## Claim\n\n${claim?.trim() || "TBD"}\n\n## Evidence\n\n${evidence?.trim() || "- Source: manual capture"}\n\n## Recheck\n\n- Search or inspect the relevant files before promoting this item.\n\n## Promotion Paths\n\n- Create an eforge session plan when this becomes buildable work.\n- Link or update a Schaake OS epic if this becomes strategic work.\n`;
-}
-
-async function createItem(cwd: string, input: {
-	title: string;
-	claim?: string;
-	evidence?: string;
-	tags?: string[];
-	dependsOn?: string[];
-	priority?: BacklogPriority;
-	source?: BacklogSource;
-	staleAfter?: string;
-}): Promise<BacklogItem> {
-	const id = await nextId(cwd, input.title);
-	const date = today();
-	const item: BacklogItem = {
-		id,
-		title: input.title.trim(),
-		status: "candidate",
-		priority: input.priority ?? "medium",
-		source: input.source ?? "manual",
-		created: date,
-		updated: date,
-		stale_after: input.staleAfter ?? addDays(date, DEFAULT_STALE_DAYS),
-		tags: input.tags ?? [],
-		depends_on: uniqueValues(input.dependsOn ?? []),
-		body: defaultBody(input.title.trim(), input.claim, input.evidence),
-	};
-	await writeItem(cwd, item);
-	return item;
-}
-
-function upsertSection(body: string, heading: string, content: string): string {
-	const range = findSectionRange(body, heading);
-	const replacement = `## ${heading}\n\n${content.trim()}\n\n`;
-	if (!range) return body.trimEnd() + `\n\n${replacement}`;
-	return body.slice(0, range.start) + replacement + body.slice(range.end).replace(/^\n+/, "");
-}
-
-function appendToSection(body: string, heading: string, content: string): string {
-	const existing = sectionContent(body, heading);
-	const next = `${existing.trim()}\n\n- ${content.trim()}`.trim();
-	return upsertSection(body, heading, next);
-}
-
-function sectionContent(body: string, heading: string): string {
-	const range = findSectionRange(body, heading);
-	return range ? body.slice(range.contentStart, range.end).trim() : "";
-}
-
-function findSectionRange(body: string, heading: string): { start: number; contentStart: number; end: number } | undefined {
-	const marker = `## ${heading}\n`;
-	let start = body.indexOf(marker);
-	while (start > 0 && body[start - 1] !== "\n") start = body.indexOf(marker, start + marker.length);
-	if (start === -1) return undefined;
-	const contentStart = start + marker.length;
-	const next = body.indexOf("\n## ", contentStart);
-	const end = next === -1 ? body.length : next + 1;
-	return { start, contentStart, end };
-}
-
-function filterItems(items: BacklogItem[], params: { status?: BacklogStatus; query?: string; tag?: string; includeClosed?: boolean }): BacklogItem[] {
-	const query = params.query?.toLowerCase().trim();
-	return items.filter((item) => {
-		if (params.status && item.status !== params.status) return false;
-		if (!params.includeClosed && !params.status && CLOSED_STATUSES.has(item.status)) return false;
-		if (params.tag && !item.tags.includes(params.tag)) return false;
-		if (query && !`${item.id}\n${item.title}\n${item.tags.join(" ")}\n${item.depends_on.join(" ")}\n${item.body}`.toLowerCase().includes(query)) return false;
-		return true;
-	});
-}
-
-type BacklogDisplayItem = BacklogItem | BacklogSummary;
-
-function itemById(items: BacklogDisplayItem[]): Map<string, BacklogDisplayItem> {
-	return new Map(items.map((item) => [item.id, item]));
-}
-
-function blockedBy(item: BacklogDisplayItem, itemsById: Map<string, BacklogDisplayItem>): string[] {
-	return item.depends_on.filter((dependencyId) => {
-		const dependency = itemsById.get(dependencyId);
-		return !dependency || !SATISFIED_DEPENDENCY_STATUSES.has(dependency.status);
-	});
-}
-
-function itemIsStale(item: BacklogDisplayItem): boolean {
-	return "stale" in item ? item.stale : isStale(item);
-}
-
-function shortId(id: string): string {
-	return id.replace(/^backlog-\d{4}-\d{2}-\d{2}-/, "");
-}
-
-function formatIdList(ids: string[]): string {
-	return ids.map(shortId).join(", ");
-}
-
-function formatSummaryLines(item: BacklogDisplayItem, itemsById: Map<string, BacklogDisplayItem>): string[] {
-	const blocked = blockedBy(item, itemsById);
-	const labels = [item.status, item.priority, ...(itemIsStale(item) ? ["review-due"] : []), ...(blocked.length ? ["blocked"] : [])];
-	const lines = [`• ${item.title} [${labels.join("/")}]`, `  id: ${item.id}`];
-	if (item.tags.length) lines.push(`  tags: ${item.tags.join(", ")}`);
-	if (item.depends_on.length) lines.push(`  depends on: ${formatIdList(item.depends_on)}`);
-	if (blocked.length) lines.push(`  blocked by: ${formatIdList(blocked)}`);
-	return lines;
-}
-
-function formatSummaryList(items: BacklogDisplayItem[], contextItems: BacklogDisplayItem[] = items): string[] {
-	const itemsById = itemById(contextItems);
-	return items.flatMap((item, index) => [...formatSummaryLines(item, itemsById), ...(index < items.length - 1 ? [""] : [])]);
-}
-
-function terminalRows(tui: { terminal?: { rows?: number } }): number {
-	const rows = tui.terminal?.rows;
-	return typeof rows === "number" && Number.isFinite(rows) && rows > 0 ? rows : MAX_PANEL_ROWS_FALLBACK;
-}
-
-class BacklogPanel {
-	private scroll = 0;
-	private cachedWidth?: number;
-	private cachedLines?: string[];
-
-	constructor(
-		private title: string,
-		private lines: string[],
-		private theme: Theme,
-		private rows: () => number,
-		private requestRender: () => void,
-		private done: () => void,
-	) {}
-
-	handleInput(data: string): void {
-		if (matchesKey(data, Key.escape) || matchesKey(data, Key.enter) || matchesKey(data, "ctrl+c")) {
-			this.done();
-			return;
-		}
-		if (matchesKey(data, Key.down) || data === "j") this.scrollBy(1);
-		if (matchesKey(data, Key.up) || data === "k") this.scrollBy(-1);
-		if (matchesKey(data, Key.pageDown)) this.scrollBy(this.pageSize());
-		if (matchesKey(data, Key.pageUp)) this.scrollBy(-this.pageSize());
-	}
-
-	render(width: number): string[] {
-		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
-		const rows = Math.max(6, this.rows());
-		const contentRows = Math.max(1, rows - 5);
-		const innerWidth = Math.max(1, width - 2);
-		const content = this.contentLines(innerWidth);
-		this.scroll = Math.max(0, Math.min(this.scroll, Math.max(0, content.length - contentRows)));
-		const visible = content.slice(this.scroll, this.scroll + contentRows);
-		const footer = `↑↓/j/k scroll • enter/esc close • ${Math.min(content.length, this.scroll + contentRows)}/${content.length}`;
-		const out = [
-			this.theme.fg("accent", `╭${"─".repeat(Math.max(0, width - 2))}╮`),
-			this.theme.fg("accent", "│") + truncateToWidth(` ${this.title}`, innerWidth, "", true) + this.theme.fg("accent", "│"),
-			...visible.map((line) => this.theme.fg("accent", "│") + truncateToWidth(line, innerWidth, "", true) + this.theme.fg("accent", "│")),
-			this.theme.fg("accent", "│") + truncateToWidth(` ${this.theme.fg("dim", footer)}`, innerWidth, "", true) + this.theme.fg("accent", "│"),
-			this.theme.fg("accent", `╰${"─".repeat(Math.max(0, width - 2))}╯`),
-		];
-		this.cachedWidth = width;
-		this.cachedLines = out;
-		return out;
-	}
-
-	invalidate(): void {
-		this.cachedWidth = undefined;
-		this.cachedLines = undefined;
-	}
-
-	private scrollBy(delta: number): void {
-		this.scroll = Math.max(0, this.scroll + delta);
-		this.invalidate();
-		this.requestRender();
-	}
-
-	private pageSize(): number {
-		return Math.max(1, this.rows() - 6);
-	}
-
-	private contentLines(width: number): string[] {
-		const out: string[] = [];
-		for (const line of this.lines.length ? this.lines : [this.theme.fg("dim", "No backlog items found.")]) {
-			out.push(...wrapTextWithAnsi(line, width).map((wrapped: string) => truncateToWidth(wrapped, width, "", true)));
-		}
-		return out;
-	}
-}
-
-async function showPanel(ctx: ExtensionContext, title: string, lines: string[]): Promise<void> {
-	if (!ctx.hasUI) {
-		ctx.ui.notify(lines.join("\n"), "info");
-		return;
-	}
-	await ctx.ui.custom<void>((tui, theme, _kb, done) => new BacklogPanel(title, lines, theme, () => terminalRows(tui), () => tui.requestRender(), done));
+async function cyclePriority(ctx: ExtensionContext, id: string): Promise<void> {
+	const item = await readItem(ctx.cwd, id);
+	const nextPriority = PRIORITY_VALUES[(PRIORITY_VALUES.indexOf(item.priority) + 1) % PRIORITY_VALUES.length] ?? "medium";
+	item.priority = nextPriority;
+	await writeItem(ctx.cwd, item);
+	ctx.ui.notify(`Backlog item ${id} priority ${item.priority}`, "info");
 }
 
 function splitArgs(input: string): string[] {
@@ -482,6 +107,9 @@ function backlogArgumentCompletions(prefix: string): AutocompleteItem[] | null {
 	if (parts.length <= 1 && !endsWithSpace) {
 		return matchingCompletions(BACKLOG_ACTIONS, action, {
 			list: "Show open backlog items",
+			ready: "Show ready items not blocked by dependencies",
+			blocked: "Show items blocked by dependencies",
+			graph: "Show dependency tree",
 			add: "Capture a new candidate item",
 			show: "Show one item by id",
 			status: "Set item status",
@@ -507,7 +135,28 @@ async function handleBacklogCommand(pi: ExtensionAPI, args: string, ctx: Extensi
 	if (["list", "ls", ""].includes(action)) {
 		const allItems = await listItems(ctx.cwd);
 		const items = filterItems(allItems, { query: rest.join(" ") || undefined });
-		await showPanel(ctx, "Backlog", formatSummaryList(items.map(summarize), allItems.map(summarize)));
+		await handleBrowserAction(pi, ctx, await showBacklogBrowser(ctx, "Backlog", items, allItems));
+		return;
+	}
+
+	if (action === "ready") {
+		const allItems = await listItems(ctx.cwd);
+		const items = filterItems(allItems, { query: rest.join(" ") || undefined });
+		await handleBrowserAction(pi, ctx, await showBacklogBrowser(ctx, "Ready backlog", items, allItems, true));
+		return;
+	}
+
+	if (action === "blocked") {
+		const allItems = await listItems(ctx.cwd);
+		const items = filterBlockedItems(filterItems(allItems, { query: rest.join(" ") || undefined }), allItems);
+		await handleBrowserAction(pi, ctx, await showBacklogBrowser(ctx, "Blocked backlog", items, allItems));
+		return;
+	}
+
+	if (action === "graph") {
+		const allItems = await listItems(ctx.cwd);
+		const items = filterItems(allItems, { query: rest.join(" ") || undefined });
+		await showPanel(ctx, "Backlog dependency graph", formatDependencyGraph(items));
 		return;
 	}
 
@@ -522,8 +171,9 @@ async function handleBacklogCommand(pi: ExtensionAPI, args: string, ctx: Extensi
 	if (action === "show") {
 		const id = rest[0];
 		if (!id) return ctx.ui.notify("Usage: /backlog show <id>", "error");
-		const item = await readItem(ctx.cwd, id);
-		await showPanel(ctx, item.id, serializeItem(item).split("\n"));
+		const allItems = await listItems(ctx.cwd);
+		const item = allItems.find((candidate) => candidate.id === id) ?? await readItem(ctx.cwd, id);
+		await showBacklogItem(ctx, item, allItems);
 		return;
 	}
 
@@ -599,10 +249,7 @@ async function handleBacklogCommand(pi: ExtensionAPI, args: string, ctx: Extensi
 	if (action === "promote") {
 		const id = rest[0];
 		if (!id) return ctx.ui.notify("Usage: /backlog promote <id>", "error");
-		const item = await readItem(ctx.cwd, id);
-		const prompt = buildPromotePrompt(item);
-		ctx.ui.setEditorText(prompt);
-		ctx.ui.notify(`Prefilled editor with /eforge:plan for ${id}`, "info");
+		await prefillPromotePrompt(ctx, id);
 		return;
 	}
 
@@ -611,7 +258,7 @@ async function handleBacklogCommand(pi: ExtensionAPI, args: string, ctx: Extensi
 		return;
 	}
 
-	ctx.ui.notify("Usage: /backlog [list|add|show|status|stale|depends|review|analyze|analyze-all|promote|curate]", "error");
+	ctx.ui.notify("Usage: /backlog [list|ready|blocked|graph|add|show|status|stale|depends|review|analyze|analyze-all|promote|curate]", "error");
 }
 
 function sendAgentPrompt(pi: ExtensionAPI, ctx: ExtensionContext, prompt: string): void {
@@ -683,18 +330,24 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 		label: "Backlog List",
 		description: "List lightweight project backlog items from .eforge/backlog/items.",
 		promptSnippet: "List and filter lightweight backlog items.",
-		promptGuidelines: ["Use backlog_list before curating or updating project backlog items."],
+		promptGuidelines: [
+			"Use backlog_list before curating or updating project backlog items.",
+			"Set readyOnly=true when the user asks for ready, unblocked, or actionable backlog items.",
+			"Set blockedOnly=true when the user asks for blocked backlog items.",
+		],
 		parameters: ListParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const allItems = await listItems(ctx.cwd);
-			const items = filterItems(allItems, params).map(summarize);
+			const filtered = filterItems(allItems, params);
+			const visible = params.readyOnly ? filterReadyItems(filtered, allItems) : params.blockedOnly ? filterBlockedItems(filtered, allItems) : filtered;
+			const items = visible.map(summarize);
 			return {
 				content: [{ type: "text", text: items.length ? formatSummaryList(items, allItems.map(summarize)).join("\n") : "No matching backlog items." }],
 				details: createDetails(items),
 			};
 		},
 		renderCall(args, theme) {
-			const filter = [args.status, args.query && `q=${args.query}`, args.tag && `tag=${args.tag}`].filter(Boolean).join(" ");
+			const filter = [args.readyOnly && "ready", args.blockedOnly && "blocked", args.status, args.query && `q=${args.query}`, args.tag && `tag=${args.tag}`].filter(Boolean).join(" ");
 			return new Text(`${theme.fg("toolTitle", theme.bold("backlog_list "))}${theme.fg("muted", filter || "open")}`, 0, 0);
 		},
 		renderResult(result, _options, theme) {
@@ -761,3 +414,4 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 		}
 	});
 }
+// --- eforge:endregion command-runtime ---

@@ -28,10 +28,13 @@ Human-readable sections:
 ## Commands
 
 ```text
-/backlog                         Show open backlog items
-/backlog list [query]            Show open items, optionally filtered by text
+/backlog                         Show an interactive open-item browser
+/backlog list [query]            Show an interactive open-item browser, optionally filtered by text
+/backlog ready [query]           Show only ready items not blocked by dependencies
+/backlog blocked [query]         Show only items blocked by dependencies
+/backlog graph [query]           Show a dependency tree for backlog items
 /backlog add <title>             Capture a new candidate item
-/backlog show <id>               Show one item
+/backlog show <id>               Show one item with markdown formatting
 /backlog status <id> <status>    Set status: candidate|planned|active|shipped|stale|superseded
 /backlog stale <id> [reason]     Mark an item stale and append evidence
 /backlog depends <id> <dep...>   Add dependency backlog item IDs; use --clear to remove all
@@ -44,6 +47,8 @@ Human-readable sections:
 
 Slash-command completions are registered for the subcommands above and for the status value in `/backlog status <id> <status>`.
 
+The list browser supports `↑↓/j/k` navigation, `enter` to view the selected item with markdown formatting, `b`/`←` to return from detail view, `/` to search, `r` to toggle ready-only filtering, `a` to analyze the selected item, `p` to promote it, `s` to cycle open statuses (`candidate`/`planned`/`active`), `!` to cycle priority, and `q`/`esc` to close.
+
 ## Agent tools
 
 The extension also registers tools for agent-assisted backlog maintenance:
@@ -53,4 +58,4 @@ The extension also registers tools for agent-assisted backlog maintenance:
 - `backlog_show`
 - `backlog_update`
 
-Use these for lightweight capture and curation only. `backlog_add` accepts `dependsOn`; `backlog_update` accepts `dependsOn`, `addDependsOn`, and `removeDependsOn`. Promote an item to `/eforge:plan` when it becomes buildable work.
+Use these for lightweight capture and curation only. `backlog_list` accepts `readyOnly` and `blockedOnly`; `backlog_add` accepts `dependsOn`; `backlog_update` accepts `dependsOn`, `addDependsOn`, and `removeDependsOn`. Promote an item to `/eforge:plan` when it becomes buildable work.
