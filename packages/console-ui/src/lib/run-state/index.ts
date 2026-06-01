@@ -43,6 +43,14 @@ export {
   selectPlanStatusCounts,
   selectCurrentStageForPlan,
   selectMiniGanttRows,
+  selectPlanLanes,
+  selectPlanningLane,
 } from './selectors/plan-progress';
-export type { PlanStatusCounts, MiniGanttRow } from './selectors/plan-progress';
+export type {
+  PlanStatusCounts,
+  MiniGanttRow,
+  PlanLane,
+  PlanLaneAgent,
+  PlanningLane,
+} from './selectors/plan-progress';
 export { selectStackLayersForRun } from './selectors/stack-layers';

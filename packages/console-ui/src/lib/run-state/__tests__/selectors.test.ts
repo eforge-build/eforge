@@ -10,6 +10,8 @@ import {
   selectPlanStatusCounts,
   selectCurrentStageForPlan,
   selectMiniGanttRows,
+  selectPlanLanes,
+  selectPlanningLane,
 } from '../selectors/plan-progress';
 import { selectStackLayersForRun } from '../selectors/stack-layers';
 import { initialRunState } from '../reducer';
@@ -199,6 +201,112 @@ describe('selectMiniGanttRows', () => {
     const rows = selectMiniGanttRows(state);
     expect(rows[0].activeWorkerCount).toBe(2);
     expect(rows[0].activeAgents).toEqual(['builder', 'tester']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectPlanLanes
+// ---------------------------------------------------------------------------
+describe('selectPlanLanes', () => {
+  it('returns empty array from initialRunState', () => {
+    expect(selectPlanLanes(initialRunState)).toEqual([]);
+  });
+
+  it('carries build-stage sequence and every plan agent (running and done) in start order', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'review', 'plan-02': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          {
+            id: 'plan-01',
+            name: 'Plan One',
+            dependsOn: [],
+            build: ['implement', 'test-cycle', 'review-cycle'],
+            review: { strategy: 'auto', maxRounds: 1 },
+          },
+          {
+            id: 'plan-02',
+            name: 'Plan Two',
+            dependsOn: ['plan-01'],
+            build: ['implement'],
+            review: { strategy: 'auto', maxRounds: 1 },
+          },
+        ],
+      },
+      agentThreads: [
+        // builder finished, reviewer still running — both must appear, builder first.
+        { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 1_700_000 },
+        { planId: 'plan-01', agent: 'reviewer', startedAt: '2026-05-24T10:03:00.000Z', endedAt: null, totalTokens: 5000 },
+        { planId: 'plan-02', agent: 'builder', startedAt: '2026-05-24T09:00:00.000Z', endedAt: '2026-05-24T09:30:00.000Z', totalTokens: 42_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    expect(lanes).toHaveLength(2);
+
+    expect(lanes[0].planId).toBe('plan-01');
+    expect(lanes[0].buildStages).toEqual(['implement', 'test-cycle', 'review-cycle']);
+    expect(lanes[0].isComplete).toBe(false);
+    expect(lanes[0].agents).toEqual([
+      { agent: 'builder', tokens: 1_700_000, running: false },
+      { agent: 'reviewer', tokens: 5000, running: true },
+    ]);
+
+    expect(lanes[1].planId).toBe('plan-02');
+    expect(lanes[1].isComplete).toBe(true);
+    expect(lanes[1].agents).toEqual([{ agent: 'builder', tokens: 42_000, running: false }]);
+  });
+
+  it('sums tokens across repeated agent roles (e.g. review rounds)', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'review' },
+      agentThreads: [
+        { planId: 'plan-01', agent: 'reviewer', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:01:00.000Z', totalTokens: 100_000 },
+        { planId: 'plan-01', agent: 'reviewer', startedAt: '2026-05-24T10:05:00.000Z', endedAt: null, totalTokens: 30_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    expect(lanes[0].agents).toEqual([{ agent: 'reviewer', tokens: 130_000, running: true }]);
+  });
+
+  it('treats missing token totals as zero and marks failed plans', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'failed' },
+      agentThreads: [
+        { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: null, totalTokens: null },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    expect(lanes[0].isFailed).toBe(true);
+    expect(lanes[0].buildStages).toEqual([]); // no orchestration
+    expect(lanes[0].agents).toEqual([{ agent: 'builder', tokens: 0, running: true }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectPlanningLane
+// ---------------------------------------------------------------------------
+describe('selectPlanningLane', () => {
+  it('returns empty lane from initialRunState', () => {
+    expect(selectPlanningLane(initialRunState)).toEqual({ agents: [], running: false });
+  });
+
+  it('aggregates plan-less agents by role in start order, summing tokens', () => {
+    const state = makeRunState({
+      agentThreads: [
+        { agent: 'planner', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:05:00.000Z', totalTokens: 4_900_000 },
+        { agent: 'plan-reviewer', startedAt: '2026-05-24T10:05:00.000Z', endedAt: '2026-05-24T10:06:00.000Z', totalTokens: 100_000 },
+        { agent: 'plan-reviewer', startedAt: '2026-05-24T10:07:00.000Z', endedAt: null, totalTokens: 84_500 },
+        { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:08:00.000Z', endedAt: null, totalTokens: 1000 },
+      ] as RunState['agentThreads'],
+    });
+    const lane = selectPlanningLane(state);
+    expect(lane.running).toBe(true); // second plan-reviewer thread still running
+    expect(lane.agents).toEqual([
+      { agent: 'planner', tokens: 4_900_000, running: false },
+      { agent: 'plan-reviewer', tokens: 184_500, running: true },
+    ]);
   });
 });
 

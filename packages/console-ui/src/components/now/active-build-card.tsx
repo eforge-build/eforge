@@ -2,12 +2,11 @@ import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { NowActiveBuildCard as NowActiveBuildCardModel } from '@/lib/selectors/now';
-import type { MiniGanttRow, PipelineStage } from '@/lib/run-state';
+import type { MiniGanttRow } from '@/lib/run-state';
 import { formatDuration, truncateId, compactTokens } from '@/lib/format';
-import { BuildPipelineStrip } from './build-pipeline-strip';
+import { MiniPlanSwimlane } from './mini-plan-swimlane';
 import { PlanProgressRing } from '@/components/charts/plan-progress-ring';
 import { VelocitySparkline } from '@/components/charts/velocity-sparkline';
-import { AgentTokenBars } from '@/components/charts/agent-token-bars';
 import type { BuildMetricSamples } from '@/hooks/use-build-metric-history';
 import { cn } from '@/lib/utils';
 
@@ -33,41 +32,6 @@ interface RailStep {
   key: string;
   label: string;
   status: RailStatus;
-}
-
-const STAGE_LABELS: Partial<Record<PipelineStage, string>> = {
-  plan: 'waiting',
-  implement: 'implementation',
-  'doc-author': 'docs',
-  'doc-sync': 'doc sync',
-  test: 'testing',
-  review: 'review',
-  evaluate: 'evaluation',
-  complete: 'complete',
-  failed: 'failed',
-};
-
-function stageLabel(stage: PipelineStage | undefined): string {
-  return stage ? STAGE_LABELS[stage] ?? stage : 'waiting';
-}
-
-function nextStageLabel(stage: PipelineStage | undefined): string | null {
-  switch (stage) {
-    case undefined:
-    case 'plan':
-      return 'implementation';
-    case 'implement':
-    case 'doc-author':
-    case 'doc-sync':
-      return 'test/review';
-    case 'test':
-      return 'review';
-    case 'review':
-    case 'evaluate':
-      return 'merge/land';
-    default:
-      return null;
-  }
 }
 
 function isActivePlan(row: MiniGanttRow): boolean {
@@ -157,91 +121,6 @@ function progressSummary(card: NowActiveBuildCardModel): string | null {
   return parts.join(' · ');
 }
 
-function shortPlanReference(row: MiniGanttRow): string {
-  const planMatch = row.planId.match(/^plan-(\d+)/i);
-  if (!planMatch) return row.planName;
-  return `Plan ${planMatch[1].padStart(2, '0')}`;
-}
-
-function currentSummary(card: NowActiveBuildCardModel): string {
-  if (card.latestError) return 'Needs attention';
-
-  if (card.lifecycle.phase === 'prd-validation') {
-    return 'Validating PRD against acceptance criteria';
-  }
-  if (card.lifecycle.phase === 'gap-close') {
-    return `${card.latestAgent ? `${card.latestAgent} ` : ''}closing acceptance gaps`.trim();
-  }
-  if (card.lifecycle.phase === 'final-validation') {
-    return 'Final PRD validation pass';
-  }
-  if (card.lifecycle.phase === 'landing') {
-    return 'Landing completed work';
-  }
-
-  const activeRows = card.miniGanttRows.filter(isActivePlan);
-  const activeWorkers = activeRows.reduce((sum, row) => sum + (row.activeWorkerCount ?? 0), 0);
-
-  if (activeRows.length > 1) {
-    const workerText = activeWorkers > 0
-      ? ` · ${activeWorkers} worker${activeWorkers === 1 ? '' : 's'}`
-      : '';
-    return `${activeRows.length} plans active${workerText}`;
-  }
-
-  if (activeRows.length === 1) {
-    const row = activeRows[0];
-    const agent = row.activeAgents?.[0] ?? card.latestAgent;
-    return `${agent ? `${agent} on ` : ''}${row.planName} · ${stageLabel(row.stage)}`;
-  }
-
-  if (card.planProgress.pending > 0) {
-    const waitingRow = card.miniGanttRows.find((row) => !row.stage || row.stage === 'plan');
-    if (card.planProgress.pending === 1 && waitingRow) {
-      return `Waiting to start ${shortPlanReference(waitingRow)}`;
-    }
-    return `${card.planProgress.pending} plans waiting to start`;
-  }
-
-  if (card.planProgress.total > 0 && card.planProgress.complete === card.planProgress.total) {
-    return 'All plans built; landing work remains';
-  }
-
-  if (card.latestAgent) return `${card.latestAgent} active`;
-  if (card.currentPhase) return card.currentPhase;
-  return 'Preparing build';
-}
-
-function nextSummary(card: NowActiveBuildCardModel): string | null {
-  if (card.lifecycle.phase === 'prd-validation') {
-    return 'gap close only if validation finds gaps';
-  }
-  if (card.lifecycle.phase === 'gap-close') {
-    return 'final PRD validation pass';
-  }
-  if (card.lifecycle.phase === 'final-validation') {
-    return 'land if acceptance criteria pass';
-  }
-  if (card.lifecycle.phase === 'landing') {
-    return 'run completion';
-  }
-
-  const activeRows = card.miniGanttRows.filter(isActivePlan);
-  const nextStages = Array.from(new Set(activeRows.map((row) => nextStageLabel(row.stage)).filter(Boolean)));
-  const pieces: string[] = [];
-
-  if (nextStages.length > 0) pieces.push(nextStages.join(' / '));
-  if (card.planProgress.pending > 0) {
-    pieces.push(`${card.planProgress.pending} waiting`);
-  }
-  if (pieces.length > 0) return pieces.join(' · ');
-
-  if (card.planProgress.total > 0 && card.planProgress.complete === card.planProgress.total) {
-    return 'PRD validation';
-  }
-  return null;
-}
-
 function BuildLifecycleRail({ steps }: { steps: RailStep[] }) {
   return (
     <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6" aria-label="Build progress">
@@ -272,8 +151,6 @@ export function ActiveBuildCard({ card, onNavigate, samples }: ActiveBuildCardPr
   const cacheLabel =
     card.cachePercent > 0 ? `${Math.round(card.cachePercent)}% cache` : null;
   const railSteps = buildRailSteps(card);
-  const current = currentSummary(card);
-  const next = nextSummary(card);
   const hasActivePlan = card.miniGanttRows.some(isActivePlan);
   const hasActiveLifecyclePhase = ['prd-validation', 'gap-close', 'final-validation', 'landing'].includes(card.lifecycle.phase);
   const showLivePulse = !card.latestError;
@@ -333,34 +210,24 @@ export function ActiveBuildCard({ card, onNavigate, samples }: ActiveBuildCardPr
       <CardContent className="relative z-10 px-4 pb-4 space-y-3 flex-1">
         <BuildLifecycleRail steps={railSteps} />
 
-        <div className="rounded-lg border border-border/70 bg-muted/10 p-2 text-xs">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="font-medium text-foreground truncate" title={current}>
-                Current: {current}
-              </div>
-              {next && (
-                <div className="mt-0.5 text-muted-foreground truncate" title={next}>
-                  Next: {next}
-                </div>
-              )}
-            </div>
-            <div className="shrink-0 text-muted-foreground">{durationLabel}</div>
+        <div className="flex items-start justify-between gap-2 text-xs">
+          <div className="min-w-0">
+            {card.latestError ? (
+              <p className="truncate text-destructive" title={card.latestError}>
+                {card.latestError}
+              </p>
+            ) : card.latestProgress ? (
+              <p className="truncate text-muted-foreground" title={card.latestProgress}>
+                {card.latestProgress}
+              </p>
+            ) : null}
           </div>
-          {card.latestProgress && (
-            <p className="mt-1 truncate text-muted-foreground" title={card.latestProgress}>
-              {card.latestProgress}
-            </p>
-          )}
-          {card.latestError && (
-            <p className="mt-1 truncate text-destructive" title={card.latestError}>
-              {card.latestError}
-            </p>
-          )}
+          <span className="shrink-0 tabular-nums text-muted-foreground">{durationLabel}</span>
         </div>
 
-        <BuildPipelineStrip
-          rows={card.miniGanttRows}
+        <MiniPlanSwimlane
+          lanes={card.planLanes}
+          planning={card.planning}
           hasPlanningRow={card.hasPlanningRow}
         />
 
@@ -384,8 +251,6 @@ export function ActiveBuildCard({ card, onNavigate, samples }: ActiveBuildCardPr
             />
           </div>
         </div>
-
-        {card.agentUsage.length > 0 && <AgentTokenBars data={card.agentUsage} />}
 
         <div className="flex items-center justify-between gap-3 border-t pt-2 text-xs text-muted-foreground">
           <span className="min-w-0 truncate">
