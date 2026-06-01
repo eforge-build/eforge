@@ -25,6 +25,7 @@ import type {
 import {
   listSessionPlanSets,
   loadSessionPlanSet,
+  validateLoadedSessionPlanSet,
   validateSessionPlanSet,
 } from '@eforge-build/input';
 
@@ -149,9 +150,12 @@ export async function handleSessionPlanSetRoutes(
       return true;
     }
 
-    // sessionPlanSetShow
-    const validation = await validateSessionPlanSet({ cwd, planSetId });
+    // sessionPlanSetShow — load once, then validate from the loaded result so
+    // the manifest/children are not read from disk a second time (which would
+    // both double filesystem work and risk inconsistent data if files change
+    // between reads).
     const load = await loadSessionPlanSet({ cwd, planSetId });
+    const validation = validateLoadedSessionPlanSet(load);
     const body: SessionPlanSetShowResponse = {
       planSet: validation.summary as unknown as SessionPlanSetSummaryWire,
       validation: validation as unknown as SessionPlanSetValidationResultWire,

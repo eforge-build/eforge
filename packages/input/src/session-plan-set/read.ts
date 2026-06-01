@@ -11,6 +11,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parseSessionPlanSetManifest } from './manifest.js';
 import {
+  isLoadablePlanSetId,
   resolveSessionPlanSetAnchorPath,
   resolveSessionPlanSetChildPath,
   resolveSessionPlanSetDir,
@@ -56,6 +57,10 @@ export async function listSessionPlanSets(opts: ListSessionPlanSetsOpts): Promis
   await Promise.all(
     entries.map(async (entry) => {
       if (!entry.isDirectory()) return;
+      // Only list directories whose name is a loadable plan-set id. A valid
+      // manifest in a non-slug directory would otherwise be listed and then
+      // fail with an error when the loader rejects the directory name.
+      if (!isLoadablePlanSetId(entry.name)) return;
       const dir = resolve(root, entry.name);
       const manifestPath = resolve(dir, SESSION_PLAN_SET_MANIFEST_FILENAME);
 

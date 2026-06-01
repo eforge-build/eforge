@@ -219,6 +219,14 @@ export interface SessionPlanSetDiagnostic {
 // Summary (JSON-safe)
 // ---------------------------------------------------------------------------
 
+/** JSON-safe per-child validation summary derived from set diagnostics. */
+export interface SessionPlanSetChildValidationSummary {
+  /** True when no diagnostics reference this child. */
+  ok: boolean;
+  /** Number of diagnostics that reference this child. */
+  diagnosticCount: number;
+}
+
 /** JSON-safe child summary. */
 export interface SessionPlanSetChildSummary {
   id: string;
@@ -231,6 +239,12 @@ export interface SessionPlanSetChildSummary {
   exists: boolean;
   /** External tracker / document references declared on this child. */
   externalRefs: SessionPlanSetExternalRef[];
+  /**
+   * Validation summary for this child, derived from the set's diagnostics keyed
+   * by child id (the diagnostics supplied to the summary builder, e.g. through
+   * `validateSessionPlanSet`).
+   */
+  validation: SessionPlanSetChildValidationSummary;
 }
 
 /** JSON-safe anchor summary. */

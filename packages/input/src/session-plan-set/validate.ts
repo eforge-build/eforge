@@ -181,6 +181,9 @@ export function summarizeSessionPlanSet(
   diagnostics: SessionPlanSetDiagnostic[] = [],
 ): SessionPlanSetSummary {
   const children: SessionPlanSetChildSummary[] = loadResult.children.map((childLoad) => {
+    const childDiagnosticCount = diagnostics.filter(
+      (d) => d.childId === childLoad.child.id,
+    ).length;
     const summary: SessionPlanSetChildSummary = {
       id: childLoad.child.id,
       file: childLoad.file,
@@ -190,6 +193,7 @@ export function summarizeSessionPlanSet(
       dependsOn: childLoad.child.dependsOn,
       exists: childLoad.exists,
       externalRefs: normalizeExternalRefs(childLoad.child.externalRefs),
+      validation: { ok: childDiagnosticCount === 0, diagnosticCount: childDiagnosticCount },
     };
     if (childLoad.child.profile !== undefined) {
       summary.profile = childLoad.child.profile;
@@ -218,6 +222,20 @@ export function summarizeSessionPlanSet(
   return summary;
 }
 
+/**
+ * Validate an already-loaded plan set. Returns `{ ok, diagnostics, summary }`
+ * computed from the supplied load result without re-reading from disk. Callers
+ * that also need the raw load result (e.g. for anchor content) load once and
+ * pass it here to avoid a second filesystem read.
+ */
+export function validateLoadedSessionPlanSet(
+  loadResult: SessionPlanSetLoadResult,
+): SessionPlanSetValidationResult {
+  const diagnostics = computeDiagnostics(loadResult);
+  const summary = summarizeSessionPlanSet(loadResult, diagnostics);
+  return { ok: diagnostics.length === 0, diagnostics, summary };
+}
+
 export interface ValidateSessionPlanSetOpts {
   cwd: string;
   planSetId: string;
@@ -232,7 +250,5 @@ export async function validateSessionPlanSet(
   opts: ValidateSessionPlanSetOpts,
 ): Promise<SessionPlanSetValidationResult> {
   const loadResult = await loadSessionPlanSet(opts);
-  const diagnostics = computeDiagnostics(loadResult);
-  const summary = summarizeSessionPlanSet(loadResult, diagnostics);
-  return { ok: diagnostics.length === 0, diagnostics, summary };
+  return validateLoadedSessionPlanSet(loadResult);
 }

@@ -17,16 +17,26 @@ export function resolveSessionPlanSetsRoot(cwd: string): string {
   return resolve(cwd, '.eforge', 'session-plans');
 }
 
+/**
+ * Whether a directory name is a loadable plan-set id under the same rules
+ * `resolveSessionPlanSetDir` enforces (non-empty lower-case slug, no separators
+ * or traversal segments). Callers that discover directories on disk use this to
+ * avoid listing entries that the loader would later reject with an error.
+ */
+export function isLoadablePlanSetId(planSetId: string): boolean {
+  return (
+    planSetId.length > 0 &&
+    planSetId !== '.' &&
+    planSetId !== '..' &&
+    !planSetId.includes('/') &&
+    !planSetId.includes('\\') &&
+    SLUG_RE.test(planSetId)
+  );
+}
+
 /** Throw when a plan-set id is empty, a traversal segment, contains separators, or is not a slug. */
 function assertValidPlanSetId(planSetId: string): void {
-  if (
-    planSetId.length === 0 ||
-    planSetId === '.' ||
-    planSetId === '..' ||
-    planSetId.includes('/') ||
-    planSetId.includes('\\') ||
-    !SLUG_RE.test(planSetId)
-  ) {
+  if (!isLoadablePlanSetId(planSetId)) {
     throw new Error(
       `Invalid session plan-set id "${planSetId}": must be a lower-case slug without path separators`,
     );

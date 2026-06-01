@@ -34,6 +34,7 @@ export type {
   SessionPlanSetLoadResult,
   SessionPlanSetDiagnosticCode,
   SessionPlanSetDiagnostic,
+  SessionPlanSetChildValidationSummary,
   SessionPlanSetChildSummary,
   SessionPlanSetAnchorSummary,
   SessionPlanSetSummary,
@@ -71,6 +72,7 @@ export type {
 
 export {
   validateSessionPlanSet,
+  validateLoadedSessionPlanSet,
   summarizeSessionPlanSet,
 } from './session-plan-set/validate.js';
 

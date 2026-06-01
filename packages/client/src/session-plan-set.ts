@@ -51,6 +51,14 @@ export interface SessionPlanSetDiagnosticWire {
   path?: string;
 }
 
+/** JSON-safe per-child validation summary derived from set diagnostics. */
+export interface SessionPlanSetChildValidationSummaryWire {
+  /** True when no diagnostics reference this child. */
+  ok: boolean;
+  /** Number of diagnostics that reference this child. */
+  diagnosticCount: number;
+}
+
 /** JSON-safe child summary. Carries no raw child content. */
 export interface SessionPlanSetChildSummaryWire {
   id: string;
@@ -62,6 +70,8 @@ export interface SessionPlanSetChildSummaryWire {
   dependsOn: string[];
   exists: boolean;
   externalRefs: SessionPlanSetExternalRefWire[];
+  /** Validation summary for this child, derived from the set's diagnostics. */
+  validation?: SessionPlanSetChildValidationSummaryWire;
 }
 
 /** JSON-safe umbrella anchor summary. */

@@ -10,7 +10,7 @@ The canonical route list lives in [`src/lib/navigation.ts`](src/lib/navigation.t
 |------|----------|-------------|
 | `/console/` | `now` | Now dashboard - active builds, queue, and live status |
 | `/console/runs/:detailId` | `runDetail` | Build detail view for a specific run |
-| `/console/plans` | `plans` | Planning Workspace - read-only view of session plans with metadata, readiness, and markdown preview |
+| `/console/plans` | `plans` | Planning Workspace - read-only browsing of flat session plans and grouped session plan sets |
 | `/console/system` | `system` | System - configuration, profiles, playbooks, extensions, and diagnostic surfaces |
 
 All unrecognized paths (including previously removed routes) redirect to `now`.
@@ -24,10 +24,12 @@ daemon SSE
   → selectors                (src/lib/selectors/ and src/lib/run-state/selectors/)
   → views
 
-daemon REST (session plans)
-  → API_ROUTES.sessionPlanList  GET /api/session-plan/list[?includeSubmitted=true]
-  → API_ROUTES.sessionPlanShow  GET /api/session-plan/show?session=:session
-  → use-session-plans.ts        (src/views/plans/use-session-plans.ts)
+daemon REST (session plans + plan sets)
+  → API_ROUTES.sessionPlanList     GET /api/session-plan/list[?includeSubmitted=true]
+  → API_ROUTES.sessionPlanShow     GET /api/session-plan/show?session=:session
+  → API_ROUTES.sessionPlanSetList  GET /api/session-plan-set/list[?includeSubmitted=true]
+  → API_ROUTES.sessionPlanSetShow  GET /api/session-plan-set/show?planSetId=:planSetId
+  → use-session-plans.ts           (src/views/plans/use-session-plans.ts)
   → PlansView
 
 daemon REST (Now queue recovery)
@@ -43,7 +45,7 @@ The `useActiveSessionStreams` hook subscribes to per-session SSE streams for all
 
 The reducer implementation is shared with `packages/monitor-ui/` (dual-reducer constraint) to keep both dashboards in sync during the transition period.
 
-The Planning Workspace (`/console/plans`) uses REST requests rather than SSE. It calls `API_ROUTES.sessionPlanList` to fetch the list of session plans (filtering to active plans by default, or including handed-off/submitted plans when the toggle is enabled), then calls `API_ROUTES.sessionPlanShow` after the user selects a plan to retrieve full metadata, readiness detail, and the markdown body. No daemon state is derived from the list response alone - the detail panel always fetches from `sessionPlanShow`.
+The Planning Workspace (`/console/plans`) uses REST requests rather than SSE and browses two read-only artifact kinds side by side: flat session plans and grouped session plan sets. On load it fetches both `API_ROUTES.sessionPlanList` and `API_ROUTES.sessionPlanSetList` (filtering to active artifacts by default, or including handed-off/submitted artifacts when the Include handed off toggle is enabled - the flag is forwarded to both list routes). The combined list is modeled as a discriminated union in `planning-artifacts.ts`, with selection keys encoded as `plan:<session>` and `plan-set:<planSetId>` so the two id spaces cannot collide. After the user selects an artifact, the detail fetch is dispatched by kind: flat plans call `API_ROUTES.sessionPlanShow` (metadata, readiness detail, markdown body via `SessionPlanDetail`), and plan sets call `API_ROUTES.sessionPlanSetShow` (manifest metadata, validation diagnostics, umbrella anchor content or a `missing-anchor` diagnostic, and per-child summary metadata via `SessionPlanSetDetail`). Plan-set child markdown is never fetched; only the summary returned by the show route is displayed. No daemon state is derived from the list responses alone, and the workspace exposes no mutation controls for either artifact kind.
 
 ## Adding a new control surface
 

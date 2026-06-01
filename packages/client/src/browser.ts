@@ -94,6 +94,7 @@ export type {
   SessionPlanSetDiagnosticCodeWire,
   SessionPlanSetExternalRefWire,
   SessionPlanSetDiagnosticWire,
+  SessionPlanSetChildValidationSummaryWire,
   SessionPlanSetChildSummaryWire,
   SessionPlanSetAnchorSummaryWire,
   SessionPlanSetSummaryWire,
