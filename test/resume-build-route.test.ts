@@ -7,6 +7,7 @@
  * - Returns 400 for setName containing path separators
  * - Spawns a resume worker with correct args when prdId alone is provided
  * - Spawns a resume worker with --set-name args when setName is provided
+ * - Validates profile overrides and forwards them as --profile args
  * - Returns { sessionId, pid } from the spawned worker
  * - Returns 503 when workerTracker is not configured
  *
@@ -16,7 +17,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { resolve } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
 import {
@@ -56,6 +58,15 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
   };
 
   return { tracker, calls };
+}
+
+const VALID_TEST_PROFILE_YAML = 'agents:\n  tiers:\n    planning:\n      harness: claude-sdk\n      model: claude-haiku-4-5\n      effort: low\n';
+
+function writeTestProfile(cwd: string, name = 'resume-profile', profileYaml = VALID_TEST_PROFILE_YAML): void {
+  const configDir = join(cwd, 'eforge');
+  mkdirSync(join(configDir, 'profiles'), { recursive: true });
+  writeFileSync(join(configDir, 'config.yaml'), 'agents:\n  tiers: {}\n', 'utf-8');
+  writeFileSync(join(configDir, 'profiles', `${name}.yaml`), profileYaml, 'utf-8');
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +267,76 @@ describe('POST /api/recover/resume-build — happy path (prdId + setName)', () =
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0].command).toBe('resume');
     expect(spawnCalls[0].args).toEqual([prdId, '--set-name', setName]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/recover/resume-build — profile override
+// ---------------------------------------------------------------------------
+
+describe('POST /api/recover/resume-build — profile override', () => {
+  it('returns 400 when profile is empty', async () => {
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId: 'valid-prd', profile: '' }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain('profile');
+    expect(spawnCalls).toHaveLength(0);
+  });
+
+  it('returns 400 when profile is not found', async () => {
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId: 'valid-prd', profile: 'missing-profile' }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain("Profile 'missing-profile' not found");
+    expect(spawnCalls).toHaveLength(0);
+  });
+
+  it('returns 400 when the requested profile file is invalid', async () => {
+    const profile = 'bad-profile';
+    writeTestProfile(
+      tmpDir,
+      profile,
+      'agents:\n  tiers:\n    planning:\n      harness: invalid-harness\n      model: claude-haiku-4-5\n      effort: low\n',
+    );
+
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId: 'valid-prd', profile }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json() as { error: string };
+    expect(data.error).toContain("Invalid profile 'bad-profile'");
+    expect(spawnCalls).toHaveLength(0);
+  });
+
+  it('spawns a resume worker with --profile when profile is provided', async () => {
+    const prdId = 'my-feature-prd';
+    const setName = 'my-custom-set';
+    const profile = 'resume-profile';
+    writeTestProfile(tmpDir, profile);
+
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId, setName, profile }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(spawnCalls).toHaveLength(1);
+    expect(spawnCalls[0].command).toBe('resume');
+    expect(spawnCalls[0].args).toEqual([prdId, '--set-name', setName, '--profile', profile]);
   });
 });
 

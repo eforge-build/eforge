@@ -13,8 +13,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { resolve } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
@@ -72,6 +72,17 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
   };
 
   return { tracker, calls };
+}
+
+function writeTestProfile(cwd: string, name = 'resume-profile'): void {
+  const configDir = join(cwd, 'eforge');
+  mkdirSync(join(configDir, 'profiles'), { recursive: true });
+  writeFileSync(join(configDir, 'config.yaml'), 'agents:\n  tiers: {}\n', 'utf-8');
+  writeFileSync(
+    join(configDir, 'profiles', `${name}.yaml`),
+    'agents:\n  tiers:\n    planning:\n      harness: claude-sdk\n      model: claude-haiku-4-5\n      effort: low\n',
+    'utf-8',
+  );
 }
 
 /** Fake extra object for MCP tool handler calls. */
@@ -144,6 +155,13 @@ describe('resume CLI command registration', () => {
     expect(optionNames).toContain('--set-name');
   });
 
+  it('resume command declares --profile option', () => {
+    const program = createProgram(undefined, 'test');
+    const resumeCommand = program.commands.find((cmd) => cmd.name() === 'resume');
+    const optionNames = resumeCommand?.options.map((o) => o.long ?? '') ?? [];
+    expect(optionNames).toContain('--profile');
+  });
+
   it('resume command declares --cwd option', () => {
     const program = createProgram(undefined, 'test');
     const resumeCommand = program.commands.find((cmd) => cmd.name() === 'resume');
@@ -190,6 +208,15 @@ describe('eforge_resume_build MCP tool registration (source-level)', () => {
     expect(block).toContain('setName');
     expect(block).toContain('.optional()');
   });
+
+  it('eforge_resume_build schema declares optional profile field', () => {
+    const start = mcpSource.indexOf("name: 'eforge_resume_build'");
+    expect(start).toBeGreaterThan(-1);
+    const next = mcpSource.indexOf('createDaemonTool(', start + 1);
+    const block = next > start ? mcpSource.slice(start, next) : mcpSource.slice(start);
+    expect(block).toContain('profile');
+    expect(block).toContain('.optional()');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -223,6 +250,20 @@ describe('apiResumeBuild helper', () => {
     expect(data.sessionId).toBe(spawnCalls[0].sessionId);
     expect(data.pid).toBe(spawnCalls[0].pid);
   });
+
+  it('passes profile as --profile args when provided', async () => {
+    const prdId = 'my-feature-prd';
+    const profile = 'resume-profile';
+    writeTestProfile(tmpDir, profile);
+
+    const { data } = await apiResumeBuild({ cwd: tmpDir, body: { prdId, profile } });
+
+    expect(typeof data.sessionId).toBe('string');
+    expect(spawnCalls).toHaveLength(1);
+    expect(spawnCalls[0].args).toEqual([prdId, '--profile', profile]);
+    expect(data.sessionId).toBe(spawnCalls[0].sessionId);
+    expect(data.pid).toBe(spawnCalls[0].pid);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -242,10 +283,12 @@ describe('eforge_resume_build MCP tool handler', () => {
       schema: {
         prdId: z.string(),
         setName: z.string().optional(),
+        profile: z.string().optional(),
       },
-      handler: async ({ prdId: id, setName }, { cwd: toolCwd }) => {
-        const body: { prdId: string; setName?: string } = { prdId: id };
+      handler: async ({ prdId: id, setName, profile }, { cwd: toolCwd }) => {
+        const body: { prdId: string; setName?: string; profile?: string } = { prdId: id };
         if (setName !== undefined) body.setName = setName;
+        if (profile !== undefined) body.profile = profile;
         const { data } = await apiResumeBuild({ cwd: toolCwd, body });
         return data;
       },
@@ -267,5 +310,38 @@ describe('eforge_resume_build MCP tool handler', () => {
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0].command).toBe('resume');
     expect(spawnCalls[0].args).toEqual([prdId]);
+  });
+
+  it('forwards profile overrides through the MCP handler body', async () => {
+    const mcpServer = new McpServer({ name: 'test', version: '0.0.0' });
+    const prdId = 'mcp-handler-prd';
+    const profile = 'resume-profile';
+    writeTestProfile(tmpDir, profile);
+
+    const registered = createDaemonTool(mcpServer, tmpDir, {
+      name: 'eforge_resume_build',
+      description: 'Test: resume build',
+      schema: {
+        prdId: z.string(),
+        setName: z.string().optional(),
+        profile: z.string().optional(),
+      },
+      handler: async ({ prdId: id, setName, profile: profileOverride }, { cwd: toolCwd }) => {
+        const body: { prdId: string; setName?: string; profile?: string } = { prdId: id };
+        if (setName !== undefined) body.setName = setName;
+        if (profileOverride !== undefined) body.profile = profileOverride;
+        const { data } = await apiResumeBuild({ cwd: toolCwd, body });
+        return data;
+      },
+    });
+
+    await (registered.handler as (...args: unknown[]) => Promise<unknown>)(
+      { prdId, profile },
+      fakeExtra,
+    );
+
+    expect(spawnCalls).toHaveLength(1);
+    expect(spawnCalls[0].command).toBe('resume');
+    expect(spawnCalls[0].args).toEqual([prdId, '--profile', profile]);
   });
 });

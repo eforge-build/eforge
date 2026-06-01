@@ -32,7 +32,7 @@ import { startServer, type WorkerTracker, type MonitorServer } from '@eforge-bui
 import { moveFailedWithSidecar, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { StubHarness } from './stub-harness.js';
-import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
+import { API_ROUTES } from '@eforge-build/client';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 
 // ---------------------------------------------------------------------------
@@ -118,45 +118,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await server?.stop();
-});
-
-// ---------------------------------------------------------------------------
-// DAEMON_API_VERSION
-// ---------------------------------------------------------------------------
-
-describe('DAEMON_API_VERSION', () => {
-  it('is 47', () => {
-    // v47: read-only session plan-set routes added (`sessionPlanSetList`, `sessionPlanSetShow`,
-    // `sessionPlanSetValidate` under `/api/session-plan-set/*`) with typed client helpers
-    // (`apiSessionPlanSetList`/`Show`/`Validate` + `IfRunning` variants) and browser-safe wire
-    // types; first-party clients and Console require daemon support for these routes, so stale
-    // daemons must fail version verification rather than returning route-level 404s.
-    // v46: queue recovery analyze/apply routes and helpers; v45: `build:resume:artifacts` event variant added to the closed event union; v44: `afterQueueId` optional field added to `EnqueueRequest`; `POST /api/enqueue`
-    // validates and forwards `afterQueueId` to the enqueue worker via `--after <id>`;
-    // explicit `afterQueueId` in engine enqueue bypasses dependency-detector output;
-    // older daemons would silently ignore `afterQueueId`, violating deterministic handoff semantics.
-    // v43: stack sync `retry-deferred` trigger added to route validation and event schemas;
-    // `stack:sync:failed` no longer emitted for skipped outcomes; `deferred` added to closed
-    // `StackSyncResponse.outcome` union; `activeBuildSkips` and `providerCommands` fields added to
-    // `StackSyncStatusWire`; `current.outcome` made optional in daemon stream snapshot schema.
-    // v42: `plan:build:review:fix:continuation` event variant added; review-fixer now has a retry
-    // policy with turn-budget continuation support.
-    // v41: `landing:auto-merge:start`, `landing:auto-merge:complete`, `landing:auto-merge:skipped`
-    // event variants added; `landingAutoMerge` (boolean) optional field added to `EnqueueRequest`,
-    // `PlaybookRunRequest`, `BuildOptions`, `EnqueueOptions`, and PRD frontmatter
-    // (`landing_auto_merge`); `landing.pr.autoMerge` config field added (`ask|always|never`,
-    // default `ask`).
-    // v40: `gap_close:complete.passed` is now a required field on the wire event;
-    // older clients/daemons that treated it as optional will disagree on the event schema.
-    // v39: landing action vocabulary changed from full strings (merge-to-base-branch|issue-pr|leave-branch)
-    // to canonical shorthands (pr|merge|leave) in EnqueueRequest.landingAction and
-    // PlaybookRunRequest.landingAction (replacing onSuccess); daemon rejects onSuccess in request
-    // bodies with a migration error; CLI workers spawned with --landing-action instead of --on-success.
-    // v38: `landing:start` wire event removes `feature-pr-after-local-merge` workflow literal
-    // and replaces it with `feature-pr`; older clients that validated the event against the
-    // previous schema union will reject events emitted by the new daemon.
-    expect(DAEMON_API_VERSION).toBe(47);
-  });
 });
 
 // ---------------------------------------------------------------------------

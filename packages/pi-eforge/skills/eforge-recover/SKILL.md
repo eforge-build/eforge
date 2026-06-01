@@ -94,7 +94,7 @@ The daemon applies the action in-process and returns synchronously. Report the r
 - **split**: "Successor PRD `{successorPrdId}` enqueued. Commit: `{commitSha}`."
 - **abandon**: "PRD `{prdId}` has been archived. Commit: `{commitSha}`."
 
-**Compiled-build resume**: On confirmation for resume, call `eforge_resume_build` with `{ prdId }`. The daemon spawns a background build agent and returns `{ sessionId, pid }`. Report:
+**Compiled-build resume**: On confirmation for resume, call `eforge_resume_build` with `{ prdId }`, adding `setName` when the sidecar reports a set name that differs from the PRD id and `profile` when the user requests a specific agent runtime profile. The daemon validates the profile override before spawning a background build agent and returns `{ sessionId, pid }`. Report:
 
 > Resuming build for PRD `{prdId}`. Session ID: `{sessionId}`, PID: `{pid}`.
 

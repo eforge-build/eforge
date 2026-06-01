@@ -388,6 +388,7 @@ Resume a compiled build that previously failed
 | Flag | Description |
 |------|-------------|
 | `--set-name <setName>` | Override the set name; when omitted, resolved from recovery sidecar or derived from the prdId |
+| `--profile <name>` | Override active profile for this resumed build |
 | `--cwd <cwd>` | Working directory override |
 | `--verbose` | Stream agent output |
 | `--no-monitor` | Disable web monitor |

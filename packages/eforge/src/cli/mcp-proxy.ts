@@ -982,10 +982,12 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     schema: {
       prdId: z.string().describe('The plan ID (prdId) of the failed compiled build to resume'),
       setName: z.string().optional().describe('Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId.'),
+      profile: z.string().optional().describe('Run this resumed build on the named profile instead of the active profile'),
     },
-    handler: async ({ prdId, setName }, { cwd: toolCwd }) => {
-      const body: { prdId: string; setName?: string } = { prdId };
+    handler: async ({ prdId, setName, profile }, { cwd: toolCwd }) => {
+      const body: { prdId: string; setName?: string; profile?: string } = { prdId };
       if (setName !== undefined) body.setName = setName;
+      if (profile !== undefined) body.profile = profile;
       const { data } = await apiResumeBuild({ cwd: toolCwd, body });
       return data;
     },

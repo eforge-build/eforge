@@ -1747,6 +1747,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .command('resume <prdId>')
     .description('Resume a compiled build that previously failed')
     .option('--set-name <setName>', 'Override the set name; when omitted, resolved from recovery sidecar or derived from the prdId')
+    .option('--profile <name>', 'Override active profile for this resumed build')
     .option('--cwd <cwd>', 'Working directory override')
     .option('--verbose', 'Stream agent output')
     .option('--no-monitor', 'Disable web monitor')
@@ -1756,6 +1757,7 @@ export function createProgram(abortController?: AbortController, version?: strin
         prdId: string,
         options: {
           setName?: string;
+          profile?: string;
           cwd?: string;
           verbose?: boolean;
           monitor?: boolean;
@@ -1766,7 +1768,10 @@ export function createProgram(abortController?: AbortController, version?: strin
 
         const cwd = options.cwd ? resolve(options.cwd) : undefined;
 
-        const engine = await EforgeEngine.create({ ...(cwd && { cwd }) });
+        const engine = await EforgeEngine.create({
+          ...(cwd && { cwd }),
+          ...(options.profile && { profileOverride: options.profile }),
+        });
 
         try {
           await withMonitor(options.monitor === false, async (monitor) => {
