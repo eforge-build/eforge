@@ -25,6 +25,8 @@ export interface StubResponse {
   toolCalls?: StubToolCall[];
   /** Throw this error instead of completing normally */
   error?: Error;
+  /** Throw this error after emitting agent:result */
+  lateError?: Error;
 }
 
 const STUB_RESULT: AgentResultData = {
@@ -143,6 +145,10 @@ export class StubHarness implements AgentHarness {
         agent,
         result: resultText !== undefined ? { ...STUB_RESULT, resultText } : STUB_RESULT,
       };
+
+      if (response.lateError) {
+        throw response.lateError;
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       throw err;

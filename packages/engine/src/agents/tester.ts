@@ -47,6 +47,15 @@ function parseTestSummary(text: string): { passed: number; failed: number; testB
   };
 }
 
+// --- eforge:region plan-01-preserve-tester-results ---
+function mergeTesterResultText(fullText: string, resultText: string): string {
+  if (!fullText) return resultText;
+  if (fullText.includes(resultText)) return fullText;
+  if (resultText.includes(fullText)) return resultText;
+  return fullText + resultText;
+}
+// --- eforge:endregion plan-01-preserve-tester-results ---
+
 /**
  * Test-writer agent — writes tests for a plan's acceptance criteria.
  * One-shot coding agent that discovers test infra and writes tests.
@@ -124,6 +133,8 @@ export async function* runTester(
   let failed = 0;
   let testBugsFixed = 0;
   let productionIssues: TestIssue[] = [];
+  let fullText = '';
+  let testerAgentId: string | undefined;
 
   try {
     const prompt = await loadPrompt('tester', {
@@ -131,8 +142,6 @@ export async function* runTester(
       plan_content: options.planContent,
       test_issue_schema: getTestIssueSchemaYaml(),
     }, options.promptAppend);
-
-    let fullText = '';
 
     for await (const event of options.harness.run(
       {
@@ -146,24 +155,41 @@ export async function* runTester(
       'tester',
       options.planId,
     )) {
+      if (event.type === 'agent:start' && event.agent === 'tester') {
+        testerAgentId = event.agentId;
+      }
       if (event.type === 'agent:message' && event.content) {
         fullText += event.content;
+      }
+      if (event.type === 'agent:result' && event.result.resultText) {
+        fullText = mergeTesterResultText(fullText, event.result.resultText);
       }
 
       if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
       }
     }
-
-    productionIssues = parseTestIssues(fullText);
-    const summary = parseTestSummary(fullText);
-    passed = summary.passed;
-    failed = summary.failed;
-    testBugsFixed = summary.testBugsFixed;
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') throw err;
+    if (fullText) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'agent:warning',
+        planId: options.planId,
+        agentId: testerAgentId ?? 'unknown-tester',
+        agent: 'tester',
+        code: 'tester-late-error-swallowed',
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
     // Other tester failures are non-fatal
   }
+
+  productionIssues = parseTestIssues(fullText);
+  const summary = parseTestSummary(fullText);
+  passed = summary.passed;
+  failed = summary.failed;
+  testBugsFixed = summary.testBugsFixed;
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:test:complete', planId: options.planId, passed, failed, testBugsFixed, productionIssues };
 }
