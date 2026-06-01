@@ -1,0 +1,68 @@
+import { API_ROUTES } from '@eforge-build/client';
+import { applyRecoveryAbandon, applyRecoveryManual, applyRecoveryRetry, applyRecoverySplit } from '@eforge-build/engine/recovery/apply';
+import type { MonitorContext } from '../context.js';
+import { defineRoute, type RouteDefinition } from '../http/router.js';
+import { sendJson, sendJsonError } from '../http/response.js';
+import { localMutation } from '../http/security.js';
+import { readJsonBody, isValidPathSegment, sendInvalidJson } from './control-validation.js';
+import { readRecoverySidecar, readRecoveryVerdictForApply } from './recovery-sidecar-service.js';
+
+export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[] {
+  return [
+    defineRoute({ routeKey: 'recover', method: 'POST', pattern: API_ROUTES.recover, security: [localMutation('Recovery analysis')], async handler(ctx) {
+      const workerTracker = context.options.workerTracker;
+      if (!workerTracker) return sendJsonError(ctx.res, 503, 'Daemon mode not active');
+      const parsed = await readJsonBody(ctx.req);
+      if (!parsed.ok || typeof parsed.value !== 'object' || parsed.value === null) return sendInvalidJson(ctx.res);
+      const body = parsed.value as { setName?: unknown; prdId?: unknown };
+      if (!body.setName || typeof body.setName !== 'string') return sendJsonError(ctx.res, 400, 'Missing required field: setName');
+      if (!body.prdId || typeof body.prdId !== 'string') return sendJsonError(ctx.res, 400, 'Missing required field: prdId');
+      if (!isValidPathSegment(body.setName) || !isValidPathSegment(body.prdId)) return sendJsonError(ctx.res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
+      try { const result = workerTracker.spawnWorker('recover', [body.setName, body.prdId]); sendJson(ctx.res, { sessionId: result.sessionId, pid: result.pid }); }
+      catch (err) { sendJsonError(ctx.res, 500, err instanceof Error ? err.message : 'Failed to spawn recovery worker'); }
+    } }),
+    defineRoute({ routeKey: 'readRecoverySidecar', method: 'GET', pattern: API_ROUTES.readRecoverySidecar, security: [localMutation('Recovery sidecar reads')], async handler(ctx) {
+      const prdId = ctx.query.get('prdId');
+      if (!context.cwd) return sendJsonError(ctx.res, 503, 'Working directory not configured');
+      if (!prdId) return sendJsonError(ctx.res, 400, 'Missing required query param: prdId');
+      if (!isValidPathSegment(prdId)) return sendJsonError(ctx.res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
+      sendJson(ctx.res, await readRecoverySidecar(context, prdId));
+    } }),
+    defineRoute({ routeKey: 'applyRecovery', method: 'POST', pattern: API_ROUTES.applyRecovery, security: [localMutation('Recovery apply')], async handler(ctx) {
+      if (!context.options.daemonState) return sendJsonError(ctx.res, 503, 'Daemon mode not active');
+      if (!context.cwd) return sendJsonError(ctx.res, 503, 'No working directory configured');
+      const parsed = await readJsonBody(ctx.req);
+      if (!parsed.ok || typeof parsed.value !== 'object' || parsed.value === null) return sendInvalidJson(ctx.res);
+      const body = parsed.value as { prdId?: unknown };
+      if (!body.prdId || typeof body.prdId !== 'string') return sendJsonError(ctx.res, 400, 'Missing required field: prdId');
+      if (!isValidPathSegment(body.prdId)) return sendJsonError(ctx.res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
+      const verdictData = await readRecoveryVerdictForApply(context, body.prdId);
+      const helperOptions = { cwd: context.cwd, prdId: body.prdId, queueDir: context.queuePaths?.queueDir ?? `${context.cwd}/.eforge/queue` };
+      try {
+        switch (verdictData.verdict) {
+          case 'retry': {
+            const result = await applyRecoveryRetry(helperOptions);
+            context.notifyQueueMutation('apply-recovery');
+            return sendJson(ctx.res, { verdict: 'retry', commitSha: result.commitSha, noAction: false });
+          }
+          case 'split': {
+            const result = await applyRecoverySplit(helperOptions, verdictData);
+            context.notifyQueueMutation('apply-recovery');
+            return sendJson(ctx.res, { verdict: 'split', commitSha: result.commitSha, successorPrdId: result.successorPrdId, noAction: false });
+          }
+          case 'abandon': {
+            const result = await applyRecoveryAbandon(helperOptions);
+            context.notifyQueueMutation('apply-recovery');
+            return sendJson(ctx.res, { verdict: 'abandon', commitSha: result.commitSha, noAction: false });
+          }
+          case 'manual': {
+            const result = await applyRecoveryManual(helperOptions);
+            context.notifyQueueMutation('apply-recovery');
+            return sendJson(ctx.res, { verdict: 'manual', noAction: result.noAction });
+          }
+          default: throw new Error(`Unknown verdict: ${(verdictData as { verdict: string }).verdict}`);
+        }
+      } catch (err) { sendJsonError(ctx.res, 500, err instanceof Error ? err.message : 'Failed to apply recovery verdict'); }
+    } }),
+  ];
+}

@@ -23,8 +23,14 @@ const GET_ROUTE_KEYS = new Set([
 ]);
 
 const SECURED_ROUTE_KEYS = new Set([
-  'extensionNew', 'extensionReload', 'extensionTest', 'extensionTrust', 'extensionUntrust',
-  'extensionInstall', 'extensionUpdate', 'extensionRemove', 'extensionPromote', 'extensionDemote',
+  'extensionList', 'extensionShow', 'extensionValidate', 'extensionNew', 'extensionReload',
+  'extensionTest', 'extensionTrust', 'extensionUntrust', 'extensionInstall', 'extensionUpdate',
+  'extensionRemove', 'extensionPromote', 'extensionDemote',
+  'playbookList', 'playbookShow', 'playbookSave', 'playbookRun', 'playbookPromote',
+  'playbookDemote', 'playbookCopy', 'sessionPlanCreateFromPlaybook',
+  'sessionPlanList', 'sessionPlanShow', 'sessionPlanCreate', 'sessionPlanSetSection',
+  'sessionPlanSkipDimension', 'sessionPlanSetStatus', 'sessionPlanSelectDimensions',
+  'sessionPlanReadiness', 'sessionPlanMigrateLegacy',
   'sessionPlanSetList', 'sessionPlanSetShow', 'sessionPlanSetValidate',
 ]);
 
@@ -50,7 +56,7 @@ describe('extension content route registration', () => {
     } finally { await harness.close(); }
   });
 
-  it('declares security only on extension mutations and session-plan-set reads', async () => {
+  it('declares security on local content routes except pure validation', async () => {
     const harness = await startContentRouteHarness({ routes: createExtensionContentRoutes });
     try {
       const secured = new Set(harness.routes.filter((route) => (route.security?.length ?? 0) > 0).map((route) => route.routeKey));

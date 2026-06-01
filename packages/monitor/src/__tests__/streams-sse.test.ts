@@ -28,9 +28,9 @@ describe('streams/sse helpers', () => {
     expect(parseLastEventIdHeader({})).toBeUndefined();
     expect(parseLastEventIdHeader({ 'last-event-id': '0' })).toBe(0);
     expect(parseLastEventIdHeader({ 'last-event-id': '42' })).toBe(42);
-    expect(parseLastEventIdHeader({ 'last-event-id': '42abc' })).toBe(42);
+    expect(parseLastEventIdHeader({ 'last-event-id': '42abc' })).toBeUndefined();
     expect(parseLastEventIdHeader({ 'last-event-id': '-1' })).toBeUndefined();
-    expect(parseLastEventIdHeader({ 'last-event-id': '1.5' })).toBe(1);
+    expect(parseLastEventIdHeader({ 'last-event-id': '1.5' })).toBeUndefined();
     expect(parseLastEventIdHeader({ 'last-event-id': 'nope' })).toBeUndefined();
   });
 });

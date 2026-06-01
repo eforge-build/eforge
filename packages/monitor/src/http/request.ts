@@ -29,7 +29,6 @@ export function parseJsonBody(req: IncomingMessage): Promise<unknown> {
       if (settled) return;
       totalSize += chunk.length;
       if (totalSize > MAX_JSON_BODY_BYTES) {
-        req.destroy();
         settle(() => reject(new RequestBodyTooLargeError()));
         return;
       }
