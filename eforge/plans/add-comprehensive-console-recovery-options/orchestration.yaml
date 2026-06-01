@@ -1,0 +1,83 @@
+name: add-comprehensive-console-recovery-options
+description: Add comprehensive Console recovery options with sidecar verdict
+  actions, resume eligibility preflight, and advanced queue-cascade recovery.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-recovery-api
+    name: Recovery API Helpers and Resume Eligibility
+    depends_on: []
+    branch: add-comprehensive-console-recovery-options/plan-01-recovery-api
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - api
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan coordinates engine resume eligibility behavior, daemon
+          routes, shared client contracts, browser helpers, and API-version
+          tests.
+  - id: plan-02-console-recovery-ui
+    name: Console Recovery Dialog and Actions
+    depends_on:
+      - plan-01-recovery-api
+    branch: add-comprehensive-console-recovery-options/plan-02-console-recovery-ui
+    build:
+      - implement
+      - test-cycle
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan refactors a central Console dialog into a multi-action
+          recovery surface with confirmation flows, safe markdown rendering, and
+          component tests.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - test-cycle
+    - doc-sync
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive cross-package Console/client/daemon feature with
+    clear dependencies, so excursion fits better than expedition. Plan review is
+    included because the PRD has many acceptance criteria and route/UI contract
+    risks. The build pipeline implements the feature, optionally authors/syncs
+    docs for public API and user-facing changes, writes and runs tests, runs the
+    registered maintainability validation gate before review, then performs
+    iterative review. Review focuses on code quality and API contract
+    correctness; test stages cover the extensive testing requirements.
+diff_base_ref: 9cb91e5854ad9fbc3fa0b305b7bfb0b9478c7b39
