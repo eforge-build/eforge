@@ -121,6 +121,7 @@ export function createRouter(options: RouterOptions): {
           }
           return;
         }
+        console.error('Unhandled route error', err instanceof Error ? err.message : String(err));
         if (!res.writableEnded) {
           sendJsonError(res, 500, 'Internal server error');
         }
