@@ -343,7 +343,6 @@ export interface BuilderEvaluationResult {
   error?: string;
 }
 
-// --- eforge:region plan-01-evaluator-late-error-preservation ---
 function completedEvaluationResultFromEvidence(
   structuredSubmission: EvaluationSubmission | undefined,
   fullText: string,
@@ -361,7 +360,6 @@ function completedEvaluationResultFromEvidence(
 function isRetryableLateEvaluatorInfrastructureSubtype(subtype: ReturnType<typeof classifyAgentTerminalSubtype>): boolean {
   return subtype === 'error_transient_transport' || subtype === 'error_pi_tool_infrastructure';
 }
-// --- eforge:endregion plan-01-evaluator-late-error-preservation ---
 
 function mergeDisallowedTools(existing: string[] | undefined): string[] {
   return mergeMutationDisallowedTools(existing);
@@ -441,7 +439,6 @@ The previous evaluator run was interrupted before a final verdict submission was
   } catch (err) {
     const terminalSubtype = classifyAgentTerminalSubtype(err);
     const message = err instanceof Error ? err.message : String(err);
-    // --- eforge:region plan-01-evaluator-late-error-preservation ---
     if (isRetryableLateEvaluatorInfrastructureSubtype(terminalSubtype)) {
       const completedResult = completedEvaluationResultFromEvidence(structuredSubmission, fullText, evaluatorAgentId);
       if (completedResult) {
@@ -457,7 +454,6 @@ The previous evaluator run was interrupted before a final verdict submission was
         return completedResult;
       }
     }
-    // --- eforge:endregion plan-01-evaluator-late-error-preservation ---
     if (terminalSubtype) {
       yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: message, terminalSubtype };
     } else {
