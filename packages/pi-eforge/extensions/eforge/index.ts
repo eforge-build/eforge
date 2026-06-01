@@ -1928,10 +1928,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       setName: Type.Optional(Type.String({
         description: "Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId.",
       })),
+      profile: Type.Optional(Type.String({
+        description: "Run this resumed build on the named profile instead of the active profile",
+      })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const body: { prdId: string; setName?: string } = { prdId: params.prdId };
+      const body: { prdId: string; setName?: string; profile?: string } = { prdId: params.prdId };
       if (params.setName !== undefined) body.setName = params.setName;
+      if (params.profile !== undefined) body.profile = params.profile;
       const { data } = await requireDaemon(
         ctx.cwd,
         "POST",

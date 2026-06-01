@@ -120,7 +120,7 @@ The recovery flow:
    - `manual` - make no queue changes; a human must inspect the recovery report and decide what to do
 4. Check whether the PRD has compiled artifacts and a feature branch. If it does, you can also resume from compiled artifacts (`eforge_resume_build` in Pi, `mcp__eforge__eforge_resume_build` in Claude Code, or `eforge resume <prdId>` via CLI) instead of following the verdict action.
 5. Confirm the action with the user.
-6. Apply via `eforge_apply_recovery` or the standalone CLI command `eforge apply-recovery <prdId>` for verdict-based actions. For compiled-build resume, call `eforge_resume_build` (Pi), `mcp__eforge__eforge_resume_build` (Claude Code), or `eforge resume <prdId> [--set-name <name>]` (CLI) with the `prdId`.
+6. Apply via `eforge_apply_recovery` or the standalone CLI command `eforge apply-recovery <prdId>` for verdict-based actions. For compiled-build resume, call `eforge_resume_build` (Pi), `mcp__eforge__eforge_resume_build` (Claude Code), or `eforge resume <prdId> [--set-name <name>] [--profile <name>]` (CLI) with the `prdId`.
 
 When you are present in the Console Now dashboard, failed upstream rows in the Queue card also offer **Inspect cascade**. That dialog previews skipped descendants, daemon warnings/blockers, and planned queue moves before applying recovery and refreshing the queue.
 

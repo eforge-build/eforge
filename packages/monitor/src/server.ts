@@ -2414,7 +2414,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Daemon mode not active');
         return true;
       }
-      let body: { prdId?: unknown; setName?: unknown };
+      let body: { prdId?: unknown; setName?: unknown; profile?: unknown };
       try {
         const rawBody = await parseJsonBody(req);
         if (!isPlainObject(rawBody)) {
@@ -2440,10 +2440,41 @@ export async function startServer(
           return true;
         }
       }
+      let profileName: string | undefined;
+      if (body.profile !== undefined) {
+        if (typeof body.profile !== 'string' || body.profile.trim().length === 0) {
+          sendJsonError(res, 400, 'Invalid field: profile must be a non-empty string');
+          return true;
+        }
+        const cwd = options?.cwd;
+        if (!cwd) {
+          sendJsonError(res, 503, 'No working directory configured');
+          return true;
+        }
+        profileName = body.profile;
+        let profileResult: Awaited<ReturnType<typeof import('@eforge-build/engine/config').loadProfile>>;
+        try {
+          const { getConfigDir, getConventionalConfigDir, loadProfile } = await import('@eforge-build/engine/config');
+          const discoveredConfigDir = await getConfigDir(cwd);
+          const configDir = discoveredConfigDir ?? getConventionalConfigDir(cwd);
+          profileResult = await loadProfile(configDir, profileName, cwd);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          sendJsonError(res, 400, `Invalid profile '${profileName}': ${message}`);
+          return true;
+        }
+        if (!profileResult) {
+          sendJsonError(res, 400, `Profile '${profileName}' not found`);
+          return true;
+        }
+      }
       try {
         const args: string[] = [body.prdId];
         if (body.setName) {
           args.push('--set-name', body.setName);
+        }
+        if (profileName) {
+          args.push('--profile', profileName);
         }
         const result = options.workerTracker.spawnWorker('resume', args);
         sendJson(res, { sessionId: result.sessionId, pid: result.pid });

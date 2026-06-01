@@ -86,6 +86,8 @@ export interface ResumeBuildRequest {
   prdId: string;
   /** Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId. */
   setName?: string;
+  /** Override the active profile for this resumed build (profile name, validated before the worker is spawned). */
+  profile?: string;
 }
 
 /** Response for POST /api/recover/resume-build */
