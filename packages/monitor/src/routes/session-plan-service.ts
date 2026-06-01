@@ -5,7 +5,7 @@ export async function listSessionPlansWire(cwd: string, includeSubmitted: boolea
   const statuses: Array<'planning' | 'ready' | 'submitted'> = includeSubmitted ? ['planning', 'ready', 'submitted'] : ['planning', 'ready'];
   const entries = await listSessionPlans({ cwd, statuses });
   const plans = await Promise.all(entries.map(async (entry) => {
-    try { const plan = await loadSessionPlan({ cwd, session: entry.session }); const readiness = getReadinessDetail(plan); return { session: entry.session, topic: entry.topic, status: entry.status, path: entry.path, ready: readiness.ready, missingDimensions: readiness.missingDimensions, ...(entry.eforge_session !== undefined ? { eforge_session: entry.eforge_session } : {}), ...(readiness.acDiagnostics?.length ? { acDiagnostics: readiness.acDiagnostics } : {}) }; }
+    try { const plan = await loadSessionPlan({ cwd, session: entry.session }); const readiness = getReadinessDetail(plan); return { session: entry.session, topic: entry.topic, status: entry.status, path: entry.path, ready: readiness.ready, missingDimensions: readiness.missingDimensions, ...(entry.eforge_session !== undefined ? { eforge_session: entry.eforge_session } : {}) }; }
     catch { return { session: entry.session, topic: entry.topic, status: entry.status, path: entry.path, ready: false, missingDimensions: [], ...(entry.eforge_session !== undefined ? { eforge_session: entry.eforge_session } : {}) }; }
   }));
   return { plans };

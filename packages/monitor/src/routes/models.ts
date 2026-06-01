@@ -3,15 +3,18 @@ import { listModels, listProviders } from '@eforge-build/engine/models';
 import type { MonitorContext } from '../context.js';
 import { sendJson, sendJsonError } from '../http/response.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
+import { localOnly, rejectCrossSiteBrowser } from '../http/security.js';
 
 type Harness = 'pi' | 'claude-sdk';
 const HARNESS_ERROR = 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")';
 
 export function createModelRoutes(_context: MonitorContext): RouteDefinition[] {
+  const readSecurity = [localOnly('Model reads'), rejectCrossSiteBrowser('Model reads')];
   return [
     defineRoute({
       routeKey: 'modelProviders',
       method: 'GET',
+      security: readSecurity,
       handler: async ({ res, query }) => {
         const harness = parseHarness(query.get('harness'));
         if (!harness) { sendJsonError(res, 400, HARNESS_ERROR); return; }
@@ -26,6 +29,7 @@ export function createModelRoutes(_context: MonitorContext): RouteDefinition[] {
     defineRoute({
       routeKey: 'modelList',
       method: 'GET',
+      security: readSecurity,
       handler: async ({ res, query }) => {
         const harness = parseHarness(query.get('harness'));
         if (!harness) { sendJsonError(res, 400, HARNESS_ERROR); return; }

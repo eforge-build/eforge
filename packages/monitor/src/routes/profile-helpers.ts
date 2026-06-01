@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { parseJsonBody } from '../http/request.js';
+import { isRequestBodyTooLargeError, parseJsonBody } from '../http/request.js';
 
 export type ProfileScope = 'local' | 'project' | 'user';
 
@@ -45,13 +45,32 @@ export function writeWarnings(warnings: readonly string[]): void {
   for (const warning of warnings) process.stderr.write(`${warning}\n`);
 }
 
+export class InvalidProfileDeleteOptionsError extends Error {
+  constructor(message: string, readonly status = 400) {
+    super(message);
+    this.name = 'InvalidProfileDeleteOptionsError';
+  }
+}
+
 export async function readOptionalProfileDeleteOptions(
   req: IncomingMessage,
 ): Promise<{ force: boolean; scope: ProfileScope | undefined }> {
+  let rawBody: unknown;
   try {
-    const body = await parseJsonBody(req) as { force?: unknown; scope?: unknown };
-    return { force: body.force === true, scope: isProfileScope(body.scope) ? body.scope : undefined };
-  } catch {
-    return { force: false, scope: undefined };
+    rawBody = await parseJsonBody(req);
+  } catch (err) {
+    if (isRequestBodyTooLargeError(err)) throw new InvalidProfileDeleteOptionsError(err.message, 413);
+    throw new InvalidProfileDeleteOptionsError('Invalid JSON body');
   }
+  if (rawBody === null || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+    throw new InvalidProfileDeleteOptionsError('Request body must be a JSON object');
+  }
+  const body = rawBody as { force?: unknown; scope?: unknown };
+  if (Object.hasOwn(body, 'force') && typeof body.force !== 'boolean') {
+    throw new InvalidProfileDeleteOptionsError('force must be a boolean when present');
+  }
+  if (Object.hasOwn(body, 'scope') && !isProfileScope(body.scope)) {
+    throw new InvalidProfileDeleteOptionsError('scope must be "local", "project", or "user" when present');
+  }
+  return { force: body.force === true, scope: isProfileScope(body.scope) ? body.scope : undefined };
 }

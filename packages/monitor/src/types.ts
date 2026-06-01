@@ -1,4 +1,4 @@
-import type { ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { AutoBuildController } from './auto-build-supervisor.js';
@@ -54,8 +54,8 @@ export interface MonitorUiRoots {
 }
 
 export interface MonitorStreamHub {
-  attachSession(res: ServerResponse, sessionId: string, lastSeenId?: number): void;
-  attachDaemon(res: ServerResponse, lastSeenId?: number): void;
+  attachSession(req: IncomingMessage, res: ServerResponse, id: string): void;
+  attachDaemon(req: IncomingMessage, res: ServerResponse): void;
   broadcast(eventName: string, data: string | EforgeEvent): void;
   subscriberCount(): number;
   stop(): void;

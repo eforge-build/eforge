@@ -86,7 +86,7 @@ export function createRouter(options: RouterOptions): {
       if (req.method === 'OPTIONS' && pathname.startsWith(apiPrefix)) {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
         });
         res.end();

@@ -126,7 +126,7 @@ describe('router dispatch shell', () => {
   it('handles CORS preflight before route matching', async () => {
     const res = await hit('/api/not-registered', { method: 'OPTIONS' });
     expect(res.status).toBe(204);
-    expect(res.headers.get('access-control-allow-methods')).toBe('GET, POST, OPTIONS');
+    expect(res.headers.get('access-control-allow-methods')).toBe('GET, POST, DELETE, OPTIONS');
   });
 
   it('runs security policies before handlers', async () => {

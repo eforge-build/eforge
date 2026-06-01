@@ -66,14 +66,14 @@ describe('profile routes', () => {
     });
   }
 
-  async function expectProfileMutationReachesHandler(url: string, headers: Record<string, string>): Promise<void> {
+  async function expectProfileMutationRejectedBySecurity(url: string, headers: Record<string, string>): Promise<void> {
     const requests = [
       [`${url}${API_ROUTES.profileUse}`, { method: 'POST', body: '{}' }],
       [`${url}${API_ROUTES.profileCreate}`, { method: 'POST', body: '{}' }],
       [`${url}${buildPath(API_ROUTES.profileDelete, { name: 'bad name' })}`, { method: 'DELETE' }],
     ] as const;
     for (const [target, baseInit] of requests) {
-      expect(await requestStatus(target, { ...baseInit, headers })).toBe(400);
+      expect(await requestStatus(target, { ...baseInit, headers })).toBe(403);
     }
   }
 
@@ -131,22 +131,28 @@ describe('profile routes', () => {
     expect((await fetch(`${url}${API_ROUTES.profileUse}`, { method: 'POST', body: 'null' })).status).toBe(400);
     expect((await fetch(`${url}${API_ROUTES.profileUse}`, { method: 'POST', body: '{}' })).status).toBe(400);
     expect((await fetch(`${url}${API_ROUTES.profileUse}`, { method: 'POST', body: JSON.stringify({ name: '../team' }) })).status).toBe(400);
+    expect((await fetch(`${url}${API_ROUTES.profileUse}`, { method: 'POST', body: JSON.stringify({ name: 'team', scope: 'team' }) })).status).toBe(400);
     expect((await fetch(`${url}${API_ROUTES.profileCreate}`, { method: 'POST', body: 'null' })).status).toBe(400);
+    expect((await fetch(`${url}${API_ROUTES.profileCreate}`, { method: 'POST', body: JSON.stringify({ name: 'new', overwrite: 'yes' }) })).status).toBe(400);
+    expect((await fetch(`${url}${API_ROUTES.profileCreate}`, { method: 'POST', body: JSON.stringify({ name: 'new', scope: 'team' }) })).status).toBe(400);
     const duplicate = await fetch(`${url}${API_ROUTES.profileCreate}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'team', agents: { tiers: {} } }) });
     expect(duplicate.status).toBe(409);
     expect((await fetch(`${url}${buildPath(API_ROUTES.profileDelete, { name: 'bad name' })}`, { method: 'DELETE' })).status).toBe(400);
-    const deleted = await fetch(`${url}${buildPath(API_ROUTES.profileDelete, { name: 'local' })}`, { method: 'DELETE', body: '{' });
+    expect((await fetch(`${url}${buildPath(API_ROUTES.profileDelete, { name: 'local' })}`, { method: 'DELETE', body: '{' })).status).toBe(400);
+    expect((await fetch(`${url}${buildPath(API_ROUTES.profileDelete, { name: 'local' })}`, { method: 'DELETE', body: JSON.stringify({ force: 'yes' }) })).status).toBe(400);
+    expect((await fetch(`${url}${buildPath(API_ROUTES.profileDelete, { name: 'local' })}`, { method: 'DELETE', body: JSON.stringify({ scope: 'team' }) })).status).toBe(400);
+    const deleted = await fetch(`${url}${buildPath(API_ROUTES.profileDelete, { name: 'local' })}`, { method: 'DELETE' });
     expect(deleted.status).toBe(200);
     expect(await deleted.json()).toEqual({ deleted: 'local' });
     await rm(cwd, { recursive: true, force: true });
   });
 
-  it('preserves ungated profile mutation route accessibility', async () => {
+  it('rejects cross-site profile mutations before reaching handlers', async () => {
     const cwd = await fixture();
     const url = await start(cwd);
-    await expectProfileMutationReachesHandler(url, { origin: 'http://evil.test' });
-    await expectProfileMutationReachesHandler(url, { 'sec-fetch-site': 'cross-site' });
-    await expectProfileMutationReachesHandler(url, { host: 'evil.test' });
+    await expectProfileMutationRejectedBySecurity(url, { origin: 'http://evil.test' });
+    await expectProfileMutationRejectedBySecurity(url, { 'sec-fetch-site': 'cross-site' });
+    await expectProfileMutationRejectedBySecurity(url, { host: 'evil.test' });
     await rm(cwd, { recursive: true, force: true });
   });
 });

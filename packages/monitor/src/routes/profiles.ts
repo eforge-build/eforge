@@ -24,10 +24,10 @@ import {
   type ProfileMetadata,
 } from '@eforge-build/engine/config';
 import type { MonitorContext } from '../context.js';
-import { parseJsonBody } from '../http/request.js';
+import { isRequestBodyTooLargeError, parseJsonBody } from '../http/request.js';
 import { sendJson, sendJsonError } from '../http/response.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
-import { localMutation } from '../http/security.js';
+import { localMutation, localOnly, rejectCrossSiteBrowser } from '../http/security.js';
 import { redactSensitive } from '../projections/config-redaction.js';
 import {
   extractHarnessFromProfile,
@@ -40,8 +40,8 @@ import {
 
 export function createProfileRoutes(context: MonitorContext): RouteDefinition[] {
   return [
-    defineRoute({ routeKey: 'profileList', method: 'GET', handler: ({ res, query }) => handleProfileList(context, res, query) }),
-    defineRoute({ routeKey: 'profileShow', method: 'GET', handler: ({ res }) => handleProfileShow(context, res) }),
+    defineRoute({ routeKey: 'profileList', method: 'GET', security: [localOnly('Profile reads'), rejectCrossSiteBrowser('Profile reads')], handler: ({ res, query }) => handleProfileList(context, res, query) }),
+    defineRoute({ routeKey: 'profileShow', method: 'GET', security: [localOnly('Profile reads'), rejectCrossSiteBrowser('Profile reads')], handler: ({ res }) => handleProfileShow(context, res) }),
     defineRoute({ routeKey: 'profileUse', method: 'POST', security: [localMutation('Profile mutations')], handler: ({ req, res }) => handleProfileUse(context, req, res) }),
     defineRoute({ routeKey: 'profileCreate', method: 'POST', security: [localMutation('Profile mutations')], handler: ({ req, res }) => handleProfileCreate(context, req, res) }),
     defineRoute({ routeKey: 'profileDelete', method: 'DELETE', security: [localMutation('Profile mutations')], handler: ({ req, res, params }) => handleProfileDelete(context, req, res, params.name) }),
@@ -129,11 +129,12 @@ async function handleProfileShow(context: MonitorContext, res: Parameters<typeof
 
 async function handleProfileUse(context: MonitorContext, req: Parameters<typeof parseJsonBody>[0], res: Parameters<typeof sendJson>[0]): Promise<void> {
   let rawBody: unknown;
-  try { rawBody = await parseJsonBody(req); } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+  try { rawBody = await parseJsonBody(req); } catch (err) { sendJsonError(res, isRequestBodyTooLargeError(err) ? 413 : 400, isRequestBodyTooLargeError(err) ? 'Request body too large' : 'Invalid JSON body'); return; }
   if (rawBody === null || typeof rawBody !== 'object') { sendJsonError(res, 400, 'Invalid JSON body'); return; }
   const body = rawBody as ProfileUseRequest;
   if (!body.name || typeof body.name !== 'string') { sendJsonError(res, 400, 'Missing required field: name (string)'); return; }
   if (!isValidProfileName(body.name)) { sendJsonError(res, 400, 'Invalid agent runtime profile name'); return; }
+  if (Object.hasOwn(body, 'scope') && !isProfileScope(body.scope)) { sendJsonError(res, 400, 'scope must be "local", "project", or "user" when present'); return; }
   const configDir = await getConfigDir(context.cwd);
   if (!configDir) { sendJsonError(res, 404, 'No eforge config directory found'); return; }
   try {
@@ -149,10 +150,12 @@ async function handleProfileUse(context: MonitorContext, req: Parameters<typeof 
 
 async function handleProfileCreate(context: MonitorContext, req: Parameters<typeof parseJsonBody>[0], res: Parameters<typeof sendJson>[0]): Promise<void> {
   let rawBody: unknown;
-  try { rawBody = await parseJsonBody(req); } catch { sendJsonError(res, 400, 'Invalid JSON body'); return; }
+  try { rawBody = await parseJsonBody(req); } catch (err) { sendJsonError(res, isRequestBodyTooLargeError(err) ? 413 : 400, isRequestBodyTooLargeError(err) ? 'Request body too large' : 'Invalid JSON body'); return; }
   if (rawBody === null || typeof rawBody !== 'object') { sendJsonError(res, 400, 'Invalid JSON body'); return; }
   const body = rawBody as ProfileCreateRequest;
   if (!body.name || typeof body.name !== 'string') { sendJsonError(res, 400, 'Missing required field: name (string)'); return; }
+  if (Object.hasOwn(body, 'scope') && !isProfileScope(body.scope)) { sendJsonError(res, 400, 'scope must be "local", "project", or "user" when present'); return; }
+  if (Object.hasOwn(body, 'overwrite') && typeof body.overwrite !== 'boolean') { sendJsonError(res, 400, 'overwrite must be a boolean when present'); return; }
   const configDir = await getConfigDir(context.cwd);
   if (!configDir) { sendJsonError(res, 404, 'No eforge config directory found'); return; }
   try {
@@ -193,6 +196,10 @@ async function handleProfileDelete(
       else sendJsonError(res, 400, msg);
     }
   } catch (err) {
+    if (err && typeof err === 'object' && 'name' in err && err.name === 'InvalidProfileDeleteOptionsError') {
+      sendJsonError(res, 'status' in err && typeof err.status === 'number' ? err.status : 400, err instanceof Error ? err.message : 'Invalid profile delete options');
+      return;
+    }
     sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to delete agent runtime profile');
   }
 }

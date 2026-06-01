@@ -4150,9 +4150,6 @@ export async function startServer(
                 ready: readiness.ready,
                 missingDimensions: readiness.missingDimensions,
                 ...(entry.eforge_session !== undefined ? { eforge_session: entry.eforge_session } : {}),
-                ...(readiness.acDiagnostics && readiness.acDiagnostics.length > 0
-                  ? { acDiagnostics: readiness.acDiagnostics }
-                  : {}),
               };
             } catch {
               return {

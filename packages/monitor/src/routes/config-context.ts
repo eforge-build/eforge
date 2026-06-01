@@ -12,6 +12,7 @@ import { findConfigFile, getUserConfigPath, loadConfig, validateConfigFile } fro
 import type { MonitorContext } from '../context.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
 import { sendJson, sendJsonError } from '../http/response.js';
+import { localOnly, rejectCrossSiteBrowser } from '../http/security.js';
 import { redactGitRemote, redactSensitive } from '../projections/config-redaction.js';
 
 export function createConfigContextRoutes(context: MonitorContext): RouteDefinition[] {
@@ -19,6 +20,7 @@ export function createConfigContextRoutes(context: MonitorContext): RouteDefinit
     defineRoute({
       routeKey: 'projectContext',
       method: 'GET',
+      security: [localOnly('Config reads'), rejectCrossSiteBrowser('Config reads')],
       handler: ({ res }) => {
         const body: ProjectContext = { cwd: context.cwd ?? null, gitRemote: redactGitRemote(context.cachedGitRemote) };
         sendJson(res, body);
@@ -46,6 +48,7 @@ export function createConfigContextRoutes(context: MonitorContext): RouteDefinit
     defineRoute({
       routeKey: 'configShow',
       method: 'GET',
+      security: [localOnly('Config reads'), rejectCrossSiteBrowser('Config reads')],
       handler: async ({ res, query }) => {
         try {
           const verboseVal = query.get('verbose');
@@ -66,6 +69,7 @@ export function createConfigContextRoutes(context: MonitorContext): RouteDefinit
     defineRoute({
       routeKey: 'configValidate',
       method: 'GET',
+      security: [localOnly('Config reads'), rejectCrossSiteBrowser('Config reads')],
       handler: async ({ res }) => {
         try {
           const response: ConfigValidateResponse = await validateConfigFile(context.cwd);

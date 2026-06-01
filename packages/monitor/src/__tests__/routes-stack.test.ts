@@ -54,7 +54,7 @@ async function fixture() {
 describe('stack routes', () => {
   it('serves stack layers and sync status', async () => {
     const { baseUrl: noneUrl } = await start();
-    expect(await fetch(`${noneUrl}${API_ROUTES.stackSyncStatus}`).then((res) => res.json())).toEqual({ version: 1 });
+    expect(await fetch(`${noneUrl}${API_ROUTES.stackSyncStatus}`).then((res) => res.json())).toEqual({});
     await cleanup?.(); cleanup = undefined;
     const cwd = await fixture();
     await setCurrentSyncStatus(cwd, { id: 'cur', startedAt: '2026-01-01T00:00:00.000Z', dryRun: false, restackCandidates: [] });

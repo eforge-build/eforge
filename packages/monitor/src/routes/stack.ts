@@ -1,10 +1,10 @@
 import type { StackLayersResponse, StackSyncRequest, StackSyncResponse, StackSyncStatusResponse } from '@eforge-build/client';
 import { loadConfig } from '@eforge-build/engine/config';
 import type { MonitorContext } from '../context.js';
-import { parseJsonBody } from '../http/request.js';
+import { isRequestBodyTooLargeError, parseJsonBody } from '../http/request.js';
 import { sendJson, sendJsonError } from '../http/response.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
-import { localMutation } from '../http/security.js';
+import { localMutation, localOnly, rejectCrossSiteBrowser } from '../http/security.js';
 import { stackLayersToWire } from '../projections/stack-layers.js';
 import { loadSyncStatusForRoute, runStackSync } from '../stack-sync-service.js';
 
@@ -16,6 +16,7 @@ export function createStackRoutes(context: MonitorContext): RouteDefinition[] {
     defineRoute({
       routeKey: 'stackLayers',
       method: 'GET',
+      security: [localOnly('Stack reads'), rejectCrossSiteBrowser('Stack reads')],
       handler: ({ res }) => {
         const response: StackLayersResponse = { layers: context.cwd ? stackLayersToWire(context.cwd) : [] };
         sendJson(res, response);
@@ -30,9 +31,10 @@ export function createStackRoutes(context: MonitorContext): RouteDefinition[] {
     defineRoute({
       routeKey: 'stackSyncStatus',
       method: 'GET',
+      security: [localOnly('Stack reads'), rejectCrossSiteBrowser('Stack reads')],
       handler: async ({ res }) => {
         const syncCwd = context.cwd;
-        if (!syncCwd) { sendJson(res, { version: 1 }); return; }
+        if (!syncCwd) { sendJson(res, {} satisfies StackSyncStatusResponse); return; }
         try {
           const statusFile = await loadSyncStatusForRoute(syncCwd);
           const response: StackSyncStatusResponse = { last: statusFile.last, current: statusFile.current };
@@ -55,8 +57,8 @@ async function handleStackSync(
   let rawBody: unknown;
   try {
     rawBody = await parseJsonBody(req);
-  } catch {
-    sendJsonError(res, 400, 'Invalid JSON request body');
+  } catch (err) {
+    sendJsonError(res, isRequestBodyTooLargeError(err) ? 413 : 400, isRequestBodyTooLargeError(err) ? 'Request body too large' : 'Invalid JSON request body');
     return;
   }
   const request = validateStackSyncBody(rawBody, res);
