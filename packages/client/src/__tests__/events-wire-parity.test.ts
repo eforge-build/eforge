@@ -1738,6 +1738,22 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       reason: 'git-spice branch submit exited with code 1',
     },
   },
+  {
+    label: 'stack:landing:conflict:detected',
+    payload: { type: 'stack:landing:conflict:detected', timestamp: '2025-01-01T00:00:02.000Z', prdId: 'feat-stack-a', stackId: 'stack-001', provider: 'git-spice', branch: 'eforge/feat-stack-a', operation: 'branch-restack', conflictKind: 'git-rebase', conflictedFiles: ['src/a.ts'] },
+  },
+  {
+    label: 'stack:landing:conflict:recovery:start',
+    payload: { type: 'stack:landing:conflict:recovery:start', timestamp: '2025-01-01T00:00:03.000Z', prdId: 'feat-stack-a', stackId: 'stack-001', provider: 'git-spice', branch: 'eforge/feat-stack-a', attempt: 1, maxAttempts: 3 },
+  },
+  {
+    label: 'stack:landing:conflict:recovery:complete',
+    payload: { type: 'stack:landing:conflict:recovery:complete', timestamp: '2025-01-01T00:00:04.000Z', prdId: 'feat-stack-a', stackId: 'stack-001', provider: 'git-spice', branch: 'eforge/feat-stack-a', attempts: 1 },
+  },
+  {
+    label: 'stack:landing:conflict:recovery:failed',
+    payload: { type: 'stack:landing:conflict:recovery:failed', timestamp: '2025-01-01T00:00:05.000Z', prdId: 'feat-stack-a', stackId: 'stack-001', provider: 'git-spice', branch: 'eforge/feat-stack-a', attempts: 2, reason: 'still conflicted', abortAttempted: true, abortSucceeded: true },
+  },
 
   // Build resume lifecycle
   {
@@ -2046,6 +2062,16 @@ describe('events-wire-parity — invalid payloads (stack events)', () => {
       branch: 'eforge/feat-a',
       status: 'started',
     });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects stack landing recovery start missing required prdId', () => {
+    const result = safeParseEforgeEvent({ type: 'stack:landing:conflict:recovery:start', timestamp: '2025-01-01T00:00:00.000Z', stackId: 'stack-1', provider: 'git-spice', branch: 'eforge/feat-a', attempt: 1, maxAttempts: 3 });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects stack landing conflict detected with invalid operation literal', () => {
+    const result = safeParseEforgeEvent({ type: 'stack:landing:conflict:detected', timestamp: '2025-01-01T00:00:00.000Z', prdId: 'feat-a', stackId: 'stack-1', provider: 'git-spice', branch: 'eforge/feat-a', operation: 'submit', conflictKind: 'git-rebase', conflictedFiles: ['src/a.ts'] });
     expect(result.success).toBe(false);
   });
 });

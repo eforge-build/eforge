@@ -10472,7 +10472,14 @@
               }
             },
             "exitCode": {
-              "type": "integer"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "branch": {
               "type": "string"
@@ -10544,6 +10551,199 @@
             },
             "reason": {
               "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "stackId",
+            "provider",
+            "branch",
+            "operation",
+            "conflictKind",
+            "conflictedFiles"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:landing:conflict:detected",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "stackId": {
+              "type": "string"
+            },
+            "provider": {
+              "const": "git-spice",
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "operation": {
+              "anyOf": [
+                {
+                  "const": "branch-restack",
+                  "type": "string"
+                },
+                {
+                  "const": "stack-restack",
+                  "type": "string"
+                },
+                {
+                  "const": "repo-sync",
+                  "type": "string"
+                },
+                {
+                  "const": "unknown",
+                  "type": "string"
+                }
+              ]
+            },
+            "conflictKind": {
+              "anyOf": [
+                {
+                  "const": "git-rebase",
+                  "type": "string"
+                },
+                {
+                  "const": "git-merge",
+                  "type": "string"
+                },
+                {
+                  "const": "unknown",
+                  "type": "string"
+                }
+              ]
+            },
+            "conflictedFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "stackId",
+            "provider",
+            "branch",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:landing:conflict:recovery:start",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "stackId": {
+              "type": "string"
+            },
+            "provider": {
+              "const": "git-spice",
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "attempt": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "stackId",
+            "provider",
+            "branch",
+            "attempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:landing:conflict:recovery:complete",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "stackId": {
+              "type": "string"
+            },
+            "provider": {
+              "const": "git-spice",
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "attempts": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "stackId",
+            "provider",
+            "branch",
+            "attempts",
+            "reason",
+            "abortAttempted",
+            "abortSucceeded"
+          ],
+          "properties": {
+            "type": {
+              "const": "stack:landing:conflict:recovery:failed",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "stackId": {
+              "type": "string"
+            },
+            "provider": {
+              "const": "git-spice",
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "attempts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "abortAttempted": {
+              "type": "boolean"
+            },
+            "abortSucceeded": {
+              "type": "boolean"
             }
           }
         },

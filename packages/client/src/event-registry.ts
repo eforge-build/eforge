@@ -963,6 +963,23 @@ const eventRegistry = {
     },
   },
 
+  'stack:landing:conflict:detected': {
+    scope: 'session', persist: true,
+    summary: (e) => `Stack landing conflict: ${e.prdId} ${e.operation} (${e.conflictedFiles.length} file(s))`,
+  },
+  'stack:landing:conflict:recovery:start': {
+    scope: 'session', persist: true,
+    summary: (e) => `Stack landing recovery attempt ${e.attempt}/${e.maxAttempts}: ${e.prdId}`,
+  },
+  'stack:landing:conflict:recovery:complete': {
+    scope: 'session', persist: true,
+    summary: (e) => `Stack landing recovery complete: ${e.prdId} after ${e.attempts} attempt(s)`,
+  },
+  'stack:landing:conflict:recovery:failed': {
+    scope: 'session', persist: true,
+    summary: (e) => `Stack landing recovery failed: ${e.prdId} — ${e.reason}`,
+  },
+
   'merge:finalize:start': {
     scope: 'session',
     persist: false,

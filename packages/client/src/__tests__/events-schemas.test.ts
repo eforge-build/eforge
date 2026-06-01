@@ -3896,6 +3896,56 @@ describe('recovery:complete event — optional RecoveryVerdict metadata fields',
   });
 });
 
+describe('stack landing conflict recovery event schema coverage', () => {
+  const ts = '2025-06-01T12:00:00.000Z';
+  const common = {
+    timestamp: ts,
+    prdId: 'prd-a',
+    stackId: 'stack-a',
+    provider: 'git-spice',
+    branch: 'eforge/prd-a',
+  };
+
+  it('accepts all stack landing recovery lifecycle events', () => {
+    const events = [
+      {
+        ...common,
+        type: 'stack:landing:conflict:detected',
+        operation: 'branch-restack',
+        conflictKind: 'git-rebase',
+        conflictedFiles: ['src/a.ts'],
+      },
+      { ...common, type: 'stack:landing:conflict:recovery:start', attempt: 1, maxAttempts: 3 },
+      { ...common, type: 'stack:landing:conflict:recovery:complete', attempts: 1 },
+      {
+        ...common,
+        type: 'stack:landing:conflict:recovery:failed',
+        attempts: 1,
+        reason: 'still conflicted',
+        abortAttempted: true,
+        abortSucceeded: false,
+      },
+    ];
+
+    for (const event of events) {
+      const result = safeParseEforgeEvent(event);
+      expect(result.success, `${event.type} should parse`).toBe(true);
+    }
+  });
+
+  it('rejects recovery start missing stack identifiers', () => {
+    const result = safeParseEforgeEvent({
+      type: 'stack:landing:conflict:recovery:start',
+      timestamp: ts,
+      provider: 'git-spice',
+      branch: 'eforge/prd-a',
+      attempt: 1,
+      maxAttempts: 3,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('stack sync lifecycle event schema coverage', () => {
   const ts = '2025-06-01T12:00:00.000Z';
 

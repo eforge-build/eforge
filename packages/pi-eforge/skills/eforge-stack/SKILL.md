@@ -1,12 +1,14 @@
 ---
 name: eforge-stack
-description: Synchronize the git-spice stack, preview with dry-run, interpret the sync report, and recover from conflicts
+description: Synchronize the git-spice stack, preview with dry-run, interpret the sync report, and recover from manual sync conflicts
 disable-model-invocation: true
 ---
 
 # /eforge:stack:sync
 
 Manually synchronize the git-spice stack for this project. Use `--dry-run` to preview what commands would run without executing them.
+
+This skill covers manual `eforge stack sync` recovery. During stacked PR landing with `landing.action: pr`, eforge attempts automatic provider-encapsulated recovery for provider-classified recoverable restack conflicts before asking for manual intervention.
 
 Stack sync is a daemon-owned operation that runs from the project root. The daemon calls `git-spice repo sync` followed by `git-spice stack restack`. Triggers include: this command (`/eforge:stack:sync`), the CLI (`eforge stack sync`), the `eforge_stack_sync` tool, and — when `stacking.sync.afterBuild: true` is configured — automatically after each build completes.
 
@@ -50,7 +52,7 @@ The tool returns a structured sync report. Interpret each field:
 
 **`failed`** - The sync command exited with a non-zero code. Show `error` and the failed `providerCommands`. Suggest running `git-spice` manually to investigate, then re-running sync after resolving the issue.
 
-**`conflict`** - A restack step hit a merge conflict. Show `error` and the `providerCommands` list. Proceed with the conflict recovery flow below.
+**`conflict`** - A manual sync restack step hit a merge conflict. Show `error` and the `providerCommands` list. Proceed with the manual sync conflict recovery flow below.
 
 ### Active-build skips
 
@@ -60,13 +62,15 @@ When `activeBuildSkips` is non-empty, report which branches were excluded and wh
 
 When `fastForward` is `false`, the local trunk is ahead of `origin/<trunk>`. Sync uses a fast-forward-only trunk policy: it will not force-push or rebase trunk. Tell the user to push or align their local trunk before syncing.
 
-## Step 4: Conflict recovery
+## Step 4: Manual sync conflict recovery
+
+When `outcome` is `"conflict"`, the conflict came from `eforge stack sync`. Do not describe this as the stacked PR landing recovery path; landing recovery runs automatically first for provider-classified recoverable restack conflicts.
 
 When `outcome` is `"conflict"`:
 
 1. Show the error and the exact commands that ran up to the point of conflict.
 2. Instruct the user:
-   > A merge conflict occurred during stack restack. To recover:
+   > A merge conflict occurred during manual stack sync restack. To recover:
    > 1. Run `git status` to see the conflicting files.
    > 2. Resolve the conflicts in the affected files.
    > 3. Run `git add <resolved-files>` to stage the resolved files.

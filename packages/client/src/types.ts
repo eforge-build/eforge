@@ -775,4 +775,12 @@ export interface ModelListResponse {
 }
 
 // Stack layer wire shapes — canonical source of truth for API responses.
-export type { StackProvider, LandingPublicationAction, StackLayerStatus, StackArtifactRef, StackLayerWire } from './events.js';
+export type {
+  StackProvider,
+  StackProviderOperationKind,
+  StackProviderConflictKind,
+  LandingPublicationAction,
+  StackLayerStatus,
+  StackArtifactRef,
+  StackLayerWire,
+} from './events.js';

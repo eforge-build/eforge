@@ -781,6 +781,10 @@ export const configYamlSchema = eforgeConfigBaseSchema.partial()
 /** Minimum allowed value for postMergeCommandTimeoutMs. Values below this are clamped. */
 export const MIN_POST_MERGE_COMMAND_TIMEOUT_MS = 10_000;
 
+export function normalizePostMergeCommandTimeoutMs(timeoutMs: number | undefined, defaultTimeoutMs = 300_000): number {
+  return Math.max(timeoutMs ?? defaultTimeoutMs, MIN_POST_MERGE_COMMAND_TIMEOUT_MS);
+}
+
 export const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
   strategy: 'auto' as const,
   perspectives: Object.freeze(['code']) as unknown as ReviewProfileConfig['perspectives'],

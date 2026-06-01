@@ -110,6 +110,14 @@ With stacking enabled, the call sequence for a two-PRD stack looks like this:
 
 The stack state (artifact branch refs and PR URLs) is persisted to `.eforge/stacks/layers.json`. This file is gitignored - it is runtime state, not a committed artifact.
 
+## Stacked PR landing conflict recovery
+
+During stacked builds with `landing.action: pr`, eforge restacks the artifact branch before submitting it. If the stack provider classifies that restack failure as a recoverable conflict, eforge attempts automatic provider-encapsulated recovery before failing the landing step.
+
+Recovery first cleans up deterministic temporary plan-ID region marker conflicts. If unmerged files remain, eforge falls back to the merge-conflict resolver agent. The stack provider owns the continue and abort operations; eforge records provider commands as events without hard-coding git-spice arguments.
+
+If recovery succeeds, eforge runs any configured post-merge/validation commands and then submits the PR normally. Manual recovery is still required for non-recoverable provider failures, failed automatic recovery, and conflicts from `eforge stack sync`.
+
 ## Manual stack sync
 
 When an upstream PR merges, GitHub updates the base branch of the downstream PR automatically. To update local artifact branches after upstream merges, use `eforge stack sync`:
@@ -166,7 +174,7 @@ Before a stacked build lands, eforge checks whether the parent artifact branch h
 
 ### Conflict recovery
 
-When `eforge stack sync` returns `outcome: conflict`, a merge conflict occurred during the restack step. To recover:
+When `eforge stack sync` returns `outcome: conflict`, a merge conflict occurred during the manual sync restack step. This is separate from stacked PR landing, which attempts automatic provider-encapsulated recovery for provider-classified recoverable restack conflicts. To recover a sync conflict:
 
 1. Run `git status` to see the conflicting files.
 2. Resolve the conflicts in the affected files.

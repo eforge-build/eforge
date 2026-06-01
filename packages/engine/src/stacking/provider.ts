@@ -32,6 +32,40 @@ export interface ProviderCommandResult {
   exitCode: number;
 }
 
+export type StackProviderErrorKind =
+  | 'recoverable-conflict'
+  | 'provider-failure'
+  | 'auth'
+  | 'network'
+  | 'tooling'
+  | 'unknown';
+
+export type StackProviderOperationKind = 'branch-restack' | 'stack-restack' | 'repo-sync' | 'unknown';
+export type StackProviderConflictKind = 'git-rebase' | 'git-merge' | 'unknown';
+
+export interface StackProviderErrorClassification {
+  kind: StackProviderErrorKind;
+  operation: StackProviderOperationKind;
+  conflictKind?: StackProviderConflictKind;
+  message: string;
+  recoverable: boolean;
+}
+
+export interface StackProviderInterruptedOperation {
+  operation: StackProviderOperationKind;
+  conflictKind: StackProviderConflictKind;
+  branch?: string;
+  conflictedFiles: string[];
+  conflictDiff: string;
+  providerError?: {
+    command?: string;
+    args?: string[];
+    exitCode?: number | null;
+    stdout?: string;
+    stderr?: string;
+  };
+}
+
 /**
  * Provider adapter interface for stack management operations.
  *
@@ -120,6 +154,27 @@ export interface StackProviderAdapter {
    * displaying it.
    */
   redactMessage(message: string): string;
+
+  /** Classify provider errors without exposing provider-specific orchestration details. */
+  classifyError?(cwd: string, err: unknown): Promise<StackProviderErrorClassification>;
+
+  /** Discover the active interrupted operation, if the provider left one behind. */
+  getInterruptedOperation?(
+    cwd: string,
+    classification: StackProviderErrorClassification,
+  ): Promise<StackProviderInterruptedOperation | undefined>;
+
+  /** Continue the interrupted operation after conflicts have been resolved. */
+  continueInterruptedOperation?(
+    cwd: string,
+    operation: StackProviderInterruptedOperation,
+  ): Promise<ProviderCommandResult>;
+
+  /** Abort the interrupted operation after recovery fails. */
+  abortInterruptedOperation?(
+    cwd: string,
+    operation: StackProviderInterruptedOperation,
+  ): Promise<ProviderCommandResult>;
 }
 
 // ---------------------------------------------------------------------------

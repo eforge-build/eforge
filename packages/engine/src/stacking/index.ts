@@ -36,8 +36,22 @@ export type { StackBaseContext } from './base-resolver.js';
 export { resolveStackBaseContext } from './base-resolver.js';
 export { recordSuccessfulBuildArtifact } from './artifacts.js';
 
-export type { StackProviderAdapter, ProviderCommandResult } from './provider.js';
+export type {
+  StackProviderAdapter,
+  ProviderCommandResult,
+  StackProviderErrorKind,
+  StackProviderOperationKind,
+  StackProviderConflictKind,
+  StackProviderErrorClassification,
+  StackProviderInterruptedOperation,
+} from './provider.js';
 export { createProvider } from './provider.js';
+export { stackProviderCommandEvent, stackProviderCommandEventFromError } from './provider-events.js';
+export { recoverLandingConflict } from './landing-conflict-recovery.js';
+export type {
+  LandingConflictRecoveryOptions,
+  LandingConflictRecoveryResult,
+} from './landing-conflict-recovery.js';
 export {
   GitSpiceAdapter,
   GitSpiceNotAvailableError,

@@ -72,7 +72,7 @@ Rows are generated from the docs generator skill-pair map and frontmatter in `ef
 | `config` | `eforge-config` | Initialize or edit eforge/config.yaml team-wide settings, with validation via MCP tool |
 | `init` | `eforge-init` | Initialize eforge in the current project with an interactive setup form |
 | `workflow` | `eforge-workflow` | Set up or reconfigure the eforge workflow preset — landing action, stacking, PR settings, and automatic stack sync |
-| `stack` | `eforge-stack` | Synchronize the git-spice stack, preview with dry-run, interpret the sync report, and recover from conflicts |
+| `stack` | `eforge-stack` | Synchronize the git-spice stack, preview with dry-run, interpret the sync report, and recover from manual sync conflicts |
 | `plan` | `eforge-plan` | Start or resume a structured planning conversation for changes to be built by eforge. Classifies work type and depth, selects relevant dimensions from a per-type playbook, captures acceptance criteria, and produces a session plan that /eforge:build enqueues. |
 | `extend` | `eforge-extend` | Author eforge TypeScript extensions from a natural-language request using the existing extension tooling and docs/examples |
 | `restart` | `eforge-restart` | Safely restart the eforge daemon, checking for active builds first |

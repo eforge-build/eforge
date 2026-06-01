@@ -17,7 +17,7 @@ import type { PlanRunner, ValidationFixer, PrdValidator, GapCloser } from '../or
 import type { MergeResolver } from '../worktree-ops.js';
 import { cleanupPlanFiles } from '../cleanup.js';
 import { execWithTimeout } from '../exec-with-timeout.js';
-import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS } from '../config.js';
+import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS, normalizePostMergeCommandTimeoutMs } from '../config.js';
 import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
 import { executeLandingAction, type LandingResult } from '../landing.js';
 import { renderPullRequestMetadata } from '../pr-metadata.js';
@@ -570,12 +570,8 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
   }
 
   // Resolve effective timeout: clamp to floor and warn if below minimum.
-  let effectiveTimeoutMs = ctx.postMergeCommandTimeoutMs ?? 300_000;
-  let timeoutWarningEmitted = false;
-  if (effectiveTimeoutMs < MIN_POST_MERGE_COMMAND_TIMEOUT_MS) {
-    effectiveTimeoutMs = MIN_POST_MERGE_COMMAND_TIMEOUT_MS;
-    timeoutWarningEmitted = true;
-  }
+  const effectiveTimeoutMs = normalizePostMergeCommandTimeoutMs(ctx.postMergeCommandTimeoutMs);
+  const timeoutWarningEmitted = (ctx.postMergeCommandTimeoutMs ?? effectiveTimeoutMs) < MIN_POST_MERGE_COMMAND_TIMEOUT_MS;
 
   // Validation runs in the merge worktree (which already has featureBranch checked out)
   let passed = false;
@@ -1019,6 +1015,13 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
   // finalize, so finalize must persist the actual outcome.
   if (effectiveLandingAction !== 'pr') return;
 
+  // --- eforge:region stack-landing-recovery ---
+  const postRecoveryValidationCommands = Array.from(new Set([
+    ...(ctx.postMergeCommands ?? []),
+    ...(ctx.validateCommands ?? []),
+  ]));
+  // --- eforge:endregion stack-landing-recovery ---
+
   // Delegate full landing to the stacking/landing helper, but observe the
   // terminal stack landing status so a provider failure cannot be mistaken for
   // a successful PR landing.
@@ -1037,6 +1040,12 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     cleanupPrdFilePath: ctx.cleanupPrdFilePath,
     prAutoMergePolicy: ctx.prAutoMergePolicy,
     landingAutoMerge: ctx.landingAutoMerge,
+    // --- eforge:region stack-landing-recovery ---
+    mergeResolver: ctx.mergeResolver,
+    postRecoveryValidationCommands,
+    validationTimeoutMs: ctx.postMergeCommandTimeoutMs,
+    signal: ctx.signal,
+    // --- eforge:endregion stack-landing-recovery ---
     // Static metadata is the base; metadataFactory adds provenance when cleanup context is available.
     metadata: renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker }),
     metadataFactory: ctx.cleanupPlanSet && ctx.cleanupOutputDir ? async () => {
