@@ -269,6 +269,16 @@ export async function resolveResumeSetName(opts: {
   /** Directory holding `<prdId>.recovery.json` (typically `.eforge/queue/failed`). */
   failedDir: string;
 }): Promise<string> {
+  // Reject unsafe prdId path segments before building any filesystem path, so an
+  // untrusted caller cannot traverse outside failedDir to read an arbitrary sidecar.
+  if (
+    !opts.prdId ||
+    opts.prdId.includes('/') ||
+    opts.prdId.includes('\\') ||
+    opts.prdId.includes('..')
+  ) {
+    return opts.prdId;
+  }
   try {
     const sidecarPath = join(opts.failedDir, `${opts.prdId}.recovery.json`);
     const parsed = JSON.parse(await readFile(sidecarPath, 'utf-8')) as { summary?: { setName?: string } };

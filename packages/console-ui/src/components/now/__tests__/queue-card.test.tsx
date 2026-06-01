@@ -143,7 +143,8 @@ describe('QueueCard - no mutation', () => {
     });
     render(<QueueCard summary={summary} />);
     fireEvent.click(screen.getByText('+ 1 more — show all'));
-    expect(screen.getByText('Inspect cascade')).toBeDefined();
+    expect(screen.getByText('Recover…')).toBeDefined();
+    expect(screen.queryByText('Inspect cascade')).toBeNull();
     expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 });

@@ -2287,6 +2287,8 @@ export async function startServer(
     }
 
     if (req.method === 'POST' && url === API_ROUTES.recover) {
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Recovery analysis')) return true;
+      if (rejectCrossSiteBrowserRequest(req, res, 'Recovery analysis')) return true;
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return true;
@@ -2331,6 +2333,8 @@ export async function startServer(
     if (await handleQueueRecoveryRoutes(req, res, url, { cwd: options?.cwd, queueDir: options?.queueDir, daemonState: options?.daemonState, sendJson, sendJsonError, rejectUnsafeMutationRequest: rejectUnsafeExtensionMutationRequest, notifyQueueMutation })) return true;
 
     if (req.method === 'POST' && url === API_ROUTES.applyRecovery) {
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Recovery apply')) return true;
+      if (rejectCrossSiteBrowserRequest(req, res, 'Recovery apply')) return true;
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return true;
@@ -2439,6 +2443,8 @@ export async function startServer(
     }
 
     if (req.method === 'POST' && url === API_ROUTES.resumeBuild) {
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Resume build')) return true;
+      if (rejectCrossSiteBrowserRequest(req, res, 'Resume build')) return true;
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return true;
@@ -4728,6 +4734,12 @@ export async function startServer(
       return true;
     }
     if (req.method === 'GET' && (url === RECOVERY_SIDECAR_BASE || url.startsWith(`${RECOVERY_SIDECAR_BASE}?`))) {
+      // Recovery sidecars can include PRD details, failure messages, branch
+      // names, and diff summaries. The daemon is browser-reachable with
+      // permissive CORS and listens on all interfaces, so require a
+      // local/same-origin request before reading any files.
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Recovery sidecar reads')) return true;
+      if (rejectCrossSiteBrowserRequest(req, res, 'Recovery sidecar reads')) return true;
       if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       const prdQueueDir = options?.config?.prdQueue?.dir ?? '.eforge/queue';
       const failedPrdDir = resolve(cwd, prdQueueDir, 'failed');
@@ -4752,7 +4764,7 @@ export async function startServer(
       try {
         sendJson(res, { markdown: mdContent, json: JSON.parse(jsonContent) });
       } catch (err) {
-        sendJsonError(res, 500, `Recovery sidecar JSON is malformed: ${err instanceof Error ? err.message : String(err)} (file: ${jsonPath})`);
+        sendJsonError(res, 500, `Recovery sidecar JSON is malformed for prdId: ${prdId}`);
       }
       return true;
     }

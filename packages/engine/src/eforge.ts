@@ -2522,6 +2522,17 @@ export class EforgeEngine {
     const cwd = options.cwd ?? this.cwd;
     const dbPath = resolve(cwd, '.eforge', 'monitor.db');
 
+    // Validate path segment — reject values containing path separators or traversal
+    // before any prdId-derived filesystem path is constructed.
+    if (
+      !prdId ||
+      prdId.includes('/') ||
+      prdId.includes('\\') ||
+      prdId.includes('..')
+    ) {
+      throw new Error('Invalid prdId: must not contain path separators or traversal sequences');
+    }
+
     // Resolve setName from sidecar when not provided — ensures featureBranch and worktree
     // paths match the original build when setName differs from prdId.
     let setName = options.setName;
