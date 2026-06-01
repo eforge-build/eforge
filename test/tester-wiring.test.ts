@@ -213,6 +213,62 @@ describe('runTester wiring', () => {
     expect(complete!.productionIssues[0].file).toBe('src/foo.ts');
   });
 
+  it('preserves resultText-only tester XML when a backend error arrives after result', async () => {
+    const resultText = `<test-issues>
+  <issue severity="critical" category="production-bug" file="packages/monitor/src/http/response.ts" testFile="test/monitor-response.test.ts">
+    Response helper drops late transport errors.
+  </issue>
+  <issue severity="warning" category="production-bug" file="packages/monitor/src/streams/sse.ts" testFile="test/monitor-sse.test.ts">
+    SSE stream loses final tester payload.
+  </issue>
+</test-issues>
+<test-summary passed="6769" failed="0" test_bugs_fixed="0">`;
+    const backend = new StubHarness([{
+      resultText,
+      lateError: new Error('Backend error: WebSocket error'),
+    }]);
+
+    const events = await collectEvents(runTester({
+      harness: backend,
+      cwd: '/tmp',
+      planId: 'plan-1',
+      planContent: 'Test plan content',
+    }));
+
+    const complete = findEvent(events, 'plan:build:test:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.passed).toBe(6769);
+    expect(complete!.failed).toBe(0);
+    expect(complete!.testBugsFixed).toBe(0);
+    expect(complete!.productionIssues).toHaveLength(2);
+    expect(complete!.productionIssues.map((issue) => issue.file)).toEqual([
+      'packages/monitor/src/http/response.ts',
+      'packages/monitor/src/streams/sse.ts',
+    ]);
+  });
+
+  it('does not duplicate tester XML repeated in streamed text and resultText', async () => {
+    const xml = `<test-issues>
+  <issue severity="critical" category="production-bug" file="src/duplicate.ts" testFile="test/duplicate.test.ts">
+    Duplicate issue should only be parsed once.
+  </issue>
+</test-issues>
+<test-summary passed="1" failed="0" test_bugs_fixed="0">`;
+    const backend = new StubHarness([{ text: xml, resultText: xml }]);
+
+    const events = await collectEvents(runTester({
+      harness: backend,
+      cwd: '/tmp',
+      planId: 'plan-1',
+      planContent: 'Test plan content',
+    }));
+
+    const complete = findEvent(events, 'plan:build:test:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.productionIssues).toHaveLength(1);
+    expect(complete!.productionIssues[0].file).toBe('src/duplicate.ts');
+  });
+
   it('handles empty test issues', async () => {
     const backend = new StubHarness([{
       text: '<test-issues></test-issues>\n<test-summary passed="5" failed="0" test_bugs_fixed="0">',
