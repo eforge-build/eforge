@@ -122,7 +122,7 @@ The recovery flow:
 5. Confirm the action with the user.
 6. Apply via `eforge_apply_recovery` or the standalone CLI command `eforge apply-recovery <prdId>` for verdict-based actions. For compiled-build resume, call `eforge_resume_build` (Pi), `mcp__eforge__eforge_resume_build` (Claude Code), or `eforge resume <prdId> [--set-name <name>] [--profile <name>]` (CLI) with the `prdId`.
 
-When you are present in the Console Now dashboard, failed upstream rows in the Queue card also offer **Inspect cascade**. That dialog previews skipped descendants, daemon warnings/blockers, and planned queue moves before applying recovery and refreshing the queue.
+When you are present in the Console Now dashboard, failed rows in the Queue card offer **Recover…**. That dialog leads with the recovery sidecar verdict and a single confirmed primary action (`retry` re-queues the PRD, `split` enqueues the successor PRD, `abandon` archives the failed PRD, and `manual` shows manual-review guidance with no apply button), and it offers a confirmed **Resume compiled build** action when compiled artifacts are eligible. When no sidecar exists yet it shows `recovery pending` with a confirmed **Run recovery analysis** action. Lower-level queue-cascade retry/reactivation - which moves the failed upstream back to the queue and may reactivate skipped descendants - lives in a collapsed advanced section that loads its analysis only when opened. Every mutating or worker-spawning action requires an explicit confirmation, and a successful apply refreshes the queue.
 
 ## Untrusted project extension blocks loading
 

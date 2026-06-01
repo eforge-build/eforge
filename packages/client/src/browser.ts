@@ -26,6 +26,11 @@ export type {
   ReadSidecarResponse,
   ApplyRecoveryRequest,
   ApplyRecoveryResponse,
+  ResumeBuildRequest,
+  ResumeBuildResponse,
+  ResumeEligibilityRequest,
+  ResumeEligibilityResponse,
+  ResumeArtifactAvailability,
   SessionPlanStatusWire,
   PlanningTypeWire,
   PlanningDepthWire,
@@ -85,6 +90,14 @@ export {
   fetchQueueRecoveryAnalysis,
   applyQueueRecovery,
 } from './browser-queue-recovery.js';
+
+export {
+  fetchRecoverySidecar,
+  triggerRecoveryAnalysis,
+  applySidecarRecovery,
+  startResumeBuild,
+  fetchResumeEligibility,
+} from './browser-recovery.js';
 
 export type {
   SessionPlanSetStatusWire,

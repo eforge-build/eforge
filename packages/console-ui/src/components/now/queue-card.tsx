@@ -3,10 +3,10 @@
  *
  * Renders dependency-linked plans as a "Build stack" subsection (in unlock
  * order) followed by an "Other queued items" subsection for everything not
- * part of a stack: failed items (with an explicit cascade-inspection action),
- * skipped items, and standalone pending/waiting items. Items shown in the
- * stack are not repeated in the flat list. No recovery mutation happens during
- * render or expansion.
+ * part of a stack: failed items (with an explicit "Recover…" action that opens
+ * the comprehensive recovery dialog), skipped items, and standalone
+ * pending/waiting items. Items shown in the stack are not repeated in the flat
+ * list. No recovery mutation happens during render or expansion.
  */
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -72,7 +72,7 @@ function LooseQueueRow({
             className="mt-1 h-auto px-0 py-0 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => onInspect(item)}
           >
-            Inspect cascade
+            Recover…
           </Button>
         )}
       </div>
@@ -171,6 +171,8 @@ export function QueueCard({ stacks = [], summary, refreshQueue = () => undefined
         open={selectedRecoveryItem != null}
         prdId={selectedRecoveryItem?.id ?? null}
         prdTitle={selectedRecoveryItem?.title}
+        verdict={selectedRecoveryItem?.recoveryVerdict?.verdict}
+        confidence={selectedRecoveryItem?.recoveryVerdict?.confidence}
         onOpenChange={(open) => {
           if (!open) setSelectedRecoveryItem(null);
         }}

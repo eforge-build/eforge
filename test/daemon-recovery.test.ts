@@ -132,6 +132,8 @@ describe('API_ROUTES', () => {
   it('exposes readRecoverySidecar route', () => {
     expect(API_ROUTES.readRecoverySidecar).toBe('/api/recovery/sidecar');
   });
+
+  it('exposes resumeEligibility route', () => { expect(API_ROUTES.resumeEligibility).toBe('/api/recover/resume-eligibility'); });
 });
 
 // ---------------------------------------------------------------------------

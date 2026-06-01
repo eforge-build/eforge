@@ -62,6 +62,7 @@ import {
 } from './extension-package-management.js';
 import { runStackSync, loadSyncStatusForRoute, loadSyncStatusForRouteSync } from './stack-sync-service.js';
 import { handleQueueRecoveryRoutes } from './queue-recovery-routes.js';
+import { handleResumeEligibilityRoute } from './resume-eligibility-route.js';
 import { handleSessionPlanSetRoutes } from './session-plan-set-routes.js';
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -390,7 +391,7 @@ export interface StartServerOptions {
   planOutputDir?: string;
   workerTracker?: WorkerTracker;
   daemonState?: DaemonState;
-  config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds'>;
+  config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds' | 'plan' | 'build'>;
   /** Override UI root directories for testing. Defaults to built dist directories relative to __dirname. */
   uiDirs?: { monitorUiDir?: string; consoleUiDir?: string };
 }
@@ -1625,6 +1626,33 @@ export async function startServer(
   }
 
   /**
+   * Reject browser-initiated cross-site requests using the Fetch Metadata
+   * headers that browsers attach automatically (and that page script cannot
+   * forge). This closes the gap where a cross-site subresource request (e.g. an
+   * `<img>`) omits the Origin header yet still reaches the loopback daemon,
+   * passing the Host/remote/Origin checks in
+   * {@link rejectUnsafeExtensionMutationRequest}. Non-browser local clients
+   * (curl, the CLI, the extension host) do not send Sec-Fetch-* headers, so an
+   * absent header is allowed.
+   */
+  function rejectCrossSiteBrowserRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+    operationLabel: string,
+  ): boolean {
+    const rawSite = req.headers['sec-fetch-site'];
+    const site = Array.isArray(rawSite) ? rawSite[0] : rawSite;
+    // Browsers send `same-origin`/`none` for trusted navigations and same-site
+    // requests, and `cross-site`/`same-site` for anything else. Only allow
+    // `same-origin` and `none`; reject the rest. Absent header => non-browser.
+    if (site !== undefined && site !== 'same-origin' && site !== 'none') {
+      sendJsonError(res, 403, `Cross-site ${operationLabel.toLowerCase()} are not allowed`);
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Extract the harness kind from a parsed profile object.
    * Supports both the new `agentRuntimes.<name>.harness` shape and the legacy
    * top-level `backend:` field. Returns undefined when neither is present.
@@ -2258,6 +2286,8 @@ export async function startServer(
     }
 
     if (req.method === 'POST' && url === API_ROUTES.recover) {
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Recovery analysis')) return true;
+      if (rejectCrossSiteBrowserRequest(req, res, 'Recovery analysis')) return true;
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return true;
@@ -2302,6 +2332,8 @@ export async function startServer(
     if (await handleQueueRecoveryRoutes(req, res, url, { cwd: options?.cwd, queueDir: options?.queueDir, daemonState: options?.daemonState, sendJson, sendJsonError, rejectUnsafeMutationRequest: rejectUnsafeExtensionMutationRequest, notifyQueueMutation })) return true;
 
     if (req.method === 'POST' && url === API_ROUTES.applyRecovery) {
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Recovery apply')) return true;
+      if (rejectCrossSiteBrowserRequest(req, res, 'Recovery apply')) return true;
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return true;
@@ -2410,6 +2442,8 @@ export async function startServer(
     }
 
     if (req.method === 'POST' && url === API_ROUTES.resumeBuild) {
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Resume build')) return true;
+      if (rejectCrossSiteBrowserRequest(req, res, 'Resume build')) return true;
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return true;
@@ -2483,6 +2517,17 @@ export async function startServer(
       }
       return true;
     }
+
+    if (await handleResumeEligibilityRoute(req, res, url, {
+      cwd,
+      queueDir: options?.queueDir,
+      planOutputDir: options?.planOutputDir,
+      config: options?.config,
+      sendJson,
+      sendJsonError,
+      rejectUnsafeRequest: rejectUnsafeExtensionMutationRequest,
+      rejectCrossSiteBrowserRequest,
+    })) return true;
 
     // --- Auto-build API routes ---
     if (req.method === 'POST' && url === API_ROUTES.daemonStop) {
@@ -4612,6 +4657,12 @@ export async function startServer(
       return true;
     }
     if (req.method === 'GET' && (url === RECOVERY_SIDECAR_BASE || url.startsWith(`${RECOVERY_SIDECAR_BASE}?`))) {
+      // Recovery sidecars can include PRD details, failure messages, branch
+      // names, and diff summaries. The daemon is browser-reachable with
+      // permissive CORS and listens on all interfaces, so require a
+      // local/same-origin request before reading any files.
+      if (rejectUnsafeExtensionMutationRequest(req, res, 'Recovery sidecar reads')) return true;
+      if (rejectCrossSiteBrowserRequest(req, res, 'Recovery sidecar reads')) return true;
       if (!cwd) { sendJsonError(res, 503, 'Working directory not configured'); return true; }
       const prdQueueDir = options?.config?.prdQueue?.dir ?? '.eforge/queue';
       const failedPrdDir = resolve(cwd, prdQueueDir, 'failed');
@@ -4636,7 +4687,7 @@ export async function startServer(
       try {
         sendJson(res, { markdown: mdContent, json: JSON.parse(jsonContent) });
       } catch (err) {
-        sendJsonError(res, 500, `Recovery sidecar JSON is malformed: ${err instanceof Error ? err.message : String(err)} (file: ${jsonPath})`);
+        sendJsonError(res, 500, `Recovery sidecar JSON is malformed for prdId: ${prdId}`);
       }
       return true;
     }

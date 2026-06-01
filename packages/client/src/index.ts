@@ -313,6 +313,16 @@ export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
 export type { ResumeBuildRequest, ResumeBuildResponse } from './routes.js';
 export { apiResumeBuild, apiResumeBuildIfRunning } from './api/resume-build.js';
 
+export type {
+  ResumeEligibilityRequest,
+  ResumeEligibilityResponse,
+  ResumeArtifactAvailability,
+} from './routes.js';
+export {
+  apiCheckResumeEligibility,
+  apiCheckResumeEligibilityIfRunning,
+} from './api/resume-eligibility.js';
+
 export {
   type LockfileData,
   LOCKFILE_NAME,

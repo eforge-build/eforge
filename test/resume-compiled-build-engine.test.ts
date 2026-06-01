@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { deriveResumeSeedState, formatResumeContext, checkResumeEligibility, buildResumeArtifactsProjection } from '@eforge-build/engine/resume/compiled-build';
+import { deriveResumeSeedState, formatResumeContext, checkResumeEligibility, buildResumeArtifactsProjection, projectResumeEligibility, resolveResumeSetName } from '@eforge-build/engine/resume/compiled-build';
 import { applyResumeSeed, initializeState, type ResumeSeedOptions } from '@eforge-build/engine/orchestrator';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
@@ -498,6 +498,145 @@ describe('checkResumeEligibility — ineligibility and artifact recovery', () =>
       expect(existsSync(join(result.artifactBasePath, 'eforge', 'plans', setName, 'orchestration.yaml'))).toBe(true);
       expect(existsSync(join(result.artifactBasePath, 'eforge', 'plans', setName, 'plan-01.md'))).toBe(true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// projectResumeEligibility — read-only, no side effects
+// ---------------------------------------------------------------------------
+
+describe('projectResumeEligibility — read-only eligibility projection', () => {
+  it('returns ineligible with the branch name when the feature branch is missing', async () => {
+    const result = await projectResumeEligibility({
+      cwd: '/nonexistent-repo-for-testing',
+      setName: 'test-feature',
+      prdId: 'prd-test',
+      mergeWorktreePath: '/nonexistent-worktree',
+      outputDir: 'eforge/plans',
+      dbPath: undefined,
+    });
+
+    expect(result.eligible).toBe(false);
+    if (!result.eligible) {
+      expect(result.featureBranch).toBe('eforge/test-feature');
+      expect(result.reason).toContain('eforge/test-feature');
+    }
+  });
+
+  it('reports feature-branch availability without recreating the merge worktree', async () => {
+    const cwd = initRepo();
+    const setName = 'feature-branch-availability';
+    createFeatureBranchWithArtifacts(cwd, setName);
+    const dbPath = seedFailedRunEvidence(cwd, setName);
+    const mergeWorktreePath = join(dirname(cwd), `${setName}-worktrees`, '__merge__');
+
+    const result = await projectResumeEligibility({
+      cwd,
+      setName,
+      prdId: setName,
+      mergeWorktreePath,
+      outputDir: 'eforge/plans',
+      dbPath,
+      trunkBranch: 'main',
+    });
+
+    expect(result.eligible).toBe(true);
+    if (result.eligible) {
+      expect(result.artifactAvailability).toBe('feature-branch');
+      expect(result.featureBranch).toBe(`eforge/${setName}`);
+    }
+    // Read-only: the merge worktree must not have been created.
+    expect(existsSync(mergeWorktreePath)).toBe(false);
+  });
+
+  it('detects branch-history availability without materializing __resume_artifacts__', async () => {
+    const cwd = initRepo();
+    const setName = 'history-availability';
+    createFeatureBranchWithArtifacts(cwd, setName, { removeArtifactsAtTip: true });
+    const dbPath = seedFailedRunEvidence(cwd, setName);
+    const mergeWorktreePath = join(dirname(cwd), `${setName}-worktrees`, '__merge__');
+
+    const result = await projectResumeEligibility({
+      cwd,
+      setName,
+      prdId: setName,
+      mergeWorktreePath,
+      outputDir: 'eforge/plans',
+      dbPath,
+      trunkBranch: 'main',
+    });
+
+    expect(result.eligible).toBe(true);
+    if (result.eligible) {
+      expect(result.artifactAvailability).toBe('branch-history');
+      expect(result.artifactCommit).toMatch(/^[a-f0-9]{40}$/);
+    }
+    // Read-only: neither the merge worktree nor the recovery artifact copy exist.
+    expect(existsSync(mergeWorktreePath)).toBe(false);
+    const resumeArtifactsDir = join(dirname(mergeWorktreePath), '__resume_artifacts__');
+    expect(existsSync(resumeArtifactsDir)).toBe(false);
+  });
+
+  it('returns ineligible with a checkedPath when no orchestration artifact exists', async () => {
+    const cwd = initRepo();
+    const setName = 'no-artifacts';
+    git(cwd, ['switch', '-c', `eforge/${setName}`]);
+    writeFileEnsuringDir(join(cwd, 'feature.txt'), 'feature work\n');
+    git(cwd, ['add', 'feature.txt']);
+    git(cwd, ['commit', '-m', 'feat: branch without artifacts']);
+    git(cwd, ['switch', 'main']);
+
+    const result = await projectResumeEligibility({
+      cwd,
+      setName,
+      prdId: setName,
+      mergeWorktreePath: join(dirname(cwd), `${setName}-worktrees`, '__merge__'),
+      outputDir: 'eforge/plans',
+      dbPath: undefined,
+      trunkBranch: 'main',
+    });
+
+    expect(result.eligible).toBe(false);
+    if (!result.eligible) {
+      expect(result.reason).toContain('orchestration.yaml not found');
+      expect(result.checkedPath).toContain(join('eforge', 'plans', setName, 'orchestration.yaml'));
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveResumeSetName
+// ---------------------------------------------------------------------------
+
+describe('resolveResumeSetName — sidecar-aware set-name resolution', () => {
+  it('returns summary.setName from the recovery sidecar when present', async () => {
+    const cwd = makeTempDir();
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    writeFileEnsuringDir(
+      join(failedDir, 'prd-x.recovery.json'),
+      JSON.stringify({ summary: { setName: 'resolved-set' } }),
+    );
+
+    const setName = await resolveResumeSetName({ prdId: 'prd-x', failedDir });
+    expect(setName).toBe('resolved-set');
+  });
+
+  it('falls back to prdId when no sidecar exists', async () => {
+    const cwd = makeTempDir();
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    const setName = await resolveResumeSetName({ prdId: 'prd-fallback', failedDir });
+    expect(setName).toBe('prd-fallback');
+  });
+
+  it('falls back to prdId when the sidecar lacks a valid setName', async () => {
+    const cwd = makeTempDir();
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    writeFileEnsuringDir(
+      join(failedDir, 'prd-y.recovery.json'),
+      JSON.stringify({ summary: {} }),
+    );
+    const setName = await resolveResumeSetName({ prdId: 'prd-y', failedDir });
+    expect(setName).toBe('prd-y');
   });
 });
 
