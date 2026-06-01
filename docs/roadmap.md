@@ -1,55 +1,50 @@
 # Eforge Roadmap
 
-## Console Workbench
+## Kernel Resilience and Typed Recovery
 
-**Goal**: Make console-ui the canonical local-first control surface for planning, observing, configuring, and steering eforge builds while keeping the engine headless and harness integrations thin.
+**Goal**: Make the build-engine kernel more resilient without expanding it into input authoring or host workflow UX.
 
-- **Planning Workspace** - Structured session-plan editing and agent-assisted planning workflows centered on the session-plan artifact (read-only browsing, readiness display, and handoff-visibility links shipped in `/console/plans`).
+- **Typed recovery paths** - Continue moving failure analysis, retry, split, abandon, queue-cascade recovery, and validation repair behind typed events and daemon/client routes so recovery decisions are inspectable and repeatable.
+- **Honest gates** - Strengthen fail-closed validation, acceptance evidence, waiver visibility, dirty-worktree invariants, and no-output safeguards so completed builds mean verified work rather than optimistic success.
+- **Engine boundary discipline** - Keep normalized build-source intake, dependency-aware branch/worktree orchestration, build execution, conservative gates, and typed failure/recovery dispatch in the kernel while leaving input authoring and richer workflow UX to extension surfaces.
+
+---
+
+## Console Observability and Control
+
+**Goal**: Make console-ui the canonical local-first control surface for observing, configuring, and steering eforge builds while keeping the engine headless and harness integrations thin.
+
 - **Actionable build control** - Queue management, retry/recovery, validation waivers, stack sync, and build lifecycle actions from the console.
+- **Planning visibility** - Session-plan browsing, readiness display, and handoff-visibility links centered on the session-plan artifact without moving planning UX into the engine.
 - **Configuration and library surfaces** - Manage profiles, playbooks, scoped config, extensions, and model/runtime preferences through typed daemon/client APIs.
 - **Thin integration strategy** - Reduce Pi and Claude Code integrations to launch, deep-link, status, and build entry points that reuse daemon/client primitives instead of duplicating rich workflow UX.
 
 ---
 
-## Daemon & MCP Server
+## Extension Platform
 
-**Goal**: Extend the daemon as the single orchestration authority with richer controls and safety checks.
-
-- **Queue reordering & priority** - MCP tool and web UI controls for changing priority on queued PRDs at runtime (priority field exists in frontmatter and affects execution order, but there's no way to modify it after enqueue)
-
----
-
-## Overseer / Multi-project Observability
-
-**Goal**: Provide a durable unified view across many eforge projects and daemons without moving orchestration out of project-local daemons. Schaake OS epic: `cf245870-90f4-48db-b5e7-b7a0f17a458b`.
-
-- **Local overseer service** - Machine-local server that receives project daemon events, stores them durably, and shows all reporting projects/builds in one UI.
-- **Overseer publishing protocol** - First-class daemon-side event publishing with project identity, authentication, retry, batching, idempotency, and privacy controls.
-- **Cross-project usage analytics** - Aggregate token, model, cost, profile, queue, daemon health, and build-status metrics across projects.
-- **Cloud-ready deployment path** - Protocol and configuration suitable for hosted/team overseer instances while preserving local-first operation.
-
----
-
-## Extensibility
-
-**Goal**: Make eforge a platform that agent runtime profiles and TypeScript modules can extend without forking the engine.
+**Goal**: Make eforge an extensible forge: a small build-engine kernel surrounded by trusted, typed extension mechanisms and reusable input surfaces.
 
 - **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, and `modify` policy decisions remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
+- **Broader extension surface** - Continue clarifying how native extensions relate to playbooks, session plans, toolbelts, shell hooks, host integrations, and wrapper apps without treating every surface as engine functionality.
 
 ---
 
-## Stacked PRs
+## Optional Stacked PR Expansion
 
-**Goal**: Polish the end-to-end stacked PR workflow and expand provider support.
+**Goal**: Polish the opt-in stacked PR workflow while keeping git-spice as the current supported provider.
 
-- **Additional stack providers** - v1 supports only git-spice. Future providers (e.g. Graphite, manual git-based stacking) may be added here.
+- **Stack workflow polish** - Improve setup guidance, sync visibility, and recovery affordances for `stacking.enabled: true` plus `landing.action: pr` workflows backed by git-spice.
+- **Future provider evaluation** - Other stack providers may be evaluated later, but current support remains git-spice only.
 
 ---
 
 ## Integration & Maturity
 
-**Goal**: Full lifecycle coverage, CI support, provider flexibility.
+**Goal**: Full lifecycle coverage, CI support, provider flexibility, and cross-project visibility without weakening the kernel/extension boundary.
 
+- **Daemon & MCP controls** - Add MCP tool and web UI controls for changing priority on queued PRDs at runtime; the priority field exists in frontmatter and affects execution order, but there is no way to modify it after enqueue.
+- **Overseer / multi-project observability** - Provide a durable unified view across many eforge projects and daemons without moving orchestration out of project-local daemons. Schaake OS epic: `cf245870-90f4-48db-b5e7-b7a0f17a458b`.
 - **Low-fidelity input handling** - When the user provides a high-level prompt with minimal detail, launch an exploration agent (or parallel exploratory agents) that performs thorough codebase exploration before compiling plans. Bypassed for detailed PRDs. Scope levels (expedition/errand/excursion) classify intended depth but don't perform exploration; this fills that gap.
 - **Schema library unification on TypeBox** - TypeBox is canonical for eforge-owned domain schemas; Zod is isolated to third-party SDK compatibility adapters. The first migration slice (client wire schemas, engine structured output, and custom-tool contracts) is complete. Config, input artifact, and MCP proxy schemas remain Zod until a follow-up PRD lands.
 - **TypeScript project references** - Adopt `tsconfig.json` `references` across workspace members for automatic topological ordering.

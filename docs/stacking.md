@@ -1,6 +1,6 @@
 # Stacked PRs with git-spice
 
-eforge supports stacked pull requests via git-spice. When `stacking.enabled: true`, each build's artifact branch targets the parent artifact branch instead of the trunk, forming a linear stack of pull requests that reviewers can merge in order.
+Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-PR review flow. eforge currently supports stacked pull requests via git-spice. When `stacking.enabled: true` and `landing.action: pr`, each build's artifact branch targets the parent artifact branch instead of the trunk, forming a linear stack of pull requests that reviewers can merge in order.
 
 ## Concepts
 
@@ -62,7 +62,7 @@ If `stack_parent` is missing and there are multiple `depends_on` entries, dispat
 
 ## Configuration
 
-Enable stacking in `eforge/config.yaml`:
+Enable the optional stacking mode in `eforge/config.yaml`. Stacking requires pull-request landing (`landing.action: pr`) and currently uses git-spice:
 
 ```yaml
 stacking:

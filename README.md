@@ -5,25 +5,25 @@
 
 > **Public docs:** [https://eforge.build/docs](https://eforge.build/docs) - Getting started, concepts, configuration, and the canonical reference docs for users and agents. Agent-readable artifacts at [/llms.txt](https://eforge.build/llms.txt).
 
-An open source agentic build system. Detailed plans go in. A planner sizes the work and shapes the pipeline - small intent runs through a fast path, large intent compiles into a dependency graph of sub-plans that build in parallel across isolated worktrees and merge in topological order. Implementation, blind review, and validation are always separated across agents and stages. The build phase runs in the background while you plan the next thing.
+eforge is an open source build-engine kernel surrounded by extensible workflow power. Detailed plans go in. The small kernel consumes normalized build source, orchestrates dependency-aware branch and worktree execution, runs conservative build/review/validation gates, emits typed events, and leaves input authoring surfaces and richer workflow UX to extensions, playbooks, session plans, wrapper apps, and host integrations. The build phase runs in the background while you plan the next thing.
 
-Drive eforge from Pi, Claude Code, or the CLI. Pipeline stages delegate to either pi-agent-core or the Claude Agent SDK - the interface you drive and the harness that executes are independent. Pi is the recommended eforge execution harness for new users: provider-flexible, local, inspectable agent orchestration where runtime choice, cost, and token efficiency stay visible. The Anthropic Claude Agent SDK remains supported as an Anthropic-specific secondary path for users who intentionally choose it.
+Drive eforge from Pi, Claude Code, or the CLI. Pipeline stages delegate to either pi-agent-core or the Claude Agent SDK - the interface you drive, the input surface you author in, and the harness that executes are independent. Pi is the recommended eforge execution harness for new users: provider-flexible, local, inspectable agent orchestration where runtime choice, cost, and token efficiency stay visible. The Anthropic Claude Agent SDK remains supported as an Anthropic-specific secondary path for users who intentionally choose it.
 
 Harness engineering - the discipline of designing everything around an LLM that makes it a reliable system - applies at two levels here: each pipeline stage delegates to a harness for its agent loop, and the pipeline itself is a higher-order harness across planning, building, review, and validation.
 
-The name: **E** from the [Expedition-Excursion-Errand methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) + **forge** - shaping code from plans.
+The name: **eforge** means **extensible forge** - a small, durable kernel for shaping code from plans, with extension surfaces around it.
 
 <img src="docs/images/monitor-full-pipeline.png" alt="eforge dashboard - full pipeline" width="800">
 
 > **Status:** This is a young project moving fast. Used daily to build real features (including itself), but expect rough edges - bugs are likely, change is expected, and YMMV. Source is public so you can read, learn from, and fork it. Not accepting issues or PRs at this time.
 
-## What is an Agentic Build System?
+## What is eforge?
 
-Traditional build systems transform source code into artifacts. An agentic build system transforms *specifications* into source code - then verifies its own output.
+eforge applies build-system thinking to agentic code generation. Traditional build systems transform source code into artifacts; eforge transforms normalized build source into reviewed, validated source changes.
 
-The key insight: a single AI agent writing and reviewing its own code will almost always approve it. Quality requires **separation of concerns** - distinct agents for planning, building, reviewing, and evaluating.
+The durable center is the build engine kernel: normalized build-spec intake, dependency-aware branch/worktree orchestration, the build execution loop, conservative gates, typed failure/recovery dispatch, and baseline console observability/control. Input authoring surfaces live outside that kernel. A CLI prompt, rough notes, a session plan, a playbook, a wrapper app artifact, and a PRD file all normalize before the engine sees them.
 
-An agentic build system applies build-system thinking to this multi-agent pipeline. Each piece below is either a guide (steering agents before they act) or a sensor (verifying what they produced) - the two control types that organize [harness engineering](https://martinfowler.com/articles/harness-engineering.html).
+The key quality insight: a single AI agent writing and reviewing its own code will almost always approve it. Quality requires **separation of concerns** - distinct agents for planning, building, reviewing, and evaluating. Each piece below is either a guide (steering agents before they act) or a sensor (verifying what they produced) - the two control types that organize [harness engineering](https://martinfowler.com/articles/harness-engineering.html).
 
 - **Spec-driven** (guide) - Input is a requirement, not a code edit. The system decides *how* to implement it.
 - **Multi-stage pipeline** (structure) - Planning, implementation, review, and validation are separate stages with separate agents, not one conversation.
