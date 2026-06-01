@@ -1,10 +1,3 @@
-/**
- * PRD queue loading, parsing, ordering, and status updates.
- * Scans a directory for .md files with YAML frontmatter, parses them
- * into QueuedPrd records, and resolves execution order using the
- * same dependency graph algorithm as plan orchestration.
- */
-
 import { readFile, readdir, writeFile, mkdir, rm, open, rename } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
@@ -22,10 +15,6 @@ import { loadCompletionRegistry, lookupCompletion } from './artifacts/completion
 
 const exec = promisify(execFile);
 
-// ---------------------------------------------------------------------------
-// Frontmatter schema
-// ---------------------------------------------------------------------------
-
 const prdFrontmatterSchema = z.object({
   title: z.string(),
   created: z.string().optional(),
@@ -38,28 +27,53 @@ const prdFrontmatterSchema = z.object({
   stack_provider: z.literal('git-spice').optional(),
   landing: z.enum(['pr', 'merge', 'leave']).optional(),
   landing_auto_merge: z.boolean().optional(),
+  recovery_from: z.string().min(1).optional(),
+  recovery_set_name: z.string().min(1).optional(),
+  recovery_feature_branch: z.string().min(1).optional(),
+  recovery_base_branch: z.string().min(1).optional(),
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
 
-export interface QueuedPrd {
-  /** Filename without extension — used as the PRD id */
-  id: string;
-  /** Absolute path to the PRD file */
-  filePath: string;
-  /** Parsed frontmatter */
-  frontmatter: PrdFrontmatter;
-  /** Full file content (frontmatter + body) */
-  content: string;
-  /** Last commit hash touching this file (empty string if untracked) */
-  lastCommitHash: string;
-  /** Last commit date for this file (empty string if untracked) */
-  lastCommitDate: string;
+export interface RecoveryContinuationFrontmatter {
+  sourcePrdId: string;
+  setName: string;
+  featureBranch: string;
+  baseBranch: string;
 }
 
-// ---------------------------------------------------------------------------
-// Frontmatter parsing helpers
-// ---------------------------------------------------------------------------
+export function getRecoveryContinuationFrontmatter(frontmatter: PrdFrontmatter): RecoveryContinuationFrontmatter | undefined {
+  const fields = {
+    recovery_from: frontmatter.recovery_from,
+    recovery_set_name: frontmatter.recovery_set_name,
+    recovery_feature_branch: frontmatter.recovery_feature_branch,
+    recovery_base_branch: frontmatter.recovery_base_branch,
+  };
+  const present = Object.values(fields).filter((value) => value !== undefined);
+  if (present.length === 0) return undefined;
+  if (present.length !== 4) {
+    const missing = Object.entries(fields)
+      .filter(([, value]) => value === undefined)
+      .map(([key]) => key)
+      .join(', ');
+    throw new Error(`Incomplete recovery continuation frontmatter; missing: ${missing}`);
+  }
+  return {
+    sourcePrdId: fields.recovery_from,
+    setName: fields.recovery_set_name,
+    featureBranch: fields.recovery_feature_branch,
+    baseBranch: fields.recovery_base_branch,
+  } as RecoveryContinuationFrontmatter;
+}
+
+export interface QueuedPrd {
+  id: string;
+  filePath: string;
+  frontmatter: PrdFrontmatter;
+  content: string;
+  lastCommitHash: string;
+  lastCommitDate: string;
+}
 
 /**
  * Extract YAML frontmatter from a markdown file.
@@ -127,10 +141,6 @@ export function validatePrdFrontmatter(data: unknown): z.ZodSafeParseResult<PrdF
   }
   return prdFrontmatterSchema.safeParse(data);
 }
-
-// ---------------------------------------------------------------------------
-// Queue loading
-// ---------------------------------------------------------------------------
 
 /**
  * Load all PRD files from a directory, parsing frontmatter and
@@ -618,34 +628,24 @@ export function inferTitle(content: string, fallbackSlug?: string): string {
 // ---------------------------------------------------------------------------
 
 export interface EnqueuePrdOptions {
-  /** Formatted PRD body content */
   body: string;
-  /** PRD title */
   title: string;
-  /** Queue directory (absolute or relative to cwd) */
   queueDir: string;
-  /** Working directory for resolving relative paths */
   cwd: string;
-  /** Optional priority (lower = higher priority) */
   priority?: number;
-  /** Optional dependency list */
   depends_on?: string[];
-  /** If true, write to waiting/ subdirectory (for piggybacked PRDs awaiting upstream completion) */
   intoWaiting?: boolean;
-  /** Commands to run after the build merges (forwarded from playbook frontmatter) */
   postMerge?: string[];
-  /** Override profile name to persist in frontmatter for per-build profile binding. */
   profile?: string;
-  /** Landing action to persist in PRD frontmatter (canonical: pr | merge | leave). */
   landingAction?: 'pr' | 'merge' | 'leave';
-  /** Per-run PR auto-merge intent to persist in PRD frontmatter. */
   landingAutoMerge?: boolean;
-  /** Logical stack identifier to persist in PRD frontmatter. */
   stack_id?: string;
-  /** Parent PRD id for this stack layer, if any. */
   stack_parent?: string;
-  /** Stack provider override for this PRD. */
   stack_provider?: 'git-spice';
+  recovery_from?: string;
+  recovery_set_name?: string;
+  recovery_feature_branch?: string;
+  recovery_base_branch?: string;
 }
 
 export interface EnqueuePrdResult {
@@ -696,6 +696,10 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     stack_id,
     stack_parent,
     stack_provider,
+    recovery_from,
+    recovery_set_name,
+    recovery_feature_branch,
+    recovery_base_branch,
   } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
@@ -739,6 +743,10 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     ...(stack_provider !== undefined && { stack_provider }),
     ...(landingAction !== undefined && { landing: landingAction }),
     ...(landingAutoMerge !== undefined && { landing_auto_merge: landingAutoMerge }),
+    ...(recovery_from !== undefined && { recovery_from }),
+    ...(recovery_set_name !== undefined && { recovery_set_name }),
+    ...(recovery_feature_branch !== undefined && { recovery_feature_branch }),
+    ...(recovery_base_branch !== undefined && { recovery_base_branch }),
   };
   const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
   if (!frontmatterResult.success) {
@@ -776,6 +784,18 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   }
   if (landingAutoMerge !== undefined) {
     fmLines.push(`landing_auto_merge: ${landingAutoMerge}`);
+  }
+  if (recovery_from !== undefined) {
+    fmLines.push(`recovery_from: ${recovery_from}`);
+  }
+  if (recovery_set_name !== undefined) {
+    fmLines.push(`recovery_set_name: ${recovery_set_name}`);
+  }
+  if (recovery_feature_branch !== undefined) {
+    fmLines.push(`recovery_feature_branch: ${recovery_feature_branch}`);
+  }
+  if (recovery_base_branch !== undefined) {
+    fmLines.push(`recovery_base_branch: ${recovery_base_branch}`);
   }
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;

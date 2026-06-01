@@ -73,7 +73,7 @@ Also check whether the PRD has compiled artifacts and a feature branch. If it do
 Ask the user to confirm the verdict-specific action or the resume option:
 
 - `retry`: "Re-queue PRD `{prdId}` for another attempt? (yes / no)"
-- `split`: "Enqueue a successor PRD based on the suggested content above? (yes / no)"
+- `split`: "Enqueue a successor PRD based on the suggested content above? If landed partial work is recorded in the sidecar, the queued successor will start from the preserved feature branch while targeting the original base branch. (yes / no)"
 - `abandon`: "Archive the failed PRD `{prdId}` (this cannot be undone)? (yes / no)"
 - `manual`: Render the full markdown report and stop. Tell the user:
 
@@ -90,7 +90,7 @@ Ask the user to confirm the verdict-specific action or the resume option:
 The daemon applies the action in-process and returns synchronously. Report the result using the returned response fields:
 
 - **retry**: "PRD `{prdId}` has been re-queued. Commit: `{commitSha}`."
-- **split**: "Successor PRD `{successorPrdId}` enqueued. Commit: `{commitSha}`."
+- **split**: "Successor PRD `{successorPrdId}` enqueued. If landed partial work was recorded in the sidecar, it will continue from the preserved feature branch while targeting the original base branch. Commit: `{commitSha}`."
 - **abandon**: "PRD `{prdId}` has been archived. Commit: `{commitSha}`."
 
 **Compiled-build resume**: On confirmation for resume, call `mcp__eforge__eforge_resume_build` with `{ prdId }`, adding `setName` when the sidecar reports a set name that differs from the PRD id and `profile` when the user requests a specific agent runtime profile. The daemon validates the profile override before spawning a background build agent and returns `{ sessionId, pid }`. Report:
@@ -102,7 +102,7 @@ The daemon applies the action in-process and returns synchronously. Report the r
 | Situation | Recommended action |
 |-----------|-------------------|
 | PRD failed early (before compile stage) — no artifacts | Use `retry` or `split` via `mcp__eforge__eforge_apply_recovery` |
-| PRD failed after compile — feature branch exists with partial work | Consider `mcp__eforge__eforge_resume_build` to pick up from compiled artifacts |
+| PRD failed after compile — feature branch exists with partial work | Use `mcp__eforge__eforge_apply_recovery` with a `split` verdict to enqueue a continuation successor; use `mcp__eforge__eforge_resume_build` only when you want to rerun the original compiled artifacts |
 | Compiled artifacts are stale or the plan has changed significantly | Use `retry` via `mcp__eforge__eforge_apply_recovery` to start fresh |
 | User wants to archive the failed PRD without further attempts | Use `abandon` via `mcp__eforge__eforge_apply_recovery` |
 

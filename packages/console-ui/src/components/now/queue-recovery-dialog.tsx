@@ -66,7 +66,7 @@ function applyResultMessage(result: ApplyRecoveryResponse): string {
     case 'retry':
       return 'Applied retry: re-queueing the PRD.';
     case 'split':
-      return `Applied split: enqueuing the successor PRD${result.successorPrdId ? ` (${result.successorPrdId})` : ''}.`;
+      return `Applied split: enqueuing the successor PRD${result.successorPrdId ? ` (${result.successorPrdId})` : ''}. When the recovery report records landed partial work, the successor starts from the preserved feature branch while still targeting the original base branch.`;
     case 'abandon':
       return 'Applied abandon: archiving or removing the failed PRD.';
     case 'manual':
@@ -91,7 +91,7 @@ const SIDECAR_ACTIONS: Record<'retry' | 'split' | 'abandon', SidecarActionConfig
   split: {
     triggerLabel: 'Enqueue successor PRD',
     title: 'Enqueue the successor PRD?',
-    description: 'The recovery apply route will enqueue the suggested successor PRD.',
+    description: 'The recovery apply route will enqueue the suggested successor PRD. If the report records landed partial work, the successor may continue from the preserved feature branch while targeting the original base branch.',
     confirmLabel: 'Enqueue',
   },
   abandon: {
