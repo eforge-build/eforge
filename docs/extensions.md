@@ -1,12 +1,14 @@
 # Extensions
 
-Native eforge extensions are TypeScript or JavaScript modules loaded by the eforge daemon/worker Node process. They are the typed, programmatic counterpart to shell hooks: extension factories can register event hooks, agent-run augmenters, policy gates, profile routers, input sources, PRD enrichers, reviewer perspectives, validation providers, and custom tools with full TypeScript inference.
+eforge has a broad extension surface around a small build-engine kernel. Input surfaces, playbooks, session plans, profile toolbelts, shell hooks, host integrations, wrapper apps, and native TypeScript extensions can shape how work is authored, routed, governed, observed, and integrated without moving those concerns into the engine.
 
-Extensions are **not sandboxed**. A loaded extension executes in the same Node process as eforge and has the same filesystem, environment, and network access as the daemon. Only enable extensions from sources you trust.
+Native eforge extensions are one typed mechanism in that broader surface: TypeScript or JavaScript modules loaded by the eforge daemon/worker Node process. They are the typed, programmatic counterpart to shell hooks: extension factories can register event hooks, agent-run augmenters, policy gates, profile routers, input sources, PRD enrichers, reviewer perspectives, validation providers, and custom tools with full TypeScript inference.
+
+Extensions are **not sandboxed**. A loaded native extension executes in the same Node process as eforge and has the same filesystem, environment, and network access as the daemon. Only enable extensions from sources you trust.
 
 ## What native extensions are (and are not)
 
-Native eforge extensions are distinct from other extensibility mechanisms:
+Native eforge extensions are distinct from other extensibility mechanisms in the broader eforge extension surface:
 
 | Mechanism | Language/shape | Runtime owner | Purpose |
 |-----------|----------------|---------------|---------|

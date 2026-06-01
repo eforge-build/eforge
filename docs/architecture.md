@@ -2,6 +2,12 @@
 
 eforge is **library-first**. The engine is a pure TypeScript library that communicates through typed `EforgeEvent`s via `AsyncGenerator` - it never writes to stdout. CLI, web monitor, Claude Code plugin, and Pi package are thin consumers of the same event stream.
 
+## Kernel and extension boundary
+
+The engine is the build-engine kernel. It owns normalized build-spec intake, dependency-aware branch/worktree orchestration, the compile/build execution loop, conservative validation and review gates, typed failure/recovery dispatch, and baseline console observability/control events. The engine consumes normalized build source and emits typed `EforgeEvent`s; it does not own the authoring experience that produced that source.
+
+Input surfaces and richer workflow UX sit outside the engine kernel. Playbooks, session plans, wrapper apps, CLI prompts, and PRD files are normalized before they reach the queue; planning workbenches, toolbelts, shell hooks, policy modules, host integrations, and native extensions can shape how work is prepared or governed without becoming engine internals. This boundary keeps the kernel reusable while letting extensions and hosts adapt eforge to different teams and workflows.
+
 ## System Layers
 
 ```mermaid

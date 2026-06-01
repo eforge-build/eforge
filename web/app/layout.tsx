@@ -3,8 +3,8 @@ import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'eforge - agentic build system',
-  description: 'eforge is an autonomous plan-build-review orchestration engine for agentic code generation.',
+  title: 'eforge - extensible build engine',
+  description: 'eforge is an extensible build-engine kernel for delegated planning, implementation, review, and validation.',
   icons: {
     icon: '/favicon.ico?v=3',
     shortcut: '/favicon.ico?v=3',

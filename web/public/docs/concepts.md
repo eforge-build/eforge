@@ -1,15 +1,23 @@
 ---
 title: Concepts
-description: How the eforge agentic build pipeline works.
+description: How the eforge build engine, inputs, and extension surfaces fit together.
 ---
 
 # Concepts
 
-## What Is an Agentic Build System?
+## Core engine and extension surfaces
 
-Traditional build systems transform source code into artifacts. An agentic build system transforms *specifications* into source code - then verifies its own output.
+eforge is a build-engine kernel with extensible workflow surfaces around it. The core engine consumes normalized build source, compiles it into plans, orchestrates dependency-aware worktrees, runs implementation/review/validation loops, records conservative gates, and emits typed events for consumers.
 
-The key insight: a single AI agent writing and reviewing its own code will almost always approve it. Quality requires **separation of concerns** - distinct agents for planning, building, reviewing, and evaluating. eforge applies build-system thinking to this multi-agent pipeline.
+Input authoring and workflow UX live outside that core. CLI prompts, rough notes, PRD files, playbooks, session plans, wrapper-app artifacts, host integrations, toolbelts, shell hooks, and native extensions can shape how work is prepared or governed before it reaches the engine. They are extension surfaces, not separate engines.
+
+That boundary is why different hosts can feel different while the build semantics remain consistent: every input surface eventually normalizes into build source, and the engine handles the same compile/build/landing lifecycle.
+
+## What eforge builds
+
+Traditional build systems transform source code into artifacts. eforge transforms *build source* into source-code changes - then verifies its own output.
+
+The key quality insight: a single AI agent writing and reviewing its own code will almost always approve it. Quality requires **separation of concerns** - distinct agents for planning, building, reviewing, and evaluating. eforge applies build-system thinking to this multi-agent pipeline.
 
 ## The Pipeline
 
@@ -23,7 +31,7 @@ The compile phase produces `orchestration.yaml` - a dependency graph over the pl
 
 ## Build Sources and Session Plans
 
-A **build source** is the input eforge hands to the compile phase after normalizing a user-facing artifact. It can start as a CLI prompt, rough notes, a PRD file, an autonomous playbook, a wrapper-app artifact, or a session-plan file.
+A **build source** is the normalized input eforge hands to the compile phase after an outside input surface has been resolved. It can start as a CLI prompt, rough notes, a PRD file, an autonomous playbook, a wrapper-app artifact, or a session-plan file, but the engine sees the normalized build source rather than the original authoring surface.
 
 `/eforge:plan` creates session plans under `.eforge/session-plans/`. A session plan is a driver-side planning artifact: it records the planning type and depth, required and optional dimensions, skipped dimensions with reasons, open questions, readiness, and any inherited `agent_profile` from a planning-mode playbook. When `/eforge:build` uses a ready session-plan file, eforge converts that file into ordinary build source before writing the normalized PRD to the queue.
 
@@ -120,7 +128,7 @@ During each plan build, extensions may contribute validation providers that run 
 
 ## Stacked PRs
 
-When `stacking.enabled: true` in `eforge/config.yaml`, builds form a **branch-per-PR stack**. The root artifact branch targets the resolved trunk branch, and each child artifact branch targets its parent artifact branch. git-spice is used to track branches and submit PRs into the stack.
+Stacked PR landing is optional. When `stacking.enabled: true` and `landing.action: pr` are set in `eforge/config.yaml`, builds form a **branch-per-PR stack**. The root artifact branch targets the resolved trunk branch, and each child artifact branch targets its parent artifact branch. eforge currently uses git-spice to track branches and submit PRs into the stack.
 
 PRD frontmatter controls the stack topology: `stack_id` is a logical stack name shared by all PRDs in the stack; `stack_parent` is the parent PRD id. For single-dependency builds, `stack_parent` is inferred automatically from `depends_on`. See the [Stacked PRs](/docs/stacking) guide for setup instructions.
 
