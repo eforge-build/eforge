@@ -9,7 +9,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 68
+Total routes: 71
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -73,8 +73,11 @@ Total routes: 68
 | `sessionPlanMigrateLegacy` | `/api/session-plan/migrate-legacy` |
 | `sessionPlanReadiness` | `/api/session-plan/readiness` |
 | `sessionPlanSelectDimensions` | `/api/session-plan/select-dimensions` |
+| `sessionPlanSetList` | `/api/session-plan-set/list` |
 | `sessionPlanSetSection` | `/api/session-plan/set-section` |
+| `sessionPlanSetShow` | `/api/session-plan-set/show` |
 | `sessionPlanSetStatus` | `/api/session-plan/set-status` |
+| `sessionPlanSetValidate` | `/api/session-plan-set/validate` |
 | `sessionPlanShow` | `/api/session-plan/show` |
 | `sessionPlanSkipDimension` | `/api/session-plan/skip-dimension` |
 | `stackLayers` | `/api/stack/layers` |

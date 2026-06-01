@@ -62,6 +62,7 @@ import {
 } from './extension-package-management.js';
 import { runStackSync, loadSyncStatusForRoute, loadSyncStatusForRouteSync } from './stack-sync-service.js';
 import { handleQueueRecoveryRoutes } from './queue-recovery-routes.js';
+import { handleSessionPlanSetRoutes } from './session-plan-set-routes.js';
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
 // Derived prefix constants for parameterised routes (used in startsWith checks)
@@ -4754,6 +4755,7 @@ export async function startServer(
 
     if (await handlePlaybookContentRoutes(req, res, url)) return;
     if (await handlePlaybookManagementRoutes(req, res, url)) return;
+    if (await handleSessionPlanSetRoutes(req, res, { cwd, rejectNonLocalRequest: rejectUnsafeExtensionMutationRequest })) return;
     if (await handleSessionPlanRoutes(req, res, url)) return;
 
     if (await handleModelRoutes(req, res, url)) return;

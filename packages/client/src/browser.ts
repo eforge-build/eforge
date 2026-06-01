@@ -87,6 +87,27 @@ export {
 } from './browser-queue-recovery.js';
 
 export type {
+  SessionPlanSetStatusWire,
+  SessionPlanSetStrategyWire,
+  SessionPlanSetChildKindWire,
+  SessionPlanSetDiagnosticCodeWire,
+  SessionPlanSetExternalRefWire,
+  SessionPlanSetDiagnosticWire,
+  SessionPlanSetChildValidationSummaryWire,
+  SessionPlanSetChildSummaryWire,
+  SessionPlanSetAnchorSummaryWire,
+  SessionPlanSetSummaryWire,
+  SessionPlanSetValidationResultWire,
+  SessionPlanSetListEntryWire,
+  SessionPlanSetListRequest,
+  SessionPlanSetListResponse,
+  SessionPlanSetShowRequest,
+  SessionPlanSetShowResponse,
+  SessionPlanSetValidateRequest,
+  SessionPlanSetValidateResponse,
+} from './session-plan-set.js';
+
+export type {
   HealthResponse,
   AutoBuildState,
   AutoBuildDesired,

@@ -1,6 +1,7 @@
 /**
  * Planning Workspace — top-level route component.
- * Shows a list/sidebar of session plans with a detail panel for the selected plan.
+ * Shows a combined list/sidebar of flat session plans and read-only session
+ * plan sets with a detail panel for the selected artifact.
  */
 import * as React from 'react';
 import { Switch } from '@/components/ui/switch';
@@ -8,6 +9,8 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/componen
 import { useSessionPlans } from './use-session-plans';
 import { SessionPlanList } from './session-plan-list';
 import { SessionPlanDetail } from './session-plan-detail';
+import { SessionPlanSetDetail } from './session-plan-set-detail';
+import { artifactKindFromKey } from './planning-artifacts';
 
 interface PlansViewProps {
   onNavigate?: (href: string) => void;
@@ -15,24 +18,26 @@ interface PlansViewProps {
 
 export function PlansView({ onNavigate }: PlansViewProps) {
   const {
-    plans,
+    items,
     listStatus,
     listError,
     includeSubmitted,
-    selectedSession,
+    selectedKey,
     detail,
     detailStatus,
     detailError,
     setIncludeSubmitted,
-    selectPlan,
+    selectArtifact,
   } = useSessionPlans();
 
   const isLoading = listStatus === 'loading';
-  const isEmpty = listStatus === 'success' && plans.length === 0;
-  const hasPlans = listStatus === 'success' && plans.length > 0;
+  const isEmpty = listStatus === 'success' && items.length === 0;
+  const hasItems = listStatus === 'success' && items.length > 0;
   const emptyText = includeSubmitted
     ? 'No session plans found'
     : 'No actionable session plans found';
+
+  const selectedKind = artifactKindFromKey(selectedKey);
 
   return (
     <div className="flex flex-col h-full">
@@ -79,23 +84,31 @@ export function PlansView({ onNavigate }: PlansViewProps) {
         Do not remove `min-w-0` from these ancestors without testing with
         a plan body containing a long unbroken string.
       */}
-      {hasPlans && (
+      {hasItems && (
         <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 min-w-0">
           <ResizablePanel defaultSize={30} minSize={20} className="min-w-0 overflow-hidden">
             <SessionPlanList
-              plans={plans}
-              selectedSession={selectedSession}
-              onSelect={selectPlan}
+              items={items}
+              selectedKey={selectedKey}
+              onSelect={selectArtifact}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
           <ResizablePanel defaultSize={70} minSize={30} className="min-w-0 overflow-hidden">
-            <SessionPlanDetail
-              detail={detail}
-              status={detailStatus}
-              error={detailError}
-              onNavigate={onNavigate}
-            />
+            {selectedKind === 'plan-set' ? (
+              <SessionPlanSetDetail
+                detail={detail?.kind === 'plan-set' ? detail.data : null}
+                status={detailStatus}
+                error={detailError}
+              />
+            ) : (
+              <SessionPlanDetail
+                detail={detail?.kind === 'plan' ? detail.data : null}
+                status={detailStatus}
+                error={detailError}
+                onNavigate={onNavigate}
+              />
+            )}
           </ResizablePanel>
         </ResizablePanelGroup>
       )}

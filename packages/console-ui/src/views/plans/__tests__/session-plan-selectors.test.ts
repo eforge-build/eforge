@@ -5,7 +5,21 @@ import {
   selectDimensionCounts,
   isSessionInList,
 } from '../session-plan-selectors';
-import type { SessionPlanListEntryWire, SessionPlanDataWire } from '@eforge-build/client/browser';
+import {
+  flatPlanKey,
+  planSetKey,
+  artifactKindFromKey,
+  artifactIdFromKey,
+  combineArtifacts,
+  selectDefaultArtifactKey,
+  isArtifactKeyInList,
+  findArtifact,
+} from '../planning-artifacts';
+import type {
+  SessionPlanListEntryWire,
+  SessionPlanDataWire,
+  SessionPlanSetListEntryWire,
+} from '@eforge-build/client/browser';
 
 // ---------------------------------------------------------------------------
 // readinessLabel
@@ -139,5 +153,74 @@ describe('isSessionInList', () => {
 
   it('returns false for any session in an empty list', () => {
     expect(isSessionInList('sess-a', [])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// planning-artifacts (artifact-key selection helpers)
+// ---------------------------------------------------------------------------
+
+function entry(session: string): SessionPlanListEntryWire {
+  return {
+    session,
+    topic: `Topic ${session}`,
+    status: 'planning',
+    path: `/plans/${session}.md`,
+    ready: false,
+    missingDimensions: [],
+  };
+}
+
+function planSetEntry(planSetId: string): SessionPlanSetListEntryWire {
+  return {
+    id: `set-${planSetId}`,
+    planSetId,
+    title: `Set ${planSetId}`,
+    status: 'ready',
+    strategy: 'dag',
+    dir: `/plan-sets/${planSetId}`,
+    manifestPath: `/plan-sets/${planSetId}/plan-set.yaml`,
+    childCount: 2,
+  };
+}
+
+describe('planning-artifacts', () => {
+  it('encodes distinct keys for flat plans and plan sets', () => {
+    expect(flatPlanKey('a')).toBe('plan:a');
+    expect(planSetKey('a')).toBe('plan-set:a');
+    // Same raw id, different kinds — keys must not collide.
+    expect(flatPlanKey('a')).not.toBe(planSetKey('a'));
+  });
+
+  it('derives kind and id from a selection key', () => {
+    expect(artifactKindFromKey('plan:a')).toBe('plan');
+    expect(artifactKindFromKey('plan-set:a')).toBe('plan-set');
+    expect(artifactKindFromKey(null)).toBeNull();
+    expect(artifactKindFromKey('weird')).toBeNull();
+    expect(artifactIdFromKey('plan:a')).toBe('a');
+    expect(artifactIdFromKey('plan-set:a')).toBe('a');
+    expect(artifactIdFromKey(null)).toBeNull();
+  });
+
+  it('combines flat plans before plan sets with keyed items', () => {
+    const items = combineArtifacts([entry('a')], [planSetEntry('ps1')]);
+    expect(items.map((item) => item.kind)).toEqual(['plan', 'plan-set']);
+    expect(items.map((item) => item.key)).toEqual(['plan:a', 'plan-set:ps1']);
+  });
+
+  it('selects the first artifact key by default', () => {
+    expect(selectDefaultArtifactKey(combineArtifacts([entry('a')], [planSetEntry('ps1')]))).toBe(
+      'plan:a',
+    );
+    expect(selectDefaultArtifactKey([])).toBeNull();
+  });
+
+  it('detects artifact-key presence and finds the matching artifact', () => {
+    const items = combineArtifacts([entry('a')], [planSetEntry('ps1')]);
+    expect(isArtifactKeyInList('plan-set:ps1', items)).toBe(true);
+    expect(isArtifactKeyInList('plan:missing', items)).toBe(false);
+    expect(isArtifactKeyInList(null, items)).toBe(false);
+    expect(findArtifact('plan-set:ps1', items)?.kind).toBe('plan-set');
+    expect(findArtifact('nope', items)).toBeUndefined();
   });
 });

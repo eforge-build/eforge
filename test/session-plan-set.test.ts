@@ -320,6 +320,18 @@ describe('session plan-set list/load', () => {
     expect(await listSessionPlanSets({ cwd })).toEqual([]);
   });
 
+  it('skips a valid manifest in a non-loadable (non-slug) directory name', async () => {
+    const cwd = makeTempDir();
+    // A directory whose name is not a lower-case slug holds an otherwise valid
+    // manifest. loadSessionPlanSet would reject the directory name, so it must
+    // not be listed (else Console lists a set that 400s when selected).
+    await setupPlanSet({ cwd, planSetId: 'Not_A_Slug', id: 'valid-set', children: [{ id: 'plan-01', file: 'plans/plan-01.md', content: '# One\n' }] });
+    await setupPlanSet({ cwd, planSetId: 'alpha', id: 'alpha-set', children: [{ id: 'plan-01', file: 'plans/plan-01.md', content: '# One\n' }] });
+
+    const list = await listSessionPlanSets({ cwd });
+    expect(list.map((e) => e.planSetId)).toEqual(['alpha']);
+  });
+
   it('loads manifest fields, umbrella content, and child metadata in manifest order', async () => {
     const cwd = makeTempDir();
     await setupPlanSet({
@@ -469,6 +481,45 @@ describe('session plan-set summary', () => {
     expect(Array.isArray(parsed.diagnostics)).toBe(true);
   });
 
+  it('preserves manifest and child externalRefs through JSON.stringify/parse', async () => {
+    const cwd = makeTempDir();
+    const dir = resolve(cwd, '.eforge', 'session-plans', 'set');
+    await mkdir(resolve(dir, 'plans'), { recursive: true });
+    await writeFile(resolve(dir, 'umbrella.md'), '# U\n', 'utf-8');
+    await writeFile(resolve(dir, 'plans', 'a.md'), '# A\n', 'utf-8');
+    await writeFile(
+      resolve(dir, 'plan-set.yaml'),
+      `id: set
+title: Set
+status: planning
+strategy: dag
+anchor: umbrella.md
+externalRefs:
+  - kind: doc
+    ref: spec-123
+children:
+  - id: plan-01
+    title: One
+    file: plans/a.md
+    kind: plan
+    buildable: true
+    status: planning
+    dependsOn: []
+    externalRefs:
+      - kind: issue
+        ref: ABC-1
+`,
+      'utf-8',
+    );
+
+    const load = await loadSessionPlanSet({ cwd, planSetId: 'set' });
+    const { diagnostics } = await validateSessionPlanSet({ cwd, planSetId: 'set' });
+    const summary = summarizeSessionPlanSet(load, diagnostics);
+    const parsed = JSON.parse(JSON.stringify(summary));
+    expect(parsed.externalRefs).toEqual([{ kind: 'doc', ref: 'spec-123' }]);
+    expect(parsed.children[0].externalRefs).toEqual([{ kind: 'issue', ref: 'ABC-1' }]);
+  });
+
   it('exposes diagnostic codes in the summary', async () => {
     const cwd = makeTempDir();
     await setupPlanSet({
@@ -481,6 +532,23 @@ describe('session plan-set summary', () => {
     const summary = summarizeSessionPlanSet(load, diagnostics);
     const parsed = JSON.parse(JSON.stringify(summary));
     expect(parsed.diagnostics.map((d: { code: string }) => d.code)).toContain('unknown-child-dependency');
+  });
+
+  it('derives a per-child validation summary from the set diagnostics', async () => {
+    const cwd = makeTempDir();
+    await setupPlanSet({
+      cwd,
+      planSetId: 'set',
+      children: [
+        // plan-01 is clean; plan-02 depends on a non-existent child id.
+        { id: 'plan-01', file: 'plans/a.md', content: '# A\n' },
+        { id: 'plan-02', file: 'plans/b.md', dependsOn: ['ghost'], content: '# B\n' },
+      ],
+    });
+    const { summary } = await validateSessionPlanSet({ cwd, planSetId: 'set' });
+    const byId = Object.fromEntries(summary.children.map((c) => [c.id, c.validation]));
+    expect(byId['plan-01']).toEqual({ ok: true, diagnosticCount: 0 });
+    expect(byId['plan-02']).toEqual({ ok: false, diagnosticCount: 1 });
   });
 });
 

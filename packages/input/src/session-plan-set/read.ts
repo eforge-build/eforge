@@ -6,11 +6,12 @@
  * only the umbrella anchor and child files named by the manifest. Readers never
  * recursively discover child plans as a second membership source.
  */
-import { readFile, readdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { readFile, readdir, realpath } from 'node:fs/promises';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parseSessionPlanSetManifest } from './manifest.js';
 import {
+  isLoadablePlanSetId,
   resolveSessionPlanSetAnchorPath,
   resolveSessionPlanSetChildPath,
   resolveSessionPlanSetDir,
@@ -56,6 +57,10 @@ export async function listSessionPlanSets(opts: ListSessionPlanSetsOpts): Promis
   await Promise.all(
     entries.map(async (entry) => {
       if (!entry.isDirectory()) return;
+      // Only list directories whose name is a loadable plan-set id. A valid
+      // manifest in a non-slug directory would otherwise be listed and then
+      // fail with an error when the loader rejects the directory name.
+      if (!isLoadablePlanSetId(entry.name)) return;
       const dir = resolve(root, entry.name);
       const manifestPath = resolve(dir, SESSION_PLAN_SET_MANIFEST_FILENAME);
 
@@ -95,6 +100,28 @@ export async function listSessionPlanSets(opts: ListSessionPlanSetsOpts): Promis
 }
 
 /**
+ * Verify that the real (symlink-followed) target stays within the real
+ * session-plans root before its contents are read or returned.
+ *
+ * The lexical path resolvers in `./paths.js` guard against `..` and separator
+ * injection, but they cannot detect a manifest-named anchor/child (or a
+ * symlinked plan-set directory) that points at a file outside the tree. Reading
+ * such a path would follow the symlink and leak the target's contents, so we
+ * compare real paths here. Throws when the target escapes the root; re-throws
+ * `ENOENT` so missing files are handled by the caller's not-exists branch.
+ */
+async function assertRealpathWithinRoot(cwd: string, targetPath: string): Promise<void> {
+  const realRoot = await realpath(resolveSessionPlanSetsRoot(cwd));
+  const realTarget = await realpath(targetPath);
+  const rel = relative(realRoot, realTarget);
+  if (rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) {
+    throw new Error(
+      `Resolved path "${targetPath}" escapes .eforge/session-plans/ via a symlink`,
+    );
+  }
+}
+
+/**
  * Split a leading YAML frontmatter block from child markdown.
  * Returns the parsed frontmatter record, or an `error` string when the
  * frontmatter block is present but fails to parse as YAML.
@@ -126,6 +153,14 @@ async function loadAnchor(cwd: string, planSetId: string, anchor: string): Promi
     return { anchor, path: '', exists: false, pathError: (err as Error).message };
   }
   try {
+    await assertRealpathWithinRoot(cwd, path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { anchor, path, exists: false };
+    }
+    return { anchor, path, exists: false, pathError: (err as Error).message };
+  }
+  try {
     const content = await readFile(path, 'utf-8');
     return { anchor, path, exists: true, content };
   } catch {
@@ -140,6 +175,15 @@ async function loadChild(cwd: string, planSetId: string, child: SessionPlanSetCh
     path = resolveSessionPlanSetChildPath({ cwd, planSetId, childFile: child.file });
   } catch (err) {
     return { child, path: '', file: child.file, exists: false, pathError: (err as Error).message };
+  }
+
+  try {
+    await assertRealpathWithinRoot(cwd, path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { child, path, file: child.file, exists: false };
+    }
+    return { child, path, file: child.file, exists: false, pathError: (err as Error).message };
   }
 
   let content: string;

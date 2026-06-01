@@ -178,6 +178,7 @@ export {
 
   // Validation / summary
   validateSessionPlanSet,
+  validateLoadedSessionPlanSet,
   summarizeSessionPlanSet,
 } from './session-plan-set.js';
 
@@ -194,6 +195,7 @@ export type {
   SessionPlanSetLoadResult,
   SessionPlanSetDiagnosticCode,
   SessionPlanSetDiagnostic,
+  SessionPlanSetChildValidationSummary,
   SessionPlanSetChildSummary,
   SessionPlanSetAnchorSummary,
   SessionPlanSetSummary,

@@ -16,10 +16,28 @@ import { loadSessionPlanSet } from './read.js';
 import type {
   SessionPlanSetChildSummary,
   SessionPlanSetDiagnostic,
+  SessionPlanSetExternalRef,
   SessionPlanSetLoadResult,
   SessionPlanSetSummary,
   SessionPlanSetValidationResult,
 } from './schema.js';
+
+/**
+ * Project external references onto only the declared public fields
+ * (`kind`, `ref`, `url`, `title`). The manifest schema uses passthrough Zod
+ * objects, so unknown fields would otherwise be serialized and exposed by the
+ * daemon. Optional fields are omitted when undefined.
+ */
+function normalizeExternalRefs(
+  refs: SessionPlanSetExternalRef[],
+): SessionPlanSetExternalRef[] {
+  return refs.map((ref) => {
+    const normalized: SessionPlanSetExternalRef = { kind: ref.kind, ref: ref.ref };
+    if (ref.url !== undefined) normalized.url = ref.url;
+    if (ref.title !== undefined) normalized.title = ref.title;
+    return normalized;
+  });
+}
 
 /** Collect duplicate-child-id diagnostics in manifest order. */
 function duplicateIdDiagnostics(load: SessionPlanSetLoadResult): SessionPlanSetDiagnostic[] {
@@ -163,6 +181,9 @@ export function summarizeSessionPlanSet(
   diagnostics: SessionPlanSetDiagnostic[] = [],
 ): SessionPlanSetSummary {
   const children: SessionPlanSetChildSummary[] = loadResult.children.map((childLoad) => {
+    const childDiagnosticCount = diagnostics.filter(
+      (d) => d.childId === childLoad.child.id,
+    ).length;
     const summary: SessionPlanSetChildSummary = {
       id: childLoad.child.id,
       file: childLoad.file,
@@ -171,6 +192,8 @@ export function summarizeSessionPlanSet(
       status: childLoad.child.status,
       dependsOn: childLoad.child.dependsOn,
       exists: childLoad.exists,
+      externalRefs: normalizeExternalRefs(childLoad.child.externalRefs),
+      validation: { ok: childDiagnosticCount === 0, diagnosticCount: childDiagnosticCount },
     };
     if (childLoad.child.profile !== undefined) {
       summary.profile = childLoad.child.profile;
@@ -185,6 +208,7 @@ export function summarizeSessionPlanSet(
     strategy: loadResult.manifest.strategy,
     children,
     diagnostics,
+    externalRefs: normalizeExternalRefs(loadResult.manifest.externalRefs),
   };
 
   if (loadResult.anchor !== undefined) {
@@ -196,6 +220,20 @@ export function summarizeSessionPlanSet(
   }
 
   return summary;
+}
+
+/**
+ * Validate an already-loaded plan set. Returns `{ ok, diagnostics, summary }`
+ * computed from the supplied load result without re-reading from disk. Callers
+ * that also need the raw load result (e.g. for anchor content) load once and
+ * pass it here to avoid a second filesystem read.
+ */
+export function validateLoadedSessionPlanSet(
+  loadResult: SessionPlanSetLoadResult,
+): SessionPlanSetValidationResult {
+  const diagnostics = computeDiagnostics(loadResult);
+  const summary = summarizeSessionPlanSet(loadResult, diagnostics);
+  return { ok: diagnostics.length === 0, diagnostics, summary };
 }
 
 export interface ValidateSessionPlanSetOpts {
@@ -212,7 +250,5 @@ export async function validateSessionPlanSet(
   opts: ValidateSessionPlanSetOpts,
 ): Promise<SessionPlanSetValidationResult> {
   const loadResult = await loadSessionPlanSet(opts);
-  const diagnostics = computeDiagnostics(loadResult);
-  const summary = summarizeSessionPlanSet(loadResult, diagnostics);
-  return { ok: diagnostics.length === 0, diagnostics, summary };
+  return validateLoadedSessionPlanSet(loadResult);
 }
