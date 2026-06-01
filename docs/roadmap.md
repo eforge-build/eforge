@@ -15,7 +15,7 @@
 **Goal**: Make console-ui the canonical local-first control surface for observing, configuring, and steering eforge builds while keeping the engine headless and harness integrations thin.
 
 - **Actionable build control** - Queue management, retry/recovery, validation waivers, stack sync, and build lifecycle actions from the console.
-- **Planning visibility** - Session-plan browsing, readiness display, and handoff-visibility links centered on the session-plan artifact without moving planning UX into the engine.
+- **Planning visibility as extension-hosted UI** - Keep planning artifact browsing available in Console while preparing session plans and playbooks to move behind bundled reference workflow extensions.
 - **Configuration and library surfaces** - Manage profiles, playbooks, scoped config, extensions, and model/runtime preferences through typed daemon/client APIs.
 - **Thin integration strategy** - Reduce Pi and Claude Code integrations to launch, deep-link, status, and build entry points that reuse daemon/client primitives instead of duplicating rich workflow UX.
 
@@ -27,6 +27,7 @@
 
 - **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, and `modify` policy decisions remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
 - **Broader extension surface** - Continue clarifying how native extensions relate to playbooks, session plans, toolbelts, shell hooks, host integrations, and wrapper apps without treating every surface as engine functionality.
+- **Bundled reference workflow extensions** - Move session plans and playbooks toward extension-shaped implementations, then expose them as bundled defaults before deprecating direct built-in surfaces.
 
 ---
 
