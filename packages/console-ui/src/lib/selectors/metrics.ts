@@ -1,9 +1,9 @@
 /**
- * Metrics-panel selector — derives at-a-glance health visuals from existing
- * snapshot data: a land-vs-fail breakdown from Git stack history and a
- * recent-run duration series for the throughput bars. Pure; no I/O.
+ * Metrics-panel selector — derives at-a-glance health visuals from build run
+ * history. Enqueue/compile bookkeeping runs are intentionally excluded so the
+ * panel reflects actual build outcomes rather than queueing success. Pure; no I/O.
  */
-import type { NowRecentRunItem, NowStackSummary } from './now';
+import type { NowRecentRunItem } from './now';
 
 export type RunOutcome = 'completed' | 'failed' | 'running' | 'other';
 
@@ -24,7 +24,7 @@ export interface MetricsRunBar {
 }
 
 export interface NowMetricsPanel {
-  hasStack: boolean;
+  hasHealthData: boolean;
   landed: number;
   failed: number;
   total: number;
@@ -36,6 +36,7 @@ export interface NowMetricsPanel {
 
 const SUCCESS_STATUSES = new Set(['landed', 'merged', 'built', 'complete', 'completed']);
 const FAILED_STATUSES = new Set(['failed', 'failure', 'error']);
+const BUILD_HEALTH_COMMANDS = new Set(['build', 'run', 'resume']);
 
 const OUTCOME_COLOR: Record<RunOutcome, string> = {
   completed: 'var(--color-green)',
@@ -57,21 +58,18 @@ function runOutcome(status: string): RunOutcome {
   return 'other';
 }
 
-export function selectNowMetricsPanel(
-  stack: NowStackSummary | null,
-  allRuns: NowRecentRunItem[],
-): NowMetricsPanel {
+export function selectNowMetricsPanel(allRuns: NowRecentRunItem[]): NowMetricsPanel {
   let landed = 0;
   let failed = 0;
   let other = 0;
 
-  if (stack) {
-    for (const [status, count] of Object.entries(stack.byStatus)) {
-      const s = status.toLowerCase();
-      if (FAILED_STATUSES.has(s)) failed += count;
-      else if (SUCCESS_STATUSES.has(s)) landed += count;
-      else other += count;
-    }
+  const buildRuns = allRuns.filter((run) => BUILD_HEALTH_COMMANDS.has(run.command.toLowerCase()));
+
+  for (const run of buildRuns) {
+    const outcome = runOutcome(run.status);
+    if (outcome === 'completed') landed += 1;
+    else if (outcome === 'failed') failed += 1;
+    else other += 1;
   }
 
   const total = landed + failed + other;
@@ -85,8 +83,8 @@ export function selectNowMetricsPanel(
     ] satisfies MetricsSuccessSlice[]
   ).filter((slice) => slice.value > 0);
 
-  // Newest-first input -> take most recent, then reverse to oldest -> newest.
-  const runBars: MetricsRunBar[] = allRuns
+  // Newest-first input -> take most recent build runs, then reverse to oldest -> newest.
+  const runBars: MetricsRunBar[] = buildRuns
     .slice(0, MAX_RUN_BARS)
     .reverse()
     .map((run) => {
@@ -101,7 +99,7 @@ export function selectNowMetricsPanel(
     });
 
   return {
-    hasStack: stack != null && total > 0,
+    hasHealthData: total > 0,
     landed,
     failed,
     total,

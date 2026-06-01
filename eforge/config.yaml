@@ -1,4 +1,6 @@
 maxConcurrentBuilds: 2
+monitor:
+  retentionCount: 100
 agents:
   tiers:
     planning:
