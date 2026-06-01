@@ -1,0 +1,64 @@
+name: downgrade-evaluator-late-transport-errors-after-verdict-submission
+description: Preserve submitted evaluator verdicts when a late retryable
+  transport or Pi infrastructure error occurs after verdict evidence is
+  available, while keeping pre-verdict evaluator failures fail-closed.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm test -- test/agent-wiring.test.ts test/retry.test.ts
+plans:
+  - id: plan-01-evaluator-late-error-preservation
+    name: Evaluator Late Error Verdict Preservation
+    depends_on: []
+    branch: downgrade-evaluator-late-transport-errors-after-verdict-submission/plan-01-evaluator-late-error-preservation
+    build:
+      - test-write
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: The change is small but touches core evaluator fail-closed semantics
+          and oversized legacy test files with no-growth ceilings, so targeted
+          edits and careful regression coverage are required.
+      reviewer:
+        effort: high
+        rationale: Review needs to verify the downgrade only applies after valid
+          evaluator verdict evidence and does not broaden retry policy behavior.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - validate
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: This is a focused but non-trivial engine bugfix touching evaluator
+    retry/failure semantics and regression tests, so excursion is appropriate.
+    Plan review is included to guard fail-open/fail-closed behavior before
+    build. The build pipeline implements the fix, writes required regression
+    tests, runs the registered maintainability validation gate, executes tests,
+    then performs review-fix-evaluate cycles. Review uses code and test
+    perspectives with strict evaluator judgment because preserving verdicts
+    after late transport errors must not mask genuine evaluator failures.
+diff_base_ref: 4e79f7bf091f5bdc6a432efec2beac8ad7b6144c
