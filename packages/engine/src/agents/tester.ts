@@ -47,14 +47,12 @@ function parseTestSummary(text: string): { passed: number; failed: number; testB
   };
 }
 
-// --- eforge:region plan-01-preserve-tester-results ---
 function mergeTesterResultText(fullText: string, resultText: string): string {
   if (!fullText) return resultText;
   if (fullText.includes(resultText)) return fullText;
   if (resultText.includes(fullText)) return resultText;
   return fullText + resultText;
 }
-// --- eforge:endregion plan-01-preserve-tester-results ---
 
 /**
  * Test-writer agent — writes tests for a plan's acceptance criteria.

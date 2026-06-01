@@ -213,7 +213,6 @@ describe('runTester wiring', () => {
     expect(complete!.productionIssues[0].file).toBe('src/foo.ts');
   });
 
-  // --- eforge:region plan-01-preserve-tester-results ---
   it('preserves resultText-only tester XML when a backend error arrives after result', async () => {
     const resultText = `<test-issues>
   <issue severity="critical" category="production-bug" file="packages/monitor/src/http/response.ts" testFile="test/monitor-response.test.ts">
@@ -269,7 +268,6 @@ describe('runTester wiring', () => {
     expect(complete!.productionIssues).toHaveLength(1);
     expect(complete!.productionIssues[0].file).toBe('src/duplicate.ts');
   });
-  // --- eforge:endregion plan-01-preserve-tester-results ---
 
   it('handles empty test issues', async () => {
     const backend = new StubHarness([{
