@@ -11,9 +11,12 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PullRequestMetadata } from '@eforge-build/engine/pr-metadata';
 import {
   executeStackLanding,
   type StackLandingOptions,
@@ -98,6 +101,37 @@ async function seedLayer(dir: string, prdId = 'test-prd'): Promise<void> {
     recordedAt: now,
     updatedAt: now,
   });
+}
+
+function initGitRepo(dir: string): void {
+  execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
+}
+
+const recoverableRestack = {
+  kind: 'recoverable-conflict',
+  operation: 'branch-restack',
+  conflictKind: 'git-rebase',
+  message: 'restack conflict',
+  recoverable: true,
+} as const;
+
+const interruptedRestack = {
+  operation: 'branch-restack',
+  conflictKind: 'git-rebase',
+  branch: 'eforge/test-prd',
+  conflictedFiles: [],
+  conflictDiff: '',
+} as const;
+
+const recoveryLifecycleTypes = new Set([
+  'stack:landing:conflict:detected',
+  'stack:landing:conflict:recovery:start',
+  'stack:landing:conflict:recovery:complete',
+  'stack:landing:conflict:recovery:failed',
+]);
+
+function landingOptions(provider: StackProviderAdapter, overrides: Partial<StackLandingOptions> = {}): StackLandingOptions {
+  return { cwd, mergeWorktreePath: cwd, stackContext: makeStackContext(), landingAction: 'pr', provider, ...overrides };
 }
 
 // ---------------------------------------------------------------------------
@@ -551,35 +585,6 @@ describe('executeStackLanding — non-pr actions', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeStackLanding — failure handling', () => {
-  it('emits stack:landing:update failed when trackBranch throws', async () => {
-    const provider = makeStubProvider({
-      trackBranch: async () => {
-        throw new Error('git-spice: branch track failed');
-      },
-    });
-    await seedLayer(cwd);
-
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
-
-    const events = await collectEvents(executeStackLanding(opts));
-    const failEvent = events.find(
-      (e) =>
-        e.type === 'stack:landing:update' &&
-        (e as Record<string, unknown>).status === 'failed',
-    );
-    expect(failEvent).toMatchObject({
-      type: 'stack:landing:update',
-      status: 'failed',
-      reason: expect.stringContaining('git-spice: branch track failed'),
-    });
-  });
-
   it('emits a provider command event with the failing exit code when trackBranch invokes git-spice and fails', async () => {
     const provider = makeStubProvider({
       trackBranch: async () => {
@@ -588,142 +593,22 @@ describe('executeStackLanding — failure handling', () => {
     });
     await seedLayer(cwd);
 
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
-
-    const events = await collectEvents(executeStackLanding(opts));
-    const commandEvent = events.find((event) => event.type === 'stack:provider:command');
-    expect(commandEvent).toMatchObject({
-      type: 'stack:provider:command',
+    const events = await collectEvents(executeStackLanding(landingOptions(provider)));
+    expect(events.find((event) => event.type === 'stack:provider:command')).toMatchObject({
       command: 'git-spice',
       args: ['branch', 'track', '--base', 'main'],
       exitCode: 2,
     });
-    expect(events.at(-1)).toMatchObject({
-      type: 'stack:landing:update',
-      status: 'failed',
-    });
+    expect(events.at(-1)).toMatchObject({ type: 'stack:landing:update', status: 'failed' });
   });
 
-  it('does not call submitBranch when trackBranch fails', async () => {
+  it('keeps the existing failed path for non-recoverable restack failures', async () => {
     let submitCalled = false;
-    const provider = makeStubProvider({
-      trackBranch: async () => {
-        throw new Error('track failed');
-      },
-      submitBranch: async () => {
-        submitCalled = true;
-        return makeResult('git-spice', ['branch', 'submit']);
-      },
-    });
-    await seedLayer(cwd);
-
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
-
-    await collectEvents(executeStackLanding(opts));
-    expect(submitCalled).toBe(false);
-  });
-
-  it('emits stack:landing:update failed when restackBranch throws a generic error', async () => {
-    const provider = makeStubProvider({
-      restackBranch: async () => {
-        throw new Error('git-spice: branch restack failed');
-      },
-    });
-    await seedLayer(cwd);
-
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
-
-    const events = await collectEvents(executeStackLanding(opts));
-    const failEvent = events.find(
-      (e) =>
-        e.type === 'stack:landing:update' &&
-        (e as Record<string, unknown>).status === 'failed',
-    );
-    expect(failEvent).toMatchObject({
-      type: 'stack:landing:update',
-      status: 'failed',
-      reason: expect.stringContaining('git-spice: branch restack failed'),
-    });
-  });
-
-  it('emits a provider command event with the failing exit code when restackBranch throws GitSpiceCommandError', async () => {
-    const submitCalls: string[] = [];
     const provider = makeStubProvider({
       restackBranch: async () => {
         throw new GitSpiceCommandError('git-spice', ['branch', 'restack'], 2, 'restack failed');
       },
-      submitBranch: async (worktreePath) => {
-        submitCalls.push(worktreePath);
-        return makeResult('git-spice', ['branch', 'submit']);
-      },
-    });
-    await seedLayer(cwd);
-
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
-
-    const events = await collectEvents(executeStackLanding(opts));
-
-    // submitBranch must not be called on this typed error path
-    expect(submitCalls).toHaveLength(0);
-
-    const providerCmds = events.filter((e) => e.type === 'stack:provider:command');
-    // Exactly two provider command events: track then restack (no submit)
-    expect(providerCmds).toHaveLength(2);
-    expect(providerCmds[0]).toMatchObject({
-      type: 'stack:provider:command',
-      args: expect.arrayContaining(['track']),
-    });
-    expect(providerCmds[1]).toMatchObject({
-      type: 'stack:provider:command',
-      command: 'git-spice',
-      args: ['branch', 'restack'],
-      exitCode: 2,
-    });
-
-    // The failed landing update must come after the restack command event
-    const restackCmdIdx = events.indexOf(providerCmds[1]);
-    const failedUpdateIdx = events.findIndex(
-      (e) =>
-        e.type === 'stack:landing:update' &&
-        (e as Record<string, unknown>).status === 'failed',
-    );
-    expect(failedUpdateIdx).toBeGreaterThan(restackCmdIdx);
-    expect(events.at(-1)).toMatchObject({
-      type: 'stack:landing:update',
-      status: 'failed',
-    });
-  });
-
-  it('does not call submitBranch when restackBranch fails', async () => {
-    let submitCalled = false;
-    const provider = makeStubProvider({
-      restackBranch: async () => {
-        throw new Error('restack failed');
-      },
+      classifyError: async () => ({ kind: 'provider-failure', operation: 'branch-restack', message: 'restack failed', recoverable: false }),
       submitBranch: async () => {
         submitCalled = true;
         return makeResult('git-spice', ['branch', 'submit']);
@@ -731,98 +616,103 @@ describe('executeStackLanding — failure handling', () => {
     });
     await seedLayer(cwd);
 
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
-
-    await collectEvents(executeStackLanding(opts));
+    const events = await collectEvents(executeStackLanding(landingOptions(provider)));
     expect(submitCalled).toBe(false);
+    expect(events.some((event) => recoveryLifecycleTypes.has(event.type))).toBe(false);
+    expect(events.filter((event) => event.type === 'stack:provider:command')).toHaveLength(2);
+    expect(events.at(-1)).toMatchObject({ type: 'stack:landing:update', status: 'failed', reason: expect.stringContaining('restack failed') });
   });
 
-  it('persists failed landing state when restackBranch throws', async () => {
+  it('recovers a recoverable restack conflict, submits the branch, and completes landing', async () => {
+    initGitRepo(cwd);
+    let submitCalled = false;
     const provider = makeStubProvider({
       restackBranch: async () => {
-        throw new Error('restack error');
+        throw new GitSpiceCommandError('git-spice', ['branch', 'restack'], 2, 'conflict');
+      },
+      classifyError: async () => recoverableRestack,
+      getInterruptedOperation: async () => interruptedRestack,
+      continueInterruptedOperation: async () => makeResult('git-spice', ['rebase', 'continue']),
+      submitBranch: async () => {
+        submitCalled = true;
+        return makeResult('git-spice', ['branch', 'submit'], 'https://github.com/owner/repo/pull/42');
       },
     });
     await seedLayer(cwd);
 
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
+    const events = await collectEvents(executeStackLanding(landingOptions(provider)));
+    const types = events.map((event) => event.type);
+    expect(submitCalled).toBe(true);
+    expect(types).toContain('stack:landing:conflict:recovery:complete');
+    expect(events.find((event) => event.type === 'stack:landing:update' && (event as Record<string, unknown>).status === 'complete')).toBeDefined();
+    const restackCommandIndex = events.findIndex((event) =>
+      event.type === 'stack:provider:command' && ((event as { args?: string[] }).args ?? []).includes('restack'));
+    expect(types.indexOf('stack:landing:conflict:detected')).toBeGreaterThan(restackCommandIndex);
+  });
 
-    await collectEvents(executeStackLanding(opts));
+  it('persists failed state and skips submit when restack conflict recovery fails', async () => {
+    initGitRepo(cwd);
+    let submitCalled = false;
+    const provider = makeStubProvider({
+      restackBranch: async () => {
+        throw new GitSpiceCommandError('git-spice', ['branch', 'restack'], 2, 'conflict');
+      },
+      classifyError: async (_cwd, err) => err instanceof Error && err.message.includes('continue')
+        ? { kind: 'provider-failure', operation: 'branch-restack', message: 'continue failed', recoverable: false }
+        : recoverableRestack,
+      getInterruptedOperation: async () => interruptedRestack,
+      continueInterruptedOperation: async () => { throw new Error('continue failed'); },
+      abortInterruptedOperation: async () => makeResult('git-spice', ['rebase', 'abort']),
+      submitBranch: async () => {
+        submitCalled = true;
+        return makeResult('git-spice', ['branch', 'submit']);
+      },
+    });
+    await seedLayer(cwd);
 
+    const events = await collectEvents(executeStackLanding(landingOptions(provider)));
     const state = await loadStackState(cwd);
     const layer = state.layers.find((l) => l.prdId === 'test-prd');
+    expect(submitCalled).toBe(false);
+    expect(events.map((event) => event.type)).toContain('stack:landing:conflict:recovery:failed');
     expect(layer?.status).toBe('failed');
     expect(layer?.landing?.status).toBe('failed');
-    expect(layer?.landing?.reason).toContain('restack error');
-    expect(layer?.landing?.completedAt).toBeTruthy();
+    expect(layer?.landing?.reason).toMatch(/^Restack conflict recovery failed:.*abort succeeded/);
+  });
+
+  it('prevents submit and persists failed state when post-recovery validation fails', async () => {
+    initGitRepo(cwd);
+    let submitCalled = false;
+    const provider = makeStubProvider({
+      restackBranch: async () => { throw new Error('restack conflict'); },
+      classifyError: async () => recoverableRestack,
+      getInterruptedOperation: async () => interruptedRestack,
+      continueInterruptedOperation: async () => makeResult('git-spice', ['rebase', 'continue']),
+      submitBranch: async () => {
+        submitCalled = true;
+        return makeResult('git-spice', ['branch', 'submit']);
+      },
+    });
+    await seedLayer(cwd);
+
+    const events = await collectEvents(executeStackLanding(landingOptions(provider, {
+      postRecoveryValidationCommands: ['node -e "process.exit(7)"'],
+    })));
+    const layer = (await loadStackState(cwd)).layers.find((l) => l.prdId === 'test-prd');
+    expect(submitCalled).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'validation:complete', passed: false }));
+    expect(layer?.landing?.status).toBe('failed');
+    expect(layer?.landing?.reason).toMatch(/^Restack conflict recovery failed:/);
   });
 
   it('emits stack:landing:update failed when submitBranch throws', async () => {
-    const provider = makeStubProvider({
-      submitBranch: async () => {
-        throw new Error('git-spice: submit failed');
-      },
-    });
+    const provider = makeStubProvider({ submitBranch: async () => { throw new Error('git-spice: submit failed'); } });
     await seedLayer(cwd);
 
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
-
-    const events = await collectEvents(executeStackLanding(opts));
-    const failEvent = events.find(
-      (e) =>
-        e.type === 'stack:landing:update' &&
-        (e as Record<string, unknown>).status === 'failed',
-    );
-    expect(failEvent).toMatchObject({
-      type: 'stack:landing:update',
-      status: 'failed',
+    const events = await collectEvents(executeStackLanding(landingOptions(provider)));
+    expect(events.find((e) => e.type === 'stack:landing:update' && (e as Record<string, unknown>).status === 'failed')).toMatchObject({
       reason: expect.stringContaining('git-spice: submit failed'),
     });
-  });
-
-  it('persists failed landing state when trackBranch throws', async () => {
-    const provider = makeStubProvider({
-      trackBranch: async () => {
-        throw new Error('track error');
-      },
-    });
-    await seedLayer(cwd);
-
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
-
-    await collectEvents(executeStackLanding(opts));
-
-    const state = await loadStackState(cwd);
-    const layer = state.layers.find((l) => l.prdId === 'test-prd');
-    expect(layer?.landing?.status).toBe('failed');
-    expect(layer?.landing?.reason).toContain('track error');
-    expect(layer?.landing?.completedAt).toBeTruthy();
-    // Layer status must transition to 'failed' when landing fails
-    expect(layer?.status).toBe('failed');
   });
 });
 
@@ -961,9 +851,6 @@ describe('stackLanding phase — non-stacked builds', () => {
   });
 });
 
-
-import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
 
 /**
  * Create a fake `gh` binary in a temp bin dir.
@@ -1142,9 +1029,6 @@ describe('executeStackLanding — PR auto-merge', () => {
 });
 
 
-
-import { readFileSync } from 'node:fs';
-import type { PullRequestMetadata } from '@eforge-build/engine/pr-metadata';
 
 function makeFakeGhForMetadata(binDir: string, editBehavior: 'success' | 'fail'): void {
   execFileSync('mkdir', ['-p', binDir]);

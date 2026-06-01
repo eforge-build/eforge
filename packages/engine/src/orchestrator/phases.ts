@@ -1019,6 +1019,13 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
   // finalize, so finalize must persist the actual outcome.
   if (effectiveLandingAction !== 'pr') return;
 
+  // --- eforge:region plan-02-stack-landing-integration-docs ---
+  const postRecoveryValidationCommands = Array.from(new Set([
+    ...(ctx.postMergeCommands ?? []),
+    ...(ctx.validateCommands ?? []),
+  ]));
+  // --- eforge:endregion plan-02-stack-landing-integration-docs ---
+
   // Delegate full landing to the stacking/landing helper, but observe the
   // terminal stack landing status so a provider failure cannot be mistaken for
   // a successful PR landing.
@@ -1037,6 +1044,12 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     cleanupPrdFilePath: ctx.cleanupPrdFilePath,
     prAutoMergePolicy: ctx.prAutoMergePolicy,
     landingAutoMerge: ctx.landingAutoMerge,
+    // --- eforge:region plan-02-stack-landing-integration-docs ---
+    mergeResolver: ctx.mergeResolver,
+    postRecoveryValidationCommands,
+    validationTimeoutMs: ctx.postMergeCommandTimeoutMs,
+    signal: ctx.signal,
+    // --- eforge:endregion plan-02-stack-landing-integration-docs ---
     // Static metadata is the base; metadataFactory adds provenance when cleanup context is available.
     metadata: renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker }),
     metadataFactory: ctx.cleanupPlanSet && ctx.cleanupOutputDir ? async () => {

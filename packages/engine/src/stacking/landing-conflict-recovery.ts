@@ -87,7 +87,10 @@ export async function* recoverLandingConflict(
 
       if (unmergedFiles.length > 0 && opts.mergeResolver) {
         const conflict = toMergeConflictInfo(opts.stackContext, operation, unmergedFiles);
-        await opts.mergeResolver(opts.mergeWorktreePath, conflict);
+        const resolved = await opts.mergeResolver(opts.mergeWorktreePath, conflict);
+        if (!resolved) {
+          return yield* failRecovery(opts, attempt, 'Merge resolver reported it could not resolve and stage the remaining conflicts', operation);
+        }
         unmergedFiles = await getUnmergedFiles(opts.mergeWorktreePath);
       }
     } catch (err) {
@@ -240,6 +243,7 @@ async function* runPostRecoveryValidation(opts: LandingConflictRecoveryOptions):
 // --- eforge:region marker-cleanup ---
 async function resolveTemporaryMarkerConflicts(cwd: string, conflictedFiles: string[]): Promise<ConflictResolution> {
   const changedFiles: string[] = [];
+  const fullyResolvedFiles: string[] = [];
   for (const file of conflictedFiles) {
     const absolutePath = resolve(cwd, file);
     let content: string;
@@ -249,22 +253,24 @@ async function resolveTemporaryMarkerConflicts(cwd: string, conflictedFiles: str
       continue;
     }
     const resolved = resolveConflictHunks(content);
-    if (resolved === undefined || resolved === content) continue;
-    await writeFile(absolutePath, resolved, 'utf8');
+    if (resolved === undefined || resolved.content === content) continue;
+    await writeFile(absolutePath, resolved.content, 'utf8');
     changedFiles.push(file);
+    if (resolved.fullyResolved) fullyResolvedFiles.push(file);
   }
 
-  if (changedFiles.length > 0) {
-    await retryOnLock(() => exec('git', ['add', '--', ...changedFiles], { cwd }), cwd);
+  if (fullyResolvedFiles.length > 0) {
+    await retryOnLock(() => exec('git', ['add', '--', ...fullyResolvedFiles], { cwd }), cwd);
   }
 
   return { changedFiles };
 }
 
-function resolveConflictHunks(content: string): string | undefined {
+function resolveConflictHunks(content: string): { content: string; fullyResolved: boolean } | undefined {
   const lines = content.split(/(?<=\n)/);
   let index = 0;
   let changed = false;
+  let fullyResolved = true;
   const output: string[] = [];
 
   while (index < lines.length) {
@@ -277,13 +283,17 @@ function resolveConflictHunks(content: string): string | undefined {
     const parsed = parseConflictHunk(lines, index);
     if (!parsed) return undefined;
     const replacement = resolveParsedHunk(parsed.current, parsed.incoming);
-    if (replacement === undefined) return undefined;
-    output.push(replacement);
-    changed = true;
+    if (replacement === undefined) {
+      output.push(lines.slice(index, parsed.nextIndex).join(''));
+      fullyResolved = false;
+    } else {
+      output.push(replacement);
+      changed = true;
+    }
     index = parsed.nextIndex;
   }
 
-  return changed ? output.join('') : undefined;
+  return changed ? { content: output.join(''), fullyResolved } : undefined;
 }
 
 function parseConflictHunk(

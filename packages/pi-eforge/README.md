@@ -29,7 +29,7 @@ Then, in your project:
 - The `/eforge:extend` skill for assisted eforge TypeScript extension authoring
 - The `/eforge:playbook` skill for creating, editing, running, and managing reusable automation playbooks
 - The `/eforge:recover` skill for reviewing and acting on failed-PRD recovery verdicts
-- The `/eforge:stack:sync` skill and `eforge_stack_sync` tool for manually synchronizing the git-spice stack, previewing with `--dry-run`, interpreting sync reports (including `deferred` and `retry-deferred` outcomes when active builds overlap the stack), and recovering from conflicts (requires git-spice installed and `git-spice repo init` run in the repository)
+- The `/eforge:stack:sync` skill and `eforge_stack_sync` tool for manually synchronizing the git-spice stack, previewing with `--dry-run`, interpreting sync reports (including deferred outcomes and retry-deferred triggers when active builds overlap the stack), and recovering from manual sync conflicts (requires git-spice installed and `git-spice repo init` run in the repository)
 - The `/eforge:workflow` skill for configuring the eforge workflow preset (landing action, stacking, PR settings, and daemon-owned after-build sync via `stacking.sync.afterBuild`) through a native Pi select-overlay wizard, including `/eforge:workflow:init` (initial setup) and `/eforge:workflow:reconfigure` (change the active preset)
 - Ambient status display showing active profile, queue count, and build progress (passive — does not start the daemon)
 - Orchestrator decision events (`plan:build:decision`) flow through the daemon event stream unchanged. Rich live rendering (timeline track, decision detail, and build activity) lives in the monitor UI.

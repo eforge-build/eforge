@@ -13,10 +13,17 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { EforgeEvent } from '../events.js';
-import type { ProviderCommandResult, StackProviderAdapter } from './provider.js';
+import type { MergeResolver } from '../worktree-ops.js';
+import type {
+  ProviderCommandResult,
+  StackProviderAdapter,
+  StackProviderErrorClassification,
+} from './provider.js';
 import type { StackBaseContext } from './base-resolver.js';
 import type { LandingPublicationAction, StackLayer } from './types.js';
 import { updateStackLayerLanding, updateStackLayerStatusAndLanding } from './state.js';
+import { recoverLandingConflict, type LandingConflictRecoveryResult } from './landing-conflict-recovery.js';
+import { stackProviderCommandEvent, stackProviderCommandEventFromError } from './provider-events.js';
 // PR URL parsing and redaction are delegated to provider helpers (parsePrUrl, isValidPrUrl, redactMessage)
 // to avoid direct git-spice imports in orchestration code.
 import { runCleanup } from '../landing.js';
@@ -26,57 +33,6 @@ import { editPullRequest } from '../worktree-ops.js';
 import type { PullRequestMetadata } from '../pr-metadata.js';
 
 const execFileAsync = promisify(execFile);
-
-type ProviderCommandErrorLike = {
-  command?: unknown;
-  args?: unknown;
-  exitCode?: unknown;
-};
-
-type ProviderCommandEventResult = Omit<ProviderCommandResult, 'exitCode'> & { exitCode: number | null };
-
-function stackProviderCommandEvent(
-  providerName: StackBaseContext['provider'],
-  branch: string,
-  result: ProviderCommandEventResult,
-  redact: (msg: string) => string,
-): EforgeEvent {
-  return {
-    timestamp: new Date().toISOString(),
-    type: 'stack:provider:command',
-    provider: providerName,
-    command: redact(result.command),
-    args: result.args.map((arg) => redact(arg)),
-    exitCode: result.exitCode,
-    branch,
-  } as EforgeEvent;
-}
-
-function stackProviderCommandEventFromError(
-  providerName: StackBaseContext['provider'],
-  branch: string,
-  err: unknown,
-  redact: (msg: string) => string,
-): EforgeEvent | undefined {
-  if (err === null || typeof err !== 'object') return undefined;
-  const candidate = err as ProviderCommandErrorLike;
-  if (
-    typeof candidate.command !== 'string' ||
-    !Array.isArray(candidate.args) ||
-    !candidate.args.every((arg): arg is string => typeof arg === 'string') ||
-    (typeof candidate.exitCode !== 'number' && candidate.exitCode !== null)
-  ) {
-    return undefined;
-  }
-
-  return stackProviderCommandEvent(providerName, branch, {
-    command: candidate.command,
-    args: candidate.args,
-    stdout: '',
-    stderr: '',
-    exitCode: candidate.exitCode,
-  }, redact);
-}
 
 // ---------------------------------------------------------------------------
 // Context
@@ -115,6 +71,18 @@ export interface StackLandingOptions {
    * back to `metadata` if present, or skip the edit entirely.
    */
   metadataFactory?: () => Promise<PullRequestMetadata>;
+  // --- eforge:region plan-02-stack-landing-integration-docs ---
+  /** Optional merge resolver used as fallback after deterministic conflict cleanup. */
+  mergeResolver?: MergeResolver;
+  /** Validation commands to run after provider conflict recovery and before submit. */
+  postRecoveryValidationCommands?: string[];
+  /** Timeout in milliseconds for post-recovery validation commands. */
+  validationTimeoutMs?: number;
+  /** Abort signal propagated to post-recovery validation. */
+  signal?: AbortSignal;
+  /** Maximum provider conflict recovery attempts. Defaults to the recovery helper's policy. */
+  maxConflictRecoveryAttempts?: number;
+  // --- eforge:endregion plan-02-stack-landing-integration-docs ---
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +112,51 @@ async function discoverPrUrlViaGh(
     return undefined;
   }
 }
+
+// --- eforge:region plan-02-stack-landing-integration-docs ---
+function isRecoverableRestackConflict(
+  classification: StackProviderErrorClassification | undefined,
+): classification is StackProviderErrorClassification {
+  return classification?.kind === 'recoverable-conflict' && classification.recoverable === true;
+}
+
+function providerCanRecoverLandingConflict(provider: StackProviderAdapter): boolean {
+  return provider.classifyError !== undefined &&
+    provider.getInterruptedOperation !== undefined &&
+    provider.continueInterruptedOperation !== undefined;
+}
+
+async function classifyProviderError(
+  provider: StackProviderAdapter,
+  mergeWorktreePath: string,
+  err: unknown,
+): Promise<StackProviderErrorClassification | undefined> {
+  if (!provider.classifyError) return undefined;
+  try {
+    return await provider.classifyError(mergeWorktreePath, err);
+  } catch {
+    return undefined;
+  }
+}
+
+async function* consumeRecovery(
+  recovery: AsyncGenerator<EforgeEvent, LandingConflictRecoveryResult>,
+): AsyncGenerator<EforgeEvent, LandingConflictRecoveryResult> {
+  while (true) {
+    const next = await recovery.next();
+    if (next.done === true) return next.value;
+    yield next.value;
+  }
+}
+
+function restackRecoveryFailureReason(result: LandingConflictRecoveryResult | undefined): string {
+  const reason = result?.reason ?? 'Recovery did not complete';
+  const abortOutcome = result?.abortAttempted === true
+    ? ` (${result.abortSucceeded ? 'abort succeeded' : 'abort failed'})`
+    : '';
+  return `Restack conflict recovery failed: ${reason}${abortOutcome}`;
+}
+// --- eforge:endregion plan-02-stack-landing-integration-docs ---
 
 // ---------------------------------------------------------------------------
 // Stack landing generator
@@ -266,33 +279,75 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   }
 
   // Step 3: Restack branch so it sits atop the latest base tip before submit
-  let restackResult: ProviderCommandResult;
   try {
-    restackResult = await provider.restackBranch(mergeWorktreePath);
+    const restackResult = await provider.restackBranch(mergeWorktreePath);
     yield stackProviderCommandEvent(providerName, branch, restackResult, redact);
   } catch (err) {
     const commandEvent = stackProviderCommandEventFromError(providerName, branch, err, redact);
     if (commandEvent) yield commandEvent;
-    const reason = redact(err instanceof Error ? err.message : String(err));
-    const failedAt = ts();
-    await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
-      action: landingAction,
-      status: 'failed',
-      reason,
-      startedAt,
-      completedAt: failedAt,
-    });
-    yield {
-      timestamp: failedAt,
-      type: 'stack:landing:update',
-      prdId,
-      stackId,
-      action: landingAction,
-      branch,
-      status: 'failed',
-      reason,
-    } as EforgeEvent;
-    return;
+
+    // --- eforge:region plan-02-stack-landing-integration-docs ---
+    const classification = await classifyProviderError(provider, mergeWorktreePath, err);
+    if (isRecoverableRestackConflict(classification) && providerCanRecoverLandingConflict(provider)) {
+      const recoveryResult = yield* consumeRecovery(recoverLandingConflict({
+        cwd,
+        mergeWorktreePath,
+        stackContext,
+        provider,
+        classification,
+        mergeResolver: opts.mergeResolver,
+        maxAttempts: opts.maxConflictRecoveryAttempts,
+        postRecoveryValidationCommands: opts.postRecoveryValidationCommands,
+        validationTimeoutMs: opts.validationTimeoutMs,
+        signal: opts.signal,
+      }));
+      if (recoveryResult.recovered) {
+        // Recovery completed the interrupted restack; continue through the existing submit path.
+      } else {
+        const reason = restackRecoveryFailureReason(recoveryResult);
+        const failedAt = ts();
+        await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
+          action: landingAction,
+          status: 'failed',
+          reason,
+          startedAt,
+          completedAt: failedAt,
+        });
+        yield {
+          timestamp: failedAt,
+          type: 'stack:landing:update',
+          prdId,
+          stackId,
+          action: landingAction,
+          branch,
+          status: 'failed',
+          reason,
+        } as EforgeEvent;
+        return;
+      }
+    // --- eforge:endregion plan-02-stack-landing-integration-docs ---
+    } else {
+      const reason = redact(err instanceof Error ? err.message : String(err));
+      const failedAt = ts();
+      await updateStackLayerStatusAndLanding(cwd, prdId, 'failed', {
+        action: landingAction,
+        status: 'failed',
+        reason,
+        startedAt,
+        completedAt: failedAt,
+      });
+      yield {
+        timestamp: failedAt,
+        type: 'stack:landing:update',
+        prdId,
+        stackId,
+        action: landingAction,
+        branch,
+        status: 'failed',
+        reason,
+      } as EforgeEvent;
+      return;
+    }
   }
 
   // Step 4: Submit the branch as a PR

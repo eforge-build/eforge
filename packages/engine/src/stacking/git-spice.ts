@@ -220,13 +220,17 @@ export class GitSpiceAdapter {
     }
 
     if (err instanceof GitSpiceCommandError) {
-      const operation = operationFromArgs(err.args);
+      let operation = operationFromArgs(err.args);
       const diagnostic = redactProviderMessage(`${err.stdout}\n${err.stderr}\n${err.message}`);
       if (AUTH_DIAGNOSTIC_RE.test(diagnostic)) return classification('auth', operation, diagnostic, false);
       if (NETWORK_DIAGNOSTIC_RE.test(diagnostic)) return classification('network', operation, diagnostic, false);
 
       const hasUnmergedPaths = await repoHasUnmergedPaths(cwd);
-      if (operation === 'branch-restack' && (CONFLICT_DIAGNOSTIC_RE.test(diagnostic) || hasUnmergedPaths)) {
+      const hasConflictDiagnostic = CONFLICT_DIAGNOSTIC_RE.test(diagnostic);
+      if (operation === 'unknown' && isRebaseContinueArgs(err.args) && (hasConflictDiagnostic || hasUnmergedPaths)) {
+        operation = 'branch-restack';
+      }
+      if (operation === 'branch-restack' && (hasConflictDiagnostic || hasUnmergedPaths)) {
         return {
           kind: 'recoverable-conflict',
           operation,
@@ -322,6 +326,10 @@ function operationFromArgs(args: string[]): StackProviderOperationKind {
   if (joined === 'stack restack') return 'stack-restack';
   if (joined === 'repo sync') return 'repo-sync';
   return 'unknown';
+}
+
+function isRebaseContinueArgs(args: string[]): boolean {
+  return args.join(' ') === 'rebase continue';
 }
 
 function conflictKindFromDiagnostic(diagnostic: string): StackProviderConflictKind {

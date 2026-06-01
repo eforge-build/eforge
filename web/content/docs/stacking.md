@@ -80,6 +80,14 @@ git-spice repo init
 
 This writes a local tracking file that git-spice uses to maintain branch relationships. If git-spice is not available, eforge fails the build with a clear error message.
 
+## Stacked PR landing conflict recovery
+
+During stacked builds with `landing.action: pr`, eforge restacks the artifact branch before submitting it. If the stack provider classifies that restack failure as a recoverable conflict, eforge attempts automatic provider-encapsulated recovery before failing the landing step.
+
+Recovery first cleans up deterministic temporary plan-ID region marker conflicts. If unmerged files remain, eforge falls back to the merge-conflict resolver agent. The stack provider owns the continue and abort operations; eforge records provider commands as events without hard-coding git-spice arguments.
+
+If recovery succeeds, eforge runs any configured post-merge/validation commands and then submits the PR normally. Manual recovery is still required for non-recoverable provider failures, failed automatic recovery, and conflicts from `eforge stack sync`.
+
 ## Stack sync
 
 When an upstream PR merges, GitHub updates downstream PR bases, but your local artifact branches still need to sync and restack. Use one of these task surfaces:
@@ -130,7 +138,7 @@ When sync runs while active builds are in progress, branches whose worktrees ove
 
 ### Conflict recovery
 
-When sync returns `outcome: conflict`, a merge conflict occurred during restack. To recover:
+When sync returns `outcome: conflict`, a merge conflict occurred during manual stack sync restack. This is separate from stacked PR landing, which attempts automatic provider-encapsulated recovery for provider-classified recoverable restack conflicts. To recover a sync conflict:
 
 1. Run `git status` to see the conflicting files.
 2. Resolve the conflicts in the affected files.
