@@ -163,6 +163,17 @@ export function isRetryableInfrastructureSubtype(subtype: AgentTerminalSubtype):
   return subtype === 'error_transient_transport' || subtype === 'error_pi_tool_infrastructure';
 }
 
+export class EvaluatorNoVerdictsError extends Error {
+  constructor(message = 'Evaluator produced no verdicts; review-fixer changes remain uncommitted.') {
+    super(message);
+    this.name = 'EvaluatorNoVerdictsError';
+  }
+}
+
+export function isEvaluatorNoVerdictsError(err: unknown): err is EvaluatorNoVerdictsError {
+  return err instanceof EvaluatorNoVerdictsError;
+}
+
 /** Extract an agent ID from attempt events, with a deterministic fallback. */
 function extractAgentId(events: readonly EforgeEvent[], fallback: string): string {
   for (const ev of events) {
@@ -1109,6 +1120,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     agent: 'evaluator',
     maxAttempts: 2,
     retryableSubtypes: RETRYABLE_MAX_TURNS_TRANSPORT_AND_INFRA,
+    shouldRetry: (info) => isEvaluatorNoVerdictsError(info.error),
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const planId = (info.prevInput as EvaluatorContinuationInput).planId ?? '';
@@ -1234,7 +1246,7 @@ export function getPolicy(role: AgentRole): RetryPolicy<unknown> {
 function classifyError(err: unknown): AgentTerminalSubtype | undefined {
   const classified = classifyAgentTerminalSubtype(err);
   if (classified) return classified;
-  if (isPlannerSubmissionError(err)) return 'error_during_execution';
+  if (isPlannerSubmissionError(err) || isEvaluatorNoVerdictsError(err)) return 'error_during_execution';
   return undefined;
 }
 

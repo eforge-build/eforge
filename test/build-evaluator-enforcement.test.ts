@@ -206,6 +206,79 @@ describe('build evaluator enforcement stage', () => {
     expect(await committedFile(repo, 'src.txt')).not.toContain('rejected reviewer line 18');
   });
 
+  it('retries a normal no-verdict evaluator completion and commits accepted verdicts from the continuation', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+    await writeRepoFile(repo, 'src.txt', 'implementation\nreview fix\n');
+
+    class MutatingAfterFirstRunHarness extends StubHarness {
+      private runCount = 0;
+
+      override async *run(
+        options: AgentRunOptions,
+        agent: AgentRole,
+        planId?: string,
+      ): AsyncGenerator<EforgeEvent> {
+        this.runCount += 1;
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+        }
+        if (this.runCount === 1) {
+          await writeRepoFile(repo, 'src.txt', 'implementation\nreview fix\nmutated after first evaluator\n');
+        } else if (this.runCount === 2) {
+          await writeRepoFile(repo, 'src.txt', 'implementation\nreview fix\n');
+        }
+      }
+    }
+
+    const harness = new MutatingAfterFirstRunHarness([
+      { text: 'I have thoughts but no structured verdicts.' },
+      {
+        toolCalls: [
+          {
+            tool: 'get_evaluation_diff',
+            toolUseId: 'diff-2',
+            input: { file: 'src.txt' },
+            output: '',
+          },
+          {
+            tool: 'submit_evaluation_verdicts',
+            toolUseId: 'eval-2',
+            input: { verdicts: [{ file: 'src.txt', action: 'accept', reason: 'Correct' }] },
+            output: '',
+          },
+        ],
+      },
+    ]);
+    const ctx = makeCtx(repo, harness, resetTarget);
+
+    const events = await collect(getBuildStage('evaluate')(ctx));
+
+    const retries = events.filter((e): e is Extract<EforgeEvent, { type: 'agent:retry' }> => e.type === 'agent:retry');
+    expect(retries).toHaveLength(1);
+    expect(retries[0]).toMatchObject({ agent: 'evaluator', label: 'evaluator-continuation', planId: ctx.planId });
+    const continuations = events.filter((e): e is Extract<EforgeEvent, { type: 'plan:build:evaluate:continuation' }> => e.type === 'plan:build:evaluate:continuation');
+    expect(continuations).toHaveLength(1);
+    expect(continuations[0]).toMatchObject({ planId: ctx.planId, attempt: 1, maxContinuations: 1 });
+    expect(harness.prompts).toHaveLength(2);
+    expect(harness.prompts[1]).toContain('Continuation Context');
+    expect(harness.prompts[1]).toContain('reusing the same immutable evaluation snapshot');
+    const diffResults = events.filter((e): e is Extract<EforgeEvent, { type: 'agent:tool_result' }> => e.type === 'agent:tool_result' && e.tool === 'get_evaluation_diff');
+    expect(diffResults).toHaveLength(1);
+    expect(diffResults[0].output).toContain('review fix');
+    expect(diffResults[0].output).not.toContain('mutated after first evaluator');
+    expect(events.find(e => e.type === 'plan:build:evaluate:complete')).toBeDefined();
+    expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
+    const headContent = await committedFile(repo, 'src.txt');
+    expect(headContent).toContain('review fix');
+    expect(headContent).not.toContain('mutated after first evaluator');
+    expect(ctx.buildFailed).toBeUndefined();
+  });
+
   it('fails the build without an evaluation commit when there are candidate changes but the evaluator produces no verdicts', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src.txt', 'base\n');
@@ -216,12 +289,19 @@ describe('build evaluator enforcement stage', () => {
     const builderHead = await head(repo);
     await writeRepoFile(repo, 'src.txt', 'implementation\nreview\n');
 
-    const ctx = makeCtx(repo, new StubHarness([{ text: 'I have thoughts but no verdicts.' }]), resetTarget);
+    const ctx = makeCtx(repo, new StubHarness([
+      { text: 'I have thoughts but no verdicts.' },
+      { text: 'I still have no verdicts.' },
+    ]), resetTarget);
     const events = await collect(getBuildStage('evaluate')(ctx));
 
+    const retries = events.filter((e): e is Extract<EforgeEvent, { type: 'agent:retry' }> => e.type === 'agent:retry');
+    expect(retries).toHaveLength(1);
+    expect(retries[0]).toMatchObject({ agent: 'evaluator', label: 'evaluator-continuation', planId: ctx.planId });
+    expect(events.filter(e => e.type === 'plan:build:evaluate:continuation')).toHaveLength(1);
     const failed = events.find(e => e.type === 'plan:build:failed');
     expect(failed).toBeDefined();
-    expect(failed?.error).toContain('no verdicts');
+    expect(failed?.error).toContain('Evaluator produced no verdicts');
     expect(ctx.buildFailed).toBe(true);
     // No agent:warning for evaluation-verdicts-missing — now a hard failure
     expect(events.find(e => e.type === 'agent:warning' && e.code === 'evaluation-verdicts-missing')).toBeUndefined();
@@ -245,6 +325,7 @@ describe('build evaluator enforcement stage', () => {
     const ctx = makeCtx(repo, new StubHarness([{ error: new Error('evaluator backend failed') }]), resetTarget);
     const events = await collect(getBuildStage('evaluate')(ctx));
 
+    expect(events.find(e => e.type === 'agent:retry')).toBeUndefined();
     const failed = events.find(e => e.type === 'plan:build:failed');
     expect(failed).toBeDefined();
     const failedError = (failed as Extract<EforgeEvent, { type: 'plan:build:failed' }>).error;
@@ -304,6 +385,7 @@ describe('build evaluator enforcement stage', () => {
       { text: reviewIssueXml },          // reviewer: finds issue
       { text: 'Applied fix.' },           // review-fixer: text only (but FixingHarness mutates file)
       { text: 'No verdicts produced.' },  // evaluator: no verdicts
+      { text: 'Still no verdicts produced.' },  // evaluator continuation: no verdicts
     ]);
 
     const ctx = makeCtx(repo, harness, resetTarget);
@@ -395,6 +477,7 @@ describe('build evaluator enforcement stage', () => {
       { text: reviewIssueXml },         // reviewer: finds issue
       { text: 'Applied fix.' },          // review-fixer: mutates file via FixingHarness
       { text: 'No verdicts produced.' }, // evaluator: no verdicts
+      { text: 'Still no verdicts produced.' }, // evaluator continuation: no verdicts
     ]);
 
     const ctx = makeCtx(repo, harness, resetTarget);
@@ -431,7 +514,10 @@ describe('build evaluator enforcement stage', () => {
       }
     }
 
-    const ctx = makeCtx(repo, new MutatingHarness([{ text: 'No verdicts.' }]), resetTarget);
+    const ctx = makeCtx(repo, new MutatingHarness([
+      { text: 'No verdicts.' },
+      { text: 'Still no verdicts.' },
+    ]), resetTarget);
     const events = await collect(getBuildStage('evaluate')(ctx));
 
     const failed = events.find(e => e.type === 'plan:build:failed');
