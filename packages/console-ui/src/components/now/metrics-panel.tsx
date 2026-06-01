@@ -1,7 +1,7 @@
 /**
- * MetricsPanel — at-a-glance build health: a land-vs-fail donut from Git stack
- * history and a recent-run duration strip colored by outcome. Replaces dense
- * text-only summaries with quick-read visuals.
+ * MetricsPanel — at-a-glance build health from actual build/resume run history.
+ * Enqueue and compile bookkeeping runs are excluded so quick-read visuals match
+ * user-visible build outcomes.
  */
 import * as React from 'react';
 import { Bar, BarChart, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts';
@@ -74,7 +74,7 @@ function ThroughputBars({ model }: { model: NowMetricsPanel }) {
   return (
     <div>
       <p className="mb-1 text-10px uppercase tracking-wide text-muted-foreground">
-        Recent run durations (oldest → newest)
+        Recent build durations (oldest → newest)
       </p>
       <ChartContainer config={DURATION_CONFIG} className="aspect-auto h-20 w-full">
         <BarChart data={model.runBars} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} barCategoryGap={2}>
@@ -100,7 +100,7 @@ function ThroughputBars({ model }: { model: NowMetricsPanel }) {
 }
 
 export function MetricsPanel({ model }: MetricsPanelProps) {
-  if (!model.hasStack && model.runBars.length === 0) return null;
+  if (!model.hasHealthData && model.runBars.length === 0) return null;
 
   return (
     <Card className="bg-card/50 border-border/60">
@@ -108,7 +108,7 @@ export function MetricsPanel({ model }: MetricsPanelProps) {
         <CardTitle className="text-sm font-semibold text-muted-foreground">Build health</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-3">
-        {model.hasStack && <LandRateDonut model={model} />}
+        {model.hasHealthData && <LandRateDonut model={model} />}
         <ThroughputBars model={model} />
       </CardContent>
     </Card>

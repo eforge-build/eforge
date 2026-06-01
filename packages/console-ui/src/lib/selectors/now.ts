@@ -196,7 +196,7 @@ export interface NowDashboardModel {
   stackSync: NowStackSyncViewModel | null;
   activity: NowActivityPreviewItem[];
   activityHiddenCount: number;
-  /** At-a-glance build-health visuals (land rate donut + throughput bars). */
+  /** At-a-glance build-health visuals from build run history. */
   metrics: NowMetricsPanel;
   hasSnapshot: boolean;
 }
@@ -991,7 +991,7 @@ export function selectNowDashboardModel(
   const { items: activity, hiddenCount: activityHiddenCount } = selectNowRecentActivity(
     state.recentActivity,
   );
-  const metrics = selectNowMetricsPanel(stack, allRuns);
+  const metrics = selectNowMetricsPanel(allRuns);
 
   return {
     connectionBanner,
