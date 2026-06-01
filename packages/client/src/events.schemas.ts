@@ -92,6 +92,21 @@ export const EvaluationIssueOutcomeSchema = Type.Union(['resolved', 'false_posit
 /** Wire schema for the supported stack providers. */
 export const StackProviderSchema = Type.Literal('git-spice');
 
+/** Wire schema for provider operations that may be interrupted by conflicts. */
+export const StackProviderOperationKindSchema = Type.Union([
+  Type.Literal('branch-restack'),
+  Type.Literal('stack-restack'),
+  Type.Literal('repo-sync'),
+  Type.Literal('unknown'),
+]);
+
+/** Wire schema for provider conflict mechanisms. */
+export const StackProviderConflictKindSchema = Type.Union([
+  Type.Literal('git-rebase'),
+  Type.Literal('git-merge'),
+  Type.Literal('unknown'),
+]);
+
 /** Wire schema for the shorthand landing publication actions for stacked builds. */
 export const LandingPublicationActionSchema = Type.Union([
   Type.Literal('pr'),
@@ -2130,7 +2145,7 @@ const EforgeEventVariantsSchema = Type.Union([
     provider: StackProviderSchema,
     command: Type.String(),
     args: Type.Optional(Type.Array(Type.String())),
-    exitCode: Type.Integer(),
+    exitCode: Type.Union([Type.Integer(), Type.Null()]),
     branch: Type.Optional(Type.String()),
   }),
   Type.Object({
@@ -2142,6 +2157,44 @@ const EforgeEventVariantsSchema = Type.Union([
     status: StackLandingStatusSchema,
     prUrl: Type.Optional(Type.String()),
     reason: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('stack:landing:conflict:detected'),
+    prdId: Type.String(),
+    stackId: Type.String(),
+    provider: StackProviderSchema,
+    branch: Type.String(),
+    operation: StackProviderOperationKindSchema,
+    conflictKind: StackProviderConflictKindSchema,
+    conflictedFiles: Type.Array(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('stack:landing:conflict:recovery:start'),
+    prdId: Type.String(),
+    stackId: Type.String(),
+    provider: StackProviderSchema,
+    branch: Type.String(),
+    attempt: Type.Integer({ minimum: 1 }),
+    maxAttempts: Type.Integer({ minimum: 1 }),
+  }),
+  Type.Object({
+    type: Type.Literal('stack:landing:conflict:recovery:complete'),
+    prdId: Type.String(),
+    stackId: Type.String(),
+    provider: StackProviderSchema,
+    branch: Type.String(),
+    attempts: Type.Integer({ minimum: 1 }),
+  }),
+  Type.Object({
+    type: Type.Literal('stack:landing:conflict:recovery:failed'),
+    prdId: Type.String(),
+    stackId: Type.String(),
+    provider: StackProviderSchema,
+    branch: Type.String(),
+    attempts: Type.Integer({ minimum: 0 }),
+    reason: Type.String(),
+    abortAttempted: Type.Boolean(),
+    abortSucceeded: Type.Boolean(),
   }),
   Type.Object({
     type: Type.Literal('stack:sync:start'),
@@ -2286,6 +2339,8 @@ export type AutoBuildSchedulerState = Static<typeof AutoBuildSchedulerStateSchem
 export type AutoBuildTransitionDetail = Static<typeof AutoBuildTransitionDetailSchema>;
 export type LandingAction = Static<typeof LandingActionSchema>;
 export type StackProvider = Static<typeof StackProviderSchema>;
+export type StackProviderOperationKind = Static<typeof StackProviderOperationKindSchema>;
+export type StackProviderConflictKind = Static<typeof StackProviderConflictKindSchema>;
 export type LandingPublicationAction = Static<typeof LandingPublicationActionSchema>;
 export type StackLayerStatus = Static<typeof StackLayerStatusSchema>;
 export type StackArtifactRef = Static<typeof StackArtifactRefSchema>;
@@ -2592,6 +2647,33 @@ export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEven
       error: {
         message: '/reason: blocking policy decisions require a non-empty reason',
         errors: [{ path: '/reason', message: 'blocking policy decisions require a non-empty reason' }],
+      },
+    };
+  }
+
+  if (
+    result.data.type === 'stack:landing:conflict:recovery:start' &&
+    result.data.attempt > result.data.maxAttempts
+  ) {
+    return {
+      success: false,
+      error: {
+        message: '/attempt: recovery attempt cannot exceed maxAttempts',
+        errors: [{ path: '/attempt', message: 'recovery attempt cannot exceed maxAttempts' }],
+      },
+    };
+  }
+
+  if (
+    result.data.type === 'stack:landing:conflict:recovery:failed' &&
+    result.data.abortSucceeded &&
+    !result.data.abortAttempted
+  ) {
+    return {
+      success: false,
+      error: {
+        message: '/abortSucceeded: abortSucceeded=true requires abortAttempted=true',
+        errors: [{ path: '/abortSucceeded', message: 'abortSucceeded=true requires abortAttempted=true' }],
       },
     };
   }

@@ -1,14 +1,19 @@
+import { execFile } from 'node:child_process';
 import { describe, it, expect } from 'vitest';
 import { writeFileSync, chmodSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { useTempDir } from './test-tmpdir.js';
 import {
   createGitSpiceAdapter,
+  GitSpiceCommandError,
   GitSpiceNotAvailableError,
   parseGitSpicePrUrl,
   redactProviderMessage,
 } from '@eforge-build/engine/stacking/git-spice';
 import { createProvider } from '@eforge-build/engine/stacking/provider';
+
+const exec = promisify(execFile);
 
 /**
  * Write a shell-script stub executable and mark it executable.
@@ -19,6 +24,28 @@ function makeStub(dir: string, name: string, script: string): string {
   writeFileSync(path, `#!/bin/sh\n${script}\n`);
   chmodSync(path, 0o755);
   return path;
+}
+
+async function initRepo(dir: string): Promise<void> {
+  await exec('git', ['init', '-b', 'main'], { cwd: dir });
+  await exec('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
+  await exec('git', ['config', 'user.name', 'Test User'], { cwd: dir });
+  writeFileSync(join(dir, 'file.txt'), 'base\n');
+  await exec('git', ['add', 'file.txt'], { cwd: dir });
+  await exec('git', ['commit', '-m', 'base'], { cwd: dir });
+}
+
+async function createUnmergedRepo(dir: string): Promise<void> {
+  await initRepo(dir);
+  await exec('git', ['checkout', '-b', 'ours'], { cwd: dir });
+  writeFileSync(join(dir, 'file.txt'), 'ours\n');
+  await exec('git', ['commit', '-am', 'ours'], { cwd: dir });
+  await exec('git', ['checkout', 'main'], { cwd: dir });
+  await exec('git', ['checkout', '-b', 'theirs'], { cwd: dir });
+  writeFileSync(join(dir, 'file.txt'), 'theirs\n');
+  await exec('git', ['commit', '-am', 'theirs'], { cwd: dir });
+  await exec('git', ['checkout', 'ours'], { cwd: dir });
+  await exec('git', ['merge', 'theirs'], { cwd: dir }).catch(() => undefined);
 }
 
 describe('GitSpiceAdapter', () => {
@@ -204,6 +231,81 @@ describe('GitSpiceAdapter', () => {
     await adapter.upstackOnto(dir, 'feature-a');
     const args = readFileSync(argsFile, 'utf8').trim();
     expect(args).toBe('upstack onto feature-a');
+  });
+
+  it('classifies branch restack conflict diagnostics as recoverable-conflict', async () => {
+    const dir = makeTempDir();
+    const adapter = createGitSpiceAdapter({});
+    const err = new GitSpiceCommandError(
+      'git-spice',
+      ['branch', 'restack'],
+      1,
+      'CONFLICT (content): resolve conflicts then run git rebase --continue',
+    );
+    const classification = await adapter.classifyError(dir, err);
+    expect(classification.kind).toBe('recoverable-conflict');
+    expect(classification.operation).toBe('branch-restack');
+    expect(classification.recoverable).toBe(true);
+  });
+
+  it('classifies branch restack as recoverable-conflict when unmerged files exist', async () => {
+    const dir = makeTempDir();
+    await createUnmergedRepo(dir);
+    const adapter = createGitSpiceAdapter({});
+    const err = new GitSpiceCommandError('git-spice', ['branch', 'restack'], 1, 'restack stopped');
+    const classification = await adapter.classifyError(dir, err);
+    expect(classification.kind).toBe('recoverable-conflict');
+    expect(classification.recoverable).toBe(true);
+  });
+
+  it('does not classify generic branch restack failures with no unmerged paths as recoverable', async () => {
+    const dir = makeTempDir();
+    await initRepo(dir);
+    const adapter = createGitSpiceAdapter({});
+    const err = new GitSpiceCommandError('git-spice', ['branch', 'restack'], 1, 'restack failed for unknown reason');
+    const classification = await adapter.classifyError(dir, err);
+    expect(classification.kind).toBe('provider-failure');
+    expect(classification.recoverable).toBe(false);
+  });
+
+  it('discovers interrupted branch restack details from git state', async () => {
+    const dir = makeTempDir();
+    await createUnmergedRepo(dir);
+    const adapter = createGitSpiceAdapter({});
+    const operation = await adapter.getInterruptedOperation(dir, {
+      kind: 'recoverable-conflict',
+      operation: 'branch-restack',
+      conflictKind: 'git-rebase',
+      message: 'conflict',
+      recoverable: true,
+    });
+    expect(operation?.branch).toBe('ours');
+    expect(operation?.conflictedFiles).toEqual(['file.txt']);
+    expect(operation?.conflictDiff).toContain('diff --cc file.txt');
+  });
+
+  it('continueInterruptedOperation returns rebase continue argv', async () => {
+    const dir = makeTempDir();
+    const argsFile = join(dir, 'args.txt');
+    const stub = makeStub(dir, 'git-spice', `echo "$@" >> "${argsFile}"`);
+    const adapter = createGitSpiceAdapter({ gitSpice: { command: stub } });
+    const result = await adapter.continueInterruptedOperation(dir, {
+      operation: 'branch-restack', conflictKind: 'git-rebase', conflictedFiles: [], conflictDiff: '',
+    });
+    expect(result.args).toEqual(['rebase', 'continue']);
+    expect(readFileSync(argsFile, 'utf8').trim()).toBe('rebase continue');
+  });
+
+  it('abortInterruptedOperation returns rebase abort argv', async () => {
+    const dir = makeTempDir();
+    const argsFile = join(dir, 'args.txt');
+    const stub = makeStub(dir, 'git-spice', `echo "$@" >> "${argsFile}"`);
+    const adapter = createGitSpiceAdapter({ gitSpice: { command: stub } });
+    const result = await adapter.abortInterruptedOperation(dir, {
+      operation: 'branch-restack', conflictKind: 'git-rebase', conflictedFiles: [], conflictDiff: '',
+    });
+    expect(result.args).toEqual(['rebase', 'abort']);
+    expect(readFileSync(argsFile, 'utf8').trim()).toBe('rebase abort');
   });
 });
 

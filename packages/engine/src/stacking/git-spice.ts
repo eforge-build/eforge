@@ -10,12 +10,21 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { ProviderCommandResult } from './provider.js';
+import type {
+  ProviderCommandResult,
+  StackProviderConflictKind,
+  StackProviderErrorClassification,
+  StackProviderInterruptedOperation,
+  StackProviderOperationKind,
+} from './provider.js';
 
 const execFileAsync = promisify(execFile);
 const GITHUB_PR_URL_PATTERN = 'https:\\/\\/github\\.com\\/[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+\\/pull\\/\\d+';
 const GITHUB_PR_URL_REGEX = new RegExp(GITHUB_PR_URL_PATTERN);
 const GITHUB_PR_URL_EXACT_REGEX = new RegExp(`^${GITHUB_PR_URL_PATTERN}$`);
+const CONFLICT_DIAGNOSTIC_RE = /conflict|could not apply|fix conflicts|resolve all conflicts|rebase in progress|rebase --continue|continue.*rebase/i;
+const AUTH_DIAGNOSTIC_RE = /authentication|authorization|permission denied|bad credentials|unauthorized|forbidden|token/i;
+const NETWORK_DIAGNOSTIC_RE = /network|timed out|timeout|could not resolve|connection refused|connection reset|temporary failure|tls|ssl/i;
 
 // ---------------------------------------------------------------------------
 // Error types
@@ -205,6 +214,61 @@ export class GitSpiceAdapter {
     return this.run(cwd, ['upstack', 'onto', target]);
   }
 
+  async classifyError(cwd: string, err: unknown): Promise<StackProviderErrorClassification> {
+    if (err instanceof GitSpiceNotAvailableError) {
+      return classification('tooling', 'unknown', err.message, false);
+    }
+
+    if (err instanceof GitSpiceCommandError) {
+      const operation = operationFromArgs(err.args);
+      const diagnostic = redactProviderMessage(`${err.stdout}\n${err.stderr}\n${err.message}`);
+      if (AUTH_DIAGNOSTIC_RE.test(diagnostic)) return classification('auth', operation, diagnostic, false);
+      if (NETWORK_DIAGNOSTIC_RE.test(diagnostic)) return classification('network', operation, diagnostic, false);
+
+      const hasUnmergedPaths = await repoHasUnmergedPaths(cwd);
+      if (operation === 'branch-restack' && (CONFLICT_DIAGNOSTIC_RE.test(diagnostic) || hasUnmergedPaths)) {
+        return {
+          kind: 'recoverable-conflict',
+          operation,
+          conflictKind: conflictKindFromDiagnostic(diagnostic),
+          message: diagnostic,
+          recoverable: true,
+        };
+      }
+
+      return classification('provider-failure', operation, diagnostic, false);
+    }
+
+    const message = redactProviderMessage(err instanceof Error ? err.message : String(err));
+    return classification('unknown', 'unknown', message, false);
+  }
+
+  async getInterruptedOperation(
+    cwd: string,
+    classificationResult: StackProviderErrorClassification,
+  ): Promise<StackProviderInterruptedOperation | undefined> {
+    if (classificationResult.kind !== 'recoverable-conflict' || !classificationResult.recoverable) return undefined;
+    const conflictedFiles = await getGitOutputLines(cwd, ['diff', '--name-only', '--diff-filter=U']);
+    if (conflictedFiles.length === 0) return undefined;
+    const branch = (await getGitOutput(cwd, ['branch', '--show-current'])).trim() || undefined;
+    const conflictDiff = await getGitOutput(cwd, ['diff']);
+    return {
+      operation: classificationResult.operation,
+      conflictKind: classificationResult.conflictKind ?? 'unknown',
+      ...(branch !== undefined && { branch }),
+      conflictedFiles,
+      conflictDiff,
+    };
+  }
+
+  async continueInterruptedOperation(cwd: string, _operation: StackProviderInterruptedOperation): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['rebase', 'continue']);
+  }
+
+  async abortInterruptedOperation(cwd: string, _operation: StackProviderInterruptedOperation): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['rebase', 'abort']);
+  }
+
   /**
    * Return the dry-run command preview for the given argv.
    *
@@ -250,6 +314,52 @@ export class GitSpiceAdapter {
   redactMessage(message: string): string {
     return redactProviderMessage(message);
   }
+}
+
+function operationFromArgs(args: string[]): StackProviderOperationKind {
+  const joined = args.join(' ');
+  if (joined === 'branch restack') return 'branch-restack';
+  if (joined === 'stack restack') return 'stack-restack';
+  if (joined === 'repo sync') return 'repo-sync';
+  return 'unknown';
+}
+
+function conflictKindFromDiagnostic(diagnostic: string): StackProviderConflictKind {
+  if (/merge/i.test(diagnostic) && !/rebase/i.test(diagnostic)) return 'git-merge';
+  if (/rebase|could not apply|continue/i.test(diagnostic)) return 'git-rebase';
+  return 'unknown';
+}
+
+function classification(
+  kind: StackProviderErrorClassification['kind'],
+  operation: StackProviderOperationKind,
+  message: string,
+  recoverable: boolean,
+): StackProviderErrorClassification {
+  return { kind, operation, message: redactProviderMessage(message), recoverable };
+}
+
+async function repoHasUnmergedPaths(cwd: string): Promise<boolean> {
+  try {
+    const lines = await getGitOutputLines(cwd, ['diff', '--name-only', '--diff-filter=U']);
+    return lines.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function getGitOutput(cwd: string, args: string[]): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync('git', args, { cwd });
+    return stdout;
+  } catch {
+    return '';
+  }
+}
+
+async function getGitOutputLines(cwd: string, args: string[]): Promise<string[]> {
+  const output = await getGitOutput(cwd, args);
+  return output.trim().split('\n').filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------

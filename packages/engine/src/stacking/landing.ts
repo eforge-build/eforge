@@ -33,10 +33,12 @@ type ProviderCommandErrorLike = {
   exitCode?: unknown;
 };
 
+type ProviderCommandEventResult = Omit<ProviderCommandResult, 'exitCode'> & { exitCode: number | null };
+
 function stackProviderCommandEvent(
   providerName: StackBaseContext['provider'],
   branch: string,
-  result: ProviderCommandResult,
+  result: ProviderCommandEventResult,
   redact: (msg: string) => string,
 ): EforgeEvent {
   return {
@@ -62,7 +64,7 @@ function stackProviderCommandEventFromError(
     typeof candidate.command !== 'string' ||
     !Array.isArray(candidate.args) ||
     !candidate.args.every((arg): arg is string => typeof arg === 'string') ||
-    typeof candidate.exitCode !== 'number'
+    (typeof candidate.exitCode !== 'number' && candidate.exitCode !== null)
   ) {
     return undefined;
   }

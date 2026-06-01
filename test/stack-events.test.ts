@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { safeParseEforgeEvent } from '@eforge-build/client';
+import { stackProviderCommandEventFromError } from '@eforge-build/engine/stacking';
 
 const envelope = {
   sessionId: 'test-session',
@@ -104,6 +105,34 @@ describe('stack:provider:command', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts null exitCode for unknown provider command failures', () => {
+    const result = safeParseEforgeEvent({
+      ...envelope,
+      type: 'stack:provider:command',
+      provider: 'git-spice',
+      command: 'git-spice',
+      args: ['branch', 'restack', '--continue'],
+      exitCode: null,
+      branch: 'feat/my-prd',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('emits null exitCode from command-like provider errors', () => {
+    const event = stackProviderCommandEventFromError('git-spice', 'feat/my-prd', {
+      command: 'git-spice',
+      args: ['branch', 'restack', '--continue'],
+      exitCode: null,
+    }, (message) => message);
+
+    expect(event).toMatchObject({
+      type: 'stack:provider:command',
+      exitCode: null,
+      branch: 'feat/my-prd',
+    });
+    expect(safeParseEforgeEvent(event).success).toBe(true);
+  });
+
   it('rejects missing command', () => {
     const result = safeParseEforgeEvent({
       ...envelope,
@@ -168,6 +197,97 @@ describe('stack:landing:update', () => {
       action: 'pr',
       branch: 'feat/my-prd',
       status: 'started',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stack landing conflict recovery lifecycle events
+// ---------------------------------------------------------------------------
+
+describe('stack landing conflict recovery lifecycle events', () => {
+  it('accepts valid recovery lifecycle payloads', () => {
+    const common = {
+      ...envelope,
+      prdId: 'my-prd',
+      stackId: 'stack-abc',
+      provider: 'git-spice',
+      branch: 'feat/my-prd',
+    };
+
+    const events = [
+      {
+        ...common,
+        type: 'stack:landing:conflict:detected',
+        operation: 'branch-restack',
+        conflictKind: 'git-rebase',
+        conflictedFiles: ['src/a.ts'],
+      },
+      {
+        ...common,
+        type: 'stack:landing:conflict:recovery:start',
+        attempt: 1,
+        maxAttempts: 3,
+      },
+      {
+        ...common,
+        type: 'stack:landing:conflict:recovery:complete',
+        attempts: 1,
+      },
+      {
+        ...common,
+        type: 'stack:landing:conflict:recovery:failed',
+        attempts: 2,
+        reason: 'still conflicted',
+        abortAttempted: true,
+        abortSucceeded: true,
+      },
+    ];
+
+    for (const event of events) {
+      expect(safeParseEforgeEvent(event).success).toBe(true);
+    }
+  });
+
+  it('rejects recovery lifecycle payloads missing required identifiers', () => {
+    const result = safeParseEforgeEvent({
+      ...envelope,
+      type: 'stack:landing:conflict:recovery:start',
+      provider: 'git-spice',
+      branch: 'feat/my-prd',
+      attempt: 1,
+      maxAttempts: 3,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects recovery:start when attempt exceeds maxAttempts', () => {
+    const result = safeParseEforgeEvent({
+      ...envelope,
+      type: 'stack:landing:conflict:recovery:start',
+      prdId: 'my-prd',
+      stackId: 'stack-abc',
+      provider: 'git-spice',
+      branch: 'feat/my-prd',
+      attempt: 4,
+      maxAttempts: 3,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects recovery:failed when abort succeeded without an abort attempt', () => {
+    const result = safeParseEforgeEvent({
+      ...envelope,
+      type: 'stack:landing:conflict:recovery:failed',
+      prdId: 'my-prd',
+      stackId: 'stack-abc',
+      provider: 'git-spice',
+      branch: 'feat/my-prd',
+      attempts: 1,
+      reason: 'failed',
+      abortAttempted: false,
+      abortSucceeded: true,
     });
     expect(result.success).toBe(false);
   });

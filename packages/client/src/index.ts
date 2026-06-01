@@ -419,6 +419,8 @@ export type {
   PlanningDecision,
   PlanningDecisionEvent,
   StackProvider,
+  StackProviderOperationKind,
+  StackProviderConflictKind,
   LandingPublicationAction,
   StackLayerStatus,
   StackArtifactRef,
@@ -438,7 +440,7 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeE
   AcceptanceCriterionVerdictSchema, AcceptanceCriteriaConflictSchema,
   safeParseEforgeEvent, parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseSessionStreamSnapshot,
   ReviewPerspectiveKeySchema, isBuiltInReviewPerspective,
-  StackProviderSchema, LandingPublicationActionSchema, StackLayerStatusSchema, StackArtifactRefSchema, StackLayerWireSchema,
+  StackProviderSchema, StackProviderOperationKindSchema, StackProviderConflictKindSchema, LandingPublicationActionSchema, StackLayerStatusSchema, StackArtifactRefSchema, StackLayerWireSchema,
   TerminalFailureScopeSchema, TerminalFailureEnvelopeSchema,
   BuildResumeArtifactSourceSchema, BuildResumeArtifactPlanSchema, BuildResumeArtifactsEventSchema,
 } from './events.js';
