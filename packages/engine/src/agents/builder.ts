@@ -343,6 +343,26 @@ export interface BuilderEvaluationResult {
   error?: string;
 }
 
+// --- eforge:region plan-01-evaluator-late-error-preservation ---
+function completedEvaluationResultFromEvidence(
+  structuredSubmission: EvaluationSubmission | undefined,
+  fullText: string,
+  agentId: string | undefined,
+): BuilderEvaluationResult | undefined {
+  if (structuredSubmission) {
+    if (structuredSubmission.verdicts.length === 0) return undefined;
+    return { verdicts: structuredSubmission.verdicts, source: 'structured', failed: false, ...(agentId && { agentId }) };
+  }
+  const verdicts = parseEvaluationBlock(fullText);
+  if (verdicts.length === 0) return undefined;
+  return { verdicts, source: 'xml', failed: false, ...(agentId && { agentId }) };
+}
+
+function isRetryableLateEvaluatorInfrastructureSubtype(subtype: ReturnType<typeof classifyAgentTerminalSubtype>): boolean {
+  return subtype === 'error_transient_transport' || subtype === 'error_pi_tool_infrastructure';
+}
+// --- eforge:endregion plan-01-evaluator-late-error-preservation ---
+
 function mergeDisallowedTools(existing: string[] | undefined): string[] {
   return mergeMutationDisallowedTools(existing);
 }
@@ -421,6 +441,23 @@ The previous evaluator run was interrupted before a final verdict submission was
   } catch (err) {
     const terminalSubtype = classifyAgentTerminalSubtype(err);
     const message = err instanceof Error ? err.message : String(err);
+    // --- eforge:region plan-01-evaluator-late-error-preservation ---
+    if (isRetryableLateEvaluatorInfrastructureSubtype(terminalSubtype)) {
+      const completedResult = completedEvaluationResultFromEvidence(structuredSubmission, fullText, evaluatorAgentId);
+      if (completedResult) {
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'agent:warning',
+          planId: plan.id,
+          agentId: evaluatorAgentId ?? 'unknown-evaluator',
+          agent: 'evaluator',
+          code: 'evaluator-late-infrastructure-error-downgraded',
+          message: `Late evaluator infrastructure error after verdict evidence was downgraded: ${message}`,
+        };
+        return completedResult;
+      }
+    }
+    // --- eforge:endregion plan-01-evaluator-late-error-preservation ---
     if (terminalSubtype) {
       yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: message, terminalSubtype };
     } else {
