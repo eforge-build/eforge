@@ -23,6 +23,10 @@ The current working branch is based on current `main` and does not contain the p
 
 This plan restores the provider-neutral boundary, git-spice implementation, recovery helper, lifecycle events, and focused tests. Plan 2 wires the helper into `executeStackLanding` and updates user-facing docs.
 
+## Recorded Finding
+
+See [`foundation-failure-investigation.md`](foundation-failure-investigation.md) for the investigation record. The original foundation failure was caused by an evaluator run that produced no verdicts while review-fixer changes remained uncommitted; after the successor rebase, no remaining foundation defect was found.
+
 ## Implementation
 
 ### Overview

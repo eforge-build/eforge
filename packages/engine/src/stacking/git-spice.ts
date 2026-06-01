@@ -222,9 +222,6 @@ export class GitSpiceAdapter {
     if (err instanceof GitSpiceCommandError) {
       let operation = operationFromArgs(err.args);
       const diagnostic = redactProviderMessage(`${err.stdout}\n${err.stderr}\n${err.message}`);
-      if (AUTH_DIAGNOSTIC_RE.test(diagnostic)) return classification('auth', operation, diagnostic, false);
-      if (NETWORK_DIAGNOSTIC_RE.test(diagnostic)) return classification('network', operation, diagnostic, false);
-
       const hasUnmergedPaths = await repoHasUnmergedPaths(cwd);
       const hasConflictDiagnostic = CONFLICT_DIAGNOSTIC_RE.test(diagnostic);
       if (operation === 'unknown' && isRebaseContinueArgs(err.args) && (hasConflictDiagnostic || hasUnmergedPaths)) {
@@ -239,6 +236,9 @@ export class GitSpiceAdapter {
           recoverable: true,
         };
       }
+
+      if (AUTH_DIAGNOSTIC_RE.test(diagnostic)) return classification('auth', operation, diagnostic, false);
+      if (NETWORK_DIAGNOSTIC_RE.test(diagnostic)) return classification('network', operation, diagnostic, false);
 
       return classification('provider-failure', operation, diagnostic, false);
     }

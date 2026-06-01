@@ -248,6 +248,22 @@ describe('GitSpiceAdapter', () => {
     expect(classification.recoverable).toBe(true);
   });
 
+  it('classifies branch restack conflict filenames that look like auth or network words as recoverable-conflict', async () => {
+    const dir = makeTempDir();
+    const adapter = createGitSpiceAdapter({});
+    for (const filename of ['src/token.ts', 'src/ssl.ts', 'src/timeout.ts']) {
+      const err = new GitSpiceCommandError(
+        'git-spice',
+        ['branch', 'restack'],
+        1,
+        `Merge conflict in ${filename}`,
+      );
+      const classification = await adapter.classifyError(dir, err);
+      expect(classification.kind).toBe('recoverable-conflict');
+      expect(classification.operation).toBe('branch-restack');
+    }
+  });
+
   it('classifies branch restack as recoverable-conflict when unmerged files exist', async () => {
     const dir = makeTempDir();
     await createUnmergedRepo(dir);

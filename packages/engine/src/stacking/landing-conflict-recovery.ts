@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 
 import type { EforgeEvent } from '../events.js';
 import { execWithTimeout } from '../exec-with-timeout.js';
+import { normalizePostMergeCommandTimeoutMs } from '../config.js';
 import { retryOnLock } from '../git.js';
 import { stripTemporaryEforgeRegionMarkerLines } from '../region-marker-cleanup.js';
 import type { MergeConflictInfo, MergeResolver } from '../worktree-ops.js';
@@ -208,7 +209,7 @@ async function* runPostRecoveryValidation(opts: LandingConflictRecoveryOptions):
     }
 
     yield { timestamp: new Date().toISOString(), type: 'validation:command:start', command } as EforgeEvent;
-    const timeoutMs = opts.validationTimeoutMs ?? DEFAULT_VALIDATION_TIMEOUT_MS;
+    const timeoutMs = normalizePostMergeCommandTimeoutMs(opts.validationTimeoutMs, DEFAULT_VALIDATION_TIMEOUT_MS);
     const result = await execWithTimeout(command, {
       cwd: opts.mergeWorktreePath,
       timeoutMs,

@@ -71,7 +71,7 @@ export interface StackLandingOptions {
    * back to `metadata` if present, or skip the edit entirely.
    */
   metadataFactory?: () => Promise<PullRequestMetadata>;
-  // --- eforge:region plan-02-stack-landing-integration-docs ---
+  // --- eforge:region stack-landing-recovery ---
   /** Optional merge resolver used as fallback after deterministic conflict cleanup. */
   mergeResolver?: MergeResolver;
   /** Validation commands to run after provider conflict recovery and before submit. */
@@ -82,7 +82,7 @@ export interface StackLandingOptions {
   signal?: AbortSignal;
   /** Maximum provider conflict recovery attempts. Defaults to the recovery helper's policy. */
   maxConflictRecoveryAttempts?: number;
-  // --- eforge:endregion plan-02-stack-landing-integration-docs ---
+  // --- eforge:endregion stack-landing-recovery ---
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +113,7 @@ async function discoverPrUrlViaGh(
   }
 }
 
-// --- eforge:region plan-02-stack-landing-integration-docs ---
+// --- eforge:region stack-landing-recovery ---
 function isRecoverableRestackConflict(
   classification: StackProviderErrorClassification | undefined,
 ): classification is StackProviderErrorClassification {
@@ -156,7 +156,7 @@ function restackRecoveryFailureReason(result: LandingConflictRecoveryResult | un
     : '';
   return `Restack conflict recovery failed: ${reason}${abortOutcome}`;
 }
-// --- eforge:endregion plan-02-stack-landing-integration-docs ---
+// --- eforge:endregion stack-landing-recovery ---
 
 // ---------------------------------------------------------------------------
 // Stack landing generator
@@ -286,7 +286,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     const commandEvent = stackProviderCommandEventFromError(providerName, branch, err, redact);
     if (commandEvent) yield commandEvent;
 
-    // --- eforge:region plan-02-stack-landing-integration-docs ---
+    // --- eforge:region stack-landing-recovery ---
     const classification = await classifyProviderError(provider, mergeWorktreePath, err);
     if (isRecoverableRestackConflict(classification) && providerCanRecoverLandingConflict(provider)) {
       const recoveryResult = yield* consumeRecovery(recoverLandingConflict({
@@ -325,7 +325,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
         } as EforgeEvent;
         return;
       }
-    // --- eforge:endregion plan-02-stack-landing-integration-docs ---
+    // --- eforge:endregion stack-landing-recovery ---
     } else {
       const reason = redact(err instanceof Error ? err.message : String(err));
       const failedAt = ts();

@@ -145,6 +145,24 @@ describe('recoverLandingConflict', () => {
     expect(events.map((event) => event.type)).toContain('stack:landing:conflict:recovery:complete');
   });
 
+  it('clamps post-recovery validation timeout to the configured minimum', async () => {
+    const dir = makeTempDir();
+    await initRepo(dir);
+    const provider = makeProvider({ getInterruptedOperation: async () => makeOperation([]) });
+
+    const { result } = await collect(recoverLandingConflict({
+      cwd: dir,
+      mergeWorktreePath: dir,
+      stackContext,
+      provider,
+      classification,
+      postRecoveryValidationCommands: ['node -e "setTimeout(() => {}, 20)"'],
+      validationTimeoutMs: 1,
+    }));
+
+    expect(result.recovered).toBe(true);
+  });
+
   it('does not auto-resolve non-marker empty-side conflicts', async () => {
     const dir = makeTempDir();
     await createUnmergedFile(dir, '<<<<<<< HEAD\n=======\nconst realCode = 1;\n>>>>>>> theirs\n');
