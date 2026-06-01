@@ -1,0 +1,56 @@
+name: harden-tester-result-handling-after-late-transport-errors
+description: Preserve tester-produced XML findings when a late non-abort
+  transport/backend error occurs after agent output, while leaving no-output
+  tester failures non-fatal and preserving the strict final dirty-worktree
+  guard.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm vitest run test/tester-wiring.test.ts
+  - pnpm test
+plans:
+  - id: plan-01-preserve-tester-results
+    name: Preserve Tester Results After Late Transport Errors
+    depends_on: []
+    branch: harden-tester-result-handling-after-late-transport-errors/plan-01-preserve-tester-results
+    build:
+      - implement
+      - validate
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused engine bugfix with clear affected files and
+    regression-test requirements, so excursion is appropriate rather than
+    expedition. Plan review is included because the change affects agent-result
+    semantics and must preserve existing fallback behavior. The build runs
+    implementation, adds/updates tests, then runs the registered maintainability
+    validation gate before review. Review focuses on code and test correctness,
+    followed by test-cycle to exercise the tester/evaluator path without
+    weakening the dirty-worktree guard.
+diff_base_ref: f3fea940c999919b5092361283b2e641d7a9dd8e
