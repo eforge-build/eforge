@@ -585,12 +585,13 @@ describe('builderEvaluate wiring', () => {
     };
   }
 
-  it('returns XML fallback verdicts with hunk metadata and leaves commit application to the stage', async () => {
+  it('preserves XML fallback verdicts with hunk metadata after a late transport error', async () => {
     const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="a.ts" hunk="1" action="accept">Good change</verdict>
   <verdict file="b.ts" action="review">Needs discussion</verdict>
 </evaluation>`,
+      lateError: new Error('Backend error: WebSocket error'),
     }]);
 
     const { events, result } = await collectEvaluation(builderEvaluate(
@@ -601,13 +602,16 @@ describe('builderEvaluate wiring', () => {
     expect(findEvent(events, 'plan:build:evaluate:start')).toBeDefined();
     expect(findEvent(events, 'plan:build:evaluate:complete')).toBeUndefined();
     expect(result?.source).toBe('xml');
+    expect(result?.failed).toBe(false);
     expect(result?.verdicts).toEqual([
       { file: 'a.ts', hunk: 1, action: 'accept', reason: 'Good change' },
       { file: 'b.ts', action: 'review', reason: 'Needs discussion' },
     ]);
+    expect(filterEvents(events, 'agent:warning')).toHaveLength(1);
+    expect(filterEvents(events, 'plan:build:failed')).toHaveLength(0);
   });
 
-  it('wires structured evaluation tools and mutation-tool denylist', async () => {
+  it('wires structured evaluation tools, denylist, and late transport verdict preservation', async () => {
     const backend = new StubHarness([{
       toolCalls: [{
         tool: 'submit_evaluation_verdicts',
@@ -615,9 +619,10 @@ describe('builderEvaluate wiring', () => {
         input: { verdicts: [{ file: 'a.ts', hunk: 1, action: 'accept', reason: 'Correct' }] },
         output: '',
       }],
+      lateError: new Error('Backend error: WebSocket error'),
     }]);
 
-    const { result } = await collectEvaluation(builderEvaluate(
+    const { events, result } = await collectEvaluation(builderEvaluate(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
       { harness: backend, cwd: '/tmp', evaluatorSnapshot: makeEvaluationSnapshot() },
     ));
@@ -630,10 +635,13 @@ describe('builderEvaluate wiring', () => {
     // Denylist must include both Claude-cased and Pi-lowercase mutation tool names.
     expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'write', 'edit', 'bash']));
     expect(result?.source).toBe('structured');
+    expect(result?.failed).toBe(false);
     expect(result?.verdicts).toEqual([{ file: 'a.ts', hunk: 1, action: 'accept', reason: 'Correct' }]);
+    expect(filterEvents(events, 'agent:warning')).toHaveLength(1);
+    expect(filterEvents(events, 'plan:build:failed')).toHaveLength(0);
   });
 
-  it('prefers structured verdict submissions over XML fallback text when both are present', async () => {
+  it('prefers structured verdict submissions over XML fallback text after a late transport error', async () => {
     const backend = new StubHarness([{
       toolCalls: [{
         tool: 'submit_evaluation_verdicts',
@@ -644,6 +652,7 @@ describe('builderEvaluate wiring', () => {
       text: `<evaluation>
   <verdict file="a.ts" hunk="1" action="reject">XML fallback should be ignored</verdict>
 </evaluation>`,
+      lateError: new Error('Backend error: WebSocket error'),
     }]);
 
     const { result } = await collectEvaluation(builderEvaluate(
@@ -661,15 +670,17 @@ describe('builderEvaluate wiring', () => {
   // the builder owns the plan lifecycle so it handles errors gracefully.
   // Contrast with runPlanEvaluate which re-throws after yielding zero counts,
   // because plan evaluation errors propagate to the engine's plan() method.
-  it('emits build:failed when backend throws', async () => {
-    const backend = new StubHarness([{ error: new Error('Evaluate failed') }]);
+  it('emits build:failed for no-verdict retryable transport failures', async () => {
+    const backend = new StubHarness([{ lateError: new Error('Backend error: WebSocket error') }]);
 
-    const events = await collectEvents(builderEvaluate(
+    const { events, result } = await collectEvaluation(builderEvaluate(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
       { harness: backend, cwd: '/tmp' },
     ));
 
-    expect(findEvent(events, 'agent:warning')).toBeDefined();
+    const failed = findEvent(events, 'plan:build:failed');
+    expect(failed?.terminalSubtype).toBe('error_transient_transport');
+    expect(result).toMatchObject({ failed: true, source: 'none', verdicts: [] });
     expect(findEvent(events, 'plan:build:evaluate:complete')).toBeUndefined();
   });
 });
