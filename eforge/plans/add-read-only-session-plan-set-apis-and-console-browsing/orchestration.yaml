@@ -1,0 +1,73 @@
+name: add-read-only-session-plan-set-apis-and-console-browsing
+description: Add read-only session plan-set list, show, and validate
+  daemon/client APIs and render existing plan sets alongside flat session plans
+  in Console Planning Workspace.
+base_branch: eforge/add-read-only-session-plan-set-artifacts-to-eforge-build-input
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-plan-set-api-contracts
+    name: Plan-Set API Contracts and Daemon Routes
+    depends_on: []
+    branch: add-read-only-session-plan-set-apis-and-console-browsing/plan-01-plan-set-api-contracts
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - api
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-02-console-plan-set-browsing
+    name: Console Plan-Set Browsing
+    depends_on:
+      - plan-01-plan-set-api-contracts
+    branch: add-read-only-session-plan-set-apis-and-console-browsing/plan-02-console-plan-set-browsing
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - test-cycle
+    - doc-sync
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - code
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a read-only vertical slice across client contracts, daemon
+    handlers, and Console UI, so a single excursion planner can enumerate the
+    work without delegated expedition module planning. The build pipeline
+    includes docs and test generation because the PRD changes public APIs and
+    user-facing Console behavior, then runs validation for the registered
+    maintainability provider before an iterative review cycle. API and code
+    perspectives focus review capacity on route-contract drift and cross-package
+    implementation quality.
