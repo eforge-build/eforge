@@ -1,10 +1,3 @@
-/**
- * PRD queue loading, parsing, ordering, and status updates.
- * Scans a directory for .md files with YAML frontmatter, parses them
- * into QueuedPrd records, and resolves execution order using the
- * same dependency graph algorithm as plan orchestration.
- */
-
 import { readFile, readdir, writeFile, mkdir, rm, open, rename } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
@@ -21,10 +14,6 @@ import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js
 import { loadCompletionRegistry, lookupCompletion } from './artifacts/completions.js';
 
 const exec = promisify(execFile);
-
-// ---------------------------------------------------------------------------
-// Frontmatter schema
-// ---------------------------------------------------------------------------
 
 const prdFrontmatterSchema = z.object({
   title: z.string(),
@@ -78,23 +67,13 @@ export function getRecoveryContinuationFrontmatter(frontmatter: PrdFrontmatter):
 }
 
 export interface QueuedPrd {
-  /** Filename without extension — used as the PRD id */
   id: string;
-  /** Absolute path to the PRD file */
   filePath: string;
-  /** Parsed frontmatter */
   frontmatter: PrdFrontmatter;
-  /** Full file content (frontmatter + body) */
   content: string;
-  /** Last commit hash touching this file (empty string if untracked) */
   lastCommitHash: string;
-  /** Last commit date for this file (empty string if untracked) */
   lastCommitDate: string;
 }
-
-// ---------------------------------------------------------------------------
-// Frontmatter parsing helpers
-// ---------------------------------------------------------------------------
 
 /**
  * Extract YAML frontmatter from a markdown file.
@@ -162,10 +141,6 @@ export function validatePrdFrontmatter(data: unknown): z.ZodSafeParseResult<PrdF
   }
   return prdFrontmatterSchema.safeParse(data);
 }
-
-// ---------------------------------------------------------------------------
-// Queue loading
-// ---------------------------------------------------------------------------
 
 /**
  * Load all PRD files from a directory, parsing frontmatter and
@@ -653,41 +628,23 @@ export function inferTitle(content: string, fallbackSlug?: string): string {
 // ---------------------------------------------------------------------------
 
 export interface EnqueuePrdOptions {
-  /** Formatted PRD body content */
   body: string;
-  /** PRD title */
   title: string;
-  /** Queue directory (absolute or relative to cwd) */
   queueDir: string;
-  /** Working directory for resolving relative paths */
   cwd: string;
-  /** Optional priority (lower = higher priority) */
   priority?: number;
-  /** Optional dependency list */
   depends_on?: string[];
-  /** If true, write to waiting/ subdirectory (for piggybacked PRDs awaiting upstream completion) */
   intoWaiting?: boolean;
-  /** Commands to run after the build merges (forwarded from playbook frontmatter) */
   postMerge?: string[];
-  /** Override profile name to persist in frontmatter for per-build profile binding. */
   profile?: string;
-  /** Landing action to persist in PRD frontmatter (canonical: pr | merge | leave). */
   landingAction?: 'pr' | 'merge' | 'leave';
-  /** Per-run PR auto-merge intent to persist in PRD frontmatter. */
   landingAutoMerge?: boolean;
-  /** Logical stack identifier to persist in PRD frontmatter. */
   stack_id?: string;
-  /** Parent PRD id for this stack layer, if any. */
   stack_parent?: string;
-  /** Stack provider override for this PRD. */
   stack_provider?: 'git-spice';
-  /** Failed PRD id that produced this recovery continuation. */
   recovery_from?: string;
-  /** Failed build set name that produced this recovery continuation. */
   recovery_set_name?: string;
-  /** Preserved failed feature branch to use as the successor worktree base. */
   recovery_feature_branch?: string;
-  /** Original logical base branch for orchestration and landing. */
   recovery_base_branch?: string;
 }
 
