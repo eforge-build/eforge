@@ -1,0 +1,74 @@
+name: preserve-feature-branch-context-for-split-recovery
+description: Preserve failed-build feature-branch context when applying split
+  recovery verdicts by persisting trusted continuation metadata in queued PRD
+  frontmatter and honoring it during queued compile.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm vitest run test/apply-recovery.test.ts
+    test/apply-recovery-route.test.ts test/recovery-continuation-queue.test.ts
+    packages/console-ui/src/components/now/__tests__/queue-recovery-dialog.test.tsx
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+plans:
+  - id: plan-01-continuation-split-recovery
+    name: Continuation-aware split recovery
+    depends_on: []
+    branch: preserve-feature-branch-context-for-split-recovery/plan-01-continuation-split-recovery
+    build:
+      - implement
+      - test-cycle
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The change coordinates recovery sidecar parsing, queue frontmatter,
+          git ref validation, queued compile base selection, daemon route
+          behavior, and user-facing recovery guidance.
+      reviewer:
+        effort: high
+        rationale: Review must examine branch/ref safety and ensure logical base and
+          worktree base remain separate.
+      tester:
+        effort: high
+        rationale: Regression coverage needs real git fixtures for recovery apply and
+          queued compile base propagation.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - validate
+      - test-write
+      - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is a cohesive but deep recovery correctness bug touching queue
+    metadata, recovery apply paths, compile handoff, daemon routing, tests, and
+    user-facing guidance, so excursion is appropriate rather than expedition. A
+    planner plus plan review gives enough decomposition quality without
+    delegated module planning. Build includes implementation, documentation
+    authoring/sync for Console/Pi/Claude guidance, test writing and execution
+    for the required regressions, and validate because guardrail providers are
+    registered. Review is strict with code and security perspectives because
+    branch/ref metadata is used in git operations and must fail closed.
+diff_base_ref: 4e79f7bf091f5bdc6a432efec2beac8ad7b6144c
