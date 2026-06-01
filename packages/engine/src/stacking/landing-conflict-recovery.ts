@@ -371,7 +371,7 @@ function detectedEvent(opts: LandingConflictRecoveryOptions, operation: StackPro
     operation: operation.operation,
     conflictKind: operation.conflictKind,
     conflictedFiles: operation.conflictedFiles,
-  } as EforgeEvent;
+  } as unknown as EforgeEvent;
 }
 
 function startEvent(opts: LandingConflictRecoveryOptions, attempt: number, maxAttempts: number): EforgeEvent {
@@ -384,7 +384,7 @@ function startEvent(opts: LandingConflictRecoveryOptions, attempt: number, maxAt
     branch: opts.stackContext.branch,
     attempt,
     maxAttempts,
-  } as EforgeEvent;
+  } as unknown as EforgeEvent;
 }
 
 function completeEvent(opts: LandingConflictRecoveryOptions, attempts: number): EforgeEvent {
@@ -396,7 +396,7 @@ function completeEvent(opts: LandingConflictRecoveryOptions, attempts: number): 
     provider: opts.stackContext.provider,
     branch: opts.stackContext.branch,
     attempts,
-  } as EforgeEvent;
+  } as unknown as EforgeEvent;
 }
 
 function failedEvent(
@@ -417,6 +417,6 @@ function failedEvent(
     reason,
     abortAttempted,
     abortSucceeded,
-  } as EforgeEvent;
+  } as unknown as EforgeEvent;
 }
 // --- eforge:endregion event-builders ---
