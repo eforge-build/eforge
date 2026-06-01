@@ -1,6 +1,6 @@
 import { getMarkdownTheme, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
 import { Key, Markdown, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { blockedBy, filterReadyItems, formatIdList, formatSummaryList, itemById, matchesBacklogQuery, shortId, summarize, summaryLabels, type BacklogDisplayItem, type BacklogItem } from "./store";
+import { blockedBy, CLOSED_STATUSES, filterReadyItems, formatIdList, formatSummaryList, itemById, matchesBacklogQuery, PRIORITY_VALUES, shortId, STATUS_VALUES, summarize, summaryLabels, type BacklogDisplayItem, type BacklogItem, type BacklogPriority, type BacklogStatus } from "./store";
 
 // --- eforge:region interactive-browser ---
 const MAX_PANEL_ROWS_FALLBACK = 20;
@@ -101,22 +101,36 @@ class BacklogPanel {
 	}
 }
 
-export type BacklogBrowserAction =
-	| { kind: "analyze"; id: string }
-	| { kind: "promote"; id: string }
-	| { kind: "cycle-status"; id: string }
-	| { kind: "cycle-priority"; id: string };
+export type BacklogBrowserAction = { kind: "analyze"; id: string } | { kind: "promote"; id: string };
+
+export type BacklogBrowserMutationHandlers = {
+	setStatus(id: string, status: BacklogStatus, reason?: string): Promise<BacklogItem>;
+	setPriority(id: string, priority: BacklogPriority): Promise<BacklogItem>;
+};
+
+type BacklogBrowserMode = "list" | "detail" | "status-picker" | "priority-picker" | "status-reason"; type BacklogReturnMode = Extract<BacklogBrowserMode, "list" | "detail">;
+
+const STATUS_DESCRIPTIONS: Record<BacklogStatus, string> = { candidate: "Captured, not yet committed to doing", planned: "Accepted as likely future work", active: "Currently being investigated or worked", shipped: "Completed; dependency blockers are satisfied", stale: "No longer current after review", superseded: "Replaced by another item or approach" };
+const PRIORITY_DESCRIPTIONS: Record<BacklogPriority, string> = { low: "Nice-to-have or low urgency", medium: "Normal priority", high: "Important or time-sensitive" };
+
+function replaceById(items: BacklogItem[], updated: BacklogItem, appendIfMissing: boolean): BacklogItem[] {
+	const index = items.findIndex((item) => item.id === updated.id);
+	if (index === -1) return appendIfMissing ? [...items, updated] : items;
+	return [...items.slice(0, index), updated, ...items.slice(index + 1)];
+}
 
 class BacklogBrowser {
-	private mode: "list" | "detail" = "list";
+	private mode: BacklogBrowserMode = "list";
 	private selected = 0;
-	private listScroll = 0;
-	private detailScroll = 0;
+	private activeItemId?: string;
+	private pickerReturnMode: BacklogReturnMode = "list";
+	private statusChoiceIndex = 0; private priorityChoiceIndex = 0;
+	private pendingStatus?: BacklogStatus; private reasonInput = "";
+	private busyText?: string; private errorText?: string;
+	private listScroll = 0; private detailScroll = 0;
 	private readyOnly: boolean;
-	private search = "";
-	private searchEditing = false;
-	private cachedWidth?: number;
-	private cachedLines?: string[];
+	private search = ""; private searchEditing = false;
+	private cachedWidth?: number; private cachedLines?: string[];
 
 	constructor(
 		private title: string,
@@ -126,13 +140,18 @@ class BacklogBrowser {
 		private rows: () => number,
 		private requestRender: () => void,
 		private done: (action?: BacklogBrowserAction) => void,
+		private mutations: BacklogBrowserMutationHandlers,
 		initialReadyOnly = false,
 	) {
 		this.readyOnly = initialReadyOnly;
 	}
 
 	handleInput(data: string): void {
+		if (this.busyText) return;
 		if (this.searchEditing) return this.handleSearchInput(data);
+		if (this.mode === "status-picker") return this.handleStatusPickerInput(data);
+		if (this.mode === "priority-picker") return this.handlePriorityPickerInput(data);
+		if (this.mode === "status-reason") return this.handleStatusReasonInput(data);
 		if (matchesKey(data, "ctrl+c") || data === "q") return this.done();
 		if (this.mode === "detail") return this.handleDetailInput(data);
 		this.handleListInput(data);
@@ -143,10 +162,9 @@ class BacklogBrowser {
 		const rows = Math.max(6, this.rows());
 		const innerWidth = Math.max(1, width - 2);
 		const contentRows = Math.max(1, rows - 5);
-		const content = this.mode === "detail" ? this.renderDetailContent(innerWidth, contentRows) : this.renderListContent(innerWidth, contentRows);
+		const content = this.renderModeContent(innerWidth, contentRows);
 		const footer = this.footerText();
-		const search = this.search ? ` search=${this.search}` : "";
-		const header = this.mode === "detail" ? `${this.title} / ${this.currentItem()?.title ?? "item"}` : `${this.title}${this.readyOnly ? " (ready)" : ""}${search}`;
+		const header = this.headerText();
 		const out = [
 			this.theme.fg("accent", `╭${"─".repeat(Math.max(0, width - 2))}╮`),
 			this.theme.fg("accent", "│") + truncateToWidth(` ${header}`, innerWidth, "", true) + this.theme.fg("accent", "│"),
@@ -171,8 +189,8 @@ class BacklogBrowser {
 		if (data === "r") return this.toggleReadyOnly();
 		if (data === "a") return this.finishWith("analyze");
 		if (data === "p") return this.finishWith("promote");
-		if (data === "s") return this.finishWith("cycle-status");
-		if (data === "!") return this.finishWith("cycle-priority");
+		if (data === "s") return this.openStatusPicker();
+		if (data === "!") return this.openPriorityPicker();
 		if (matchesKey(data, Key.down) || data === "j") return this.moveSelection(1);
 		if (matchesKey(data, Key.up) || data === "k") return this.moveSelection(-1);
 		if (matchesKey(data, Key.pageDown)) return this.moveSelection(this.pageItems());
@@ -182,15 +200,158 @@ class BacklogBrowser {
 	private handleDetailInput(data: string): void {
 		if (matchesKey(data, Key.escape)) return this.done();
 		if (matchesKey(data, Key.left) || matchesKey(data, Key.backspace) || data === "b") return this.closeDetail();
-		if (data === "/") return this.startSearch();
 		if (data === "a") return this.finishWith("analyze");
 		if (data === "p") return this.finishWith("promote");
-		if (data === "s") return this.finishWith("cycle-status");
-		if (data === "!") return this.finishWith("cycle-priority");
+		if (data === "s") return this.openStatusPicker();
+		if (data === "!") return this.openPriorityPicker();
 		if (matchesKey(data, Key.down) || data === "j") return this.scrollDetail(1);
 		if (matchesKey(data, Key.up) || data === "k") return this.scrollDetail(-1);
 		if (matchesKey(data, Key.pageDown)) return this.scrollDetail(this.rows() - 6);
 		if (matchesKey(data, Key.pageUp)) return this.scrollDetail(-(this.rows() - 6));
+	}
+
+	private handleStatusPickerInput(data: string): void {
+		if (this.isCancelKey(data)) return this.cancelPicker();
+		if (matchesKey(data, Key.enter)) return this.chooseStatus();
+		if (matchesKey(data, Key.down) || data === "j") return this.moveStatusChoice(1);
+		if (matchesKey(data, Key.up) || data === "k") return this.moveStatusChoice(-1);
+	}
+	private handlePriorityPickerInput(data: string): void {
+		if (this.isCancelKey(data)) return this.cancelPicker();
+		if (matchesKey(data, Key.enter)) return this.choosePriority();
+		if (matchesKey(data, Key.down) || data === "j") return this.movePriorityChoice(1);
+		if (matchesKey(data, Key.up) || data === "k") return this.movePriorityChoice(-1);
+	}
+
+	private handleStatusReasonInput(data: string): void {
+		if (matchesKey(data, Key.escape) || matchesKey(data, "ctrl+c")) {
+			this.mode = "status-picker";
+			this.changed();
+			return;
+		}
+		if (matchesKey(data, Key.enter)) {
+			const status = this.pendingStatus;
+			if (status) void this.applyStatus(status, this.reasonInput.trim() || undefined);
+			return;
+		}
+		if (matchesKey(data, Key.backspace) || matchesKey(data, Key.delete)) this.reasonInput = this.reasonInput.slice(0, -1);
+		else if (data.length === 1 && data.charCodeAt(0) >= 32) this.reasonInput += data;
+		this.changed();
+	}
+
+	private isCancelKey(data: string): boolean {
+		return matchesKey(data, Key.escape) || matchesKey(data, "ctrl+c") || matchesKey(data, Key.left) || matchesKey(data, Key.backspace) || data === "b";
+	}
+
+	private openStatusPicker(): void {
+		const item = this.currentItem();
+		if (!item) return;
+		this.activeItemId = item.id;
+		this.pickerReturnMode = this.mode === "detail" ? "detail" : "list";
+		this.statusChoiceIndex = Math.max(0, STATUS_VALUES.indexOf(item.status));
+		this.errorText = undefined;
+		this.mode = "status-picker";
+		this.changed();
+	}
+
+	private openPriorityPicker(): void {
+		const item = this.currentItem();
+		if (!item) return;
+		this.activeItemId = item.id;
+		this.pickerReturnMode = this.mode === "detail" ? "detail" : "list";
+		this.priorityChoiceIndex = Math.max(0, PRIORITY_VALUES.indexOf(item.priority));
+		this.errorText = undefined;
+		this.mode = "priority-picker";
+		this.changed();
+	}
+
+	private moveStatusChoice(delta: number): void {
+		this.statusChoiceIndex = Math.max(0, Math.min(STATUS_VALUES.length - 1, this.statusChoiceIndex + delta)); this.changed();
+	}
+	private movePriorityChoice(delta: number): void {
+		this.priorityChoiceIndex = Math.max(0, Math.min(PRIORITY_VALUES.length - 1, this.priorityChoiceIndex + delta)); this.changed();
+	}
+
+	private chooseStatus(): void {
+		const item = this.currentItem();
+		const status = STATUS_VALUES[this.statusChoiceIndex];
+		if (!item || !status) return;
+		if (item.status === status) return this.returnFromPicker();
+		if (CLOSED_STATUSES.has(status)) {
+			this.pendingStatus = status;
+			this.reasonInput = "";
+			this.mode = "status-reason";
+			this.changed();
+			return;
+		}
+		void this.applyStatus(status);
+	}
+
+	private choosePriority(): void {
+		const item = this.currentItem();
+		const priority = PRIORITY_VALUES[this.priorityChoiceIndex];
+		if (!item || !priority) return;
+		if (item.priority === priority) return this.returnFromPicker();
+		void this.applyPriority(priority);
+	}
+
+	private async applyStatus(status: BacklogStatus, reason?: string): Promise<void> {
+		const item = this.currentItem();
+		if (!item) return;
+		this.busyText = `Setting status to ${status}...`;
+		this.errorText = undefined;
+		this.changed();
+		try {
+			const updated = await this.mutations.setStatus(item.id, status, reason);
+			this.replaceItem(updated);
+			this.returnFromPicker();
+		} catch (error) {
+			this.busyText = undefined;
+			this.errorText = error instanceof Error ? error.message : String(error);
+			this.changed();
+		}
+	}
+
+	private async applyPriority(priority: BacklogPriority): Promise<void> {
+		const item = this.currentItem();
+		if (!item) return;
+		this.busyText = `Setting priority to ${priority}...`;
+		this.errorText = undefined;
+		this.changed();
+		try {
+			const updated = await this.mutations.setPriority(item.id, priority);
+			this.replaceItem(updated);
+			this.returnFromPicker();
+		} catch (error) {
+			this.busyText = undefined;
+			this.errorText = error instanceof Error ? error.message : String(error);
+			this.changed();
+		}
+	}
+
+	private cancelPicker(): void { this.returnFromPicker(); }
+
+	private returnFromPicker(): void {
+		const returnMode = this.pickerReturnMode;
+		this.busyText = undefined;
+		this.pendingStatus = undefined;
+		this.reasonInput = "";
+		this.mode = returnMode;
+		if (returnMode === "list") this.activeItemId = undefined;
+		this.clampSelection();
+		this.changed();
+	}
+
+	private replaceItem(updated: BacklogItem): void {
+		this.items = replaceById(this.items, updated, false);
+		this.contextItems = replaceById(this.contextItems, updated, true);
+		this.selectItemId(updated.id);
+	}
+
+	private selectItemId(id: string): void {
+		const index = this.visibleItems().findIndex((item) => item.id === id);
+		if (index >= 0) this.selected = index;
+		else this.clampSelection();
 	}
 
 	private visibleItems(): BacklogItem[] {
@@ -199,11 +360,18 @@ class BacklogBrowser {
 	}
 
 	private currentItem(): BacklogItem | undefined {
+		if (this.mode !== "list" && this.activeItemId) return this.itemByActiveId();
 		return this.visibleItems()[this.selected];
 	}
 
+	private itemByActiveId(): BacklogItem | undefined {
+		return [...this.contextItems, ...this.items].find((item) => item.id === this.activeItemId);
+	}
+
 	private openDetail(): void {
-		if (!this.currentItem()) return;
+		const item = this.currentItem();
+		if (!item) return;
+		this.activeItemId = item.id;
 		this.mode = "detail";
 		this.detailScroll = 0;
 		this.changed();
@@ -211,6 +379,8 @@ class BacklogBrowser {
 
 	private closeDetail(): void {
 		this.mode = "list";
+		this.activeItemId = undefined;
+		this.clampSelection();
 		this.changed();
 	}
 
@@ -272,6 +442,77 @@ class BacklogBrowser {
 		return Math.max(1, Math.floor((this.rows() - 5) / 2));
 	}
 
+	private renderModeContent(width: number, contentRows: number): string[] {
+		if (this.mode === "detail") return this.renderDetailContent(width, contentRows);
+		if (this.mode === "status-picker") return this.renderStatusPickerContent(contentRows);
+		if (this.mode === "priority-picker") return this.renderPriorityPickerContent(contentRows);
+		if (this.mode === "status-reason") return this.renderStatusReasonContent(width, contentRows);
+		return this.renderListContent(width, contentRows);
+	}
+	private headerText(): string {
+		const search = this.search ? ` search=${this.search}` : "";
+		if (this.mode === "detail") return `${this.title} / ${this.currentItem()?.title ?? "item"}`;
+		if (this.mode === "status-picker") return `${this.title} / set status`;
+		if (this.mode === "priority-picker") return `${this.title} / set priority`;
+		if (this.mode === "status-reason") return `${this.title} / status evidence`;
+		return `${this.title}${this.readyOnly ? " (ready)" : ""}${search}`;
+	}
+
+	private renderStatusPickerContent(contentRows: number): string[] {
+		const item = this.currentItem();
+		if (!item) return [this.theme.fg("dim", "No selected backlog item.")];
+		const lines = [
+			`Set status for ${this.theme.fg("accent", item.title)}`,
+			this.theme.fg("dim", `Current: ${item.status}`),
+			"",
+			...STATUS_VALUES.map((status, index) => {
+				const selected = index === this.statusChoiceIndex;
+				const current = status === item.status ? " (current)" : "";
+				const prefix = selected ? this.theme.fg("accent", "> ") : "  ";
+				return `${prefix}${status}${current} ${this.theme.fg("dim", `— ${STATUS_DESCRIPTIONS[status]}`)}`;
+			}),
+			...this.statusLines(),
+		];
+		return lines.slice(0, contentRows);
+	}
+
+	private renderPriorityPickerContent(contentRows: number): string[] {
+		const item = this.currentItem();
+		if (!item) return [this.theme.fg("dim", "No selected backlog item.")];
+		const lines = [
+			`Set priority for ${this.theme.fg("accent", item.title)}`,
+			this.theme.fg("dim", `Current: ${item.priority}`),
+			"",
+			...PRIORITY_VALUES.map((priority, index) => {
+				const selected = index === this.priorityChoiceIndex;
+				const current = priority === item.priority ? " (current)" : "";
+				const prefix = selected ? this.theme.fg("accent", "> ") : "  ";
+				return `${prefix}${priority}${current} ${this.theme.fg("dim", `— ${PRIORITY_DESCRIPTIONS[priority]}`)}`;
+			}),
+			...this.statusLines(),
+		];
+		return lines.slice(0, contentRows);
+	}
+
+	private renderStatusReasonContent(width: number, contentRows: number): string[] {
+		const item = this.currentItem();
+		const status = this.pendingStatus;
+		if (!item || !status) return [this.theme.fg("dim", "No pending status change.")];
+		const reason = this.reasonInput || this.theme.fg("dim", "(optional but recommended)");
+		const lines = [
+			`Evidence for marking ${this.theme.fg("accent", item.title)} ${this.theme.fg("accent", status)}`,
+			this.theme.fg("dim", "This note will be appended to the Evidence section."),
+			"",
+			truncateToWidth(`Reason: ${reason}`, width, "", true),
+			...this.statusLines(),
+		];
+		return lines.slice(0, contentRows);
+	}
+
+	private statusLines(): string[] {
+		return [...(this.busyText ? ["", this.theme.fg("warning", this.busyText)] : []), ...(this.errorText ? ["", this.theme.fg("error", `Error: ${this.errorText}`)] : [])];
+	}
+
 	private renderListContent(width: number, contentRows: number): string[] {
 		const items = this.visibleItems();
 		if (items.length === 0) return [this.theme.fg("dim", this.emptyMessage())];
@@ -303,9 +544,13 @@ class BacklogBrowser {
 	}
 
 	private footerText(): string {
+		if (this.busyText) return "Working...";
 		if (this.searchEditing) return `/ search: ${this.search} • enter apply • esc close search`;
-		if (this.mode === "detail") return "↑↓ scroll • b/← back • a analyze • p promote • s status • ! priority • q/esc close";
-		return "↑↓/j/k navigate • enter view • / search • r ready • a analyze • p promote • s status • ! priority • q close";
+		if (this.mode === "status-picker") return "↑↓/j/k choose • enter set status • b/←/esc cancel";
+		if (this.mode === "priority-picker") return "↑↓/j/k choose • enter set priority • b/←/esc cancel";
+		if (this.mode === "status-reason") return "type evidence • enter save • esc back";
+		if (this.mode === "detail") return "↑↓ scroll • b/← back • a analyze • p promote • s set status • ! set priority • q/esc close";
+		return "↑↓/j/k navigate • enter view • / search • r ready • a analyze • p promote • s set status • ! set priority • q close";
 	}
 
 	private emptyMessage(): string {
@@ -336,13 +581,20 @@ export async function showBacklogItem(ctx: ExtensionContext, item: BacklogItem, 
 	await ctx.ui.custom<void>((tui, theme, _kb, done) => new BacklogPanel(item.title, renderMarkdownContent(markdown, Math.max(1, tui.terminal?.columns ?? 80)), theme, () => terminalRows(tui), () => tui.requestRender(), done));
 }
 
-export async function showBacklogBrowser(ctx: ExtensionContext, title: string, items: BacklogItem[], contextItems: BacklogItem[], readyOnly = false): Promise<BacklogBrowserAction | undefined> {
+export async function showBacklogBrowser(
+	ctx: ExtensionContext,
+	title: string,
+	items: BacklogItem[],
+	contextItems: BacklogItem[],
+	mutations: BacklogBrowserMutationHandlers,
+	readyOnly = false,
+): Promise<BacklogBrowserAction | undefined> {
 	if (!ctx.hasUI) {
 		const visible = readyOnly ? filterReadyItems(items, contextItems) : items;
 		ctx.ui.notify(formatSummaryList(visible.map(summarize), contextItems.map(summarize)).join("\n"), "info");
 		return undefined;
 	}
-	return ctx.ui.custom<BacklogBrowserAction | undefined>((tui, theme, _kb, done) => new BacklogBrowser(title, items, contextItems, theme, () => terminalRows(tui), () => tui.requestRender(), done, readyOnly));
+	return ctx.ui.custom<BacklogBrowserAction | undefined>((tui, theme, _kb, done) => new BacklogBrowser(title, items, contextItems, theme, () => terminalRows(tui), () => tui.requestRender(), done, mutations, readyOnly));
 }
 
 // --- eforge:endregion interactive-browser ---

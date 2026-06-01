@@ -47,7 +47,7 @@ Human-readable sections:
 
 Slash-command completions are registered for the subcommands above and for the status value in `/backlog status <id> <status>`.
 
-The list browser supports `↑↓/j/k` navigation, `enter` to view the selected item with markdown formatting, `b`/`←` to return from detail view, `/` to search, `r` to toggle ready-only filtering, `a` to analyze the selected item, `p` to promote it, `s` to cycle open statuses (`candidate`/`planned`/`active`), `!` to cycle priority, and `q`/`esc` to close.
+The list browser supports `↑↓/j/k` navigation, `enter` to view the selected item with markdown formatting, `b`/`←` to return from detail view, `/` to search from the list view, `r` to toggle ready-only filtering, `a` to analyze the selected item, `p` to promote it, `s` to choose a status, `!` to choose a priority, and `q`/`esc` to close. Status and priority changes use in-browser pickers and keep the current detail view open after saving.
 
 ## Agent tools
 
