@@ -6,7 +6,9 @@ import type { SecurityPolicy } from './security.js';
 import { sendJsonError, sendText } from './response.js';
 import { isHttpRouteError, MalformedRouteParameterError } from './route-errors.js';
 
-export type HttpMethod = 'GET' | 'POST' | 'OPTIONS';
+// --- eforge:region plan-03-config-profile-stack-routes ---
+export type HttpMethod = 'GET' | 'POST' | 'DELETE' | 'OPTIONS';
+// --- eforge:endregion plan-03-config-profile-stack-routes ---
 export type ApiRouteKey = keyof typeof API_ROUTES;
 
 export interface RequestContext {
@@ -119,7 +121,10 @@ export function createRouter(options: RouterOptions): {
           }
           return;
         }
-        throw err;
+        if (!res.writableEnded) {
+          sendJsonError(res, 500, 'Internal server error');
+        }
+        return;
       }
 
       if (isApiPath(pathname, apiPrefix)) {
