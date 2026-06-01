@@ -5,7 +5,7 @@ description: Build and submit stacked pull requests with eforge and git-spice.
 
 # Stacked PRs with git-spice
 
-eforge supports stacked pull requests via git-spice. When `stacking.enabled: true`, the root artifact branch targets the resolved trunk branch, and each child artifact branch targets its parent artifact branch, forming a linear stack of pull requests that reviewers can merge in order.
+Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-PR review flow. eforge currently supports stacked pull requests via git-spice. When `stacking.enabled: true` and `landing.action: pr`, the root artifact branch targets the resolved trunk branch, and each child artifact branch targets its parent artifact branch, forming a linear stack of pull requests that reviewers can merge in order.
 
 ## Artifact branches
 
@@ -49,7 +49,7 @@ When you use `--after <queue-id>` (CLI) or `afterQueueId` (MCP/Pi tool) to creat
 
 ## Enable stacking
 
-The guided path is `/eforge:workflow`. Choose a stacked workflow preset to write the required `landing.action: pr` and `stacking.enabled: true` keys to `eforge/config.yaml`. The `stacked-pr-autosync` preset also writes `stacking.sync.afterBuild: true` for daemon-owned automatic stack sync.
+The guided path is `/eforge:workflow`. Choose a stacked workflow preset to opt in to stacked PR landing and write the required `landing.action: pr` and `stacking.enabled: true` keys to `eforge/config.yaml`. The `stacked-pr-autosync` preset also writes `stacking.sync.afterBuild: true` for daemon-owned automatic stack sync. eforge currently uses git-spice for stacked PR operations.
 
 To configure the same settings by hand, add these fields to `eforge/config.yaml`:
 

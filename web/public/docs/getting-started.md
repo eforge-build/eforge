@@ -1,11 +1,11 @@
 ---
 title: Getting Started
-description: Install eforge and run your first agentic build.
+description: Install eforge and run your first delegated build.
 ---
 
 # Getting Started
 
-eforge is an agentic build system that turns specifications into code. You describe what you want to build; eforge plans, implements, reviews, and validates it autonomously using a multi-stage pipeline across isolated worktrees.
+eforge is an extensible build-engine kernel for turning normalized build source into reviewed, validated code changes. You describe what you want to build through a prompt, PRD, playbook, or session plan; eforge plans, implements, reviews, and validates the work through a multi-stage pipeline across isolated worktrees.
 
 ## Prerequisites
 
