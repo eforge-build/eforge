@@ -3,13 +3,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { NowActiveBuildCard as NowActiveBuildCardModel } from '@/lib/selectors/now';
 import type { MiniGanttRow, PipelineStage } from '@/lib/run-state';
-import { formatDuration, truncateId } from '@/lib/format';
+import { formatDuration, truncateId, compactTokens } from '@/lib/format';
 import { BuildPipelineStrip } from './build-pipeline-strip';
+import { PlanProgressRing } from '@/components/charts/plan-progress-ring';
+import { VelocitySparkline } from '@/components/charts/velocity-sparkline';
+import { AgentTokenBars } from '@/components/charts/agent-token-bars';
+import type { BuildMetricSamples } from '@/hooks/use-build-metric-history';
 import { cn } from '@/lib/utils';
 
 interface ActiveBuildCardProps {
   card: NowActiveBuildCardModel;
   onNavigate?: (href: string) => void;
+  /** Rolling token/cost history for the velocity sparklines. */
+  samples?: BuildMetricSamples;
 }
 
 const STREAM_STATUS_BADGE: Record<
@@ -256,7 +262,7 @@ function BuildLifecycleRail({ steps }: { steps: RailStep[] }) {
   );
 }
 
-export function ActiveBuildCard({ card, onNavigate }: ActiveBuildCardProps) {
+export function ActiveBuildCard({ card, onNavigate, samples }: ActiveBuildCardProps) {
   const durationLabel = formatDuration(card.durationMs);
   const streamBadgeVariant = STREAM_STATUS_BADGE[card.streamStatus] ?? 'outline';
 
@@ -285,6 +291,7 @@ export function ActiveBuildCard({ card, onNavigate }: ActiveBuildCardProps) {
       onKeyDown={onNavigate ? handleKeyDown : undefined}
       className={cn(
         'relative flex flex-col overflow-hidden border-border/80 shadow-sm',
+        card.latestError && 'border-l-2 border-l-destructive ring-1 ring-destructive/25',
         onNavigate && [
           'cursor-pointer',
           'transition-shadow duration-150',
@@ -356,6 +363,29 @@ export function ActiveBuildCard({ card, onNavigate }: ActiveBuildCardProps) {
           rows={card.miniGanttRows}
           hasPlanningRow={card.hasPlanningRow}
         />
+
+        {/* Metrics: plan-progress ring + live token/cost velocity sparklines */}
+        <div className="flex items-stretch gap-3">
+          {card.planProgress.total > 0 && (
+            <PlanProgressRing counts={card.planProgress} />
+          )}
+          <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
+            <VelocitySparkline
+              label="Tokens"
+              display={`${compactTokens(card.tokens)} tok`}
+              samples={samples?.tokens ?? []}
+              color="var(--color-blue)"
+            />
+            <VelocitySparkline
+              label="Cost"
+              display={`$${card.cost.toFixed(2)}`}
+              samples={samples?.cost ?? []}
+              color="var(--color-green)"
+            />
+          </div>
+        </div>
+
+        {card.agentUsage.length > 0 && <AgentTokenBars data={card.agentUsage} />}
 
         <div className="flex items-center justify-between gap-3 border-t pt-2 text-xs text-muted-foreground">
           <span className="min-w-0 truncate">

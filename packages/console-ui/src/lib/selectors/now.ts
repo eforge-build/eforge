@@ -30,6 +30,11 @@ export { selectNowQueueSummary } from './queue-summary';
 export type { NowQueueItem, NowQueueSummary } from './queue-summary';
 export { selectNowQueueStacks } from './queue-stacks';
 export type { NowQueueStack, NowQueueStackItem } from './queue-stacks';
+import { selectNowMetricsPanel } from './metrics';
+import type { NowMetricsPanel } from './metrics';
+export { selectNowMetricsPanel } from './metrics';
+export type { NowMetricsPanel } from './metrics';
+import { selectAgentUsageByRole } from './agent-usage';
 
 // ---------------------------------------------------------------------------
 // View model types
@@ -99,6 +104,8 @@ export interface NowActiveBuildCard {
   miniGanttRows: MiniGanttRow[];
   /** True when planning events exist in the run state (shows PRD row in pipeline strip). */
   hasPlanningRow: boolean;
+  /** Per-agent token usage (input + output), sorted descending, for the token-by-agent chart. */
+  agentUsage: Array<{ agent: string; tokens: number }>;
 }
 
 export interface NowRecentRunItem {
@@ -189,6 +196,8 @@ export interface NowDashboardModel {
   stackSync: NowStackSyncViewModel | null;
   activity: NowActivityPreviewItem[];
   activityHiddenCount: number;
+  /** At-a-glance build-health visuals (land rate donut + throughput bars). */
+  metrics: NowMetricsPanel;
   hasSnapshot: boolean;
 }
 
@@ -574,6 +583,13 @@ export function selectNowActiveBuildCards(
   sessionMetadata: Record<string, { planCount: number | null; baseProfile: string | null }>,
   activeDetails: Record<string, ActiveSessionDetail>,
   now: number = Date.now(),
+  /**
+   * Optional map from PRD/plan-set id to its human-authored title, sourced from
+   * the queue. When the running build's `planSet` slug resolves to a queue
+   * item, its title is used so the card label matches Attention/Queue labeling
+   * instead of a naively title-cased slug.
+   */
+  titleByPlanSet: Map<string, string> = new Map(),
 ): NowActiveBuildCard[] {
   // Filter to active runs (no completedAt, non-terminal status)
   const activeRuns = runs.filter(
@@ -616,6 +632,7 @@ export function selectNowActiveBuildCards(
     let cachePercent = 0;
     let miniGanttRows: MiniGanttRow[] = [];
     let hasPlanningRow = false;
+    let agentUsage: Array<{ agent: string; tokens: number }> = [];
 
     if (detail) {
       streamStatus = detail.connectionStatus;
@@ -634,12 +651,13 @@ export function selectNowActiveBuildCards(
       hasPlanningRow =
         rs.earlyOrchestration != null ||
         rs.events.some((e) => e.event.type.startsWith('planning:'));
+      agentUsage = selectAgentUsageByRole(rs);
     }
 
     return {
       sessionId,
       runId: run.id,
-      planSet: selectPrdDisplayLabel(undefined, run.planSet),
+      planSet: selectPrdDisplayLabel(titleByPlanSet.get(run.planSet), run.planSet),
       command: run.command,
       status: run.status,
       startedAt: run.startedAt,
@@ -660,6 +678,7 @@ export function selectNowActiveBuildCards(
       href: toConsolePath({ id: 'runDetail', detailId: sessionId }),
       miniGanttRows,
       hasPlanningRow,
+      agentUsage,
     };
   });
 }
@@ -953,11 +972,15 @@ export function selectNowDashboardModel(
     activeSessions.sessions,
     now,
   );
+  // Resolve human-authored PRD titles from the queue so active build cards
+  // label the running plan-set identically to the Queue/Attention surfaces.
+  const titleByPlanSet = new Map(state.queue.map((q) => [q.id, q.title]));
   const activeBuilds = selectNowActiveBuildCards(
     state.runs,
     state.sessionMetadata,
     activeSessions.sessions,
     now,
+    titleByPlanSet,
   );
   const queue = selectNowQueueSummary(state.queue);
   const queueStacks = selectNowQueueStacks(state.queue);
@@ -968,6 +991,7 @@ export function selectNowDashboardModel(
   const { items: activity, hiddenCount: activityHiddenCount } = selectNowRecentActivity(
     state.recentActivity,
   );
+  const metrics = selectNowMetricsPanel(stack, allRuns);
 
   return {
     connectionBanner,
@@ -983,6 +1007,7 @@ export function selectNowDashboardModel(
     stackSync,
     activity,
     activityHiddenCount,
+    metrics,
     hasSnapshot,
   };
 }

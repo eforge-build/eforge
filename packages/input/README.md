@@ -86,6 +86,71 @@ All mutation helpers return a new `SessionPlan` value; they do not write to disk
 
 - `sessionPlanToBuildSource(plan)` - compile a session plan to ordinary build source for the engine queue
 
+### Session plan sets (read-only)
+
+Session plan sets are **read-only** sibling artifacts that group related plans under a directory:
+
+```
+.eforge/session-plans/<plan-set-id>/
+  plan-set.yaml          # canonical manifest (source of membership)
+  umbrella.md            # optional umbrella anchor markdown
+  plans/plan-01-*.md     # manifest-declared child markdown files
+```
+
+The `plan-set.yaml` manifest is the **single source of membership**. Readers verify only the umbrella anchor and child files named by the manifest; they never recursively discover child markdown as a second membership source. The flat `.eforge/session-plans/<name>.md` session-plan handling is unchanged, and `normalizeBuildSource` continues to match only flat session-plan paths.
+
+#### Manifest
+
+```yaml
+id: add-search
+title: Add Search
+status: planning        # planning | ready | submitted | abandoned
+strategy: dag           # sequential | parallel | dag
+anchor: umbrella.md     # optional umbrella anchor file
+children:
+  - id: plan-01-indexing
+    title: Indexing
+    file: plans/plan-01-indexing.md
+    kind: plan            # plan | note | reference
+    buildable: true
+    status: planning
+    profile: excursion    # optional
+    dependsOn: []
+    externalRefs:
+      - kind: issue
+        ref: ABC-123
+externalRefs: []
+```
+
+`children` array order is the child ordering. Unknown fields are preserved (`.passthrough()`) so future metadata reads without breaking this slice.
+
+#### Manifest parse / serialize
+
+- `parseSessionPlanSetManifest(raw)` - parse a `plan-set.yaml` string to a typed manifest
+- `serializeSessionPlanSetManifest(manifest)` - serialize a manifest with canonical field ordering
+
+#### Path resolution
+
+- `resolveSessionPlanSetsRoot(cwd)` - absolute `.eforge/session-plans` root
+- `resolveSessionPlanSetDir({ cwd, planSetId })` - absolute plan-set directory; rejects unsafe ids
+- `resolveSessionPlanSetManifestPath({ cwd, planSetId })` - absolute manifest path
+- `resolveSessionPlanSetAnchorPath({ cwd, planSetId, anchor })` - absolute umbrella anchor path; rejects traversal
+- `resolveSessionPlanSetChildPath({ cwd, planSetId, childFile })` - absolute child path; rejects traversal
+
+#### List / load
+
+- `listSessionPlanSets({ cwd })` - directories with a valid `plan-set.yaml`, sorted by manifest id
+- `loadSessionPlanSet({ cwd, planSetId })` - load the manifest, umbrella anchor, and manifest-declared child files in manifest order
+
+#### Validation / summary
+
+- `validateSessionPlanSet({ cwd, planSetId })` - returns `{ ok, diagnostics, summary }` with diagnostic codes for duplicate child ids/files, unknown dependencies, missing/invalid anchor, missing/invalid child paths, and child frontmatter parse errors
+- `summarizeSessionPlanSet(loadResult, diagnostics?)` - JSON-safe summary (no `Map`, no raw content)
+
+#### Out of scope for plan sets
+
+This is a read-only protocol. It does **not** create, add, update, or delete plan sets; does **not** enqueue children or hand off plan sets to the build pipeline; and does **not** change `normalizeBuildSource` matching. Nested `.eforge/session-plans/<set>/<child>.md` paths pass through `normalizeBuildSource` unchanged.
+
 ### Boundary normalization
 
 - `normalizeBuildSource(input)` - single chokepoint for session-plan handling: if a source path matches `**/.eforge/session-plans/*.md`, parses the plan and converts it to ordinary build source; other paths pass through unchanged

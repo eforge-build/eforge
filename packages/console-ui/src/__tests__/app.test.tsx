@@ -25,6 +25,8 @@ vi.mock('@/hooks/use-daemon-events', async () => {
         lastSnapshotAt: Date.now(),
       },
       connectionStatus: 'connected' as const,
+      refreshQueue: vi.fn(),
+      setDaemonAutoBuild: vi.fn(),
     }),
   };
 });
