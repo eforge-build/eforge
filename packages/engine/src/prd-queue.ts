@@ -38,9 +38,44 @@ const prdFrontmatterSchema = z.object({
   stack_provider: z.literal('git-spice').optional(),
   landing: z.enum(['pr', 'merge', 'leave']).optional(),
   landing_auto_merge: z.boolean().optional(),
+  recovery_from: z.string().min(1).optional(),
+  recovery_set_name: z.string().min(1).optional(),
+  recovery_feature_branch: z.string().min(1).optional(),
+  recovery_base_branch: z.string().min(1).optional(),
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
+
+export interface RecoveryContinuationFrontmatter {
+  sourcePrdId: string;
+  setName: string;
+  featureBranch: string;
+  baseBranch: string;
+}
+
+export function getRecoveryContinuationFrontmatter(frontmatter: PrdFrontmatter): RecoveryContinuationFrontmatter | undefined {
+  const fields = {
+    recovery_from: frontmatter.recovery_from,
+    recovery_set_name: frontmatter.recovery_set_name,
+    recovery_feature_branch: frontmatter.recovery_feature_branch,
+    recovery_base_branch: frontmatter.recovery_base_branch,
+  };
+  const present = Object.values(fields).filter((value) => value !== undefined);
+  if (present.length === 0) return undefined;
+  if (present.length !== 4) {
+    const missing = Object.entries(fields)
+      .filter(([, value]) => value === undefined)
+      .map(([key]) => key)
+      .join(', ');
+    throw new Error(`Incomplete recovery continuation frontmatter; missing: ${missing}`);
+  }
+  return {
+    sourcePrdId: fields.recovery_from,
+    setName: fields.recovery_set_name,
+    featureBranch: fields.recovery_feature_branch,
+    baseBranch: fields.recovery_base_branch,
+  } as RecoveryContinuationFrontmatter;
+}
 
 export interface QueuedPrd {
   /** Filename without extension — used as the PRD id */
@@ -646,6 +681,14 @@ export interface EnqueuePrdOptions {
   stack_parent?: string;
   /** Stack provider override for this PRD. */
   stack_provider?: 'git-spice';
+  /** Failed PRD id that produced this recovery continuation. */
+  recovery_from?: string;
+  /** Failed build set name that produced this recovery continuation. */
+  recovery_set_name?: string;
+  /** Preserved failed feature branch to use as the successor worktree base. */
+  recovery_feature_branch?: string;
+  /** Original logical base branch for orchestration and landing. */
+  recovery_base_branch?: string;
 }
 
 export interface EnqueuePrdResult {
@@ -696,6 +739,10 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     stack_id,
     stack_parent,
     stack_provider,
+    recovery_from,
+    recovery_set_name,
+    recovery_feature_branch,
+    recovery_base_branch,
   } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
@@ -739,6 +786,10 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     ...(stack_provider !== undefined && { stack_provider }),
     ...(landingAction !== undefined && { landing: landingAction }),
     ...(landingAutoMerge !== undefined && { landing_auto_merge: landingAutoMerge }),
+    ...(recovery_from !== undefined && { recovery_from }),
+    ...(recovery_set_name !== undefined && { recovery_set_name }),
+    ...(recovery_feature_branch !== undefined && { recovery_feature_branch }),
+    ...(recovery_base_branch !== undefined && { recovery_base_branch }),
   };
   const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
   if (!frontmatterResult.success) {
@@ -776,6 +827,18 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   }
   if (landingAutoMerge !== undefined) {
     fmLines.push(`landing_auto_merge: ${landingAutoMerge}`);
+  }
+  if (recovery_from !== undefined) {
+    fmLines.push(`recovery_from: ${recovery_from}`);
+  }
+  if (recovery_set_name !== undefined) {
+    fmLines.push(`recovery_set_name: ${recovery_set_name}`);
+  }
+  if (recovery_feature_branch !== undefined) {
+    fmLines.push(`recovery_feature_branch: ${recovery_feature_branch}`);
+  }
+  if (recovery_base_branch !== undefined) {
+    fmLines.push(`recovery_base_branch: ${recovery_base_branch}`);
   }
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;

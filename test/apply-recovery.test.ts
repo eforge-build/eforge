@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFile, mkdir, writeFile, access } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, access, readdir } from 'node:fs/promises';
 import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
@@ -56,7 +56,7 @@ async function seedFailedPrd(
   dir: string,
   prdId: string,
   verdict: 'retry' | 'split' | 'abandon' | 'manual',
-  opts?: { suggestedSuccessorPrd?: string },
+  opts?: { suggestedSuccessorPrd?: string; summary?: Record<string, unknown> },
 ): Promise<void> {
   const failedDir = join(dir, '.eforge', 'queue', 'failed');
   await mkdir(failedDir, { recursive: true });
@@ -96,6 +96,7 @@ async function seedFailedPrd(
       diffStat: '',
       modelsUsed: [],
       failedAt: new Date().toISOString(),
+      ...opts?.summary,
     },
     verdict: verdictJson,
   };
@@ -246,6 +247,8 @@ describe('applyRecovery — split', () => {
     seedGitRepo(dir);
     await seedFailedPrd(dir, prdId, 'split', {
       suggestedSuccessorPrd: [
+        '',
+        '  ',
         '---',
         'title: Wrong Title',
         'depends_on: ["the-failed-prd-id"]',
@@ -293,6 +296,171 @@ describe('applyRecovery — split', () => {
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
     expect(result.successorPrdId).toBe('rest-api-layer');
+  });
+
+  it('writes continuation frontmatter when landed commits exist on a preserved feature branch', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-landed-continuation';
+    seedGitRepo(dir);
+    execFileSync('git', ['branch', 'eforge/test-set'], { cwd: dir });
+    await seedFailedPrd(dir, prdId, 'split', {
+      summary: {
+        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
+      },
+    });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+    const content = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
+
+    expect(content).toContain(`recovery_from: ${prdId}`);
+    expect(content).toContain('recovery_set_name: test-set');
+    expect(content).toContain('recovery_feature_branch: eforge/test-set');
+    expect(content).toContain('recovery_base_branch: main');
+  });
+
+  it('writes continuation frontmatter when a plan has mergedAt even with no landed commits', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-merged-continuation';
+    seedGitRepo(dir);
+    execFileSync('git', ['branch', 'eforge/test-set'], { cwd: dir });
+    await seedFailedPrd(dir, prdId, 'split', {
+      summary: {
+        landedCommits: [],
+        plans: [{ planId: 'plan-01', status: 'merged', mergedAt: new Date().toISOString() }],
+      },
+    });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+    const content = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
+
+    expect(content).toContain(`recovery_from: ${prdId}`);
+    expect(content).toContain('recovery_set_name: test-set');
+    expect(content).toContain('recovery_feature_branch: eforge/test-set');
+    expect(content).toContain('recovery_base_branch: main');
+  });
+
+  it('strips conflicting agent recovery frontmatter and uses sidecar-derived continuation fields', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-conflicting-frontmatter';
+    seedGitRepo(dir);
+    execFileSync('git', ['branch', 'eforge/test-set'], { cwd: dir });
+    await seedFailedPrd(dir, prdId, 'split', {
+      suggestedSuccessorPrd: [
+        '---',
+        'title: Wrong Title',
+        'recovery_from: attacker',
+        'recovery_set_name: attacker-set',
+        'recovery_feature_branch: eforge/attacker',
+        'recovery_base_branch: attacker-base',
+        '---',
+        '',
+        '# Trusted Successor',
+        '',
+        'Continue safely.',
+      ].join('\n'),
+      summary: {
+        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
+      },
+    });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+    const content = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
+
+    expect(content).not.toContain('attacker');
+    expect(content).toContain(`recovery_from: ${prdId}`);
+    expect(content).toContain('recovery_feature_branch: eforge/test-set');
+  });
+
+  it('rejects partial-work split with a missing preserved feature branch before writing a successor', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-missing-branch';
+    seedGitRepo(dir);
+    await seedFailedPrd(dir, prdId, 'split', {
+      summary: {
+        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
+      },
+    });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    await expect(driveGenerator(engine.applyRecovery(prdId))).rejects.toThrow(/eforge\/test-set/);
+
+    const entries = await readdir(join(dir, '.eforge', 'queue'));
+    expect(entries.filter((entry) => entry.endsWith('.md'))).toEqual([]);
+  });
+
+  it('rejects partial-work split with an unsafe preserved feature branch before writing a successor', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-unsafe-branch';
+    seedGitRepo(dir);
+    await seedFailedPrd(dir, prdId, 'split', {
+      summary: {
+        featureBranch: 'eforge/test-set..evil',
+        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
+      },
+    });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    await expect(driveGenerator(engine.applyRecovery(prdId))).rejects.toThrow(/test-set\.\.evil/);
+
+    const entries = await readdir(join(dir, '.eforge', 'queue'));
+    expect(entries.filter((entry) => entry.endsWith('.md'))).toEqual([]);
+  });
+
+  it('rejects partial-work split with a missing original base branch before writing a successor', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-missing-base';
+    seedGitRepo(dir);
+    execFileSync('git', ['branch', 'eforge/test-set'], { cwd: dir });
+    await seedFailedPrd(dir, prdId, 'split', {
+      summary: {
+        baseBranch: 'missing-base',
+        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
+      },
+    });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    await expect(driveGenerator(engine.applyRecovery(prdId))).rejects.toThrow(/missing-base/);
+
+    const entries = await readdir(join(dir, '.eforge', 'queue'));
+    expect(entries.filter((entry) => entry.endsWith('.md'))).toEqual([]);
+  });
+
+  it('rejects partial-work split with an unsafe original base branch before writing a successor', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-unsafe-base';
+    seedGitRepo(dir);
+    execFileSync('git', ['branch', 'eforge/test-set'], { cwd: dir });
+    await seedFailedPrd(dir, prdId, 'split', {
+      summary: {
+        baseBranch: 'main^{commit}',
+        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
+      },
+    });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    await expect(driveGenerator(engine.applyRecovery(prdId))).rejects.toThrow(/main\^\{commit\}/);
+
+    const entries = await readdir(join(dir, '.eforge', 'queue'));
+    expect(entries.filter((entry) => entry.endsWith('.md'))).toEqual([]);
+  });
+
+  it('omits recovery frontmatter when no partial landed or merged evidence exists', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-fresh-successor';
+    seedGitRepo(dir);
+    await seedFailedPrd(dir, prdId, 'split');
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+    const content = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
+
+    expect(content).not.toMatch(/^recovery_/m);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
   });
 });
 

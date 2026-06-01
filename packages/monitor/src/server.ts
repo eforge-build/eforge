@@ -2365,6 +2365,7 @@ export async function startServer(
 
       // Read and validate the recovery sidecar
       let verdictData: ReturnType<typeof recoveryVerdictSchema.parse>;
+      let sidecarSummary: import('@eforge-build/engine/events').BuildFailureSummary | undefined;
       try {
         let sidecarRaw: string;
         try {
@@ -2391,6 +2392,8 @@ export async function startServer(
           return true;
         }
 
+        sidecarSummary = (sidecarJson as Record<string, unknown>).summary as import('@eforge-build/engine/events').BuildFailureSummary | undefined;
+
         try {
           verdictData = parseWithSchema(recoveryVerdictSchema, (sidecarJson as Record<string, unknown>).verdict);
         } catch (err) {
@@ -2414,7 +2417,7 @@ export async function startServer(
             break;
           }
           case 'split': {
-            const result = await applyRecoverySplit(helperOptions, verdictData);
+            const result = await applyRecoverySplit(helperOptions, verdictData, { summary: sidecarSummary });
             responseBody = { verdict: 'split', commitSha: result.commitSha, successorPrdId: result.successorPrdId, noAction: false };
             break;
           }

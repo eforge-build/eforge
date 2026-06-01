@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { writeFile, mkdir, access } from 'node:fs/promises';
+import { writeFile, mkdir, access, readFile, readdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
@@ -95,7 +95,7 @@ async function seedFailedPrd(
   dir: string,
   prdId: string,
   verdict: 'retry' | 'split' | 'abandon' | 'manual',
-  opts?: { suggestedSuccessorPrd?: string; malformedJson?: boolean; missingJson?: boolean },
+  opts?: { suggestedSuccessorPrd?: string; malformedJson?: boolean; missingJson?: boolean; summary?: Record<string, unknown> },
 ): Promise<void> {
   const failedDir = join(dir, '.eforge', 'queue', 'failed');
   await mkdir(failedDir, { recursive: true });
@@ -143,6 +143,7 @@ async function seedFailedPrd(
           diffStat: '',
           modelsUsed: [],
           failedAt: new Date().toISOString(),
+          ...opts?.summary,
         },
         verdict: verdictData,
       };
@@ -328,6 +329,55 @@ describe('POST /api/recover/apply — malformed sidecar', () => {
     expect(typeof data.error).toBe('string');
     expect(data.error.length).toBeGreaterThan(0);
     expect(autoBuildWakeReasons).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/recover/apply — split continuation parity
+// ---------------------------------------------------------------------------
+
+describe('POST /api/recover/apply — split continuation', () => {
+  it('writes continuation frontmatter when partial work evidence and branch are present', async () => {
+    const prdId = 'test-route-split-continuation';
+    execFileSync('git', ['branch', 'eforge/test-set'], { cwd: tmpDir });
+    await seedFailedPrd(tmpDir, prdId, 'split', {
+      summary: {
+        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
+      },
+    });
+
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as { successorPrdId: string };
+    const content = await readFile(join(tmpDir, '.eforge', 'queue', `${data.successorPrdId}.md`), 'utf-8');
+    expect(content).toContain(`recovery_from: ${prdId}`);
+    expect(content).toContain('recovery_set_name: test-set');
+    expect(content).toContain('recovery_feature_branch: eforge/test-set');
+    expect(content).toContain('recovery_base_branch: main');
+  });
+
+  it('returns non-2xx and writes no successor when partial work references a missing branch', async () => {
+    const prdId = 'test-route-split-missing-branch';
+    await seedFailedPrd(tmpDir, prdId, 'split', {
+      summary: {
+        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
+      },
+    });
+
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId }),
+    });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    const entries = await readdir(join(tmpDir, '.eforge', 'queue'));
+    expect(entries.filter((entry) => entry.endsWith('.md'))).toEqual([]);
   });
 });
 

@@ -24,7 +24,7 @@ import type {
   RecoveryVerdict,
   BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId, getRecoveryContinuationFrontmatter } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
@@ -1217,6 +1217,16 @@ export class EforgeEngine {
       let planSkipped = false;
       let skipReason = '';
       const planSetName = options.name ?? prd.id;
+      let recoveryContinuation: ReturnType<typeof getRecoveryContinuationFrontmatter>;
+      try {
+        recoveryContinuation = getRecoveryContinuationFrontmatter(prd.frontmatter);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
+        prdResult = { status: 'failed', summary: message };
+        return;
+      }
       let stackContext: StackBaseContext | undefined;
       if (this.config.stacking.enabled) {
         try {
@@ -1229,6 +1239,14 @@ export class EforgeEngine {
           return;
         }
       }
+      if (recoveryContinuation !== undefined && stackContext !== undefined) {
+        const message = 'Recovery continuation PRD cannot also use stack metadata';
+        yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
+        prdResult = { status: 'failed', summary: message };
+        return;
+      }
+
       // For stacked PRDs, instantiate the provider and gate on availability
       // before compile so the error surfaces early (before planning:start).
       let stackProvider: StackProviderAdapter | undefined;
@@ -1255,7 +1273,13 @@ export class EforgeEngine {
       // carries the logical trunk branch name so orchestration.yaml, PR creation,
       // and mergeToBase() always receive a real branch name, not a SHA.
       let compileWorktreeBaseRefOverride: string | undefined;
-      if (this.config.build.trunkSync.enabled && stackContext !== undefined && stackContext.parentPrdId === undefined) {
+      if (recoveryContinuation !== undefined) {
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'planning:progress',
+          message: `Recovery continuation: starting successor from '${recoveryContinuation.featureBranch}' while targeting '${recoveryContinuation.baseBranch}' (PRD ${prd.id})`,
+        } as EforgeEvent;
+      } else if (this.config.build.trunkSync.enabled && stackContext !== undefined && stackContext.parentPrdId === undefined) {
         // Stacked root PRD: run trunk sync on the trunk base
         yield {
           timestamp: new Date().toISOString(),
@@ -1315,16 +1339,20 @@ export class EforgeEngine {
       // Stacked child PRDs (stackContext.parentPrdId !== undefined): no override
       // here; the plan-02 region below passes stackContext.baseBranch unchanged.
 
+      const compileBaseBranchOverride = recoveryContinuation?.baseBranch ?? stackContext?.baseBranch;
+      const compileWorktreeRefOverride = recoveryContinuation?.featureBranch ?? compileWorktreeBaseRefOverride;
+
       for await (const event of withRunId(this.compile(prd.filePath, {
         name: planSetName,
         auto: options.auto,
         verbose,
         cwd,
         abortController,
-        ...(stackContext !== undefined && { baseBranchOverride: stackContext.baseBranch }),
-        // Pass the fetched SHA as worktreeBaseRefOverride (for createMergeWorktree only),
-        // never as baseBranchOverride, so orchestration/landing always gets the branch name.
-        ...(compileWorktreeBaseRefOverride !== undefined && { worktreeBaseRefOverride: compileWorktreeBaseRefOverride }),
+        ...(compileBaseBranchOverride !== undefined && { baseBranchOverride: compileBaseBranchOverride }),
+        // Pass the fetched SHA or preserved recovery feature branch as worktreeBaseRefOverride
+        // (for createMergeWorktree only), never as baseBranchOverride, so orchestration/landing
+        // always gets the branch name.
+        ...(compileWorktreeRefOverride !== undefined && { worktreeBaseRefOverride: compileWorktreeRefOverride }),
       }))) {
         yield { ...event, sessionId: prdSessionId } as EforgeEvent;
         if (event.type === 'phase:end' && event.result.status === 'failed') {
@@ -2427,7 +2455,7 @@ export class EforgeEngine {
       }
 
       // Parse and validate the verdict; also extract failing plan ID for decision attribution
-      const parsed = JSON.parse(rawJson) as { verdict?: unknown; summary?: { failingPlan?: { planId?: string } } };
+      const parsed = JSON.parse(rawJson) as { verdict?: unknown; summary?: BuildFailureSummary };
       const failingPlanId = parsed.summary?.failingPlan?.planId ?? prdId;
       const verdictResult = safeParseWithSchema(recoveryVerdictSchema, parsed.verdict);
       if (!verdictResult.success) {
@@ -2448,7 +2476,7 @@ export class EforgeEngine {
           break;
         }
         case 'split': {
-          const { commitSha, successorPrdId } = await applyRecoverySplit(helperOptions, verdict);
+          const { commitSha, successorPrdId } = await applyRecoverySplit(helperOptions, verdict, { summary: parsed.summary });
           result = { verdict: 'split', noAction: false, commitSha, successorPrdId };
           break;
         }

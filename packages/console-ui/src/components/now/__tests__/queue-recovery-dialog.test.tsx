@@ -182,7 +182,7 @@ describe('QueueRecoveryDialog - sidecar verdict actions', () => {
     expect(await screen.findByText(/re-queueing the PRD/)).toBeDefined();
   });
 
-  it('split calls sidecar apply and reports enqueuing the successor PRD', async () => {
+  it('split calls sidecar apply and reports continuation-aware successor PRD wording', async () => {
     vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('split', 'medium'));
     vi.mocked(applySidecarRecovery).mockResolvedValue(applyFixture('split'));
     renderDialog();
@@ -194,6 +194,7 @@ describe('QueueRecoveryDialog - sidecar verdict actions', () => {
     await waitFor(() => expect(applySidecarRecovery).toHaveBeenCalledTimes(1));
     expect(applyQueueRecovery).not.toHaveBeenCalled();
     expect(await screen.findByText(/enqueuing the successor PRD/)).toBeDefined();
+    expect(screen.getByText(/preserved feature branch/)).toBeDefined();
   });
 
   it('abandon calls sidecar apply and reports archiving or removing the failed PRD', async () => {

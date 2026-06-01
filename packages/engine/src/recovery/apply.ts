@@ -12,8 +12,9 @@
 import { rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ModelTracker } from '../model-tracker.js';
-import type { RecoveryVerdict } from '../events.js';
+import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { enqueuePrd, inferTitle } from '../prd-queue.js';
+import { deriveSplitRecoveryContinuation } from './continuation.js';
 
 export interface ApplyHelperOptions {
   /** Absolute working directory (repo root). */
@@ -62,6 +63,7 @@ export async function applyRecoveryRetry(
 export async function applyRecoverySplit(
   options: ApplyHelperOptions,
   verdict: RecoveryVerdict,
+  context: { summary?: BuildFailureSummary } = {},
 ): Promise<{ commitSha: string; successorPrdId: string }> {
   const { cwd, prdId, queueDir } = options;
 
@@ -71,10 +73,11 @@ export async function applyRecoverySplit(
 
   // Strip any agent-emitted YAML frontmatter and leading whitespace
   const body = verdict.suggestedSuccessorPrd
-    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+    .replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
     .replace(/^\s+/, '');
 
   const title = inferTitle(body);
+  const recoveryContinuation = await deriveSplitRecoveryContinuation({ cwd, prdId, summary: context.summary });
 
   const { id: successorPrdId } = await enqueuePrd({
     body,
@@ -82,6 +85,12 @@ export async function applyRecoverySplit(
     queueDir,
     cwd,
     depends_on: [],
+    ...(recoveryContinuation !== undefined && {
+      recovery_from: recoveryContinuation.sourcePrdId,
+      recovery_set_name: recoveryContinuation.setName,
+      recovery_feature_branch: recoveryContinuation.featureBranch,
+      recovery_base_branch: recoveryContinuation.baseBranch,
+    }),
   });
 
   // No git operations needed — queue is filesystem-only
