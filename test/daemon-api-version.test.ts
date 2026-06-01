@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { DAEMON_API_VERSION } from '@eforge-build/client';
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 49 for resume eligibility preflight route', () => {
-    expect(DAEMON_API_VERSION).toBe(49);
+  it('is 50 for stack landing conflict recovery event/schema contract changes', () => {
+    expect(DAEMON_API_VERSION).toBe(50);
   });
 });
