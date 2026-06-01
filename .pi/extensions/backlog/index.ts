@@ -1,11 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, type AutocompleteItem } from "@earendil-works/pi-tui";
-import { showBacklogBrowser, showBacklogItem, showPanel, type BacklogBrowserAction } from "./browser";
+import { showBacklogBrowser, showBacklogItem, showPanel, type BacklogBrowserAction, type BacklogBrowserMutationHandlers } from "./browser";
 import { AddParams, ListParams, ShowParams, UpdateParams } from "./schemas";
 import {
 	BACKLOG_ACTIONS,
 	CLOSED_STATUSES,
-	PRIORITY_VALUES,
 	STATUS_VALUES,
 	appendToSection,
 	blockedBy,
@@ -25,8 +24,10 @@ import {
 	summarize,
 	today,
 	uniqueValues,
+	upsertSection,
 	writeItem,
 	type BacklogItem,
+	type BacklogPriority,
 	type BacklogStatus,
 	type BacklogSummary,
 } from "./store";
@@ -36,8 +37,6 @@ async function handleBrowserAction(pi: ExtensionAPI, ctx: ExtensionContext, acti
 	if (!action) return;
 	if (action.kind === "analyze") return sendAgentPrompt(pi, ctx, buildAnalyzePrompt(action.id));
 	if (action.kind === "promote") return prefillPromotePrompt(ctx, action.id);
-	if (action.kind === "cycle-status") return cycleOpenStatus(ctx, action.id);
-	if (action.kind === "cycle-priority") return cyclePriority(ctx, action.id);
 }
 
 async function prefillPromotePrompt(ctx: ExtensionContext, id: string): Promise<void> {
@@ -46,21 +45,32 @@ async function prefillPromotePrompt(ctx: ExtensionContext, id: string): Promise<
 	ctx.ui.notify(`Prefilled editor with /eforge:plan for ${id}`, "info");
 }
 
-async function cycleOpenStatus(ctx: ExtensionContext, id: string): Promise<void> {
-	const item = await readItem(ctx.cwd, id);
-	const openStatuses: BacklogStatus[] = ["candidate", "planned", "active"];
-	item.status = openStatuses[(openStatuses.indexOf(item.status) + 1) % openStatuses.length] ?? "candidate";
-	item.body = appendToSection(item.body, "Evidence", `${today()}: quick browser status change to ${item.status}`);
-	await writeItem(ctx.cwd, item);
-	ctx.ui.notify(`Backlog item ${id} marked ${item.status}`, "info");
+function browserMutations(ctx: ExtensionContext): BacklogBrowserMutationHandlers {
+	return {
+		setStatus: (id, status, reason) => setBacklogStatus(ctx, id, status, reason),
+		setPriority: (id, priority) => setBacklogPriority(ctx, id, priority),
+	};
 }
 
-async function cyclePriority(ctx: ExtensionContext, id: string): Promise<void> {
+async function setBacklogStatus(ctx: ExtensionContext, id: string, status: BacklogStatus, reason?: string): Promise<BacklogItem> {
 	const item = await readItem(ctx.cwd, id);
-	const nextPriority = PRIORITY_VALUES[(PRIORITY_VALUES.indexOf(item.priority) + 1) % PRIORITY_VALUES.length] ?? "medium";
-	item.priority = nextPriority;
+	item.status = status;
+	if (CLOSED_STATUSES.has(status)) item.last_checked = today();
+	const note = reason?.trim()
+		? `marked ${status} — ${reason.trim()}`
+		: `quick browser status change to ${status}`;
+	item.body = appendToSection(item.body, "Evidence", `${today()}: ${note}`);
 	await writeItem(ctx.cwd, item);
-	ctx.ui.notify(`Backlog item ${id} priority ${item.priority}`, "info");
+	ctx.ui.notify(`Backlog item ${id} marked ${status}`, "info");
+	return readItem(ctx.cwd, id);
+}
+
+async function setBacklogPriority(ctx: ExtensionContext, id: string, priority: BacklogPriority): Promise<BacklogItem> {
+	const item = await readItem(ctx.cwd, id);
+	item.priority = priority;
+	await writeItem(ctx.cwd, item);
+	ctx.ui.notify(`Backlog item ${id} priority ${priority}`, "info");
+	return readItem(ctx.cwd, id);
 }
 
 function splitArgs(input: string): string[] {
@@ -135,21 +145,21 @@ async function handleBacklogCommand(pi: ExtensionAPI, args: string, ctx: Extensi
 	if (["list", "ls", ""].includes(action)) {
 		const allItems = await listItems(ctx.cwd);
 		const items = filterItems(allItems, { query: rest.join(" ") || undefined });
-		await handleBrowserAction(pi, ctx, await showBacklogBrowser(ctx, "Backlog", items, allItems));
+		await handleBrowserAction(pi, ctx, await showBacklogBrowser(ctx, "Backlog", items, allItems, browserMutations(ctx)));
 		return;
 	}
 
 	if (action === "ready") {
 		const allItems = await listItems(ctx.cwd);
 		const items = filterItems(allItems, { query: rest.join(" ") || undefined });
-		await handleBrowserAction(pi, ctx, await showBacklogBrowser(ctx, "Ready backlog", items, allItems, true));
+		await handleBrowserAction(pi, ctx, await showBacklogBrowser(ctx, "Ready backlog", items, allItems, browserMutations(ctx), true));
 		return;
 	}
 
 	if (action === "blocked") {
 		const allItems = await listItems(ctx.cwd);
 		const items = filterBlockedItems(filterItems(allItems, { query: rest.join(" ") || undefined }), allItems);
-		await handleBrowserAction(pi, ctx, await showBacklogBrowser(ctx, "Blocked backlog", items, allItems));
+		await handleBrowserAction(pi, ctx, await showBacklogBrowser(ctx, "Blocked backlog", items, allItems, browserMutations(ctx)));
 		return;
 	}
 
