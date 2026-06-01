@@ -9,7 +9,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 71
+Total routes: 72
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -62,6 +62,7 @@ Total routes: 71
 | `readRecoverySidecar` | `/api/recovery/sidecar` |
 | `recover` | `/api/recover` |
 | `resumeBuild` | `/api/recover/resume-build` |
+| `resumeEligibility` | `/api/recover/resume-eligibility` |
 | `runs` | `/api/runs` |
 | `runState` | `/api/run-state/:id` |
 | `runSummary` | `/api/run-summary/:id` |

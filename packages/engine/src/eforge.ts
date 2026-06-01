@@ -2526,11 +2526,9 @@ export class EforgeEngine {
     // paths match the original build when setName differs from prdId.
     let setName = options.setName;
     if (!setName) {
-      try {
-        const sidecarPath = join(resolve(cwd, this.config.prdQueue.dir), 'failed', `${prdId}.recovery.json`);
-        const parsed = JSON.parse(await readFile(sidecarPath, 'utf-8')) as { summary?: { setName?: string } };
-        setName = typeof parsed.summary?.setName === 'string' ? parsed.summary.setName : prdId;
-      } catch { setName = prdId; }
+      const { resolveResumeSetName } = await import('./resume/compiled-build.js');
+      const failedDir = join(resolve(cwd, this.config.prdQueue.dir), 'failed');
+      setName = await resolveResumeSetName({ prdId, failedDir });
     }
     const featureBranch = `eforge/${setName}`;
     const mergeWorktreePath = join(computeWorktreeBase(cwd, setName), '__merge__');

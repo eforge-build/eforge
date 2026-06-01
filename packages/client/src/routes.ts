@@ -96,6 +96,38 @@ export interface ResumeBuildResponse {
   pid: number;
 }
 
+/**
+ * Query params for GET /api/recover/resume-eligibility. When `setName` is omitted
+ * the daemon resolves it from the recovery sidecar (`summary.setName`), else `prdId`.
+ */
+export interface ResumeEligibilityRequest {
+  prdId: string;
+  setName?: string;
+}
+
+/** Where compiled-build resume artifacts can be sourced from. */
+export type ResumeArtifactAvailability = 'merge-worktree' | 'feature-branch' | 'branch-history';
+
+/** Identity fields shared by both resume eligibility outcomes. */
+interface ResumeEligibilityIdentity {
+  prdId: string;
+  setName: string;
+  featureBranch: string;
+}
+
+/** Response for GET /api/recover/resume-eligibility — a read-only preflight. */
+export type ResumeEligibilityResponse =
+  | (ResumeEligibilityIdentity & {
+      eligible: true;
+      artifactAvailability: ResumeArtifactAvailability;
+      artifactCommit?: string;
+      landedCommitCount: number;
+      diffStat: string;
+      failingPlanId?: string;
+      partial?: boolean;
+    })
+  | (ResumeEligibilityIdentity & { eligible: false; reason: string; checkedPath?: string });
+
 /** POST /api/recover/apply */
 export interface ApplyRecoveryRequest {
   prdId: string;
@@ -175,6 +207,7 @@ export const API_ROUTES = {
   readRecoverySidecar: '/api/recovery/sidecar',
   applyRecovery: '/api/recover/apply',
   resumeBuild: '/api/recover/resume-build',
+  resumeEligibility: '/api/recover/resume-eligibility',
   schedulerKick: '/api/scheduler/kick',
   playbookList: '/api/playbook/list',
   playbookShow: '/api/playbook/show',
