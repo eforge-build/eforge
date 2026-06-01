@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'eforge - agentic build system',
-  description: 'eforge is an autonomous plan-build-review orchestration engine for agentic code generation.',
+  title: 'eforge - extensible build engine',
+  description: 'eforge is an extensible build-engine kernel for delegated planning, implementation, review, and validation.',
 };
 
 export default function HomePage() {
@@ -31,7 +31,7 @@ export default function HomePage() {
             margin: '0 auto var(--spacing-xl)',
           }}
         >
-          Plan the work. Hand off implementation. Let eforge run the engineering loop in the background.
+          Plan through any surface. Hand off to the build-engine kernel. Extend the workflow around it.
         </p>
         <div style={{ display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'center', flexWrap: 'wrap' }}>
           <a
@@ -115,10 +115,11 @@ export default function HomePage() {
       {/* Product positioning */}
       <section style={{ marginBottom: 'var(--spacing-2xl)' }}>
         <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
-          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Background engineering for planned work</h2>
+          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>An extensible forge for planned work</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
-            eforge is for work where the intent is clear enough to delegate. Define the goal, constraints, and acceptance criteria;
-            eforge manages implementation, review, retries, conflict handling, and merge flow.
+            eforge keeps the kernel small: normalized build-source intake, dependency-aware worktree orchestration, conservative gates,
+            typed recovery, and evented observability. Prompts, PRDs, playbooks, session plans, wrapper apps, and extensions shape the
+            workflow around it.
           </p>
         </div>
         <div
@@ -132,17 +133,17 @@ export default function HomePage() {
             {
               title: 'Plan the change',
               description:
-                'Use a PRD, issue, rough prompt, playbook, or structured session plan to make intent explicit before implementation starts.',
+                'Use a PRD, issue, rough prompt, playbook, wrapper app, or structured session plan to normalize intent before implementation starts.',
             },
             {
               title: 'Hand off execution',
               description:
-                'eforge decomposes the work, schedules build plans, and runs implementation in isolated git worktrees.',
+                'The build-engine kernel decomposes work, schedules build plans, and runs implementation in isolated git worktrees.',
             },
             {
               title: 'Automate the engineering loop',
               description:
-                'Implementation, blind review, retries, conflict handling, merge flow, and validation are managed without constant babysitting.',
+                'Implementation, blind review, retries, conflict handling, typed recovery, merge flow, and validation are managed without constant babysitting.',
             },
             {
               title: 'Review real outputs',
@@ -178,9 +179,10 @@ export default function HomePage() {
       {/* Configurable handoffs */}
       <section style={{ marginBottom: 'var(--spacing-2xl)' }}>
         <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
-          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Built for repeatable, provider-flexible handoffs</h2>
+          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Built for repeatable, extensible handoffs</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
-            Standardize how work is delegated, which agent runtimes run it, and what cost/performance tradeoffs you want.
+            Standardize how work is delegated, which agent runtimes run it, which extension surfaces shape it, and what cost/performance
+            tradeoffs you want.
           </p>
         </div>
         <div
@@ -199,12 +201,12 @@ export default function HomePage() {
             {
               title: 'Playbooks',
               description:
-                'Capture recurring workflows as reusable templates so common engineering tasks start with the right structure.',
+                'Capture recurring workflows as reusable input templates outside the engine kernel so common engineering tasks start with the right structure.',
             },
             {
               title: 'Toolbelts',
               description:
-                'Scope each agent to the MCP servers and tools it needs, keeping delegated work constrained and auditable.',
+                'Scope each agent to the MCP servers and tools it needs, while native extensions, shell hooks, and host integrations add trusted behavior around the kernel.',
             },
             {
               title: 'Bring your own credentials',
@@ -233,7 +235,7 @@ export default function HomePage() {
         <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
           <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Choose your surface</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
-            eforge is one engine with multiple host surfaces. Start with Pi for the direction eforge is heading; use Claude Code
+            eforge is one build-engine kernel with multiple host and extension surfaces. Start with Pi for the direction eforge is heading; use Claude Code
             or the CLI when those fit your workflow better.
           </p>
         </div>
