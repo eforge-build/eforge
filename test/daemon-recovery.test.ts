@@ -125,7 +125,12 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 46', () => {
+  it('is 47', () => {
+    // v47: read-only session plan-set routes added (`sessionPlanSetList`, `sessionPlanSetShow`,
+    // `sessionPlanSetValidate` under `/api/session-plan-set/*`) with typed client helpers
+    // (`apiSessionPlanSetList`/`Show`/`Validate` + `IfRunning` variants) and browser-safe wire
+    // types; first-party clients and Console require daemon support for these routes, so stale
+    // daemons must fail version verification rather than returning route-level 404s.
     // v46: queue recovery analyze/apply routes and helpers; v45: `build:resume:artifacts` event variant added to the closed event union; v44: `afterQueueId` optional field added to `EnqueueRequest`; `POST /api/enqueue`
     // validates and forwards `afterQueueId` to the enqueue worker via `--after <id>`;
     // explicit `afterQueueId` in engine enqueue bypasses dependency-detector output;
@@ -150,7 +155,7 @@ describe('DAEMON_API_VERSION', () => {
     // v38: `landing:start` wire event removes `feature-pr-after-local-merge` workflow literal
     // and replaces it with `feature-pr`; older clients that validated the event against the
     // previous schema union will reject events emitted by the new daemon.
-    expect(DAEMON_API_VERSION).toBe(46);
+    expect(DAEMON_API_VERSION).toBe(47);
   });
 });
 

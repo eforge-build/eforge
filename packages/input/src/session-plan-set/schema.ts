@@ -229,6 +229,8 @@ export interface SessionPlanSetChildSummary {
   profile?: string;
   dependsOn: string[];
   exists: boolean;
+  /** External tracker / document references declared on this child. */
+  externalRefs: SessionPlanSetExternalRef[];
 }
 
 /** JSON-safe anchor summary. */
@@ -247,6 +249,8 @@ export interface SessionPlanSetSummary {
   anchor?: SessionPlanSetAnchorSummary;
   children: SessionPlanSetChildSummary[];
   diagnostics: SessionPlanSetDiagnostic[];
+  /** External tracker / document references declared on the manifest. */
+  externalRefs: SessionPlanSetExternalRef[];
 }
 
 /** Result of validating a plan set. */

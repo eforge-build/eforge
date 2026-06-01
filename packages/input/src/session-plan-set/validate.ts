@@ -16,10 +16,28 @@ import { loadSessionPlanSet } from './read.js';
 import type {
   SessionPlanSetChildSummary,
   SessionPlanSetDiagnostic,
+  SessionPlanSetExternalRef,
   SessionPlanSetLoadResult,
   SessionPlanSetSummary,
   SessionPlanSetValidationResult,
 } from './schema.js';
+
+/**
+ * Project external references onto only the declared public fields
+ * (`kind`, `ref`, `url`, `title`). The manifest schema uses passthrough Zod
+ * objects, so unknown fields would otherwise be serialized and exposed by the
+ * daemon. Optional fields are omitted when undefined.
+ */
+function normalizeExternalRefs(
+  refs: SessionPlanSetExternalRef[],
+): SessionPlanSetExternalRef[] {
+  return refs.map((ref) => {
+    const normalized: SessionPlanSetExternalRef = { kind: ref.kind, ref: ref.ref };
+    if (ref.url !== undefined) normalized.url = ref.url;
+    if (ref.title !== undefined) normalized.title = ref.title;
+    return normalized;
+  });
+}
 
 /** Collect duplicate-child-id diagnostics in manifest order. */
 function duplicateIdDiagnostics(load: SessionPlanSetLoadResult): SessionPlanSetDiagnostic[] {
@@ -171,6 +189,7 @@ export function summarizeSessionPlanSet(
       status: childLoad.child.status,
       dependsOn: childLoad.child.dependsOn,
       exists: childLoad.exists,
+      externalRefs: normalizeExternalRefs(childLoad.child.externalRefs),
     };
     if (childLoad.child.profile !== undefined) {
       summary.profile = childLoad.child.profile;
@@ -185,6 +204,7 @@ export function summarizeSessionPlanSet(
     strategy: loadResult.manifest.strategy,
     children,
     diagnostics,
+    externalRefs: normalizeExternalRefs(loadResult.manifest.externalRefs),
   };
 
   if (loadResult.anchor !== undefined) {

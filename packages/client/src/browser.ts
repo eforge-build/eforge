@@ -86,6 +86,28 @@ export {
   applyQueueRecovery,
 } from './browser-queue-recovery.js';
 
+// --- eforge:region plan-01-plan-set-api-contracts ---
+export type {
+  SessionPlanSetStatusWire,
+  SessionPlanSetStrategyWire,
+  SessionPlanSetChildKindWire,
+  SessionPlanSetDiagnosticCodeWire,
+  SessionPlanSetExternalRefWire,
+  SessionPlanSetDiagnosticWire,
+  SessionPlanSetChildSummaryWire,
+  SessionPlanSetAnchorSummaryWire,
+  SessionPlanSetSummaryWire,
+  SessionPlanSetValidationResultWire,
+  SessionPlanSetListEntryWire,
+  SessionPlanSetListRequest,
+  SessionPlanSetListResponse,
+  SessionPlanSetShowRequest,
+  SessionPlanSetShowResponse,
+  SessionPlanSetValidateRequest,
+  SessionPlanSetValidateResponse,
+} from './session-plan-set.js';
+// --- eforge:endregion plan-01-plan-set-api-contracts ---
+
 export type {
   HealthResponse,
   AutoBuildState,

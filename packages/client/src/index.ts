@@ -278,6 +278,37 @@ export type {
   SessionPlanCreateFromPlaybookResponse,
 } from './api/session-plan.js';
 
+// --- eforge:region plan-01-plan-set-api-contracts ---
+export {
+  apiSessionPlanSetList,
+  apiSessionPlanSetListIfRunning,
+  apiSessionPlanSetShow,
+  apiSessionPlanSetShowIfRunning,
+  apiSessionPlanSetValidate,
+  apiSessionPlanSetValidateIfRunning,
+} from './api/session-plan-set.js';
+
+export type {
+  SessionPlanSetStatusWire,
+  SessionPlanSetStrategyWire,
+  SessionPlanSetChildKindWire,
+  SessionPlanSetDiagnosticCodeWire,
+  SessionPlanSetExternalRefWire,
+  SessionPlanSetDiagnosticWire,
+  SessionPlanSetChildSummaryWire,
+  SessionPlanSetAnchorSummaryWire,
+  SessionPlanSetSummaryWire,
+  SessionPlanSetValidationResultWire,
+  SessionPlanSetListEntryWire,
+  SessionPlanSetListRequest,
+  SessionPlanSetListResponse,
+  SessionPlanSetShowRequest,
+  SessionPlanSetShowResponse,
+  SessionPlanSetValidateRequest,
+  SessionPlanSetValidateResponse,
+} from './session-plan-set.js';
+// --- eforge:endregion plan-01-plan-set-api-contracts ---
+
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
 
 export type { ResumeBuildRequest, ResumeBuildResponse } from './routes.js';

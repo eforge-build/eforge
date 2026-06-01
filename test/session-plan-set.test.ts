@@ -469,6 +469,45 @@ describe('session plan-set summary', () => {
     expect(Array.isArray(parsed.diagnostics)).toBe(true);
   });
 
+  it('preserves manifest and child externalRefs through JSON.stringify/parse', async () => {
+    const cwd = makeTempDir();
+    const dir = resolve(cwd, '.eforge', 'session-plans', 'set');
+    await mkdir(resolve(dir, 'plans'), { recursive: true });
+    await writeFile(resolve(dir, 'umbrella.md'), '# U\n', 'utf-8');
+    await writeFile(resolve(dir, 'plans', 'a.md'), '# A\n', 'utf-8');
+    await writeFile(
+      resolve(dir, 'plan-set.yaml'),
+      `id: set
+title: Set
+status: planning
+strategy: dag
+anchor: umbrella.md
+externalRefs:
+  - kind: doc
+    ref: spec-123
+children:
+  - id: plan-01
+    title: One
+    file: plans/a.md
+    kind: plan
+    buildable: true
+    status: planning
+    dependsOn: []
+    externalRefs:
+      - kind: issue
+        ref: ABC-1
+`,
+      'utf-8',
+    );
+
+    const load = await loadSessionPlanSet({ cwd, planSetId: 'set' });
+    const { diagnostics } = await validateSessionPlanSet({ cwd, planSetId: 'set' });
+    const summary = summarizeSessionPlanSet(load, diagnostics);
+    const parsed = JSON.parse(JSON.stringify(summary));
+    expect(parsed.externalRefs).toEqual([{ kind: 'doc', ref: 'spec-123' }]);
+    expect(parsed.children[0].externalRefs).toEqual([{ kind: 'issue', ref: 'ABC-1' }]);
+  });
+
   it('exposes diagnostic codes in the summary', async () => {
     const cwd = makeTempDir();
     await setupPlanSet({
