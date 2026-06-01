@@ -1,12 +1,3 @@
-/**
- * Tests for the unified retry policy (`packages/engine/src/retry.ts`).
- *
- * Covers:
- * - `shouldRetry` predicates for each registered policy.
- * - `withRetry` integration: retry-then-success, exhaustion, abort-success.
- * - `isDroppedSubmission` predicate behavior.
- * - `getPolicy` fallback for unregistered roles.
- */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -1687,17 +1678,12 @@ const makePlanFile = (id = 'plan-01') => ({
 
 describe('withRetry + StubHarness + builderEvaluate', () => {
   it('scripts error_max_turns on attempt 1, success on attempt 2, and returns second-attempt events', async () => {
-    // First backend call throws max-turns; second returns a normal evaluation.
     const backend = new StubHarness([
       { error: new AgentTerminalError('error_max_turns', 'Reached maximum number of turns (30).') },
       { text: '<evaluation></evaluation>' },
     ]);
     const plan = makePlanFile();
 
-    // Wrap builderEvaluate with the evaluator retry policy. The policy's
-    // buildContinuationInput would normally run hasUnstagedChanges against
-    // the worktree; override via the `checkHasUnstagedChanges` hook so the
-    // retry proceeds (rather than short-circuiting to abort-success).
     const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
       yield* builderEvaluate(plan, {
         harness: backend,
@@ -1718,11 +1704,7 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
       out.push(ev);
     }
 
-    // First attempt's terminal build:failed was held back (retry consumed it)
-    // and not re-yielded because retry succeeded.
     expect(out.find((e) => e.type === 'plan:build:failed')).toBeUndefined();
-
-    // agent:retry was emitted between attempts.
     const retryEvt = out.find((e) => e.type === 'agent:retry') as
       | Extract<EforgeEvent, { type: 'agent:retry' }>
       | undefined;
@@ -1732,16 +1714,27 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
     expect(retryEvt!.attempt).toBe(1);
     expect(retryEvt!.maxAttempts).toBe(2);
 
-    // Second attempt ran to judgment completion. builderEvaluate itself only
-    // emits start events; the build stage emits evaluate:complete after applying
-    // and committing verdicts.
     const starts = out.filter((e) => e.type === 'plan:build:evaluate:start');
     expect(starts.length).toBeGreaterThanOrEqual(2);
     const completes = out.filter((e) => e.type === 'plan:build:evaluate:complete');
     expect(completes.length).toBe(0);
 
-    // Backend was called exactly twice (once per attempt).
     expect(backend.prompts).toHaveLength(2);
+  });
+
+  it('does not retry late transport after structured evaluator verdicts', async () => {
+    const snapshot = { cwd: '/tmp', capturedAt: 'now', baseHead: 'base', stagedPatch: '', candidatePatch: 'diff --git a/a.ts b/a.ts\n', files: [{ path: 'a.ts', status: 'modified', statusCode: 'M', diff: 'diff --git a/a.ts b/a.ts\n', diffHeader: 'diff --git a/a.ts b/a.ts\n', hunks: [], isBinary: false, isUntracked: false, isRenameOnly: false, requiresFileVerdict: false }] } as EvaluationSnapshot;
+    const backend = new StubHarness([{ toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'a.ts', action: 'accept', reason: 'Correct' }] }, output: '' }], lateError: new Error('Backend error: WebSocket error') }]);
+    const plan = makePlanFile();
+    const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+      yield* builderEvaluate(plan, { harness: backend, cwd: input.worktreePath, ...input.evaluatorOptions });
+    };
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(runEvaluator, DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>, { worktreePath: '/tmp', planId: plan.id, evaluatorOptions: { evaluationSnapshot: snapshot }, checkHasUnstagedChanges: async () => true })) out.push(ev);
+    expect(backend.prompts).toHaveLength(1);
+    expect(out.filter((e) => e.type === 'agent:retry')).toHaveLength(0);
+    expect(out.filter((e) => e.type === 'plan:build:evaluate:continuation')).toHaveLength(0);
+    expect(out.filter((e) => e.type === 'plan:build:failed')).toHaveLength(0);
   });
 
   it('retries transient transport evaluator failure when unstaged changes remain', async () => {
