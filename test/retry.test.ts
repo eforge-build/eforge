@@ -1723,14 +1723,14 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
   });
 
   it('does not retry late transport after structured evaluator verdicts', async () => {
-    const snapshot = { cwd: '/tmp', capturedAt: 'now', baseHead: 'base', stagedPatch: '', candidatePatch: 'diff --git a/a.ts b/a.ts\n', files: [{ path: 'a.ts', status: 'modified', statusCode: 'M', diff: 'diff --git a/a.ts b/a.ts\n', diffHeader: 'diff --git a/a.ts b/a.ts\n', hunks: [], isBinary: false, isUntracked: false, isRenameOnly: false, requiresFileVerdict: false }] } as EvaluationSnapshot;
-    const backend = new StubHarness([{ toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'a.ts', action: 'accept', reason: 'Correct' }] }, output: '' }], lateError: new Error('Backend error: WebSocket error') }]);
+    const snapshot = { cwd: '/tmp', capturedAt: 'now', baseHead: 'base', stagedPatch: '', candidatePatch: 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-old\n+new\n', files: [{ path: 'a.ts', status: 'modified', statusCode: 'M', diff: 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-old\n+new\n', diffHeader: 'diff --git a/a.ts b/a.ts\n', hunks: [{ index: 1, header: '@@ -1 +1 @@', oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, diff: '@@ -1 +1 @@\n-old\n+new\n' }], isBinary: false, isUntracked: false, isRenameOnly: false, requiresFileVerdict: false }] } as EvaluationSnapshot;
+    const backend = new StubHarness([{ toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'a.ts', hunk: 1, action: 'accept', reason: 'Correct' }] }, output: '' }], lateError: new Error('Backend error: WebSocket error') }]);
     const plan = makePlanFile();
     const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
-      yield* builderEvaluate(plan, { harness: backend, cwd: input.worktreePath, ...input.evaluatorOptions });
+      yield* builderEvaluate(plan, { harness: backend, cwd: input.worktreePath, ...(input.evaluationSnapshot && { evaluatorSnapshot: input.evaluationSnapshot }), ...input.evaluatorOptions });
     };
     const out: EforgeEvent[] = [];
-    for await (const ev of withRetry(runEvaluator, DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>, { worktreePath: '/tmp', planId: plan.id, evaluatorOptions: { evaluationSnapshot: snapshot }, checkHasUnstagedChanges: async () => true })) out.push(ev);
+    for await (const ev of withRetry(runEvaluator, DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>, { worktreePath: '/tmp', planId: plan.id, evaluationSnapshot: snapshot, evaluatorOptions: {}, checkHasUnstagedChanges: async () => true })) out.push(ev);
     expect(backend.prompts).toHaveLength(1);
     expect(out.filter((e) => e.type === 'agent:retry')).toHaveLength(0);
     expect(out.filter((e) => e.type === 'plan:build:evaluate:continuation')).toHaveLength(0);
