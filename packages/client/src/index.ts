@@ -278,7 +278,6 @@ export type {
   SessionPlanCreateFromPlaybookResponse,
 } from './api/session-plan.js';
 
-// --- eforge:region plan-01-plan-set-api-contracts ---
 export {
   apiSessionPlanSetList,
   apiSessionPlanSetListIfRunning,
@@ -308,7 +307,6 @@ export type {
   SessionPlanSetValidateRequest,
   SessionPlanSetValidateResponse,
 } from './session-plan-set.js';
-// --- eforge:endregion plan-01-plan-set-api-contracts ---
 
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
 

@@ -192,11 +192,9 @@ export const API_ROUTES = {
   sessionPlanReadiness: '/api/session-plan/readiness',
   sessionPlanMigrateLegacy: '/api/session-plan/migrate-legacy',
   sessionPlanCreateFromPlaybook: '/api/session-plan/create-from-playbook',
-  // --- eforge:region plan-01-plan-set-api-contracts ---
   sessionPlanSetList: '/api/session-plan-set/list',
   sessionPlanSetShow: '/api/session-plan-set/show',
   sessionPlanSetValidate: '/api/session-plan-set/validate',
-  // --- eforge:endregion plan-01-plan-set-api-contracts ---
   daemonEvents: '/api/daemon-events',
   stackLayers: '/api/stack/layers',
   stackSync: '/api/stack/sync',

@@ -86,7 +86,6 @@ export {
   applyQueueRecovery,
 } from './browser-queue-recovery.js';
 
-// --- eforge:region plan-01-plan-set-api-contracts ---
 export type {
   SessionPlanSetStatusWire,
   SessionPlanSetStrategyWire,
@@ -107,7 +106,6 @@ export type {
   SessionPlanSetValidateRequest,
   SessionPlanSetValidateResponse,
 } from './session-plan-set.js';
-// --- eforge:endregion plan-01-plan-set-api-contracts ---
 
 export type {
   HealthResponse,
