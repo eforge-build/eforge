@@ -1,0 +1,75 @@
+name: rebase-direct-pr-builds-onto-latest-remote-base-before-opening-pr
+description: Rebase non-stacked direct PR builds onto the latest remote base
+  before validation and guard freshness immediately before PR creation, with
+  conflict recovery, bounded revalidation retries, docs, and regression tests.
+base_branch: eforge/handle-stale-stacked-pr-parent-branches-during-git-spice-landing
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm vitest run test/direct-pr-base-sync.test.ts test/landing-actions.test.ts
+  - pnpm maintainability:check
+  - pnpm test
+plans:
+  - id: plan-01-direct-pr-base-sync
+    name: Direct PR Base Sync and Freshness Guard
+    depends_on: []
+    branch: rebase-direct-pr-builds-onto-latest-remote-base-before-opening-pr/plan-01-direct-pr-base-sync
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-write
+      - validate
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Cross-phase engine change spanning git rebase primitives,
+          orchestrator validation loops, and landing behavior.
+      tester:
+        effort: high
+        rationale: Requires real-git integration tests with remote advancement, rebase
+          conflicts, and final freshness retry scenarios.
+      reviewer:
+        effort: high
+        rationale: Subprocess git argument validation and fail-closed landing behavior
+          need detailed review.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - test-write
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is a deep but cohesive engine correctness fix spanning git
+    primitives, orchestration, landing behavior, docs, and regression tests, so
+    excursion is appropriate rather than expedition. A plan review cycle helps
+    catch cross-phase ordering and retry-budget issues before build.
+    Documentation and tests are explicit requirements, so doc-author, doc-sync,
+    test-write, and test-cycle are included. The maintainability validation
+    provider is loaded, so validate runs after implementation/test authoring and
+    before review. Review uses code and security perspectives because the change
+    touches subprocess git/gh execution and branch/remote argument validation,
+    with strict evaluation due to stale-PR and conflict-recovery risk.
