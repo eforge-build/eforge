@@ -63,6 +63,26 @@ export interface CleanupReport {
   failed: string[];
 }
 
+// --- eforge:region plan-01-direct-pr-base-sync ---
+export type PullRequestFreshnessGuardResult =
+  | { ok: true }
+  | { ok: false; retryable: boolean; reason: string; fetchedBaseSha?: string };
+
+export type PullRequestFreshnessGuard = () => Promise<PullRequestFreshnessGuardResult>;
+
+export class PullRequestFreshnessError extends Error {
+  readonly retryable: boolean;
+  readonly fetchedBaseSha?: string;
+
+  constructor(result: Extract<PullRequestFreshnessGuardResult, { ok: false }>) {
+    super(result.reason);
+    this.name = 'PullRequestFreshnessError';
+    this.retryable = result.retryable;
+    this.fetchedBaseSha = result.fetchedBaseSha;
+  }
+}
+// --- eforge:endregion plan-01-direct-pr-base-sync ---
+
 export class WorktreeManager {
   private readonly repoRoot: string;
   private readonly worktreeBase: string;
@@ -315,8 +335,10 @@ export class WorktreeManager {
   /**
    * Push the feature branch to the remote with tracking set.
    */
-  async pushFeatureBranch(remote = 'origin'): Promise<void> {
-    return pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch, remote);
+  async pushFeatureBranch(remote = 'origin', opts: { forceWithLease?: boolean } = {}): Promise<void> {
+    // --- eforge:region plan-01-direct-pr-base-sync ---
+    return pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch, remote, opts);
+    // --- eforge:endregion plan-01-direct-pr-base-sync ---
   }
 
   /**
@@ -333,19 +355,45 @@ export class WorktreeManager {
   async issuePr(opts: {
     baseBranch: string;
     metadata?: PullRequestMetadata;
+    // --- eforge:region plan-01-direct-pr-base-sync ---
+    forceWithLease?: boolean;
+    beforePushFreshnessGuard?: PullRequestFreshnessGuard;
+    beforeCreateFreshnessGuard?: PullRequestFreshnessGuard;
+    // --- eforge:endregion plan-01-direct-pr-base-sync ---
   }): Promise<{ url: string }> {
     await ensureGhAvailable(this.mergeWorktreePath);
 
+    // --- eforge:region plan-01-direct-pr-base-sync ---
+    const runFreshnessGuard = async (guard: PullRequestFreshnessGuard | undefined): Promise<void> => {
+      if (!guard) return;
+      const result = await guard();
+      if (!result.ok) throw new PullRequestFreshnessError(result);
+    };
+
+    await runFreshnessGuard(opts.beforePushFreshnessGuard);
+    // --- eforge:endregion plan-01-direct-pr-base-sync ---
+
     // Direct PR workflow: push featureBranch, open PR featureBranch -> baseBranch
-    await pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch);
+    await pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch, 'origin', {
+      // --- eforge:region plan-01-direct-pr-base-sync ---
+      forceWithLease: opts.forceWithLease,
+      // --- eforge:endregion plan-01-direct-pr-base-sync ---
+    });
     try {
       const metadata = opts.metadata ?? { title: this.featureBranch, body: '' };
+      // --- eforge:region plan-01-direct-pr-base-sync ---
+      await runFreshnessGuard(opts.beforeCreateFreshnessGuard);
+      // --- eforge:endregion plan-01-direct-pr-base-sync ---
       return await createPullRequestOp(this.mergeWorktreePath, {
         baseBranch: opts.baseBranch,
         featureBranch: this.featureBranch,
         metadata,
       });
     } catch (err) {
+      // --- eforge:region plan-01-direct-pr-base-sync ---
+      if (err instanceof PullRequestFreshnessError) throw err;
+      await runFreshnessGuard(opts.beforeCreateFreshnessGuard);
+      // --- eforge:endregion plan-01-direct-pr-base-sync ---
       // PR may already exist — retrieve its URL
       const existing = await getExistingPullRequestUrl(this.mergeWorktreePath, this.featureBranch, {
         baseBranch: opts.baseBranch,

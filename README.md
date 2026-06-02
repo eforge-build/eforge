@@ -71,7 +71,7 @@ When `build.cleanupPlanFiles: true` (default), committed build artifacts are rem
 
 <img src="docs/images/monitor-timeline.png" alt="eforge dashboard - timeline view" width="800">
 
-**Queue and merge** - Completed builds merge back to the base branch as merge commits via `--no-ff`, preserving the full branch history while keeping first-parent history clean. When the next build starts from the queue, the planner re-evaluates against the current codebase - so plans adapt to changes that landed since they were enqueued.
+**Queue and merge** - Completed builds merge back to the base branch as merge commits via `--no-ff`, preserving the full branch history while keeping first-parent history clean. When `landing.action: pr` is used without stacking, eforge fetches the latest remote base, rebases the artifact branch before validation, and checks freshness again immediately before opening the PR. When the next build starts from the queue, the planner re-evaluates against the current codebase - so plans adapt to changes that landed since they were enqueued.
 
 <img src="docs/images/eforge-commits.png" alt="eforge commits from an expedition build" width="800">
 

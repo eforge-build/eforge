@@ -117,6 +117,9 @@ build:
 #   action: pr                # pr | merge | leave (default: merge)
 #                             #   pr: open a PR from the artifact branch targeting the resolved base branch
 #                             #       (current base branch for non-stacked builds; parent artifact branch for stacked builds unless stale-parent repair retargets to trunk)
+#                             #       Direct non-stacked PRs fetch and rebase onto origin/<baseBranch> before validation,
+#                             #       then run a final pre-PR freshness guard immediately before PR creation.
+#                             #       Stacked PR landing remains delegated to git-spice restacking.
 #                             #       requires gh CLI
 #                             #   merge: auto-merge the artifact branch into the base branch
 #                             #   leave: commit to artifact branch and exit without merging or opening a PR
@@ -217,7 +220,7 @@ When `allowLocalMergeToTrunk` is `false` and the current branch is trunk, the in
 
 Before creating the merge worktree for a queued root build, eforge fetches the configured remote trunk and uses the fetched commit SHA as the compile base instead of the local trunk ref. This prevents stale-base builds when `origin/main` has advanced but the local branch has not been pulled.
 
-Child stacked PRDs continue using the parent artifact ref from the stack context and are not affected by this gate.
+Child stacked PRDs continue using the parent artifact ref from the stack context and are not affected by this gate. Direct non-stacked `landing.action: pr` builds have an additional later gate: direct PR base sync fetches `origin/<baseBranch>`, rebases the artifact branch onto that fetched base before validation, and checks freshness again immediately before opening the PR.
 
 ### `build.trunkSync`
 
@@ -249,7 +252,7 @@ build:
 
 **Local-ahead-only** cases (local trunk has commits the remote does not yet have) emit a diagnostic and use the local trunk ref, since the local trunk is not stale relative to the remote.
 
-**Feature-branch builds** (queued from a non-trunk branch) and **child stacked PRDs** are never retargeted to remote trunk. `trunkSync` only applies to queued root builds whose candidate base is the trunk branch.
+**Feature-branch builds** (queued from a non-trunk branch) and **child stacked PRDs** are never retargeted to remote trunk. `trunkSync` only applies to queued root builds whose candidate base is the trunk branch. Direct PR base sync is separate: direct non-stacked PR publication targets the resolved base branch, including non-trunk feature bases, and syncs against `origin/<baseBranch>` later in the build.
 
 **Fetch-unavailable fallback:** when the configured remote is missing, the remote trunk branch does not exist on the remote, the fetch fails for any reason, or FETCH_HEAD cannot be resolved after the fetch, trunk sync is skipped. The build continues with the original candidate base and emits a `planning:progress` diagnostic. The `onDiverged` policy applies only to true local/remote divergence - not to network failures or unavailable remotes.
 
@@ -259,9 +262,11 @@ build:
 
 `build.trunkSync` is a pre-compile freshness gate. It fetches the remote trunk and selects a fresh base before the merge worktree is created. It does not checkout, pull, reset, rebase, or move local branch refs or the working tree — only FETCH_HEAD is updated as part of the fetch.
 
-`build.postMergeCommands` runs after all plans merge and handles validation (type-check, tests, etc.). These two settings are independent.
+Direct PR base sync is a later mutating publication gate for direct non-stacked `landing.action: pr` builds. After all plans merge and before validation, eforge fetches `origin/<baseBranch>` and rebases the artifact branch onto that fetched base. Immediately before PR creation, eforge fetches the base again; if it advanced after validation, eforge performs a bounded resync plus command validation and PRD/acceptance validation retry before attempting the PR again. If the retry budget is exhausted or sync cannot complete, landing fails closed with `landing:skipped` rather than opening a stale PR.
 
-Stack restacking (`eforge stack sync`) updates the in-flight stack topology after a trunk has been updated — that is a separate concern from selecting a fresh compile base before a build begins.
+`build.postMergeCommands` runs after all plans merge and handles validation (type-check, tests, etc.). These settings are independent.
+
+Stacked PR landing remains delegated to git-spice restacking (`eforge stack sync`) and does not use direct PR base sync. Stack restacking updates the in-flight stack topology after a trunk has been updated — that is a separate concern from selecting a fresh compile base before a build begins.
 
 ## Validation waivers
 

@@ -8,7 +8,7 @@ Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-
 
 Every eforge build produces an **artifact branch** - a named Git branch (`eforge/<prd-id>`) that holds the committed output from that build. When `landing.action: pr`, eforge opens a pull request from this artifact branch targeting its resolved base.
 
-For non-stacked builds, the resolved base is the branch eforge builds from (often the project trunk, but it can be an active feature branch). For stacked builds, the root PRD targets the resolved trunk branch and child PRDs target the parent PRD's artifact branch, creating a branch-per-PR topology:
+For non-stacked builds, the resolved base is the branch eforge builds from (often the project trunk, but it can be an active feature branch), and direct PR base sync fetches `origin/<baseBranch>` before validation and again immediately before PR creation. For stacked builds, the root PRD targets the resolved trunk branch and child PRDs target the parent PRD's artifact branch, creating a branch-per-PR topology:
 
 ```mermaid
 graph TD

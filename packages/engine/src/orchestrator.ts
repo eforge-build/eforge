@@ -21,7 +21,7 @@ import {
   type MergeResolver,
 } from './worktree-ops.js';
 import { WorktreeManager } from './worktree-manager.js';
-import { executePlans, validate, prdValidate, recordArtifact, stackLanding, finalize, type PhaseContext } from './orchestrator/phases.js';
+import { executePlans, validate, prdValidate, recordArtifact, stackLanding, finalize, syncDirectPrBaseBeforeValidation, type PhaseContext } from './orchestrator/phases.js';
 import { ModelTracker } from './model-tracker.js';
 import type { NativeExtensionRegistry } from './extensions/types.js';
 import type { PolicyGateFailurePolicy } from './extensions/policy-gate-runtime.js';
@@ -256,6 +256,9 @@ export class Orchestrator {
     };
     try {
       yield* executePlans(ctx);
+      // --- eforge:region plan-01-direct-pr-base-sync ---
+      if ((state.status as string) !== 'failed') yield* syncDirectPrBaseBeforeValidation(ctx);
+      // --- eforge:endregion plan-01-direct-pr-base-sync ---
       if ((state.status as string) !== 'failed') yield* validate(ctx);
       if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
       // After gap close, rerun both validate and prdValidate to confirm the fixes
