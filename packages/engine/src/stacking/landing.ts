@@ -120,7 +120,6 @@ async function discoverPrUrlViaGh(
   }
 }
 
-// --- eforge:region plan-02-landing-preflight-and-observability ---
 type LandingBaseDecision = StackLandingBaseMetadata;
 
 type LandingBasePreflightResult =
@@ -246,7 +245,6 @@ async function preflightLandingBase(options: {
   const retargetResult = await provider.retargetBranch(mergeWorktreePath, stackContext.branch, trunkBranch);
   return { ok: true, decision: repairedDecision, retargetResult };
 }
-// --- eforge:endregion plan-02-landing-preflight-and-observability ---
 
 // --- eforge:region stack-landing-recovery ---
 function isRecoverableRestackConflict(
@@ -368,7 +366,6 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     startedAt,
   });
 
-  // --- eforge:region plan-02-landing-preflight-and-observability ---
   let baseDecision = initialLandingBaseDecision(stackContext, baseBranch ?? 'main');
   let effectiveStackContext = stackContextForLandingDecision(stackContext, baseDecision);
   const failLanding = async (reason: string): Promise<EforgeEvent> => {
@@ -414,7 +411,6 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     return;
   }
   if (preflight.retargetResult !== undefined) yield stackProviderCommandEvent(providerName, branch, preflight.retargetResult, redact);
-  // --- eforge:endregion plan-02-landing-preflight-and-observability ---
 
   // Step 1: Track branch against the effective base
   let trackResult: ProviderCommandResult;
@@ -480,7 +476,6 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     }
   }
 
-  // --- eforge:region plan-02-landing-preflight-and-observability ---
   const finalPreflight = await runBasePreflight();
   baseDecision = finalPreflight.decision;
   if (!finalPreflight.ok) {
@@ -503,7 +498,6 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
       return;
     }
   }
-  // --- eforge:endregion plan-02-landing-preflight-and-observability ---
 
   // Step 4: Submit the branch as a PR
   let submitResult: ProviderCommandResult;

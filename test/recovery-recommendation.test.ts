@@ -292,7 +292,6 @@ describe('determineRecoveryRecommendation — manual policy', () => {
     expect(recommendation.verdict).toBe('manual');
   });
 
-  // --- eforge:region plan-03-recovery-and-docs ---
   it('returns stack-base manual guidance when git-spice reports the base branch is missing from the remote', () => {
     const summary: BuildFailureSummary = {
       prdId: 'test-prd',
@@ -383,7 +382,6 @@ describe('determineRecoveryRecommendation — manual policy', () => {
     expect(recommendation.rationale).toContain('No failingPlans data in summary');
     expect(recommendation.rationale.toLowerCase()).not.toContain('stack base');
   });
-  // --- eforge:endregion plan-03-recovery-and-docs ---
 
   it('returns manual when a failed plan has non-zero tool use count (meaningful work started)', () => {
     // A plan that performed tool calls has meaningfully started; transient retry

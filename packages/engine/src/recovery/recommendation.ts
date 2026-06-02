@@ -58,7 +58,6 @@ function hasCompletedOrMergedPlans(summary: BuildFailureSummary): boolean {
   return false;
 }
 
-// --- eforge:region plan-03-recovery-and-docs ---
 const GIT_SPICE_MISSING_BASE_PATTERNS = [
   /base branch\b[\s\S]*\bdoes not exist in the remote/i,
   /base branch(?:\s+\S+)?\s+has not been submitted yet/i,
@@ -96,7 +95,6 @@ function stackBaseMissingRecommendation(): RecoveryRecommendation {
       'If the parent artifact is not an ancestor of trunk, restore, submit, or repair the parent branch first; use eforge stack sync for normal whole-stack maintenance and then retry landing once the stack base is valid.',
   };
 }
-// --- eforge:endregion plan-03-recovery-and-docs ---
 
 /**
  * Synthesize a minimal placeholder `suggestedSuccessorPrd` for use in deterministic
@@ -167,11 +165,9 @@ export function determineRecoveryRecommendation(
 
   const failingPlans = summary.failingPlans;
 
-  // --- eforge:region plan-03-recovery-and-docs ---
   if (hasGitSpiceMissingBaseLandingFailure(summary)) {
     return stackBaseMissingRecommendation();
   }
-  // --- eforge:endregion plan-03-recovery-and-docs ---
 
   // No failingPlans → cannot determine terminal subtypes → manual
   if (!failingPlans || failingPlans.length === 0) {

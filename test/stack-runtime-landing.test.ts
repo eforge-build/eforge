@@ -109,7 +109,6 @@ function initGitRepo(dir: string): void {
   execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
 }
 
-// --- eforge:region plan-02-landing-preflight-and-observability ---
 function git(args: string[], dir = cwd): string {
   return execFileSync('git', args, { cwd: dir, encoding: 'utf-8' }).trim();
 }
@@ -144,7 +143,6 @@ function setupStackRepo(opts: { parentIntegrated: boolean; deleteParentRemote: b
   git(['commit', '-m', 'child']);
   return { parentSha };
 }
-// --- eforge:endregion plan-02-landing-preflight-and-observability ---
 
 const recoverableRestack = {
   kind: 'recoverable-conflict',
@@ -1211,7 +1209,6 @@ describe('executeStackLanding — PR metadata editing', () => {
   });
 });
 
-// --- eforge:region plan-02-landing-preflight-and-observability ---
 describe('executeStackLanding — landing-time base preflight and repair', () => {
   function childContext(parentSha: string): StackBaseContext {
     return makeStackContext({
@@ -1280,5 +1277,4 @@ describe('executeStackLanding — landing-time base preflight and repair', () =>
     expect(layer?.landing?.status).toBe('failed');
   });
 });
-// --- eforge:endregion plan-02-landing-preflight-and-observability ---
 
