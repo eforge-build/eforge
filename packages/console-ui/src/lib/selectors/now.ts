@@ -19,8 +19,8 @@ import type { ConnectionStatus, ConsoleActivityEntry } from '@/lib/types';
 import { isTerminalStatus } from '@/lib/selectors/active-builds';
 import { toConsolePath } from '@/lib/navigation';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
-import { selectPlanStatusCounts, getSummaryStats, selectMiniGanttRows } from '@/lib/run-state';
-import type { RunState, PlanStatusCounts, MiniGanttRow } from '@/lib/run-state';
+import { selectPlanStatusCounts, getSummaryStats, selectMiniGanttRows, selectPlanLanes, selectPlanningLane } from '@/lib/run-state';
+import type { RunState, PlanStatusCounts, MiniGanttRow, PlanLane, PlanningLane } from '@/lib/run-state';
 import { queueItemLabelById, selectNowQueueStacks } from './queue-stacks';
 import type { NowQueueStack } from './queue-stacks';
 import { selectNowQueueSummary } from './queue-summary';
@@ -34,7 +34,6 @@ import { selectNowMetricsPanel } from './metrics';
 import type { NowMetricsPanel } from './metrics';
 export { selectNowMetricsPanel } from './metrics';
 export type { NowMetricsPanel } from './metrics';
-import { selectAgentUsageByRole } from './agent-usage';
 
 // ---------------------------------------------------------------------------
 // View model types
@@ -102,10 +101,12 @@ export interface NowActiveBuildCard {
   href: string;
   /** Mini-Gantt rows derived from RunState for the pipeline strip. */
   miniGanttRows: MiniGanttRow[];
+  /** Per-plan lanes (stage track + live agents) for the mini swimlane. */
+  planLanes: PlanLane[];
+  /** Planning-phase lane summary (global planner/plan-reviewer agents). */
+  planning: PlanningLane;
   /** True when planning events exist in the run state (shows PRD row in pipeline strip). */
   hasPlanningRow: boolean;
-  /** Per-agent token usage (input + output), sorted descending, for the token-by-agent chart. */
-  agentUsage: Array<{ agent: string; tokens: number }>;
 }
 
 export interface NowRecentRunItem {
@@ -460,6 +461,7 @@ export function selectNowAttentionItems(
 // ---------------------------------------------------------------------------
 
 const EMPTY_PLAN_PROGRESS: PlanStatusCounts = { pending: 0, running: 0, complete: 0, failed: 0, total: 0 };
+const EMPTY_PLANNING_LANE: PlanningLane = { agents: [], running: false };
 
 function extractCurrentPhaseFromRunState(runState: RunState): string | null {
   for (let i = runState.events.length - 1; i >= 0; i--) {
@@ -631,8 +633,9 @@ export function selectNowActiveBuildCards(
     let cost = 0;
     let cachePercent = 0;
     let miniGanttRows: MiniGanttRow[] = [];
+    let planLanes: PlanLane[] = [];
+    let planning: PlanningLane = EMPTY_PLANNING_LANE;
     let hasPlanningRow = false;
-    let agentUsage: Array<{ agent: string; tokens: number }> = [];
 
     if (detail) {
       streamStatus = detail.connectionStatus;
@@ -648,10 +651,11 @@ export function selectNowActiveBuildCards(
       cost = stats.totalCost;
       cachePercent = stats.tokensIn > 0 ? (stats.cacheRead / stats.tokensIn) * 100 : 0;
       miniGanttRows = selectMiniGanttRows(rs);
+      planLanes = selectPlanLanes(rs);
+      planning = selectPlanningLane(rs);
       hasPlanningRow =
         rs.earlyOrchestration != null ||
         rs.events.some((e) => e.event.type.startsWith('planning:'));
-      agentUsage = selectAgentUsageByRole(rs);
     }
 
     return {
@@ -677,8 +681,9 @@ export function selectNowActiveBuildCards(
       cachePercent,
       href: toConsolePath({ id: 'runDetail', detailId: sessionId }),
       miniGanttRows,
+      planLanes,
+      planning,
       hasPlanningRow,
-      agentUsage,
     };
   });
 }
