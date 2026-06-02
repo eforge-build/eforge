@@ -164,6 +164,7 @@ async function* runEvaluatorAttempt(
       stage: 'evaluate',
       ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
       ...(input.evaluationSnapshot && { evaluatorSnapshot: input.evaluationSnapshot }),
+      ...(input.round !== undefined ? { round: input.round } : {}),
       preImplementCommit: ctx.preImplementCommit,
       harness: evaluatorHarness,
     });
@@ -271,10 +272,11 @@ type ReviewStageMetadata = {
 
 async function* reviewStageInner(
   ctx: BuildStageContext,
-  overrides?: { strategy?: 'auto' | 'single' | 'parallel'; perspectives?: string[] },
+  overrides?: { strategy?: 'auto' | 'single' | 'parallel'; perspectives?: string[]; round?: number },
 ): AsyncGenerator<EforgeEvent, ReviewStageMetadata> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
+  const round = overrides?.round;
   const metadata: ReviewStageMetadata = {
     parallel: false,
     activePerspectives: [],
@@ -351,6 +353,7 @@ async function* reviewStageInner(
       perspectives,
       extensionReviewerPerspectives: ctx.extensionReviewerPerspectives,
       extensionApplicabilityTimeoutMs: ctx.config.extensions.eventHookTimeoutMs,
+      ...(round !== undefined ? { round } : {}),
       ...reviewerAgentConfig,
       promptAppend: reviewerPromptAppend,
       phase: 'build',
@@ -398,6 +401,7 @@ async function* reviewStageInner(
       type: 'plan:build:review:complete',
       planId: ctx.planId,
       issues: failureIssues,
+      ...(round !== undefined ? { round } : {}),
     };
   }
 
@@ -435,7 +439,7 @@ async function* reviewStageInner(
 
   const completeEvent: Extract<EforgeEvent, { type: 'plan:build:review:complete' }> = bufferedReviewComplete
     ? { ...bufferedReviewComplete, issues: finalIssues }
-    : { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId: ctx.planId, issues: finalIssues };
+    : { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId: ctx.planId, issues: finalIssues, ...(round !== undefined ? { round } : {}) };
 
   ctx.reviewIssues = completeEvent.issues;
   metadata.completeIssueCount = completeEvent.issues.length;
@@ -446,7 +450,7 @@ async function* reviewStageInner(
 
 async function* evaluateStageInner(
   ctx: BuildStageContext,
-  overrides?: { strictness?: 'strict' | 'standard' | 'lenient' },
+  overrides?: { strictness?: 'strict' | 'standard' | 'lenient'; round?: number },
 ): AsyncGenerator<EforgeEvent> {
   try {
     await unstageEvaluationCandidateChanges(ctx.worktreePath);
@@ -477,6 +481,7 @@ async function* evaluateStageInner(
   }
 
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
+  const round = overrides?.round;
 
   // Emit evaluator-strictness decision at the start of every evaluator run
   // source is 'default' when the value is 'standard' and no explicit override was provided,
@@ -494,6 +499,7 @@ async function* evaluateStageInner(
   const initialInput: EvaluatorContinuationInput = {
     worktreePath: ctx.worktreePath,
     planId: ctx.planId,
+    ...(round !== undefined ? { round } : {}),
     evaluationSnapshot: snapshot,
     evaluatorOptions: {},
   };
@@ -566,6 +572,7 @@ async function* evaluateStageInner(
       rejected: application.rejected,
       ...issueOutcomeCounts,
       verdicts: summarizeEvaluationVerdicts(result.verdicts),
+      ...(round !== undefined ? { round } : {}),
     };
   } catch (err) {
     try {
@@ -596,6 +603,7 @@ async function* runReviewFixerAttempt(
       cwd: input.cwd,
       issues: ctx.reviewIssues,
       evaluatorFeedbackContext: renderReviewFixerEvaluatorFeedback(getReviewCycleFeedback(ctx)),
+      ...(input.round !== undefined ? { round: input.round } : {}),
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...fixerConfigWithPhase,
@@ -619,7 +627,10 @@ async function* runReviewFixerAttempt(
   }
 }
 
-async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
+async function* reviewFixStageInner(
+  ctx: BuildStageContext,
+  options?: { round?: number },
+): AsyncGenerator<EforgeEvent> {
   if (ctx.reviewIssues.length === 0) return;
 
   // Snapshot HEAD at stage entry — used as baseRef for agent:activity attribution
@@ -642,6 +653,7 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
   const initialInput: ReviewFixerContinuationInput = {
     cwd: ctx.worktreePath,
     planId: ctx.planId,
+    ...(options?.round !== undefined ? { round: options.round } : {}),
     reviewFixerOptions: {},
   };
 
@@ -1136,7 +1148,7 @@ registerBuildStage({
       dropped: droppedForRound,
     });
 
-    const reviewMetadata = yield* reviewStageInner(ctx, { strategy, perspectives: activePerspectivesForRound });
+    const reviewMetadata = yield* reviewStageInner(ctx, { strategy, perspectives: activePerspectivesForRound, round });
     if (ctx.buildFailed) return;
     if (!initialPerspectiveOrder && reviewMetadata.activePerspectives.length > 0) {
       initialPerspectiveOrder = reviewMetadata.activePerspectives;
@@ -1155,8 +1167,8 @@ registerBuildStage({
       break;
     }
 
-    yield* reviewFixStageInner(ctx);
-    yield* evaluateStageInner(ctx, { strictness });
+    yield* reviewFixStageInner(ctx, { round });
+    yield* evaluateStageInner(ctx, { strictness, round });
     if (ctx.buildFailed) return;
 
     if (round < maxRounds - 1) {

@@ -4128,3 +4128,17 @@ describe('stack sync lifecycle event schema coverage', () => {
   });
 });
 
+const reviewCycleRoundLifecyclePayloads = [{ type: 'plan:build:review:start', planId: 'plan-01' }, { type: 'plan:build:review:complete', planId: 'plan-01', issues: [] }, { type: 'plan:build:review:parallel:start', planId: 'plan-01', perspectives: ['code'] }, { type: 'plan:build:review:parallel:perspective:start', planId: 'plan-01', perspective: 'code' }, { type: 'plan:build:review:parallel:perspective:complete', planId: 'plan-01', perspective: 'code', issues: [] }, { type: 'plan:build:review:parallel:perspective:error', planId: 'plan-01', perspective: 'code', error: 'timeout' }, { type: 'plan:build:review:fix:start', planId: 'plan-01', issueCount: 1 }, { type: 'plan:build:review:fix:complete', planId: 'plan-01' }, { type: 'plan:build:review:fix:continuation', planId: 'plan-01', attempt: 1, maxContinuations: 2 }, { type: 'plan:build:evaluate:start', planId: 'plan-01' }, { type: 'plan:build:evaluate:continuation', planId: 'plan-01', attempt: 1, maxContinuations: 2 }, { type: 'plan:build:evaluate:complete', planId: 'plan-01', accepted: 1, rejected: 0 }] as const;
+
+describe('safeParseEforgeEvent — review-cycle round metadata', () => {
+  it('accepts all lifecycle variants with round 0 and without round, and rejects a negative round', () => {
+    for (const payload of reviewCycleRoundLifecyclePayloads) {
+      expect(safeParseEforgeEvent({ timestamp: '2025-01-01T00:00:00.000Z', ...payload, round: 0 }).success, payload.type).toBe(true);
+      expect(safeParseEforgeEvent({ timestamp: '2025-01-01T00:00:00.000Z', ...payload }).success, payload.type).toBe(true);
+      const meta = (eventRegistry as Record<string, { scope: string; persist: boolean }>)[payload.type];
+      expect(meta).toMatchObject({ scope: 'session', persist: false });
+    }
+    expect(safeParseEforgeEvent({ timestamp: '2025-01-01T00:00:00.000Z', ...reviewCycleRoundLifecyclePayloads[0], round: -1 }).success).toBe(false);
+  });
+});
+

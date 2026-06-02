@@ -414,7 +414,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
   },
   {
     label: 'plan:build:review:start',
-    payload: { type: 'plan:build:review:start', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01' },
+    payload: { type: 'plan:build:review:start', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01', round: 0 },
   },
   {
     label: 'plan:build:review:complete',
@@ -423,6 +423,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
       issues: [],
+      round: 0,
     },
   },
   {
@@ -432,6 +433,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
       perspectives: ['code', 'security'],
+      round: 0,
     },
   },
   {
@@ -441,6 +443,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
       perspectives: ['code', 'accessibility'],
+      round: 0,
     },
   },
   {
@@ -450,6 +453,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
       perspective: 'code',
+      round: 0,
     },
   },
   {
@@ -460,6 +464,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       planId: 'plan-01',
       perspective: 'code',
       issues: [],
+      round: 0,
     },
   },
   {
@@ -470,6 +475,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       planId: 'plan-01',
       perspective: 'security',
       error: 'agent timeout',
+      round: 0,
     },
   },
   {
@@ -479,19 +485,20 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
       issueCount: 3,
+      round: 0,
     },
   },
   {
     label: 'plan:build:review:fix:complete',
-    payload: { type: 'plan:build:review:fix:complete', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01' },
+    payload: { type: 'plan:build:review:fix:complete', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01', round: 0 },
   },
   {
     label: 'plan:build:review:fix:continuation',
-    payload: { type: 'plan:build:review:fix:continuation', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01', attempt: 1, maxContinuations: 2 },
+    payload: { type: 'plan:build:review:fix:continuation', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01', attempt: 1, maxContinuations: 2, round: 0 },
   },
   {
     label: 'plan:build:evaluate:start',
-    payload: { type: 'plan:build:evaluate:start', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01' },
+    payload: { type: 'plan:build:evaluate:start', timestamp: '2025-01-01T00:00:00.000Z', planId: 'plan-01', round: 0 },
   },
   {
     label: 'plan:build:evaluate:continuation',
@@ -501,6 +508,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       planId: 'plan-01',
       attempt: 1,
       maxContinuations: 2,
+      round: 0,
     },
   },
   {
@@ -511,6 +519,7 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       planId: 'plan-01',
       accepted: 5,
       rejected: 0,
+      round: 0,
     },
   },
   {

@@ -9,6 +9,7 @@ describe('safeParseEforgeEvent — build evaluator enriched payloads', () => {
       planId: 'plan-01',
       accepted: 1,
       rejected: 1,
+      round: 0,
       resolvedIssueOutcomes: 1,
       falsePositiveIssueOutcomes: 1,
       blockingIssueOutcomes: 0,

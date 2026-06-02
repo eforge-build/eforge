@@ -110,6 +110,8 @@ export interface ReviewerOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Override max conversation turns (default: review tier default) */
   maxTurns?: number;
+  /** Zero-based review-cycle round for lifecycle event metadata. */
+  round?: number;
 }
 
 /**
@@ -451,9 +453,9 @@ export function parseReviewIssuesStrict(text: string): ParseReviewIssuesResult {
 export async function* runReview(
   options: ReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { harness, planContent, baseBranch, planId, cwd, verbose, abortController } = options;
+  const { harness, planContent, baseBranch, planId, cwd, verbose, abortController, round } = options;
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId, ...(round !== undefined ? { round } : {}) };
 
   const { prompt, changedFiles } = await composeReviewPrompt(planContent, baseBranch, cwd, options.promptAppend);
 
@@ -499,7 +501,7 @@ export async function* runReview(
         code: 'reviewer-late-infrastructure-error-downgraded',
         message: err instanceof Error ? err.message : String(err),
       };
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: parseResult.issues };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: parseResult.issues, ...(round !== undefined ? { round } : {}) };
       return;
     }
     throw err;
@@ -507,5 +509,5 @@ export async function* runReview(
 
   const parseResult = parseReviewIssuesStrict(fullText);
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: parseResult.issues };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: parseResult.issues, ...(round !== undefined ? { round } : {}) };
 }
