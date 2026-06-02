@@ -7,7 +7,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
-import { pickSdkOptions } from '../harness.js';
+import { classifyAgentTerminalSubtype, pickSdkOptions } from '../harness.js';
+import { isRetryableInfrastructureSubtype } from '../retry.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import type { ReviewPerspective } from '../review-heuristics.js';
 import { selectInitialReviewPerspectives, shouldParallelizeReview, isBuiltInReviewPerspective, FILE_COUNT_THRESHOLD, LINE_COUNT_THRESHOLD } from '../review-heuristics.js';
@@ -21,6 +22,7 @@ import {
   computeReviewContext,
   filterGeneratedReviewArtifactPaths,
   getReviewDiffPathspecArgs,
+  mergeReviewerResultText,
 } from './reviewer.js';
 import {
   getReviewIssueSchemaYaml,
@@ -38,6 +40,13 @@ import {
 } from '../extensions/reviewer-perspective-runtime.js';
 
 const exec = promisify(execFile);
+
+// --- eforge:region reviewer-late-transport-recovery ---
+function isRetryableLateReviewerInfrastructureError(err: unknown): boolean {
+  const terminalSubtype = classifyAgentTerminalSubtype(err);
+  return terminalSubtype !== undefined && isRetryableInfrastructureSubtype(terminalSubtype);
+}
+// --- eforge:endregion reviewer-late-transport-recovery ---
 
 function syntheticPerspectiveErrorIssue(perspective: string, err: unknown): ReviewIssue {
   return {
@@ -320,24 +329,65 @@ export async function* runParallelReview(
           }, combinedPromptAppend);
 
           let fullText = '';
+          let reviewerAgentId: string | undefined;
+          let sawAgentResult = false;
 
-          for await (const event of harness.run(
-            { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective, changedFiles: [...snapshot.changedFiles] },
-            'reviewer',
-            planId,
-          )) {
-            if (isAlwaysYieldedAgentEvent(event) || verbose) {
-              yield event;
+          try {
+            for await (const event of harness.run(
+              { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective, changedFiles: [...snapshot.changedFiles] },
+              'reviewer',
+              planId,
+            )) {
+              if (event.type === 'agent:start' && event.agent === 'reviewer') {
+                reviewerAgentId = event.agentId;
+              }
+              if (event.type === 'agent:message' && event.content) {
+                fullText += event.content;
+              }
+              if (event.type === 'agent:result') {
+                sawAgentResult = true;
+                if ('agentId' in event && typeof event.agentId === 'string') {
+                  reviewerAgentId = event.agentId;
+                }
+                if (event.result.resultText) {
+                  fullText = mergeReviewerResultText(fullText, event.result.resultText);
+                }
+              }
+              if (isAlwaysYieldedAgentEvent(event) || verbose) {
+                yield event;
+              }
             }
-            if (event.type === 'agent:message' && event.content) {
-              fullText += event.content;
+
+            const parseResult = parseReviewIssuesStrict(fullText);
+            allIssues.push({ perspective, issues: parseResult.issues });
+
+            yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
+          } catch (err) {
+            const parseResult = parseReviewIssuesStrict(fullText);
+            if (sawAgentResult && isRetryableLateReviewerInfrastructureError(err) && parseResult.valid) {
+              allIssues.push({ perspective, issues: parseResult.issues });
+              yield {
+                timestamp: new Date().toISOString(),
+                type: 'agent:warning',
+                planId,
+                agentId: reviewerAgentId ?? `unknown-reviewer-${perspective}`,
+                agent: 'reviewer',
+                code: 'reviewer-late-infrastructure-error-downgraded',
+                message: `Reviewer perspective "${perspective}" completed with parseable output before a late infrastructure error: ${err instanceof Error ? err.message : String(err)}`,
+              };
+              yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
+              return;
             }
+            allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
+            yield {
+              timestamp: new Date().toISOString(),
+              type: 'plan:build:review:parallel:perspective:error',
+              planId,
+              perspective,
+              error: err instanceof Error ? err.message : String(err),
+            };
           }
-
-          const parseResult = parseReviewIssuesStrict(fullText);
-          allIssues.push({ perspective, issues: parseResult.issues });
-
-          yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
+          return;
         } catch (err) {
           allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
           yield {
@@ -351,6 +401,10 @@ export async function* runParallelReview(
         return;
       }
 
+      let fullText = '';
+      let reviewerAgentId: string | undefined;
+      let sawAgentResult = false;
+
       try {
         const prompt = await loadPrompt(PERSPECTIVE_PROMPTS[perspective], {
           plan_content: planContent,
@@ -360,18 +414,28 @@ export async function* runParallelReview(
           review_issue_schema: PERSPECTIVE_SCHEMA_YAML[perspective](),
         }, options.promptAppend);
 
-        let fullText = '';
-
         for await (const event of harness.run(
           { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective, changedFiles: [...snapshot.changedFiles] },
           'reviewer',
           planId,
         )) {
-          if (isAlwaysYieldedAgentEvent(event) || verbose) {
-            yield event;
+          if (event.type === 'agent:start' && event.agent === 'reviewer') {
+            reviewerAgentId = event.agentId;
           }
           if (event.type === 'agent:message' && event.content) {
             fullText += event.content;
+          }
+          if (event.type === 'agent:result') {
+            sawAgentResult = true;
+            if ('agentId' in event && typeof event.agentId === 'string') {
+              reviewerAgentId = event.agentId;
+            }
+            if (event.result.resultText) {
+              fullText = mergeReviewerResultText(fullText, event.result.resultText);
+            }
+          }
+          if (isAlwaysYieldedAgentEvent(event) || verbose) {
+            yield event;
           }
         }
 
@@ -380,6 +444,21 @@ export async function* runParallelReview(
 
         yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
       } catch (err) {
+        const parseResult = parseReviewIssuesStrict(fullText);
+        if (sawAgentResult && isRetryableLateReviewerInfrastructureError(err) && parseResult.valid) {
+          allIssues.push({ perspective, issues: parseResult.issues });
+          yield {
+            timestamp: new Date().toISOString(),
+            type: 'agent:warning',
+            planId,
+            agentId: reviewerAgentId ?? `unknown-reviewer-${perspective}`,
+            agent: 'reviewer',
+            code: 'reviewer-late-infrastructure-error-downgraded',
+            message: `Reviewer perspective "${perspective}" completed with parseable output before a late infrastructure error: ${err instanceof Error ? err.message : String(err)}`,
+          };
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
+          return;
+        }
         allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
         yield {
           timestamp: new Date().toISOString(),

@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
-import { pickSdkOptions } from '../harness.js';
+import { classifyAgentTerminalSubtype, pickSdkOptions } from '../harness.js';
+import { isRetryableInfrastructureSubtype } from '../retry.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
@@ -218,6 +219,19 @@ export function parseReviewIssues(text: string): ReviewIssue[] {
 
   return issues;
 }
+
+/**
+ * Merge streamed reviewer text with final result text without duplicating
+ * overlapping complete payloads.
+ */
+// --- eforge:region reviewer-late-transport-recovery ---
+export function mergeReviewerResultText(fullText: string, resultText: string): string {
+  if (!fullText) return resultText;
+  if (fullText.includes(resultText)) return fullText;
+  if (resultText.includes(fullText)) return resultText;
+  return fullText + resultText;
+}
+// --- eforge:endregion reviewer-late-transport-recovery ---
 
 /**
  * Map raw severity string to the typed severity union.
@@ -444,18 +458,51 @@ export async function* runReview(
   const { prompt, changedFiles } = await composeReviewPrompt(planContent, baseBranch, cwd, options.promptAppend);
 
   let fullText = '';
+  let reviewerAgentId: string | undefined;
+  let sawAgentResult = false;
 
-  for await (const event of harness.run(
-    { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), changedFiles },
-    'reviewer',
-    planId,
-  )) {
-    if (isAlwaysYieldedAgentEvent(event) || verbose) {
-      yield event;
+  try {
+    for await (const event of harness.run(
+      { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.review, tools: 'read-only', abortSignal: abortController?.signal, ...pickSdkOptions(options), changedFiles },
+      'reviewer',
+      planId,
+    )) {
+      if (event.type === 'agent:start' && event.agent === 'reviewer') {
+        reviewerAgentId = event.agentId;
+      }
+      if (event.type === 'agent:message' && event.content) {
+        fullText += event.content;
+      }
+      if (event.type === 'agent:result') {
+        sawAgentResult = true;
+        if ('agentId' in event && typeof event.agentId === 'string') {
+          reviewerAgentId = event.agentId;
+        }
+        if (event.result.resultText) {
+          fullText = mergeReviewerResultText(fullText, event.result.resultText);
+        }
+      }
+      if (isAlwaysYieldedAgentEvent(event) || verbose) {
+        yield event;
+      }
     }
-    if (event.type === 'agent:message' && event.content) {
-      fullText += event.content;
+  } catch (err) {
+    const terminalSubtype = classifyAgentTerminalSubtype(err);
+    const parseResult = parseReviewIssuesStrict(fullText);
+    if (sawAgentResult && terminalSubtype !== undefined && isRetryableInfrastructureSubtype(terminalSubtype) && parseResult.valid) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'agent:warning',
+        planId,
+        agentId: reviewerAgentId ?? 'unknown-reviewer',
+        agent: 'reviewer',
+        code: 'reviewer-late-infrastructure-error-downgraded',
+        message: err instanceof Error ? err.message : String(err),
+      };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: parseResult.issues };
+      return;
     }
+    throw err;
   }
 
   const parseResult = parseReviewIssuesStrict(fullText);
