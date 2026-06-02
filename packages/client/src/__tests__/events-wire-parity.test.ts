@@ -1710,6 +1710,9 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       branch: 'eforge/feat-stack-a',
       status: 'complete',
       prUrl: 'https://github.com/owner/repo/pull/42',
+      originalBaseBranch: 'eforge/parent-stack-a',
+      effectiveBaseBranch: 'main',
+      baseRepairReason: 'parent-artifact-already-integrated',
     },
   },
   {

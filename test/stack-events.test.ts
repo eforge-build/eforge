@@ -176,6 +176,22 @@ describe('stack:landing:update', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts optional base repair metadata', () => {
+    const result = safeParseEforgeEvent({
+      ...envelope,
+      type: 'stack:landing:update',
+      prdId: 'my-prd',
+      stackId: 'stack-abc',
+      action: 'pr',
+      branch: 'feat/my-prd',
+      status: 'complete',
+      originalBaseBranch: 'eforge/parent-prd',
+      effectiveBaseBranch: 'main',
+      baseRepairReason: 'parent-artifact-already-integrated',
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('rejects invalid action', () => {
     const result = safeParseEforgeEvent({
       ...envelope,

@@ -32,6 +32,9 @@ const stackLayerLandingSchema = z.object({
   status: z.enum(['started', 'complete', 'skipped', 'failed']),
   prUrl: z.string().optional(),
   reason: z.string().optional(),
+  originalBaseBranch: z.string().optional(),
+  effectiveBaseBranch: z.string().optional(),
+  baseRepairReason: z.literal('parent-artifact-already-integrated').optional(),
   startedAt: z.string().min(1),
   completedAt: z.string().optional(),
 });

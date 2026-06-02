@@ -12,6 +12,13 @@ import { isRegisteredRemote, validateRemoteName } from '../trunk-sync.js';
 import { redactProviderMessage } from './git-spice.js';
 
 const exec = promisify(execFile);
+const REMOTE_QUERY_TIMEOUT_MS = 30_000;
+const NONINTERACTIVE_GIT_ENV = {
+  ...process.env,
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_ASKPASS: '',
+  SSH_ASKPASS: '',
+};
 
 export type StackBaseRepairReason = 'parent-artifact-already-integrated';
 
@@ -47,6 +54,32 @@ export type RemoteBranchExistsResult =
       reason: 'not-found' | 'query-failed';
       stderr?: string;
     };
+
+export type RemoteBranchHeadCommitResult =
+  | {
+      ok: true;
+      branch: string;
+      remote: string;
+      commit: string;
+    }
+  | {
+      ok: false;
+      branch: string;
+      remote: string;
+      reason: 'not-found' | 'query-failed';
+      stderr?: string;
+    };
+
+function remoteQueryDiagnostic(err: unknown): string | undefined {
+  const execErr = err as { killed?: boolean; signal?: string | null; stderr?: string };
+  if (execErr.stderr !== undefined && execErr.stderr !== '') {
+    return redactProviderMessage(execErr.stderr);
+  }
+  if (execErr.killed === true || execErr.signal === 'SIGTERM') {
+    return 'remote query timed out';
+  }
+  return undefined;
+}
 
 /**
  * Resolve a ref to a commit SHA using git's commit-peeling syntax.
@@ -120,20 +153,82 @@ export async function remoteBranchExists(
     return { exists: false, branch, remote, reason: 'query-failed' };
   }
 
+  const headCommit = await resolveRemoteBranchHeadCommit(cwd, branch, remote);
+  if (headCommit.ok) {
+    return { exists: true, branch, remote };
+  }
+  return {
+    exists: false,
+    branch,
+    remote,
+    reason: headCommit.reason,
+    ...(headCommit.stderr !== undefined ? { stderr: headCommit.stderr } : {}),
+  };
+}
+
+export async function fetchRemoteBranchHeadCommit(
+  cwd: string,
+  branch: string,
+  remote = 'origin',
+): Promise<RemoteBranchHeadCommitResult> {
+  const remoteNameError = validateRemoteName(remote);
+  if (remoteNameError !== undefined || !(await isRegisteredRemote(remote, cwd))) {
+    return { ok: false, branch, remote, reason: 'query-failed' };
+  }
+
+  try {
+    await exec('git', ['fetch', '--no-tags', '--no-recurse-submodules', remote, branch], {
+      cwd,
+      timeout: REMOTE_QUERY_TIMEOUT_MS,
+      env: NONINTERACTIVE_GIT_ENV,
+    });
+    const commit = await resolveRefCommit(cwd, 'FETCH_HEAD');
+    if (commit !== undefined) {
+      return { ok: true, branch, remote, commit };
+    }
+    return { ok: false, branch, remote, reason: 'query-failed' };
+  } catch (err) {
+    const stderr = remoteQueryDiagnostic(err);
+    return {
+      ok: false,
+      branch,
+      remote,
+      reason: 'query-failed',
+      ...(stderr !== undefined ? { stderr } : {}),
+    };
+  }
+}
+
+export async function resolveRemoteBranchHeadCommit(
+  cwd: string,
+  branch: string,
+  remote = 'origin',
+): Promise<RemoteBranchHeadCommitResult> {
+  const remoteNameError = validateRemoteName(remote);
+  if (remoteNameError !== undefined || !(await isRegisteredRemote(remote, cwd))) {
+    return { ok: false, branch, remote, reason: 'query-failed' };
+  }
+
   const exactHeadRef = `refs/heads/${branch}`;
   try {
-    const { stdout } = await exec('git', ['ls-remote', '--exit-code', '--heads', remote, exactHeadRef], { cwd });
-    const exists = stdout.split('\n').some((line) => line.trim().endsWith(`\t${exactHeadRef}`));
-    if (exists) {
-      return { exists: true, branch, remote };
+    const { stdout } = await exec('git', ['ls-remote', '--exit-code', '--heads', remote, exactHeadRef], {
+      cwd,
+      timeout: REMOTE_QUERY_TIMEOUT_MS,
+      env: NONINTERACTIVE_GIT_ENV,
+    });
+    const commit = stdout.split('\n')
+      .map((line) => line.trim().split(/\s+/))
+      .find((parts) => parts.length >= 2 && parts[1] === exactHeadRef)?.[0];
+    if (commit !== undefined && commit !== '') {
+      return { ok: true, branch, remote, commit };
     }
-    return { exists: false, branch, remote, reason: 'not-found' };
+    return { ok: false, branch, remote, reason: 'not-found' };
   } catch (err) {
-    const execErr = err as { code?: number | string; stderr?: string };
-    const stderr = execErr.stderr !== undefined ? redactProviderMessage(execErr.stderr) : undefined;
+    const execErr = err as { code?: number | string };
+    const stderr = remoteQueryDiagnostic(err);
     if (execErr.code === 2) {
       return {
-        exists: false,
+        ok: false,
         branch,
         remote,
         reason: 'not-found',
@@ -141,7 +236,7 @@ export async function remoteBranchExists(
       };
     }
     return {
-      exists: false,
+      ok: false,
       branch,
       remote,
       reason: 'query-failed',

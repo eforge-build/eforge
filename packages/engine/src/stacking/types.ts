@@ -5,7 +5,7 @@
  * authoritative representation for engine-internal operations.
  */
 
-import type { StackBaseRepairEvidence } from './base-repair.js';
+import type { StackBaseRepairEvidence, StackBaseRepairReason } from './base-repair.js';
 
 // ---------------------------------------------------------------------------
 // Stack provider
@@ -93,6 +93,12 @@ export interface StackLayerLanding {
   prUrl?: string;
   /** Failure or skip reason when status is 'failed' or 'skipped'. */
   reason?: string;
+  /** Originally resolved parent base branch/ref when landing made a base decision. */
+  originalBaseBranch?: string;
+  /** Effective base branch/ref used for the landing submission. */
+  effectiveBaseBranch?: string;
+  /** Reason the effective base differs from the original base. */
+  baseRepairReason?: StackBaseRepairReason;
   /** ISO-8601 timestamp when landing was started. */
   startedAt: string;
   /** ISO-8601 timestamp when landing completed (success, failure, or skip). */

@@ -908,9 +908,10 @@ const eventRegistry = {
     persist: true,
     summary: (e) => {
       const base = `Stack landing: ${e.prdId} (${e.action}) ${e.status}`;
-      if (e.prUrl) return `${base} — ${e.prUrl}`;
-      if (e.reason) return `${base} — ${e.reason}`;
-      return base;
+      const repair = e.baseRepairReason ? ` (base repaired: ${e.originalBaseBranch ?? '?'} → ${e.effectiveBaseBranch ?? '?'})` : '';
+      if (e.prUrl) return `${base}${repair} — ${e.prUrl}`;
+      if (e.reason) return `${base}${repair} — ${e.reason}`;
+      return `${base}${repair}`;
     },
     project: (e, state) => {
       const existing = state.stackLayers.find((l) => l.prdId === e.prdId);
@@ -949,6 +950,9 @@ const eventRegistry = {
                   status: e.status,
                   prUrl: e.prUrl,
                   reason: e.reason,
+                  originalBaseBranch: e.originalBaseBranch,
+                  effectiveBaseBranch: e.effectiveBaseBranch,
+                  baseRepairReason: e.baseRepairReason,
                   startedAt: l.landing?.startedAt ?? e.timestamp,
                   completedAt:
                     e.status === 'complete' || e.status === 'failed' || e.status === 'skipped'

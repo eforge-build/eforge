@@ -10551,6 +10551,16 @@
             },
             "reason": {
               "type": "string"
+            },
+            "originalBaseBranch": {
+              "type": "string"
+            },
+            "effectiveBaseBranch": {
+              "type": "string"
+            },
+            "baseRepairReason": {
+              "const": "parent-artifact-already-integrated",
+              "type": "string"
             }
           }
         },

@@ -1046,12 +1046,14 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     validationTimeoutMs: ctx.postMergeCommandTimeoutMs,
     signal: ctx.signal,
     // --- eforge:endregion stack-landing-recovery ---
-    // Static metadata is the base; metadataFactory adds provenance when cleanup context is available.
-    metadata: renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker }),
-    metadataFactory: ctx.cleanupPlanSet && ctx.cleanupOutputDir ? async () => {
-      const r = await collectBuildArtifactProvenance(ctx.mergeWorktreePath, { planSetName: ctx.cleanupPlanSet!, outputDir: ctx.cleanupOutputDir!, prdArtifactPath: ctx.cleanupPrdFilePath }).catch(() => []);
-      return renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker, provenanceRefs: r.length > 0 ? r : undefined });
-    } : undefined,
+    // --- eforge:region plan-02-landing-preflight-and-observability ---
+    metadataFactory: async ({ effectiveBaseBranch }) => {
+      const r = ctx.cleanupPlanSet && ctx.cleanupOutputDir
+        ? await collectBuildArtifactProvenance(ctx.mergeWorktreePath, { planSetName: ctx.cleanupPlanSet, outputDir: ctx.cleanupOutputDir, prdArtifactPath: ctx.cleanupPrdFilePath }).catch(() => [])
+        : [];
+      return renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: effectiveBaseBranch, modelTracker: ctx.modelTracker, provenanceRefs: r.length > 0 ? r : undefined });
+    },
+    // --- eforge:endregion plan-02-landing-preflight-and-observability ---
   })) {
     if (event.type === 'stack:landing:update' && effectiveLandingAction === 'pr') {
       if (event.status === 'complete') {
