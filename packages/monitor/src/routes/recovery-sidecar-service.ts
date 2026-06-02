@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseWithSchema, safeParseEforgeEvent } from '@eforge-build/client';
-import type { RecoveryVerdictSidecar } from '@eforge-build/client';
+import type { BuildFailureSummary, RecoveryVerdict, RecoveryVerdictSidecar } from '@eforge-build/client';
 import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
 import type { MonitorContext } from '../context.js';
 import { HttpRouteError } from '../http/route-errors.js';
@@ -39,7 +39,12 @@ function parseRecoverySidecar(jsonContent: string, prdId: string): RecoveryVerdi
   return { schemaVersion: sidecar.schemaVersion, generatedAt: sidecar.generatedAt, summary: sidecar.summary, verdict: sidecar.verdict } as RecoveryVerdictSidecar;
 }
 
-export async function readRecoveryVerdictForApply(context: MonitorContext, prdId: string): Promise<ReturnType<typeof recoveryVerdictSchema.parse>> {
+export interface RecoveryApplySidecarData {
+  summary: BuildFailureSummary;
+  verdict: RecoveryVerdict;
+}
+
+export async function readRecoveryVerdictForApply(context: MonitorContext, prdId: string): Promise<RecoveryApplySidecarData> {
   const base = failedDir(context);
   const sidecarJsonPath = resolve(base, `${prdId}.recovery.json`);
   if (!isWithinDir(sidecarJsonPath, base)) throw new HttpRouteError(400, 'Invalid prdId: resolved path escapes failed PRD directory');
@@ -55,6 +60,15 @@ export async function readRecoveryVerdictForApply(context: MonitorContext, prdId
   if (typeof sidecarJson !== 'object' || sidecarJson === null || !('verdict' in sidecarJson)) {
     throw new HttpRouteError(400, `Recovery sidecar for ${prdId} is missing the verdict field`);
   }
-  try { return parseWithSchema(recoveryVerdictSchema, (sidecarJson as Record<string, unknown>).verdict); }
+  const sidecar = sidecarJson as Record<string, unknown>;
+  const generatedAt = typeof sidecar.generatedAt === 'string' ? sidecar.generatedAt : new Date().toISOString();
+  const summary = safeParseEforgeEvent({ type: 'recovery:summary', timestamp: generatedAt, prdId, summary: sidecar.summary });
+  if (!summary.success) throw new HttpRouteError(400, `Invalid recovery summary in sidecar for ${prdId}`);
+  try {
+    return {
+      summary: sidecar.summary as BuildFailureSummary,
+      verdict: parseWithSchema(recoveryVerdictSchema, sidecar.verdict) as RecoveryVerdict,
+    };
+  }
   catch (err) { throw new HttpRouteError(400, `Invalid recovery verdict in sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`); }
 }

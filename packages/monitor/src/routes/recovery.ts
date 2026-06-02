@@ -36,17 +36,17 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
       const body = parsed.value as { prdId?: unknown };
       if (!body.prdId || typeof body.prdId !== 'string') return sendJsonError(ctx.res, 400, 'Missing required field: prdId');
       if (!isValidPathSegment(body.prdId)) return sendJsonError(ctx.res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
-      const verdictData = await readRecoveryVerdictForApply(context, body.prdId);
+      const recoveryData = await readRecoveryVerdictForApply(context, body.prdId);
       const helperOptions = { cwd: context.cwd, prdId: body.prdId, queueDir: context.queuePaths?.queueDir ?? `${context.cwd}/.eforge/queue` };
       try {
-        switch (verdictData.verdict) {
+        switch (recoveryData.verdict.verdict) {
           case 'retry': {
             const result = await applyRecoveryRetry(helperOptions);
             context.notifyQueueMutation('apply-recovery');
             return sendJson(ctx.res, { verdict: 'retry', commitSha: result.commitSha, noAction: false });
           }
           case 'split': {
-            const result = await applyRecoverySplit(helperOptions, verdictData);
+            const result = await applyRecoverySplit(helperOptions, recoveryData.verdict, { summary: recoveryData.summary });
             context.notifyQueueMutation('apply-recovery');
             return sendJson(ctx.res, { verdict: 'split', commitSha: result.commitSha, successorPrdId: result.successorPrdId, noAction: false });
           }
@@ -60,7 +60,7 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
             context.notifyQueueMutation('apply-recovery');
             return sendJson(ctx.res, { verdict: 'manual', noAction: result.noAction });
           }
-          default: throw new Error(`Unknown verdict: ${(verdictData as { verdict: string }).verdict}`);
+          default: throw new Error(`Unknown verdict: ${(recoveryData.verdict as { verdict: string }).verdict}`);
         }
       } catch (err) { sendJsonError(ctx.res, 500, err instanceof Error ? err.message : 'Failed to apply recovery verdict'); }
     } }),
