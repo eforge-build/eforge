@@ -16,6 +16,8 @@ import { deriveResumeSeedState, formatResumeContext, checkResumeEligibility, bui
 import { applyResumeSeed, initializeState, type ResumeSeedOptions } from '@eforge-build/engine/orchestrator';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { loadArtifactRegistry } from '@eforge-build/engine/artifacts/registry';
+import { loadCompletionRegistry } from '@eforge-build/engine/artifacts/completions';
 import { openDatabase } from '@eforge-build/monitor/db';
 import type { PlanSummaryEntry, BuildFailureSummary, EforgeEvent } from '@eforge-build/engine/events';
 import { StubHarness } from './stub-harness.js';
@@ -861,5 +863,142 @@ describe('EforgeEngine.resumeBuild — compile-free execution', () => {
     if (firstBuildIndex !== -1) expect(artifactIndex).toBeLessThan(firstBuildIndex);
     expect(events.some((event) => event.type === 'build:resume:state')).toBe(true);
   });
+
+  // --- eforge:region plan-01-resume-queue-reactivation ---
+  it('records the resumed artifact against the original queued PRD id and finalizes queued resume state before completion', async () => {
+    const cwd = initRepo();
+    const setName = 'compile-free-resume-original-prd';
+    const prdId = 'original-queued-prd';
+    createFeatureBranchWithArtifacts(cwd, setName);
+    seedFailedRunEvidence(cwd, setName);
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`), `---
+title: Original Queued PRD
+created: 2026-01-01
+---
+
+# Original Queued PRD
+`);
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Recovery\n');
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'), `---
+title: Child PRD
+created: 2026-01-01
+depends_on: ["${prdId}"]
+---
+
+# Child PRD
+`);
+    writeFileEnsuringDir(join(cwd, '.eforge', 'artifacts', 'completions.json'), JSON.stringify({
+      version: 1,
+      completions: { [prdId]: { prdId, status: 'failed', artifactAvailable: false, completedAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' } },
+    }));
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({
+      summary: { setName },
+      verdict: { verdict: 'resume', confidence: 'high' },
+    }));
+
+    const engine = await EforgeEngine.create({
+      cwd,
+      agentRuntimes: new StubHarness([]),
+      config: {
+        landing: { ...DEFAULT_CONFIG.landing, action: 'leave' },
+        build: {
+          ...DEFAULT_CONFIG.build,
+          postMergeCommands: [],
+          cleanupPlanFiles: false,
+          validation: {
+            ...DEFAULT_CONFIG.build.validation,
+            allowNoCommands: true,
+            noCommandsReason: 'compile-free resume artifact unit test',
+          },
+        },
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    let checkedCompleteSideEffects = false;
+    for await (const event of engine.resumeBuild(prdId, { cwd })) {
+      events.push(event);
+      if (event.type === 'build:resume:complete') {
+        checkedCompleteSideEffects = true;
+        const completions = await loadCompletionRegistry(cwd);
+        expect(existsSync(join(cwd, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
+        expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
+        expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
+        expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
+        expect(existsSync(join(cwd, '.eforge', 'queue-locks', `${prdId}.lock`))).toBe(false);
+        expect(existsSync(join(cwd, '.eforge', 'queue', 'child-prd.md'))).toBe(true);
+        expect(completions.completions[prdId].status).toBe('completed');
+        expect(completions.completions[prdId].artifactAvailable).toBe(true);
+      }
+    }
+
+    const registry = await loadArtifactRegistry(cwd);
+    expect(registry.builds).toEqual(expect.arrayContaining([
+      expect.objectContaining({ prdId, status: 'built' }),
+    ]));
+    expect(checkedCompleteSideEffects).toBe(true);
+    expect(events.filter((event) => event.type === 'build:resume:complete')).toHaveLength(1);
+  });
+
+  it('rolls back queued resume state when the resumed build becomes ineligible after queue activation', async () => {
+    const cwd = initRepo();
+    const setName = 'missing-resume-artifacts';
+    const prdId = 'queued-ineligible-prd';
+    seedFailedRunEvidence(cwd, setName);
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`), `---
+title: Queued Ineligible PRD
+created: 2026-01-01
+---
+
+# Queued Ineligible PRD
+`);
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Recovery\n');
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({
+      summary: { setName },
+      verdict: { verdict: 'resume', confidence: 'high' },
+    }));
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'), `---
+title: Child PRD
+created: 2026-01-01
+depends_on: ["${prdId}"]
+---
+
+# Child PRD
+`);
+
+    const engine = await EforgeEngine.create({
+      cwd,
+      agentRuntimes: new StubHarness([]),
+      config: {
+        landing: { ...DEFAULT_CONFIG.landing, action: 'leave' },
+        build: {
+          ...DEFAULT_CONFIG.build,
+          postMergeCommands: [],
+          cleanupPlanFiles: false,
+          validation: {
+            ...DEFAULT_CONFIG.build.validation,
+            allowNoCommands: true,
+            noCommandsReason: 'compile-free resume rollback unit test',
+          },
+        },
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.resumeBuild(prdId, { cwd })) {
+      events.push(event);
+    }
+
+    expect(events.some((event) => event.type === 'build:resume:ineligible')).toBe(true);
+    expect(events.some((event) => event.type === 'build:resume:complete')).toBe(false);
+    expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(existsSync(join(cwd, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
+    expect(existsSync(join(cwd, '.eforge', 'queue-locks', `${prdId}.lock`))).toBe(false);
+    expect(existsSync(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'))).toBe(true);
+    expect(existsSync(join(cwd, '.eforge', 'queue', 'waiting', 'child-prd.md'))).toBe(false);
+    expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
+    expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
+  });
+  // --- eforge:endregion plan-01-resume-queue-reactivation ---
 });
 

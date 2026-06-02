@@ -97,6 +97,8 @@ The daemon applies the action in-process and returns synchronously. Report the r
 
 > Resuming build for PRD `{prdId}`. Session ID: `{sessionId}`, PID: `{pid}`.
 
+A successful compiled-build resume automatically retires the failed queue item and reactivates skipped descendants using normal dependency semantics. Manual queue-cascade recovery remains available for explicit retry or repair workflows.
+
 ## When to Choose Compiled-Build Resume vs PRD-Level Retry
 
 | Situation | Recommended action |

@@ -14,7 +14,7 @@ export function createResumeRoutes(context: MonitorContext): RouteDefinition[] {
       const parsed = await readJsonBody(ctx.req);
       if (!parsed.ok) return sendInvalidJson(ctx.res, parsed.tooLarge);
       if (!isPlainObject(parsed.value)) return sendJsonError(ctx.res, 400, 'Invalid request body: must be a JSON object');
-      try { const result = workerTracker.spawnWorker('resume', await prepareResumeBuildArgs(context, parsed.value)); sendJson(ctx.res, { sessionId: result.sessionId, pid: result.pid }); }
+      try { const result = workerTracker.spawnWorker('resume', await prepareResumeBuildArgs(context, parsed.value), () => context.notifyQueueMutation('external')); sendJson(ctx.res, { sessionId: result.sessionId, pid: result.pid }); }
       catch (err) { if (err instanceof Error && 'status' in err) throw err; sendJsonError(ctx.res, 500, err instanceof Error ? err.message : 'Failed to spawn resume worker'); }
     } }),
     defineRoute({ routeKey: 'resumeEligibility', method: 'GET', pattern: API_ROUTES.resumeEligibility, security: [localMutation('Resume eligibility checks')], async handler(ctx) {
