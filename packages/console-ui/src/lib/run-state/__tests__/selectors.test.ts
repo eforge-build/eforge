@@ -79,7 +79,6 @@ describe('getSummaryStats', () => {
     expect(stats.totalCost).toBeCloseTo(0.025, 8);
   });
 
-  // --- eforge:region plan-01-resume-projections ---
   it('counts seeded merged resume plans as completed after reducer processing', () => {
     const state = reduce(createInitialRunState(), {
       type: 'build:resume:state',
@@ -97,7 +96,6 @@ describe('getSummaryStats', () => {
     expect(counts.complete).toBe(2);
     expect(counts.pending).toBe(1);
   });
-  // --- eforge:endregion plan-01-resume-projections ---
 });
 
 // ---------------------------------------------------------------------------

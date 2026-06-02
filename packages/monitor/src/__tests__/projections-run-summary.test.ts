@@ -68,7 +68,6 @@ describe('run summary projection', () => {
     db.close();
   });
 
-  // --- eforge:region plan-01-resume-projections ---
   it('uses recovered resume artifact orchestration branches and dependencies when planning metadata is absent', () => {
     const db = openDatabase(':memory:');
     insertRun(db);
@@ -169,5 +168,4 @@ describe('run summary projection', () => {
     ]);
     db.close();
   });
-  // --- eforge:endregion plan-01-resume-projections ---
 });

@@ -110,7 +110,6 @@ describe('handleBuildResumeArtifacts', () => {
   });
 });
 
-// --- eforge:region plan-01-resume-projections ---
 describe('handleBuildResumeState', () => {
   it('yields the same merged completion state before or after recovered artifacts', () => {
     const stateThenArtifacts = reduce(
@@ -218,4 +217,3 @@ describe('handleBuildResumeState', () => {
     expect(completed.planStatuses['plan-02']).toBe('complete');
   });
 });
-// --- eforge:endregion plan-01-resume-projections ---
