@@ -35,6 +35,12 @@ const STATUS_STYLES: Record<GraphNodeStatus, StatusStyle> = {
     icon: '◌',
     animated: true,
   },
+  'review-fix': {
+    color: 'var(--color-purple)',
+    bgColor: 'rgba(188, 140, 255, 0.15)',
+    icon: '◌',
+    animated: true,
+  },
   evaluate: {
     color: 'var(--color-cyan)',
     bgColor: 'rgba(57, 210, 192, 0.15)',

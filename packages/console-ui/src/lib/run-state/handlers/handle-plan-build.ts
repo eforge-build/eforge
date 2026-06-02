@@ -12,6 +12,7 @@
  *   plan:build:test:write:start / plan:build:test:start → 'test'
  *   plan:build:test:complete                        → extract productionIssues into reviewIssues
  *   plan:build:review:start                         → 'review'
+ *   plan:build:review:fix:start                     → 'review-fix'
  *   plan:build:review:complete                      → 'evaluate' + extract issues into reviewIssues
  *   plan:build:evaluate:start                       → 'evaluate'
  *   plan:build:files_changed                        → update fileChanges Map
@@ -90,6 +91,9 @@ export const handlePlanBuildTestComplete: EventHandler<'plan:build:test:complete
 
 export const handlePlanBuildReviewStart: EventHandler<'plan:build:review:start'> = (event, state) =>
   setStatus(state, event.planId, 'review');
+
+export const handlePlanBuildReviewFixStart: EventHandler<'plan:build:review:fix:start'> = (event, state) =>
+  setStatus(state, event.planId, 'review-fix');
 
 export const handlePlanBuildReviewComplete: EventHandler<'plan:build:review:complete'> = (event, state) => ({
   planStatuses: { ...state.planStatuses, [event.planId]: 'evaluate' },

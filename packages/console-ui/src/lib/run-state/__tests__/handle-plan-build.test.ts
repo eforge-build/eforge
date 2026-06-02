@@ -12,6 +12,7 @@ import {
   handlePlanBuildTestStart,
   handlePlanBuildTestComplete,
   handlePlanBuildReviewStart,
+  handlePlanBuildReviewFixStart,
   handlePlanBuildReviewComplete,
   handlePlanBuildEvaluateStart,
   handlePlanBuildComplete,
@@ -107,6 +108,12 @@ describe('handle-plan-build — stage advancement rules', () => {
     const event = makeEvent('plan:build:review:start', { planId: PLAN_ID });
     const delta = handlePlanBuildReviewStart(event, initialRunState);
     expect(delta?.planStatuses?.[PLAN_ID]).toBe('review');
+  });
+
+  it('plan:build:review:fix:start → review-fix stage', () => {
+    const event = makeEvent('plan:build:review:fix:start', { planId: PLAN_ID });
+    const delta = handlePlanBuildReviewFixStart(event, initialRunState);
+    expect(delta?.planStatuses?.[PLAN_ID]).toBe('review-fix');
   });
 
   it('plan:build:review:complete → evaluate stage + extracts reviewIssues', () => {
