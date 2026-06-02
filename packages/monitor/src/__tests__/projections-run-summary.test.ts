@@ -5,11 +5,12 @@ import { buildRunSummary as serverBuildRunSummary } from '../server.js';
 
 const ts = '2025-01-01T00:00:00.000Z';
 const review = { strategy: 'auto' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
+type ResumePlan = { id: string; name: string; dependsOn: string[]; branch: string; build: Array<string | string[]>; review: typeof review };
 function event(type: string, data: Record<string, unknown>): string { return JSON.stringify({ type, timestamp: ts, ...data }); }
 function insertRun(db: ReturnType<typeof openDatabase>, runId = 'r1', sessionId = 's1'): void {
   db.insertRun({ id: runId, sessionId, planSet: 'set', command: 'build', status: 'running', startedAt: ts, cwd: process.cwd() });
 }
-function resumeArtifacts(plans = [
+function resumeArtifacts(plans: ResumePlan[] = [
   { id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'resume/plan-01', build: ['implement'], review },
   { id: 'plan-02', name: 'Plan 02', dependsOn: ['plan-01'], branch: 'resume/plan-02', build: [['test', 'pnpm test']], review },
 ], topLevelPlans = plans): string {
