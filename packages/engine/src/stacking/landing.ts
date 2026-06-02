@@ -29,10 +29,9 @@ import { stackProviderCommandEvent, stackProviderCommandEventFromError } from '.
 // PR URL parsing and redaction are delegated to provider helpers (parsePrUrl, isValidPrUrl, redactMessage)
 // to avoid direct git-spice imports in orchestration code.
 import { runCleanup } from '../landing.js';
-import { resolvePrAutoMergeIntent } from '../config.js';
-import { enablePullRequestAutoMerge } from '../worktree-ops.js';
 import { editPullRequest } from '../worktree-ops.js';
 import type { PullRequestMetadata } from '../pr-metadata.js';
+import { emitStackLandingAutoMergeEvents } from './landing-auto-merge.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -570,59 +569,13 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   } as EforgeEvent;
 
   // Step 7: Attempt PR auto-merge (non-fatal) after successful PR landing.
-  const shouldAutoMerge = resolvePrAutoMergeIntent(prAutoMergePolicy, landingAutoMerge);
-  const autoMergeBaseBranch = baseDecision.effectiveBaseBranch;
-  if (shouldAutoMerge) {
-    if (prUrl === undefined) {
-      // No PR URL was discovered from the git-spice output — skip auto-merge with a diagnostic.
-      yield {
-        timestamp: ts(),
-        type: 'landing:auto-merge:skipped',
-        featureBranch: branch,
-        baseBranch: autoMergeBaseBranch,
-        reason: 'No PR URL discovered; cannot enable auto-merge for stacked PR',
-      } as unknown as EforgeEvent;
-    } else {
-      yield {
-        timestamp: ts(),
-        type: 'landing:auto-merge:start',
-        featureBranch: branch,
-        baseBranch: autoMergeBaseBranch,
-        prUrl,
-      } as unknown as EforgeEvent;
-      try {
-        await enablePullRequestAutoMerge(mergeWorktreePath, prUrl);
-        yield {
-          timestamp: ts(),
-          type: 'landing:auto-merge:complete',
-          featureBranch: branch,
-          baseBranch: autoMergeBaseBranch,
-          prUrl,
-        } as unknown as EforgeEvent;
-      } catch (autoMergeErr) {
-        yield {
-          timestamp: ts(),
-          type: 'landing:auto-merge:skipped',
-          featureBranch: branch,
-          baseBranch: autoMergeBaseBranch,
-          prUrl,
-          reason: `gh pr merge failed: ${(autoMergeErr as Error).message}`,
-        } as unknown as EforgeEvent;
-      }
-    }
-  } else {
-    const skipReason = prAutoMergePolicy === 'never'
-      ? 'Auto-merge policy is "never"'
-      : (prAutoMergePolicy === 'always' && landingAutoMerge === false)
-        ? 'Auto-merge explicitly disabled for this run'
-        : 'Auto-merge not requested (policy is "ask")';
-    yield {
-      timestamp: ts(),
-      type: 'landing:auto-merge:skipped',
-      featureBranch: branch,
-      baseBranch: autoMergeBaseBranch,
-      ...(prUrl !== undefined && { prUrl }),
-      reason: skipReason,
-    } as unknown as EforgeEvent;
-  }
+  yield* emitStackLandingAutoMergeEvents({
+    mergeWorktreePath,
+    branch,
+    baseBranch: baseDecision.effectiveBaseBranch,
+    prUrl,
+    prAutoMergePolicy,
+    landingAutoMerge,
+    timestamp: ts,
+  });
 }
