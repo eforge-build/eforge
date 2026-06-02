@@ -1,0 +1,80 @@
+name: add-review-cycle-round-metadata-and-review-fix-stage-mapping
+description: Add optional review-cycle round metadata to review/fix/evaluate
+  lifecycle events and map review-fix into the console review-cycle stage.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm docs:check
+  - pnpm test
+plans:
+  - id: plan-01-round-metadata
+    name: Review-Cycle Round Metadata in Wire Events and Engine Emission
+    depends_on: []
+    branch: add-review-cycle-round-metadata-and-review-fix-stage-mapping/plan-01-round-metadata
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Touches the closed client event schema plus engine
+          review/retry/evaluator plumbing across several large files; careful
+          optional-field propagation is required.
+      reviewer:
+        effort: high
+        rationale: Review must check wire compatibility, no DAEMON_API_VERSION bump,
+          standalone no-round behavior, and retry continuation propagation.
+  - id: plan-02-console-review-fix-stage
+    name: Console Review-Fix Stage Mapping
+    depends_on:
+      - plan-01-round-metadata
+    branch: add-review-cycle-round-metadata-and-review-fix-stage-mapping/plan-02-console-review-fix-stage
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - test-write
+      - doc-sync
+    - validate
+    - test
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused multi-package feature touching the typed event
+    contract, engine emission paths, console state handling, and tests, so
+    excursion is appropriate. A plan review gate helps catch cross-package
+    contract gaps without expedition-level module planning. Build runs
+    implementation, targeted test generation, API/documentation sync, the
+    required validation providers, test execution, and a review-cycle. Review
+    uses API and test perspectives because the main risk is wire-schema
+    compatibility and coverage, with two rounds and standard strictness for a
+    non-security feature.
+diff_base_ref: 1efc0f1dff3ad8b73f1699b59b80f071276cf4fb
