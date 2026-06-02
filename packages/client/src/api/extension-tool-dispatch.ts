@@ -119,8 +119,12 @@ function validateNoTestOnlyParams(action: keyof typeof testOnlyParamErrorByActio
 }
 
 function requireName(action: keyof typeof requireNameErrorByAction, params: EforgeExtensionActionParams): string {
-  if (!params.name) requireNameErrorByAction[action]();
-  return params.name;
+  const { name } = params;
+  if (!name) {
+    requireNameErrorByAction[action]();
+    throw new Error('unreachable');
+  }
+  return name;
 }
 
 function requireNameOrPath(action: keyof typeof requireNameOrPathErrorByAction, params: EforgeExtensionActionParams): void {
