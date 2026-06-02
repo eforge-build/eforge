@@ -6,9 +6,7 @@ import type { SecurityPolicy } from './security.js';
 import { sendJsonError, sendText } from './response.js';
 import { isHttpRouteError, MalformedRouteParameterError } from './route-errors.js';
 
-// --- eforge:region plan-03-config-profile-stack-routes ---
 export type HttpMethod = 'GET' | 'POST' | 'DELETE' | 'OPTIONS';
-// --- eforge:endregion plan-03-config-profile-stack-routes ---
 export type ApiRouteKey = keyof typeof API_ROUTES;
 
 export interface RequestContext {
