@@ -54,6 +54,7 @@ import {
   apiRemoveExtensionIfRunning,
   apiPromoteExtensionIfRunning,
   apiDemoteExtensionIfRunning,
+  dispatchEforgeExtensionAction,
   LOCKFILE_POLL_INTERVAL_MS,
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
@@ -70,10 +71,7 @@ import type {
   AutoBuildState,
   ConfigShowResponse,
   VersionResponse,
-  ExtensionNewRequest,
-  ExtensionTestRequest,
-  ExtensionInstallRequest,
-  ExtensionUpdateRequest,
+  EforgeExtensionActionHelpers,
 } from '@eforge-build/client';
 import { handleBuildCommand } from './build-command';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
@@ -103,6 +101,22 @@ import {
   checkActiveBuildsMessage,
   formatDuration,
 } from './pure-helpers.js';
+
+const piExtensionActionHelpers = {
+  list: apiListExtensionsIfRunning,
+  show: apiShowExtensionIfRunning,
+  validate: apiValidateExtensionsIfRunning,
+  test: apiTestExtensionIfRunning,
+  new: apiNewExtensionIfRunning,
+  reload: apiReloadExtensionsIfRunning,
+  trust: apiTrustExtensionIfRunning,
+  untrust: apiUntrustExtensionIfRunning,
+  install: apiInstallExtensionIfRunning,
+  update: apiUpdateExtensionIfRunning,
+  remove: apiRemoveExtensionIfRunning,
+  promote: apiPromoteExtensionIfRunning,
+  demote: apiDemoteExtensionIfRunning,
+} satisfies EforgeExtensionActionHelpers;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -858,296 +872,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const hasTestOnlyParams = params.fixture !== undefined || params.run !== undefined || params.event !== undefined;
-      const hasPackageOnlyParams = params.source !== undefined || params.trust !== undefined;
-      if (params.action === "list") {
-        if (params.name !== undefined || params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
-          throw new Error('"list" does not accept name, path, scope, template, or force');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"list" does not accept fixture, run, or event');
-        }
-        if (params.trustedBy !== undefined) {
-          throw new Error('"list" does not accept trustedBy');
-        }
-        if (hasPackageOnlyParams) {
-          throw new Error('"list" does not accept source or trust');
-        }
-        const result = await apiListExtensionsIfRunning({ cwd: ctx.cwd });
-        if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(result.data);
-      }
-      if (params.action === "show") {
-        if (!params.name) {
-          throw new Error('"name" is required when action is "show"');
-        }
-        if (params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
-          throw new Error('"show" does not accept path, scope, template, or force');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"show" does not accept fixture, run, or event');
-        }
-        if (params.trustedBy !== undefined) {
-          throw new Error('"show" does not accept trustedBy');
-        }
-        if (hasPackageOnlyParams) {
-          throw new Error('"show" does not accept source or trust');
-        }
-        const showResult = await apiShowExtensionIfRunning({ cwd: ctx.cwd, name: params.name });
-        if (showResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(showResult.data);
-      }
-      if (params.action === "validate") {
-        if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
-          throw new Error('"validate" does not accept scope, template, or force');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"validate" does not accept fixture, run, or event');
-        }
-        if (params.trustedBy !== undefined) {
-          throw new Error('"validate" does not accept trustedBy');
-        }
-        if (hasPackageOnlyParams) {
-          throw new Error('"validate" does not accept source or trust');
-        }
-        if (params.name !== undefined && params.path !== undefined) {
-          throw new Error('Specify only one of "name" or "path" for validate');
-        }
-        const request: { cwd: string; name?: string; path?: string } = { cwd: ctx.cwd };
-        if (params.name !== undefined) request.name = params.name;
-        if (params.path !== undefined) request.path = params.path;
-        const validateResult = await apiValidateExtensionsIfRunning(request);
-        if (validateResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(validateResult.data);
-      }
-      if (params.action === "test") {
-        if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
-          throw new Error('"test" does not accept scope, template, or force');
-        }
-        if (params.trustedBy !== undefined) {
-          throw new Error('"test" does not accept trustedBy');
-        }
-        if (hasPackageOnlyParams) {
-          throw new Error('"test" does not accept source or trust');
-        }
-        if (params.name !== undefined && params.path !== undefined) {
-          throw new Error('Specify only one of "name" or "path" for test');
-        }
-        const body: ExtensionTestRequest = {};
-        if (params.name !== undefined) body.name = params.name;
-        if (params.path !== undefined) body.path = params.path;
-        if (params.fixture !== undefined) body.fixture = params.fixture;
-        if (params.run !== undefined) body.run = params.run;
-        if (params.event !== undefined) body.event = params.event;
-        const testResult = await apiTestExtensionIfRunning({ cwd: ctx.cwd, body });
-        if (testResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(testResult.data);
-      }
-      if (params.action === "new") {
-        if (!params.name) {
-          throw new Error('"name" is required when action is "new"');
-        }
-        if (params.path !== undefined) {
-          throw new Error('"path" is not supported when action is "new"');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"new" does not accept fixture, run, or event');
-        }
-        if (params.trustedBy !== undefined) {
-          throw new Error('"new" does not accept trustedBy');
-        }
-        if (hasPackageOnlyParams) {
-          throw new Error('"new" does not accept source or trust');
-        }
-        const body: ExtensionNewRequest = { name: params.name };
-        if (params.scope !== undefined) body.scope = params.scope;
-        if (params.template !== undefined) body.template = params.template as ExtensionNewRequest['template'];
-        if (params.force !== undefined) body.force = params.force;
-        const newResult = await apiNewExtensionIfRunning({ cwd: ctx.cwd, body });
-        if (newResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(newResult.data);
-      }
-      if (params.action === "trust") {
-        if (!params.name && !params.path) {
-          throw new Error('"name" or "path" is required when action is "trust"');
-        }
-        if (params.name !== undefined && params.path !== undefined) {
-          throw new Error('Specify only one of "name" or "path" for trust');
-        }
-        if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
-          throw new Error('"trust" does not accept scope, template, or force');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"trust" does not accept fixture, run, or event');
-        }
-        if (hasPackageOnlyParams) {
-          throw new Error('"trust" does not accept source or trust');
-        }
-        const body: { name?: string; path?: string; trustedBy?: string } = {};
-        if (params.name !== undefined) body.name = params.name;
-        if (params.path !== undefined) body.path = params.path;
-        if (params.trustedBy !== undefined) body.trustedBy = params.trustedBy;
-        const trustResult = await apiTrustExtensionIfRunning({ cwd: ctx.cwd, body });
-        if (trustResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(trustResult.data);
-      }
-      if (params.action === "untrust") {
-        if (!params.name && !params.path) {
-          throw new Error('"name" or "path" is required when action is "untrust"');
-        }
-        if (params.name !== undefined && params.path !== undefined) {
-          throw new Error('Specify only one of "name" or "path" for untrust');
-        }
-        if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
-          throw new Error('"untrust" does not accept scope, template, or force');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"untrust" does not accept fixture, run, or event');
-        }
-        if (params.trustedBy !== undefined) {
-          throw new Error('"untrust" does not accept trustedBy');
-        }
-        if (hasPackageOnlyParams) {
-          throw new Error('"untrust" does not accept source or trust');
-        }
-        const body: { name?: string; path?: string } = {};
-        if (params.name !== undefined) body.name = params.name;
-        if (params.path !== undefined) body.path = params.path;
-        const untrustResult = await apiUntrustExtensionIfRunning({ cwd: ctx.cwd, body });
-        if (untrustResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(untrustResult.data);
-      }
-      if (params.action === "install") {
-        if (params.source === undefined) {
-          throw new Error('"source" is required when action is "install"');
-        }
-        if (params.path !== undefined) {
-          throw new Error('"install" does not accept path');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"install" does not accept fixture, run, or event');
-        }
-        if (params.template !== undefined) {
-          throw new Error('"install" does not accept template');
-        }
-        const body: ExtensionInstallRequest = { source: params.source };
-        if (params.scope !== undefined) body.scope = params.scope;
-        if (params.name !== undefined) body.name = params.name;
-        if (params.force !== undefined) body.force = params.force;
-        if (params.trust !== undefined) body.trust = params.trust;
-        if (params.trustedBy !== undefined) body.trustedBy = params.trustedBy;
-        const installResult = await apiInstallExtensionIfRunning({ cwd: ctx.cwd, body });
-        if (installResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(installResult.data);
-      }
-      if (params.action === "update") {
-        if (!params.name && !params.path) {
-          throw new Error('"name" or "path" is required when action is "update"');
-        }
-        if (params.name !== undefined && params.path !== undefined) {
-          throw new Error('Specify only one of "name" or "path" for update');
-        }
-        if (params.scope !== undefined || params.template !== undefined || params.source !== undefined) {
-          throw new Error('"update" does not accept scope, template, or source');
-        }
-        if (params.force !== undefined) {
-          throw new Error('"update" does not accept force');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"update" does not accept fixture, run, or event');
-        }
-        const body: ExtensionUpdateRequest = {};
-        if (params.name !== undefined) body.name = params.name;
-        if (params.path !== undefined) body.path = params.path;
-        if (params.trust !== undefined) body.trust = params.trust;
-        if (params.trustedBy !== undefined) body.trustedBy = params.trustedBy;
-        const updateResult = await apiUpdateExtensionIfRunning({ cwd: ctx.cwd, body });
-        if (updateResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(updateResult.data);
-      }
-      if (params.action === "remove") {
-        if (!params.name && !params.path) {
-          throw new Error('"name" or "path" is required when action is "remove"');
-        }
-        if (params.name !== undefined && params.path !== undefined) {
-          throw new Error('Specify only one of "name" or "path" for remove');
-        }
-        if (params.scope !== undefined || params.template !== undefined || params.source !== undefined || params.trust !== undefined || params.trustedBy !== undefined) {
-          throw new Error('"remove" does not accept scope, template, source, trust, or trustedBy');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"remove" does not accept fixture, run, or event');
-        }
-        const body: { name?: string; path?: string; force?: boolean } = {};
-        if (params.name !== undefined) body.name = params.name;
-        if (params.path !== undefined) body.path = params.path;
-        if (params.force !== undefined) body.force = params.force;
-        const removeResult = await apiRemoveExtensionIfRunning({ cwd: ctx.cwd, body });
-        if (removeResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(removeResult.data);
-      }
-      if (params.action === "promote") {
-        if (!params.name && !params.path) {
-          throw new Error('"name" or "path" is required when action is "promote"');
-        }
-        if (params.name !== undefined && params.path !== undefined) {
-          throw new Error('Specify only one of "name" or "path" for promote');
-        }
-        if (params.scope !== undefined || params.template !== undefined || params.source !== undefined) {
-          throw new Error('"promote" does not accept scope, template, or source');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"promote" does not accept fixture, run, or event');
-        }
-        const body: { name?: string; path?: string; force?: boolean; trust?: boolean; trustedBy?: string } = {};
-        if (params.name !== undefined) body.name = params.name;
-        if (params.path !== undefined) body.path = params.path;
-        if (params.force !== undefined) body.force = params.force;
-        if (params.trust !== undefined) body.trust = params.trust;
-        if (params.trustedBy !== undefined) body.trustedBy = params.trustedBy;
-        const promoteResult = await apiPromoteExtensionIfRunning({ cwd: ctx.cwd, body });
-        if (promoteResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(promoteResult.data);
-      }
-      if (params.action === "demote") {
-        if (!params.name && !params.path) {
-          throw new Error('"name" or "path" is required when action is "demote"');
-        }
-        if (params.name !== undefined && params.path !== undefined) {
-          throw new Error('Specify only one of "name" or "path" for demote');
-        }
-        if (params.scope !== undefined || params.template !== undefined || params.source !== undefined || params.trust !== undefined || params.trustedBy !== undefined) {
-          throw new Error('"demote" does not accept scope, template, source, trust, or trustedBy');
-        }
-        if (hasTestOnlyParams) {
-          throw new Error('"demote" does not accept fixture, run, or event');
-        }
-        const body: { name?: string; path?: string; force?: boolean } = {};
-        if (params.name !== undefined) body.name = params.name;
-        if (params.path !== undefined) body.path = params.path;
-        if (params.force !== undefined) body.force = params.force;
-        const demoteResult = await apiDemoteExtensionIfRunning({ cwd: ctx.cwd, body });
-        if (demoteResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return jsonResult(demoteResult.data);
-      }
-      if (params.name !== undefined || params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
-        throw new Error('"reload" does not accept name, path, scope, template, or force');
-      }
-      if (params.source !== undefined) {
-        throw new Error('"reload" does not accept source');
-      }
-      if (params.trust !== undefined) {
-        throw new Error('"reload" does not accept trust');
-      }
-      if (hasTestOnlyParams) {
-        throw new Error('"reload" does not accept fixture, run, or event');
-      }
-      if (params.trustedBy !== undefined) {
-        throw new Error('"reload" does not accept trustedBy');
-      }
-      const reloadResult = await apiReloadExtensionsIfRunning({ cwd: ctx.cwd });
-      if (reloadResult === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-      return jsonResult(reloadResult.data);
+      const result = await dispatchEforgeExtensionAction({
+        cwd: ctx.cwd,
+        params,
+        helpers: piExtensionActionHelpers,
+      });
+      if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+      return jsonResult(result.data);
     },
   });
 

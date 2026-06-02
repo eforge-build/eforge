@@ -112,6 +112,16 @@ export {
 } from './api/extensions.js';
 
 export {
+  dispatchEforgeExtensionAction,
+  EFORGE_EXTENSION_ACTIONS,
+} from './api/extension-tool-dispatch.js';
+export type {
+  EforgeExtensionAction,
+  EforgeExtensionActionParams,
+  EforgeExtensionActionHelpers,
+} from './api/extension-tool-dispatch.js';
+
+export {
   apiListModelProviders,
   apiListModelProvidersIfRunning,
   apiListModels,
