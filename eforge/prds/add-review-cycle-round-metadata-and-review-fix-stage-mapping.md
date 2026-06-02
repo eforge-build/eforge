@@ -119,7 +119,7 @@ Out of scope:
 - Do not alter reviewer, review-fixer, or evaluator prompts except if absolutely necessary for typed metadata plumbing; no prompt change is expected.
 - Do not change daemon route shapes or add new REST/SSE routes.
 
-## 5. Acceptance Criteria
+## Acceptance Criteria
 
 - `safeParseEforgeEvent` accepts `plan:build:review:start` with `round: 0`.
 - `safeParseEforgeEvent` accepts `plan:build:review:complete` with `round: 0` and a valid `issues` array.
