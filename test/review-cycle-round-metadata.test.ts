@@ -1,0 +1,190 @@
+import { describe, expect, it } from 'vitest';
+import { execFile } from 'node:child_process';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
+import type { AgentRunOptions } from '@eforge-build/engine/harness';
+import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
+import type { AgentRole, EforgeEvent, OrchestrationConfig, PlanFile } from '@eforge-build/engine/events';
+import { getBuildStage, type BuildStageContext } from '@eforge-build/engine/pipeline';
+import { ModelTracker } from '@eforge-build/engine/model-tracker';
+import { createNoopTracingContext } from '@eforge-build/engine/tracing';
+import type { ReviewProfileConfig } from '@eforge-build/client';
+import type { PipelineComposition } from '@eforge-build/engine/schemas';
+import { StubHarness, type StubResponse } from './stub-harness.js';
+import { collectEvents, filterEvents } from './test-events.js';
+import { useTempDir } from './test-tmpdir.js';
+
+const exec = promisify(execFile);
+
+async function git(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await exec('git', args, { cwd });
+  return stdout;
+}
+
+async function initRepo(dir: string): Promise<string> {
+  const repo = join(dir, 'repo');
+  await git(dir, ['init', '-b', 'main', repo]);
+  await git(repo, ['config', 'user.email', 'test@eforge.build']);
+  await git(repo, ['config', 'user.name', 'eforge-test']);
+  return repo;
+}
+
+async function writeRepoFile(repo: string, path: string, content: string): Promise<void> {
+  await mkdir(join(repo, path, '..'), { recursive: true });
+  await writeFile(join(repo, path), content, 'utf8');
+}
+
+async function commitAll(repo: string, message: string): Promise<void> {
+  await git(repo, ['add', '-A']);
+  await git(repo, ['commit', '-m', message]);
+}
+
+async function head(repo: string): Promise<string> {
+  return (await git(repo, ['rev-parse', 'HEAD'])).trim();
+}
+
+function makeContext(repo: string, harness: StubHarness, preImplementCommit: string, review: ReviewProfileConfig): BuildStageContext {
+  const planId = 'plan-01-round-metadata';
+  const pipeline: PipelineComposition = {
+    scope: 'errand',
+    compile: [],
+    defaultBuild: ['review-cycle'],
+    defaultReview: DEFAULT_REVIEW,
+    rationale: 'round metadata test',
+  };
+  const planFile: PlanFile = {
+    id: planId,
+    name: 'Review-Cycle Round Metadata',
+    dependsOn: [],
+    branch: `test/${planId}`,
+    body: '# Plan\n\nImplement the feature.\n',
+    filePath: join(repo, 'plan.md'),
+  };
+  const orchConfig: OrchestrationConfig = {
+    name: 'round-metadata-test',
+    description: 'round metadata test',
+    created: new Date().toISOString(),
+    mode: 'errand',
+    baseBranch: 'main',
+    pipeline,
+    plans: [{ id: planId, name: planFile.name, dependsOn: [], branch: planFile.branch, build: ['review-cycle'], review }],
+  };
+
+  return {
+    agentRuntimes: singletonRegistry(harness),
+    config: DEFAULT_CONFIG,
+    pipeline,
+    tracing: createNoopTracingContext(),
+    cwd: repo,
+    planSetName: 'round-metadata-test',
+    sourceContent: '',
+    modelTracker: new ModelTracker(),
+    plans: [planFile],
+    expeditionModules: [],
+    moduleBuildConfigs: new Map(),
+    planId,
+    worktreePath: repo,
+    planFile,
+    orchConfig,
+    planEntry: orchConfig.plans[0],
+    reviewIssues: [],
+    build: ['review-cycle'],
+    review,
+    preImplementCommit,
+  };
+}
+
+const issueXml = (description: string) => `<review-issues><issue severity="warning" category="bugs" file="src/app.ts">${description}<fix>Update the value.</fix></issue></review-issues>`;
+
+function expectRound(events: EforgeEvent[], type: EforgeEvent['type'], rounds: number[]): void {
+  expect(events.filter((event) => event.type === type).map((event) => (event as { round?: number }).round)).toEqual(rounds);
+}
+
+describe('review-cycle round lifecycle metadata', () => {
+  const makeTempDir = useTempDir('eforge-review-cycle-round-metadata-');
+
+  it('emits round metadata for review-cycle review, review-fix, and evaluate events', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(repo, 'chore: initial');
+    const preImplementCommit = await head(repo);
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 2;\n');
+    await commitAll(repo, 'feat: implementation');
+
+    class FixingHarness extends StubHarness {
+      private fixCount = 0;
+
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'review-fixer') {
+            this.fixCount += 1;
+            const current = await readFile(join(repo, 'src/app.ts'), 'utf8');
+            await writeRepoFile(repo, 'src/app.ts', current.replace(/value = \d+/, `value = ${2 + this.fixCount}`));
+          }
+        }
+      }
+    }
+
+    const harness = new FixingHarness([
+      { text: issueXml('round 0 issue') },
+      { text: 'Applied round 0 fix.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-0', input: { verdicts: [{ file: 'src/app.ts', action: 'reject', reason: 'Needs another attempt' }] }, output: '' }] },
+      { text: issueXml('round 1 issue') },
+      { text: 'Applied round 1 fix.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'src/app.ts', action: 'accept', reason: 'Correct now' }] }, output: '' }] },
+    ] satisfies StubResponse[]);
+
+    const ctx = makeContext(repo, harness, preImplementCommit, {
+      strategy: 'parallel',
+      perspectives: ['code'],
+      maxRounds: 2,
+      evaluatorStrictness: 'standard',
+    });
+
+    const events = await collectEvents(getBuildStage('review-cycle')(ctx));
+
+    expectRound(events, 'plan:build:review:start', [0, 1]);
+    expectRound(events, 'plan:build:review:complete', [0, 1]);
+    expectRound(events, 'plan:build:review:parallel:start', [0, 1]);
+    expectRound(events, 'plan:build:review:parallel:perspective:start', [0, 1]);
+    expectRound(events, 'plan:build:review:parallel:perspective:complete', [0, 1]);
+    expectRound(events, 'plan:build:review:fix:start', [0, 1]);
+    expectRound(events, 'plan:build:review:fix:complete', [0, 1]);
+    expectRound(events, 'plan:build:evaluate:start', [0, 1]);
+    expectRound(events, 'plan:build:evaluate:complete', [0, 1]);
+  });
+
+  it('omits round metadata for standalone review, review-fix, and evaluate stages', async () => {
+    const reviewRepo = await initRepo(makeTempDir());
+    await writeRepoFile(reviewRepo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(reviewRepo, 'chore: initial');
+    const reviewCtx = makeContext(reviewRepo, new StubHarness([{ text: '<review-issues></review-issues>' }]), await head(reviewRepo), { ...DEFAULT_REVIEW, strategy: 'single' });
+    const reviewEvents = await collectEvents(getBuildStage('review')(reviewCtx));
+    expect(filterEvents(reviewEvents, 'plan:build:review:start')[0]).not.toHaveProperty('round');
+    expect(filterEvents(reviewEvents, 'plan:build:review:complete')[0]).not.toHaveProperty('round');
+
+    const fixRepo = await initRepo(makeTempDir());
+    await writeRepoFile(fixRepo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(fixRepo, 'chore: initial');
+    const fixCtx = makeContext(fixRepo, new StubHarness([{ text: 'fixed' }]), await head(fixRepo), { ...DEFAULT_REVIEW, strategy: 'single' });
+    fixCtx.reviewIssues = [{ severity: 'warning', category: 'bugs', file: 'src/app.ts', description: 'fix it' }];
+    const fixEvents = await collectEvents(getBuildStage('review-fix')(fixCtx));
+    expect(filterEvents(fixEvents, 'plan:build:review:fix:start')[0]).not.toHaveProperty('round');
+    expect(filterEvents(fixEvents, 'plan:build:review:fix:complete')[0]).not.toHaveProperty('round');
+
+    const evaluateRepo = await initRepo(makeTempDir());
+    await writeRepoFile(evaluateRepo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(evaluateRepo, 'chore: initial');
+    const preImplementCommit = await head(evaluateRepo);
+    await writeRepoFile(evaluateRepo, 'src/app.ts', 'export const value = 2;\n');
+    await commitAll(evaluateRepo, 'feat: implementation');
+    await writeRepoFile(evaluateRepo, 'src/app.ts', 'export const value = 3;\n');
+    const evaluateCtx = makeContext(evaluateRepo, new StubHarness([{ toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-standalone', input: { verdicts: [{ file: 'src/app.ts', action: 'accept', reason: 'Correct' }] }, output: '' }] }]), preImplementCommit, { ...DEFAULT_REVIEW, strategy: 'single' });
+    const evaluateEvents = await collectEvents(getBuildStage('evaluate')(evaluateCtx));
+    expect(filterEvents(evaluateEvents, 'plan:build:evaluate:start')[0]).not.toHaveProperty('round');
+    expect(filterEvents(evaluateEvents, 'plan:build:evaluate:complete')[0]).not.toHaveProperty('round');
+  });
+});

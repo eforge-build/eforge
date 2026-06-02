@@ -89,6 +89,7 @@ export const LandingActionSchema = Type.Union([
 
 export const EvaluationIssueOutcomeSchema = Type.Union(['resolved', 'false_positive', 'unresolved', 'unresolved_blocking', 'unresolved_nonblocking', 'needs_human_review', 'accepted_risk', 'split_to_followup'].map(v => Type.Literal(v)), { description: 'Evaluator issue disposition separate from patch action. Missing values are interpreted conservatively by the engine.' });
 
+const ReviewCycleRoundField = { round: Type.Optional(Type.Integer({ minimum: 0 })) } as const;
 /** Wire schema for the supported stack providers. */
 export const StackProviderSchema = Type.Literal('git-spice');
 
@@ -1499,58 +1500,58 @@ const EforgeEventVariantsSchema = Type.Union([
     ),
     baseBranch: Type.Optional(Type.String()),
   }),
-  Type.Object({ type: Type.Literal('plan:build:review:start'), planId: Type.String() }),
+  Type.Object({ type: Type.Literal('plan:build:review:start'), planId: Type.String(), ...ReviewCycleRoundField }),
   Type.Object({
-    type: Type.Literal('plan:build:review:complete'),
-    planId: Type.String(),
-    issues: Type.Array(ReviewIssueSchema),
+    type: Type.Literal('plan:build:review:complete'), planId: Type.String(), issues: Type.Array(ReviewIssueSchema), ...ReviewCycleRoundField,
   }),
   Type.Object({
-    type: Type.Literal('plan:build:review:parallel:start'),
-    planId: Type.String(),
-    perspectives: Type.Array(ReviewPerspectiveKeySchema),
+    type: Type.Literal('plan:build:review:parallel:start'), planId: Type.String(), perspectives: Type.Array(ReviewPerspectiveKeySchema), ...ReviewCycleRoundField,
   }),
   Type.Object({
-    type: Type.Literal('plan:build:review:parallel:perspective:start'),
-    planId: Type.String(),
-    perspective: ReviewPerspectiveKeySchema,
+    type: Type.Literal('plan:build:review:parallel:perspective:start'), planId: Type.String(), perspective: ReviewPerspectiveKeySchema, ...ReviewCycleRoundField,
   }),
   Type.Object({
     type: Type.Literal('plan:build:review:parallel:perspective:complete'),
     planId: Type.String(),
     perspective: ReviewPerspectiveKeySchema,
     issues: Type.Array(ReviewIssueSchema),
+    ...ReviewCycleRoundField,
   }),
   Type.Object({
     type: Type.Literal('plan:build:review:parallel:perspective:error'),
     planId: Type.String(),
     perspective: ReviewPerspectiveKeySchema,
     error: Type.String(),
+    ...ReviewCycleRoundField,
   }),
   Type.Object({
     type: Type.Literal('plan:build:review:fix:start'),
     planId: Type.String(),
     issueCount: Type.Number(),
+    ...ReviewCycleRoundField,
   }),
-  Type.Object({ type: Type.Literal('plan:build:review:fix:complete'), planId: Type.String() }),
+  Type.Object({ type: Type.Literal('plan:build:review:fix:complete'), planId: Type.String(), ...ReviewCycleRoundField }),
   Type.Object({
     type: Type.Literal('plan:build:review:fix:continuation'),
     planId: Type.String(),
     attempt: Type.Number(),
     maxContinuations: Type.Number(),
+    ...ReviewCycleRoundField,
   }),
-  Type.Object({ type: Type.Literal('plan:build:evaluate:start'), planId: Type.String() }),
+  Type.Object({ type: Type.Literal('plan:build:evaluate:start'), planId: Type.String(), ...ReviewCycleRoundField }),
   Type.Object({
     type: Type.Literal('plan:build:evaluate:continuation'),
     planId: Type.String(),
     attempt: Type.Number(),
     maxContinuations: Type.Number(),
+    ...ReviewCycleRoundField,
   }),
   Type.Object({
     type: Type.Literal('plan:build:evaluate:complete'),
     planId: Type.String(),
     accepted: Type.Number(),
     rejected: Type.Number(),
+    ...ReviewCycleRoundField,
     resolvedIssueOutcomes: Type.Optional(Type.Number()), falsePositiveIssueOutcomes: Type.Optional(Type.Number()), unresolvedIssueOutcomes: Type.Optional(Type.Number()), unresolvedNonBlockingIssueOutcomes: Type.Optional(Type.Number()), needsHumanReviewIssueOutcomes: Type.Optional(Type.Number()), acceptedRiskIssueOutcomes: Type.Optional(Type.Number()), splitToFollowupIssueOutcomes: Type.Optional(Type.Number()), blockingIssueOutcomes: Type.Optional(Type.Number()),
     verdicts: Type.Optional(
       Type.Array(

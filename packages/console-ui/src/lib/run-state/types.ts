@@ -33,7 +33,7 @@ import type { BuildDecision, PlanningDecision } from '@eforge-build/client/brows
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
-export type PipelineStage = 'plan' | 'implement' | 'doc-author' | 'doc-sync' | 'test' | 'review' | 'evaluate' | 'complete' | 'failed';
+export type PipelineStage = 'plan' | 'implement' | 'doc-author' | 'doc-sync' | 'test' | 'review' | 'review-fix' | 'evaluate' | 'complete' | 'failed';
 
 export type ValidationCommandStatus = 'running' | 'passed' | 'failed' | 'timeout';
 

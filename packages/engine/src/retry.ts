@@ -892,6 +892,8 @@ export interface ReviewFixerContinuationInput {
   cwd: string;
   /** Plan identifier — passed through to the `plan:build:review:fix:continuation` event. */
   planId: string;
+  /** Zero-based review-cycle round for lifecycle event metadata. */
+  round?: number;
   /** Options forwarded to `runReviewFixer`. */
   reviewFixerOptions: Record<string, unknown> & {
     continuationContext?: ReviewFixerContinuationContext;
@@ -918,7 +920,7 @@ const REVIEW_FIXER_DIFF_CHAR_LIMIT = 40_000;
 export async function buildReviewFixerContinuationInput(
   info: RetryAttemptInfo<ReviewFixerContinuationInput>,
 ): Promise<ContinuationDecision<ReviewFixerContinuationInput>> {
-  const { cwd, planId, reviewFixerOptions } = info.prevInput;
+  const { cwd, planId, round, reviewFixerOptions } = info.prevInput;
 
   let partialDiff = '';
   try {
@@ -943,6 +945,7 @@ export async function buildReviewFixerContinuationInput(
   const nextInput: ReviewFixerContinuationInput = {
     cwd,
     planId,
+    ...(round !== undefined ? { round } : {}),
     reviewFixerOptions: {
       ...reviewFixerOptions,
       continuationContext: {
@@ -974,6 +977,8 @@ export async function buildReviewFixerContinuationInput(
 export interface EvaluatorContinuationInput {
   worktreePath: string;
   planId?: string;
+  /** Zero-based review-cycle round for lifecycle event metadata. */
+  round?: number;
   /** Immutable evaluation snapshot prepared before the evaluator attempt; preserved across continuations. */
   evaluationSnapshot?: EvaluationSnapshot;
   evaluatorOptions: Record<string, unknown> & {
@@ -1004,6 +1009,7 @@ export async function buildEvaluatorContinuationInput(
   const nextInput: EvaluatorContinuationInput = {
     worktreePath,
     ...(info.prevInput.planId !== undefined && { planId: info.prevInput.planId }),
+    ...(info.prevInput.round !== undefined && { round: info.prevInput.round }),
     ...(info.prevInput.evaluationSnapshot !== undefined && { evaluationSnapshot: info.prevInput.evaluationSnapshot }),
     evaluatorOptions: {
       ...evaluatorOptions,
@@ -1124,12 +1130,14 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const planId = (info.prevInput as EvaluatorContinuationInput).planId ?? '';
+      const round = (info.prevInput as EvaluatorContinuationInput).round;
       return [{
         timestamp: new Date().toISOString(),
         type: 'plan:build:evaluate:continuation',
         planId,
         attempt: info.attempt,
         maxContinuations: info.maxAttempts - 1,
+        ...(round !== undefined ? { round } : {}),
       }];
     },
     planIdFromInput: (input) => (input as EvaluatorContinuationInput).planId,
@@ -1182,12 +1190,14 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
       buildReviewFixerContinuationInput(info as RetryAttemptInfo<ReviewFixerContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const planId = (info.prevInput as ReviewFixerContinuationInput).planId;
+      const round = (info.prevInput as ReviewFixerContinuationInput).round;
       return [{
         timestamp: new Date().toISOString(),
         type: 'plan:build:review:fix:continuation',
         planId,
         attempt: info.attempt,
         maxContinuations: info.maxAttempts - 1,
+        ...(round !== undefined ? { round } : {}),
       }];
     },
     planIdFromInput: (input) => (input as ReviewFixerContinuationInput).planId,

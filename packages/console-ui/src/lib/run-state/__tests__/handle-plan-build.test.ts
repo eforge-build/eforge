@@ -12,6 +12,7 @@ import {
   handlePlanBuildTestStart,
   handlePlanBuildTestComplete,
   handlePlanBuildReviewStart,
+  handlePlanBuildReviewFixStart,
   handlePlanBuildReviewComplete,
   handlePlanBuildEvaluateStart,
   handlePlanBuildComplete,
@@ -21,6 +22,7 @@ import {
   handlePlanBuildReviewPerspectiveComplete,
   handlePlanMergeComplete,
 } from '../handlers/handle-plan-build';
+import { handlerRegistry, IGNORED_EVENT_TYPES } from '../handlers';
 import { initialRunState } from '../reducer';
 import type { EforgeEvent } from '../types';
 
@@ -107,6 +109,18 @@ describe('handle-plan-build — stage advancement rules', () => {
     const event = makeEvent('plan:build:review:start', { planId: PLAN_ID });
     const delta = handlePlanBuildReviewStart(event, initialRunState);
     expect(delta?.planStatuses?.[PLAN_ID]).toBe('review');
+  });
+
+  it('plan:build:review:fix:start → review-fix stage', () => {
+    const event = makeEvent('plan:build:review:fix:start', { planId: PLAN_ID });
+    const delta = handlePlanBuildReviewFixStart(event, initialRunState);
+    expect(delta?.planStatuses?.[PLAN_ID]).toBe('review-fix');
+  });
+
+  it('handles review-fix start while leaving completion and continuation ignored', () => {
+    expect(handlerRegistry).toHaveProperty('plan:build:review:fix:start');
+    expect(IGNORED_EVENT_TYPES).toContain('plan:build:review:fix:complete');
+    expect(IGNORED_EVENT_TYPES).toContain('plan:build:review:fix:continuation');
   });
 
   it('plan:build:review:complete → evaluate stage + extracts reviewIssues', () => {

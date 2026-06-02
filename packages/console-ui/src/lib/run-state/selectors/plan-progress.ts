@@ -17,7 +17,7 @@ export interface PlanStatusCounts {
 
 /**
  * Returns the count of plans in each status bucket.
- * Stages 'plan', 'implement', 'doc-author', 'doc-sync', 'test', 'review', 'evaluate'
+ * Stages 'plan', 'implement', 'doc-author', 'doc-sync', 'test', 'review', 'review-fix', 'evaluate'
  * are treated as "running" (in-progress). 'complete' and 'failed' are terminal.
  * Plans without a status entry are counted as 'pending'.
  */

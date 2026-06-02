@@ -58,6 +58,8 @@ export interface BuilderOptions extends SdkPassthroughConfig {
   preImplementCommit?: string;
   /** Shard scope for this builder instance. When set, restricts the builder to a subset of files. */
   shardScope?: ShardScope;
+  /** Zero-based review-cycle round for evaluator lifecycle event metadata. */
+  round?: number;
 }
 
 /**
@@ -373,7 +375,7 @@ export async function* builderEvaluate(
   plan: PlanFile,
   options: BuilderOptions,
 ): AsyncGenerator<EforgeEvent, BuilderEvaluationResult> {
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:evaluate:start', planId: plan.id };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:evaluate:start', planId: plan.id, ...(options.round !== undefined ? { round: options.round } : {}) };
 
   let continuationContextText = '';
   if (options.evaluatorContinuationContext) {

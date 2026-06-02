@@ -125,6 +125,8 @@ export interface ParallelReviewerOptions extends SdkPassthroughConfig {
   extensionReviewerPerspectives?: ReviewerPerspectiveRegistration[];
   /** Timeout for extension reviewer perspective applicability predicates. */
   extensionApplicabilityTimeoutMs?: number;
+  /** Zero-based review-cycle round for lifecycle event metadata. */
+  round?: number;
 }
 
 /** Map perspective names to prompt file names */
@@ -157,7 +159,8 @@ const PERSPECTIVE_SCHEMA_YAML: Record<ReviewPerspective, () => string> = {
 export async function* runParallelReview(
   options: ParallelReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { harness, planContent, baseBranch, planId, cwd, verbose, abortController, strategy, perspectives: perspectivesOverride, extensionReviewerPerspectives, extensionApplicabilityTimeoutMs } = options;
+  const { harness, planContent, baseBranch, planId, cwd, verbose, abortController, strategy, perspectives: perspectivesOverride, extensionReviewerPerspectives, extensionApplicabilityTimeoutMs, round } = options;
+  const roundMetadata = round !== undefined ? { round } : {};
 
   // Short-circuit: strategy 'single' always delegates to single reviewer
   if (strategy === 'single') {
@@ -170,6 +173,7 @@ export async function* runParallelReview(
       verbose,
       abortController,
       promptAppend: options.promptAppend,
+      round,
       ...pickSdkOptions(options),
     });
     return;
@@ -192,6 +196,7 @@ export async function* runParallelReview(
       verbose,
       abortController,
       promptAppend: options.promptAppend,
+      round,
       ...pickSdkOptions(options),
     });
     return;
@@ -266,8 +271,8 @@ export async function* runParallelReview(
       // The user explicitly requested only dynamic perspectives that were
       // skipped (unknown, inapplicable, or failed applicability). Do not ignore
       // that explicit selection by falling back to the generic reviewer.
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId };
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: [] };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId, ...roundMetadata };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: [], ...roundMetadata };
       return;
     }
     // No auto-inferred perspectives - fall back to single reviewer
@@ -280,13 +285,14 @@ export async function* runParallelReview(
       verbose,
       abortController,
       promptAppend: options.promptAppend,
+      round,
       ...pickSdkOptions(options),
     });
     return;
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId };
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:start', planId, perspectives };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId, ...roundMetadata };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:start', planId, perspectives, ...roundMetadata };
 
   // Build parallel tasks for each perspective
   const allIssues: Array<{ perspective: string; issues: ReviewIssue[] }> = [];
@@ -294,7 +300,7 @@ export async function* runParallelReview(
   const tasks: ParallelTask<EforgeEvent>[] = perspectives.map((perspective) => ({
     id: `review-${perspective}`,
     run: async function* (): AsyncGenerator<EforgeEvent> {
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:start', planId, perspective };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:start', planId, perspective, ...roundMetadata };
 
       if (!isBuiltInReviewPerspective(perspective)) {
         // Extension perspective dispatch: use generic reviewer prompt with fragment appended
@@ -306,6 +312,7 @@ export async function* runParallelReview(
             planId,
             perspective,
             error: `Extension perspective '${perspective}' is not registered by any loaded extension`,
+            ...roundMetadata,
           };
           return;
         }
@@ -361,7 +368,7 @@ export async function* runParallelReview(
             const parseResult = parseReviewIssuesStrict(fullText);
             allIssues.push({ perspective, issues: parseResult.issues });
 
-            yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
+            yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues, ...roundMetadata };
           } catch (err) {
             const parseResult = parseReviewIssuesStrict(fullText);
             if (sawAgentResult && isRetryableLateReviewerInfrastructureError(err) && parseResult.valid) {
@@ -375,7 +382,7 @@ export async function* runParallelReview(
                 code: 'reviewer-late-infrastructure-error-downgraded',
                 message: `Reviewer perspective "${perspective}" completed with parseable output before a late infrastructure error: ${err instanceof Error ? err.message : String(err)}`,
               };
-              yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
+              yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues, ...roundMetadata };
               return;
             }
             allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
@@ -385,6 +392,7 @@ export async function* runParallelReview(
               planId,
               perspective,
               error: err instanceof Error ? err.message : String(err),
+              ...roundMetadata,
             };
           }
           return;
@@ -396,6 +404,7 @@ export async function* runParallelReview(
             planId,
             perspective,
             error: err instanceof Error ? err.message : String(err),
+            ...roundMetadata,
           };
         }
         return;
@@ -442,7 +451,7 @@ export async function* runParallelReview(
         const parseResult = parseReviewIssuesStrict(fullText);
         allIssues.push({ perspective, issues: parseResult.issues });
 
-        yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
+        yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues, ...roundMetadata };
       } catch (err) {
         const parseResult = parseReviewIssuesStrict(fullText);
         if (sawAgentResult && isRetryableLateReviewerInfrastructureError(err) && parseResult.valid) {
@@ -456,7 +465,7 @@ export async function* runParallelReview(
             code: 'reviewer-late-infrastructure-error-downgraded',
             message: `Reviewer perspective "${perspective}" completed with parseable output before a late infrastructure error: ${err instanceof Error ? err.message : String(err)}`,
           };
-          yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues };
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues, ...roundMetadata };
           return;
         }
         allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
@@ -466,6 +475,7 @@ export async function* runParallelReview(
           planId,
           perspective,
           error: err instanceof Error ? err.message : String(err),
+          ...roundMetadata,
         };
       }
     },
@@ -481,7 +491,7 @@ export async function* runParallelReview(
     allIssues.flatMap((r) => r.issues),
   );
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: mergedIssues };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: mergedIssues, ...roundMetadata };
 }
 
 /**

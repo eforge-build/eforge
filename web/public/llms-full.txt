@@ -680,18 +680,18 @@ Total variants: 216
 | `plan:build:implement:continuation` | `attempt`, `maxContinuations`, `planId`, `shardId` |
 | `plan:build:implement:complete` | `planId` |
 | `plan:build:files_changed` | `baseBranch`, `diffs`, `files`, `planId` |
-| `plan:build:review:start` | `planId` |
-| `plan:build:review:complete` | `issues`, `planId` |
-| `plan:build:review:parallel:start` | `perspectives`, `planId` |
-| `plan:build:review:parallel:perspective:start` | `perspective`, `planId` |
-| `plan:build:review:parallel:perspective:complete` | `issues`, `perspective`, `planId` |
-| `plan:build:review:parallel:perspective:error` | `error`, `perspective`, `planId` |
-| `plan:build:review:fix:start` | `issueCount`, `planId` |
-| `plan:build:review:fix:complete` | `planId` |
-| `plan:build:review:fix:continuation` | `attempt`, `maxContinuations`, `planId` |
-| `plan:build:evaluate:start` | `planId` |
-| `plan:build:evaluate:continuation` | `attempt`, `maxContinuations`, `planId` |
-| `plan:build:evaluate:complete` | `accepted`, `acceptedRiskIssueOutcomes`, `blockingIssueOutcomes`, `falsePositiveIssueOutcomes`, `needsHumanReviewIssueOutcomes`, `planId`, `rejected`, `resolvedIssueOutcomes`, `splitToFollowupIssueOutcomes`, `unresolvedIssueOutcomes`, `unresolvedNonBlockingIssueOutcomes`, `verdicts` |
+| `plan:build:review:start` | `planId`, `round` |
+| `plan:build:review:complete` | `issues`, `planId`, `round` |
+| `plan:build:review:parallel:start` | `perspectives`, `planId`, `round` |
+| `plan:build:review:parallel:perspective:start` | `perspective`, `planId`, `round` |
+| `plan:build:review:parallel:perspective:complete` | `issues`, `perspective`, `planId`, `round` |
+| `plan:build:review:parallel:perspective:error` | `error`, `perspective`, `planId`, `round` |
+| `plan:build:review:fix:start` | `issueCount`, `planId`, `round` |
+| `plan:build:review:fix:complete` | `planId`, `round` |
+| `plan:build:review:fix:continuation` | `attempt`, `maxContinuations`, `planId`, `round` |
+| `plan:build:evaluate:start` | `planId`, `round` |
+| `plan:build:evaluate:continuation` | `attempt`, `maxContinuations`, `planId`, `round` |
+| `plan:build:evaluate:complete` | `accepted`, `acceptedRiskIssueOutcomes`, `blockingIssueOutcomes`, `falsePositiveIssueOutcomes`, `needsHumanReviewIssueOutcomes`, `planId`, `rejected`, `resolvedIssueOutcomes`, `round`, `splitToFollowupIssueOutcomes`, `unresolvedIssueOutcomes`, `unresolvedNonBlockingIssueOutcomes`, `verdicts` |
 | `plan:build:doc-author:start` | `planId` |
 | `plan:build:doc-author:complete` | `docsAuthored`, `planId` |
 | `plan:build:doc-sync:start` | `planId` |

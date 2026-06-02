@@ -63,6 +63,11 @@ describe('resolveBuildStage', () => {
     expect(resolveBuildStage('evaluate', buildStages)).toBe('review-cycle');
   });
 
+  it('resolves "review-fix" to "review-cycle" when review-cycle is in buildStages', () => {
+    const buildStages: BuildStageSpec[] = ['implement', 'review-cycle'];
+    expect(resolveBuildStage('review-fix', buildStages)).toBe('review-cycle');
+  });
+
   it('resolves "test" to "test-cycle" when test-cycle is in buildStages', () => {
     const buildStages: BuildStageSpec[] = ['implement', 'test-cycle'];
     expect(resolveBuildStage('test', buildStages)).toBe('test-cycle');
@@ -106,6 +111,11 @@ describe('getBuildStageStatuses', () => {
     expect(statuses[0]).toBe('active');
     expect(statuses[1]).toBe('pending');
     expect(statuses[2]).toBe('pending');
+  });
+
+  it('marks review-cycle active when currentStage is "review-fix"', () => {
+    const statuses = getBuildStageStatuses(['implement', 'review-cycle'], 'review-fix');
+    expect(statuses).toEqual(['completed', 'active']);
   });
 
   it('marks the furthest-reached stage as failed and prior stages as completed on "failed"', () => {

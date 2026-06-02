@@ -37,7 +37,7 @@ export const AGENT_TO_STAGE: Record<AgentRole, string> = {
 
 /** Map composite stage names to their child pipeline stages */
 export const COMPOSITE_STAGES: Record<string, string[]> = {
-  'review-cycle': ['review', 'evaluate'],
+  'review-cycle': ['review', 'review-fix', 'evaluate'],
   'test-cycle': ['test', 'evaluate'],
 };
 

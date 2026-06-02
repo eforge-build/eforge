@@ -4179,6 +4179,10 @@
             },
             "planId": {
               "type": "string"
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4241,6 +4245,10 @@
                   }
                 }
               }
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4266,6 +4274,10 @@
                 "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
                 "type": "string"
               }
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4288,6 +4300,10 @@
               "pattern": "^[a-z][a-z0-9-]{0,63}$",
               "description": "A review perspective key: lowercase slug starting with a letter, 1–64 chars (e.g. \"code\", \"accessibility\")",
               "type": "string"
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4356,6 +4372,10 @@
                   }
                 }
               }
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4382,6 +4402,10 @@
             },
             "error": {
               "type": "string"
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4402,6 +4426,10 @@
             },
             "issueCount": {
               "type": "number"
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4418,6 +4446,10 @@
             },
             "planId": {
               "type": "string"
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4442,6 +4474,10 @@
             },
             "maxContinuations": {
               "type": "number"
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4458,6 +4494,10 @@
             },
             "planId": {
               "type": "string"
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4482,6 +4522,10 @@
             },
             "maxContinuations": {
               "type": "number"
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -4506,6 +4550,10 @@
             },
             "rejected": {
               "type": "number"
+            },
+            "round": {
+              "minimum": 0,
+              "type": "integer"
             },
             "resolvedIssueOutcomes": {
               "type": "number"

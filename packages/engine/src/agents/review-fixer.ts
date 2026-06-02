@@ -29,6 +29,8 @@ export interface ReviewFixerOptions extends SdkPassthroughConfig {
   continuationContext?: ReviewFixerContinuationContext;
   /** Prior evaluator feedback from earlier review-cycle rounds. */
   evaluatorFeedbackContext?: string;
+  /** Zero-based review-cycle round for lifecycle event metadata. */
+  round?: number;
 }
 
 /**
@@ -146,10 +148,11 @@ function renderContinuationContext(ctx: ReviewFixerContinuationContext | undefin
 export async function* runReviewFixer(
   options: ReviewFixerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { harness, planId, cwd, issues, verbose, abortController, continuationContext, evaluatorFeedbackContext } = options;
+  const { harness, planId, cwd, issues, verbose, abortController, continuationContext, evaluatorFeedbackContext, round } = options;
   const maxTurns = options.maxTurns ?? 80;
+  const roundMetadata = round !== undefined ? { round } : {};
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:start', planId, issueCount: issues.length };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:start', planId, issueCount: issues.length, ...roundMetadata };
 
   const issuesText = formatIssuesForPrompt(issues);
   const continuationText = renderContinuationContext(continuationContext);
@@ -205,5 +208,5 @@ export async function* runReviewFixer(
     // Other fixer failures are non-fatal
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:complete', planId };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:complete', planId, ...roundMetadata };
 }

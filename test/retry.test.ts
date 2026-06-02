@@ -766,6 +766,10 @@ describe('DEFAULT_RETRY_POLICIES — evaluator policy', () => {
   it('retryableSubtypes does not include error_during_execution', () => {
     expect(evaluator.retryableSubtypes.has('error_during_execution')).toBe(false);
   });
+  it('evaluator continuation events carry round when present and omit it when absent', () => {
+    const eventFor = (input: EvaluatorContinuationInput) => evaluator.onRetry!(makeAttemptInfo<EvaluatorContinuationInput>({ prevInput: input }) as RetryAttemptInfo<unknown>)[0] as Extract<EforgeEvent, { type: 'plan:build:evaluate:continuation' }>;
+    expect(eventFor({ worktreePath: '/tmp/wt', planId: 'plan-42', round: 1, evaluatorOptions: {} }).round).toBe(1); expect('round' in eventFor({ worktreePath: '/tmp/wt', planId: 'plan-42', evaluatorOptions: {} })).toBe(false);
+  });
 });
 
 describe('DEFAULT_RETRY_POLICIES — plan-evaluator / cohesion-evaluator / architecture-evaluator', () => {
@@ -933,6 +937,8 @@ describe('DEFAULT_RETRY_POLICIES — review-fixer policy', () => {
     expect(events[0].type).toBe('plan:build:review:fix:continuation');
     const evt = events[0] as Extract<EforgeEvent, { type: 'plan:build:review:fix:continuation' }>;
     expect(evt.planId).toBe('plan-42');
+    expect('round' in evt).toBe(false);
+    expect((policy.onRetry(makeAttemptInfo<ReviewFixerContinuationInput>({ prevInput: { cwd: '/tmp/wt', planId: 'plan-42', round: 1, reviewFixerOptions: {} } }) as RetryAttemptInfo<unknown>)[0] as Extract<EforgeEvent, { type: 'plan:build:review:fix:continuation' }>).round).toBe(1);
     expect(evt.attempt).toBe(1);
     expect(evt.maxContinuations).toBe(2);
   });
@@ -943,6 +949,7 @@ describe('DEFAULT_RETRY_POLICIES — review-fixer policy', () => {
     const input: ReviewFixerContinuationInput = { cwd: '/tmp/wt', planId: 'plan-99', reviewFixerOptions: {} };
     expect(policy!.planIdFromInput!(input as unknown)).toBe('plan-99');
   });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -2175,7 +2182,7 @@ describe('buildReviewFixerContinuationInput — enriched context preserved throu
         cwd: '/tmp/nonexistent-for-test',
         planId: 'plan-enriched',
         reviewFixerOptions: {},
-      },
+      }
     });
 
     const decision = await buildReviewFixerContinuationInput(info);

@@ -29,6 +29,7 @@ const FALLBACK_STAGE_LABELS: Partial<Record<PipelineStage, string>> = {
   'doc-sync': 'doc sync',
   test: 'test',
   review: 'review',
+  'review-fix': 'review fix',
   evaluate: 'evaluate',
   complete: 'done',
   failed: 'failed',
