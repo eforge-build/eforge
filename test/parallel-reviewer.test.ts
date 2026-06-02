@@ -169,6 +169,160 @@ describe('runReviewFixer', () => {
 });
 
 describe('runParallelReview — strict contract on parallel perspectives', () => {
+  const validLateReviewXml = `<review-issues>
+  <issue severity="warning" category="bug" file="src/parallel.ts" line="12">Parallel reviewer finding</issue>
+</review-issues>`;
+
+  it('single delegation preserves parsed issues after a late transient reviewer error', async () => {
+    const backend = new StubHarness([{
+      resultText: validLateReviewXml,
+      lateError: new AgentTerminalError('error_transient_transport', 'transport closed after result'),
+    }]);
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-single-late-reviewer-error',
+        cwd: '/tmp',
+        strategy: 'single',
+      }),
+    );
+
+    const complete = findEvent(events, 'plan:build:review:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: 'bug', file: 'src/parallel.ts' }),
+    ]));
+    expect(complete!.issues.some(issue => issue.category === 'review-contract')).toBe(false);
+  });
+
+  it('built-in perspective preserves parsed issues after a late transient reviewer error', async () => {
+    const backend = new StubHarness([{
+      resultText: validLateReviewXml,
+      lateError: new AgentTerminalError('error_transient_transport', 'transport closed after built-in perspective result'),
+    }]);
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-built-in-late-reviewer-error',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code'],
+      }),
+    );
+
+    const reviewerStart = findEvent(events, 'agent:start');
+    expect(findEvent(events, 'agent:warning')).toMatchObject({
+      code: 'reviewer-late-infrastructure-error-downgraded',
+      agent: 'reviewer',
+      planId: 'plan-test-built-in-late-reviewer-error',
+      agentId: reviewerStart!.agentId,
+    });
+    const perspectiveComplete = filterEvents(events, 'plan:build:review:parallel:perspective:complete')[0];
+    expect(perspectiveComplete.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: 'bug', file: 'src/parallel.ts' }),
+    ]));
+    const complete = findEvent(events, 'plan:build:review:complete');
+    expect(complete!.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: 'bug', file: 'src/parallel.ts' }),
+    ]));
+    expect(complete!.issues.some(issue => issue.category === 'review-contract')).toBe(false);
+  });
+
+  it('extension perspective preserves parsed issues after a late transient reviewer error', async () => {
+    const registration: ReviewerPerspectiveRegistration = {
+      kind: 'reviewerPerspective',
+      extensionName: 'test-extension',
+      extensionPath: '/test/ext.js',
+      name: 'accessibility',
+      value: {
+        key: 'accessibility',
+        label: 'Accessibility Review',
+        description: 'Check accessibility concerns.',
+        promptFragment: 'Review keyboard and screen reader support.',
+      },
+    };
+    const backend = new StubHarness([{
+      resultText: validLateReviewXml,
+      lateError: new AgentTerminalError('error_transient_transport', 'transport closed after extension perspective result'),
+    }]);
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-extension-late-reviewer-error',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['accessibility'],
+        extensionReviewerPerspectives: [registration],
+      }),
+    );
+
+    const reviewerStart = findEvent(events, 'agent:start');
+    const warning = findEvent(events, 'agent:warning');
+    expect(warning).toMatchObject({
+      code: 'reviewer-late-infrastructure-error-downgraded',
+      agent: 'reviewer',
+      planId: 'plan-test-extension-late-reviewer-error',
+      agentId: reviewerStart!.agentId,
+    });
+    expect(warning?.message).toContain('accessibility');
+    const perspectiveComplete = filterEvents(events, 'plan:build:review:parallel:perspective:complete')
+      .find(event => event.perspective === 'accessibility');
+    expect(perspectiveComplete?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: 'bug', file: 'src/parallel.ts' }),
+    ]));
+    expect(filterEvents(events, 'plan:build:review:parallel:perspective:error')
+      .some(event => event.perspective === 'accessibility')).toBe(false);
+    const complete = findEvent(events, 'plan:build:review:complete');
+    expect(complete!.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: 'bug', file: 'src/parallel.ts' }),
+    ]));
+    expect(complete!.issues.some(issue => issue.category === 'review-contract')).toBe(false);
+  });
+
+  it('keeps a synthetic contract issue for one perspective while preserving another late-error perspective', async () => {
+    class RoutedHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        const response = options.perspective === 'docs'
+          ? { error: new AgentTerminalError('error_transient_transport', 'docs failed before output') }
+          : {
+              resultText: validLateReviewXml,
+              lateError: new AgentTerminalError('error_transient_transport', 'code closed after result'),
+            };
+        for await (const event of new StubHarness([response]).run(options, agent, planId)) {
+          yield event;
+        }
+      }
+    }
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: new RoutedHarness([]),
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-mixed-late-reviewer-error',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code', 'docs'],
+      }),
+    );
+
+    expect(filterEvents(events, 'plan:build:review:parallel:perspective:error')).toHaveLength(1);
+    const complete = findEvent(events, 'plan:build:review:complete');
+    expect(complete!.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: 'bug', file: 'src/parallel.ts' }),
+      expect.objectContaining({ severity: 'critical', category: 'review-contract', file: 'reviewer-output' }),
+    ]));
+  });
+
   it('aggregate includes synthetic critical issue when one perspective returns no XML', async () => {
     // Route each perspective to a specific stub text to test the strict parser
     // on the parallel path independently for each perspective.

@@ -14,12 +14,14 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, AgentRole, AgentResultData } from '@eforge-build/engine/events';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
+import { AgentTerminalError } from '@eforge-build/engine/harness';
 import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
 import { getBuildStage, type BuildStageContext } from '@eforge-build/engine/pipeline';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
 import { useTempDir } from './test-tmpdir.js';
+import { StubHarness } from './stub-harness.js';
 
 const exec = promisify(execFile);
 
@@ -307,6 +309,29 @@ describe('reviewer worktree mutation detection', () => {
       i => i.severity === 'critical' && i.category === 'review-contract',
     );
     expect(contractIssue).toBeDefined();
+  });
+
+  it('emits parsed reviewer issues instead of a synthetic timeout-only contract issue after a valid late transient error', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeFile(join(repo, 'src.ts'), 'export const x = 1;\n', 'utf8');
+    await commitAll(repo, 'chore: initial');
+
+    const harness = new StubHarness([{
+      resultText: `<review-issues>
+  <issue severity="warning" category="bug" file="src.ts" line="1">Preserved late reviewer issue</issue>
+</review-issues>`,
+      lateError: new AgentTerminalError('error_transient_transport', 'late reviewer transport failure'),
+    }]);
+    const ctx = makeCtx(repo, harness);
+
+    const events = await collect(getBuildStage('review')(ctx));
+
+    const complete = findEvent(events, 'plan:build:review:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'warning', category: 'bug', file: 'src.ts' }),
+    ]));
+    expect(complete!.issues.some(i => i.category === 'review-contract')).toBe(false);
   });
 
   it('does not inject a contract issue when the reviewer makes no mutations', async () => {

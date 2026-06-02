@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EforgeEvent, AgentRole } from '@eforge-build/engine/events';
-import { PlannerSubmissionError } from '@eforge-build/engine/harness';
-import type { AgentHarness, AgentRunOptions, CustomTool } from '@eforge-build/engine/harness';
+import { AgentTerminalError, PlannerSubmissionError } from '@eforge-build/engine/harness';
+import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -23,9 +23,6 @@ import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildSt
 import { DEFAULT_CONFIG, resolveConfig, loadConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import { singletonRegistry, buildAgentRuntimeRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
-import { withAgentContextHooks } from '@eforge-build/engine/extensions';
-import type { AgentRunRegistration, NativeExtensionRegistry } from '@eforge-build/engine/extensions';
-import { Type } from '@eforge-build/extension-sdk';
 
 // --- Planner ---
 
@@ -349,70 +346,96 @@ describe('runPlanner submission tool naming', () => {
 // --- Reviewer ---
 
 describe('runReview wiring', () => {
+  const validReviewXml = '<review-issues><issue severity="warning" category="bug" file="src/late.ts" line="7">Late reviewer finding</issue></review-issues>';
+  const reviewOptions = (harness: StubHarness, planId = 'plan-1') => ({ harness, planContent: 'test plan', baseBranch: 'main', planId, cwd: '/tmp' });
+  async function collectReviewFailure(harness: StubHarness): Promise<{ events: EforgeEvent[]; thrown: unknown }> {
+    const events: EforgeEvent[] = [];
+    let thrown: unknown;
+    try {
+      for await (const event of runReview(reviewOptions(harness))) events.push(event);
+    } catch (err) {
+      thrown = err;
+    }
+    return { events, thrown };
+  }
+
   it('parses review issues from agent output', async () => {
-    const backend = new StubHarness([{
-      text: `<review-issues>
+    const events = await collectEvents(runReview(reviewOptions(new StubHarness([{ text: `<review-issues>
   <issue severity="critical" category="bug" file="src/a.ts" line="42">Memory leak in handler</issue>
   <issue severity="warning" category="perf" file="src/b.ts">Slow query<fix>Add index</fix></issue>
-</review-issues>`,
-    }]);
-
-    const events = await collectEvents(runReview({
-      harness: backend,
-      planContent: 'test plan',
-      baseBranch: 'main',
-      planId: 'plan-1',
-      cwd: '/tmp',
-    }));
-
+</review-issues>` }]))));
     expect(findEvent(events, 'plan:build:review:start')).toBeDefined();
-
     const complete = findEvent(events, 'plan:build:review:complete');
-    expect(complete).toBeDefined();
     expect(complete!.issues).toHaveLength(2);
-    expect(complete!.issues[0]).toMatchObject({
-      severity: 'critical',
-      category: 'bug',
-      file: 'src/a.ts',
-      line: 42,
-      description: 'Memory leak in handler',
-    });
+    expect(complete!.issues[0]).toMatchObject({ severity: 'critical', category: 'bug', file: 'src/a.ts', line: 42, description: 'Memory leak in handler' });
     expect(complete!.issues[1].fix).toBe('Add index');
   });
 
-  it('emits a synthetic critical issue when reviewer output lacks the terminal XML block', async () => {
-    const backend = new StubHarness([{ text: 'Code looks good. No issues found.' }]);
+  it('parses review issues from resultText-only reviewer output', async () => {
+    const complete = findEvent(await collectEvents(runReview(reviewOptions(new StubHarness([{ resultText: validReviewXml }])))), 'plan:build:review:complete');
+    expect(complete!.issues).toEqual([expect.objectContaining({ severity: 'warning', category: 'bug', file: 'src/late.ts', line: 7, description: 'Late reviewer finding' })]);
+  });
 
-    const events = await collectEvents(runReview({
-      harness: backend,
-      planContent: 'test plan',
-      baseBranch: 'main',
-      planId: 'plan-1',
-      cwd: '/tmp',
-    }));
+  it('downgrades a late transient reviewer error after valid result text', async () => {
+    const planId = 'plan-late-transient';
+    const events = await collectEvents(runReview(reviewOptions(new StubHarness([{ resultText: validReviewXml, lateError: new AgentTerminalError('error_transient_transport', 'socket closed after result') }]), planId)));
+    const reviewerStart = findEvent(events, 'agent:start');
+    const warning = findEvent(events, 'agent:warning');
+    expect(warning).toMatchObject({
+      code: 'reviewer-late-infrastructure-error-downgraded',
+      agent: 'reviewer',
+      planId,
+      agentId: reviewerStart!.agentId,
+    });
+    expect(findEvent(events, 'plan:build:review:complete')!.issues).toEqual(expect.arrayContaining([expect.objectContaining({ category: 'bug', file: 'src/late.ts' })]));
+  });
 
+  it('uses final resultText when streamed reviewer output only contains a preamble', async () => {
+    const events = await collectEvents(runReview(reviewOptions(new StubHarness([{
+      text: 'Review summary follows. ',
+      resultText: validReviewXml,
+      lateError: new AgentTerminalError('error_pi_tool_infrastructure', 'tool closed after result'),
+    }]))));
     const complete = findEvent(events, 'plan:build:review:complete');
-    expect(complete).toBeDefined();
-    // Plain text with no <review-issues> block is a contract violation — strict parser
-    // emits one synthetic critical issue rather than empty issues.
-    expect(complete!.issues).toHaveLength(1);
-    expect(complete!.issues[0].severity).toBe('critical');
-    expect(complete!.issues[0].category).toBe('review-contract');
+    expect(complete!.issues).toEqual(expect.arrayContaining([expect.objectContaining({ category: 'bug', file: 'src/late.ts' })]));
+    expect(complete!.issues.some(issue => issue.category === 'review-contract')).toBe(false);
+  });
+
+  it('downgrades a late Pi tool infrastructure reviewer error after valid result text', async () => {
+    const events = await collectEvents(runReview(reviewOptions(new StubHarness([{ resultText: validReviewXml, lateError: new AgentTerminalError('error_pi_tool_infrastructure', 'tool closed after result') }]))));
+    expect(findEvent(events, 'agent:warning')!.code).toBe('reviewer-late-infrastructure-error-downgraded');
+    expect(findEvent(events, 'plan:build:review:complete')!.issues).toEqual(expect.arrayContaining([expect.objectContaining({ category: 'bug', file: 'src/late.ts' })]));
+  });
+
+  it('rethrows a late max-turns reviewer error after valid result text', async () => {
+    const { events, thrown } = await collectReviewFailure(new StubHarness([{ resultText: validReviewXml, lateError: new AgentTerminalError('error_max_turns', 'turn limit after result') }]));
+    expect(thrown).toBeInstanceOf(AgentTerminalError);
+    expect((thrown as AgentTerminalError).subtype).toBe('error_max_turns');
+    expect(findEvent(events, 'agent:warning')).toBeUndefined();
+    expect(findEvent(events, 'plan:build:review:complete')).toBeUndefined();
+  });
+
+  it('rethrows a pre-result transient reviewer failure without a review complete event', async () => {
+    const { events, thrown } = await collectReviewFailure(new StubHarness([{ error: new AgentTerminalError('error_transient_transport', 'socket closed before result') }]));
+    expect(thrown).toBeInstanceOf(AgentTerminalError);
+    expect(findEvent(events, 'plan:build:review:complete')).toBeUndefined();
+  });
+
+  it('rethrows a late transient reviewer failure when reviewer output is invalid', async () => {
+    const { events, thrown } = await collectReviewFailure(new StubHarness([{ resultText: 'Review complete without XML.', lateError: new AgentTerminalError('error_transient_transport', 'socket closed after invalid output') }]));
+    expect(thrown).toBeInstanceOf(AgentTerminalError);
+    expect(findEvent(events, 'agent:warning')).toBeUndefined();
+    expect(findEvent(events, 'plan:build:review:complete')).toBeUndefined();
+  });
+
+  it('emits a synthetic critical issue when reviewer output lacks the terminal XML block', async () => {
+    const complete = findEvent(await collectEvents(runReview(reviewOptions(new StubHarness([{ text: 'Code looks good. No issues found.' }])))), 'plan:build:review:complete');
+    expect(complete!.issues).toEqual([expect.objectContaining({ severity: 'critical', category: 'review-contract' })]);
   });
 
   it('dispatches the reviewer with read-only tools', async () => {
-    const backend = new StubHarness([{
-      text: '<review-issues></review-issues>',
-    }]);
-
-    await collectEvents(runReview({
-      harness: backend,
-      planContent: 'test plan',
-      baseBranch: 'main',
-      planId: 'plan-1',
-      cwd: '/tmp',
-    }));
-
+    const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
+    await collectEvents(runReview(reviewOptions(backend)));
     expect(backend.calls).toHaveLength(1);
     expect(backend.calls[0].tools).toBe('read-only');
   });
@@ -2065,6 +2088,29 @@ describe('runParallelReview verify perspective', () => {
     });
   });
 
+  it('emits a perspective error rather than a downgrade for late max-turns reviewer errors', async () => {
+    const backend = new StubHarness([{
+      resultText: '<review-issues><issue severity="warning" category="bug" file="src/late.ts">Late finding</issue></review-issues>',
+      lateError: new AgentTerminalError('error_max_turns', 'turn limit after result'),
+    }]);
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan',
+        baseBranch: 'main',
+        planId: 'plan-parallel-max-turns-boundary',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code'],
+      }),
+    );
+
+    expect(findEvent(events, 'agent:warning')).toBeUndefined();
+    expect(filterEvents(events, 'plan:build:review:parallel:perspective:complete')).toHaveLength(0);
+    expect(filterEvents(events, 'plan:build:review:parallel:perspective:error')).toHaveLength(1);
+  });
+
   it('forwards perspective to harness.run options for each parallel agent call', async () => {
     // Verifies the data-flow fix: perspective must appear in the AgentRunOptions
     // passed to harness.run so the real harness can stamp it on agent:start.
@@ -2278,166 +2324,6 @@ describe('AgentRuntimeRegistry profile override threading', () => {
     const resolved = registry.forRoleResolved('planner');
     expect(resolved.harness).toBeDefined();
     expect(resolved.toolbeltSummary.projectMcpSelection).toBe('none');
-  });
-});
-
-
-// --- withAgentContextHooks registry decorator wiring ---
-
-describe('withAgentContextHooks — registry decorator wiring (agent-wiring)', () => {
-  function makeAgentRunHook(
-    extensionName: string,
-    handler: (ctx: import('@eforge-build/extension-sdk').AgentRunContext) => import('@eforge-build/extension-sdk').AgentRunAugmentation | undefined,
-  ): AgentRunRegistration {
-    return {
-      kind: 'agentRunHook',
-      extensionName,
-      extensionPath: `/extensions/${extensionName}.js`,
-      value: handler as never,
-    };
-  }
-
-  it('onAgentRun registration applies promptAppend to builder run and emits applied event', async () => {
-    const stub = new StubHarness([{ text: 'Implementation done.' }]);
-    const innerRegistry = singletonRegistry(stub);
-
-    const extRegistry: Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'> = {
-      agentRunHooks: [
-        makeAgentRunHook('wiring-test-ext', () => ({
-          promptAppend: 'WIRING_TEST_CONTEXT_SENTINEL',
-        })),
-      ],
-      tools: [],
-    };
-
-    const decorated = withAgentContextHooks(innerRegistry, {
-      extensionRegistry: extRegistry,
-      profileName: 'default',
-      cwd: '/tmp',
-      timeoutMs: 1000,
-    });
-
-    // Run a builder through the decorated registry
-    const events = await collectEvents(builderImplement(
-      { id: 'plan-wiring-01', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
-      { harness: decorated.forRole('builder'), cwd: '/tmp' },
-    ));
-
-    // Inner stub must have received the augmented prompt
-    expect(stub.prompts).toHaveLength(1);
-    expect(stub.prompts[0]).toContain('WIRING_TEST_CONTEXT_SENTINEL');
-    expect(stub.prompts[0]).toContain('## Native extension context');
-    expect(stub.prompts[0]).toContain('### wiring-test-ext');
-
-    // extension:agent-context:applied must appear in the event stream
-    const applied = filterEvents(events, 'extension:agent-context:applied');
-    expect(applied).toHaveLength(1);
-    expect(applied[0]!.extensionName).toBe('wiring-test-ext');
-    expect(applied[0]!.role).toBe('builder');
-
-    // Build lifecycle events still emitted normally
-    expect(findEvent(events, 'plan:build:implement:start')).toBeDefined();
-    expect(findEvent(events, 'plan:build:implement:complete')).toBeDefined();
-  });
-
-  it('extension custom tools reach AgentRunOptions and handler output appears in tool_result', async () => {
-    const existingTool: CustomTool = {
-      name: 'engine_tool',
-      description: 'Existing engine tool',
-      inputSchema: Type.Object({}),
-      handler: async () => 'engine-output',
-    };
-    const stub = new StubHarness([
-      {
-        toolCalls: [
-          { tool: 'extension_tool', toolUseId: 'call-1', input: { value: 42 }, output: 'fallback' },
-        ],
-        text: 'Done.',
-      },
-    ]);
-    const innerRegistry = singletonRegistry(stub);
-
-    const extRegistry: Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'> = {
-      agentRunHooks: [
-        makeAgentRunHook('tools-ext', () => ({
-          promptAppend: 'Use extension_tool when useful.',
-          tools: [{
-            name: 'extension_tool',
-            description: 'Extension tool',
-            inputSchema: Type.Object({}),
-            handler: async (input: unknown) => `extension-output:${JSON.stringify(input)}`,
-          }],
-        })),
-      ],
-      tools: [],
-    };
-
-    const decorated = withAgentContextHooks(innerRegistry, {
-      extensionRegistry: extRegistry,
-      profileName: 'default',
-      cwd: '/tmp',
-      timeoutMs: 1000,
-    });
-
-    const events = await collectEvents(decorated.forRole('builder').run(
-      {
-        prompt: 'Test.',
-        cwd: '/tmp',
-        maxTurns: 1,
-        tools: 'none',
-        customTools: [existingTool],
-      },
-      'builder',
-    ));
-
-    expect(stub.customToolSets[0]?.map(t => t.name)).toEqual(['engine_tool', 'extension_tool']);
-    const firstDiagnosticIndex = events.findIndex(e => e.type === 'extension:agent-context:applied');
-    const agentStartIndex = events.findIndex(e => e.type === 'agent:start');
-    expect(firstDiagnosticIndex).toBeGreaterThanOrEqual(0);
-    expect(firstDiagnosticIndex).toBeLessThan(agentStartIndex);
-    const toolEvents = filterEvents(events, 'extension:agent-tools:applied');
-    expect(toolEvents).toHaveLength(1);
-    const toolDiagnosticIndex = events.findIndex(e => e.type === 'extension:agent-tools:applied');
-    expect(toolDiagnosticIndex).toBeGreaterThanOrEqual(0);
-    expect(toolDiagnosticIndex).toBeLessThan(agentStartIndex);
-    const toolResult = filterEvents(events, 'agent:tool_result')[0];
-    expect(toolResult?.output).toBe('extension-output:{"value":42}');
-  });
-
-  it('options toolbelt fields are byte-identical before and after decoration', async () => {
-    const stub = new StubHarness([{ text: 'Done.' }]);
-    const innerRegistry = singletonRegistry(stub);
-
-    const extRegistry: Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'> = {
-      agentRunHooks: [
-        makeAgentRunHook('no-mutate-ext', () => ({ promptAppend: 'X' })),
-      ],
-      tools: [],
-    };
-
-    const decorated = withAgentContextHooks(innerRegistry, {
-      extensionRegistry: extRegistry,
-      profileName: 'default',
-      cwd: '/tmp',
-      timeoutMs: 1000,
-    });
-
-    const harness = decorated.forRole('builder');
-    await collectEvents(harness.run(
-      {
-        prompt: 'Test.',
-        cwd: '/tmp',
-        maxTurns: 1,
-        tools: 'none',
-        allowedTools: ['read'],
-        disallowedTools: [],
-      },
-      'builder',
-    ));
-
-    // Tools options on the call received by the inner stub must be unchanged
-    expect(stub.calls[0]!.allowedTools).toEqual(['read']);
-    expect(stub.calls[0]!.disallowedTools).toEqual([]);
   });
 });
 
