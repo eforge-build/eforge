@@ -122,7 +122,7 @@ export async function isRegisteredRemote(name: string, cwd: string): Promise<boo
 }
 
 /** Validate a git branch name. Returns an error string or undefined. */
-async function validateBranchName(name: string, cwd: string): Promise<string | undefined> {
+export async function validateBranchName(name: string, cwd: string): Promise<string | undefined> {
   if (!name || name.trim() === '') {
     return 'Branch name must not be empty';
   }

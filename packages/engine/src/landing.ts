@@ -24,7 +24,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import type { EforgeEvent, EforgeState, OrchestrationConfig } from './events.js';
-import type { WorktreeManager } from './worktree-manager.js';
+import { PullRequestFreshnessError, type PullRequestFreshnessGuard, type WorktreeManager } from './worktree-manager.js';
 import type { MergeResolver } from './worktree-ops.js';
 import type { ModelTracker } from './model-tracker.js';
 import { composeCommitMessage, buildProvenanceTrailers } from './model-tracker.js';
@@ -83,12 +83,24 @@ export interface LandingActionOptions {
   prAutoMergePolicy?: 'ask' | 'always' | 'never';
   /** Per-run PR auto-merge intent (from landingAutoMerge build option / PRD frontmatter). */
   landingAutoMerge?: boolean;
+  /** Direct PR freshness guard before pushing the artifact branch. */
+  beforePushFreshnessGuard?: PullRequestFreshnessGuard;
+  /** Direct PR freshness guard immediately before PR creation / existing-PR fallback. */
+  beforeCreateFreshnessGuard?: PullRequestFreshnessGuard;
+  /** Use force-with-lease for direct PR artifact branch publication. */
+  forceWithLease?: boolean;
+}
+
+export interface LandingFreshnessRetry {
+  reason: string;
+  fetchedBaseSha?: string;
 }
 
 export interface LandingResult {
   landingSucceeded: boolean;
   prUrl?: string;
   commitSha?: string;
+  freshnessRetry?: LandingFreshnessRetry;
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +218,9 @@ export async function* executeLandingAction(
     cleanupPrdFilePath,
     prAutoMergePolicy = 'ask',
     landingAutoMerge,
+    beforePushFreshnessGuard,
+    beforeCreateFreshnessGuard,
+    forceWithLease,
   } = opts;
 
   const ts = (): string => new Date().toISOString();
@@ -389,7 +404,13 @@ export async function* executeLandingAction(
         modelTracker: opts.modelTracker,
         provenanceRefs: provenanceRefs.length > 0 ? provenanceRefs : undefined,
       });
-      const prResult = await worktreeManager.issuePr({ baseBranch, metadata: prMetadata });
+      const prResult = await worktreeManager.issuePr({
+        baseBranch,
+        metadata: prMetadata,
+        beforePushFreshnessGuard,
+        beforeCreateFreshnessGuard,
+        forceWithLease,
+      });
       const url = prResult.url;
 
       yield {
@@ -449,6 +470,14 @@ export async function* executeLandingAction(
       return { landingSucceeded: true, prUrl: url };
     } catch (err) {
       const reason = (err as Error).message;
+      if (err instanceof PullRequestFreshnessError && err.retryable) {
+        yield {
+          type: 'planning:progress' as const,
+          message: `Direct PR freshness guard requested retry: ${reason}`,
+          timestamp: ts(),
+        } as EforgeEvent;
+        return { landingSucceeded: false, freshnessRetry: { reason, fetchedBaseSha: err.fetchedBaseSha } };
+      }
       yield {
         type: 'landing:skipped' as const,
         action,
