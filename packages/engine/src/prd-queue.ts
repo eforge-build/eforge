@@ -1,4 +1,4 @@
-import { readFile, readdir, writeFile, mkdir, rm, open, rename } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir, rm, open, rename, copyFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
 import { resolve, basename } from 'node:path';
@@ -1030,6 +1030,18 @@ async function movePrdFromWaiting(
   await rename(filePath, destPath);
 }
 
+async function movePrdFromWaitingNoOverwrite(filePath: string, destDir: string): Promise<boolean> {
+  await mkdir(destDir, { recursive: true });
+  try {
+    await copyFile(filePath, resolve(destDir, basename(filePath)), constants.COPYFILE_EXCL);
+    await rm(filePath);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw err;
+  }
+}
+
 /**
  * Validate that all `depends_on` ids currently exist in the queue or have
  * a durable artifact in the artifact registry (completed with a usable build).
@@ -1231,12 +1243,8 @@ export async function unblockWaiting(
     );
 
     if (allSatisfied) {
-      await movePrdFromWaiting(
-        prd.filePath,
-        queueRoot,
-        cwd,
-        `unblocked - ${completedId} completed`,
-      );
+      const moved = await movePrdFromWaitingNoOverwrite(prd.filePath, queueRoot);
+      if (!moved) continue;
       unblocked.push(prd.id);
       // Remove from stillActiveIds so other waiting PRDs that depend on
       // this one can also be unblocked in subsequent loop iterations.

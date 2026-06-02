@@ -65,6 +65,7 @@ import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { withRunId } from './session.js';
 import { applyShardedPlanGuard } from './sharded-plan-guard.js';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
+import { beginQueuedResume, finalizeQueuedResumeSuccess, rollbackQueuedResume } from './queue/resume-cascade.js';
 import { resolveStackBaseContext, type StackBaseContext } from './stacking/base-resolver.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import type { ArtifactRegistry } from './artifacts/registry.js';
@@ -2587,6 +2588,8 @@ export class EforgeEngine {
     let buildSummary = 'Resume complete';
     const terminalTracker = createBuildTerminalFailureTracker(runId);
     let tracing: ReturnType<typeof createTracingContext> | undefined;
+    let queuedResumeStarted = false;
+    let queuedResumeFinalized = false;
 
     try {
       validatePlanSetName(setName);
@@ -2594,6 +2597,15 @@ export class EforgeEngine {
 
       yield { type: 'phase:start', runId, planSet: setName, command: 'resume', timestamp: ts() };
       tracing.setInput({ planSet: setName, prdId, resumeMode: true });
+
+      const queueResumeStart = await beginQueuedResume({ cwd, prdId, queueDir: this.config.prdQueue.dir });
+      if (queueResumeStart.status === 'blocked') {
+        status = 'failed';
+        buildSummary = queueResumeStart.reason;
+        yield { timestamp: ts(), type: 'build:resume:ineligible', reason: queueResumeStart.reason };
+        return;
+      }
+      queuedResumeStarted = queueResumeStart.status === 'started';
 
       // Eligibility check runs inside the phase so failures are correlated with runId.
       const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext, buildResumeArtifactsProjection } = await import('./resume/compiled-build.js');
@@ -2830,6 +2842,7 @@ export class EforgeEngine {
         prAutoMergePolicy: this.config.landing.pr.autoMerge,
         validationPolicy,
         resumeSeed,
+        prdId,
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
@@ -2872,10 +2885,32 @@ export class EforgeEngine {
         yield mergeEvents.shift()!;
       }
 
+      if (status === 'completed' && queuedResumeStarted) {
+        const queueResumeFinalization = await finalizeQueuedResumeSuccess({ cwd, prdId, queueDir: this.config.prdQueue.dir });
+        if (queueResumeFinalization.status === 'completed') {
+          queuedResumeFinalized = true;
+        } else if (queueResumeFinalization.status === 'blocked') {
+          status = 'failed';
+          buildSummary = queueResumeFinalization.reason;
+        }
+      }
+
     } catch (err) {
       status = 'failed';
       buildSummary = (err as Error).message;
     } finally {
+      if (queuedResumeStarted && !queuedResumeFinalized) {
+        try {
+          const rollback = await rollbackQueuedResume({ cwd, prdId, queueDir: this.config.prdQueue.dir });
+          if (rollback.status === 'blocked') {
+            status = 'failed';
+            buildSummary = `Queued resume rollback blocked: ${rollback.reason}`;
+          }
+        } catch (err) {
+          status = 'failed';
+          buildSummary = `Queued resume rollback failed: ${(err as Error).message}`;
+        }
+      }
       tracing?.setOutput({ status, summary: buildSummary });
       const terminalEvt = terminalTracker.toEvent(status, buildSummary);
       if (terminalEvt) yield terminalEvt;

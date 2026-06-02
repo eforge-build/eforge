@@ -37,6 +37,7 @@ interface SpawnCall {
   args: string[];
   sessionId: string;
   pid: number;
+  onExit?: () => void;
 }
 
 /** Stub WorkerTracker that records spawn calls without actually spawning. */
@@ -46,10 +47,10 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
   let sessionCounter = 0;
 
   const tracker: WorkerTracker = {
-    spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
+    spawnWorker(command: string, args: string[], onExit?: () => void): { sessionId: string; pid: number } {
       const sessionId = `stub-resume-${++sessionCounter}`;
       const pid = ++pidCounter;
-      calls.push({ command, args, sessionId, pid });
+      calls.push({ command, args, sessionId, pid, onExit });
       return { sessionId, pid };
     },
     cancelWorker(_sessionId: string): boolean {
@@ -79,10 +80,12 @@ let tmpDir: string;
 let dbPath: string;
 let server: MonitorServer;
 let spawnCalls: SpawnCall[];
+let queueMutationReasons: string[];
 
 async function setupServer(): Promise<void> {
   const { tracker, calls } = makeStubTracker();
   spawnCalls = calls;
+  queueMutationReasons = [];
 
   server = await startServer(
     openDatabase(dbPath),
@@ -91,6 +94,12 @@ async function setupServer(): Promise<void> {
       strictPort: true,
       cwd: tmpDir,
       workerTracker: tracker,
+      daemonState: {
+        autoBuildController: {
+          getSnapshot: () => ({ enabled: false, watcher: { running: false, pid: null, sessionId: null }, desired: 'disabled', mode: 'disabled', scheduler: { alive: false, paused: false } }),
+          notifyQueueMutation: (reason: string) => { queueMutationReasons.push(reason); },
+        } as never,
+      },
     },
   );
 }
@@ -224,6 +233,9 @@ describe('POST /api/recover/resume-build — happy path (prdId only)', () => {
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0].command).toBe('resume');
     expect(spawnCalls[0].args).toEqual([prdId]);
+    expect(spawnCalls[0].onExit).toBeTypeOf('function');
+    spawnCalls[0].onExit?.();
+    expect(queueMutationReasons).toEqual(['external']);
   });
 
   it('returns sessionId and pid from the spawned worker', async () => {
