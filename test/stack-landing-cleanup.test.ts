@@ -45,6 +45,8 @@ function makeStubProvider(overrides?: Partial<StackProviderAdapter>): StackProvi
     requireAvailable: async () => {},
     trackBranch: async (_cwd, base) =>
       makeResult('git-spice', ['branch', 'track', '--base', base]),
+    retargetBranch: async (_cwd, branch, target) =>
+      makeResult('git-spice', ['branch', 'onto', target, '--branch', branch]),
     submitBranch: async () =>
       makeResult(
         'git-spice',

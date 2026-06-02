@@ -39,7 +39,7 @@ function queuedPrd(id: string, frontmatter: Partial<QueuedPrd['frontmatter']> = 
   };
 }
 
-async function parentLayer(cwd: string, artifactBranch: string): Promise<void> {
+async function parentLayer(cwd: string, artifactBranch: string, commitSha = 'abc123'): Promise<void> {
   const now = new Date().toISOString();
   await upsertStackLayer(cwd, {
     prdId: 'parent-prd',
@@ -47,7 +47,7 @@ async function parentLayer(cwd: string, artifactBranch: string): Promise<void> {
     provider: 'git-spice',
     branch: 'eforge/parent-prd',
     baseBranch: 'main',
-    artifact: { branch: artifactBranch, commitSha: 'abc123' },
+    artifact: { branch: artifactBranch, commitSha },
     status: 'built',
     recordedAt: now,
     updatedAt: now,
@@ -68,6 +68,29 @@ async function parentLayerWithoutArtifact(cwd: string): Promise<void> {
   });
 }
 
+async function createUnlandedArtifactBranch(cwd: string, branch: string): Promise<string> {
+  await exec('git', ['checkout', '-b', branch], { cwd });
+  const fileName = `${branch.replace(/[^A-Za-z0-9_-]/g, '_')}.txt`;
+  await writeFile(join(cwd, fileName), `${branch}\n`);
+  await exec('git', ['add', fileName], { cwd });
+  await exec('git', ['commit', '-m', `artifact ${branch}`], { cwd });
+  const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
+  await exec('git', ['checkout', 'main'], { cwd });
+  return stdout.trim();
+}
+
+async function createRemoteMainRef(cwd: string): Promise<void> {
+  const { stdout } = await exec('git', ['rev-parse', 'main'], { cwd });
+  await exec('git', ['update-ref', 'refs/remotes/origin/main', stdout.trim()], { cwd });
+}
+
+async function createUnlandedCommit(cwd: string): Promise<string> {
+  const branch = 'tmp/unlanded-parent';
+  const commitSha = await createUnlandedArtifactBranch(cwd, branch);
+  await exec('git', ['branch', '-D', branch], { cwd });
+  return commitSha;
+}
+
 describe('resolveStackBaseContext', () => {
   it('uses configured trunk branch for root stack layers instead of current branch', async () => {
     const cwd = await repo();
@@ -86,8 +109,8 @@ describe('resolveStackBaseContext', () => {
 
   it('uses the parent recorded artifact branch for child stack layers', async () => {
     const cwd = await repo();
-    await exec('git', ['branch', 'eforge/parent-prd'], { cwd });
-    await parentLayer(cwd, 'eforge/parent-prd');
+    const commitSha = await createUnlandedArtifactBranch(cwd, 'eforge/parent-prd');
+    await parentLayer(cwd, 'eforge/parent-prd', commitSha);
 
     const result = await resolveStackBaseContext({
       cwd,
@@ -99,6 +122,27 @@ describe('resolveStackBaseContext', () => {
     expect(result.baseBranch).toBe('eforge/parent-prd');
     expect(result.parentPrdId).toBe('parent-prd');
     expect(result.stackId).toBe('stack-1');
+  });
+
+  it('collapses an already-integrated parent artifact branch to trunk', async () => {
+    const cwd = await repo();
+    await createRemoteMainRef(cwd);
+    await exec('git', ['branch', 'eforge/parent-prd'], { cwd });
+    await parentLayer(cwd, 'eforge/parent-prd');
+
+    const result = await resolveStackBaseContext({
+      cwd,
+      config,
+      prd: queuedPrd('child-prd', { stack_parent: 'parent-prd' }),
+      planSetName: 'child-prd',
+    });
+
+    expect(result.baseBranch).toBe('main');
+    expect(result.originalBaseBranch).toBe('eforge/parent-prd');
+    expect(result.effectiveBaseBranch).toBe('main');
+    expect(result.parentArtifactRef).toBe('eforge/parent-prd');
+    expect(result.repairReason).toBe('parent-artifact-already-integrated');
+    expect(result.trunkIntegrationRef).toBe('refs/remotes/origin/main');
   });
 
   it('throws instead of falling back to the parent branch when no artifact is recorded', async () => {
@@ -114,7 +158,7 @@ describe('resolveStackBaseContext', () => {
     })).rejects.toThrow(/child-prd.*parent-prd.*no recorded artifact ref.*Rebuild or repair/);
   });
 
-  it('falls back to recorded commitSha when the artifact branch was removed after landing', async () => {
+  it('collapses to trunk using recorded commitSha when the artifact branch was removed after landing', async () => {
     const cwd = await repo();
     const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
     const commitSha = stdout.trim();
@@ -138,26 +182,29 @@ describe('resolveStackBaseContext', () => {
       planSetName: 'child-prd',
     });
 
-    expect(result.baseBranch).toBe(commitSha);
+    expect(result.baseBranch).toBe('main');
+    expect(result.parentArtifactCommit).toBe(commitSha);
+    expect(result.repairReason).toBe('parent-artifact-already-integrated');
   });
 
-  it('throws an actionable error when the recorded parent artifact ref does not resolve', async () => {
+  it('throws an actionable error when the missing parent artifact commit is not integrated into trunk', async () => {
     const cwd = await repo();
-    await parentLayer(cwd, 'eforge/missing-parent-artifact');
+    const commitSha = await createUnlandedCommit(cwd);
+    await parentLayer(cwd, 'eforge/missing-parent-artifact', commitSha);
 
     await expect(resolveStackBaseContext({
       cwd,
       config,
       prd: queuedPrd('child-prd', { stack_parent: 'parent-prd' }),
       planSetName: 'child-prd',
-    })).rejects.toThrow(/child-prd.*parent-prd.*eforge\/missing-parent-artifact.*Rebuild or repair/);
+    })).rejects.toThrow(/child-prd.*parent-prd.*eforge\/missing-parent-artifact.*retargeting the child to trunk/);
   });
 
   it('prefers artifact registry over stack layer when both have artifact refs', async () => {
     const cwd = await repo();
-    // Create two different branches: one in the stack layer, one in the registry.
-    await exec('git', ['branch', 'eforge/parent-prd-registry'], { cwd });
-    await exec('git', ['branch', 'eforge/parent-prd-stale'], { cwd });
+    // Create two different unlanded branches: one in the stack layer, one in the registry.
+    const registryCommit = await createUnlandedArtifactBranch(cwd, 'eforge/parent-prd-registry');
+    await createUnlandedArtifactBranch(cwd, 'eforge/parent-prd-stale');
 
     // Write stack layer with stale branch
     await parentLayer(cwd, 'eforge/parent-prd-stale');
@@ -167,7 +214,7 @@ describe('resolveStackBaseContext', () => {
     await upsertArtifact(cwd, {
       prdId: 'parent-prd',
       artifactBranch: 'eforge/parent-prd-registry',
-      commitSha: 'abc123',
+      commitSha: registryCommit,
       resolvedBase: 'main',
       landingAction: 'leave',
       status: 'built',
@@ -188,9 +235,9 @@ describe('resolveStackBaseContext', () => {
 
   it('falls back to stack layer artifact when registry has no entry for parent', async () => {
     const cwd = await repo();
-    await exec('git', ['branch', 'eforge/parent-prd'], { cwd });
+    const commitSha = await createUnlandedArtifactBranch(cwd, 'eforge/parent-prd');
     // Only stack layer written — no registry entry (e.g., older build).
-    await parentLayer(cwd, 'eforge/parent-prd');
+    await parentLayer(cwd, 'eforge/parent-prd', commitSha);
 
     const result = await resolveStackBaseContext({
       cwd,
@@ -203,7 +250,7 @@ describe('resolveStackBaseContext', () => {
     expect(result.baseBranch).toBe('eforge/parent-prd');
   });
 
-  it('resolves a parent from the registry alone and falls back to its commit SHA when the branch is missing', async () => {
+  it('resolves a parent from the registry alone and collapses to trunk when the missing branch commit is integrated', async () => {
     const cwd = await repo();
     const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
     const commitSha = stdout.trim();
@@ -226,7 +273,8 @@ describe('resolveStackBaseContext', () => {
       planSetName: 'child-prd',
     });
 
-    expect(result.baseBranch).toBe(commitSha);
+    expect(result.baseBranch).toBe('main');
+    expect(result.parentArtifactCommit).toBe(commitSha);
     expect(result.stackId).toBe('parent-prd');
   });
 });

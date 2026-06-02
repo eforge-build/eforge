@@ -154,6 +154,19 @@ describe('GitSpiceAdapter', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('retargetBranch invokes branch onto <target> --branch <branch>', async () => {
+    const dir = makeTempDir();
+    const argsFile = join(dir, 'args.txt');
+    const stub = makeStub(dir, 'git-spice', `echo "$@" >> "${argsFile}"`);
+    const adapter = createGitSpiceAdapter({ gitSpice: { command: stub } });
+    const result = await adapter.retargetBranch(dir, 'eforge/child', 'main');
+    const args = readFileSync(argsFile, 'utf8').trim();
+    expect(args).toBe('branch onto main --branch eforge/child');
+    expect(result.command).toBe(stub);
+    expect(result.args).toEqual(['branch', 'onto', 'main', '--branch', 'eforge/child']);
+    expect(result.exitCode).toBe(0);
+  });
+
   // ---------------------------------------------------------------------------
   // Argv construction — submit and sync
   // ---------------------------------------------------------------------------

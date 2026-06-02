@@ -5,12 +5,30 @@
  * authoritative representation for engine-internal operations.
  */
 
+import type { StackBaseRepairEvidence } from './base-repair.js';
+
 // ---------------------------------------------------------------------------
 // Stack provider
 // ---------------------------------------------------------------------------
 
 /** Supported stack providers. Only git-spice is available in this release. */
 export type StackProvider = 'git-spice';
+
+/**
+ * Resolved stack base context for dispatch/landing.
+ *
+ * `baseBranch` is the effective base. Optional evidence fields preserve the
+ * originally resolved parent artifact base and trunk-integration proof used to
+ * normalize already-landed parents back to trunk.
+ */
+export interface StackBaseContext extends StackBaseRepairEvidence {
+  prdId: string;
+  stackId: string;
+  parentPrdId?: string;
+  provider: StackProvider;
+  branch: string;
+  baseBranch: string;
+}
 
 // ---------------------------------------------------------------------------
 // Landing publication action (shorthand vocabulary)

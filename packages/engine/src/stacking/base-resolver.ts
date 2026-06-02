@@ -1,18 +1,15 @@
 import { resolveTrunkBranch } from '../branch-policy.js';
 import type { EforgeConfig } from '../config.js';
 import type { QueuedPrd } from '../prd-queue.js';
-import { refExists } from '../worktree-ops.js';
 import { getRecordedArtifactRef, loadStackState, lookupLayerByPrdId } from './state.js';
 import { loadArtifactRegistry, lookupArtifactByPrdId } from '../artifacts/registry.js';
-
-export interface StackBaseContext {
-  prdId: string;
-  stackId: string;
-  parentPrdId?: string;
-  provider: 'git-spice';
-  branch: string;
-  baseBranch: string;
-}
+import {
+  isAncestor,
+  resolveRefCommit,
+  resolveTrunkIntegrationRef,
+} from './base-repair.js';
+import type { StackBaseContext } from './types.js';
+export type { StackBaseContext } from './types.js';
 
 export async function resolveStackBaseContext(options: {
   cwd: string;
@@ -37,6 +34,10 @@ export async function resolveStackBaseContext(options: {
     };
   }
 
+  const trunkBranch = await resolveTrunkBranch({ build: config.build }, cwd, config.build.trunkSync?.remote);
+  const trunkRemote = config.build.trunkSync?.remote ?? 'origin';
+  const trunkIntegrationRef = await resolveTrunkIntegrationRef(cwd, trunkBranch, trunkRemote);
+
   // Resolve parent artifact ref: check the provider-neutral artifact registry
   // first (written for all queued builds), then fall back to the stack layer
   // projection (written only for stacked builds).
@@ -58,27 +59,105 @@ export async function resolveStackBaseContext(options: {
     );
   }
 
-  let baseBranch = artifactRef;
-  if (!await refExists(cwd, artifactRef)) {
-    // Try commitSha from registry first, then stack layer fallback.
-    const commitSha = parentArtifactRecord?.commitSha ?? parentLayer?.artifact?.commitSha;
-    if (commitSha && await refExists(cwd, commitSha)) {
-      baseBranch = commitSha;
-    } else {
-      throw new Error(
-        `Cannot resolve stack base for PRD '${prdId}': parent PRD '${parentPrdId}' recorded artifact ref '${artifactRef}' does not resolve. ` +
-        `Rebuild or repair the parent artifact before dispatching the child.`,
-      );
+  const stackId = prd.frontmatter.stack_id ?? parentLayer?.stackId ?? parentPrdId;
+  const parentArtifactCommit = await resolveRefCommit(cwd, artifactRef);
+  if (parentArtifactCommit) {
+    if (await isAncestor(cwd, parentArtifactCommit, trunkIntegrationRef)) {
+      return baseContext({
+        prdId,
+        stackId,
+        parentPrdId,
+        provider,
+        branch,
+        baseBranch: trunkBranch,
+        artifactRef,
+        parentArtifactCommit,
+        originalBaseBranch: artifactRef,
+        effectiveBaseBranch: trunkBranch,
+        trunkBranch,
+        trunkRemote,
+        trunkIntegrationRef,
+        repaired: true,
+      });
     }
+
+    return baseContext({
+      prdId,
+      stackId,
+      parentPrdId,
+      provider,
+      branch,
+      baseBranch: artifactRef,
+      artifactRef,
+      parentArtifactCommit,
+      originalBaseBranch: artifactRef,
+      effectiveBaseBranch: artifactRef,
+      trunkBranch,
+      trunkRemote,
+      trunkIntegrationRef,
+      repaired: false,
+    });
   }
 
+  // Try commitSha from registry first, then stack layer fallback.
+  const recordedCommitSha = parentArtifactRecord?.commitSha ?? parentLayer?.artifact?.commitSha;
+  const recordedCommit = recordedCommitSha ? await resolveRefCommit(cwd, recordedCommitSha) : undefined;
+  if (recordedCommit && await isAncestor(cwd, recordedCommit, trunkIntegrationRef)) {
+    return baseContext({
+      prdId,
+      stackId,
+      parentPrdId,
+      provider,
+      branch,
+      baseBranch: trunkBranch,
+      artifactRef,
+      parentArtifactCommit: recordedCommit,
+      originalBaseBranch: artifactRef,
+      effectiveBaseBranch: trunkBranch,
+      trunkBranch,
+      trunkRemote,
+      trunkIntegrationRef,
+      repaired: true,
+    });
+  }
+
+  throw new Error(
+    `Cannot resolve stack base for PRD '${prdId}': parent PRD '${parentPrdId}' recorded artifact ref '${artifactRef}' ` +
+    `is missing locally, and recorded commit '${recordedCommitSha ?? 'none'}' is not proven integrated into trunk via '${trunkIntegrationRef}'. ` +
+    `Fetch or restore the parent artifact branch, rebuild the parent artifact, or repair stack topology by retargeting the child to trunk '${trunkBranch}' after confirming the parent has landed.`,
+  );
+}
+
+function baseContext(options: {
+  prdId: string;
+  stackId: string;
+  parentPrdId: string;
+  provider: StackBaseContext['provider'];
+  branch: string;
+  baseBranch: string;
+  artifactRef: string;
+  parentArtifactCommit: string;
+  originalBaseBranch: string;
+  effectiveBaseBranch: string;
+  trunkBranch: string;
+  trunkRemote: string;
+  trunkIntegrationRef: string;
+  repaired: boolean;
+}): StackBaseContext {
   return {
-    prdId,
-    // stackId: prefer frontmatter, then parent layer (topology), then parentPrdId fallback.
-    stackId: prd.frontmatter.stack_id ?? parentLayer?.stackId ?? parentPrdId,
-    parentPrdId,
-    provider,
-    branch,
-    baseBranch,
+    prdId: options.prdId,
+    stackId: options.stackId,
+    parentPrdId: options.parentPrdId,
+    provider: options.provider,
+    branch: options.branch,
+    baseBranch: options.baseBranch,
+    parentArtifactRef: options.artifactRef,
+    parentArtifactCommit: options.parentArtifactCommit,
+    originalBaseBranch: options.originalBaseBranch,
+    effectiveBaseBranch: options.effectiveBaseBranch,
+    trunkBranch: options.trunkBranch,
+    trunkRemote: options.trunkRemote,
+    trunkIntegrationRef: options.trunkIntegrationRef,
+    ...(options.repaired ? { repairReason: 'parent-artifact-already-integrated' } : {}),
   };
 }

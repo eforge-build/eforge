@@ -79,7 +79,7 @@ export interface TrunkSyncResult {
  * as repository URLs/paths rather than remote names, which could cause
  * unexpected outbound fetches or credential leakage in diagnostics.
  */
-function validateRemoteName(name: string): string | undefined {
+export function validateRemoteName(name: string): string | undefined {
   if (!name || name.trim() === '') {
     return 'Remote name must not be empty';
   }
@@ -92,7 +92,14 @@ function validateRemoteName(name: string): string | undefined {
   }
   // Reject URL-like or path-like values that git fetch would treat as repo URLs/paths.
   // These are the main security concern: git accepts arbitrary URLs as the remote argument.
-  if (name.includes('://') || name.startsWith('/') || name.startsWith('./') || name.startsWith('../')) {
+  if (
+    name.includes('://')
+    || /^[^/\s]+@[^/\s]+:/.test(name)
+    || name.startsWith('/')
+    || name.startsWith('./')
+    || name.startsWith('../')
+    || name.includes('\\')
+  ) {
     return 'Remote name must be a registered remote name, not a URL or path';
   }
   return undefined;
@@ -103,7 +110,7 @@ function validateRemoteName(name: string): string | undefined {
  * Returns false when the remote is not found or when `git remote` fails
  * (in which case the caller falls back gracefully, same as a fetch failure).
  */
-async function isRegisteredRemote(name: string, cwd: string): Promise<boolean> {
+export async function isRegisteredRemote(name: string, cwd: string): Promise<boolean> {
   try {
     const { stdout } = await execFileAsync('git', ['remote'], { cwd });
     const remotes = stdout.split('\n').map((r) => r.trim()).filter(Boolean);

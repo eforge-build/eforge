@@ -49,6 +49,7 @@ function makeProvider(overrides: Partial<StackProviderAdapter> = {}): StackProvi
   return {
     requireAvailable: async () => undefined,
     trackBranch: async () => commandResult(['branch', 'track']),
+    retargetBranch: async (_cwd, branch, target) => commandResult(['branch', 'onto', target, '--branch', branch]),
     submitBranch: async () => commandResult(['branch', 'submit']),
     submitStack: async () => commandResult(['stack', 'submit']),
     syncRepo: async () => commandResult(['repo', 'sync']),
