@@ -193,5 +193,29 @@ describe('handleBuildResumeState', () => {
     expect(running.planStatuses['plan-01']).toBe('implement');
     expect(failed.planStatuses['plan-01']).toBe('failed');
   });
+
+  it('lets seeded pending plans advance through later lifecycle events', () => {
+    const seeded = reduce(
+      createInitialRunState(),
+      resumeStateEvent({ seededMerged: [], seededPending: ['plan-02'] }),
+      'state',
+    );
+    const running = reduce(seeded, {
+      type: 'plan:status:change',
+      timestamp: '2025-01-01T00:00:01.000Z',
+      planId: 'plan-02',
+      status: 'running',
+    } as EforgeEvent, 'running');
+    const completed = reduce(running, {
+      type: 'plan:status:change',
+      timestamp: '2025-01-01T00:00:02.000Z',
+      planId: 'plan-02',
+      status: 'completed',
+    } as EforgeEvent, 'completed');
+
+    expect(seeded.planStatuses['plan-02']).toBe('plan');
+    expect(running.planStatuses['plan-02']).toBe('implement');
+    expect(completed.planStatuses['plan-02']).toBe('complete');
+  });
 });
 // --- eforge:endregion plan-01-resume-projections ---

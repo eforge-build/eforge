@@ -79,8 +79,23 @@ function overlayBuildStart(data: Record<string, unknown>, map: Map<string, PlanS
   if (Array.isArray(data.dependsOn)) plan.dependsOn = stringArray(data.dependsOn);
 }
 
+function overlayPlanStatusChange(evt: EventRecord, data: Record<string, unknown>, map: Map<string, PlanStatus>): void {
+  const planId = typeof data.planId === 'string' ? data.planId : evt.planId;
+  if (typeof planId !== 'string') return;
+  const status = data.status;
+  if (status === 'pending') {
+    if (!map.has(planId)) map.set(planId, { id: planId, status: 'pending', branch: null, dependsOn: [] });
+  } else if (status === 'running') {
+    ensurePlan(map, planId).status = 'running';
+  } else if (status === 'completed' || status === 'merged') {
+    ensurePlan(map, planId).status = 'completed';
+  } else if (status === 'failed' || status === 'blocked') {
+    ensurePlan(map, planId).status = 'failed';
+  }
+}
+
 function overlayBuildEvents(db: MonitorDB, sessionId: string, map: Map<string, PlanStatus>): void {
-  const overlayTypes = new Set(['build:resume:state', 'plan:build:start', 'plan:build:complete', 'plan:build:failed']);
+  const overlayTypes = new Set(['build:resume:state', 'plan:build:start', 'plan:build:complete', 'plan:build:failed', 'plan:status:change']);
   for (const evt of db.getEventsBySession(sessionId)) {
     if (!overlayTypes.has(evt.type)) continue;
     const data = parseData(evt);
@@ -93,6 +108,8 @@ function overlayBuildEvents(db: MonitorDB, sessionId: string, map: Map<string, P
       if (typeof data.planId === 'string' && map.has(data.planId)) map.get(data.planId)!.status = 'completed';
     } else if (evt.type === 'plan:build:failed') {
       if (typeof data.planId === 'string' && map.has(data.planId)) map.get(data.planId)!.status = 'failed';
+    } else if (evt.type === 'plan:status:change') {
+      overlayPlanStatusChange(evt, data, map);
     }
   }
 }

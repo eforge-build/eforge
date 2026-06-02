@@ -142,6 +142,22 @@ describe('run summary projection', () => {
     db.close();
   });
 
+  it('applies lifecycle status changes to seeded pending plans without build events', () => {
+    const db = openDatabase(':memory:');
+    insertRun(db);
+    db.insertEvent({ runId: 'r1', type: 'build:resume:artifacts', data: resumeArtifacts(), timestamp: ts });
+    db.insertEvent({ runId: 'r1', type: 'build:resume:state', data: event('build:resume:state', { seededMerged: [], seededPending: ['plan-01', 'plan-02'], featureBranch: 'eforge/feature-x', landedCommitCount: 0, diffStat: '0 files changed' }), timestamp: ts });
+    db.insertEvent({ runId: 'r1', type: 'plan:status:change', planId: 'plan-01', data: event('plan:status:change', { planId: 'plan-01', status: 'running' }), timestamp: ts });
+    db.insertEvent({ runId: 'r1', type: 'plan:status:change', planId: 'plan-01', data: event('plan:status:change', { planId: 'plan-01', status: 'merged' }), timestamp: ts });
+    db.insertEvent({ runId: 'r1', type: 'plan:status:change', planId: 'plan-02', data: event('plan:status:change', { planId: 'plan-02', status: 'blocked' }), timestamp: ts });
+
+    expect(projectionBuildRunSummary(db, 's1').plans).toEqual([
+      { id: 'plan-01', status: 'completed', branch: 'resume/plan-01', dependsOn: [] },
+      { id: 'plan-02', status: 'failed', branch: 'resume/plan-02', dependsOn: ['plan-01'] },
+    ]);
+    db.close();
+  });
+
   it('lets later failed build events override seeded merged status', () => {
     const db = openDatabase(':memory:');
     insertRun(db);
