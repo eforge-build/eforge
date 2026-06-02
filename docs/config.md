@@ -116,7 +116,7 @@ build:
 # landing:
 #   action: pr                # pr | merge | leave (default: merge)
 #                             #   pr: open a PR from the artifact branch targeting the resolved base branch
-#                             #       (current base branch for non-stacked builds; parent artifact branch for stacked builds)
+#                             #       (current base branch for non-stacked builds; parent artifact branch for stacked builds unless stale-parent repair retargets to trunk)
 #                             #       requires gh CLI
 #                             #   merge: auto-merge the artifact branch into the base branch
 #                             #   leave: commit to artifact branch and exit without merging or opening a PR
@@ -138,7 +138,9 @@ build:
 # stacking:
 #   enabled: false            # Default false. Set to true to enable git-spice stacking.
 #                             # When enabled, artifact branch PRs target the parent artifact branch
-#                             # instead of the trunk, forming a linear stack.
+#                             # instead of the trunk, forming a linear stack. During landing,
+#                             # eforge can repair a missing integrated parent by retargeting
+#                             # only the child artifact branch to trunk.
 #                             # git-spice must be installed; see docs/stacking.md for setup.
 #   provider: git-spice       # Only "git-spice" is supported in v1.
 #   gitSpice:

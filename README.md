@@ -191,9 +191,9 @@ landing:
   action: pr
 ```
 
-When enabled, each build's artifact branch (`eforge/<prd-id>`) targets the parent artifact branch instead of the trunk, forming a linear stack of pull requests. PRD frontmatter fields `stack_id` (logical stack name) and `stack_parent` (parent PRD id) control the topology. For linear stacks with a single `depends_on` entry, `stack_parent` is inferred automatically.
+When enabled, root PRD artifact branches (`eforge/<prd-id>`) target trunk, while child PRD artifact branches normally target the parent artifact branch to form a linear stack of pull requests. PRD frontmatter fields `stack_id` (logical stack name) and `stack_parent` (parent PRD id) control the topology. For linear stacks with a single `depends_on` entry, `stack_parent` is inferred automatically. During landing, eforge can automatically retarget a child artifact branch to trunk when the missing parent artifact branch is proven integrated into current remote trunk; otherwise landing fails closed.
 
-See [docs/stacking.md](docs/stacking.md) for the full guide including git-spice setup, the branch-per-PR topology, restack expectations, and `landing.action` configuration.
+See [docs/stacking.md](docs/stacking.md) for the full guide including git-spice setup, the branch-per-PR topology, stale-parent landing repair, restack expectations, and `landing.action` configuration.
 
 ## Development
 

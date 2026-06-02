@@ -1,6 +1,6 @@
 # Stacked PRs with git-spice
 
-Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-PR review flow. eforge currently supports stacked pull requests via git-spice. When `stacking.enabled: true` and `landing.action: pr`, each build's artifact branch targets the parent artifact branch instead of the trunk, forming a linear stack of pull requests that reviewers can merge in order.
+Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-PR review flow. eforge currently supports stacked pull requests via git-spice. When `stacking.enabled: true` and `landing.action: pr`, root PRD artifact branches target trunk, while child PRD artifact branches normally target the parent artifact branch. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk.
 
 ## Concepts
 
@@ -170,7 +170,13 @@ When sync runs while active eforge builds are in progress, branches whose worktr
 
 ### Pre-landing reconciliation
 
-Before a stacked build lands, eforge checks whether the parent artifact branch has moved (e.g. due to an upstream merge). If the parent has moved and the stack has diverged, sync should be run before landing to reconcile the stack and ensure each PR targets the correct base.
+Before a stacked build lands, eforge checks whether the child artifact branch's stacked base still exists on the remote. This remote-base preflight protects git-spice submission from stale parent branches that were deleted after their PR merged.
+
+If the parent remote branch is missing and eforge can prove that the parent artifact commit is already an ancestor of trunk, stale-parent landing repair is automatic and branch-scoped: eforge retargets and restacks only the child artifact branch onto trunk, then submits the child PR against trunk. This avoids running a whole-stack restack while preserving the proof that the parent layer is already integrated.
+
+If eforge cannot prove the parent artifact commit is an ancestor of trunk, landing fails closed with an actionable error instead of guessing or mutating the rest of the stack. Restore, submit, or repair the parent branch, or verify the parent changes are integrated before rerunning the build.
+
+`eforge stack sync` remains the command for normal whole-stack maintenance when parent branches move or upstream PRs merge. Stale-parent landing repair is automatic and branch-scoped during landing; use stack sync when you intentionally want git-spice to reconcile the full local stack.
 
 ### Conflict recovery
 

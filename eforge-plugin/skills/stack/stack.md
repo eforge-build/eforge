@@ -7,7 +7,7 @@ argument-hint: "[--dry-run]"
 
 Manually synchronize the git-spice stack for this project. Use `--dry-run` to preview what commands would run without executing them.
 
-This skill covers manual `eforge stack sync` recovery. During stacked PR landing with `landing.action: pr`, eforge attempts automatic provider-encapsulated recovery for provider-classified recoverable restack conflicts before asking for manual intervention.
+This skill covers manual `eforge stack sync` recovery. During stacked PR landing with `landing.action: pr`, eforge attempts automatic provider-encapsulated recovery for provider-classified recoverable restack conflicts before asking for manual intervention. Landing also preflights the remote base: if a missing parent branch's artifact commit is an ancestor of trunk, eforge automatically performs branch-scoped stale-parent repair; otherwise it fails closed with manual stack-base repair guidance.
 
 Stack sync is a daemon-owned operation that runs from the project root. The daemon calls `git-spice repo sync` followed by `git-spice stack restack`. Triggers include: this command (`/eforge:stack`), the CLI (`eforge stack sync`), the `eforge_stack_sync` MCP tool, and — when `stacking.sync.afterBuild: true` is configured — automatically after each build completes.
 
@@ -63,7 +63,7 @@ When `fastForward` is `false`, the local trunk is ahead of `origin/<trunk>`. Syn
 
 ## Step 4: Manual sync conflict recovery
 
-When `outcome` is `"conflict"`, the conflict came from `eforge stack sync`. Do not describe this as the stacked PR landing recovery path; landing recovery runs automatically first for provider-classified recoverable restack conflicts.
+When `outcome` is `"conflict"`, the conflict came from `eforge stack sync`. Do not describe this as the stacked PR landing recovery path; landing recovery runs automatically first for provider-classified recoverable restack conflicts, and stale-parent landing repair is automatic and branch-scoped when parent artifact ancestry proves trunk integration.
 
 When `outcome` is `"conflict"`:
 

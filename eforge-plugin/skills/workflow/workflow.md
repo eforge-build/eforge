@@ -55,7 +55,7 @@ Store the answer as `landing: "merge" | "pr"`.
 > **Does this project use stacked PRs with git-spice?**
 >
 > - **No** — standard single-branch builds.
-> - **Yes** — each build PR targets the parent artifact branch. Requires git-spice installed and `git-spice repo init` run in the repo.
+> - **Yes** — each build PR normally targets the parent artifact branch. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk. Requires git-spice installed and `git-spice repo init` run in the repo.
 
 If yes, confirm the `git-spice` binary location: "Is `git-spice` on your `$PATH`, or is there a custom path?" Default: `git-spice` on `$PATH`.
 

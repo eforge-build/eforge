@@ -316,7 +316,7 @@ For `landing.action: pr`, eforge opens a pull request directly from the artifact
 |---|---|
 | On trunk, no stacking | PR from artifact branch to trunk |
 | On feature branch, no stacking | PR from artifact branch to feature branch |
-| Stacked PRD with `stack_parent` | PR from artifact branch to parent artifact branch |
+| Stacked PRD with `stack_parent` | PR from artifact branch to parent artifact branch, unless stale-parent landing repair proves the parent artifact is integrated and retargets the child artifact branch to trunk |
 
 No local merge into the feature branch is performed. The artifact branch is the PR head and the resolved base is the PR target, giving reviewers a clean diff that reflects only the changes from this build.
 
@@ -337,7 +337,7 @@ The durable provenance guarantee is Git history, not the final tree. Artifact re
 
 ### Stacked PR topology
 
-When `stacking.enabled: true`, the artifact branches form a linear chain. Each artifact branch targets the parent artifact branch (`stack_parent`'s artifact branch) as its PR base. git-spice is the only supported stack provider in v1. See [docs/stacking.md](stacking.md) for setup and operation details.
+When `stacking.enabled: true`, the artifact branches form a linear chain. Each artifact branch targets the parent artifact branch (`stack_parent`'s artifact branch) as its PR base. Before landing, eforge preflights the remote base; if a deleted parent branch's artifact commit is already an ancestor of trunk, eforge performs automatic branch-scoped repair by retargeting only the child artifact branch to trunk, and otherwise fails closed. git-spice is the only supported stack provider in v1. See [docs/stacking.md](stacking.md) for setup and operation details.
 
 ## Monitor
 

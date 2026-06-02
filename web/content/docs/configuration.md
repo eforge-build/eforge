@@ -370,7 +370,7 @@ Within a single build, plans run in parallel automatically as their dependencies
 | `landing.action` | Behavior |
 |-------|----------|
 | `merge` | Merges the artifact branch into the resolved base branch automatically. This is the engine default. |
-| `pr` | Opens a GitHub pull request from the artifact branch targeting the resolved base branch. For non-stacked builds the base is the trunk (or active feature branch). For stacked builds the base is the parent artifact branch. Requires the `gh` CLI. |
+| `pr` | Opens a GitHub pull request from the artifact branch targeting the resolved base branch. For non-stacked builds the base is the trunk (or active feature branch). For stacked builds the base is normally the parent artifact branch; landing can retarget a child to trunk when stale-parent repair proves the parent artifact is already integrated. Requires the `gh` CLI. |
 | `leave` | Leaves the artifact branch in place without merging or creating a PR. Useful when you want to inspect the output or handle the branch manually. |
 
 ```yaml
@@ -405,7 +405,7 @@ landing:
 
 ## Stacked PRs
 
-When `stacking.enabled: true`, each build's artifact branch targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed.
+When `stacking.enabled: true`, each build's artifact branch normally targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk.
 
 ```yaml
 stacking:
@@ -428,7 +428,7 @@ For single-dependency builds (`depends_on` has one entry), `stack_parent` is inf
 
 Set `stacking.sync.afterBuild: true` to have the daemon automatically sync the stack after each queued build reaches a terminal state. When active builds overlap the stack candidates, sync is `deferred` and the daemon retries automatically. Prefer this over `build.postMergeCommands: ["eforge stack sync"]` for automatic sync.
 
-See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup, stack sync, deferred retry, manual sync conflict recovery, and automatic stacked PR landing conflict recovery.
+See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup, stack sync, deferred retry, manual sync conflict recovery, automatic stacked PR landing conflict recovery, and branch-scoped stale-parent landing repair.
 
 ## Trunk Branch Policy
 

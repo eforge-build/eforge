@@ -9,7 +9,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isRegisteredRemote, validateRemoteName } from '../trunk-sync.js';
-import { redactProviderMessage } from './git-spice.js';
 
 const exec = promisify(execFile);
 const REMOTE_QUERY_TIMEOUT_MS = 30_000;
@@ -70,10 +69,19 @@ export type RemoteBranchHeadCommitResult =
       stderr?: string;
     };
 
+function redactRemoteDiagnostic(message: string): string {
+  return message
+    .replace(/https:\/\/[^\s/@]+@/g, 'https://[redacted]@')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+    .replace(/\bgh[oprsu]_[A-Za-z0-9_]+\b/g, '[redacted]')
+    .replace(/\bsk-[A-Za-z0-9]{20,}\b/g, '[redacted]')
+    .replace(/\b(token|password|secret|api[_-]?key|authorization)\s*[:=]\s*[^\s]+/gi, '$1=[redacted]');
+}
+
 function remoteQueryDiagnostic(err: unknown): string | undefined {
   const execErr = err as { killed?: boolean; signal?: string | null; stderr?: string };
   if (execErr.stderr !== undefined && execErr.stderr !== '') {
-    return redactProviderMessage(execErr.stderr);
+    return redactRemoteDiagnostic(execErr.stderr);
   }
   if (execErr.killed === true || execErr.signal === 'SIGTERM') {
     return 'remote query timed out';
