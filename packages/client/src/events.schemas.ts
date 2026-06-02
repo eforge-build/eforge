@@ -145,6 +145,9 @@ export const StackLayerLandingWireSchema = Type.Object({
   status: StackLandingStatusSchema,
   prUrl: Type.Optional(Type.String()),
   reason: Type.Optional(Type.String()),
+  originalBaseBranch: Type.Optional(Type.String()),
+  effectiveBaseBranch: Type.Optional(Type.String()),
+  baseRepairReason: Type.Optional(Type.Literal('parent-artifact-already-integrated')),
   startedAt: Type.String(),
   completedAt: Type.Optional(Type.String()),
 });
@@ -2157,6 +2160,9 @@ const EforgeEventVariantsSchema = Type.Union([
     status: StackLandingStatusSchema,
     prUrl: Type.Optional(Type.String()),
     reason: Type.Optional(Type.String()),
+    originalBaseBranch: Type.Optional(Type.String()),
+    effectiveBaseBranch: Type.Optional(Type.String()),
+    baseRepairReason: Type.Optional(Type.Literal('parent-artifact-already-integrated')),
   }),
   Type.Object({
     type: Type.Literal('stack:landing:conflict:detected'),

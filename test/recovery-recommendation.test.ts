@@ -292,6 +292,97 @@ describe('determineRecoveryRecommendation — manual policy', () => {
     expect(recommendation.verdict).toBe('manual');
   });
 
+  it('returns stack-base manual guidance when git-spice reports the base branch is missing from the remote', () => {
+    const summary: BuildFailureSummary = {
+      prdId: 'test-prd',
+      setName: 'test-set',
+      featureBranch: 'eforge/test-set',
+      baseBranch: 'main',
+      plans: [{ planId: 'plan-01', status: 'failed', error: 'Landing failed' }],
+      failingPlan: { planId: 'plan-01', errorMessage: 'Landing failed' },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: [],
+      failedAt: '2026-05-26T06:15:10.000Z',
+      terminalFailure: {
+        scope: 'landing',
+        message: 'git-spice submit failed: base branch eforge/parent does not exist in the remote',
+        authoritative: true,
+      },
+      landing: {
+        status: 'failed',
+        action: 'pr',
+        reason: 'base branch eforge/parent does not exist in the remote',
+      },
+    };
+
+    const recommendation = determineRecoveryRecommendation(summary);
+    expect(recommendation.verdict).toBe('manual');
+    expect(recommendation.rationale.toLowerCase()).toContain('stack base');
+    expect(recommendation.rationale.toLowerCase()).toContain('ancestor of trunk');
+    expect(recommendation.rationale.toLowerCase()).toContain('automatic');
+    expect(recommendation.rationale.toLowerCase()).toMatch(/restore|submit|repair/);
+    expect(recommendation.rationale).toContain('eforge stack sync');
+  });
+
+  it('returns stack-base manual guidance when git-spice reports the base branch has not been submitted yet', () => {
+    const summary: BuildFailureSummary = {
+      prdId: 'test-prd',
+      setName: 'test-set',
+      featureBranch: 'eforge/test-set',
+      baseBranch: 'main',
+      plans: [{ planId: 'plan-01', status: 'failed', error: 'Landing failed' }],
+      failingPlan: { planId: 'plan-01', errorMessage: 'Landing failed' },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: [],
+      failedAt: '2026-05-26T06:15:10.000Z',
+      terminalFailure: {
+        scope: 'landing',
+        message: 'Stack landing failed',
+        authoritative: true,
+        landing: {
+          status: 'failed',
+          action: 'pr',
+          reason: 'git-spice submit failed: base branch has not been submitted yet',
+        },
+      },
+    };
+
+    const recommendation = determineRecoveryRecommendation(summary);
+    expect(recommendation.verdict).toBe('manual');
+    expect(recommendation.rationale.toLowerCase()).toContain('stack base');
+    expect(recommendation.rationale.toLowerCase()).toContain('ancestor of trunk');
+    expect(recommendation.rationale.toLowerCase()).toContain('rerun');
+    expect(recommendation.rationale.toLowerCase()).toMatch(/restore|submit|repair/);
+    expect(recommendation.rationale).toContain('eforge stack sync');
+  });
+
+  it('keeps generic manual guidance for non-missing-base landing failures without failingPlans', () => {
+    const summary: BuildFailureSummary = {
+      prdId: 'test-prd',
+      setName: 'test-set',
+      featureBranch: 'eforge/test-set',
+      baseBranch: 'main',
+      plans: [{ planId: 'plan-01', status: 'failed', error: 'Landing failed' }],
+      failingPlan: { planId: 'plan-01', errorMessage: 'Landing failed' },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: [],
+      failedAt: '2026-05-26T06:15:10.000Z',
+      landing: {
+        status: 'failed',
+        action: 'pr',
+        reason: 'git-spice submit failed: provider returned an unexpected conflict',
+      },
+    };
+
+    const recommendation = determineRecoveryRecommendation(summary);
+    expect(recommendation.verdict).toBe('manual');
+    expect(recommendation.rationale).toContain('No failingPlans data in summary');
+    expect(recommendation.rationale.toLowerCase()).not.toContain('stack base');
+  });
+
   it('returns manual when a failed plan has non-zero tool use count (meaningful work started)', () => {
     // A plan that performed tool calls has meaningfully started; transient retry
     // policy should not apply when the plan may have partially mutated state.

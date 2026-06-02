@@ -115,7 +115,7 @@ Claude Code has no native TUI profile picker, so emulate the profile selection c
 The build skill uses a **unified landing selector** to determine what happens to the artifact branch when the build finishes. The selector offers these choices:
 
 - **Use project default** — Inherits `landing.action` from `eforge/config.yaml`, or the engine default (`merge`) if unset. **No `landingAction` key is sent in the enqueue body** — the engine resolves the default at build time.
-- **pr** — Open a pull request from the artifact branch.
+- **pr** — Open a pull request from the artifact branch. For direct non-stacked PRs, eforge rebases onto the latest fetched `origin/<baseBranch>` before validation and checks freshness again immediately before PR creation.
 - **merge** — Merge the artifact branch into the base branch directly.
 - **leave** — Commit to the artifact branch and exit without merging or opening a PR.
 
@@ -137,7 +137,7 @@ If `$ARGUMENTS` already contains `--landing-auto-merge`, skip the sub-selector a
 
 When the current branch is a **feature branch**, all choices are available:
 - `merge` merges the artifact branch into the feature branch locally (no PR required).
-- `pr` opens a PR from the artifact branch targeting the feature branch.
+- `pr` opens a PR from the artifact branch targeting the feature branch after direct PR base sync confirms the latest fetched `origin/<baseBranch>`.
 - `leave` commits to the artifact branch and exits.
 
 <!-- parity-skip-start -->

@@ -34,6 +34,19 @@ export {
 
 export type { StackBaseContext } from './base-resolver.js';
 export { resolveStackBaseContext } from './base-resolver.js';
+export type {
+  StackBaseRepairReason,
+  StackBaseRepairEvidence,
+  RemoteBranchExistsResult,
+} from './base-repair.js';
+export {
+  resolveRefCommit,
+  refResolvesToCommit,
+  requireRefCommit,
+  resolveTrunkIntegrationRef,
+  isAncestor,
+  remoteBranchExists,
+} from './base-repair.js';
 export { recordSuccessfulBuildArtifact } from './artifacts.js';
 
 export type {

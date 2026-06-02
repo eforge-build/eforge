@@ -215,7 +215,7 @@ Total variants: 216
 | `planning:decision` | `decision`, `planId` |
 | `stack:layer:recorded` | `artifact`, `baseBranch`, `branch`, `landingAction`, `parentPrdId`, `prdId`, `provider`, `stackId`, `status` |
 | `stack:provider:command` | `args`, `branch`, `command`, `exitCode`, `provider` |
-| `stack:landing:update` | `action`, `branch`, `prUrl`, `prdId`, `reason`, `stackId`, `status` |
+| `stack:landing:update` | `action`, `baseRepairReason`, `branch`, `effectiveBaseBranch`, `originalBaseBranch`, `prUrl`, `prdId`, `reason`, `stackId`, `status` |
 | `stack:landing:conflict:detected` | `branch`, `conflictKind`, `conflictedFiles`, `operation`, `prdId`, `provider`, `stackId` |
 | `stack:landing:conflict:recovery:start` | `attempt`, `branch`, `maxAttempts`, `prdId`, `provider`, `stackId` |
 | `stack:landing:conflict:recovery:complete` | `attempts`, `branch`, `prdId`, `provider`, `stackId` |

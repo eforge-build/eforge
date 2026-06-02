@@ -142,6 +142,7 @@ function makeStackProvider(prUrl: string): StackProviderAdapter {
   return {
     requireAvailable: async () => {},
     trackBranch: async (_cwd, base) => providerResult('git-spice', ['branch', 'track', '--base', base]),
+    retargetBranch: async (_cwd, branch, target) => providerResult('git-spice', ['branch', 'onto', target, '--branch', branch]),
     submitBranch: async () => providerResult('git-spice', ['branch', 'submit'], `Created PR ${prUrl}`),
     submitStack: async () => providerResult('git-spice', ['stack', 'submit']),
     syncRepo: async () => providerResult('git-spice', ['repo', 'sync']),

@@ -90,6 +90,11 @@ export interface StackProviderAdapter {
   trackBranch(cwd: string, base: string): Promise<ProviderCommandResult>;
 
   /**
+   * Branch-scoped topology repair: retarget one branch onto a new base/target.
+   */
+  retargetBranch(cwd: string, branch: string, target: string): Promise<ProviderCommandResult>;
+
+  /**
    * Submit the current branch as a pull request.
    */
   submitBranch(cwd: string): Promise<ProviderCommandResult>;

@@ -118,7 +118,7 @@ Configure the landing action via `landing.action` (values: `pr`, `merge`, `leave
 
 | `landing.action` | Behavior |
 |-----------------|----------|
-| `pr` | Opens a PR from the artifact branch targeting the resolved base branch. The resolved base is the build's current base branch for non-stacked builds (often trunk, but it may be a feature branch). For stacked builds, the root PR targets the resolved trunk branch and child PRs target their parent artifact branch. |
+| `pr` | Opens a PR from the artifact branch targeting the resolved base branch. For direct non-stacked builds, eforge fetches `origin/<baseBranch>`, rebases the artifact branch onto that fetched base before validation, and checks freshness again immediately before PR creation. For stacked builds, the root PR targets the resolved trunk branch and child PRs target their parent artifact branch unless eforge proves a missing parent base is already integrated into trunk and performs branch-scoped stale-parent landing repair. |
 | `merge` | Merges the artifact branch into the base branch directly. |
 | `leave` | Leaves the artifact branch in place for manual inspection or cherry-picking. |
 
@@ -128,7 +128,7 @@ During each plan build, extensions may contribute validation providers that run 
 
 ## Stacked PRs
 
-Stacked PR landing is optional. When `stacking.enabled: true` and `landing.action: pr` are set in `eforge/config.yaml`, builds form a **branch-per-PR stack**. The root artifact branch targets the resolved trunk branch, and each child artifact branch targets its parent artifact branch. eforge currently uses git-spice to track branches and submit PRs into the stack.
+Stacked PR landing is optional. When `stacking.enabled: true` and `landing.action: pr` are set in `eforge/config.yaml`, builds form a **branch-per-PR stack**. The root artifact branch targets the resolved trunk branch, and each child artifact branch normally targets its parent artifact branch. If a parent branch was deleted after merge and the parent artifact commit is an ancestor of trunk, eforge can automatically collapse only the child artifact branch onto trunk during landing. eforge currently uses git-spice to track branches and submit PRs into the stack.
 
 PRD frontmatter controls the stack topology: `stack_id` is a logical stack name shared by all PRDs in the stack; `stack_parent` is the parent PRD id. For single-dependency builds, `stack_parent` is inferred automatically from `depends_on`. See the [Stacked PRs](/docs/stacking) guide for setup instructions.
 

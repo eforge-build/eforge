@@ -161,6 +161,14 @@ export class GitSpiceAdapter {
   }
 
   /**
+   * Retarget a single branch onto a new target.
+   * Runs: git-spice branch onto <target> --branch=<branch>
+   */
+  async retargetBranch(cwd: string, branch: string, target: string): Promise<ProviderCommandResult> {
+    return this.run(cwd, ['branch', 'onto', target, '--branch', branch]);
+  }
+
+  /**
    * Submit the current branch as a pull request.
    * Runs: git-spice branch submit --fill --no-web --no-prompt
    *

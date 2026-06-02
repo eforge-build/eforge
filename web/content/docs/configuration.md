@@ -370,7 +370,7 @@ Within a single build, plans run in parallel automatically as their dependencies
 | `landing.action` | Behavior |
 |-------|----------|
 | `merge` | Merges the artifact branch into the resolved base branch automatically. This is the engine default. |
-| `pr` | Opens a GitHub pull request from the artifact branch targeting the resolved base branch. For non-stacked builds the base is the trunk (or active feature branch). For stacked builds the base is the parent artifact branch. Requires the `gh` CLI. |
+| `pr` | Opens a GitHub pull request from the artifact branch targeting the resolved base branch. For direct non-stacked builds, eforge fetches `origin/<baseBranch>`, rebases the artifact branch before validation, and checks freshness again immediately before PR creation. For stacked builds the base is normally the parent artifact branch; landing can retarget a child to trunk when stale-parent repair proves the parent artifact is already integrated. Requires the `gh` CLI. |
 | `leave` | Leaves the artifact branch in place without merging or creating a PR. Useful when you want to inspect the output or handle the branch manually. |
 
 ```yaml
@@ -405,7 +405,7 @@ landing:
 
 ## Stacked PRs
 
-When `stacking.enabled: true`, each build's artifact branch targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed.
+When `stacking.enabled: true`, each build's artifact branch normally targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk.
 
 ```yaml
 stacking:
@@ -428,7 +428,7 @@ For single-dependency builds (`depends_on` has one entry), `stack_parent` is inf
 
 Set `stacking.sync.afterBuild: true` to have the daemon automatically sync the stack after each queued build reaches a terminal state. When active builds overlap the stack candidates, sync is `deferred` and the daemon retries automatically. Prefer this over `build.postMergeCommands: ["eforge stack sync"]` for automatic sync.
 
-See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup, stack sync, deferred retry, manual sync conflict recovery, and automatic stacked PR landing conflict recovery.
+See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup, stack sync, deferred retry, manual sync conflict recovery, automatic stacked PR landing conflict recovery, and branch-scoped stale-parent landing repair.
 
 ## Trunk Branch Policy
 
@@ -481,9 +481,9 @@ build:
 
 **Validation and failure before compile:** the `remote` value is validated before the fetch runs. It must be a registered git remote name: non-empty, must not start with `-`, must contain no whitespace or control characters, and must not be a URL (containing `://`) or path (starting with `/`, `./`, or `../`). The resolved trunk branch must also be a valid git branch refname. Invalid values fail the build before compile - they do not fall back to the fetch-unavailable behavior. Use `enabled: false` to skip trunk sync for offline or local-only workflows.
 
-**What it does not do:** `trunkSync` only fetches and selects a base ref. It does not checkout, pull, reset, rebase, or move local branch refs or your working tree. Only FETCH_HEAD is updated as part of the fetch.
+**What it does not do:** `trunkSync` only fetches and selects a base ref. It does not checkout, pull, reset, rebase, or move local branch refs or your working tree. Only FETCH_HEAD is updated as part of the fetch. Direct PR base sync is separate: direct non-stacked PR publication later fetches `origin/<baseBranch>`, rebases the artifact branch before validation, and runs a final pre-PR freshness guard.
 
-**Scope:** only applies to queued root builds whose candidate base is the trunk branch. Child stacked PRDs use the parent artifact ref unchanged. Builds queued from a non-trunk feature branch are not retargeted.
+**Scope:** only applies to queued root builds whose candidate base is the trunk branch. Child stacked PRDs use the parent artifact ref unchanged. Builds queued from a non-trunk feature branch are not retargeted. Direct PR base sync applies later only to direct non-stacked `landing.action: pr` publication, including non-trunk feature bases.
 
 ### Disabling trunk sync
 
@@ -499,7 +499,9 @@ build:
 
 `build.trunkSync` selects a fresh compile base before a build starts. It runs once, before the merge worktree is created, and does not affect the stack topology.
 
-`eforge stack sync` (git-spice) restacks the in-flight PR stack after trunk has been updated - a separate operation that modifies the stack structure. These two features are independent and address different points in the build lifecycle.
+Direct PR base sync is a later mutating publication gate for direct non-stacked `landing.action: pr` builds. After all plans merge and before validation, eforge fetches `origin/<baseBranch>` and rebases the artifact branch onto that fetched base. Immediately before PR creation, eforge fetches the base again; if it advanced after validation, eforge performs a bounded resync plus command validation and PRD/acceptance validation retry before attempting the PR again. If the retry budget is exhausted or sync cannot complete, landing fails closed with `landing:skipped` rather than opening a stale PR.
+
+Stacked PR landing remains delegated to git-spice restacking (`eforge stack sync`) and does not use direct PR base sync. Stack restacking updates the in-flight stack topology after trunk has been updated - a separate concern from selecting a fresh compile base before a build begins.
 
 ## Per-Role Tuning
 

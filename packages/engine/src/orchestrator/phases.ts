@@ -20,6 +20,14 @@ import { execWithTimeout } from '../exec-with-timeout.js';
 import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS, normalizePostMergeCommandTimeoutMs } from '../config.js';
 import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
 import { executeLandingAction, type LandingResult } from '../landing.js';
+import {
+  DEFAULT_DIRECT_PR_FRESHNESS_RETRIES,
+  DIRECT_PR_REMOTE,
+  checkDirectPrBaseFreshness,
+  describeDirectPrBaseSyncPoint,
+  syncDirectPrBase,
+  type DirectPrBaseSyncPoint,
+} from '../direct-pr-base-sync.js';
 import { renderPullRequestMetadata } from '../pr-metadata.js';
 import { collectBuildArtifactProvenance } from '../provenance.js';
 import type { EforgeConfig, LandingConfig } from '../config.js';
@@ -115,6 +123,8 @@ export interface PhaseContext {
    *  Reset at the start of each validate attempt, then passed to prdValidate so the
    *  PRD validator can cite deterministic command execution as evidence. */
   validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }>;
+  /** Latest successful direct non-stacked PR base synchronization point. */
+  directPrBaseSync?: DirectPrBaseSyncPoint;
 }
 
 /**
@@ -193,6 +203,44 @@ function policyBlockReason(prefix: string, decision: { decision: string; reason?
 
 function hasPolicyGates(ctx: PhaseContext, gateKind: 'plan-merge' | 'final-merge'): boolean {
   return (ctx.extensionRegistry?.policyGates ?? []).some((registration) => registration.gateKind === gateKind);
+}
+
+export function isDirectPrBaseSyncApplicable(ctx: PhaseContext): boolean {
+  return ctx.landingAction === 'pr' && ctx.stackContext === undefined;
+}
+
+export async function* syncDirectPrBaseBeforeValidation(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
+  if (!isDirectPrBaseSyncApplicable(ctx)) return;
+
+  const result = await syncDirectPrBase({
+    cwd: ctx.mergeWorktreePath,
+    featureBranch: ctx.featureBranch,
+    baseBranch: ctx.config.baseBranch,
+    remote: DIRECT_PR_REMOTE,
+    mergeResolver: ctx.mergeResolver,
+  });
+
+  if (result.ok) {
+    ctx.directPrBaseSync = result.point;
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'planning:progress',
+      message: describeDirectPrBaseSyncPoint(result.point),
+    } as EforgeEvent;
+    return;
+  }
+
+  const reason = `Direct PR base sync failed for baseBranch '${ctx.config.baseBranch}': ${result.message}`;
+  yield {
+    timestamp: new Date().toISOString(),
+    type: 'landing:skipped',
+    action: ctx.landingAction,
+    featureBranch: ctx.featureBranch,
+    baseBranch: ctx.config.baseBranch,
+    reason,
+  } as EforgeEvent;
+  ctx.state.status = 'failed';
+  ctx.state.completedAt = new Date().toISOString();
 }
 
 /**
@@ -1046,12 +1094,12 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
     validationTimeoutMs: ctx.postMergeCommandTimeoutMs,
     signal: ctx.signal,
     // --- eforge:endregion stack-landing-recovery ---
-    // Static metadata is the base; metadataFactory adds provenance when cleanup context is available.
-    metadata: renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker }),
-    metadataFactory: ctx.cleanupPlanSet && ctx.cleanupOutputDir ? async () => {
-      const r = await collectBuildArtifactProvenance(ctx.mergeWorktreePath, { planSetName: ctx.cleanupPlanSet!, outputDir: ctx.cleanupOutputDir!, prdArtifactPath: ctx.cleanupPrdFilePath }).catch(() => []);
-      return renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: ctx.stackContext!.baseBranch ?? ctx.config.baseBranch, modelTracker: ctx.modelTracker, provenanceRefs: r.length > 0 ? r : undefined });
-    } : undefined,
+    metadataFactory: async ({ effectiveBaseBranch }) => {
+      const r = ctx.cleanupPlanSet && ctx.cleanupOutputDir
+        ? await collectBuildArtifactProvenance(ctx.mergeWorktreePath, { planSetName: ctx.cleanupPlanSet, outputDir: ctx.cleanupOutputDir, prdArtifactPath: ctx.cleanupPrdFilePath }).catch(() => [])
+        : [];
+      return renderPullRequestMetadata({ config: ctx.config, featureBranch: ctx.stackContext!.branch, baseBranch: effectiveBaseBranch, modelTracker: ctx.modelTracker, provenanceRefs: r.length > 0 ? r : undefined });
+    },
   })) {
     if (event.type === 'stack:landing:update' && effectiveLandingAction === 'pr') {
       if (event.status === 'complete') {
@@ -1130,6 +1178,91 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
       ctx.state.completedAt = new Date().toISOString();
     }
   }
+}
+
+type FinalizeLandingInput = { action: LandingConfig['action']; featureBranch: string; commitMessage: string; rawCommitBody: string };
+type FinalizeLandingRun = { landingResult: LandingResult; landingStartedAt?: string; landingTerminalReason?: string };
+
+function createDirectPrFreshnessGuard(ctx: PhaseContext) {
+  return async () => {
+    const point = ctx.directPrBaseSync;
+    if (!point) return { ok: false as const, retryable: false, reason: `Direct PR freshness guard missing prior base sync for baseBranch '${ctx.config.baseBranch}'` };
+    const result = await checkDirectPrBaseFreshness({ cwd: ctx.mergeWorktreePath, syncPoint: point });
+    if (result.kind === 'fresh') return { ok: true as const };
+    if (result.kind === 'base-advanced') return {
+      ok: false as const,
+      retryable: true,
+      reason: `Remote base '${result.remote}/${result.baseBranch}' advanced from validated ${result.validatedBaseSha.slice(0, 12)} to ${result.fetchedBaseSha.slice(0, 12)}`,
+      fetchedBaseSha: result.fetchedBaseSha,
+    };
+    return { ok: false as const, retryable: false, reason: `Direct PR freshness guard failed for baseBranch '${result.baseBranch}': ${result.reason}` };
+  };
+}
+
+async function* runDirectPrFinalFreshnessValidationCycle(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
+  const gapCloseAlreadyPerformed = ctx.gapClosePerformed;
+  yield* validate(ctx);
+  if ((ctx.state.status as string) === 'failed') return;
+  yield* prdValidate(ctx);
+  if ((ctx.state.status as string) !== 'failed' && !gapCloseAlreadyPerformed && ctx.gapClosePerformed) {
+    yield* validate(ctx);
+    if ((ctx.state.status as string) !== 'failed') yield* prdValidate(ctx);
+  }
+}
+
+async function* runFinalizeLandingAttempt(ctx: PhaseContext, input: FinalizeLandingInput, enableDirectPrGuard: boolean): AsyncGenerator<EforgeEvent, FinalizeLandingRun> {
+  const guard = enableDirectPrGuard ? createDirectPrFreshnessGuard(ctx) : undefined;
+  const landingGen = executeLandingAction({
+    action: input.action, featureBranch: input.featureBranch, baseBranch: ctx.config.baseBranch,
+    repoRoot: ctx.repoRoot, mergeWorktreePath: ctx.mergeWorktreePath, worktreeManager: ctx.worktreeManager,
+    mergeResolver: ctx.mergeResolver, modelTracker: ctx.modelTracker, commitMessage: input.commitMessage,
+    rawCommitBody: input.rawCommitBody, signal: ctx.signal, shouldCleanup: ctx.shouldCleanup,
+    cleanupPlanSet: ctx.cleanupPlanSet, cleanupOutputDir: ctx.cleanupOutputDir, cleanupPrdFilePath: ctx.cleanupPrdFilePath,
+    state: ctx.state, config: ctx.config, engineConfig: ctx.engineConfig, prAutoMergePolicy: ctx.prAutoMergePolicy,
+    landingAutoMerge: ctx.landingAutoMerge, beforePushFreshnessGuard: guard, beforeCreateFreshnessGuard: guard,
+    forceWithLease: enableDirectPrGuard,
+  });
+  let landingResult: LandingResult = { landingSucceeded: false };
+  let landingStartedAt: string | undefined;
+  let landingTerminalReason: string | undefined;
+  while (true) {
+    const next = await landingGen.next();
+    if (next.done) { landingResult = next.value; break; }
+    if (next.value.type === 'landing:start') landingStartedAt = next.value.timestamp;
+    if (next.value.type === 'landing:skipped') landingTerminalReason = next.value.reason;
+    yield next.value;
+  }
+  return { landingResult, landingStartedAt, landingTerminalReason };
+}
+
+async function* runDirectPrLandingWithFreshnessRetries(ctx: PhaseContext, input: FinalizeLandingInput): AsyncGenerator<EforgeEvent, FinalizeLandingRun> {
+  let retries = 0;
+  while (true) {
+    const attempt = yield* runFinalizeLandingAttempt(ctx, input, true);
+    if (!attempt.landingResult.freshnessRetry) return attempt;
+    if (retries >= DEFAULT_DIRECT_PR_FRESHNESS_RETRIES) {
+      const reason = `Direct PR base '${ctx.config.baseBranch}' advanced after validation and freshness retry budget exhausted after ${DEFAULT_DIRECT_PR_FRESHNESS_RETRIES} retry(s)`;
+      yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action: ctx.landingAction, featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason } as EforgeEvent;
+      ctx.state.status = 'failed'; ctx.state.completedAt = new Date().toISOString();
+      return { ...attempt, landingResult: { landingSucceeded: false }, landingTerminalReason: reason };
+    }
+    retries += 1;
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Direct PR base '${ctx.config.baseBranch}' advanced after validation; retrying base sync and validation (${retries}/${DEFAULT_DIRECT_PR_FRESHNESS_RETRIES})` } as EforgeEvent;
+    yield* syncDirectPrBaseBeforeValidation(ctx);
+    if ((ctx.state.status as string) === 'failed') return { ...attempt, landingResult: { landingSucceeded: false } };
+    yield* runDirectPrFinalFreshnessValidationCycle(ctx);
+    if ((ctx.state.status as string) === 'failed') return { ...attempt, landingResult: { landingSucceeded: false } };
+    if (ctx.prdId) {
+      yield* recordArtifact(ctx);
+      if ((ctx.state.status as string) === 'failed') return { ...attempt, landingResult: { landingSucceeded: false } };
+    }
+  }
+}
+
+async function* runFinalizeLanding(ctx: PhaseContext, input: FinalizeLandingInput): AsyncGenerator<EforgeEvent, FinalizeLandingRun> {
+  return isDirectPrBaseSyncApplicable(ctx)
+    ? yield* runDirectPrLandingWithFreshnessRetries(ctx, input)
+    : yield* runFinalizeLandingAttempt(ctx, input, false);
 }
 
 /**
@@ -1221,44 +1354,15 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       // Stack landing already completed; finalize considers this a success.
       // No additional events — stack:landing:update already covers the outcome.
     } else {
-    // Delegate to executeLandingAction for dirty-tree check, cleanup, and the chosen action.
-    const landingGen = executeLandingAction({
+    const landingRun = yield* runFinalizeLanding(ctx, {
       action,
       featureBranch,
-      baseBranch: config.baseBranch,
-      repoRoot: ctx.repoRoot,
-      mergeWorktreePath: ctx.mergeWorktreePath,
-      worktreeManager: ctx.worktreeManager,
-      mergeResolver: ctx.mergeResolver,
-      modelTracker: ctx.modelTracker,
       commitMessage,
       rawCommitBody,
-      signal: ctx.signal,
-      shouldCleanup: ctx.shouldCleanup,
-      cleanupPlanSet: ctx.cleanupPlanSet,
-      cleanupOutputDir: ctx.cleanupOutputDir,
-      cleanupPrdFilePath: ctx.cleanupPrdFilePath,
-      state,
-      config,
-      engineConfig: ctx.engineConfig,
-      prAutoMergePolicy: ctx.prAutoMergePolicy,
-      landingAutoMerge: ctx.landingAutoMerge,
     });
-
-    // Manually iterate to capture the generator return value (LandingResult).
-    let landingResult: LandingResult = { landingSucceeded: false };
-    let landingStartedAt: string | undefined;
-    let landingTerminalReason: string | undefined;
-    while (true) {
-      const next = await landingGen.next();
-      if (next.done) {
-        landingResult = next.value;
-        break;
-      }
-      if (next.value.type === 'landing:start') landingStartedAt = next.value.timestamp;
-      if (next.value.type === 'landing:skipped') landingTerminalReason = next.value.reason;
-      yield next.value;
-    }
+    const landingResult = landingRun.landingResult;
+    const landingStartedAt = landingRun.landingStartedAt;
+    const landingTerminalReason = landingRun.landingTerminalReason;
     ctx.landingSucceeded = landingResult.landingSucceeded;
 
     // Finalize artifact metadata after generic landing for queued builds.

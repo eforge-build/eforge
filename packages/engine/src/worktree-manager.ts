@@ -63,6 +63,24 @@ export interface CleanupReport {
   failed: string[];
 }
 
+export type PullRequestFreshnessGuardResult =
+  | { ok: true }
+  | { ok: false; retryable: boolean; reason: string; fetchedBaseSha?: string };
+
+export type PullRequestFreshnessGuard = () => Promise<PullRequestFreshnessGuardResult>;
+
+export class PullRequestFreshnessError extends Error {
+  readonly retryable: boolean;
+  readonly fetchedBaseSha?: string;
+
+  constructor(result: Extract<PullRequestFreshnessGuardResult, { ok: false }>) {
+    super(result.reason);
+    this.name = 'PullRequestFreshnessError';
+    this.retryable = result.retryable;
+    this.fetchedBaseSha = result.fetchedBaseSha;
+  }
+}
+
 export class WorktreeManager {
   private readonly repoRoot: string;
   private readonly worktreeBase: string;
@@ -315,8 +333,8 @@ export class WorktreeManager {
   /**
    * Push the feature branch to the remote with tracking set.
    */
-  async pushFeatureBranch(remote = 'origin'): Promise<void> {
-    return pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch, remote);
+  async pushFeatureBranch(remote = 'origin', opts: { forceWithLease?: boolean } = {}): Promise<void> {
+    return pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch, remote, opts);
   }
 
   /**
@@ -333,19 +351,35 @@ export class WorktreeManager {
   async issuePr(opts: {
     baseBranch: string;
     metadata?: PullRequestMetadata;
+    forceWithLease?: boolean;
+    beforePushFreshnessGuard?: PullRequestFreshnessGuard;
+    beforeCreateFreshnessGuard?: PullRequestFreshnessGuard;
   }): Promise<{ url: string }> {
     await ensureGhAvailable(this.mergeWorktreePath);
 
+    const runFreshnessGuard = async (guard: PullRequestFreshnessGuard | undefined): Promise<void> => {
+      if (!guard) return;
+      const result = await guard();
+      if (!result.ok) throw new PullRequestFreshnessError(result);
+    };
+
+    await runFreshnessGuard(opts.beforePushFreshnessGuard);
+
     // Direct PR workflow: push featureBranch, open PR featureBranch -> baseBranch
-    await pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch);
+    await pushFeatureBranchOp(this.mergeWorktreePath, this.featureBranch, 'origin', {
+      forceWithLease: opts.forceWithLease,
+    });
     try {
       const metadata = opts.metadata ?? { title: this.featureBranch, body: '' };
+      await runFreshnessGuard(opts.beforeCreateFreshnessGuard);
       return await createPullRequestOp(this.mergeWorktreePath, {
         baseBranch: opts.baseBranch,
         featureBranch: this.featureBranch,
         metadata,
       });
     } catch (err) {
+      if (err instanceof PullRequestFreshnessError) throw err;
+      await runFreshnessGuard(opts.beforeCreateFreshnessGuard);
       // PR may already exist — retrieve its URL
       const existing = await getExistingPullRequestUrl(this.mergeWorktreePath, this.featureBranch, {
         baseBranch: opts.baseBranch,

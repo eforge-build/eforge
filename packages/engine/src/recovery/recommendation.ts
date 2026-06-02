@@ -58,6 +58,44 @@ function hasCompletedOrMergedPlans(summary: BuildFailureSummary): boolean {
   return false;
 }
 
+const GIT_SPICE_MISSING_BASE_PATTERNS = [
+  /base branch\b[\s\S]*\bdoes not exist in the remote/i,
+  /base branch(?:\s+\S+)?\s+has not been submitted yet/i,
+];
+
+function normalizeFailureMessage(message: string): string {
+  return message.replace(/\s+/g, ' ').trim();
+}
+
+function isGitSpiceMissingBaseMessage(message: string | undefined): boolean {
+  if (typeof message !== 'string' || message.trim().length === 0) {
+    return false;
+  }
+  const normalized = normalizeFailureMessage(message);
+  return GIT_SPICE_MISSING_BASE_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+function hasGitSpiceMissingBaseLandingFailure(summary: BuildFailureSummary): boolean {
+  const terminal = summary.terminalFailure;
+  const terminalIsLanding = terminal?.scope === 'landing' || terminal?.stage === 'landing';
+  const summaryLandingFailed = summary.landing?.status === 'failed';
+  const messages = [
+    ...(terminalIsLanding ? [terminal?.message, terminal?.landing?.reason] : []),
+    ...(summaryLandingFailed ? [summary.landing?.reason] : []),
+  ];
+  return messages.some(isGitSpiceMissingBaseMessage);
+}
+
+function stackBaseMissingRecommendation(): RecoveryRecommendation {
+  return {
+    verdict: 'manual',
+    rationale:
+      'Stack base landing failure detected: git-spice reported that the stacked base branch is missing or has not been submitted, so this is a stack base repair issue rather than a code/build failure. ' +
+      'Verify whether the parent artifact commit is an ancestor of trunk. If the parent artifact is already integrated into trunk, rerun the build/landing with the new automatic branch-scoped landing repair so eforge can collapse the child artifact branch onto trunk before submission. ' +
+      'If the parent artifact is not an ancestor of trunk, restore, submit, or repair the parent branch first; use eforge stack sync for normal whole-stack maintenance and then retry landing once the stack base is valid.',
+  };
+}
+
 /**
  * Synthesize a minimal placeholder `suggestedSuccessorPrd` for use in deterministic
  * split verdicts that have no analyst-generated successor. The placeholder covers all
@@ -126,6 +164,10 @@ export function determineRecoveryRecommendation(
   }
 
   const failingPlans = summary.failingPlans;
+
+  if (hasGitSpiceMissingBaseLandingFailure(summary)) {
+    return stackBaseMissingRecommendation();
+  }
 
   // No failingPlans → cannot determine terminal subtypes → manual
   if (!failingPlans || failingPlans.length === 0) {

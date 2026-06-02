@@ -71,7 +71,7 @@ When `build.cleanupPlanFiles: true` (default), committed build artifacts are rem
 
 <img src="docs/images/monitor-timeline.png" alt="eforge dashboard - timeline view" width="800">
 
-**Queue and merge** - Completed builds merge back to the base branch as merge commits via `--no-ff`, preserving the full branch history while keeping first-parent history clean. When the next build starts from the queue, the planner re-evaluates against the current codebase - so plans adapt to changes that landed since they were enqueued.
+**Queue and merge** - Completed builds merge back to the base branch as merge commits via `--no-ff`, preserving the full branch history while keeping first-parent history clean. When `landing.action: pr` is used without stacking, eforge fetches the latest remote base, rebases the artifact branch before validation, and checks freshness again immediately before opening the PR. When the next build starts from the queue, the planner re-evaluates against the current codebase - so plans adapt to changes that landed since they were enqueued.
 
 <img src="docs/images/eforge-commits.png" alt="eforge commits from an expedition build" width="800">
 
@@ -191,9 +191,9 @@ landing:
   action: pr
 ```
 
-When enabled, each build's artifact branch (`eforge/<prd-id>`) targets the parent artifact branch instead of the trunk, forming a linear stack of pull requests. PRD frontmatter fields `stack_id` (logical stack name) and `stack_parent` (parent PRD id) control the topology. For linear stacks with a single `depends_on` entry, `stack_parent` is inferred automatically.
+When enabled, root PRD artifact branches (`eforge/<prd-id>`) target trunk, while child PRD artifact branches normally target the parent artifact branch to form a linear stack of pull requests. PRD frontmatter fields `stack_id` (logical stack name) and `stack_parent` (parent PRD id) control the topology. For linear stacks with a single `depends_on` entry, `stack_parent` is inferred automatically. During landing, eforge can automatically retarget a child artifact branch to trunk when the missing parent artifact branch is proven integrated into current remote trunk; otherwise landing fails closed.
 
-See [docs/stacking.md](docs/stacking.md) for the full guide including git-spice setup, the branch-per-PR topology, restack expectations, and `landing.action` configuration.
+See [docs/stacking.md](docs/stacking.md) for the full guide including git-spice setup, the branch-per-PR topology, stale-parent landing repair, restack expectations, and `landing.action` configuration.
 
 ## Development
 

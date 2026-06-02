@@ -469,8 +469,12 @@ export async function pushFeatureBranch(
   cwd: string,
   branch: string,
   remote = 'origin',
+  opts: { forceWithLease?: boolean } = {},
 ): Promise<void> {
-  await exec('git', ['push', '-u', remote, branch], { cwd });
+  const args = ['push', '-u'];
+  if (opts.forceWithLease) args.push('--force-with-lease');
+  args.push(remote, branch);
+  await exec('git', args, { cwd });
 }
 
 /**
