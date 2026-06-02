@@ -26,6 +26,16 @@ describe('playbook routes', () => {
     try { await seedPlaybook(h.cwd); expect((await h.postJson(API_ROUTES.playbookRun, { name: 'demo' })).status).toBe(200); expect((await h.postJson(API_ROUTES.playbookRun, { name: 'demo', landingAction: 'bad' })).status).toBe(400); }
     finally { await h.close(); }
   });
+  it('validates create-from-playbook optional fields', async () => {
+    const h = await startContentRouteHarness();
+    try {
+      await seedPlaybook(h.cwd);
+      expect((await h.postJson(API_ROUTES.sessionPlanCreateFromPlaybook, { playbook_name: 'demo', session: 1 })).status).toBe(400);
+      expect((await h.postJson(API_ROUTES.sessionPlanCreateFromPlaybook, { playbook_name: 'demo', session: 'bad' })).status).toBe(400);
+      expect((await h.postJson(API_ROUTES.sessionPlanCreateFromPlaybook, { playbook_name: 'demo', topic: {} })).status).toBe(400);
+    } finally { await h.close(); }
+  });
+
   it('maps create-from-playbook not found', async () => {
     const h = await startContentRouteHarness();
     try { await seedPlaybook(h.cwd); expect((await h.postJson(API_ROUTES.sessionPlanCreateFromPlaybook, { playbook_name: 'missing' })).status).toBe(404); }

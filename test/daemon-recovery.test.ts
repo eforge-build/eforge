@@ -197,7 +197,7 @@ describe('GET /api/recovery/sidecar', () => {
 
     const v2Sidecar = {
       schemaVersion: 2,
-      summary: { prdId: 'test-prd', setName: 'test-set', partial: true },
+      summary: { prdId: 'test-prd', setName: 'test-set', featureBranch: 'eforge/test-set', baseBranch: 'main', plans: [{ planId: 'plan-01', status: 'failed' }], failingPlan: { planId: 'plan-01' }, landedCommits: [], diffStat: '', modelsUsed: [], failedAt: new Date(0).toISOString(), partial: true },
       verdict: { verdict: 'manual', confidence: 'low', rationale: 'Missing context', completedWork: [], remainingWork: [], risks: [], partial: true, recoveryError: 'context was incomplete' },
       generatedAt: new Date().toISOString(),
     };

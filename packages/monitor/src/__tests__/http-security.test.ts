@@ -11,9 +11,12 @@ afterEach(async () => {
 });
 
 describe('security classifiers', () => {
-  it('accepts loopback remote addresses', () => {
-    for (const value of [undefined, '::1', '::ffff:127.0.0.1', '127.0.0.1']) {
+  it('accepts loopback remote addresses and rejects missing or non-IP peers', () => {
+    for (const value of ['::1', '::ffff:127.0.0.1', '127.0.0.1']) {
       expect(isLoopbackRemoteAddress(value)).toBe(true);
+    }
+    for (const value of [undefined, '127.0.0.1.evil.example', '192.0.2.1']) {
+      expect(isLoopbackRemoteAddress(value)).toBe(false);
     }
   });
 

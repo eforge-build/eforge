@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { parseWithSchema } from '@eforge-build/client';
+import { parseWithSchema, safeParseEforgeEvent } from '@eforge-build/client';
 import type { RecoveryVerdictSidecar } from '@eforge-build/client';
 import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
 import type { MonitorContext } from '../context.js';
@@ -22,8 +22,21 @@ export async function readRecoverySidecar(context: MonitorContext, prdId: string
   let jsonContent: string;
   try { [markdown, jsonContent] = await Promise.all([readFile(mdPath, 'utf-8'), readFile(jsonPath, 'utf-8')]); }
   catch { throw new HttpRouteError(404, 'Recovery sidecar not found'); }
-  try { return { markdown, json: JSON.parse(jsonContent) as RecoveryVerdictSidecar }; }
+  return { markdown, json: parseRecoverySidecar(jsonContent, prdId) };
+}
+
+function parseRecoverySidecar(jsonContent: string, prdId: string): RecoveryVerdictSidecar {
+  let parsed: unknown;
+  try { parsed = JSON.parse(jsonContent); }
   catch { throw new HttpRouteError(500, `Recovery sidecar JSON is malformed for prdId: ${prdId}`); }
+  if (typeof parsed !== 'object' || parsed === null) throw new HttpRouteError(500, `Recovery sidecar JSON is invalid for prdId: ${prdId}`);
+  const sidecar = parsed as Record<string, unknown>;
+  if (typeof sidecar.schemaVersion !== 'number' || typeof sidecar.generatedAt !== 'string') throw new HttpRouteError(500, `Recovery sidecar JSON is invalid for prdId: ${prdId}`);
+  const summary = safeParseEforgeEvent({ type: 'recovery:summary', timestamp: sidecar.generatedAt, prdId, summary: sidecar.summary });
+  if (!summary.success) throw new HttpRouteError(500, `Recovery sidecar summary is invalid for prdId: ${prdId}`);
+  const verdict = safeParseEforgeEvent({ type: 'recovery:complete', timestamp: sidecar.generatedAt, prdId, verdict: sidecar.verdict });
+  if (!verdict.success) throw new HttpRouteError(500, `Recovery sidecar verdict is invalid for prdId: ${prdId}`);
+  return { schemaVersion: sidecar.schemaVersion, generatedAt: sidecar.generatedAt, summary: sidecar.summary, verdict: sidecar.verdict } as RecoveryVerdictSidecar;
 }
 
 export async function readRecoveryVerdictForApply(context: MonitorContext, prdId: string): Promise<ReturnType<typeof recoveryVerdictSchema.parse>> {

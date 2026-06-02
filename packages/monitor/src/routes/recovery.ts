@@ -13,7 +13,7 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
       const workerTracker = context.options.workerTracker;
       if (!workerTracker) return sendJsonError(ctx.res, 503, 'Daemon mode not active');
       const parsed = await readJsonBody(ctx.req);
-      if (!parsed.ok || typeof parsed.value !== 'object' || parsed.value === null) return sendInvalidJson(ctx.res);
+      if (!parsed.ok || typeof parsed.value !== 'object' || parsed.value === null) return sendInvalidJson(ctx.res, !parsed.ok && parsed.tooLarge);
       const body = parsed.value as { setName?: unknown; prdId?: unknown };
       if (!body.setName || typeof body.setName !== 'string') return sendJsonError(ctx.res, 400, 'Missing required field: setName');
       if (!body.prdId || typeof body.prdId !== 'string') return sendJsonError(ctx.res, 400, 'Missing required field: prdId');
@@ -32,7 +32,7 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
       if (!context.options.daemonState) return sendJsonError(ctx.res, 503, 'Daemon mode not active');
       if (!context.cwd) return sendJsonError(ctx.res, 503, 'No working directory configured');
       const parsed = await readJsonBody(ctx.req);
-      if (!parsed.ok || typeof parsed.value !== 'object' || parsed.value === null) return sendInvalidJson(ctx.res);
+      if (!parsed.ok || typeof parsed.value !== 'object' || parsed.value === null) return sendInvalidJson(ctx.res, !parsed.ok && parsed.tooLarge);
       const body = parsed.value as { prdId?: unknown };
       if (!body.prdId || typeof body.prdId !== 'string') return sendJsonError(ctx.res, 400, 'Missing required field: prdId');
       if (!isValidPathSegment(body.prdId)) return sendJsonError(ctx.res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');

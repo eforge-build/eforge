@@ -36,6 +36,14 @@ describe('control plane route modules', () => {
     expect(ok.status).toBe(200); expect(await ok.json()).toEqual({ status: 'cancelled', sessionId: 'known' });
   });
 
+  it('daemon stop rejects malformed bodies before shutdown', async () => {
+    const calls: string[] = [];
+    harness = await startControlRouteHarness({ serverOptions: { daemonState: { autoBuildController: controller(calls), onShutdown: () => calls.push('shutdown') } } });
+    expect((await harness.postJson(API_ROUTES.daemonStop, [])).status).toBe(400);
+    expect((await harness.postJson(API_ROUTES.daemonStop, { force: 'true' })).status).toBe(400);
+    expect(calls).not.toContain('shutdown');
+  });
+
   it('auto-build and scheduler routes use daemon controller state', async () => {
     const calls: string[] = [];
     harness = await startControlRouteHarness({ serverOptions: { daemonState: { autoBuildController: controller(calls), onShutdown: () => calls.push('shutdown') } } });

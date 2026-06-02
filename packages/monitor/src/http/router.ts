@@ -114,6 +114,10 @@ export function createRouter(options: RouterOptions): {
         }
       } catch (err) {
         if (isHttpRouteError(err)) {
+          if (res.headersSent) {
+            if (!res.writableEnded) res.destroy();
+            return;
+          }
           if (err.bodyKind === 'text') {
             sendText(res, err.status, err.message);
           } else {
@@ -122,7 +126,9 @@ export function createRouter(options: RouterOptions): {
           return;
         }
         console.error('Unhandled route error', err instanceof Error ? err.message : String(err));
-        if (!res.writableEnded) {
+        if (res.headersSent) {
+          if (!res.writableEnded) res.destroy();
+        } else if (!res.writableEnded) {
           sendJsonError(res, 500, 'Internal server error');
         }
         return;

@@ -1,3 +1,4 @@
+// --- eforge:region stack-sync-execution ---
 /**
  * Daemon-owned stack sync service.
  *
@@ -401,3 +402,4 @@ export function loadSyncStatusForRouteSync(cwd: string): StackSyncStatusFile {
   }
 }
 
+// --- eforge:endregion stack-sync-execution ---

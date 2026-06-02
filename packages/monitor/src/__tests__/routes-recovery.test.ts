@@ -28,7 +28,7 @@ describe('recovery and resume route modules', () => {
     const failed = join(harness.cwd, '.eforge', 'queue', 'failed');
     await mkdir(failed, { recursive: true });
     await writeFile(join(failed, 'prd-1.recovery.md'), '# recovery');
-    await writeFile(join(failed, 'prd-1.recovery.json'), JSON.stringify({ schemaVersion: 1, generatedAt: new Date(0).toISOString(), summary: {}, verdict: { verdict: 'manual', confidence: 1 } }));
+    await writeFile(join(failed, 'prd-1.recovery.json'), JSON.stringify({ schemaVersion: 1, generatedAt: new Date(0).toISOString(), summary: { prdId: 'prd-1', setName: 'set-1', featureBranch: 'eforge/set-1', baseBranch: 'main', plans: [{ planId: 'plan-01', status: 'failed' }], failingPlan: { planId: 'plan-01' }, landedCommits: [], diffStat: '', modelsUsed: [], failedAt: new Date(0).toISOString() }, verdict: { verdict: 'manual', confidence: 'low', rationale: 'Manual recovery required.', completedWork: [], remainingWork: [], risks: [] } }));
     const res = await harness.get(`${API_ROUTES.readRecoverySidecar}?prdId=prd-1`);
     expect(res.status).toBe(200); expect(await res.json()).toMatchObject({ markdown: '# recovery' });
   });

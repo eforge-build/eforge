@@ -7,11 +7,6 @@
       "category": "implementation"
     },
     {
-      "path": "packages/monitor/src/server.ts",
-      "noGrowthCeiling": 4980,
-      "category": "implementation"
-    },
-    {
       "path": "packages/engine/src/eforge.ts",
       "noGrowthCeiling": 3182,
       "category": "implementation"

@@ -26,6 +26,18 @@ export function selectExtensionByName(extensions: ExtensionEntry[], name: string
   return matches.find((entry) => entry.status === 'loaded') ?? matches.find((entry) => entry.status !== 'shadowed') ?? matches[0];
 }
 
+function candidateKey(candidate: any): string {
+  return `${candidate.name}\0${candidate.path}`;
+}
+
+function addFilteredCandidates(filteredCandidates: any[], allCandidates: any[]): any[] {
+  const existing = new Set(filteredCandidates.map(candidateKey));
+  const excluded = allCandidates
+    .filter((candidate) => !existing.has(candidateKey(candidate)))
+    .map((candidate) => ({ ...candidate, status: 'excluded' }));
+  return [...filteredCandidates, ...excluded];
+}
+
 function candidateToEntry(candidate: any, enabled: boolean, registrations?: ExtensionRegistrationSummary): ExtensionEntry {
   return {
     name: candidate.name,
@@ -72,15 +84,20 @@ export async function loadExtensionResponse(cwd: string | undefined, opts: { pat
     paths: [opts.path],
   } : config.extensions;
   if (opts.discoverOnly || (!opts.path && !config.extensions.enabled)) {
-    const discovery = await discoverNativeExtensions({ cwd, configDir, config: opts.path ? extensionConfig : { ...config.extensions, enabled: true } });
-    const extensions = discovery.candidates.map((candidate: any) => candidateToEntry(candidate, opts.discoverOnly ? extensionEntryEnabled(candidate.status, extensionConfig.enabled) : false));
+    const discoveryConfig = opts.path ? extensionConfig : { ...config.extensions, enabled: true };
+    const discovery = await discoverNativeExtensions({ cwd, configDir, config: discoveryConfig });
+    const allDiscovery = opts.path ? discovery : await discoverNativeExtensions({ cwd, configDir, config: { ...discoveryConfig, include: undefined, exclude: undefined } });
+    const candidates = addFilteredCandidates(discovery.candidates, allDiscovery.candidates);
+    const extensions = candidates.map((candidate: any) => candidateToEntry(candidate, opts.discoverOnly ? extensionEntryEnabled(candidate.status, extensionConfig.enabled) : false));
     extensions.sort((a: ExtensionEntry, b: ExtensionEntry) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
     return { extensions, diagnostics: discovery.diagnostics.map(normalizeExtensionDiagnostic), totals: { ...EMPTY_EXTENSION_REGISTRATIONS } };
   }
   const loadResult = await loadNativeExtensions({ cwd, configDir, config: extensionConfig });
   const projection = projectExtensionRegistry(loadResult.registry);
   const loadedByKey = new Map(projection.extensions.map((extension: any) => [`${extension.name}\0${extension.path}`, extension]));
-  const extensions: ExtensionEntry[] = loadResult.candidates.map((candidate: any) => {
+  const allDiscovery = opts.path ? undefined : await discoverNativeExtensions({ cwd, configDir, config: { ...extensionConfig, include: undefined, exclude: undefined } });
+  const candidates = allDiscovery ? addFilteredCandidates(loadResult.candidates, allDiscovery.candidates) : loadResult.candidates;
+  const extensions: ExtensionEntry[] = candidates.map((candidate: any) => {
     const loaded = loadedByKey.get(`${candidate.name}\0${candidate.path}`) as any;
     return { ...candidateToEntry(candidate, extensionEntryEnabled(candidate.status, extensionConfig.enabled), loaded?.registrations),
       ...(loaded?.strategy !== undefined && { strategy: loaded.strategy }),

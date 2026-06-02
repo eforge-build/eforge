@@ -17,10 +17,14 @@ export interface CrossSiteBrowserInput {
 export type SecurityPolicy = (ctx: RequestContext) => boolean | Promise<boolean>;
 
 export function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
-  return remoteAddress === undefined
-    || remoteAddress === '::1'
-    || remoteAddress === '::ffff:127.0.0.1'
-    || remoteAddress.startsWith('127.');
+  if (remoteAddress === undefined) return false;
+  const ipVersion = isIP(remoteAddress);
+  if (ipVersion === 4) return remoteAddress.split('.')[0] === '127';
+  if (ipVersion !== 6) return false;
+  const normalized = remoteAddress.toLowerCase();
+  if (normalized === '::1') return true;
+  if (!normalized.startsWith('::ffff:')) return false;
+  return isLoopbackRemoteAddress(normalized.slice('::ffff:'.length));
 }
 
 export function isLoopbackHostHeader(hostHeader: string | undefined): boolean {

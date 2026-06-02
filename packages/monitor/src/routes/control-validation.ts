@@ -45,6 +45,6 @@ export function sendLegacyTextParameterFailure(res: ServerResponse, message: str
   sendText(res, 400, message);
 }
 
-export function sendInvalidJson(res: ServerResponse): void {
-  sendJsonError(res, 400, 'Invalid JSON body');
+export function sendInvalidJson(res: ServerResponse, tooLarge = false): void {
+  sendJsonError(res, tooLarge ? 413 : 400, tooLarge ? 'Request body too large' : 'Invalid JSON body');
 }

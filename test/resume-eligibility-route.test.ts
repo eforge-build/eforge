@@ -120,7 +120,7 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
   return { tracker, calls };
 }
 
-const makeTempDir = useTempDir('eforge-resume-eligibility-route-');
+const makeTempDir = useTempDir('eforge-resume-eligibility-');
 
 let tmpDir: string;
 let dbPath: string;

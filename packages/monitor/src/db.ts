@@ -1,3 +1,4 @@
+// --- eforge:region monitor-db-api ---
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -739,3 +740,4 @@ export function openDatabase(dbPath: string): MonitorDB {
     },
   };
 }
+// --- eforge:endregion monitor-db-api ---
