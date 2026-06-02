@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiTestExtension, apiNewExtension, apiReloadExtensions, apiTrustExtension, apiUntrustExtension, apiInstallExtension, apiUpdateExtension, apiRemoveExtension, apiPromoteExtension, apiDemoteExtension, apiStackSync,
   apiResumeBuild,
+  dispatchEforgeExtensionAction,
 } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
@@ -22,10 +23,7 @@ import type {
   RunSummary,
   ConfigValidateResponse,
   VersionResponse,
-  ExtensionNewRequest,
-  ExtensionTestRequest,
-  ExtensionInstallRequest,
-  ExtensionUpdateRequest,
+  EforgeExtensionActionHelpers,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
 
@@ -35,6 +33,23 @@ declare const EFORGE_VERSION: string;
 
 // Re-export for any consumers that imported from here
 export { ensureDaemon, daemonRequest, daemonRequestIfRunning };
+
+
+const mcpExtensionActionHelpers = {
+  list: apiListExtensions,
+  show: apiShowExtension,
+  validate: apiValidateExtensions,
+  test: apiTestExtension,
+  new: apiNewExtension,
+  reload: apiReloadExtensions,
+  trust: apiTrustExtension,
+  untrust: apiUntrustExtension,
+  install: apiInstallExtension,
+  update: apiUpdateExtension,
+  remove: apiRemoveExtension,
+  promote: apiPromoteExtension,
+  demote: apiDemoteExtension,
+} satisfies EforgeExtensionActionHelpers;
 
 async function ensureGitignoreEntries(projectDir: string, entries: string[]): Promise<void> {
   const gitignorePath = join(projectDir, '.gitignore');
@@ -430,163 +445,13 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       trust: z.boolean().optional().describe('Trust the extension after the operation ("install", "update", and "promote" only).'),
     },
     handler: async ({ action, name, path, fixture, run, event, scope, template, force, trustedBy, source, trust }, { cwd: toolCwd }) => {
-      const hasTestOnlyParams = fixture !== undefined || run !== undefined || event !== undefined;
-      const hasPackageOnlyParams = source !== undefined || trust !== undefined;
-      if (action === 'list') {
-        if (name !== undefined || path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"list" does not accept name, path, scope, template, or force');
-        if (hasTestOnlyParams) throw new Error('"list" does not accept fixture, run, or event');
-        if (trustedBy !== undefined) throw new Error('"list" does not accept trustedBy');
-        if (hasPackageOnlyParams) throw new Error('"list" does not accept source or trust');
-        const { data } = await apiListExtensions({ cwd: toolCwd });
-        return data;
-      }
-      if (action === 'show') {
-        if (!name) throw new Error('"name" is required when action is "show"');
-        if (path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"show" does not accept path, scope, template, or force');
-        if (hasTestOnlyParams) throw new Error('"show" does not accept fixture, run, or event');
-        if (trustedBy !== undefined) throw new Error('"show" does not accept trustedBy');
-        if (hasPackageOnlyParams) throw new Error('"show" does not accept source or trust');
-        const { data } = await apiShowExtension({ cwd: toolCwd, name });
-        return data;
-      }
-      if (action === 'validate') {
-        if (scope !== undefined || template !== undefined || force !== undefined) throw new Error('"validate" does not accept scope, template, or force');
-        if (hasTestOnlyParams) throw new Error('"validate" does not accept fixture, run, or event');
-        if (trustedBy !== undefined) throw new Error('"validate" does not accept trustedBy');
-        if (hasPackageOnlyParams) throw new Error('"validate" does not accept source or trust');
-        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for validate');
-        const request: { cwd: string; name?: string; path?: string } = { cwd: toolCwd };
-        if (name !== undefined) request.name = name;
-        if (path !== undefined) request.path = path;
-        const { data } = await apiValidateExtensions(request);
-        return data;
-      }
-      if (action === 'test') {
-        if (scope !== undefined || template !== undefined || force !== undefined) throw new Error('"test" does not accept scope, template, or force');
-        if (trustedBy !== undefined) throw new Error('"test" does not accept trustedBy');
-        if (hasPackageOnlyParams) throw new Error('"test" does not accept source or trust');
-        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for test');
-        const body: ExtensionTestRequest = {};
-        if (name !== undefined) body.name = name;
-        if (path !== undefined) body.path = path;
-        if (fixture !== undefined) body.fixture = fixture;
-        if (run !== undefined) body.run = run;
-        if (event !== undefined) body.event = event;
-        const { data } = await apiTestExtension({ cwd: toolCwd, body });
-        return data;
-      }
-      if (action === 'new') {
-        if (!name) throw new Error('"name" is required when action is "new"');
-        if (path !== undefined) throw new Error('"path" is not supported when action is "new"');
-        if (hasTestOnlyParams) throw new Error('"new" does not accept fixture, run, or event');
-        if (trustedBy !== undefined) throw new Error('"new" does not accept trustedBy');
-        if (hasPackageOnlyParams) throw new Error('"new" does not accept source or trust');
-        const body: ExtensionNewRequest = { name };
-        if (scope !== undefined) body.scope = scope;
-        if (template !== undefined) body.template = template as ExtensionNewRequest['template'];
-        if (force !== undefined) body.force = force;
-        const { data } = await apiNewExtension({ cwd: toolCwd, body });
-        return data;
-      }
-      if (action === 'trust') {
-        if (!name && !path) throw new Error('"name" or "path" is required when action is "trust"');
-        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for trust');
-        if (scope !== undefined || template !== undefined || force !== undefined) throw new Error('"trust" does not accept scope, template, or force');
-        if (hasTestOnlyParams) throw new Error('"trust" does not accept fixture, run, or event');
-        if (hasPackageOnlyParams) throw new Error('"trust" does not accept source or trust');
-        const body: { name?: string; path?: string; trustedBy?: string } = {};
-        if (name !== undefined) body.name = name;
-        if (path !== undefined) body.path = path;
-        if (trustedBy !== undefined) body.trustedBy = trustedBy;
-        const { data } = await apiTrustExtension({ cwd: toolCwd, body });
-        return data;
-      }
-      if (action === 'untrust') {
-        if (!name && !path) throw new Error('"name" or "path" is required when action is "untrust"');
-        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for untrust');
-        if (scope !== undefined || template !== undefined || force !== undefined) throw new Error('"untrust" does not accept scope, template, or force');
-        if (hasTestOnlyParams) throw new Error('"untrust" does not accept fixture, run, or event');
-        if (trustedBy !== undefined) throw new Error('"untrust" does not accept trustedBy');
-        if (hasPackageOnlyParams) throw new Error('"untrust" does not accept source or trust');
-        const body: { name?: string; path?: string } = {};
-        if (name !== undefined) body.name = name;
-        if (path !== undefined) body.path = path;
-        const { data } = await apiUntrustExtension({ cwd: toolCwd, body });
-        return data;
-      }
-      if (action === 'install') {
-        if (source === undefined) throw new Error('"source" is required when action is "install"');
-        if (path !== undefined) throw new Error('"install" does not accept path');
-        if (hasTestOnlyParams) throw new Error('"install" does not accept fixture, run, or event');
-        if (template !== undefined) throw new Error('"install" does not accept template');
-        const body: ExtensionInstallRequest = { source };
-        if (scope !== undefined) body.scope = scope;
-        if (name !== undefined) body.name = name;
-        if (force !== undefined) body.force = force;
-        if (trust !== undefined) body.trust = trust;
-        if (trustedBy !== undefined) body.trustedBy = trustedBy;
-        const { data } = await apiInstallExtension({ cwd: toolCwd, body });
-        return data;
-      }
-      if (action === 'update') {
-        if (!name && !path) throw new Error('"name" or "path" is required when action is "update"');
-        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for update');
-        if (scope !== undefined || template !== undefined || source !== undefined) throw new Error('"update" does not accept scope, template, or source');
-        if (force !== undefined) throw new Error('"update" does not accept force');
-        if (hasTestOnlyParams) throw new Error('"update" does not accept fixture, run, or event');
-        const body: ExtensionUpdateRequest = {};
-        if (name !== undefined) body.name = name;
-        if (path !== undefined) body.path = path;
-        if (trust !== undefined) body.trust = trust;
-        if (trustedBy !== undefined) body.trustedBy = trustedBy;
-        const { data } = await apiUpdateExtension({ cwd: toolCwd, body });
-        return data;
-      }
-      if (action === 'remove') {
-        if (!name && !path) throw new Error('"name" or "path" is required when action is "remove"');
-        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for remove');
-        if (scope !== undefined || template !== undefined || source !== undefined || trust !== undefined || trustedBy !== undefined) throw new Error('"remove" does not accept scope, template, source, trust, or trustedBy');
-        if (hasTestOnlyParams) throw new Error('"remove" does not accept fixture, run, or event');
-        const body: { name?: string; path?: string; force?: boolean } = {};
-        if (name !== undefined) body.name = name;
-        if (path !== undefined) body.path = path;
-        if (force !== undefined) body.force = force;
-        const { data } = await apiRemoveExtension({ cwd: toolCwd, body });
-        return data;
-      }
-      if (action === 'promote') {
-        if (!name && !path) throw new Error('"name" or "path" is required when action is "promote"');
-        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for promote');
-        if (scope !== undefined || template !== undefined || source !== undefined) throw new Error('"promote" does not accept scope, template, or source');
-        if (hasTestOnlyParams) throw new Error('"promote" does not accept fixture, run, or event');
-        const body: { name?: string; path?: string; force?: boolean; trust?: boolean; trustedBy?: string } = {};
-        if (name !== undefined) body.name = name;
-        if (path !== undefined) body.path = path;
-        if (force !== undefined) body.force = force;
-        if (trust !== undefined) body.trust = trust;
-        if (trustedBy !== undefined) body.trustedBy = trustedBy;
-        const { data } = await apiPromoteExtension({ cwd: toolCwd, body });
-        return data;
-      }
-      if (action === 'demote') {
-        if (!name && !path) throw new Error('"name" or "path" is required when action is "demote"');
-        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for demote');
-        if (scope !== undefined || template !== undefined || source !== undefined || trust !== undefined || trustedBy !== undefined) throw new Error('"demote" does not accept scope, template, source, trust, or trustedBy');
-        if (hasTestOnlyParams) throw new Error('"demote" does not accept fixture, run, or event');
-        const body: { name?: string; path?: string; force?: boolean } = {};
-        if (name !== undefined) body.name = name;
-        if (path !== undefined) body.path = path;
-        if (force !== undefined) body.force = force;
-        const { data } = await apiDemoteExtension({ cwd: toolCwd, body });
-        return data;
-      }
-      if (name !== undefined || path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"reload" does not accept name, path, scope, template, or force');
-      if (source !== undefined) throw new Error('"reload" does not accept source');
-      if (trust !== undefined) throw new Error('"reload" does not accept trust');
-      if (hasTestOnlyParams) throw new Error('"reload" does not accept fixture, run, or event');
-      if (trustedBy !== undefined) throw new Error('"reload" does not accept trustedBy');
-      const { data } = await apiReloadExtensions({ cwd: toolCwd });
-      return data;
+      const result = await dispatchEforgeExtensionAction({
+        cwd: toolCwd,
+        params: { action, name, path, fixture, run, event, scope, template, force, trustedBy, source, trust },
+        helpers: mcpExtensionActionHelpers,
+      });
+      if (result === null) throw new Error('Daemon not running');
+      return result.data;
     },
   });
 
