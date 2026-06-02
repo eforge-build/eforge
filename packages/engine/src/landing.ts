@@ -83,30 +83,24 @@ export interface LandingActionOptions {
   prAutoMergePolicy?: 'ask' | 'always' | 'never';
   /** Per-run PR auto-merge intent (from landingAutoMerge build option / PRD frontmatter). */
   landingAutoMerge?: boolean;
-  // --- eforge:region plan-01-direct-pr-base-sync ---
   /** Direct PR freshness guard before pushing the artifact branch. */
   beforePushFreshnessGuard?: PullRequestFreshnessGuard;
   /** Direct PR freshness guard immediately before PR creation / existing-PR fallback. */
   beforeCreateFreshnessGuard?: PullRequestFreshnessGuard;
   /** Use force-with-lease for direct PR artifact branch publication. */
   forceWithLease?: boolean;
-  // --- eforge:endregion plan-01-direct-pr-base-sync ---
 }
 
-// --- eforge:region plan-01-direct-pr-base-sync ---
 export interface LandingFreshnessRetry {
   reason: string;
   fetchedBaseSha?: string;
 }
-// --- eforge:endregion plan-01-direct-pr-base-sync ---
 
 export interface LandingResult {
   landingSucceeded: boolean;
   prUrl?: string;
   commitSha?: string;
-  // --- eforge:region plan-01-direct-pr-base-sync ---
   freshnessRetry?: LandingFreshnessRetry;
-  // --- eforge:endregion plan-01-direct-pr-base-sync ---
 }
 
 // ---------------------------------------------------------------------------
@@ -224,11 +218,9 @@ export async function* executeLandingAction(
     cleanupPrdFilePath,
     prAutoMergePolicy = 'ask',
     landingAutoMerge,
-    // --- eforge:region plan-01-direct-pr-base-sync ---
     beforePushFreshnessGuard,
     beforeCreateFreshnessGuard,
     forceWithLease,
-    // --- eforge:endregion plan-01-direct-pr-base-sync ---
   } = opts;
 
   const ts = (): string => new Date().toISOString();
@@ -415,11 +407,9 @@ export async function* executeLandingAction(
       const prResult = await worktreeManager.issuePr({
         baseBranch,
         metadata: prMetadata,
-        // --- eforge:region plan-01-direct-pr-base-sync ---
         beforePushFreshnessGuard,
         beforeCreateFreshnessGuard,
         forceWithLease,
-        // --- eforge:endregion plan-01-direct-pr-base-sync ---
       });
       const url = prResult.url;
 
@@ -480,7 +470,6 @@ export async function* executeLandingAction(
       return { landingSucceeded: true, prUrl: url };
     } catch (err) {
       const reason = (err as Error).message;
-      // --- eforge:region plan-01-direct-pr-base-sync ---
       if (err instanceof PullRequestFreshnessError && err.retryable) {
         yield {
           type: 'planning:progress' as const,
@@ -489,7 +478,6 @@ export async function* executeLandingAction(
         } as EforgeEvent;
         return { landingSucceeded: false, freshnessRetry: { reason, fetchedBaseSha: err.fetchedBaseSha } };
       }
-      // --- eforge:endregion plan-01-direct-pr-base-sync ---
       yield {
         type: 'landing:skipped' as const,
         action,

@@ -20,7 +20,6 @@ import { execWithTimeout } from '../exec-with-timeout.js';
 import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS, normalizePostMergeCommandTimeoutMs } from '../config.js';
 import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
 import { executeLandingAction, type LandingResult } from '../landing.js';
-// --- eforge:region plan-01-direct-pr-base-sync ---
 import {
   DEFAULT_DIRECT_PR_FRESHNESS_RETRIES,
   DIRECT_PR_REMOTE,
@@ -29,7 +28,6 @@ import {
   syncDirectPrBase,
   type DirectPrBaseSyncPoint,
 } from '../direct-pr-base-sync.js';
-// --- eforge:endregion plan-01-direct-pr-base-sync ---
 import { renderPullRequestMetadata } from '../pr-metadata.js';
 import { collectBuildArtifactProvenance } from '../provenance.js';
 import type { EforgeConfig, LandingConfig } from '../config.js';
@@ -125,10 +123,8 @@ export interface PhaseContext {
    *  Reset at the start of each validate attempt, then passed to prdValidate so the
    *  PRD validator can cite deterministic command execution as evidence. */
   validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }>;
-  // --- eforge:region plan-01-direct-pr-base-sync ---
   /** Latest successful direct non-stacked PR base synchronization point. */
   directPrBaseSync?: DirectPrBaseSyncPoint;
-  // --- eforge:endregion plan-01-direct-pr-base-sync ---
 }
 
 /**
@@ -209,7 +205,6 @@ function hasPolicyGates(ctx: PhaseContext, gateKind: 'plan-merge' | 'final-merge
   return (ctx.extensionRegistry?.policyGates ?? []).some((registration) => registration.gateKind === gateKind);
 }
 
-// --- eforge:region plan-01-direct-pr-base-sync ---
 export function isDirectPrBaseSyncApplicable(ctx: PhaseContext): boolean {
   return ctx.landingAction === 'pr' && ctx.stackContext === undefined;
 }
@@ -247,7 +242,6 @@ export async function* syncDirectPrBaseBeforeValidation(ctx: PhaseContext): Asyn
   ctx.state.status = 'failed';
   ctx.state.completedAt = new Date().toISOString();
 }
-// --- eforge:endregion plan-01-direct-pr-base-sync ---
 
 /**
  * Compute the maximum number of plans that could run concurrently
@@ -1186,7 +1180,6 @@ export async function* stackLanding(ctx: PhaseContext): AsyncGenerator<EforgeEve
   }
 }
 
-// --- eforge:region plan-01-direct-pr-base-sync ---
 type FinalizeLandingInput = { action: LandingConfig['action']; featureBranch: string; commitMessage: string; rawCommitBody: string };
 type FinalizeLandingRun = { landingResult: LandingResult; landingStartedAt?: string; landingTerminalReason?: string };
 
@@ -1271,7 +1264,6 @@ async function* runFinalizeLanding(ctx: PhaseContext, input: FinalizeLandingInpu
     ? yield* runDirectPrLandingWithFreshnessRetries(ctx, input)
     : yield* runFinalizeLandingAttempt(ctx, input, false);
 }
-// --- eforge:endregion plan-01-direct-pr-base-sync ---
 
 /**
  * Final landing of the feature branch and status determination.
@@ -1362,7 +1354,6 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       // Stack landing already completed; finalize considers this a success.
       // No additional events — stack:landing:update already covers the outcome.
     } else {
-    // --- eforge:region plan-01-direct-pr-base-sync ---
     const landingRun = yield* runFinalizeLanding(ctx, {
       action,
       featureBranch,
@@ -1373,7 +1364,6 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     const landingStartedAt = landingRun.landingStartedAt;
     const landingTerminalReason = landingRun.landingTerminalReason;
     ctx.landingSucceeded = landingResult.landingSucceeded;
-    // --- eforge:endregion plan-01-direct-pr-base-sync ---
 
     // Finalize artifact metadata after generic landing for queued builds.
     // Runs for all landing actions (pr, merge, leave) when prdId is present.

@@ -256,9 +256,7 @@ export class Orchestrator {
     };
     try {
       yield* executePlans(ctx);
-      // --- eforge:region plan-01-direct-pr-base-sync ---
       if ((state.status as string) !== 'failed') yield* syncDirectPrBaseBeforeValidation(ctx);
-      // --- eforge:endregion plan-01-direct-pr-base-sync ---
       if ((state.status as string) !== 'failed') yield* validate(ctx);
       if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
       // After gap close, rerun both validate and prdValidate to confirm the fixes

@@ -471,12 +471,10 @@ export async function pushFeatureBranch(
   remote = 'origin',
   opts: { forceWithLease?: boolean } = {},
 ): Promise<void> {
-  // --- eforge:region plan-01-direct-pr-base-sync ---
   const args = ['push', '-u'];
   if (opts.forceWithLease) args.push('--force-with-lease');
   args.push(remote, branch);
   await exec('git', args, { cwd });
-  // --- eforge:endregion plan-01-direct-pr-base-sync ---
 }
 
 /**
