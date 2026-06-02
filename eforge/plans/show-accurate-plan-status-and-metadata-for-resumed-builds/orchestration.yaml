@@ -1,0 +1,65 @@
+name: show-accurate-plan-status-and-metadata-for-resumed-builds
+description: Fix monitor run-summary and Console run-state projections so
+  resumed builds show recovered plan metadata and seeded merged completion
+  status.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm vitest run test/run-summary-plans.test.ts
+    packages/monitor/src/__tests__/projections-run-summary.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/handle-resume.test.ts
+    packages/console-ui/src/lib/run-state/__tests__/selectors.test.ts
+  - pnpm maintainability:check
+  - pnpm test
+plans:
+  - id: plan-01-resume-projections
+    name: Accurate Resumed Build Plan Projections
+    depends_on: []
+    branch: show-accurate-plan-status-and-metadata-for-resumed-builds/plan-01-resume-projections
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The fix spans monitor and Console projections, requires
+          event-order-sensitive status overlay behavior, and must preserve
+          existing planning metadata precedence.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused multi-package projection bugfix spanning monitor
+    run summaries, console run-state reducers, and targeted regression tests, so
+    excursion fits better than expedition. Planner plus plan-review-cycle
+    provides enough compile-time quality control without delegated module
+    planning. The build pipeline implements changes, writes required regression
+    tests, runs the registered maintainability validation gate before review,
+    then uses iterative review and test cycles to protect event-ordering and
+    status-precedence behavior. Review perspectives are limited to code and test
+    because the work is projection/test correctness without security or
+    API-shape changes.
+diff_base_ref: ebeadfb32bc2cde5777ecbd7ff3bf14ef557b386
