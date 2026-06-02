@@ -1,3 +1,4 @@
+// --- eforge:region auto-build-controller ---
 import type {
   AutoBuildDesired,
   AutoBuildRuntimeMode,
@@ -487,3 +488,4 @@ export class AutoBuildSupervisor implements AutoBuildController {
     return this.effects.now?.() ?? new Date().toISOString();
   }
 }
+// --- eforge:endregion auto-build-controller ---

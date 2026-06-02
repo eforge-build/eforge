@@ -173,11 +173,10 @@ describe('extension tooling route constants and helpers', () => {
   });
 
   it('extension response projectors map provenance into ExtensionEntry package and install fields', () => {
-    const monitorSource = readRepoFile('packages/monitor/src/server.ts');
-    const loadResponseBlock = monitorSource.slice(
-      monitorSource.indexOf('async function loadExtensionResponse'),
-      monitorSource.indexOf('// --- eforge:end' + 'region plan-02-extension-tooling-surfaces ---'),
-    );
+    const monitorSource = readRepoFile('packages/monitor/src/routes/extensions/discovery-service.ts');
+    const loadResponseStart = monitorSource.indexOf('function candidateToEntry');
+    const loadResponseEnd = monitorSource.indexOf('export async function loadExtensionResponse', loadResponseStart);
+    const loadResponseBlock = monitorSource.slice(loadResponseStart, loadResponseEnd);
     expect(loadResponseBlock).toMatch(/package:\s*\{\s*\.\.\.candidate\.packageProvenance\s*\}/);
     expect(loadResponseBlock).toMatch(/install:\s*\{\s*\.\.\.candidate\.installProvenance\s*\}/);
 

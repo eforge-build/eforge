@@ -1,3 +1,4 @@
+// --- eforge:region extension-package-operations ---
 /**
  * Extension package management operations for the daemon.
  *
@@ -5,7 +6,6 @@
  * extension packages. Extension factories are never imported or executed here;
  * all operations are purely filesystem-level.
  */
-
 import { cp, lstat, mkdir, mkdtemp, rename, rm, readFile, readdir, realpath } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -28,7 +28,6 @@ import {
   hashExtensionFile,
   type InstallTargetScope,
 } from '@eforge-build/engine/extensions/index';
-
 const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
@@ -205,16 +204,18 @@ async function resolveManagedExtensionPath(
 
 const EXCLUDED_DIR_NAMES = new Set(['node_modules', '.git']);
 
+function shouldCopyExtensionPath(root: string, candidatePath: string): boolean {
+  if (candidatePath === root) return true;
+  const rel = relative(root, candidatePath);
+  if (!rel) return true;
+  const parts = rel.split(sep);
+  return !parts.some((p) => EXCLUDED_DIR_NAMES.has(p));
+}
+
 async function copyExtensionDirectory(src: string, dst: string): Promise<void> {
   await cp(src, dst, {
     recursive: true,
-    filter: (srcPath: string): boolean => {
-      if (srcPath === src) return true;
-      const rel = relative(src, srcPath);
-      if (!rel) return true;
-      const parts = rel.split(sep);
-      return !parts.some((p) => EXCLUDED_DIR_NAMES.has(p));
-    },
+    filter: (srcPath: string): boolean => shouldCopyExtensionPath(src, srcPath),
   });
 }
 
@@ -249,26 +250,32 @@ async function validateTarballEntries(tarballPath: string): Promise<void> {
   }
 }
 
-async function validateExtractedTree(root: string, dir = root): Promise<void> {
+async function validateExtractedTree(
+  root: string,
+  dir = root,
+  label = 'Tarball',
+  shouldValidatePath: (root: string, candidatePath: string) => boolean = () => true,
+): Promise<void> {
   const [realRoot, realDir] = await Promise.all([realpath(root), realpath(dir)]);
   if (!isPathInside(realDir, realRoot)) {
-    throw new ExtensionPackageError('Tarball extraction escaped the destination directory', 400);
+    throw new ExtensionPackageError(`${label} extraction escaped the destination directory`, 400);
   }
   const entries = await readdir(dir);
   for (const entry of entries) {
     const fullPath = resolve(dir, entry);
+    if (!shouldValidatePath(root, fullPath)) continue;
     const info = await lstat(fullPath);
     if (info.isSymbolicLink()) {
-      throw new ExtensionPackageError(`Tarball contains unsupported symbolic link: ${relative(root, fullPath)}`, 400);
+      throw new ExtensionPackageError(`${label} contains unsupported symbolic link: ${relative(root, fullPath)}`, 400);
     }
     if (info.isFile() && info.nlink > 1) {
-      throw new ExtensionPackageError(`Tarball contains unsupported hard link: ${relative(root, fullPath)}`, 400);
+      throw new ExtensionPackageError(`${label} contains unsupported hard link: ${relative(root, fullPath)}`, 400);
     }
     if (!info.isFile() && !info.isDirectory()) {
-      throw new ExtensionPackageError(`Tarball contains unsupported special file: ${relative(root, fullPath)}`, 400);
+      throw new ExtensionPackageError(`${label} contains unsupported special file: ${relative(root, fullPath)}`, 400);
     }
     if (info.isDirectory()) {
-      await validateExtractedTree(root, fullPath);
+      await validateExtractedTree(root, fullPath, label, shouldValidatePath);
     }
   }
 }
@@ -399,10 +406,13 @@ async function acquireFromLocalDir(source: string, cwd: string): Promise<PathAcq
     throw new ExtensionPackageError(`Cannot access source path: ${source}`, 400);
   }
 
+  await validateExtractedTree(absSource, absSource, 'Local directory', shouldCopyExtensionPath);
+
   const tmpRoot = await mkdtemp(resolve(tmpdir(), 'eforge-extpkg-'));
   try {
     const pkgDir = resolve(tmpRoot, 'package');
     await copyExtensionDirectory(absSource, pkgDir);
+    await validateExtractedTree(pkgDir, pkgDir, 'Local directory');
     return { pkgDir, tmpRoot };
   } catch (err) {
     await rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
@@ -820,10 +830,6 @@ export async function installExtensionPackage(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Public export: update
-// ---------------------------------------------------------------------------
-
 export interface UpdateExtensionResult {
   name: string;
   targetPath: string;
@@ -928,10 +934,6 @@ export async function updateExtensionPackage(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Public export: remove
-// ---------------------------------------------------------------------------
-
 export interface RemoveExtensionResult {
   name: string;
   removedPath: string;
@@ -997,10 +999,6 @@ export async function removeExtensionPackage(
 
   return { name, removedPath: targetPath };
 }
-
-// ---------------------------------------------------------------------------
-// Public export: promote
-// ---------------------------------------------------------------------------
 
 export interface PromoteExtensionResult {
   name: string;
@@ -1099,10 +1097,6 @@ export async function promoteExtensionPackage(
   return { name, targetPath };
 }
 
-// ---------------------------------------------------------------------------
-// Public export: demote
-// ---------------------------------------------------------------------------
-
 export interface DemoteExtensionResult {
   name: string;
   targetPath: string;
@@ -1186,3 +1180,4 @@ export async function demoteExtensionPackage(
 
   return { name, targetPath };
 }
+// --- eforge:endregion extension-package-operations ---

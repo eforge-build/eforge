@@ -11,7 +11,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase } from '../db.js';
@@ -31,6 +31,7 @@ let server: MonitorServer;
 let baseUrl: string;
 let monitorUiDir: string;
 let consoleUiDir: string;
+let symlinkAssetsAvailable = false;
 
 beforeAll(async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'eforge-static-test-'));
@@ -48,7 +49,16 @@ beforeAll(async () => {
   writeFileSync(join(consoleUiDir, 'assets', 'console.js'), CONSOLE_ASSET_CONTENT);
 
   // Sentinel file outside both roots — used by traversal tests
-  writeFileSync(join(tmp, 'sentinel.txt'), SENTINEL_CONTENT);
+  const sentinelPath = join(tmp, 'sentinel.txt');
+  writeFileSync(sentinelPath, SENTINEL_CONTENT);
+
+  try {
+    symlinkSync(sentinelPath, join(monitorUiDir, 'assets', 'sentinel-link.txt'));
+    symlinkSync(sentinelPath, join(consoleUiDir, 'assets', 'sentinel-link.txt'));
+    symlinkAssetsAvailable = true;
+  } catch {
+    symlinkAssetsAvailable = false;
+  }
 
   const db = openDatabase(':memory:');
   server = await startServer(db, 0, {
@@ -128,6 +138,15 @@ describe('GET /assets/missing.js (monitor UI asset miss)', () => {
   it('returns 404 for a missing asset', async () => {
     const res = await get('/assets/missing.js');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /assets/sentinel-link.txt (monitor UI symlink escape)', () => {
+  it('returns 404 and does not return the linked sentinel outside the root', async () => {
+    if (!symlinkAssetsAvailable) return;
+    const res = await get('/assets/sentinel-link.txt');
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain(SENTINEL_CONTENT);
   });
 });
 
@@ -219,6 +238,15 @@ describe('GET /console/assets/missing.js (Console UI asset miss)', () => {
   it('returns 404 for a missing Console asset', async () => {
     const res = await get('/console/assets/missing.js');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /console/assets/sentinel-link.txt (Console UI symlink escape)', () => {
+  it('returns 404 and does not return the linked sentinel outside the root', async () => {
+    if (!symlinkAssetsAvailable) return;
+    const res = await get('/console/assets/sentinel-link.txt');
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain(SENTINEL_CONTENT);
   });
 });
 

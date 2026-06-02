@@ -1,0 +1,100 @@
+import { createServer, request } from 'node:http';
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { serveStaticUiRequest } from '../http/static-assets.js';
+
+const MONITOR_INDEX = '<!-- monitor -->';
+const CONSOLE_INDEX = '<!-- console -->';
+let baseUrl: string;
+let monitorUiDir: string;
+let consoleUiDir: string;
+let symlinksAvailable = true;
+let closeServer: () => Promise<void>;
+
+beforeAll(async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'eforge-static-http-'));
+  monitorUiDir = join(tmp, 'monitor-ui');
+  consoleUiDir = join(tmp, 'console-ui');
+  mkdirSync(join(monitorUiDir, 'assets'), { recursive: true });
+  mkdirSync(join(consoleUiDir, 'assets'), { recursive: true });
+  writeFileSync(join(monitorUiDir, 'index.html'), MONITOR_INDEX);
+  writeFileSync(join(monitorUiDir, 'assets', 'app.js'), 'monitor-asset');
+  writeFileSync(join(consoleUiDir, 'index.html'), CONSOLE_INDEX);
+  writeFileSync(join(consoleUiDir, 'assets', 'app.js'), 'console-asset');
+  writeFileSync(join(tmp, 'sentinel.txt'), 'outside');
+  try {
+    symlinkSync(join(tmp, 'sentinel.txt'), join(monitorUiDir, 'assets', 'escape.js'));
+    symlinkSync(join(tmp, 'sentinel.txt'), join(consoleUiDir, 'assets', 'escape.js'));
+  } catch {
+    symlinksAvailable = false;
+  }
+
+  const server = createServer((req, res) => {
+    const pathname = (req.url ?? '/').split('?')[0] || '/';
+    void serveStaticUiRequest({ req, res, pathname, monitorUiDir, consoleUiDir });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  closeServer = () => new Promise((resolve) => server.close(() => resolve()));
+  const addr = server.address();
+  if (!addr || typeof addr === 'string') throw new Error('no address');
+  baseUrl = `http://127.0.0.1:${addr.port}`;
+});
+
+afterAll(async () => {
+  await closeServer?.();
+});
+
+const get = (path: string) => fetch(`${baseUrl}${path}`);
+
+function getRawStatus(path: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(baseUrl);
+    const req = request({ hostname: url.hostname, port: url.port, path }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode ?? 0));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+describe('serveStaticUiRequest', () => {
+  it('serves monitor root and assets', async () => {
+    const root = await get('/');
+    expect(await root.text()).toBe(MONITOR_INDEX);
+    expect(root.headers.get('cache-control')).toBe('no-cache');
+    const asset = await get('/assets/app.js');
+    expect(await asset.text()).toBe('monitor-asset');
+    expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('serves Console root and assets', async () => {
+    expect(await (await get('/console')).text()).toBe(CONSOLE_INDEX);
+    expect(await (await get('/console/')).text()).toBe(CONSOLE_INDEX);
+    const asset = await get('/console/assets/app.js');
+    expect(await asset.text()).toBe('console-asset');
+    expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('falls back to SPA index for non-assets', async () => {
+    expect(await (await get('/deep/link')).text()).toBe(MONITOR_INDEX);
+    expect(await (await get('/console/deep/link')).text()).toBe(CONSOLE_INDEX);
+  });
+
+  it('returns 404 for asset misses', async () => {
+    expect((await get('/assets/missing.js')).status).toBe(404);
+    expect((await get('/console/assets/missing.js')).status).toBe(404);
+  });
+
+  it('rejects malformed percent escapes and encoded traversal', async () => {
+    expect((await get('/%E0%A4%A')).status).toBe(400);
+    expect(await getRawStatus('/assets/%2e%2e/index.html')).toBe(404);
+  });
+
+  it.skipIf(!symlinksAvailable)('rejects symlink escapes from monitor and Console roots', async () => {
+    expect((await get('/assets/escape.js')).status).toBe(404);
+    expect((await get('/console/assets/escape.js')).status).toBe(404);
+  });
+});

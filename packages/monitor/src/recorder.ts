@@ -1,3 +1,4 @@
+// --- eforge:region event-recording-pipeline ---
 import { randomUUID } from 'node:crypto';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { RunInfo } from '@eforge-build/client';
@@ -311,3 +312,4 @@ function extractAgent(event: EforgeEvent): string | undefined {
   if ('agent' in event && typeof event.agent === 'string') return event.agent;
   return undefined;
 }
+// --- eforge:endregion event-recording-pipeline ---

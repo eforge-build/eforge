@@ -1,3 +1,4 @@
+// --- eforge:region daemon-watcher-runtime ---
 /**
  * Detached monitor/daemon server entry point.
  *
@@ -1038,3 +1039,4 @@ if (isEntryPoint) {
     process.exit(1);
   });
 }
+// --- eforge:endregion daemon-watcher-runtime ---
