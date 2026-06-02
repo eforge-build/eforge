@@ -30,6 +30,8 @@ stacking:
   provider: git-spice
 landing:
   action: pr
+  pr:
+    autoMerge: always
 tools:
   toolbelts:
     browser-ui:
