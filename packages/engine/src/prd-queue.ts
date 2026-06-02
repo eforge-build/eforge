@@ -1030,7 +1030,6 @@ async function movePrdFromWaiting(
   await rename(filePath, destPath);
 }
 
-// --- eforge:region plan-01-resume-queue-reactivation ---
 async function movePrdFromWaitingNoOverwrite(filePath: string, destDir: string): Promise<boolean> {
   await mkdir(destDir, { recursive: true });
   try {
@@ -1042,7 +1041,6 @@ async function movePrdFromWaitingNoOverwrite(filePath: string, destDir: string):
     throw err;
   }
 }
-// --- eforge:endregion plan-01-resume-queue-reactivation ---
 
 /**
  * Validate that all `depends_on` ids currently exist in the queue or have
@@ -1245,10 +1243,8 @@ export async function unblockWaiting(
     );
 
     if (allSatisfied) {
-      // --- eforge:region plan-01-resume-queue-reactivation ---
       const moved = await movePrdFromWaitingNoOverwrite(prd.filePath, queueRoot);
       if (!moved) continue;
-      // --- eforge:endregion plan-01-resume-queue-reactivation ---
       unblocked.push(prd.id);
       // Remove from stillActiveIds so other waiting PRDs that depend on
       // this one can also be unblocked in subsequent loop iterations.

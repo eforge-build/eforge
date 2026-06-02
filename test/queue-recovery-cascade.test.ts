@@ -152,7 +152,6 @@ describe('queue recovery cascade engine', () => {
     expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.md'))).toBe(true);
   });
 
-  // --- eforge:region plan-01-resume-queue-reactivation ---
   it('starts a queued resume by activating the failed parent and waiting skipped descendants while preserving sidecars', async () => {
     const cwd = makeTempDir();
     await writePrd(cwd, 'failed', 'parent');
@@ -409,5 +408,4 @@ describe('queue recovery cascade engine', () => {
     expect(await exists(join(cwd, '.eforge', 'queue', 'child.md'))).toBe(true);
     expect(await exists(join(cwd, '.eforge', 'queue', 'waiting', 'child.md'))).toBe(true);
   });
-  // --- eforge:endregion plan-01-resume-queue-reactivation ---
 });

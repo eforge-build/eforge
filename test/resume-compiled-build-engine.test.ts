@@ -864,7 +864,6 @@ describe('EforgeEngine.resumeBuild — compile-free execution', () => {
     expect(events.some((event) => event.type === 'build:resume:state')).toBe(true);
   });
 
-  // --- eforge:region plan-01-resume-queue-reactivation ---
   it('records the resumed artifact against the original queued PRD id and finalizes queued resume state before completion', async () => {
     const cwd = initRepo();
     const setName = 'compile-free-resume-original-prd';
@@ -999,6 +998,5 @@ depends_on: ["${prdId}"]
     expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
     expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
   });
-  // --- eforge:endregion plan-01-resume-queue-reactivation ---
 });
 
