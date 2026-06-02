@@ -14,7 +14,7 @@ import {
   selectPlanningLane,
 } from '../selectors/plan-progress';
 import { selectStackLayersForRun } from '../selectors/stack-layers';
-import { initialRunState } from '../reducer';
+import { createInitialRunState, initialRunState, reduce } from '../reducer';
 import type { RunState, EforgeEvent } from '../types';
 import type { StackLayerWire } from '@eforge-build/client/browser';
 
@@ -78,6 +78,26 @@ describe('getSummaryStats', () => {
     expect(stats.tokensOut).toBe(2500);
     expect(stats.totalCost).toBeCloseTo(0.025, 8);
   });
+
+  // --- eforge:region plan-01-resume-projections ---
+  it('counts seeded merged resume plans as completed after reducer processing', () => {
+    const state = reduce(createInitialRunState(), {
+      type: 'build:resume:state',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      seededMerged: ['plan-01', 'plan-02'],
+      seededPending: ['plan-03'],
+      featureBranch: 'eforge/feature-x',
+      landedCommitCount: 2,
+      diffStat: '2 files changed',
+    } as EforgeEvent, 'resume-state');
+
+    const stats = getSummaryStats(state);
+    const counts = selectPlanStatusCounts(state);
+    expect(stats.plansCompleted).toBe(2);
+    expect(counts.complete).toBe(2);
+    expect(counts.pending).toBe(1);
+  });
+  // --- eforge:endregion plan-01-resume-projections ---
 });
 
 // ---------------------------------------------------------------------------

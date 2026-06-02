@@ -61,7 +61,7 @@ import {
 } from './handle-enqueue';
 import { handleConfigWarning, handlePlanningWarning } from './handle-misc';
 import { handleDaemonAutoBuildPaused, handleDaemonAutoBuildResumed } from './handle-daemon';
-import { handleBuildResumeArtifacts } from './handle-resume';
+import { handleBuildResumeArtifacts, handleBuildResumeState } from './handle-resume';
 import { handlePlanBuildDecision, handlePlanningDecision } from './handle-decisions';
 import {
   handlePlanStatusChange,
@@ -165,6 +165,7 @@ export const handlerRegistry = {
   'merge:worktree:set': handleMergeWorktreeSet,
   'merge:worktree:clear': handleMergeWorktreeClear,
 
+  'build:resume:state': handleBuildResumeState,
   'build:resume:artifacts': handleBuildResumeArtifacts,
 
   // Validation lifecycle
@@ -337,10 +338,9 @@ export const IGNORED_EVENT_TYPES = [
   // build:terminal-failure — run-level authoritative terminal failure event.
   // Monitor UI rendering is future work; session reducer does not handle it.
   'build:terminal-failure',
-  // build:resume:* — lifecycle-only resume events. Recovered artifacts are
-  // handled by `build:resume:artifacts` above.
+  // build:resume:* — lifecycle-only resume events. Recovered artifacts and
+  // seed-state are handled above.
   'build:resume:start',
-  'build:resume:state',
   'build:resume:ineligible',
   'build:resume:complete',
 ] as const;

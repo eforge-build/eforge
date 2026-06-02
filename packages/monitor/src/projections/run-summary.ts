@@ -1,5 +1,6 @@
 import type { RunInfo, RunSummary } from '@eforge-build/client';
 import type { MonitorDB, EventRecord } from '../db.js';
+import { parseEventRow } from './event-hydration.js';
 
 type PlanStatus = RunSummary['plans'][number];
 
@@ -14,40 +15,85 @@ function parseData(row: EventRecord): Record<string, unknown> | null {
   try { return JSON.parse(row.data) as Record<string, unknown>; } catch { return null; }
 }
 
-function seedPlans(db: MonitorDB, sessionId: string): Map<string, PlanStatus> {
-  const map = new Map<string, PlanStatus>();
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((x): x is string => typeof x === 'string') : [];
+}
+
+function seedPlansFromLatestPlanningComplete(db: MonitorDB, sessionId: string): Map<string, PlanStatus> | null {
   const events = db.getEventsByTypeForSession(sessionId, 'planning:complete');
   const latest = events.at(-1);
-  if (!latest) return map;
+  if (!latest) return null;
   const data = parseData(latest);
-  if (!Array.isArray(data?.plans)) return map;
+  if (!Array.isArray(data?.plans)) return null;
+  const map = new Map<string, PlanStatus>();
   for (const p of data.plans) {
     if (p && typeof p === 'object' && typeof (p as { id?: unknown }).id === 'string') {
-      const plan = p as { id: string; branch?: string | null; dependsOn?: string[] };
-      map.set(plan.id, { id: plan.id, status: 'pending', branch: plan.branch ?? null, dependsOn: plan.dependsOn ?? [] });
+      const plan = p as { id: string; branch?: string | null; dependsOn?: unknown };
+      map.set(plan.id, { id: plan.id, status: 'pending', branch: plan.branch ?? null, dependsOn: stringArray(plan.dependsOn) });
     }
   }
   return map;
 }
 
-function overlayBuildEvents(db: MonitorDB, sessionId: string, map: Map<string, PlanStatus>): void {
-  for (const evt of db.getEventsByTypeForSession(sessionId, 'plan:build:start')) {
-    const data = parseData(evt);
-    if (typeof data?.planId !== 'string') continue;
-    const existing = map.get(data.planId);
-    if (existing) {
-      existing.status = 'running';
-      if (data.branch !== undefined) existing.branch = typeof data.branch === 'string' ? data.branch : null;
-      if (data.dependsOn !== undefined) existing.dependsOn = Array.isArray(data.dependsOn) ? data.dependsOn.filter((x): x is string => typeof x === 'string') : [];
-    } else {
-      map.set(data.planId, { id: data.planId, status: 'running', branch: typeof data.branch === 'string' ? data.branch : null, dependsOn: Array.isArray(data.dependsOn) ? data.dependsOn.filter((x): x is string => typeof x === 'string') : [] });
+function seedPlansFromNewestResumeArtifacts(db: MonitorDB, sessionId: string): Map<string, PlanStatus> {
+  const map = new Map<string, PlanStatus>();
+  const rows = db.getEventsByTypeForSession(sessionId, 'build:resume:artifacts');
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const parsed = parseEventRow(rows[i].data, rows[i].timestamp, rows[i].type, rows[i].id);
+    if (parsed?.type !== 'build:resume:artifacts') continue;
+    for (const plan of parsed.orchestration.plans) {
+      map.set(plan.id, { id: plan.id, status: 'pending', branch: plan.branch ?? null, dependsOn: plan.dependsOn ?? [] });
     }
+    return map;
   }
-  for (const evt of db.getEventsByTypeForSession(sessionId, 'plan:build:complete')) {
-    const data = parseData(evt); if (typeof data?.planId === 'string' && map.has(data.planId)) map.get(data.planId)!.status = 'completed';
+  return map;
+}
+
+function seedPlans(db: MonitorDB, sessionId: string): Map<string, PlanStatus> {
+  return seedPlansFromLatestPlanningComplete(db, sessionId) ?? seedPlansFromNewestResumeArtifacts(db, sessionId);
+}
+
+function ensurePlan(map: Map<string, PlanStatus>, planId: string): PlanStatus {
+  let plan = map.get(planId);
+  if (!plan) {
+    plan = { id: planId, status: 'pending', branch: null, dependsOn: [] };
+    map.set(planId, plan);
   }
-  for (const evt of db.getEventsByTypeForSession(sessionId, 'plan:build:failed')) {
-    const data = parseData(evt); if (typeof data?.planId === 'string' && map.has(data.planId)) map.get(data.planId)!.status = 'failed';
+  return plan;
+}
+
+function overlayResumeState(data: Record<string, unknown>, map: Map<string, PlanStatus>): void {
+  for (const planId of stringArray(data.seededMerged)) {
+    ensurePlan(map, planId).status = 'completed';
+  }
+  for (const planId of stringArray(data.seededPending)) {
+    if (!map.has(planId)) map.set(planId, { id: planId, status: 'pending', branch: null, dependsOn: [] });
+  }
+}
+
+function overlayBuildStart(data: Record<string, unknown>, map: Map<string, PlanStatus>): void {
+  if (typeof data.planId !== 'string') return;
+  const plan = ensurePlan(map, data.planId);
+  plan.status = 'running';
+  if (typeof data.branch === 'string') plan.branch = data.branch;
+  if (Array.isArray(data.dependsOn)) plan.dependsOn = stringArray(data.dependsOn);
+}
+
+function overlayBuildEvents(db: MonitorDB, sessionId: string, map: Map<string, PlanStatus>): void {
+  const overlayTypes = new Set(['build:resume:state', 'plan:build:start', 'plan:build:complete', 'plan:build:failed']);
+  for (const evt of db.getEventsBySession(sessionId)) {
+    if (!overlayTypes.has(evt.type)) continue;
+    const data = parseData(evt);
+    if (!data) continue;
+    if (evt.type === 'build:resume:state') {
+      overlayResumeState(data, map);
+    } else if (evt.type === 'plan:build:start') {
+      overlayBuildStart(data, map);
+    } else if (evt.type === 'plan:build:complete') {
+      if (typeof data.planId === 'string' && map.has(data.planId)) map.get(data.planId)!.status = 'completed';
+    } else if (evt.type === 'plan:build:failed') {
+      if (typeof data.planId === 'string' && map.has(data.planId)) map.get(data.planId)!.status = 'failed';
+    }
   }
 }
 
