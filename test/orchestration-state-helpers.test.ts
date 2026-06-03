@@ -148,10 +148,10 @@ describe('propagateFailure', () => {
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['b'].error).toContain('a');
 
-    expect(events).toHaveLength(3);
+    expect(events).toHaveLength(2);
     expect(events.some((e) => e.type === 'plan:status:change' && e.planId === 'b' && e.status === 'blocked')).toBe(true);
     expect(events.some((e) => e.type === 'plan:error:set' && e.planId === 'b')).toBe(true);
-    expect(events.some((e) => e.type === 'plan:build:failed' && e.planId === 'b')).toBe(true);
+    expect(events.some((e) => e.type === 'plan:build:failed' && e.planId === 'b')).toBe(false);
   });
 
   it('blocks transitive chain A→B→C', () => {
@@ -171,7 +171,8 @@ describe('propagateFailure', () => {
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['c'].status).toBe('blocked');
 
-    expect(events).toHaveLength(6);
+    expect(events).toHaveLength(4);
+    expect(events.some((e) => e.type === 'plan:build:failed' && (e.planId === 'b' || e.planId === 'c'))).toBe(false);
   });
 
   it('blocks diamond A→{B,C}→D (D reached once)', () => {
@@ -194,7 +195,8 @@ describe('propagateFailure', () => {
     expect(state.plans['c'].status).toBe('blocked');
     expect(state.plans['d'].status).toBe('blocked');
 
-    expect(events).toHaveLength(9);
+    expect(events).toHaveLength(6);
+    expect(events.some((e) => e.type === 'plan:build:failed' && ['b', 'c', 'd'].includes(e.planId))).toBe(false);
   });
 
   it('skips completed dependents', () => {
@@ -211,6 +213,7 @@ describe('propagateFailure', () => {
 
     expect(state.plans['b'].status).toBe('completed');
     expect(events).toHaveLength(0);
+    expect(events.some((e) => e.type === 'plan:build:failed' && e.planId === 'b')).toBe(false);
   });
 
   it('skips merged dependents', () => {
@@ -227,6 +230,35 @@ describe('propagateFailure', () => {
 
     expect(state.plans['b'].status).toBe('merged');
     expect(events).toHaveLength(0);
+    expect(events.some((e) => e.type === 'plan:build:failed' && e.planId === 'b')).toBe(false);
+  });
+
+  it.each([
+    { status: 'completed' as const, merged: false },
+    { status: 'merged' as const, merged: true },
+  ])('continues through $status intermediate dependents to block pending descendants', ({ status, merged }) => {
+    const state = makeState({
+      a: { status: 'failed' },
+      b: { status, merged, dependsOn: ['a'] },
+      c: { status: 'pending', dependsOn: ['b'] },
+    });
+    const plans = makePlans([
+      { id: 'a' },
+      { id: 'b', dependsOn: ['a'] },
+      { id: 'c', dependsOn: ['b'] },
+    ]);
+
+    const events = propagateFailure(state, 'a', plans);
+
+    expect(state.plans['b'].status).toBe(status);
+    expect(state.plans['c'].status).toBe('blocked');
+    expect(state.plans['c'].error).toContain('a');
+
+    expect(events).toHaveLength(2);
+    expect(events.some((e) => e.planId === 'b')).toBe(false);
+    expect(events.some((e) => e.type === 'plan:status:change' && e.planId === 'c' && e.status === 'blocked')).toBe(true);
+    expect(events.some((e) => e.type === 'plan:error:set' && e.planId === 'c')).toBe(true);
+    expect(events.some((e) => e.type === 'plan:build:failed' && e.planId === 'c')).toBe(false);
   });
 
   it('blocks multiple direct dependents and their transitive deps', () => {
@@ -249,7 +281,8 @@ describe('propagateFailure', () => {
     expect(state.plans['c'].status).toBe('blocked');
     expect(state.plans['d'].status).toBe('blocked');
 
-    expect(events).toHaveLength(9);
+    expect(events).toHaveLength(6);
+    expect(events.some((e) => e.type === 'plan:build:failed' && ['b', 'c', 'd'].includes(e.planId))).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit, AcceptanceCriteriaConflict, AcceptanceCriterionVerdict } from '../events.js';
 import { classifyAgentTerminalSubtype } from '../harness.js';
-import { findAuthoritativeTerminalEvent, reconstructPlanMaps, buildPlanSummaries, extractValidationCommands, extractLandingInfo, extractReviewFailureDetails, buildAuthoritativeFragment, detectLegacyFallbackFragment } from './terminal-failure-history.js';
+import { findAuthoritativeTerminalEvent, reconstructPlanMaps, buildPlanSummaries, extractValidationCommands, extractLandingInfo, extractReviewFailureDetails, extractPlanErrorMap, buildAuthoritativeFragment, detectLegacyFallbackFragment } from './terminal-failure-history.js';
 
 export interface SynthesizeOptions {
   setName: string;
@@ -126,7 +126,8 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           const reviewFailure = authTerminal.planId
             ? extractReviewFailureDetails(db, runId, authTerminal.planId, authTerminal.id)
             : undefined;
-          const fragment = buildAuthoritativeFragment(authTerminal, maps, prdId, setName, modelsUsed, failedPhaseRow.timestamp, valCmds, landingInfo, reviewFailure);
+          const lifecyclePlanErrorMap = extractPlanErrorMap(db, runId, failedPhaseRow.id);
+          const fragment = buildAuthoritativeFragment(authTerminal, maps, prdId, setName, modelsUsed, failedPhaseRow.timestamp, valCmds, landingInfo, reviewFailure, lifecyclePlanErrorMap);
           return fragment;
         }
         // phase:end found but no authoritative terminal event — legacy fallback applies.
