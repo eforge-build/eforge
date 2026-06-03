@@ -154,7 +154,7 @@ From the repo root, targeted validation for these examples is:
 
 ```sh
 pnpm test -- test/extension-sdk-example.test.ts
-pnpm test -- test/extension-tooling-wiring.test.ts
+pnpm test -- test/extension-tooling-wiring-cli.test.ts test/extension-tooling-wiring-consumer-parity.test.ts test/extension-tooling-wiring-runtime-docs.test.ts
 pnpm docs:check
 ```
 
