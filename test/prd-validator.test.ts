@@ -1,9 +1,16 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { parseGaps } from '@eforge-build/engine/agents/prd-validator';
+import { runAcceptanceUnknownResolver } from '@eforge-build/engine/agents/acceptance-unknown-resolver';
 import { prdValidate } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { EforgeEvent, EforgeState, PrdValidationGap } from '@eforge-build/engine/events';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
+import { StubHarness } from './stub-harness.js';
+import { useTempDir } from './test-tmpdir.js';
+import { ModelTracker } from '@eforge-build/engine/model-tracker';
 
 /**
  * Build a minimal PhaseContext for testing prdValidate in isolation.
@@ -31,6 +38,7 @@ function makePhaseContext(overrides: Partial<PhaseContext> = {}): PhaseContext {
     mergeWorktreePath: '/tmp/merge',
     featureBranch: 'feature',
     worktreeManager: {} as PhaseContext['worktreeManager'],
+    modelTracker: new ModelTracker(),
     failedMerges: new Set(),
     recentlyMergedIds: [],
     landingSucceeded: false, landingAction: 'merge' as const,
@@ -425,5 +433,52 @@ describe('prdValidate viability gate', () => {
     expect(ctx.gapClosePerformed).toBe(false);
     const progress = events.find((e) => e.type === 'planning:progress' && 'message' in e && (e as { message: string }).message.includes('Gap closing failed'));
     expect(progress).toBeDefined();
+  });
+});
+
+describe('prdValidate acceptance unknown resolver integration', () => {
+  const makeTempDir = useTempDir();
+
+  function initCleanGitRepo(dir: string): void {
+    execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: dir });
+    writeFileSync(join(dir, 'README.md'), '# test\n');
+    execFileSync('git', ['add', 'README.md'], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir, stdio: 'ignore' });
+  }
+
+  it('invokes a StubHarness-backed resolver and remains failed when unknowns remain', async () => {
+    const repo = makeTempDir();
+    initCleanGitRepo(repo);
+    const harness = new StubHarness([{ text: JSON.stringify({ verdicts: [] }) }]);
+    let resolverCalls = 0;
+    const ctx = makePhaseContext({
+      mergeWorktreePath: repo,
+      validationCommandEvidence: [{ command: 'pnpm type-check', exitCode: 0 }],
+      expectedAcceptanceCriteria: [{ id: 'ac-001', text: 'Must report success', raw: '- Must report success' }],
+      prdValidator: fakePrdValidator([
+        { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: true, gaps: [], completionPercent: 100 },
+        { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Must report success', verdict: 'unknown', evidence: 'Diff was inconclusive' }], source: 'prd' },
+      ]),
+      acceptanceUnknownResolver: async function* (cwd, request) {
+        resolverCalls++;
+        return yield* runAcceptanceUnknownResolver({
+          harness,
+          cwd,
+          unknownCriteria: request.unknownCriteria,
+          acceptanceVerdicts: request.acceptanceVerdicts,
+          validationCommandEvidence: request.validationCommandEvidence,
+          implementationDiffContext: 'diff --git a/src/cli.ts b/src/cli.ts',
+        });
+      },
+    });
+
+    const events = await collectEvents(prdValidate(ctx));
+
+    expect(resolverCalls).toBe(1);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'agent:start', agent: 'prd-validator' }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'acceptance_validation:complete', passed: false }));
+    expect(ctx.state.status).toBe('failed');
   });
 });

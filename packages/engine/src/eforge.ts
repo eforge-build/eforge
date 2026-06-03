@@ -51,9 +51,12 @@ import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
 import { runPrdValidator } from './agents/prd-validator.js';
+// --- eforge:region plan-02-acceptance-unknown-resolution ---
+import { runAcceptanceUnknownResolver } from './agents/acceptance-unknown-resolver.js';
+// --- eforge:endregion plan-02-acceptance-unknown-resolution ---
 import { buildPrdValidatorDiff } from './prd-validator-diff.js';
 import { runGapCloser } from './agents/gap-closer.js';
-import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser } from './orchestrator.js';
+import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser, type AcceptanceUnknownResolver } from './orchestrator.js';
 import { createBuildTerminalFailureTracker } from './terminal-failure.js';
 import type { MergeResolver } from './worktree-ops.js';
 import { computeWorktreeBase, createMergeWorktree } from './worktree-ops.js';
@@ -939,6 +942,21 @@ export class EforgeEngine {
         }
       } : undefined;
 
+      // --- eforge:region plan-02-acceptance-unknown-resolution ---
+      const acceptanceUnknownResolver: AcceptanceUnknownResolver | undefined = options.prdFilePath ? async function* (resolverCwd, request) {
+        let built: Awaited<ReturnType<typeof buildPrdValidatorDiff>>;
+        try { built = await buildPrdValidatorDiff({ cwd: resolverCwd, baseRef: orchConfig.diffBaseRef ?? orchConfig.baseBranch }); }
+        catch (err) { throw new Error(`Acceptance unknown resolver could not build implementation diff context: ${err instanceof Error ? err.message : String(err)}`); }
+        const resolverSpan = tracing!.createSpan('prd-validator', { unknownCount: request.unknownCriteria.length, diffLength: built.renderedText.length });
+        resolverSpan.setInput({ unknownCriteria: request.unknownCriteria.map((criterion) => criterion.id), validationCommandCount: request.validationCommandEvidence?.length ?? 0, totalBytes: built.totalBytes, summarizedCount: built.summarizedCount });
+        const resolverTracker = createToolTracker(resolverSpan);
+        try {
+          const result = yield* runAcceptanceUnknownResolver({ ...resolveAgentConfig('prd-validator', config), cwd: resolverCwd, unknownCriteria: request.unknownCriteria, acceptanceVerdicts: request.acceptanceVerdicts, validationCommandEvidence: request.validationCommandEvidence, implementationDiffContext: built.renderedText, verbose, abortController, phase: 'standalone', harness: agentRuntimes.forRole('prd-validator') });
+          resolverTracker.cleanup(); resolverSpan.end(); return result;
+        } catch (err) { resolverTracker.cleanup(); resolverSpan.error(err as Error); throw err; }
+      } : undefined;
+      // --- eforge:endregion plan-02-acceptance-unknown-resolution ---
+
       // Create gap closer closure
       const gapCloser: GapCloser | undefined = options.prdFilePath ? async function* (gapCloserCwd, gaps, completionPercent) {
         // Read PRD content
@@ -1027,6 +1045,9 @@ export class EforgeEngine {
         maxValidationRetries: config.build.maxValidationRetries,
         mergeResolver,
         prdValidator,
+        // --- eforge:region plan-02-acceptance-unknown-resolution ---
+        acceptanceUnknownResolver,
+        // --- eforge:endregion plan-02-acceptance-unknown-resolution ---
         gapCloser,
         mergeWorktreePath,
         shouldCleanup,

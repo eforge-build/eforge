@@ -63,6 +63,13 @@ export type PrdValidator = (
   context?: { validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }> },
 ) => AsyncGenerator<EforgeEvent>;
 
+// --- eforge:region plan-02-acceptance-unknown-resolution ---
+export type AcceptanceUnknownResolver = (
+  cwd: string,
+  request: import('./validation/acceptance-unknown-resolution.js').AcceptanceUnknownResolverRequest,
+) => AsyncGenerator<EforgeEvent, import('./validation/acceptance-unknown-resolution.js').AcceptanceUnknownResolution[], void>;
+// --- eforge:endregion plan-02-acceptance-unknown-resolution ---
+
 /**
  * Callback that attempts to close PRD validation gaps.
  * Injected by the consumer (typically wraps the gap-closer agent).
@@ -86,6 +93,9 @@ export interface OrchestratorOptions {
   maxValidationRetries?: number;
   mergeResolver?: MergeResolver;
   prdValidator?: PrdValidator;
+  // --- eforge:region plan-02-acceptance-unknown-resolution ---
+  acceptanceUnknownResolver?: AcceptanceUnknownResolver;
+  // --- eforge:endregion plan-02-acceptance-unknown-resolution ---
   gapCloser?: GapCloser;
   /** Minimum PRD completion percentage (0-100) required to attempt gap closing. Defaults to 75. */
   minCompletionPercent?: number;
@@ -233,7 +243,11 @@ export class Orchestrator {
       signal, postMergeCommands: this.options.postMergeCommands, validateCommands: this.options.validateCommands,
       postMergeCommandTimeoutMs: this.options.postMergeCommandTimeoutMs,
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
-      mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, gapCloser: this.options.gapCloser,
+      mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator,
+      // --- eforge:region plan-02-acceptance-unknown-resolution ---
+      acceptanceUnknownResolver: this.options.acceptanceUnknownResolver,
+      // --- eforge:endregion plan-02-acceptance-unknown-resolution ---
+      gapCloser: this.options.gapCloser,
       minCompletionPercent: this.options.minCompletionPercent ?? 75, worktreeManager: wm,
       failedMerges: new Set<string>(), recentlyMergedIds: [],
       landingSucceeded: false,

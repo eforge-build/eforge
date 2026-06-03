@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { prdValidate, validate } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import type { EforgeEvent, EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
+import type { AcceptanceUnknownResolution } from '@eforge-build/engine/validation/acceptance-unknown-resolution';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -39,7 +43,7 @@ function makeConfig(): OrchestrationConfig {
   };
 }
 
-function makeCtx(stateDir: string, prdValidator: PhaseContext['prdValidator']): PhaseContext {
+function makeCtx(stateDir: string, prdValidator: PhaseContext['prdValidator'], overrides: Partial<PhaseContext> = {}): PhaseContext {
   const stubWorktreeManager = {
     acquireForPlan: async () => '/tmp/fake-worktree',
     releaseForPlan: async () => {},
@@ -69,6 +73,7 @@ function makeCtx(stateDir: string, prdValidator: PhaseContext['prdValidator']): 
     resumed: false,
     modelTracker: new ModelTracker(),
     prdValidator,
+    ...overrides,
   };
 }
 
@@ -823,5 +828,123 @@ describe('prdValidate phase — validationCommandEvidence plumbing', () => {
     const acceptance = events.find((e) => e.type === 'acceptance_validation:complete');
     expect(acceptance).toBeDefined();
     expect((acceptance as Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>).passed).toBe(false);
+  });
+});
+
+describe('prdValidate phase — acceptance unknown resolver', () => {
+  const makeTempDir = useTempDir();
+
+  function initCleanGitRepo(dir: string): void {
+    execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: dir });
+    writeFileSync(join(dir, 'README.md'), '# test\n');
+    execFileSync('git', ['add', 'README.md'], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir, stdio: 'ignore' });
+  }
+
+  function validatorWithUnknown(): PhaseContext['prdValidator'] {
+    return async function* () {
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false, verdicts: [{ criterion: 'Must report success', verdict: 'unknown', evidence: 'Diff was inconclusive' }], source: 'prd' } as EforgeEvent;
+    };
+  }
+
+  it('invokes resolver and converts an expected unknown to pass with evidence', async () => {
+    const repo = makeTempDir();
+    initCleanGitRepo(repo);
+    let calls = 0;
+    const resolver: PhaseContext['acceptanceUnknownResolver'] = async function* (): AsyncGenerator<EforgeEvent, AcceptanceUnknownResolution[], void> {
+      calls++;
+      return [{ criterion: 'ac-001', verdict: 'pass', evidence: { type: 'file', path: 'src/a.ts', excerpt: 'success branch exists' } }];
+    };
+    const ctx = makeCtx(makeTempDir(), validatorWithUnknown(), {
+      mergeWorktreePath: repo,
+      validationCommandEvidence: [{ command: 'pnpm type-check', exitCode: 0 }],
+      expectedAcceptanceCriteria: [{ id: 'ac-001', text: 'Must report success', raw: '- Must report success' }],
+      acceptanceUnknownResolver: resolver,
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    expect(calls).toBe(1);
+    expect(ctx.state.status).not.toBe('failed');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'acceptance_validation:complete', passed: true }));
+  });
+
+  it('does not invoke resolver when an explicit acceptance verdict fails', async () => {
+    let calls = 0;
+    const ctx = makeCtx(makeTempDir(), async function* () {
+      yield { type: 'prd_validation:complete', timestamp: new Date().toISOString(), passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
+      yield { type: 'acceptance_validation:complete', timestamp: new Date().toISOString(), passed: false, verdicts: [{ criterion: 'Must report success', verdict: 'fail', evidence: 'Missing' }], source: 'prd' } as EforgeEvent;
+    }, {
+      validationCommandEvidence: [{ command: 'pnpm type-check', exitCode: 0 }],
+      expectedAcceptanceCriteria: [{ id: 'ac-001', text: 'Must report success', raw: '- Must report success' }],
+      acceptanceUnknownResolver: async function* (): AsyncGenerator<EforgeEvent, AcceptanceUnknownResolution[], void> { calls++; return []; },
+    });
+
+    for await (const _ of prdValidate(ctx)) { /* drain */ }
+
+    expect(calls).toBe(0);
+    expect(ctx.state.status).toBe('failed');
+  });
+
+  it('does not invoke resolver when deterministic validation evidence failed or timed out', async () => {
+    let calls = 0;
+    const ctx = makeCtx(makeTempDir(), validatorWithUnknown(), {
+      validationCommandEvidence: [{ command: 'pnpm test', exitCode: 124 }],
+      expectedAcceptanceCriteria: [{ id: 'ac-001', text: 'Must report success', raw: '- Must report success' }],
+      acceptanceUnknownResolver: async function* (): AsyncGenerator<EforgeEvent, AcceptanceUnknownResolution[], void> { calls++; return []; },
+    });
+
+    for await (const _ of prdValidate(ctx)) { /* drain */ }
+
+    expect(calls).toBe(0);
+    expect(ctx.state.status).toBe('failed');
+  });
+
+  it('keeps build failed when resolver leaves an expected unknown unresolved', async () => {
+    const repo = makeTempDir();
+    initCleanGitRepo(repo);
+    const ctx = makeCtx(makeTempDir(), validatorWithUnknown(), {
+      mergeWorktreePath: repo,
+      validationCommandEvidence: [{ command: 'pnpm type-check', exitCode: 0 }],
+      expectedAcceptanceCriteria: [{ id: 'ac-001', text: 'Must report success', raw: '- Must report success' }],
+      acceptanceUnknownResolver: async function* (): AsyncGenerator<EforgeEvent, AcceptanceUnknownResolution[], void> { return []; },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of prdValidate(ctx)) events.push(event);
+
+    expect(ctx.state.status).toBe('failed');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'acceptance_validation:complete', passed: false }));
+  });
+
+  it('fails closed on resolver crash and dirty worktree', async () => {
+    const crashedRepo = makeTempDir();
+    initCleanGitRepo(crashedRepo);
+    const crashCtx = makeCtx(makeTempDir(), validatorWithUnknown(), {
+      mergeWorktreePath: crashedRepo,
+      validationCommandEvidence: [{ command: 'pnpm type-check', exitCode: 0 }],
+      expectedAcceptanceCriteria: [{ id: 'ac-001', text: 'Must report success', raw: '- Must report success' }],
+      acceptanceUnknownResolver: async function* (): AsyncGenerator<EforgeEvent, AcceptanceUnknownResolution[], void> { throw new Error('backend unavailable'); },
+    });
+    for await (const _ of prdValidate(crashCtx)) { /* drain */ }
+    expect(crashCtx.state.status).toBe('failed');
+
+    const dirtyRepo = makeTempDir();
+    initCleanGitRepo(dirtyRepo);
+    writeFileSync(join(dirtyRepo, 'dirty.txt'), 'untracked\n');
+    let dirtyCalls = 0;
+    const dirtyCtx = makeCtx(makeTempDir(), validatorWithUnknown(), {
+      mergeWorktreePath: dirtyRepo,
+      validationCommandEvidence: [{ command: 'pnpm type-check', exitCode: 0 }],
+      expectedAcceptanceCriteria: [{ id: 'ac-001', text: 'Must report success', raw: '- Must report success' }],
+      acceptanceUnknownResolver: async function* (): AsyncGenerator<EforgeEvent, AcceptanceUnknownResolution[], void> { dirtyCalls++; return []; },
+    });
+    for await (const _ of prdValidate(dirtyCtx)) { /* drain */ }
+    expect(dirtyCalls).toBe(0);
+    expect(dirtyCtx.state.status).toBe('failed');
   });
 });
