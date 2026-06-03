@@ -11,10 +11,8 @@ import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
 import { computeDepthMap } from './compute-depth-map';
 import { PlanRow } from './plan-row';
 import { AgentDetailSheet } from './agent-detail-sheet';
-// --- eforge:region plan-01-review-cycle-inspector ---
 import { buildReviewCycleDetail } from './review-cycle-detail-model';
 import { ReviewCycleDetailSheet } from './review-cycle-detail-sheet';
-// --- eforge:endregion plan-01-review-cycle-inspector ---
 
 interface ThreadPipelineProps {
   agentThreads: AgentThread[];
@@ -36,9 +34,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
-  // --- eforge:region plan-01-review-cycle-inspector ---
   const [selectedReviewCyclePlanId, setSelectedReviewCyclePlanId] = useState<string | null>(null);
-  // --- eforge:endregion plan-01-review-cycle-inspector ---
 
   const planArtifactMap = useMemo(() => {
     const map = new Map<string, { name: string; body: string }>();
@@ -174,7 +170,6 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
 
   const selectedThread = agentThreads.find((t) => t.agentId === selectedAgentId) ?? null;
 
-  // --- eforge:region plan-01-review-cycle-inspector ---
   const selectedReviewCycleDetail = useMemo(() => {
     if (!selectedReviewCyclePlanId) return null;
     return buildReviewCycleDetail(
@@ -205,7 +200,6 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
   };
 
   const handleReviewCycleOpenAgent = handleAgentSelect;
-  // --- eforge:endregion plan-01-review-cycle-inspector ---
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -289,14 +283,12 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
           </div>
         )}
 
-        {/* --- eforge:region plan-01-review-cycle-inspector --- */}
         <ReviewCycleDetailSheet
           detail={selectedReviewCycleDetail}
           open={selectedReviewCyclePlanId !== null}
           onClose={() => setSelectedReviewCyclePlanId(null)}
           onOpenAgent={handleReviewCycleOpenAgent}
         />
-        {/* --- eforge:endregion plan-01-review-cycle-inspector --- */}
         {selectedDecision && (
           <SheetPanel
             open={selectedDecision !== null}

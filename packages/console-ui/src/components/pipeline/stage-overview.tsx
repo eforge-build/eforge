@@ -3,7 +3,6 @@ import type { AgentThread } from '@/lib/run-state';
 import { STAGE_STATUS_STYLES } from './pipeline-colors';
 import { getBuildStageStatuses, buildStageName, getStageStatus, type StageStatus } from './agent-stage-map';
 
-// --- eforge:region plan-01-review-cycle-inspector ---
 function StagePill({ stage, status = 'pending', hoveredStage, onStageHover, selectable, onSelect, ariaLabel }: {
   stage: string;
   status?: StageStatus;
@@ -47,7 +46,6 @@ function StagePill({ stage, status = 'pending', hoveredStage, onStageHover, sele
     </span>
   );
 }
-// --- eforge:endregion plan-01-review-cycle-inspector ---
 
 export function Chevron() {
   return (
@@ -82,10 +80,8 @@ export function BuildStageProgress({ buildStages, currentStage, hoveredStage, on
   hoveredStage: string | null;
   onStageHover: (stage: string | null) => void;
   threads?: AgentThread[];
-  // --- eforge:region plan-01-review-cycle-inspector ---
   onStageSelect?: (stage: string) => void;
   planId?: string;
-  // --- eforge:endregion plan-01-review-cycle-inspector ---
 }) {
   if (!buildStages || buildStages.length === 0) return null;
 
@@ -95,7 +91,6 @@ export function BuildStageProgress({ buildStages, currentStage, hoveredStage, on
     <div className="flex items-center gap-1 flex-wrap mb-0.5">
       {buildStages.map((spec, i) => {
         const status = statuses[i];
-        // --- eforge:region plan-01-review-cycle-inspector ---
         const renderPill = (stage: string) => {
           const selectable = stage === 'review-cycle' && onStageSelect !== undefined;
           return (
@@ -111,7 +106,6 @@ export function BuildStageProgress({ buildStages, currentStage, hoveredStage, on
             />
           );
         };
-        // --- eforge:endregion plan-01-review-cycle-inspector ---
         if (Array.isArray(spec)) {
           // Parallel group: render in a bordered container
           return (

@@ -47,9 +47,7 @@ interface PlanRowProps {
   decisions?: DecisionPoint[];
   onDecisionSelect?: (decision: Decision) => void;
   onAgentSelect?: (agentId: string) => void;
-  // --- eforge:region plan-01-review-cycle-inspector ---
   onStageSelect?: (stage: string) => void;
-  // --- eforge:endregion plan-01-review-cycle-inspector ---
 }
 
 export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
