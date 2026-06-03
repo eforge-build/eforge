@@ -9,17 +9,14 @@ import {
   type NormalizedValidationAnnotation,
   type NormalizedValidationResult,
 } from '../../extensions/validation-provider-runtime.js';
-// --- eforge:region plan-02-validation-repair-routing ---
 import {
   stableJsonStringify,
   writeValidationRecoveryCheckpoint,
   type ValidationRecoveryCheckpointReference,
   type ValidationRecoveryRepairStrategy,
 } from '../../validation-recovery-checkpoints.js';
-// --- eforge:endregion plan-02-validation-repair-routing ---
 import type { BuildStageContext } from '../types.js';
 
-// --- eforge:region plan-02-validation-repair-routing ---
 export type ValidationRecoveryRepairClass = NonNullable<ReviewIssue['repairClass']> | 'unspecified';
 
 export interface ValidationRecoveryRepairContext {
@@ -38,14 +35,11 @@ export interface ValidationRecoveryRepairContext {
 export type ValidationRecoveryRoute =
   | { repairStrategy: ValidationRecoveryRepairStrategy; repairClass: ValidationRecoveryRepairClass; reason: string }
   | { repairStrategy: 'manual'; repairClass: ValidationRecoveryRepairClass; reason: string };
-// --- eforge:endregion plan-02-validation-repair-routing ---
 
 export interface ValidationProviderRecoveryCallbacks {
   runReviewFix: (context: ValidationRecoveryRepairContext) => AsyncIterable<EforgeEvent>;
-  // --- eforge:region plan-02-validation-repair-routing ---
   runStructuralValidationFix?: (context: ValidationRecoveryRepairContext) => AsyncIterable<EforgeEvent>;
   runEvaluate: (overrides?: { strictness?: 'strict' | 'standard' | 'lenient'; validationRepairContext?: ValidationRecoveryRepairContext }) => AsyncIterable<EforgeEvent>;
-  // --- eforge:endregion plan-02-validation-repair-routing ---
 }
 
 export function isRecoverableValidationFailure(outcome: NormalizedValidationResult): boolean {
@@ -80,10 +74,8 @@ export async function* runValidationProviderRecoveryStage(
   let injectedReviewIssues: ReviewIssue[] | undefined;
   let injectedReviewIssuesSnapshot: ReviewIssue[] | undefined;
   let attempts = 0;
-  // --- eforge:region plan-02-validation-repair-routing ---
   const narrowAttemptedSignatures = new Set<string>();
   let latestCheckpoint: ValidationRecoveryCheckpointReference | undefined;
-  // --- eforge:endregion plan-02-validation-repair-routing ---
 
   while (true) {
     let shouldRestart = false;
@@ -115,7 +107,6 @@ export async function* runValidationProviderRecoveryStage(
         return;
       }
 
-      // --- eforge:region plan-02-validation-repair-routing ---
       const recoveryIssues = validationFailureToReviewIssues(registration, result.outcome);
       const signatures = validationFailureSignatures(registration, result.outcome);
       const route = selectValidationRecoveryStrategy(recoveryIssues, signatures, narrowAttemptedSignatures);
@@ -194,7 +185,6 @@ export async function* runValidationProviderRecoveryStage(
           if (ctx.buildFailed) return;
         }
       }
-      // --- eforge:endregion plan-02-validation-repair-routing ---
       if (ctx.buildFailed) return;
 
       for await (const event of callbacks.runEvaluate({ strictness: ctx.review.evaluatorStrictness, validationRepairContext: repairContext })) {
@@ -216,7 +206,6 @@ export async function* runValidationProviderRecoveryStage(
   }
 }
 
-// --- eforge:region plan-02-validation-repair-routing ---
 export function validationFailureSignatures(
   provider: ValidationProviderRegistration,
   outcome: NormalizedValidationResult,
@@ -356,7 +345,6 @@ function appendLatestCheckpoint(message: string, checkpoint: ValidationRecoveryC
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-// --- eforge:endregion plan-02-validation-repair-routing ---
 
 function reviewIssuesUnchanged(current: ReviewIssue[], snapshot: ReviewIssue[] | undefined): boolean {
   if (!snapshot || current.length !== snapshot.length) return false;

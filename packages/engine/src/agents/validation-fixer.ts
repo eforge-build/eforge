@@ -16,7 +16,6 @@ export interface ValidationFixerOptions extends SdkPassthroughConfig {
   maxTurns?: number;
 }
 
-// --- eforge:region plan-02-validation-repair-routing ---
 export interface ValidationRepairFixerOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
   cwd: string;
@@ -29,7 +28,6 @@ export interface ValidationRepairFixerOptions extends SdkPassthroughConfig {
   /** Override max conversation turns (default: implementation tier default) */
   maxTurns?: number;
 }
-// --- eforge:endregion plan-02-validation-repair-routing ---
 
 /**
  * Validation fixer agent — attempts to fix post-merge validation failures.
@@ -78,7 +76,6 @@ export async function* runValidationFixer(
   yield { timestamp: new Date().toISOString(), type: 'validation:fix:complete', attempt: options.attempt };
 }
 
-// --- eforge:region plan-02-validation-repair-routing ---
 /**
  * In-build validation repair fixer — leaves candidate edits unstaged and
  * uncommitted so the build evaluator can accept or reject the captured diff.
@@ -115,4 +112,3 @@ export async function* runValidationRepairFixer(
     // the evaluator remains the only path that can land candidate edits.
   }
 }
-// --- eforge:endregion plan-02-validation-repair-routing ---

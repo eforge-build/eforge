@@ -20,7 +20,6 @@ export type ResumeQueueTransitionResult =
   | { status: 'rolled-back'; prdId: string; skippedIds: string[] }
   | { status: 'blocked'; prdId: string; reason: string };
 
-// --- eforge:region plan-01-engine-queued-resume ---
 export interface RequeueCompiledResumeOptions extends QueuedResumeOptions {
   setName: string;
   featureBranch: string;
@@ -32,7 +31,6 @@ export type RequeueCompiledResumeResult =
   | { status: 'queued'; prdId: string; setName: string; featureBranch: string; baseBranch: string; movedDescendantIds: string[] }
   | { status: 'already-queued'; prdId: string; setName: string; featureBranch: string; baseBranch: string; movedDescendantIds: [] }
   | { status: 'blocked'; prdId: string; setName: string; featureBranch: string; baseBranch: string; reason: string };
-// --- eforge:endregion plan-01-engine-queued-resume ---
 
 interface ResumeQueueSnapshot {
   queueDir: string;
@@ -42,7 +40,6 @@ interface ResumeQueueSnapshot {
   skipped: QueuedPrd[];
 }
 
-// --- eforge:region plan-01-engine-queued-resume ---
 export async function requeueFailedPrdForCompiledResume(options: RequeueCompiledResumeOptions): Promise<RequeueCompiledResumeResult> {
   const unsafe = unsafePrdIdReason(options.prdId);
   if (unsafe) return blockedRequeue(options, unsafe);
@@ -110,7 +107,6 @@ export async function requeueFailedPrdForCompiledResume(options: RequeueCompiled
   await releasePrd(options.prdId, options.cwd);
   return { status: 'queued', prdId: options.prdId, setName: options.setName, featureBranch: options.featureBranch, baseBranch: options.baseBranch, movedDescendantIds: descendantIds };
 }
-// --- eforge:endregion plan-01-engine-queued-resume ---
 
 export async function beginQueuedResume(options: QueuedResumeOptions): Promise<ResumeQueueTransitionResult> {
   const unsafe = unsafePrdIdReason(options.prdId);
@@ -304,7 +300,6 @@ function unsafePrdIdReason(prdId: string): string | undefined {
   return undefined;
 }
 
-// --- eforge:region plan-01-engine-queued-resume ---
 function compiledResumeMatches(prd: QueuedPrd, options: RequeueCompiledResumeOptions): boolean {
   try {
     const metadata = getCompiledResumeFrontmatter(prd.frontmatter);
@@ -327,7 +322,6 @@ function blockedRequeue(options: RequeueCompiledResumeOptions, reason: string): 
     reason,
   };
 }
-// --- eforge:endregion plan-01-engine-queued-resume ---
 
 function blocked(prdId: string, reason: string): ResumeQueueTransitionResult {
   return { status: 'blocked', prdId, reason };

@@ -32,13 +32,11 @@ const prdFrontmatterSchema = z.object({
   recovery_set_name: z.string().min(1).optional(),
   recovery_feature_branch: z.string().min(1).optional(),
   recovery_base_branch: z.string().min(1).optional(),
-  // --- eforge:region plan-01-engine-queued-resume ---
   resume_mode: z.literal('compiled').optional(),
   resume_from: z.string().min(1).optional(),
   resume_set_name: z.string().min(1).optional(),
   resume_feature_branch: z.string().min(1).optional(),
   resume_base_branch: z.string().min(1).optional(),
-  // --- eforge:endregion plan-01-engine-queued-resume ---
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -50,7 +48,6 @@ export interface RecoveryContinuationFrontmatter {
   baseBranch: string;
 }
 
-// --- eforge:region plan-01-engine-queued-resume ---
 export interface CompiledResumeFrontmatter {
   mode: 'compiled';
   sourcePrdId: string;
@@ -58,7 +55,6 @@ export interface CompiledResumeFrontmatter {
   featureBranch: string;
   baseBranch: string;
 }
-// --- eforge:endregion plan-01-engine-queued-resume ---
 
 export function getRecoveryContinuationFrontmatter(frontmatter: PrdFrontmatter): RecoveryContinuationFrontmatter | undefined {
   const fields = {
@@ -84,7 +80,6 @@ export function getRecoveryContinuationFrontmatter(frontmatter: PrdFrontmatter):
   } as RecoveryContinuationFrontmatter;
 }
 
-// --- eforge:region plan-01-engine-queued-resume ---
 export function getCompiledResumeFrontmatter(frontmatter: PrdFrontmatter): CompiledResumeFrontmatter | undefined {
   const fields = {
     resume_mode: frontmatter.resume_mode,
@@ -110,7 +105,6 @@ export function getCompiledResumeFrontmatter(frontmatter: PrdFrontmatter): Compi
     baseBranch: fields.resume_base_branch,
   } as CompiledResumeFrontmatter;
 }
-// --- eforge:endregion plan-01-engine-queued-resume ---
 
 export interface QueuedPrd {
   id: string;
@@ -814,7 +808,6 @@ export async function setQueuedPrdProfile(
   };
 }
 
-// --- eforge:region plan-01-engine-queued-resume ---
 export type QueuedPrdFrontmatterFieldValue = string | number | boolean | string[];
 
 export async function setQueuedPrdFrontmatterFields(
@@ -862,7 +855,6 @@ function serializeFrontmatterFieldValue(value: QueuedPrdFrontmatterFieldValue): 
 }
 
 function assertSafeFrontmatterString(value: string): string { if (/[\x00-\x1f\x7f]/.test(value)) throw new Error('PRD frontmatter string values must not contain control characters or newlines'); return value; }
-// --- eforge:endregion plan-01-engine-queued-resume ---
 
 async function setQueuedPrdFrontmatterString(
   prd: QueuedPrd,

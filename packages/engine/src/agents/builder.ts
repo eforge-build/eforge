@@ -54,10 +54,8 @@ export interface BuilderOptions extends SdkPassthroughConfig {
   };
   /** Immutable evaluator snapshot captured by the engine before invoking the read-only evaluator. */
   evaluatorSnapshot?: EvaluationSnapshot;
-  // --- eforge:region plan-02-validation-repair-routing ---
   /** Validation-provider repair context injected when validation recovery invokes the evaluator. */
   validationRepairContext?: string;
-  // --- eforge:endregion plan-02-validation-repair-routing ---
   /** Commit SHA captured before the implement stage — used as evaluator reset target */
   preImplementCommit?: string;
   /** Shard scope for this builder instance. When set, restricts the builder to a subset of files. */
@@ -407,9 +405,7 @@ The previous evaluator run was interrupted before a final verdict submission was
     evaluation_schema: getEvaluationSchemaYaml(),
     evaluation_submission_schema: getEvaluationSubmissionSchemaYaml(),
     continuation_context: continuationContextText,
-    // --- eforge:region plan-02-validation-repair-routing ---
     validation_repair_context: options.validationRepairContext ?? '',
-    // --- eforge:endregion plan-02-validation-repair-routing ---
     list_files_tool: options.harness.effectiveCustomToolName('list_evaluation_files'),
     get_diff_tool: options.harness.effectiveCustomToolName('get_evaluation_diff'),
     submit_verdicts_tool: options.harness.effectiveCustomToolName('submit_evaluation_verdicts'),

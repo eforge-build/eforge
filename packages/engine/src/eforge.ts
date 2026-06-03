@@ -827,7 +827,6 @@ export class EforgeEngine {
         return resolved;
       };
 
-      // --- eforge:region plan-01-engine-queued-resume ---
       const validationPolicy = this.config.build.validation;
       const {
         prdValidator,
@@ -848,7 +847,6 @@ export class EforgeEngine {
         abortController,
         ...(options.prdFilePath !== undefined ? { prdFilePath: options.prdFilePath } : {}),
       });
-      // --- eforge:endregion plan-01-engine-queued-resume ---
 
       // Materialize PRD provenance artifact on the eforge work branch.
       // Done before the orchestrator starts so the artifact appears early in
@@ -1018,7 +1016,6 @@ export class EforgeEngine {
       yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'failed' };
     };
 
-    // --- eforge:region plan-01-engine-queued-resume ---
     let compiledResume: ReturnType<typeof getCompiledResumeFrontmatter>;
     try {
       compiledResume = getCompiledResumeFrontmatter(prd.frontmatter);
@@ -1027,7 +1024,6 @@ export class EforgeEngine {
       yield* failBeforeBuildSession(message);
       return;
     }
-    // --- eforge:endregion plan-01-engine-queued-resume ---
 
     try {
       if (compiledResume === undefined) {
@@ -1150,7 +1146,6 @@ export class EforgeEngine {
         } as EforgeEvent;
       }
 
-      // --- eforge:region plan-01-engine-queued-resume ---
       if (compiledResume !== undefined) {
         let resumeFailed = false;
         const resolvedLandingAction = options.landingAction ?? prd.frontmatter.landing;
@@ -1176,7 +1171,6 @@ export class EforgeEngine {
           : { status: 'completed', summary: 'Resume complete' };
         return;
       }
-      // --- eforge:endregion plan-01-engine-queued-resume ---
 
       // Compile (plan) the PRD
       let compileFailed = false;
@@ -1529,7 +1523,6 @@ export class EforgeEngine {
         const wasAborted = abortController?.signal.aborted === true;
         const isAlreadyClaimed = exitCode === QueueExecExitCode.SkippedAlreadyClaimed;
         const needsRevision = exitCode === QueueExecExitCode.SkippedNeedsRevision;
-        // --- eforge:region plan-01-engine-queued-resume ---
         const isCompiledResumePrd = (() => {
           try {
             return getCompiledResumeFrontmatter(prd.frontmatter) !== undefined;
@@ -1541,7 +1534,6 @@ export class EforgeEngine {
               prd.frontmatter.resume_base_branch !== undefined;
           }
         })();
-        // --- eforge:endregion plan-01-engine-queued-resume ---
 
         let status: 'completed' | 'failed' | 'skipped' | 'already-claimed';
         let moveTo: 'failed' | 'skipped' | null;
@@ -1581,7 +1573,6 @@ export class EforgeEngine {
         }
 
         try {
-          // --- eforge:region plan-01-engine-queued-resume ---
           if (isCompiledResumePrd && !isAlreadyClaimed) {
             let resumeStatus = status;
             try {
@@ -1601,7 +1592,6 @@ export class EforgeEngine {
             status = resumeStatus;
             return;
           }
-          // --- eforge:endregion plan-01-engine-queued-resume ---
 
           if (shouldRelease) {
             try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
@@ -2595,11 +2585,9 @@ export class EforgeEngine {
       cwd?: string;
       verbose?: boolean;
       abortController?: AbortController;
-      // --- eforge:region plan-01-engine-queued-resume ---
       schedulerOwned?: boolean;
       landingAction?: 'pr' | 'merge' | 'leave';
       landingAutoMerge?: boolean;
-      // --- eforge:endregion plan-01-engine-queued-resume ---
     } = {},
   ): AsyncGenerator<EforgeEvent> {
     const cwd = options.cwd ?? this.cwd;
@@ -2655,7 +2643,6 @@ export class EforgeEngine {
       yield { type: 'phase:start', runId, planSet: setName, command: 'resume', timestamp: ts() };
       tracing.setInput({ planSet: setName, prdId, resumeMode: true });
 
-      // --- eforge:region plan-01-engine-queued-resume ---
       if (!options.schedulerOwned) {
         const queueResumeStart = await beginQueuedResume({ cwd, prdId, queueDir: this.config.prdQueue.dir });
         if (queueResumeStart.status === 'blocked') {
@@ -2666,7 +2653,6 @@ export class EforgeEngine {
         }
         queuedResumeStarted = queueResumeStart.status === 'started';
       }
-      // --- eforge:endregion plan-01-engine-queued-resume ---
 
       // Eligibility check runs inside the phase so failures are correlated with runId.
       const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext, buildResumeArtifactsProjection, resolveResumePrdContent } = await import('./resume/compiled-build.js');
@@ -2745,7 +2731,6 @@ export class EforgeEngine {
         planFileMap.set(plan.id, planFile);
       }
 
-      // --- eforge:region plan-01-engine-queued-resume ---
       const resolvedResumePrdContent = await resolveResumePrdContent({
         cwd,
         prdId,
@@ -2753,7 +2738,6 @@ export class EforgeEngine {
         featureBranch,
         summaryPrdContent: summary.prdContent,
       });
-      // --- eforge:endregion plan-01-engine-queued-resume ---
 
       yield { timestamp: ts(), type: 'build:resume:artifacts', ...(await buildResumeArtifactsProjection({ cwd, prdId, setName, featureBranch, artifactSource: eligibility.artifactSource, ...(eligibility.artifactCommit !== undefined ? { artifactCommit: eligibility.artifactCommit } : {}), summary, orchConfig, planFileMap })) };
 
@@ -2888,7 +2872,6 @@ export class EforgeEngine {
         return resolved;
       };
 
-      // --- eforge:region plan-01-engine-queued-resume ---
       const validationPolicy = this.config.build.validation;
       const {
         prdValidator,
@@ -2908,7 +2891,6 @@ export class EforgeEngine {
         abortController,
         ...(options.schedulerOwned && resolvedResumePrdContent !== undefined ? { prdContent: resolvedResumePrdContent.content, prdSourceLabel: resolvedResumePrdContent.label, allowInventoryFallback: true } : {}),
       });
-      // --- eforge:endregion plan-01-engine-queued-resume ---
 
       const signal = abortController?.signal;
       const shouldCleanup = this.config.build.cleanupPlanFiles;

@@ -29,10 +29,8 @@ export interface ReviewFixerOptions extends SdkPassthroughConfig {
   continuationContext?: ReviewFixerContinuationContext;
   /** Prior evaluator feedback from earlier review-cycle rounds. */
   evaluatorFeedbackContext?: string;
-  // --- eforge:region plan-02-validation-repair-routing ---
   /** Validation-provider recovery context when validate-stage routing invokes the narrow review-fixer path. */
   validationRepairContext?: string;
-  // --- eforge:endregion plan-02-validation-repair-routing ---
   /** Zero-based review-cycle round for lifecycle event metadata. */
   round?: number;
 }
@@ -175,9 +173,7 @@ export async function* runReviewFixer(
   const prompt = await loadPrompt('review-fixer', {
     issues: issuesText,
     evaluator_feedback_context: evaluatorFeedbackContext ?? '',
-    // --- eforge:region plan-02-validation-repair-routing ---
     validation_repair_context: validationRepairContext ?? '',
-    // --- eforge:endregion plan-02-validation-repair-routing ---
     continuation_context: continuationText,
   }, options.promptAppend);
 

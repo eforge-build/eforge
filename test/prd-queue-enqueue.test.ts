@@ -33,7 +33,6 @@ describe('inferTitle', () => {
   });
 });
 
-// --- eforge:region plan-01-engine-queued-resume ---
 describe('compiled resume frontmatter', () => {
   it('accepts and extracts complete compiled-resume metadata', () => {
     const result = validatePrdFrontmatter({
@@ -69,7 +68,6 @@ describe('compiled resume frontmatter', () => {
     }
   });
 });
-// --- eforge:endregion plan-01-engine-queued-resume ---
 
 // --- enqueuePrd ---
 
