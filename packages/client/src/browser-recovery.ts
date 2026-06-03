@@ -69,7 +69,7 @@ export function applySidecarRecovery(
   return postJson<ApplyRecoveryResponse>(API_ROUTES.applyRecovery, body, init);
 }
 
-/** Start a compiled-build resume (spawns a resume worker). */
+/** Queue a compiled-build resume for scheduler dispatch. */
 export function startResumeBuild(
   body: ResumeBuildRequest,
   init?: RequestInit,

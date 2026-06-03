@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { mkdir, rename, writeFile, access } from 'node:fs/promises';
+import { mkdir, rename, writeFile, access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
 import { analyzeQueueRecovery, applyQueueRecovery } from '@eforge-build/engine/queue/recovery-cascade';
-import { beginQueuedResume, finalizeQueuedResumeSuccess, rollbackQueuedResume } from '@eforge-build/engine/queue/resume-cascade';
+import { beginQueuedResume, finalizeQueuedResumeSuccess, requeueFailedPrdForCompiledResume, rollbackQueuedResume } from '@eforge-build/engine/queue/resume-cascade';
 import { loadCompletionRegistry } from '@eforge-build/engine/artifacts/completions';
 
 const makeTempDir = useTempDir('eforge-queue-recovery-cascade-');
@@ -18,6 +18,14 @@ async function writePrd(cwd: string, location: 'queue' | 'waiting' | 'failed' | 
   const deps = dependsOn.length > 0 ? `depends_on: [${dependsOn.map((d) => `"${d}"`).join(', ')}]\n` : '';
   await writeFile(join(dir, `${id}.md`), `---\ntitle: ${id}\ncreated: 2026-01-01\n${deps}---\n\n# ${id}\n`, 'utf-8');
 }
+
+// --- eforge:region plan-01-engine-queued-resume ---
+async function writePrdWithFrontmatter(cwd: string, location: 'queue' | 'waiting' | 'failed' | 'skipped', id: string, frontmatterLines: string[]): Promise<void> {
+  const dir = location === 'queue' ? join(cwd, '.eforge', 'queue') : join(cwd, '.eforge', 'queue', location);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, `${id}.md`), `---\n${frontmatterLines.join('\n')}\n---\n\n# ${id}\n`, 'utf-8');
+}
+// --- eforge:endregion plan-01-engine-queued-resume ---
 
 async function writeSidecars(cwd: string, id: string): Promise<void> {
   const failedDir = join(cwd, '.eforge', 'queue', 'failed');
@@ -244,6 +252,89 @@ describe('queue recovery cascade engine', () => {
     expect(await exists(join(cwd, '.eforge', 'queue', 'parent.md'))).toBe(false);
     expect(await exists(join(cwd, '.eforge', 'queue-locks', 'parent.lock'))).toBe(false);
   });
+
+  // --- eforge:region plan-01-engine-queued-resume ---
+  it('requeues a failed PRD with compiled-resume metadata while preserving frontmatter and sidecars', async () => {
+    const cwd = makeTempDir();
+    await writePrdWithFrontmatter(cwd, 'failed', 'parent', [
+      'title: parent',
+      'created: 2026-01-01',
+      'profile: base-profile',
+      'landing: pr',
+      'landing_auto_merge: true',
+      'depends_on: ["foundation"]',
+      'stack_id: stack-a',
+      'stack_parent: foundation',
+      'stack_provider: git-spice',
+    ]);
+    await writeSidecars(cwd, 'parent');
+    await writePrd(cwd, 'skipped', 'child', ['parent']);
+    await writePrd(cwd, 'skipped', 'grandchild', ['child']);
+    await writePrd(cwd, 'skipped', 'unrelated', ['other']);
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writeFile(join(cwd, '.eforge', 'queue-locks', 'parent.lock'), String(process.pid), 'utf-8');
+
+    const result = await requeueFailedPrdForCompiledResume({ cwd, prdId: 'parent', setName: 'failed-set', featureBranch: 'eforge/failed-set', baseBranch: 'main' });
+    const content = await readFile(join(cwd, '.eforge', 'queue', 'parent.md'), 'utf-8');
+
+    expect(result.status).toBe('queued');
+    if (result.status === 'queued') expect(result.movedDescendantIds).toEqual(['child', 'grandchild']);
+    expect(content).toContain('resume_mode: compiled');
+    expect(content).toContain('resume_from: parent');
+    expect(content).toContain('resume_set_name: failed-set');
+    expect(content).toContain('resume_feature_branch: eforge/failed-set');
+    expect(content).toContain('resume_base_branch: main');
+    expect(content).toContain('profile: base-profile');
+    expect(content).toContain('landing: pr');
+    expect(content).toContain('landing_auto_merge: true');
+    expect(content).toContain('depends_on: ["foundation"]');
+    expect(content).toContain('stack_id: stack-a');
+    expect(content).toContain('stack_parent: foundation');
+    expect(content).toContain('stack_provider: git-spice');
+    expect(await exists(join(cwd, '.eforge', 'queue-locks', 'parent.lock'))).toBe(false);
+    expect(await exists(join(cwd, '.eforge', 'queue', 'waiting', 'child.md'))).toBe(true);
+    expect(await exists(join(cwd, '.eforge', 'queue', 'waiting', 'grandchild.md'))).toBe(true);
+    expect(await exists(join(cwd, '.eforge', 'queue', 'skipped', 'unrelated.md'))).toBe(true);
+    expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.recovery.md'))).toBe(true);
+    expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.recovery.json'))).toBe(true);
+  });
+
+  it('applies explicit profile override during compiled-resume requeue without changing other preserved fields', async () => {
+    const cwd = makeTempDir();
+    await writePrdWithFrontmatter(cwd, 'failed', 'parent', [
+      'title: parent',
+      'created: 2026-01-01',
+      'profile: base-profile',
+      'landing: merge',
+    ]);
+
+    const result = await requeueFailedPrdForCompiledResume({ cwd, prdId: 'parent', setName: 'failed-set', featureBranch: 'eforge/failed-set', baseBranch: 'main', profileOverride: 'resume-profile' });
+    const content = await readFile(join(cwd, '.eforge', 'queue', 'parent.md'), 'utf-8');
+
+    expect(result.status).toBe('queued');
+    expect(content).toContain('profile: resume-profile');
+    expect(content).toContain('landing: merge');
+  });
+
+  it('returns already-queued for a root PRD with matching compiled-resume metadata', async () => {
+    const cwd = makeTempDir();
+    await writePrdWithFrontmatter(cwd, 'queue', 'parent', [
+      'title: parent',
+      'resume_mode: compiled',
+      'resume_from: parent',
+      'resume_set_name: failed-set',
+      'resume_feature_branch: eforge/failed-set',
+      'resume_base_branch: main',
+    ]);
+    await writePrd(cwd, 'skipped', 'child', ['parent']);
+
+    const result = await requeueFailedPrdForCompiledResume({ cwd, prdId: 'parent', setName: 'failed-set', featureBranch: 'eforge/failed-set', baseBranch: 'main' });
+
+    expect(result.status).toBe('already-queued');
+    expect(await exists(join(cwd, '.eforge', 'queue', 'skipped', 'child.md'))).toBe(true);
+    expect(await exists(join(cwd, '.eforge', 'queue', 'waiting', 'child.md'))).toBe(false);
+  });
+  // --- eforge:endregion plan-01-engine-queued-resume ---
 
   it('finalizes queued resume success after a usable artifact and unblocks satisfied descendants', async () => {
     const cwd = makeTempDir();

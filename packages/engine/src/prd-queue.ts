@@ -32,6 +32,13 @@ const prdFrontmatterSchema = z.object({
   recovery_set_name: z.string().min(1).optional(),
   recovery_feature_branch: z.string().min(1).optional(),
   recovery_base_branch: z.string().min(1).optional(),
+  // --- eforge:region plan-01-engine-queued-resume ---
+  resume_mode: z.literal('compiled').optional(),
+  resume_from: z.string().min(1).optional(),
+  resume_set_name: z.string().min(1).optional(),
+  resume_feature_branch: z.string().min(1).optional(),
+  resume_base_branch: z.string().min(1).optional(),
+  // --- eforge:endregion plan-01-engine-queued-resume ---
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -42,6 +49,16 @@ export interface RecoveryContinuationFrontmatter {
   featureBranch: string;
   baseBranch: string;
 }
+
+// --- eforge:region plan-01-engine-queued-resume ---
+export interface CompiledResumeFrontmatter {
+  mode: 'compiled';
+  sourcePrdId: string;
+  setName: string;
+  featureBranch: string;
+  baseBranch: string;
+}
+// --- eforge:endregion plan-01-engine-queued-resume ---
 
 export function getRecoveryContinuationFrontmatter(frontmatter: PrdFrontmatter): RecoveryContinuationFrontmatter | undefined {
   const fields = {
@@ -66,6 +83,34 @@ export function getRecoveryContinuationFrontmatter(frontmatter: PrdFrontmatter):
     baseBranch: fields.recovery_base_branch,
   } as RecoveryContinuationFrontmatter;
 }
+
+// --- eforge:region plan-01-engine-queued-resume ---
+export function getCompiledResumeFrontmatter(frontmatter: PrdFrontmatter): CompiledResumeFrontmatter | undefined {
+  const fields = {
+    resume_mode: frontmatter.resume_mode,
+    resume_from: frontmatter.resume_from,
+    resume_set_name: frontmatter.resume_set_name,
+    resume_feature_branch: frontmatter.resume_feature_branch,
+    resume_base_branch: frontmatter.resume_base_branch,
+  };
+  const present = Object.values(fields).filter((value) => value !== undefined);
+  if (present.length === 0) return undefined;
+  if (present.length !== 5) {
+    const missing = Object.entries(fields)
+      .filter(([, value]) => value === undefined)
+      .map(([key]) => key)
+      .join(', ');
+    throw new Error(`Incomplete compiled resume frontmatter; missing: ${missing}`);
+  }
+  return {
+    mode: fields.resume_mode,
+    sourcePrdId: fields.resume_from,
+    setName: fields.resume_set_name,
+    featureBranch: fields.resume_feature_branch,
+    baseBranch: fields.resume_base_branch,
+  } as CompiledResumeFrontmatter;
+}
+// --- eforge:endregion plan-01-engine-queued-resume ---
 
 export interface QueuedPrd {
   id: string;
@@ -304,17 +349,7 @@ export async function getPrdDiffSummary(hash: string, cwd: string): Promise<stri
 // PRD provenance artifact
 // ---------------------------------------------------------------------------
 
-/**
- * Materialize a temporary PRD provenance artifact on the eforge work branch.
- *
- * Writes `eforge/prds/{prdId}.md` in the merge worktree, stages it, and commits
- * it via `forgeCommit` with message `build({prdId}): record PRD provenance`.
- * The artifact is committed early in the eforge work branch history so it
- * appears in every PR diff window before cleanup runs.
- *
- * @returns The relative path to the created artifact (`eforge/prds/{prdId}.md`),
- *          which callers should pass to `cleanupPlanFiles` so cleanup removes it.
- */
+/** Materialize a temporary PRD provenance artifact on the eforge work branch. */
 export async function materializePrdArtifact(options: {
   mergeWorktreePath: string;
   prdId: string;
@@ -347,10 +382,7 @@ export async function materializePrdArtifact(options: {
 // PRD removal
 // ---------------------------------------------------------------------------
 
-/**
- * Remove a completed PRD file from disk.
- * Filesystem-only — queue state is runtime, not tracked in git.
- */
+/** Remove a completed PRD file from disk. */
 export async function cleanupCompletedPrd(filePath: string, queueDir: string, cwd: string): Promise<void> {
   // Guard: filePath must reside within the queue directory
   const absFilePath = resolve(filePath);
@@ -366,10 +398,7 @@ export async function cleanupCompletedPrd(filePath: string, queueDir: string, cw
 // File-location state helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Move a PRD file to a subdirectory (e.g. `failed/` or `skipped/`) via filesystem rename.
- * Filesystem-only — queue state is runtime, not tracked in git.
- */
+/** Move a PRD file to a subdirectory (for example `failed/` or `skipped/`). */
 export async function movePrdToSubdir(filePath: string, subdir: string, _cwd: string): Promise<void> {
   const dir = resolve(filePath, '..');
   const destDir = resolve(dir, subdir);
@@ -379,14 +408,7 @@ export async function movePrdToSubdir(filePath: string, subdir: string, _cwd: st
   await rename(filePath, destPath);
 }
 
-/**
- * Move a failed PRD to `failed/` and write both recovery sidecar files
- * (`.recovery.md` + `.recovery.json`). Filesystem-only — queue state is
- * runtime, not tracked in git. Sidecars live alongside the failed PRD
- * under `.eforge/queue/failed/` as runtime state.
- *
- * @returns Absolute paths to the moved PRD and the two sidecar files.
- */
+/** Move a failed PRD to `failed/` and write recovery sidecar files. */
 export async function moveFailedWithSidecar(
   filePath: string,
   summary: BuildFailureSummary,
@@ -415,9 +437,7 @@ export async function moveFailedWithSidecar(
   return { mdPath, jsonPath, destPath };
 }
 
-/**
- * Check whether a PRD is currently being processed by looking for its lock file.
- */
+/** Check whether a PRD is currently being processed. */
 export async function isPrdRunning(prdId: string, cwd: string): Promise<boolean> {
   const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${prdId}.lock`);
   try {
@@ -438,17 +458,7 @@ export type PrdLockStatus =
   | { state: 'stale'; pid: number }
   | { state: 'corrupt' };
 
-/**
- * Read and classify the lock file state for a root-queue PRD.
- *
- * - `absent`: no lock file exists
- * - `live`: lock file contains a valid PID that is currently alive
- * - `stale`: lock file contains a valid PID whose process is no longer alive
- * - `corrupt`: lock file content is empty, non-numeric, non-finite, or non-positive
- *
- * PID liveness uses `process.kill(pid, 0)`: no-throw means alive, ESRCH means
- * dead, EPERM means alive-but-unpermissioned.
- */
+/** Read and classify the lock file state for a root-queue PRD. */
 export async function readPrdLockStatus(prdId: string, cwd: string): Promise<PrdLockStatus> {
   const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${prdId}.lock`);
   let content: string;
@@ -490,16 +500,7 @@ export async function readPrdLockStatus(prdId: string, cwd: string): Promise<Prd
 // Subprocess-per-build exit code contract
 // ---------------------------------------------------------------------------
 
-/**
- * Exit codes for the `eforge queue exec <prdId>` subprocess, used by the
- * queue scheduler to determine how to clean up after the child exits.
- *
- * The scheduler spawns one child process per PRD; this is the sole channel
- * by which the child tells the parent what happened and what cleanup is
- * needed. Any exit code not listed here (or signal kill) is treated as
- * `Failed` and the parent performs the safety-net cleanup (release lock,
- * move PRD to failed/).
- */
+/** Exit codes for the `eforge queue exec <prdId>` subprocess. */
 export const QueueExecExitCode = {
   /** PRD built successfully; file already deleted during build. */
   Completed: 0,
@@ -517,15 +518,7 @@ export const QueueExecExitCode = {
 
 export type QueueExecExit = typeof QueueExecExitCode[keyof typeof QueueExecExitCode];
 
-/**
- * Canonical skip reasons emitted on `queue:prd:skip` events.
- *
- * These strings are load-bearing: they are how the subprocess entry point
- * communicates *why* a PRD was skipped back through the exit code, and in
- * turn how the parent scheduler decides whether to release the lock and/or
- * move the PRD file. Do not inline the literals — always reference this
- * const so emitter and interpreter can't drift.
- */
+/** Canonical skip reasons emitted on `queue:prd:skip` events. */
 export const QueueSkipReason = {
   AlreadyClaimed: 'claimed by another process',
   NeedsRevision: 'needs revision',
@@ -534,11 +527,7 @@ export const QueueSkipReason = {
 
 export type QueueSkipReasonValue = typeof QueueSkipReason[keyof typeof QueueSkipReason];
 
-/**
- * Map a terminal `queue:prd:complete` status (+ skip reason, if any) to the
- * exit code the child should return. Called by the subprocess entry point
- * after events drain.
- */
+/** Map queue completion status to the child-process exit code. */
 export function queueExecExitCode(
   completionStatus: 'completed' | 'failed' | 'skipped' | undefined,
   skipReason: string | undefined,
@@ -558,12 +547,7 @@ export function queueExecExitCode(
 // Lockfile-based PRD claim
 // ---------------------------------------------------------------------------
 
-/**
- * Atomically claim a PRD by creating an exclusive lock file.
- * Uses O_CREAT | O_EXCL flags so only one process can create the file.
- * Writes the current PID into the lock file for debugging.
- * Returns `true` if the claim succeeded, `false` if another process holds it.
- */
+/** Atomically claim a PRD via an exclusive lock file. */
 export async function claimPrd(prdId: string, cwd: string): Promise<boolean> {
   const lockDir = resolve(cwd, '.eforge', 'queue-locks');
   await mkdir(lockDir, { recursive: true });
@@ -584,10 +568,7 @@ export async function claimPrd(prdId: string, cwd: string): Promise<boolean> {
   }
 }
 
-/**
- * Release a PRD claim by removing the lock file.
- * Best-effort and non-throwing — if the lock file is already gone, that's fine.
- */
+/** Release a PRD claim by removing the lock file. */
 export async function releasePrd(prdId: string, cwd: string): Promise<void> {
   const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${prdId}.lock`);
   try {
@@ -603,11 +584,7 @@ export async function releasePrd(prdId: string, cwd: string): Promise<void> {
 // Title inference
 // ---------------------------------------------------------------------------
 
-/**
- * Infer a title from PRD content.
- * Extracts the first `# ` heading if present, otherwise deslugifies
- * a filename-like string (e.g., "my-feature" -> "My Feature").
- */
+/** Infer a title from PRD content or fallback slug. */
 export function inferTitle(content: string, fallbackSlug?: string): string {
   const headingMatch = content.match(/^#\s+(.+)$/m);
   if (headingMatch) {
@@ -659,11 +636,7 @@ export interface EnqueuePrdResult {
   frontmatter: PrdFrontmatter;
 }
 
-/**
- * Generate a URL-safe slug from a title.
- * Lowercases, replaces non-alphanumeric chars with hyphens,
- * collapses consecutive hyphens, trims leading/trailing hyphens.
- */
+/** Generate a URL-safe slug from a title. */
 function slugify(title: string): string {
   return title
     .toLowerCase()
@@ -841,36 +814,62 @@ export async function setQueuedPrdProfile(
   };
 }
 
-async function setQueuedPrdFrontmatterString(
+// --- eforge:region plan-01-engine-queued-resume ---
+export type QueuedPrdFrontmatterFieldValue = string | number | boolean | string[];
+
+export async function setQueuedPrdFrontmatterFields(
   prd: QueuedPrd,
-  field: string,
-  value: string,
+  fields: Record<string, QueuedPrdFrontmatterFieldValue>,
 ): Promise<QueuedPrd> {
   const content = prd.content;
-
-  // Locate the frontmatter block
   const fmMatch = content.match(/^(---\n)([\s\S]*?)(\n---)([\s\S]*)$/);
   if (!fmMatch) {
     throw new Error(`PRD file '${prd.filePath}' has no valid frontmatter block`);
   }
 
   const [, openDelim, fmBody, closeDelim, bodyPart] = fmMatch;
+  const remaining = new Map(Object.entries(fields));
+  const updatedLines = fmBody.split('\n').map((line) => {
+    const kvMatch = line.match(/^(\w[\w_]*)\s*:/);
+    if (!kvMatch) return line;
+    const key = kvMatch[1];
+    if (!remaining.has(key)) return line;
+    const value = remaining.get(key)!;
+    remaining.delete(key);
+    return `${key}: ${serializeFrontmatterFieldValue(value)}`;
+  });
 
-  let newFmBody: string;
-  const fieldLineRegex = new RegExp(`^${field}\\s*:.*$`, 'm');
-  if (fieldLineRegex.test(fmBody)) {
-    newFmBody = fmBody.replace(fieldLineRegex, `${field}: ${value}`);
-  } else {
-    newFmBody = fmBody.trimEnd() + `\n${field}: ${value}`;
+  for (const [key, value] of remaining) {
+    updatedLines.push(`${key}: ${serializeFrontmatterFieldValue(value)}`);
   }
 
+  const newFmBody = updatedLines.join('\n').trimEnd();
   const newContent = `${openDelim}${newFmBody}${closeDelim}${bodyPart}`;
-  await writeFile(prd.filePath, newContent, 'utf-8');
+  const rawFrontmatter = parseFrontmatter(newContent);
+  const parseResult = validatePrdFrontmatter(rawFrontmatter);
+  if (!parseResult.success) {
+    throw new Error(`Invalid PRD frontmatter after update: ${z.prettifyError(parseResult.error)}`);
+  }
 
-  return {
-    ...prd,
-    content: newContent,
-  };
+  await writeFile(prd.filePath, newContent, 'utf-8');
+  return { ...prd, content: newContent, frontmatter: parseResult.data };
+}
+
+function serializeFrontmatterFieldValue(value: QueuedPrdFrontmatterFieldValue): string {
+  if (Array.isArray(value)) return `[${value.map((item) => JSON.stringify(assertSafeFrontmatterString(item))).join(', ')}]`;
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return typeof value === 'number' ? String(value) : assertSafeFrontmatterString(value);
+}
+
+function assertSafeFrontmatterString(value: string): string { if (/[\x00-\x1f\x7f]/.test(value)) throw new Error('PRD frontmatter string values must not contain control characters or newlines'); return value; }
+// --- eforge:endregion plan-01-engine-queued-resume ---
+
+async function setQueuedPrdFrontmatterString(
+  prd: QueuedPrd,
+  field: string,
+  value: string,
+): Promise<QueuedPrd> {
+  return setQueuedPrdFrontmatterFields(prd, { [field]: value });
 }
 
 export async function setQueuedPrdStackParent(

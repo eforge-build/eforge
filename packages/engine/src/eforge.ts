@@ -24,7 +24,7 @@ import type {
   RecoveryVerdict,
   BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId, getRecoveryContinuationFrontmatter } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId, getRecoveryContinuationFrontmatter, getCompiledResumeFrontmatter } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
@@ -50,11 +50,7 @@ import { type AgentRuntimeRegistry, singletonRegistry, buildAgentRuntimeRegistry
 import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
-import { runPrdValidator } from './agents/prd-validator.js';
-import { runAcceptanceUnknownResolver } from './agents/acceptance-unknown-resolver.js';
-import { buildPrdValidatorDiff } from './prd-validator-diff.js';
-import { runGapCloser } from './agents/gap-closer.js';
-import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser, type AcceptanceUnknownResolver } from './orchestrator.js';
+import { Orchestrator, type ValidationFixer } from './orchestrator.js';
 import { createBuildTerminalFailureTracker } from './terminal-failure.js';
 import type { MergeResolver } from './worktree-ops.js';
 import { computeWorktreeBase, createMergeWorktree } from './worktree-ops.js';
@@ -79,9 +75,9 @@ import { prepareTrunkSyncBase } from './trunk-sync.js';
 import { resolveTrunkBranch } from './branch-policy.js';
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
-import { extractExpectedAcceptanceCriteria, type ExpectedAcceptanceCriterion } from './validation/acceptance-criteria.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
 import { appendAcceptanceCriteriaInventoryBlock, requireAcceptanceCriteriaInventoryFromPrd, stripAcceptanceCriteriaInventoryBlock } from './validation/acceptance-criteria-inventory.js';
+import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
 
 const exec = promisify(execFile);
 
@@ -831,175 +827,28 @@ export class EforgeEngine {
         return resolved;
       };
 
-      // Create PRD validator closure
+      // --- eforge:region plan-01-engine-queued-resume ---
       const validationPolicy = this.config.build.validation;
-      // Pre-derive expected acceptance criteria before validator closure construction.
-      // PRD builds load the persisted inventory; non-PRD builds aggregate from plan file bodies.
-      let expectedAcceptanceCriteria: ExpectedAcceptanceCriterion[];
-      if (options.prdFilePath) {
-        const prdContentForAC = await readFile(resolve(cwd, options.prdFilePath), 'utf-8');
-        const inventory = requireAcceptanceCriteriaInventoryFromPrd(prdContentForAC, {
-          allowNoAcceptanceCriteria: validationPolicy?.allowNoAcceptanceCriteria,
-        });
-        expectedAcceptanceCriteria = inventory.criteria.map((criterion) => ({
-          id: criterion.id,
-          text: criterion.text,
-          raw: criterion.raw,
-        }));
-      } else {
-        const allCriteria: ExpectedAcceptanceCriterion[] = [];
-        let counter = 1;
-        for (const planFile of planFileMap.values()) {
-          const planCriteria = extractExpectedAcceptanceCriteria(planFile.body, { allowFallbackSections: true });
-          for (const c of planCriteria) {
-            allCriteria.push({ id: `ac-${String(counter).padStart(3, '0')}`, text: c.text, raw: c.raw });
-            counter++;
-          }
-        }
-        expectedAcceptanceCriteria = allCriteria;
-      }
-      const prdValidator: PrdValidator | undefined = options.prdFilePath ? async function* (validatorCwd, validatorContext) {
-        // Read PRD content
-        let prdContent: string;
-        try {
-          prdContent = stripAcceptanceCriteriaInventoryBlock(await readFile(resolve(cwd, options.prdFilePath!), 'utf-8'));
-        } catch {
-          // Fail closed: emit events so the orchestrator marks the build as failed.
-          yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
-          yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'PRD file unreadable', explanation: 'Failed to read the PRD file; cannot validate implementation.' }] } as EforgeEvent;
-          yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'PRD file could not be read.' }], source: 'prd' } as EforgeEvent;
-          return;
-        }
-
-        // Build diff: per-file budgeted, no global truncation
-        let built: Awaited<ReturnType<typeof buildPrdValidatorDiff>>;
-        try {
-          built = await buildPrdValidatorDiff({ cwd: validatorCwd, baseRef: orchConfig.diffBaseRef ?? orchConfig.baseBranch });
-        } catch {
-          // Fail closed: emit events so the orchestrator marks the build as failed.
-          yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
-          yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'Implementation diff unavailable', explanation: 'Failed to build the implementation diff; cannot validate PRD coverage.' }] } as EforgeEvent;
-          yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Implementation diff could not be computed.' }], source: 'prd' } as EforgeEvent;
-          return;
-        }
-
-        if (!built.renderedText.trim()) {
-          if (validationPolicy?.allowEmptyPrdDiff && validationPolicy.emptyPrdDiffReason?.trim()) {
-            yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
-            yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: true, gaps: [], completionPercent: 100 } as EforgeEvent;
-            // Use waivers field instead of a synthetic pass verdict — a waived empty diff cannot
-            // certify acceptance criteria as met, so verdicts are unknown with an explicit waiver.
-            yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: true, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No implementation diff to evaluate (waived).' }], waivers: [validationPolicy.emptyPrdDiffReason!], source: 'prd' } as EforgeEvent;
-          } else {
-            yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
-            yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'Empty implementation diff', explanation: 'No changes were found in the implementation diff; cannot validate PRD coverage.' }] } as EforgeEvent;
-            yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No implementation changes to evaluate.' }], source: 'prd' } as EforgeEvent;
-          }
-          return;
-        }
-        const diff = built.renderedText;
-
-        const prdSpan = tracing!.createSpan('prd-validator', {});
-        prdSpan.setInput({
-          prdLength: prdContent.length,
-          diffLength: diff.length,
-          totalBytes: built.totalBytes,
-          summarizedCount: built.summarizedCount,
-          summarizedByPerFileBudget: built.summarizedByPerFileBudget,
-          summarizedByGlobalCap: built.summarizedByGlobalCap,
-          globalBudgetBytes: built.globalBudgetBytes,
-          fileCount: built.files.length,
-        });
-        const prdTracker = createToolTracker(prdSpan);
-        try {
-          const prdValidatorConfig = resolveAgentConfig('prd-validator', config);
-          for await (const event of runPrdValidator({
-            ...prdValidatorConfig,
-            cwd: validatorCwd,
-            prdContent,
-            diff,
-            verbose,
-            abortController,
-            phase: 'standalone',
-            harness: agentRuntimes.forRole('prd-validator'),
-            expectedAcceptanceCriteria,
-            validationCommandEvidence: validatorContext?.validationCommandEvidence,
-          })) {
-            prdTracker.handleEvent(event);
-            yield event;
-          }
-          prdTracker.cleanup();
-          prdSpan.end();
-        } catch (err) {
-          prdTracker.cleanup();
-          prdSpan.error(err as Error);
-          // Propagate the failure so the orchestrator's prdValidate phase can
-          // mark the build failed. Swallowing would silently certify a build
-          // whose validator never ran (e.g. transient backend 500s).
-          throw err;
-        }
-      } : undefined;
-
-      const acceptanceUnknownResolver: AcceptanceUnknownResolver | undefined = options.prdFilePath ? async function* (resolverCwd, request) {
-        let built: Awaited<ReturnType<typeof buildPrdValidatorDiff>>;
-        try { built = await buildPrdValidatorDiff({ cwd: resolverCwd, baseRef: orchConfig.diffBaseRef ?? orchConfig.baseBranch }); }
-        catch (err) { throw new Error(`Acceptance unknown resolver could not build implementation diff context: ${err instanceof Error ? err.message : String(err)}`); }
-        const resolverSpan = tracing!.createSpan('prd-validator', { unknownCount: request.unknownCriteria.length, diffLength: built.renderedText.length });
-        resolverSpan.setInput({ unknownCriteria: request.unknownCriteria.map((criterion) => criterion.id), validationCommandCount: request.validationCommandEvidence?.length ?? 0, totalBytes: built.totalBytes, summarizedCount: built.summarizedCount });
-        const resolverTracker = createToolTracker(resolverSpan);
-        try {
-          const result = yield* runAcceptanceUnknownResolver({ ...resolveAgentConfig('prd-validator', config), cwd: resolverCwd, unknownCriteria: request.unknownCriteria, acceptanceVerdicts: request.acceptanceVerdicts, validationCommandEvidence: request.validationCommandEvidence, implementationDiffContext: built.renderedText, verbose, abortController, phase: 'standalone', harness: agentRuntimes.forRole('prd-validator') });
-          resolverTracker.cleanup(); resolverSpan.end(); return result;
-        } catch (err) { resolverTracker.cleanup(); resolverSpan.error(err as Error); throw err; }
-      } : undefined;
-
-      // Create gap closer closure
-      const gapCloser: GapCloser | undefined = options.prdFilePath ? async function* (gapCloserCwd, gaps, completionPercent) {
-        // Read PRD content
-        let prdContent: string;
-        try {
-          prdContent = stripAcceptanceCriteriaInventoryBlock(await readFile(resolve(cwd, options.prdFilePath!), 'utf-8'));
-        } catch {
-          return;
-        }
-
-        const gapSpan = tracing!.createSpan('gap-closer', {});
-        gapSpan.setInput({ gapCount: gaps.length, completionPercent });
-        const gapTracker = createToolTracker(gapSpan);
-        try {
-          const gapCloserConfig = resolveAgentConfig('gap-closer', config);
-          for await (const event of runGapCloser({
-            ...gapCloserConfig,
-            cwd: gapCloserCwd,
-            gaps,
-            prdContent,
-            completionPercent,
-            phase: 'standalone',
-            harness: agentRuntimes.forRole('gap-closer'),
-            pipelineContext: {
-              config,
-              pipeline: buildPipeline,
-              tracing: tracing!,
-              planSetName: planSet,
-              orchConfig,
-              planFileMap,
-              agentRuntimes,
-            },
-            runBuildPipeline,
-            verbose,
-            abortController,
-          })) {
-            gapTracker.handleEvent(event);
-            yield event;
-          }
-          gapTracker.cleanup();
-          gapSpan.end();
-        } catch (err) {
-          gapTracker.cleanup();
-          gapSpan.error(err as Error);
-          throw err;
-        }
-      } : undefined;
+      const {
+        prdValidator,
+        acceptanceUnknownResolver,
+        gapCloser,
+        expectedAcceptanceCriteria,
+        prdProvenanceContent,
+      } = await createPrdValidationWiring({
+        cwd,
+        config,
+        agentRuntimes,
+        tracing: tracing!,
+        planSetName: planSet,
+        orchConfig,
+        planFileMap,
+        buildPipeline,
+        verbose,
+        abortController,
+        ...(options.prdFilePath !== undefined ? { prdFilePath: options.prdFilePath } : {}),
+      });
+      // --- eforge:endregion plan-01-engine-queued-resume ---
 
       // Materialize PRD provenance artifact on the eforge work branch.
       // Done before the orchestrator starts so the artifact appears early in
@@ -1007,13 +856,12 @@ export class EforgeEngine {
       // queue path for cleanup purposes — the queue file is gitignored and
       // never needs cleanup.
       let cleanupPrdFilePath: string | undefined;
-      if (options.prdFilePath) {
+      if (prdProvenanceContent !== undefined) {
         try {
-          const prdContent = stripAcceptanceCriteriaInventoryBlock(await readFile(resolve(cwd, options.prdFilePath), 'utf-8'));
           const { artifactRelPath } = await materializePrdArtifact({
             mergeWorktreePath,
             prdId: planSet,
-            prdContent,
+            prdContent: prdProvenanceContent,
           });
           cleanupPrdFilePath = artifactRelPath;
         } catch {
@@ -1170,10 +1018,23 @@ export class EforgeEngine {
       yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'failed' };
     };
 
+    // --- eforge:region plan-01-engine-queued-resume ---
+    let compiledResume: ReturnType<typeof getCompiledResumeFrontmatter>;
     try {
-      requireAcceptanceCriteriaInventoryFromPrd(prd.content, {
-        allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
-      });
+      compiledResume = getCompiledResumeFrontmatter(prd.frontmatter);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      yield* failBeforeBuildSession(message);
+      return;
+    }
+    // --- eforge:endregion plan-01-engine-queued-resume ---
+
+    try {
+      if (compiledResume === undefined) {
+        requireAcceptanceCriteriaInventoryFromPrd(prd.content, {
+          allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       yield* failBeforeBuildSession(message);
@@ -1182,7 +1043,7 @@ export class EforgeEngine {
 
     // Staleness check — skip only if PRD was added in the most recent commit
     const headHash = await getHeadHash(cwd);
-    if (prd.lastCommitHash && prd.lastCommitHash !== headHash) {
+    if (compiledResume === undefined && prd.lastCommitHash && prd.lastCommitHash !== headHash) {
       const diffSummary = await getPrdDiffSummary(prd.lastCommitHash, cwd);
 
       let stalenessVerdict: 'proceed' | 'revise' | 'obsolete' = 'proceed';
@@ -1288,6 +1149,34 @@ export class EforgeEngine {
           timestamp: new Date().toISOString(),
         } as EforgeEvent;
       }
+
+      // --- eforge:region plan-01-engine-queued-resume ---
+      if (compiledResume !== undefined) {
+        let resumeFailed = false;
+        const resolvedLandingAction = options.landingAction ?? prd.frontmatter.landing;
+        const resolvedLandingAutoMerge = options.landingAutoMerge ?? prd.frontmatter.landing_auto_merge;
+        for await (const event of withRunId(this.resumeBuild(compiledResume.sourcePrdId, {
+          setName: compiledResume.setName,
+          featureBranch: compiledResume.featureBranch,
+          baseBranch: compiledResume.baseBranch,
+          cwd,
+          verbose,
+          abortController,
+          schedulerOwned: true,
+          ...(resolvedLandingAction !== undefined && { landingAction: resolvedLandingAction }),
+          ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
+        }))) {
+          yield { ...event, sessionId: prdSessionId } as EforgeEvent;
+          if (event.type === 'phase:end' && event.result.status === 'failed') {
+            resumeFailed = true;
+          }
+        }
+        prdResult = resumeFailed
+          ? { status: 'failed', summary: 'Resume failed' }
+          : { status: 'completed', summary: 'Resume complete' };
+        return;
+      }
+      // --- eforge:endregion plan-01-engine-queued-resume ---
 
       // Compile (plan) the PRD
       let compileFailed = false;
@@ -1554,12 +1443,31 @@ export class EforgeEngine {
               planId: prdId,
               error: errMessage,
             } as EforgeEvent);
-            try {
-              await releasePrd(prdId, cwd);
-            } catch { /* best-effort */ }
-            try {
-              await movePrdToSubdir(filePath, 'failed', cwd);
-            } catch { /* best-effort */ }
+            const isCompiledResumePrd = (() => {
+              try {
+                return getCompiledResumeFrontmatter(prd.frontmatter) !== undefined;
+              } catch {
+                return prd.frontmatter.resume_mode !== undefined ||
+                  prd.frontmatter.resume_from !== undefined ||
+                  prd.frontmatter.resume_set_name !== undefined ||
+                  prd.frontmatter.resume_feature_branch !== undefined ||
+                  prd.frontmatter.resume_base_branch !== undefined;
+              }
+            })();
+            if (isCompiledResumePrd) {
+              try {
+                await rollbackQueuedResume({ cwd, prdId, queueDir: config.prdQueue.dir });
+              } catch {
+                try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
+              }
+            } else {
+              try {
+                await releasePrd(prdId, cwd);
+              } catch { /* best-effort */ }
+              try {
+                await movePrdToSubdir(filePath, 'failed', cwd);
+              } catch { /* best-effort */ }
+            }
             resolvePromise('failed');
             return;
           }
@@ -1621,6 +1529,19 @@ export class EforgeEngine {
         const wasAborted = abortController?.signal.aborted === true;
         const isAlreadyClaimed = exitCode === QueueExecExitCode.SkippedAlreadyClaimed;
         const needsRevision = exitCode === QueueExecExitCode.SkippedNeedsRevision;
+        // --- eforge:region plan-01-engine-queued-resume ---
+        const isCompiledResumePrd = (() => {
+          try {
+            return getCompiledResumeFrontmatter(prd.frontmatter) !== undefined;
+          } catch {
+            return prd.frontmatter.resume_mode !== undefined ||
+              prd.frontmatter.resume_from !== undefined ||
+              prd.frontmatter.resume_set_name !== undefined ||
+              prd.frontmatter.resume_feature_branch !== undefined ||
+              prd.frontmatter.resume_base_branch !== undefined;
+          }
+        })();
+        // --- eforge:endregion plan-01-engine-queued-resume ---
 
         let status: 'completed' | 'failed' | 'skipped' | 'already-claimed';
         let moveTo: 'failed' | 'skipped' | null;
@@ -1660,6 +1581,28 @@ export class EforgeEngine {
         }
 
         try {
+          // --- eforge:region plan-01-engine-queued-resume ---
+          if (isCompiledResumePrd && !isAlreadyClaimed) {
+            let resumeStatus = status;
+            try {
+              if (status === 'completed') {
+                const finalization = await finalizeQueuedResumeSuccess({ cwd, prdId, queueDir: config.prdQueue.dir });
+                if (finalization.status === 'blocked') {
+                  await rollbackQueuedResume({ cwd, prdId, queueDir: config.prdQueue.dir });
+                  resumeStatus = 'failed';
+                }
+              } else {
+                await rollbackQueuedResume({ cwd, prdId, queueDir: config.prdQueue.dir });
+              }
+            } catch {
+              resumeStatus = 'failed';
+              try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
+            }
+            status = resumeStatus;
+            return;
+          }
+          // --- eforge:endregion plan-01-engine-queued-resume ---
+
           if (shouldRelease) {
             try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
           }
@@ -2647,9 +2590,16 @@ export class EforgeEngine {
     prdId: string,
     options: {
       setName?: string;
+      featureBranch?: string;
+      baseBranch?: string;
       cwd?: string;
       verbose?: boolean;
       abortController?: AbortController;
+      // --- eforge:region plan-01-engine-queued-resume ---
+      schedulerOwned?: boolean;
+      landingAction?: 'pr' | 'merge' | 'leave';
+      landingAutoMerge?: boolean;
+      // --- eforge:endregion plan-01-engine-queued-resume ---
     } = {},
   ): AsyncGenerator<EforgeEvent> {
     const cwd = options.cwd ?? this.cwd;
@@ -2674,13 +2624,16 @@ export class EforgeEngine {
       const failedDir = join(resolve(cwd, this.config.prdQueue.dir), 'failed');
       setName = await resolveResumeSetName({ prdId, failedDir });
     }
-    const featureBranch = `eforge/${setName}`;
+    const featureBranch = options.featureBranch ?? `eforge/${setName}`;
+    const baseBranch = options.baseBranch;
     const mergeWorktreePath = join(computeWorktreeBase(cwd, setName), '__merge__');
 
     const ts = () => new Date().toISOString();
 
-    // Emit profile info upfront
-    yield { timestamp: ts(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
+    // Emit profile info upfront unless the queue scheduler already emitted it.
+    if (!options.schedulerOwned) {
+      yield { timestamp: ts(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
+    }
     for (const warning of this.startupWarnings()) {
       yield { timestamp: ts(), type: 'config:warning', message: warning.message, source: warning.source, details: warning.details };
     }
@@ -2702,21 +2655,27 @@ export class EforgeEngine {
       yield { type: 'phase:start', runId, planSet: setName, command: 'resume', timestamp: ts() };
       tracing.setInput({ planSet: setName, prdId, resumeMode: true });
 
-      const queueResumeStart = await beginQueuedResume({ cwd, prdId, queueDir: this.config.prdQueue.dir });
-      if (queueResumeStart.status === 'blocked') {
-        status = 'failed';
-        buildSummary = queueResumeStart.reason;
-        yield { timestamp: ts(), type: 'build:resume:ineligible', reason: queueResumeStart.reason };
-        return;
+      // --- eforge:region plan-01-engine-queued-resume ---
+      if (!options.schedulerOwned) {
+        const queueResumeStart = await beginQueuedResume({ cwd, prdId, queueDir: this.config.prdQueue.dir });
+        if (queueResumeStart.status === 'blocked') {
+          status = 'failed';
+          buildSummary = queueResumeStart.reason;
+          yield { timestamp: ts(), type: 'build:resume:ineligible', reason: queueResumeStart.reason };
+          return;
+        }
+        queuedResumeStarted = queueResumeStart.status === 'started';
       }
-      queuedResumeStarted = queueResumeStart.status === 'started';
+      // --- eforge:endregion plan-01-engine-queued-resume ---
 
       // Eligibility check runs inside the phase so failures are correlated with runId.
-      const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext, buildResumeArtifactsProjection } = await import('./resume/compiled-build.js');
+      const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext, buildResumeArtifactsProjection, resolveResumePrdContent } = await import('./resume/compiled-build.js');
       const eligibility = await checkResumeEligibility({
         cwd, setName, prdId, mergeWorktreePath,
         outputDir: this.config.plan.outputDir, dbPath,
-        trunkBranch: this.config.build.trunkBranch,
+        trunkBranch: baseBranch ?? this.config.build.trunkBranch,
+        featureBranch,
+        ...(baseBranch !== undefined ? { baseBranch } : {}),
       });
 
       if (!eligibility.eligible) {
@@ -2758,6 +2717,9 @@ export class EforgeEngine {
       }
 
       const orchConfig = await parseOrchestrationConfig(configPath);
+      if (baseBranch !== undefined && orchConfig.baseBranch !== baseBranch) {
+        orchConfig.baseBranch = baseBranch;
+      }
       for (const warning of orchConfig.warnings ?? []) {
         yield { timestamp: ts(), type: 'planning:warning', message: warning, source: 'parseOrchestrationConfig' };
       }
@@ -2782,6 +2744,16 @@ export class EforgeEngine {
         }
         planFileMap.set(plan.id, planFile);
       }
+
+      // --- eforge:region plan-01-engine-queued-resume ---
+      const resolvedResumePrdContent = await resolveResumePrdContent({
+        cwd,
+        prdId,
+        setName,
+        featureBranch,
+        summaryPrdContent: summary.prdContent,
+      });
+      // --- eforge:endregion plan-01-engine-queued-resume ---
 
       yield { timestamp: ts(), type: 'build:resume:artifacts', ...(await buildResumeArtifactsProjection({ cwd, prdId, setName, featureBranch, artifactSource: eligibility.artifactSource, ...(eligibility.artifactCommit !== undefined ? { artifactCommit: eligibility.artifactCommit } : {}), summary, orchConfig, planFileMap })) };
 
@@ -2916,10 +2888,36 @@ export class EforgeEngine {
         return resolved;
       };
 
+      // --- eforge:region plan-01-engine-queued-resume ---
       const validationPolicy = this.config.build.validation;
+      const {
+        prdValidator,
+        acceptanceUnknownResolver,
+        gapCloser,
+        expectedAcceptanceCriteria,
+      } = await createPrdValidationWiring({
+        cwd,
+        config,
+        agentRuntimes,
+        tracing: tracing!,
+        planSetName: setName,
+        orchConfig,
+        planFileMap,
+        buildPipeline,
+        verbose,
+        abortController,
+        ...(options.schedulerOwned && resolvedResumePrdContent !== undefined ? { prdContent: resolvedResumePrdContent.content, prdSourceLabel: resolvedResumePrdContent.label, allowInventoryFallback: true } : {}),
+      });
+      // --- eforge:endregion plan-01-engine-queued-resume ---
+
       const signal = abortController?.signal;
       const shouldCleanup = this.config.build.cleanupPlanFiles;
-      const effectiveLandingAction = this.config.landing.action;
+      const effectiveLandingAction = options.landingAction ?? this.config.landing.action;
+      if (options.landingAutoMerge === true && effectiveLandingAction !== 'pr') {
+        status = 'failed';
+        buildSummary = `landingAutoMerge: true is only valid when the effective landing action is 'pr' (got '${effectiveLandingAction}')`;
+        return;
+      }
 
       // Build the resume seed for the orchestrator
       const resumeSeed = { seededMerged, resumeContextByPlan };
@@ -2934,6 +2932,9 @@ export class EforgeEngine {
         validationFixer,
         maxValidationRetries: config.build.maxValidationRetries,
         mergeResolver,
+        prdValidator,
+        acceptanceUnknownResolver,
+        gapCloser,
         mergeWorktreePath,
         shouldCleanup,
         cleanupPlanSet: setName,
@@ -2944,7 +2945,9 @@ export class EforgeEngine {
         engineConfig: config,
         landingAction: effectiveLandingAction,
         prAutoMergePolicy: this.config.landing.pr.autoMerge,
+        ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
         validationPolicy,
+        expectedAcceptanceCriteria,
         resumeSeed,
         prdId,
       });

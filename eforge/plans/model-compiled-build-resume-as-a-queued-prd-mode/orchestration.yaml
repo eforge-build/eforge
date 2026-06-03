@@ -1,0 +1,114 @@
+name: model-compiled-build-resume-as-a-queued-prd-mode
+description: Model compiled-build resume as a scheduler-owned queued PRD mode
+  instead of spawning an immediate daemon resume worker.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm docs:check
+  - pnpm test
+plans:
+  - id: plan-01-engine-queued-resume
+    name: Engine Queued Compiled-Build Resume
+    depends_on: []
+    branch: model-compiled-build-resume-as-a-queued-prd-mode/plan-01-engine-queued-resume
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: Cross-cutting engine queue execution change touching frontmatter
+          parsing, queue transitions, child finalization, and PRD validation
+          wiring.
+      reviewer:
+        effort: high
+        rationale: Queue state transitions and path/branch-derived resume metadata need
+          careful review for race and regression risks.
+  - id: plan-02-daemon-client-resume-api
+    name: Daemon and Client Queued Resume API
+    depends_on:
+      - plan-01-engine-queued-resume
+    branch: model-compiled-build-resume-as-a-queued-prd-mode/plan-02-daemon-client-resume-api
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - api
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Breaking route-contract change across daemon, client, CLI, MCP, Pi
+          extension, Console UI, and tests.
+      reviewer:
+        effort: high
+        rationale: API response migration and daemon queue mutation require
+          route-contract and integration review.
+  - id: plan-03-resume-docs-and-reference
+    name: Queued Resume Documentation and Reference
+    depends_on:
+      - plan-02-daemon-client-resume-api
+    branch: model-compiled-build-resume-as-a-queued-prd-mode/plan-03-resume-docs-and-reference
+    build:
+      - implement
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: medium
+        rationale: Documentation-only follow-up that must keep Claude plugin, Pi skills,
+          and generated public reference artifacts in sync.
+      reviewer:
+        effort: medium
+        rationale: Docs need parity checks across Claude, Pi, Console, and public web
+          content.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test-write
+    - test-cycle
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is cross-cutting engine, daemon, client, queue, integration,
+    test, and documentation work, but it is cohesive enough for one planner, so
+    excursion is appropriate. A plan review gate is included because queue-state
+    transitions and route contracts are high-risk. The build pipeline includes
+    docs and test authoring, test execution, the registered maintainability
+    validation gate, and an iterative review cycle. Review focuses on code
+    correctness and API compatibility with strict evaluation due to queue
+    transition, profile-routing, and response-shape risks.
+diff_base_ref: 43bc2fd578b75eb69a3de77dc2bbfed7508ab80b

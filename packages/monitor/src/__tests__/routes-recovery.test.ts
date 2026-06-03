@@ -33,11 +33,11 @@ describe('recovery and resume route modules', () => {
     expect(res.status).toBe(200); expect(await res.json()).toMatchObject({ markdown: '# recovery' });
   });
 
-  it('validates and spawns resume builds', async () => {
+  it('validates resume requeue requests without spawning a worker', async () => {
     const calls: unknown[] = [];
     harness = await startControlRouteHarness({ serverOptions: { workerTracker: { spawnWorker: (command, args) => { calls.push([command, args]); return { sessionId: 'resume-1', pid: 9 }; }, cancelWorker: () => false } } });
     expect((await harness.postJson(API_ROUTES.resumeBuild, null)).status).toBe(400);
     const res = await harness.postJson(API_ROUTES.resumeBuild, { prdId: 'prd-1', setName: 'set-1' });
-    expect(res.status).toBe(200); expect(calls).toEqual([['resume', ['prd-1', '--set-name', 'set-1']]]);
+    expect(res.status).not.toBe(200); expect(calls).toEqual([]);
   });
 });

@@ -93,18 +93,18 @@ The daemon applies the action in-process and returns synchronously. Report the r
 - **split**: "Successor PRD `{successorPrdId}` enqueued. If landed partial work was recorded in the sidecar, it will continue from the preserved feature branch while targeting the original base branch. Commit: `{commitSha}`."
 - **abandon**: "PRD `{prdId}` has been archived. Commit: `{commitSha}`."
 
-**Compiled-build resume**: On confirmation for resume, call `mcp__eforge__eforge_resume_build` with `{ prdId }`, adding `setName` when the sidecar reports a set name that differs from the PRD id and `profile` when the user requests a specific agent runtime profile. The daemon validates the profile override before spawning a background build agent and returns `{ sessionId, pid }`. Report:
+**Compiled-build resume**: On confirmation for resume, call `mcp__eforge__eforge_resume_build` with `{ prdId }`, adding `setName` when the sidecar reports a set name that differs from the PRD id and `profile` when the user requests a specific agent runtime profile. The tool queues a compiled resume request for scheduler dispatch, preserves normal queue controls (parallelism, pause state, dependency gating, and profile routing), and returns queued metadata such as the PRD id, set name, branches, moved descendants, and optional profile. It does not start a background resume worker immediately and does not return a session id or PID. Report:
 
-> Resuming build for PRD `{prdId}`. Session ID: `{sessionId}`, PID: `{pid}`.
+> Queued compiled-build resume for PRD `{prdId}`. It will wait for scheduler dispatch under the current queue controls.
 
-A successful compiled-build resume automatically retires the failed queue item and reactivates skipped descendants using normal dependency semantics. Manual queue-cascade recovery remains available for explicit retry or repair workflows.
+A dispatched compiled-build resume automatically retires the failed queue item and reactivates skipped descendants using normal dependency semantics. Manual queue-cascade recovery remains available for explicit retry or repair workflows.
 
 ## When to Choose Compiled-Build Resume vs PRD-Level Retry
 
 | Situation | Recommended action |
 |-----------|-------------------|
 | PRD failed early (before compile stage) — no artifacts | Use `retry` or `split` via `mcp__eforge__eforge_apply_recovery` |
-| PRD failed after compile — feature branch exists with partial work | Use `mcp__eforge__eforge_apply_recovery` with a `split` verdict to enqueue a continuation successor; use `mcp__eforge__eforge_resume_build` only when you want to rerun the original compiled artifacts |
+| PRD failed after compile — feature branch exists with partial work | Use `mcp__eforge__eforge_apply_recovery` with a `split` verdict to enqueue a continuation successor; use `mcp__eforge__eforge_resume_build` only when you want to queue the original compiled artifacts for scheduler-owned resume |
 | Compiled artifacts are stale or the plan has changed significantly | Use `retry` via `mcp__eforge__eforge_apply_recovery` to start fresh |
 | User wants to archive the failed PRD without further attempts | Use `abandon` via `mcp__eforge__eforge_apply_recovery` |
 
