@@ -3,7 +3,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Button } from '@/components/ui/button';
 import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber, formatThinking } from '@/lib/run-state/format';
-import type { AgentThread, StoredEvent, DecisionPoint } from '@/lib/run-state';
+import type { AgentThread, StoredEvent, DecisionPoint, Decision } from '@/lib/run-state';
 import type { AgentRole, PipelineStage, ReviewIssue, BuildStageSpec, ValidationCommandSpan } from '@/lib/run-state';
 import { DecisionTimeline } from './decision-timeline';
 import {
@@ -45,7 +45,11 @@ interface PlanRowProps {
   perspectiveErrors?: Array<{ perspective: string; error: string; timestamp: string }>;
   issuesByPerspective?: Record<string, ReviewIssue[]>;
   decisions?: DecisionPoint[];
+  onDecisionSelect?: (decision: Decision) => void;
   onAgentSelect?: (agentId: string) => void;
+  // --- eforge:region plan-01-review-cycle-inspector ---
+  onStageSelect?: (stage: string) => void;
+  // --- eforge:endregion plan-01-review-cycle-inspector ---
 }
 
 export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -80,7 +84,7 @@ export function DepthBars({ depth }: { depth: number }) {
   );
 }
 
-function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, onAgentSelect }: PlanRowProps) {
+function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, onDecisionSelect, onAgentSelect, onStageSelect }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -220,10 +224,10 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
             />
           )}
           {!disablePreview && (
-            <BuildStageProgress buildStages={buildStages} currentStage={currentStage} hoveredStage={hoveredStage} onStageHover={onStageHover} threads={threads} />
+            <BuildStageProgress buildStages={buildStages} currentStage={currentStage} hoveredStage={hoveredStage} onStageHover={onStageHover} threads={threads} onStageSelect={onStageSelect} planId={planId} />
           )}
           {decisions && decisions.length > 0 && (
-            <DecisionTimeline decisions={decisions} sessionStart={sessionStart} totalSpan={totalSpan} />
+            <DecisionTimeline decisions={decisions} sessionStart={sessionStart} totalSpan={totalSpan} onDecisionSelect={onDecisionSelect} />
           )}
         <div className="flex-1 bg-bg-tertiary rounded-sm overflow-x-clip flex flex-col gap-px py-px min-h-4">
           {sortedThreads.map((thread) => {
