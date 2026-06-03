@@ -130,6 +130,136 @@ describe('authoritative terminal failure precedence', () => {
     expect(fragment!.failingPlan?.planId).toBe('artifact-recording');
   });
 
+  it('keeps blocked descendants in authoritative recovery plans without treating them as failingPlans', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'tf-blocked-descendants.db');
+    const db = openDatabase(dbPath);
+    const blockedError = 'Blocked by failed dependency: plan-a';
+
+    makeBaseRun(db, 'run-blocked-01', 'blocked-set', dir);
+    db.insertEvent({
+      runId: 'run-blocked-01',
+      type: 'plan:status:change',
+      planId: 'plan-a',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-a', status: 'failed' }),
+      timestamp: new Date('2026-01-01T10:20:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-blocked-01',
+      type: 'plan:build:failed',
+      planId: 'plan-a',
+      data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-a', error: 'Upstream builder failed' }),
+      timestamp: new Date('2026-01-01T10:21:00.000Z').toISOString(),
+    });
+    for (const [planId, offset] of [['plan-b', 22 * 60_000], ['plan-c', 23 * 60_000]] as const) {
+      db.insertEvent({
+        runId: 'run-blocked-01',
+        type: 'plan:status:change',
+        planId,
+        data: JSON.stringify({ type: 'plan:status:change', planId, status: 'blocked' }),
+        timestamp: new Date(new Date('2026-01-01T10:00:00.000Z').getTime() + offset).toISOString(),
+      });
+      db.insertEvent({
+        runId: 'run-blocked-01',
+        type: 'plan:error:set',
+        planId,
+        data: JSON.stringify({ type: 'plan:error:set', planId, error: blockedError }),
+        timestamp: new Date(new Date('2026-01-01T10:00:00.000Z').getTime() + offset + 500).toISOString(),
+      });
+    }
+    db.insertEvent({
+      runId: 'run-blocked-01',
+      type: 'build:terminal-failure',
+      planId: 'plan-a',
+      data: JSON.stringify({
+        type: 'build:terminal-failure',
+        runId: 'run-blocked-01',
+        failure: { scope: 'plan', planId: 'plan-a', message: 'Upstream builder failed', authoritative: true, sourceEventType: 'plan:build:failed' },
+      }),
+      timestamp: new Date('2026-01-01T10:25:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-blocked-01',
+      type: 'phase:end',
+      data: JSON.stringify({ type: 'phase:end', runId: 'run-blocked-01', result: { status: 'failed', summary: 'Build failed for plan-a' } }),
+      timestamp: new Date('2026-01-01T10:26:00.000Z').toISOString(),
+    });
+    db.close();
+
+    const summary = await buildFailureSummary({ setName: 'blocked-set', prdId: 'blocked-prd', cwd: dir, dbPath });
+
+    expect(summary.failingPlan.planId).toBe('plan-a');
+    expect(summary.failingPlans?.map((p) => p.planId)).toEqual(['plan-a']);
+    expect(summary.terminalFailure).toEqual(expect.objectContaining({ scope: 'plan', planId: 'plan-a', authoritative: true }));
+    for (const planId of ['plan-b', 'plan-c']) {
+      expect(summary.plans).toContainEqual(expect.objectContaining({ planId, status: 'blocked', error: blockedError }));
+    }
+  });
+
+  it('removes stale lifecycle errors after plan:error:clear before authoritative summary construction', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'tf-cleared-lifecycle-error.db');
+    const db = openDatabase(dbPath);
+
+    makeBaseRun(db, 'run-clear-01', 'clear-set', dir);
+    db.insertEvent({
+      runId: 'run-clear-01',
+      type: 'plan:status:change',
+      planId: 'plan-a',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-a', status: 'failed' }),
+      timestamp: new Date('2026-01-01T10:20:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-clear-01',
+      type: 'plan:status:change',
+      planId: 'plan-b',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-b', status: 'blocked' }),
+      timestamp: new Date('2026-01-01T10:21:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-clear-01',
+      type: 'plan:error:set',
+      planId: 'plan-b',
+      data: JSON.stringify({ type: 'plan:error:set', planId: 'plan-b', error: 'stale blocked error' }),
+      timestamp: new Date('2026-01-01T10:22:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-clear-01',
+      type: 'plan:error:clear',
+      planId: 'plan-b',
+      data: JSON.stringify({ type: 'plan:error:clear', planId: 'plan-b' }),
+      timestamp: new Date('2026-01-01T10:23:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-clear-01',
+      type: 'build:terminal-failure',
+      planId: 'plan-a',
+      data: JSON.stringify({
+        type: 'build:terminal-failure',
+        runId: 'run-clear-01',
+        failure: { scope: 'plan', planId: 'plan-a', message: 'Upstream builder failed', authoritative: true, sourceEventType: 'plan:build:failed' },
+      }),
+      timestamp: new Date('2026-01-01T10:24:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-clear-01',
+      type: 'phase:end',
+      data: JSON.stringify({ type: 'phase:end', runId: 'run-clear-01', result: { status: 'failed', summary: 'Build failed for plan-a' } }),
+      timestamp: new Date('2026-01-01T10:25:00.000Z').toISOString(),
+    });
+    db.close();
+
+    const summary = await buildFailureSummary({ setName: 'clear-set', prdId: 'clear-prd', cwd: dir, dbPath });
+
+    expect(summary.failingPlans?.map((p) => p.planId)).toEqual(['plan-a']);
+    expect(summary.plans).toContainEqual(expect.objectContaining({ planId: 'plan-b', status: 'blocked' }));
+    expect(summary.plans.find((p) => p.planId === 'plan-b')).not.toHaveProperty('error');
+  });
+
   it('fallback without authoritative event sets partial:true and authoritative:false', async () => {
     const dir = makeTempDir();
     mkdirSync(join(dir, '.eforge'), { recursive: true });

@@ -174,10 +174,12 @@ export function reconstructPlanMaps(db: DatabaseSync, runId: string): PlanStatus
 // Build PlanSummaryEntry[] from maps
 // ---------------------------------------------------------------------------
 
+export type PlanErrorEntry = { error?: string; terminalSubtype?: string };
+
 export function buildPlanSummaries(
   allPlanIds: Set<string>,
   maps: PlanStatusMaps,
-  planErrorMap: Map<string, { error?: string; terminalSubtype?: string }>,
+  planErrorMap: Map<string, PlanErrorEntry>,
 ): PlanSummaryEntry[] {
   return [...allPlanIds].map(planId => {
     const status = maps.planStatusMap.get(planId) ?? 'failed';
@@ -197,6 +199,31 @@ export function buildPlanSummaries(
       ...(status === 'completed' && statusTs ? { completedAt: statusTs } : {}),
     };
   });
+}
+
+export function extractPlanErrorMap(
+  db: DatabaseSync,
+  runId: string,
+  upToId: number,
+): Map<string, PlanErrorEntry> {
+  const rows = db.prepare(
+    `SELECT plan_id as planId, type, data FROM events WHERE run_id = ? AND type IN ('plan:error:set', 'plan:error:clear') AND plan_id IS NOT NULL AND id <= ? ORDER BY id ASC`,
+  ).all(runId, upToId) as Array<{ planId: string; type: string; data: string }>;
+  const planErrorMap = new Map<string, PlanErrorEntry>();
+  for (const row of rows) {
+    if (row.type === 'plan:error:clear') {
+      planErrorMap.delete(row.planId);
+      continue;
+    }
+    const parsed = parseData(row.data);
+    const err = typeof parsed.error === 'string' ? parsed.error : undefined;
+    const sub = typeof parsed.terminalSubtype === 'string' ? parsed.terminalSubtype : undefined;
+    planErrorMap.set(row.planId, {
+      ...(err !== undefined ? { error: err } : {}),
+      ...(sub ? { terminalSubtype: sub } : {}),
+    });
+  }
+  return planErrorMap;
 }
 
 // ---------------------------------------------------------------------------
@@ -291,13 +318,14 @@ export function buildAuthoritativeFragment(
   validationCommands?: Array<{ command: string; exitCode: number; output?: string }>,
   landingInfo?: { status: string; action?: string; reason?: string },
   reviewFailure?: ReviewFailureDetails,
+  lifecyclePlanErrorMap: Map<string, PlanErrorEntry> = new Map(),
 ): Partial<BuildFailureSummary> {
   // failingPlan: use planId for plan-scoped failures; synthetic compat ID for others
   const failingPlanId = terminal.planId ?? (terminal.scope !== 'plan' ? terminal.scope : 'unknown');
-  const allPlanIds = new Set(maps.planStatusMap.keys());
+  const allPlanIds = new Set([...maps.planStatusMap.keys(), ...lifecyclePlanErrorMap.keys()]);
   if (failingPlanId !== 'unknown') allPlanIds.add(failingPlanId);
 
-  const planErrorMap = new Map<string, { error?: string; terminalSubtype?: string }>();
+  const planErrorMap = new Map(lifecyclePlanErrorMap);
   if (terminal.scope === 'plan' && failingPlanId !== 'unknown') {
     planErrorMap.set(failingPlanId, { error: terminal.message });
   }

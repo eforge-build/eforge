@@ -129,7 +129,7 @@ export interface PhaseContext {
 
 /**
  * Walk the dependency graph from a failed plan and mark all transitive
- * dependents as blocked. Returns build:failed events for each blocked plan.
+ * dependents as blocked. Returns lifecycle/error events for each blocked plan.
  */
 export function propagateFailure(
   state: EforgeState,
@@ -159,14 +159,9 @@ export function propagateFailure(
 
       const planState = state.plans[dep];
       if (planState && planState.status !== 'completed' && planState.status !== 'merged') {
-        // Emit lifecycle events (plan:status:change, plan:error:set) before plan:build:failed
-        events.push(...transitionPlan(state, dep, 'blocked', { error: `Blocked by failed dependency: ${failedPlanId}` }));
-        events.push({
-          timestamp: new Date().toISOString(),
-          type: 'plan:build:failed',
-          planId: dep,
-          error: `Blocked by failed dependency: ${failedPlanId}`,
-        });
+        const blockedError = `Blocked by failed dependency: ${failedPlanId}`;
+        // Emit lifecycle events (plan:status:change, plan:error:set) for blocked dependents.
+        events.push(...transitionPlan(state, dep, 'blocked', { error: blockedError }));
       }
       queue.push(dep);
     }
@@ -353,6 +348,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
     const planPromise = (async () => {
       const plan = planMap.get(planId)!;
       let worktreePath: string | undefined;
+      let buildFailedError: string | undefined;
 
       try {
         await semaphore.acquire();
@@ -363,7 +359,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         for (const e of transitionPlan(state, planId, 'running')) eventQueue.push(e);
 
         // Delegate to injected plan runner
-        let buildFailedError: string | undefined;
         for await (const event of planRunner(planId, worktreePath, plan)) {
           if (event.type === 'plan:build:failed' && event.planId === planId) {
             buildFailedError = event.error;
@@ -386,8 +381,17 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         }
       } catch (err) {
         // Handle all failures (worktree creation, plan runner, etc.)
+        const error = err instanceof Error ? err.message : String(err);
+        if (buildFailedError === undefined) {
+          buildFailedError = error;
+          eventQueue.push({ timestamp: new Date().toISOString(), type: 'plan:build:failed', planId, error });
+        }
+
+        if (state.plans[planId].status === 'pending') {
+          for (const e of transitionPlan(state, planId, 'running')) eventQueue.push(e);
+        }
         if (state.plans[planId].status !== 'failed') {
-          for (const e of transitionPlan(state, planId, 'failed', { error: (err as Error).message })) eventQueue.push(e);
+          for (const e of transitionPlan(state, planId, 'failed', { error: buildFailedError })) eventQueue.push(e);
         }
 
         // Propagate failure to transitive dependents

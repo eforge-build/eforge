@@ -13,6 +13,7 @@ import type { PlanRunner } from '@eforge-build/engine/orchestrator';
 import type { EforgeState, EforgeEvent, OrchestrationConfig, PlanState } from '@eforge-build/engine/events';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
+import { createBuildTerminalFailureTracker } from '@eforge-build/engine/terminal-failure';
 import type { PolicyGateKind, PolicyGateMethod, PolicyGateRegistration } from '@eforge-build/engine/extensions/types';
 import { useTempDir } from './test-tmpdir.js';
 import { getBuildStage, type BuildStageContext } from '@eforge-build/engine/pipeline';
@@ -256,7 +257,93 @@ describe('executePlans - build:failed handling', () => {
       reason: 'protected paths changed',
     }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'plan:build:failed', planId: 'plan-a', error: expect.stringContaining('protected paths changed') }));
-    expect(events).toContainEqual(expect.objectContaining({ type: 'plan:build:failed', planId: 'plan-b', error: expect.stringContaining('plan-a') }));
+    expect(events).not.toContainEqual(expect.objectContaining({ type: 'plan:build:failed', planId: 'plan-b' }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'plan:status:change', planId: 'plan-b', status: 'blocked' }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'plan:error:set', planId: 'plan-b', error: expect.stringContaining('plan-a') }));
+  });
+
+  it('keeps terminal failure evidence on the upstream failed plan when blocking a dependency chain', async () => {
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+        { id: 'plan-b', name: 'Plan B', dependsOn: ['plan-a'], branch: 'feature/plan-b', build: TEST_BUILD, review: TEST_REVIEW },
+        { id: 'plan-c', name: 'Plan C', dependsOn: ['plan-b'], branch: 'feature/plan-c', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+    const state = initializeState(config, '/tmp/repo').state;
+    const blockedError = 'Blocked by failed dependency: plan-a';
+
+    const planRunner: PlanRunner = async function* (planId) {
+      if (planId === 'plan-a') {
+        yield { type: 'plan:build:failed', planId: 'plan-a', error: 'upstream build failed', timestamp: new Date().toISOString() } as EforgeEvent;
+      }
+    };
+
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      mergePlan: async () => 'abc123',
+    } as unknown as WorktreeManager;
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false, landingAction: 'merge' as const,
+      modelTracker: new ModelTracker(),
+    };
+
+    const events: EforgeEvent[] = [];
+    const tracker = createBuildTerminalFailureTracker('run-chain');
+    let status: 'completed' | 'failed' = 'completed';
+    let summary = 'Build completed';
+    for await (const event of executePlans(ctx)) {
+      events.push(event);
+      tracker.observe(event);
+      if (event.type === 'plan:build:failed') {
+        status = 'failed';
+        summary = event.error.startsWith('Merge failed') ? `Merge failed for ${event.planId}` : `Build failed for ${event.planId}`;
+      }
+    }
+    const terminalFailure = tracker.toEvent(status, summary);
+    if (terminalFailure) events.push(terminalFailure);
+    const phaseEnd = {
+      type: 'phase:end',
+      runId: 'run-chain',
+      result: { status, summary },
+      timestamp: new Date().toISOString(),
+    } as EforgeEvent;
+    events.push(phaseEnd);
+
+    const failedEvents = events.filter((e): e is Extract<EforgeEvent, { type: 'plan:build:failed' }> => e.type === 'plan:build:failed');
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0].planId).toBe('plan-a');
+
+    for (const planId of ['plan-b', 'plan-c']) {
+      expect(events).toContainEqual(expect.objectContaining({ type: 'plan:status:change', planId, status: 'blocked' }));
+      expect(events).toContainEqual(expect.objectContaining({ type: 'plan:error:set', planId, error: blockedError }));
+    }
+
+    expect(terminalFailure).toEqual(expect.objectContaining({
+      type: 'build:terminal-failure',
+      failure: expect.objectContaining({ scope: 'plan', planId: 'plan-a' }),
+    }));
+    expect(phaseEnd).toEqual(expect.objectContaining({
+      result: expect.objectContaining({ status: 'failed', summary: 'Build failed for plan-a' }),
+    }));
+    expect((phaseEnd as Extract<EforgeEvent, { type: 'phase:end' }>).result.summary).not.toContain('plan-c');
   });
 
   it('blocks final merge before mergeToBase and marks final state failed', async () => {
