@@ -1,48 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NowDashboard } from '@/views/now-dashboard';
-import { initialConsoleProjectState } from '@/lib/project-state';
-import type { ConsoleProjectState } from '@/lib/project-state';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
-import type { QueueItem, RunInfo } from '@eforge-build/client/browser';
 import { createInitialRunState } from '@/lib/run-state';
-
-function makeRun(overrides: Partial<RunInfo> = {}): RunInfo {
-  return {
-    id: 'run-1',
-    sessionId: 'sess-1',
-    planSet: 'plans-set',
-    command: 'build',
-    status: 'running',
-    startedAt: new Date(Date.now() - 10_000).toISOString(),
-    cwd: '/project',
-    ...overrides,
-  };
-}
-
-function makeQueue(overrides: Partial<QueueItem> = {}): QueueItem {
-  return {
-    id: 'q-1',
-    title: 'My task',
-    status: 'pending',
-    ...overrides,
-  };
-}
-
-const emptyActiveSessions: UseActiveSessionStreamsResult = {
-  sessions: {},
-  activeSessionIds: [],
-  subscriptionCount: 0,
-};
-
-function connectedState(overrides: Partial<ConsoleProjectState> = {}): ConsoleProjectState {
-  return {
-    ...initialConsoleProjectState,
-    connectionStatus: 'connected',
-    lastSnapshotAt: Date.now(),
-    ...overrides,
-  };
-}
+import {
+  makeRun,
+  makeQueue,
+  emptyActiveSessions,
+  connectedState,
+} from '@/test-support/factories';
 
 let replaceStateSpy: ReturnType<typeof vi.spyOn>;
 
