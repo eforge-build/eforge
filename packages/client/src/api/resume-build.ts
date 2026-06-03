@@ -1,5 +1,5 @@
 /**
- * Typed helper for the resume-build daemon API endpoint.
+ * Typed helper for the queued resume-build daemon API endpoint.
  */
 
 import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';

@@ -84,16 +84,16 @@ export interface ReadSidecarResponse {
 /** POST /api/recover/resume-build */
 export interface ResumeBuildRequest {
   prdId: string;
-  /** Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId. */
-  setName?: string;
-  /** Override the active profile for this resumed build (profile name, validated before the worker is spawned). */
-  profile?: string;
+  /** Override set name; when omitted, resolved from the recovery sidecar or prdId. */ setName?: string;
+  /** Override active profile for this resumed build (validated before requeue). */ profile?: string;
 }
 
 /** Response for POST /api/recover/resume-build */
 export interface ResumeBuildResponse {
-  sessionId: string;
-  pid: number;
+  kind: 'queued'; prdId: string; setName: string;
+  featureBranch: string; baseBranch: string;
+  movedDescendantIds: string[]; /** Effective queued PRD profile frontmatter, when one is present. */ profile?: string;
+  /** Queue mutation status; `already-queued` makes the operation idempotent. */ status?: 'queued' | 'already-queued'; detail?: string;
 }
 
 /**

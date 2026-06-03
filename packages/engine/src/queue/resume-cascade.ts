@@ -51,6 +51,9 @@ export async function requeueFailedPrdForCompiledResume(options: RequeueCompiled
   const root = snapshot.queue.find((prd) => prd.id === options.prdId);
   if (root) {
     if (compiledResumeMatches(root, options)) {
+      if (options.profileOverride !== undefined && root.frontmatter.profile !== options.profileOverride) {
+        await setQueuedPrdFrontmatterFields(root, { profile: options.profileOverride });
+      }
       return { status: 'already-queued', prdId: options.prdId, setName: options.setName, featureBranch: options.featureBranch, baseBranch: options.baseBranch, movedDescendantIds: [] };
     }
     return blockedRequeue(options, `Queue root already contains ${options.prdId}.md without matching compiled-resume metadata.`);

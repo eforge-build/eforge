@@ -226,6 +226,7 @@ export function QueueRecoveryDialog({
     try {
       const response = await startResumeBuild({ prdId, setName: eligibility?.setName });
       setResumeResult(response);
+      await refreshQueue();
     } catch (err: unknown) {
       setResumeError(errorMessage(err));
     } finally {
@@ -331,9 +332,12 @@ export function QueueRecoveryDialog({
             )}
             {resumeResult && (
               <div className="space-y-1 text-sm text-foreground">
-                <p>Resume started</p>
-                <p className="text-xs text-muted-foreground">Session: {resumeResult.sessionId}</p>
-                <p className="text-xs text-muted-foreground">PID: {resumeResult.pid}</p>
+                <p>Resume queued</p>
+                <p className="text-xs text-muted-foreground">PRD: {resumeResult.prdId}</p>
+                <p className="text-xs text-muted-foreground">Set: {resumeResult.setName}</p>
+                <p className="text-xs text-muted-foreground">Feature branch: {resumeResult.featureBranch}</p>
+                <p className="text-xs text-muted-foreground">Base branch: {resumeResult.baseBranch}</p>
+                {resumeResult.profile && <p className="text-xs text-muted-foreground">Profile: {resumeResult.profile}</p>}
               </div>
             )}
             {resumeError && (

@@ -15,6 +15,7 @@ import {
   type QueueRecoveryAnalyzeResponse,
   type QueueRecoveryApplyResponse,
   type ReadSidecarResponse,
+  type ResumeBuildResponse,
   type ResumeEligibilityResponse,
 } from '@eforge-build/client/browser';
 
@@ -61,6 +62,20 @@ function eligibleFixture(): ResumeEligibilityResponse {
     artifactAvailability: 'merge-worktree',
     landedCommitCount: 2,
     diffStat: '3 files changed',
+  };
+}
+
+function queuedResumeFixture(overrides: Partial<ResumeBuildResponse> = {}): ResumeBuildResponse {
+  return {
+    kind: 'queued',
+    prdId: 'failed-prd',
+    setName: 'demo-set',
+    featureBranch: 'eforge/demo',
+    baseBranch: 'main',
+    movedDescendantIds: ['child-prd'],
+    status: 'queued',
+    profile: 'resume-profile',
+    ...overrides,
   };
 }
 
@@ -126,7 +141,7 @@ beforeEach(() => {
   vi.mocked(fetchResumeEligibility).mockReset().mockResolvedValue(ineligibleFixture());
   vi.mocked(applySidecarRecovery).mockReset().mockResolvedValue(applyFixture('retry'));
   vi.mocked(triggerRecoveryAnalysis).mockReset().mockResolvedValue({ sessionId: 'analysis-1', pid: 11 });
-  vi.mocked(startResumeBuild).mockReset().mockResolvedValue({ sessionId: 'resume-1', pid: 4242 });
+  vi.mocked(startResumeBuild).mockReset().mockResolvedValue(queuedResumeFixture());
   vi.mocked(fetchQueueRecoveryAnalysis).mockReset().mockResolvedValue(analysisFixture());
   vi.mocked(applyQueueRecovery).mockReset().mockResolvedValue(cascadeApplyFixture());
 });
@@ -240,17 +255,22 @@ describe('QueueRecoveryDialog - compiled-build resume', () => {
     await waitFor(() => expect(startResumeBuild).toHaveBeenCalledTimes(1));
   });
 
-  it('displays the returned session id and process id on resume success', async () => {
+  it('displays queued metadata on resume success and refreshes the queue', async () => {
     vi.mocked(fetchResumeEligibility).mockResolvedValue(eligibleFixture());
-    vi.mocked(startResumeBuild).mockResolvedValue({ sessionId: 'resume-1', pid: 4242 });
-    renderDialog();
+    vi.mocked(startResumeBuild).mockResolvedValue(queuedResumeFixture());
+    const { refreshQueue } = renderDialog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Resume compiled build' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
 
-    expect(await screen.findByText('Resume started')).toBeDefined();
-    expect(screen.getByText(/resume-1/)).toBeDefined();
-    expect(screen.getByText(/4242/)).toBeDefined();
+    expect(await screen.findByText('Resume queued')).toBeDefined();
+    expect(screen.getAllByText(/failed-prd/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/demo-set/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/eforge\/demo/)).toBeDefined();
+    expect(screen.getByText(/resume-profile/)).toBeDefined();
+    expect(screen.queryByText(/Session:/)).toBeNull();
+    expect(screen.queryByText(/PID:/)).toBeNull();
+    await waitFor(() => expect(refreshQueue).toHaveBeenCalledTimes(1));
   });
 
   it('displays the daemon reason when resume is ineligible', async () => {
@@ -261,13 +281,13 @@ describe('QueueRecoveryDialog - compiled-build resume', () => {
 
   it('displays the helper error message on resume failure', async () => {
     vi.mocked(fetchResumeEligibility).mockResolvedValue(eligibleFixture());
-    vi.mocked(startResumeBuild).mockRejectedValue(new Error('Recovery request failed (500): resume worker crashed'));
+    vi.mocked(startResumeBuild).mockRejectedValue(new Error('Recovery request failed (500): resume queue failed'));
     renderDialog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Resume compiled build' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
 
-    expect(await screen.findByText(/resume worker crashed/)).toBeDefined();
+    expect(await screen.findByText(/resume queue failed/)).toBeDefined();
   });
 });
 

@@ -72,6 +72,7 @@ import type {
   ConfigShowResponse,
   VersionResponse,
   EforgeExtensionActionHelpers,
+  ResumeBuildRequest,
 } from '@eforge-build/client';
 import { handleBuildCommand } from './build-command';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
@@ -1651,7 +1652,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "eforge_resume_build",
     label: "eforge resume build",
-    description: "Resume a failed build from its compiled artifacts. Use when a PRD failed after the compile stage and has a feature branch with partial compiled work. Spawns a background build agent that picks up from the compiled artifacts and returns { sessionId, pid }. Always confirm with the user before calling this tool.",
+    description: "Queue a failed build to resume from its compiled artifacts. Use when a PRD failed after the compile stage and has a feature branch with partial compiled work. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. Always confirm with the user before calling this tool.",
     parameters: Type.Object({
       prdId: Type.String({
         description: "The plan ID (prdId) of the failed build to resume from compiled artifacts",
@@ -1664,7 +1665,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const body: { prdId: string; setName?: string; profile?: string } = { prdId: params.prdId };
+      const body: ResumeBuildRequest = { prdId: params.prdId };
       if (params.setName !== undefined) body.setName = params.setName;
       if (params.profile !== undefined) body.profile = params.profile;
       const { data } = await requireDaemon(

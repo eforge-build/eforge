@@ -24,6 +24,7 @@ import type {
   ConfigValidateResponse,
   VersionResponse,
   EforgeExtensionActionHelpers,
+  ResumeBuildRequest,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
 
@@ -843,14 +844,14 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_resume_build
   createDaemonTool(server, cwd, {
     name: 'eforge_resume_build',
-    description: 'Resume a compiled build that previously failed. Spawns the resume worker as a background subprocess and returns its sessionId and pid.',
+    description: 'Queue a compiled build resume for scheduler dispatch. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned.',
     schema: {
       prdId: z.string().describe('The plan ID (prdId) of the failed compiled build to resume'),
       setName: z.string().optional().describe('Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId.'),
       profile: z.string().optional().describe('Run this resumed build on the named profile instead of the active profile'),
     },
     handler: async ({ prdId, setName, profile }, { cwd: toolCwd }) => {
-      const body: { prdId: string; setName?: string; profile?: string } = { prdId };
+      const body: ResumeBuildRequest = { prdId };
       if (setName !== undefined) body.setName = setName;
       if (profile !== undefined) body.profile = profile;
       const { data } = await apiResumeBuild({ cwd: toolCwd, body });

@@ -1,21 +1,12 @@
 // --- eforge:region resume-build-cli-mcp-suite ---
 /**
  * Tests for the resume CLI command and eforge_resume_build MCP tool.
- *
- * Verifies:
- * - The `resume` command is registered on the Commander program
- * - The `eforge_resume_build` MCP tool is registered in the proxy source
- * - The MCP tool handler posts to API_ROUTES.resumeBuild with the correct body
- *   and returns the daemon response JSON
- *
- * Follows AGENTS.md conventions:
- * - No mocks. Real Commander programs, real McpServer instances, real HTTP servers.
- * - useTempDir for filesystem cleanup.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { join, resolve } from 'node:path';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { join, resolve, dirname } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
@@ -28,6 +19,7 @@ import {
   writeLockfile,
   clearApiVersionCache,
   apiResumeBuild,
+  type ResumeBuildResponse,
 } from '@eforge-build/client';
 import { openDatabase } from '@eforge-build/monitor/db';
 import {
@@ -38,40 +30,53 @@ import {
 import { useTempDir } from './test-tmpdir.js';
 import { z } from 'zod';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 function readRepoFile(relative: string): string {
   return readFileSync(resolve(REPO_ROOT, relative), 'utf-8');
 }
 
-interface SpawnCall {
-  command: string;
-  args: string[];
-  sessionId: string;
-  pid: number;
+function git(cwd: string, args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf-8' }).trim();
 }
 
-function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
-  const calls: SpawnCall[] = [];
-  let pidCounter = 30000;
-  let sessionCounter = 0;
+function writeFileEnsuringDir(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, 'utf-8');
+}
 
+function initRepo(cwd: string): void {
+  git(cwd, ['init', '-b', 'main']);
+  git(cwd, ['config', 'user.email', 'test@example.com']);
+  git(cwd, ['config', 'user.name', 'Test User']);
+  writeFileEnsuringDir(join(cwd, 'README.md'), '# test\n');
+  git(cwd, ['add', 'README.md']);
+  git(cwd, ['commit', '-m', 'chore: initial']);
+}
+
+function createFeatureBranchWithArtifacts(cwd: string, setName: string): void {
+  git(cwd, ['switch', '-c', `eforge/${setName}`]);
+  writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'orchestration.yaml'), `name: ${setName}\ndescription: Test\nbase_branch: main\nmode: excursion\nvalidate: []\nplans: []\npipeline:\n  scope: excursion\n  compile: []\n  defaultBuild: []\n  defaultReview:\n    strategy: auto\n    perspectives: [code]\n    maxRounds: 1\n    evaluatorStrictness: standard\n  rationale: resume\n`);
+  git(cwd, ['add', 'eforge']);
+  git(cwd, ['commit', '-m', 'plan: compiled artifacts']);
+  git(cwd, ['switch', 'main']);
+}
+
+function writeFailedPrd(cwd: string, prdId: string): void {
+  writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`), '---\ntitle: Failed PRD\n---\n\n# Failed PRD\n');
+}
+
+function makeStubTracker(): { tracker: WorkerTracker; calls: Array<{ command: string; args: string[] }> } {
+  const calls: Array<{ command: string; args: string[] }> = [];
   const tracker: WorkerTracker = {
     spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
-      const sessionId = `stub-mcp-${++sessionCounter}`;
-      const pid = ++pidCounter;
-      calls.push({ command, args, sessionId, pid });
-      return { sessionId, pid };
+      calls.push({ command, args });
+      return { sessionId: 'unexpected-resume-worker', pid: 30001 };
     },
-    cancelWorker(_sessionId: string): boolean {
+    cancelWorker(): boolean {
       return false;
     },
   };
-
   return { tracker, calls };
 }
 
@@ -86,22 +91,22 @@ function writeTestProfile(cwd: string, name = 'resume-profile'): void {
   );
 }
 
-/** Fake extra object for MCP tool handler calls. */
 const fakeExtra = {
   signal: new AbortController().signal,
   _meta: {},
 } as unknown as Parameters<RegisteredTool['handler']>[1];
-
-// ---------------------------------------------------------------------------
-// Test setup for integration tests
-// ---------------------------------------------------------------------------
 
 const makeTempDir = useTempDir('eforge-resume-cli-mcp-test-');
 
 let tmpDir: string;
 let dbPath: string;
 let server: MonitorServer;
-let spawnCalls: SpawnCall[];
+let spawnCalls: Array<{ command: string; args: string[] }>;
+
+function prepareEligiblePrd(prdId: string): void {
+  createFeatureBranchWithArtifacts(tmpDir, prdId);
+  writeFailedPrd(tmpDir, prdId);
+}
 
 async function setupServer(): Promise<void> {
   const { tracker, calls } = makeStubTracker();
@@ -122,8 +127,8 @@ beforeEach(async () => {
   clearApiVersionCache();
   tmpDir = makeTempDir();
   dbPath = resolve(tmpDir, 'monitor.db');
+  initRepo(tmpDir);
   await setupServer();
-  // Write lockfile so daemon client helpers can discover the test server
   writeLockfile(tmpDir, { pid: process.pid, port: server.port, startedAt: new Date().toISOString() });
 });
 
@@ -132,10 +137,6 @@ afterEach(async () => {
   clearApiVersionCache();
 });
 
-// ---------------------------------------------------------------------------
-// CLI registration
-// ---------------------------------------------------------------------------
-
 describe('resume CLI command registration', () => {
   it('registers the `resume` command on the Commander program', () => {
     const program = createProgram(undefined, 'test');
@@ -143,141 +144,136 @@ describe('resume CLI command registration', () => {
     expect(resumeCommand).toBeDefined();
   });
 
-  it('resume command accepts a prdId positional argument', () => {
+  it('resume command accepts expected user-facing options', () => {
     const program = createProgram(undefined, 'test');
     const resumeCommand = program.commands.find((cmd) => cmd.name() === 'resume');
     expect(resumeCommand?.usage()).toContain('prdId');
-  });
-
-  it('resume command declares --set-name option', () => {
-    const program = createProgram(undefined, 'test');
-    const resumeCommand = program.commands.find((cmd) => cmd.name() === 'resume');
     const optionNames = resumeCommand?.options.map((o) => o.long ?? '') ?? [];
     expect(optionNames).toContain('--set-name');
-  });
-
-  it('resume command declares --profile option', () => {
-    const program = createProgram(undefined, 'test');
-    const resumeCommand = program.commands.find((cmd) => cmd.name() === 'resume');
-    const optionNames = resumeCommand?.options.map((o) => o.long ?? '') ?? [];
     expect(optionNames).toContain('--profile');
-  });
-
-  it('resume command declares --cwd option', () => {
-    const program = createProgram(undefined, 'test');
-    const resumeCommand = program.commands.find((cmd) => cmd.name() === 'resume');
-    const optionNames = resumeCommand?.options.map((o) => o.long ?? '') ?? [];
     expect(optionNames).toContain('--cwd');
-  });
-
-  it('resume command declares --no-monitor option', () => {
-    const program = createProgram(undefined, 'test');
-    const resumeCommand = program.commands.find((cmd) => cmd.name() === 'resume');
-    const optionNames = resumeCommand?.options.map((o) => o.long ?? '') ?? [];
     expect(optionNames).toContain('--no-monitor');
   });
 });
 
-// ---------------------------------------------------------------------------
-// MCP proxy source-level registration check
-// ---------------------------------------------------------------------------
-
 describe('eforge_resume_build MCP tool registration (source-level)', () => {
   const mcpSource = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
 
-  it('registers eforge_resume_build in the MCP proxy source', () => {
+  it('registers eforge_resume_build in the MCP proxy source and describes queued metadata', () => {
     expect(mcpSource).toContain("name: 'eforge_resume_build'");
-  });
-
-  it('references apiResumeBuild in the MCP proxy source', () => {
     expect(mcpSource).toContain('apiResumeBuild');
+    expect(mcpSource).toContain('Queue a compiled build resume');
+    expect(mcpSource).toContain('no sessionId or pid');
   });
 
-  it('eforge_resume_build schema declares prdId field', () => {
+  it('eforge_resume_build schema declares prdId, setName, and profile fields', () => {
     const start = mcpSource.indexOf("name: 'eforge_resume_build'");
     expect(start).toBeGreaterThan(-1);
     const next = mcpSource.indexOf('createDaemonTool(', start + 1);
     const block = next > start ? mcpSource.slice(start, next) : mcpSource.slice(start);
     expect(block).toContain('prdId');
-  });
-
-  it('eforge_resume_build schema declares optional setName field', () => {
-    const start = mcpSource.indexOf("name: 'eforge_resume_build'");
-    expect(start).toBeGreaterThan(-1);
-    const next = mcpSource.indexOf('createDaemonTool(', start + 1);
-    const block = next > start ? mcpSource.slice(start, next) : mcpSource.slice(start);
     expect(block).toContain('setName');
-    expect(block).toContain('.optional()');
-  });
-
-  it('eforge_resume_build schema declares optional profile field', () => {
-    const start = mcpSource.indexOf("name: 'eforge_resume_build'");
-    expect(start).toBeGreaterThan(-1);
-    const next = mcpSource.indexOf('createDaemonTool(', start + 1);
-    const block = next > start ? mcpSource.slice(start, next) : mcpSource.slice(start);
     expect(block).toContain('profile');
     expect(block).toContain('.optional()');
   });
 });
 
-// ---------------------------------------------------------------------------
-// apiResumeBuild integration — posts to API_ROUTES.resumeBuild
-// ---------------------------------------------------------------------------
-
 describe('apiResumeBuild helper', () => {
-  it('posts to API_ROUTES.resumeBuild and returns { sessionId, pid }', async () => {
+  it('posts to API_ROUTES.resumeBuild and returns queued metadata without spawning a worker', async () => {
     const prdId = 'my-feature-prd';
+    prepareEligiblePrd(prdId);
     const { data } = await apiResumeBuild({ cwd: tmpDir, body: { prdId } });
 
-    expect(typeof data.sessionId).toBe('string');
-    expect(data.sessionId.length).toBeGreaterThan(0);
-    expect(typeof data.pid).toBe('number');
-    expect(data.pid).toBeGreaterThan(0);
-
-    expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0].command).toBe('resume');
-    expect(spawnCalls[0].args).toEqual([prdId]);
+    expect(data).toMatchObject({
+      kind: 'queued',
+      prdId,
+      setName: prdId,
+      featureBranch: `eforge/${prdId}`,
+      baseBranch: 'main',
+      movedDescendantIds: [],
+    });
+    expect((data as ResumeBuildResponse & { sessionId?: unknown; pid?: unknown }).sessionId).toBeUndefined();
+    expect((data as ResumeBuildResponse & { sessionId?: unknown; pid?: unknown }).pid).toBeUndefined();
+    expect(spawnCalls).toHaveLength(0);
   });
 
-  it('passes setName as --set-name args when provided', async () => {
+  it('passes setName in the request body and receives the selected set metadata', async () => {
     const prdId = 'my-feature-prd';
     const setName = 'my-set';
+    createFeatureBranchWithArtifacts(tmpDir, setName);
+    writeFailedPrd(tmpDir, prdId);
     const { data } = await apiResumeBuild({ cwd: tmpDir, body: { prdId, setName } });
 
-    expect(typeof data.sessionId).toBe('string');
-    expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0].args).toEqual([prdId, '--set-name', setName]);
-    // sessionId matches what the stub returned
-    expect(data.sessionId).toBe(spawnCalls[0].sessionId);
-    expect(data.pid).toBe(spawnCalls[0].pid);
+    expect(data.kind).toBe('queued');
+    expect(data.setName).toBe(setName);
+    expect(data.featureBranch).toBe(`eforge/${setName}`);
+    expect(spawnCalls).toHaveLength(0);
   });
 
-  it('passes profile as --profile args when provided', async () => {
-    const prdId = 'my-feature-prd';
+  it('passes profile in the request body and receives profile metadata', async () => {
+    const prdId = 'profile-prd';
     const profile = 'resume-profile';
+    prepareEligiblePrd(prdId);
     writeTestProfile(tmpDir, profile);
 
     const { data } = await apiResumeBuild({ cwd: tmpDir, body: { prdId, profile } });
 
-    expect(typeof data.sessionId).toBe('string');
-    expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0].args).toEqual([prdId, '--profile', profile]);
-    expect(data.sessionId).toBe(spawnCalls[0].sessionId);
-    expect(data.pid).toBe(spawnCalls[0].pid);
+    expect(data.kind).toBe('queued');
+    expect(data.profile).toBe(profile);
+    expect(spawnCalls).toHaveLength(0);
   });
 });
 
-// ---------------------------------------------------------------------------
-// MCP tool handler integration — calls apiResumeBuild and returns daemon JSON
-// ---------------------------------------------------------------------------
+describe('resume CLI command behavior', () => {
+  it('queues through the daemon route and prints queued metadata', async () => {
+    const prdId = 'cli-resume-prd';
+    const profile = 'resume-profile';
+    prepareEligiblePrd(prdId);
+    writeTestProfile(tmpDir, profile);
+    const logs: string[] = [];
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((message?: unknown) => {
+      logs.push(String(message));
+    });
+
+    try {
+      const program = createProgram(undefined, 'test');
+      await program.parseAsync(['resume', prdId, '--cwd', tmpDir, '--profile', profile, '--verbose'], { from: 'user' });
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    expect(logs.join('\n')).toContain(`Resume queued: ${prdId}`);
+    expect(logs.join('\n')).toContain(`Set: ${prdId}`);
+    expect(logs.join('\n')).toContain(`Feature branch: eforge/${prdId}`);
+    expect(logs.join('\n')).toContain('Base branch: main');
+    expect(logs.join('\n')).toContain(`Profile: ${profile}`);
+    expect(logs.join('\n')).not.toContain('sessionId');
+    expect(logs.join('\n')).not.toContain('pid');
+    expect(spawnCalls).toHaveLength(0);
+  });
+});
+
+describe('Pi eforge_resume_build tool registration (source-level)', () => {
+  const piSource = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+
+  it('describes queued metadata and returns daemon JSON unchanged', () => {
+    const start = piSource.indexOf('name: "eforge_resume_build"');
+    expect(start).toBeGreaterThan(-1);
+    const next = piSource.indexOf('pi.registerTool({', start + 1);
+    const block = next > start ? piSource.slice(start, next) : piSource.slice(start);
+    expect(block).toContain('Queue a failed build to resume');
+    expect(block).toContain('no sessionId or pid');
+    expect(block).toContain('API_ROUTES.resumeBuild');
+    expect(block).toContain('return jsonResult(data)');
+  });
+});
 
 describe('eforge_resume_build MCP tool handler', () => {
-  it('calls apiResumeBuild and returns the daemon response JSON', async () => {
+  it('calls apiResumeBuild and returns the queued daemon response JSON', async () => {
     const mcpServer = new McpServer({ name: 'test', version: '0.0.0' });
-
     const prdId = 'mcp-handler-prd';
+    prepareEligiblePrd(prdId);
 
-    // Register the tool using the same factory used in the production proxy
     const registered = createDaemonTool(mcpServer, tmpDir, {
       name: 'eforge_resume_build',
       description: 'Test: resume build',
@@ -304,19 +300,19 @@ describe('eforge_resume_build MCP tool handler', () => {
     expect(typed.content).toHaveLength(1);
     expect(typed.content[0].type).toBe('text');
 
-    const parsed = JSON.parse(typed.content[0].text) as { sessionId: string; pid: number };
-    expect(typeof parsed.sessionId).toBe('string');
-    expect(typeof parsed.pid).toBe('number');
-
-    expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0].command).toBe('resume');
-    expect(spawnCalls[0].args).toEqual([prdId]);
+    const parsed = JSON.parse(typed.content[0].text) as ResumeBuildResponse & { sessionId?: unknown; pid?: unknown };
+    expect(parsed.kind).toBe('queued');
+    expect(parsed.prdId).toBe(prdId);
+    expect(parsed.sessionId).toBeUndefined();
+    expect(parsed.pid).toBeUndefined();
+    expect(spawnCalls).toHaveLength(0);
   });
 
   it('forwards profile overrides through the MCP handler body', async () => {
     const mcpServer = new McpServer({ name: 'test', version: '0.0.0' });
-    const prdId = 'mcp-handler-prd';
+    const prdId = 'mcp-profile-prd';
     const profile = 'resume-profile';
+    prepareEligiblePrd(prdId);
     writeTestProfile(tmpDir, profile);
 
     const registered = createDaemonTool(mcpServer, tmpDir, {
@@ -336,14 +332,15 @@ describe('eforge_resume_build MCP tool handler', () => {
       },
     });
 
-    await (registered.handler as (...args: unknown[]) => Promise<unknown>)(
+    const result = await (registered.handler as (...args: unknown[]) => Promise<unknown>)(
       { prdId, profile },
       fakeExtra,
     );
+    const typed = result as { content: Array<{ type: string; text: string }> };
+    const parsed = JSON.parse(typed.content[0].text) as ResumeBuildResponse;
 
-    expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0].command).toBe('resume');
-    expect(spawnCalls[0].args).toEqual([prdId, '--profile', profile]);
+    expect(parsed.profile).toBe(profile);
+    expect(spawnCalls).toHaveLength(0);
   });
 });
 // --- eforge:endregion resume-build-cli-mcp-suite ---

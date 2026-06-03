@@ -2,24 +2,15 @@
 /**
  * End-to-end tests for POST /api/recover/resume-build.
  *
- * Verifies the daemon route:
- * - Returns 400 for missing prdId
- * - Returns 400 for prdId containing path separators
- * - Returns 400 for setName containing path separators
- * - Spawns a resume worker with correct args when prdId alone is provided
- * - Spawns a resume worker with --set-name args when setName is provided
- * - Validates profile overrides and forwards them as --profile args
- * - Returns { sessionId, pid } from the spawned worker
- * - Returns 503 when workerTracker is not configured
- *
- * Follows AGENTS.md conventions:
- * - No mocks. Real SQLite, stub WorkerTracker.
- * - useTempDir for filesystem cleanup.
+ * Verifies queued compiled-resume mutation, validation, scheduler notification,
+ * profile precedence, and that the route no longer spawns resume workers.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { dirname, join, resolve } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
 import {
@@ -27,38 +18,87 @@ import {
   type MonitorServer,
   type WorkerTracker,
 } from '@eforge-build/monitor/server';
-import { API_ROUTES } from '@eforge-build/client';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+import { API_ROUTES, type ResumeBuildResponse } from '@eforge-build/client';
 
 interface SpawnCall {
   command: string;
   args: string[];
-  sessionId: string;
-  pid: number;
-  onExit?: () => void;
 }
 
-/** Stub WorkerTracker that records spawn calls without actually spawning. */
+function git(cwd: string, args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf-8' }).trim();
+}
+
+function writeFileEnsuringDir(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, 'utf-8');
+}
+
+function initRepo(cwd: string): void {
+  git(cwd, ['init', '-b', 'main']);
+  git(cwd, ['config', 'user.email', 'test@example.com']);
+  git(cwd, ['config', 'user.name', 'Test User']);
+  writeFileEnsuringDir(join(cwd, 'README.md'), '# test\n');
+  git(cwd, ['add', 'README.md']);
+  git(cwd, ['commit', '-m', 'chore: initial']);
+}
+
+function writeCompiledPlanSet(cwd: string, setName: string): void {
+  writeFileEnsuringDir(
+    join(cwd, 'eforge', 'plans', setName, 'orchestration.yaml'),
+    `name: ${setName}
+description: Test resume plan set
+base_branch: main
+mode: excursion
+validate: []
+plans:
+  - id: plan-01
+    name: Plan 01
+    depends_on: []
+    branch: ${setName}/plan-01
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile: []
+  defaultBuild: []
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: resume
+`,
+  );
+  writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'plan-01.md'), '---\nid: plan-01\nname: Plan 01\n---\n\n# Plan 01\n');
+}
+
+function createFeatureBranchWithArtifacts(cwd: string, setName: string): void {
+  git(cwd, ['switch', '-c', `eforge/${setName}`]);
+  writeCompiledPlanSet(cwd, setName);
+  git(cwd, ['add', 'eforge']);
+  git(cwd, ['commit', '-m', 'plan: compiled artifacts']);
+  git(cwd, ['switch', 'main']);
+}
+
 function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
   const calls: SpawnCall[] = [];
-  let pidCounter = 20000;
-  let sessionCounter = 0;
-
   const tracker: WorkerTracker = {
-    spawnWorker(command: string, args: string[], onExit?: () => void): { sessionId: string; pid: number } {
-      const sessionId = `stub-resume-${++sessionCounter}`;
-      const pid = ++pidCounter;
-      calls.push({ command, args, sessionId, pid, onExit });
-      return { sessionId, pid };
+    spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
+      calls.push({ command, args });
+      return { sessionId: 'unexpected-resume-worker', pid: 9999 };
     },
-    cancelWorker(_sessionId: string): boolean {
+    cancelWorker(): boolean {
       return false;
     },
   };
-
   return { tracker, calls };
 }
 
@@ -71,9 +111,40 @@ function writeTestProfile(cwd: string, name = 'resume-profile', profileYaml = VA
   writeFileSync(join(configDir, 'profiles', `${name}.yaml`), profileYaml, 'utf-8');
 }
 
-// ---------------------------------------------------------------------------
-// Test setup
-// ---------------------------------------------------------------------------
+async function writeFailedPrd(cwd: string, prdId: string, opts: { profile?: string; setName?: string } = {}): Promise<void> {
+  const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+  await mkdir(failedDir, { recursive: true });
+  await writeFile(
+    join(failedDir, `${prdId}.md`),
+    `---\ntitle: Failed PRD\n${opts.profile ? `profile: ${opts.profile}\n` : ''}---\n\n# Failed PRD\n`,
+    'utf-8',
+  );
+  if (opts.setName) {
+    await writeFile(
+      join(failedDir, `${prdId}.recovery.json`),
+      JSON.stringify({ schemaVersion: 1, summary: { prdId, setName: opts.setName, featureBranch: `eforge/${opts.setName}`, baseBranch: 'main' } }),
+      'utf-8',
+    );
+  }
+}
+
+async function writeSkippedChild(cwd: string, childId: string, parentId: string): Promise<void> {
+  const skippedDir = join(cwd, '.eforge', 'queue', 'skipped');
+  await mkdir(skippedDir, { recursive: true });
+  await writeFile(
+    join(skippedDir, `${childId}.md`),
+    `---\ntitle: Skipped child\ndepends_on: [${parentId}]\n---\n\n# Skipped child\n`,
+    'utf-8',
+  );
+}
+
+async function postResume(server: MonitorServer, body: unknown): Promise<Response> {
+  return fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 const makeTempDir = useTempDir('eforge-resume-route-test-');
 
@@ -83,7 +154,7 @@ let server: MonitorServer;
 let spawnCalls: SpawnCall[];
 let queueMutationReasons: string[];
 
-async function setupServer(): Promise<void> {
+async function setupServer(opts: { withTracker?: boolean; withCwd?: boolean } = {}): Promise<void> {
   const { tracker, calls } = makeStubTracker();
   spawnCalls = calls;
   queueMutationReasons = [];
@@ -93,8 +164,8 @@ async function setupServer(): Promise<void> {
     0,
     {
       strictPort: true,
-      cwd: tmpDir,
-      workerTracker: tracker,
+      ...(opts.withCwd === false ? {} : { cwd: tmpDir }),
+      ...(opts.withTracker === false ? {} : { workerTracker: tracker }),
       daemonState: {
         autoBuildController: {
           getSnapshot: () => ({ enabled: false, watcher: { running: false, pid: null, sessionId: null }, desired: 'disabled', mode: 'disabled', scheduler: { alive: false, paused: false } }),
@@ -105,278 +176,192 @@ async function setupServer(): Promise<void> {
   );
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   tmpDir = makeTempDir();
   dbPath = resolve(tmpDir, 'monitor.db');
-  await setupServer();
+  initRepo(tmpDir);
 });
 
 afterEach(async () => {
   await server?.stop();
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/recover/resume-build — validation: null JSON body
-// ---------------------------------------------------------------------------
+describe('POST /api/recover/resume-build — validation', () => {
+  beforeEach(async () => {
+    await setupServer();
+  });
 
-describe('POST /api/recover/resume-build — null JSON body', () => {
-  it('returns 400 when the JSON body is null', async () => {
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: 'null',
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json() as { error: string };
-    expect(typeof data.error).toBe('string');
+  it('returns 400 when the JSON body is null or an array', async () => {
+    expect((await postResume(server, null)).status).toBe(400);
+    expect((await postResume(server, [])).status).toBe(400);
     expect(spawnCalls).toHaveLength(0);
   });
 
-  it('returns 400 when the JSON body is an array', async () => {
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '[]',
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json() as { error: string };
-    expect(typeof data.error).toBe('string');
+  it('returns 400 when prdId is missing or unsafe', async () => {
+    expect((await postResume(server, {})).status).toBe(400);
+    expect((await postResume(server, { prdId: 'some/path' })).status).toBe(400);
+    expect((await postResume(server, { prdId: '../etc/passwd' })).status).toBe(400);
     expect(spawnCalls).toHaveLength(0);
+  });
+
+  it('returns 400 when setName contains path separators', async () => {
+    const res = await postResume(server, { prdId: 'valid-prd', setName: 'some/set' });
+    expect(res.status).toBe(400);
+    expect(spawnCalls).toHaveLength(0);
+  });
+
+  it('returns 503 when no working directory is configured', async () => {
+    await server.stop();
+    await setupServer({ withCwd: false });
+    const res = await postResume(server, { prdId: 'valid-prd' });
+    expect(res.status).toBe(503);
   });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/recover/resume-build — validation: missing prdId
-// ---------------------------------------------------------------------------
-
-describe('POST /api/recover/resume-build — missing prdId', () => {
-  it('returns 400 when prdId is missing from the request body', async () => {
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('prdId');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/recover/resume-build — validation: path traversal in prdId
-// ---------------------------------------------------------------------------
-
-describe('POST /api/recover/resume-build — prdId with path separator', () => {
-  it('returns 400 when prdId contains a forward slash', async () => {
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId: 'some/path' }),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('prdId');
-    expect(spawnCalls).toHaveLength(0);
-  });
-
-  it('returns 400 when prdId contains path traversal (..)', async () => {
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId: '../etc/passwd' }),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('prdId');
-    expect(spawnCalls).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/recover/resume-build — validation: path traversal in setName
-// ---------------------------------------------------------------------------
-
-describe('POST /api/recover/resume-build — setName with path separator', () => {
-  it('returns 400 when setName contains a forward slash', async () => {
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId: 'valid-prd', setName: 'some/set' }),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('setName');
-    expect(spawnCalls).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/recover/resume-build — happy path: prdId only
-// ---------------------------------------------------------------------------
-
-describe('POST /api/recover/resume-build — happy path (prdId only)', () => {
-  it('spawns a resume worker with prdId as the only positional arg', async () => {
+describe('POST /api/recover/resume-build — queued mutation', () => {
+  it('returns queued metadata, moves queue files, notifies the scheduler, and never spawns a worker', async () => {
     const prdId = 'my-feature-prd';
+    const childId = 'child-prd';
+    createFeatureBranchWithArtifacts(tmpDir, prdId);
+    await writeFailedPrd(tmpDir, prdId);
+    await writeSkippedChild(tmpDir, childId, prdId);
+    await setupServer();
 
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId }),
-    });
-
+    const res = await postResume(server, { prdId });
     expect(res.status).toBe(200);
-    expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0].command).toBe('resume');
-    expect(spawnCalls[0].args).toEqual([prdId]);
-    expect(spawnCalls[0].onExit).toBeTypeOf('function');
-    spawnCalls[0].onExit?.();
+    const data = await res.json() as ResumeBuildResponse & { sessionId?: unknown; pid?: unknown };
+    expect(data).toMatchObject({
+      kind: 'queued',
+      prdId,
+      setName: prdId,
+      featureBranch: `eforge/${prdId}`,
+      baseBranch: 'main',
+      movedDescendantIds: [childId],
+      status: 'queued',
+    });
+    expect(data.sessionId).toBeUndefined();
+    expect(data.pid).toBeUndefined();
+    expect(spawnCalls).toHaveLength(0);
     expect(queueMutationReasons).toEqual(['external']);
+    expect(existsSync(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(true);
+    expect(existsSync(join(tmpDir, '.eforge', 'queue', 'waiting', `${childId}.md`))).toBe(true);
+    expect(existsSync(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
   });
 
-  it('returns sessionId and pid from the spawned worker', async () => {
-    const prdId = 'my-feature-prd';
+  it('uses setName metadata from the recovery sidecar when omitted', async () => {
+    const prdId = 'failed-prd';
+    const setName = 'sidecar-set';
+    createFeatureBranchWithArtifacts(tmpDir, setName);
+    await writeFailedPrd(tmpDir, prdId, { setName });
+    await setupServer();
 
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId }),
-    });
-
+    const res = await postResume(server, { prdId });
     expect(res.status).toBe(200);
-    const data = await res.json() as { sessionId: string; pid: number };
-    expect(typeof data.sessionId).toBe('string');
-    expect(data.sessionId.length).toBeGreaterThan(0);
-    expect(typeof data.pid).toBe('number');
-    expect(data.pid).toBeGreaterThan(0);
-
-    // Response matches what the stub tracker returned
-    expect(data.sessionId).toBe(spawnCalls[0].sessionId);
-    expect(data.pid).toBe(spawnCalls[0].pid);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/recover/resume-build — happy path: prdId + setName
-// ---------------------------------------------------------------------------
-
-describe('POST /api/recover/resume-build — happy path (prdId + setName)', () => {
-  it('spawns a resume worker with --set-name args when setName is provided', async () => {
-    const prdId = 'my-feature-prd';
-    const setName = 'my-custom-set';
-
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId, setName }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0].command).toBe('resume');
-    expect(spawnCalls[0].args).toEqual([prdId, '--set-name', setName]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/recover/resume-build — profile override
-// ---------------------------------------------------------------------------
-
-describe('POST /api/recover/resume-build — profile override', () => {
-  it('returns 400 when profile is empty', async () => {
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId: 'valid-prd', profile: '' }),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('profile');
-    expect(spawnCalls).toHaveLength(0);
+    const data = await res.json() as ResumeBuildResponse;
+    expect(data.setName).toBe(setName);
+    expect(data.featureBranch).toBe(`eforge/${setName}`);
+    expect(await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8')).toContain(`resume_set_name: ${setName}`);
   });
 
-  it('returns 400 when profile is not found', async () => {
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId: 'valid-prd', profile: 'missing-profile' }),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain("Profile 'missing-profile' not found");
-    expect(spawnCalls).toHaveLength(0);
-  });
-
-  it('returns 400 when the requested profile file is invalid', async () => {
-    const profile = 'bad-profile';
-    writeTestProfile(
-      tmpDir,
-      profile,
-      'agents:\n  tiers:\n    planning:\n      harness: invalid-harness\n      model: claude-haiku-4-5\n      effort: low\n',
-    );
-
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId: 'valid-prd', profile }),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain("Invalid profile 'bad-profile'");
-    expect(spawnCalls).toHaveLength(0);
-  });
-
-  it('spawns a resume worker with --profile when profile is provided', async () => {
-    const prdId = 'my-feature-prd';
-    const setName = 'my-custom-set';
+  it('applies an explicit profile override to the requeued PRD frontmatter', async () => {
+    const prdId = 'profile-prd';
     const profile = 'resume-profile';
+    createFeatureBranchWithArtifacts(tmpDir, prdId);
+    await writeFailedPrd(tmpDir, prdId, { profile: 'old-profile' });
     writeTestProfile(tmpDir, profile);
+    await setupServer();
 
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId, setName, profile }),
-    });
-
+    const res = await postResume(server, { prdId, profile });
     expect(res.status).toBe(200);
-    expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0].command).toBe('resume');
-    expect(spawnCalls[0].args).toEqual([prdId, '--set-name', setName, '--profile', profile]);
+    const data = await res.json() as ResumeBuildResponse;
+    expect(data.profile).toBe(profile);
+    const queued = await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8');
+    expect(queued).toContain(`profile: ${profile}`);
+    expect(queued).not.toContain('profile: old-profile');
+  });
+
+  it('preserves existing profile frontmatter when profile is omitted', async () => {
+    const prdId = 'preserve-profile-prd';
+    createFeatureBranchWithArtifacts(tmpDir, prdId);
+    await writeFailedPrd(tmpDir, prdId, { profile: 'existing-profile' });
+    await setupServer();
+
+    const res = await postResume(server, { prdId });
+    expect(res.status).toBe(200);
+    const data = await res.json() as ResumeBuildResponse;
+    expect(data.profile).toBe('existing-profile');
+    expect(await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8')).toContain('profile: existing-profile');
+  });
+
+  it('omits profile when neither request nor failed PRD has profile frontmatter', async () => {
+    const prdId = 'no-profile-prd';
+    createFeatureBranchWithArtifacts(tmpDir, prdId);
+    await writeFailedPrd(tmpDir, prdId);
+    await setupServer();
+
+    const res = await postResume(server, { prdId });
+    expect(res.status).toBe(200);
+    const data = await res.json() as ResumeBuildResponse;
+    expect(data.profile).toBeUndefined();
+    expect(await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8')).not.toContain('profile:');
+  });
+
+  it('returns queued metadata for an already-queued compiled resume and notifies the scheduler', async () => {
+    const prdId = 'already-queued-prd';
+    createFeatureBranchWithArtifacts(tmpDir, prdId);
+    await mkdir(join(tmpDir, '.eforge', 'queue'), { recursive: true });
+    await writeFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), `---\ntitle: Already queued\nresume_mode: compiled\nresume_from: ${prdId}\nresume_set_name: ${prdId}\nresume_feature_branch: eforge/${prdId}\nresume_base_branch: main\n---\n\n# Already queued\n`, 'utf-8');
+    await setupServer();
+
+    const res = await postResume(server, { prdId });
+    expect(res.status).toBe(200);
+    const data = await res.json() as ResumeBuildResponse;
+    expect(data.kind).toBe('queued');
+    expect(data.status).toBe('already-queued');
+    expect(data.detail).toContain('already queued');
+    expect(queueMutationReasons).toEqual(['external']);
+    expect(spawnCalls).toHaveLength(0);
+  });
+
+  it('succeeds on a server started without workerTracker', async () => {
+    const prdId = 'no-worker-tracker-prd';
+    createFeatureBranchWithArtifacts(tmpDir, prdId);
+    await writeFailedPrd(tmpDir, prdId);
+    await setupServer({ withTracker: false });
+
+    const res = await postResume(server, { prdId });
+    expect(res.status).toBe(200);
+    expect((await res.json() as ResumeBuildResponse).kind).toBe('queued');
   });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/recover/resume-build — 503 without workerTracker
-// ---------------------------------------------------------------------------
+describe('POST /api/recover/resume-build — blocked and profile errors', () => {
+  it('returns 409 and leaves queue files unmoved when artifacts are missing', async () => {
+    const prdId = 'missing-artifacts-prd';
+    await writeFailedPrd(tmpDir, prdId);
+    await setupServer();
 
-describe('POST /api/recover/resume-build — 503 without workerTracker', () => {
-  it('returns 503 when server is started without workerTracker', async () => {
-    const tmpDir2 = makeTempDir();
-    const dbPath2 = resolve(tmpDir2, 'monitor.db');
-    const server2 = await startServer(
-      openDatabase(dbPath2),
-      0,
-      { strictPort: true, cwd: tmpDir2 },
-    );
+    const res = await postResume(server, { prdId });
+    expect(res.status).toBe(409);
+    expect(existsSync(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(existsSync(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
+    expect(queueMutationReasons).toEqual([]);
+  });
 
-    try {
-      const res = await fetch(`http://localhost:${server2.port}${API_ROUTES.resumeBuild}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prdId: 'any-prd' }),
-      });
-      expect(res.status).toBe(503);
-    } finally {
-      await server2.stop();
-    }
+  it('rejects empty, missing, and invalid profile overrides before moving queue files', async () => {
+    const prdId = 'profile-validation-prd';
+    createFeatureBranchWithArtifacts(tmpDir, prdId);
+    await writeFailedPrd(tmpDir, prdId);
+    await setupServer();
+
+    expect((await postResume(server, { prdId, profile: '' })).status).toBe(400);
+    expect((await postResume(server, { prdId, profile: 'missing-profile' })).status).toBe(400);
+
+    writeTestProfile(tmpDir, 'bad-profile', 'agents:\n  tiers:\n    planning:\n      harness: invalid-harness\n      model: claude-haiku-4-5\n      effort: low\n');
+    expect((await postResume(server, { prdId, profile: 'bad-profile' })).status).toBe(400);
+    expect(existsSync(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(existsSync(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
+    expect(queueMutationReasons).toEqual([]);
   });
 });
 // --- eforge:endregion resume-build-route-suite ---

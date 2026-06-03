@@ -51,8 +51,10 @@ import {
   type ExtensionRemoveResponse,
   type ExtensionPromoteResponse,
   type ExtensionDemoteResponse,
+  type ResumeBuildRequest,
   apiStackSync,
   apiStackSyncIfRunning,
+  apiResumeBuild,
   type StackSyncResponse,
   daemonRequestFromWorktree,
   DaemonNotDiscoverableError,
@@ -1745,13 +1747,13 @@ export function createProgram(abortController?: AbortController, version?: strin
 
   program
     .command('resume <prdId>')
-    .description('Resume a compiled build that previously failed')
+    .description('Queue a compiled build resume for scheduler dispatch')
     .option('--set-name <setName>', 'Override the set name; when omitted, resolved from recovery sidecar or derived from the prdId')
     .option('--profile <name>', 'Override active profile for this resumed build')
     .option('--cwd <cwd>', 'Working directory override')
-    .option('--verbose', 'Stream agent output')
-    .option('--no-monitor', 'Disable web monitor')
-    .option('--session-id <uuid>', 'Session ID injected by parent scheduler (skips child session:start emission)')
+    .option('--verbose', 'Print additional queued metadata')
+    .option('--no-monitor', 'Accepted for compatibility; the daemon route is still used')
+    .option('--session-id <uuid>', 'Accepted for compatibility; ignored because resume is queued')
     .action(
       async (
         prdId: string,
@@ -1766,36 +1768,24 @@ export function createProgram(abortController?: AbortController, version?: strin
       ) => {
         initDisplay({ verbose: options.verbose });
 
-        const cwd = options.cwd ? resolve(options.cwd) : undefined;
-
-        const engine = await EforgeEngine.create({
-          ...(cwd && { cwd }),
-          ...(options.profile && { profileOverride: options.profile }),
-        });
+        const cwd = options.cwd ? resolve(options.cwd) : process.cwd();
 
         try {
-          await withMonitor(options.monitor === false, async (monitor) => {
-            const sessionId = options.sessionId ?? randomUUID();
-
-            const resumeEvents = engine.resumeBuild(prdId, {
-              ...(options.setName && { setName: options.setName }),
-              verbose: options.verbose,
-              abortController,
-              ...(cwd && { cwd }),
-            });
-
-            await consumeEvents(
-              wrapEvents(runSession(resumeEvents, sessionId), {
-                monitor,
-                hooks: engine.resolvedConfig.hooks,
-                native: {
-                  registry: engine.nativeExtensionRegistry,
-                  timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
-                  ...(cwd && { cwd }),
-                },
-              }),
-            );
-          });
+          const monitor = await ensureMonitor(cwd, { noServer: false });
+          activeMonitor = monitor;
+          const body: ResumeBuildRequest = { prdId };
+          if (options.setName !== undefined) body.setName = options.setName;
+          if (options.profile !== undefined) body.profile = options.profile;
+          const { data } = await apiResumeBuild({ cwd, body });
+          console.log(chalk.green(`Resume queued: ${data.prdId}`));
+          console.log(`Set: ${data.setName}`);
+          console.log(`Feature branch: ${data.featureBranch}`);
+          console.log(`Base branch: ${data.baseBranch}`);
+          if (data.profile) console.log(`Profile: ${data.profile}`);
+          if (data.movedDescendantIds.length > 0 || options.verbose) {
+            console.log(`Moved descendants: ${data.movedDescendantIds.length > 0 ? data.movedDescendantIds.join(', ') : 'none'}`);
+          }
+          if (data.status === 'already-queued') console.log(chalk.yellow(data.detail ?? 'Compiled-build resume was already queued.'));
         } catch (err) {
           const { message, exitCode } = formatCliError(err);
           console.error(chalk.red(`Error: ${message}`));

@@ -11,6 +11,6 @@ import { DAEMON_API_VERSION } from '@eforge-build/client';
 
 describe('DAEMON_API_VERSION', () => {
   it('is 50 for stack landing conflict recovery event/schema contract changes', () => {
-    expect(DAEMON_API_VERSION).toBe(50);
+    expect(DAEMON_API_VERSION).toBe(51);
   });
 });

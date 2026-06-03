@@ -90,7 +90,7 @@ describe('browser recovery helpers — route selection', () => {
   });
 
   it('startResumeBuild POSTs ResumeBuildRequest to resumeBuild', async () => {
-    nextResponse = { ok: true, status: 200, json: { sessionId: 's', pid: 1 } };
+    nextResponse = { ok: true, status: 200, json: { kind: 'queued', prdId: 'prd-5', setName: 'set-b', featureBranch: 'eforge/set-b', baseBranch: 'main', movedDescendantIds: [] } };
     await startResumeBuild({ prdId: 'prd-5', setName: 'set-b' });
     expect(captured[0].method).toBe('POST');
     expect(captured[0].url).toBe(API_ROUTES.resumeBuild);
@@ -119,7 +119,7 @@ describe('browser recovery helpers — error surfacing', () => {
   });
 
   it('throws an Error including the daemon response text on a non-2xx POST', async () => {
-    nextResponse = { ok: false, status: 500, text: 'Failed to spawn resume worker' };
-    await expect(startResumeBuild({ prdId: 'prd-y' })).rejects.toThrow('Failed to spawn resume worker');
+    nextResponse = { ok: false, status: 500, text: 'Failed to queue resume build' };
+    await expect(startResumeBuild({ prdId: 'prd-y' })).rejects.toThrow('Failed to queue resume build');
   });
 });

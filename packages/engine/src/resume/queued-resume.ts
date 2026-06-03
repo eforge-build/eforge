@@ -43,8 +43,10 @@ export async function resolveQueuedCompiledResumeMetadata(
   const failedDir = join(resolve(options.cwd, queueDir), 'failed');
   const setName = options.setName ?? await readResumeSetName({ prdId: options.prdId, failedDir });
   validatePlanSetName(setName);
+  validateResumeGitRefName(setName);
 
   const sidecarSummary = await readRecoverySidecarSummary(failedDir, options.prdId);
+  const canUseSidecarSummary = options.setName === undefined || nonEmpty(sidecarSummary?.setName) === setName;
   let summary: BuildFailureSummary | undefined;
   try {
     summary = await buildFailureSummary({
@@ -55,11 +57,12 @@ export async function resolveQueuedCompiledResumeMetadata(
       trunkBranch: options.trunkBranch,
     });
   } catch {
-    summary = sidecarSummary;
+    summary = canUseSidecarSummary ? sidecarSummary : undefined;
   }
 
-  const featureBranch = nonEmpty(sidecarSummary?.featureBranch) ?? nonEmpty(summary?.featureBranch) ?? `eforge/${setName}`;
-  const baseBranch = nonEmpty(sidecarSummary?.baseBranch) ?? nonEmpty(summary?.baseBranch) ?? options.trunkBranch ?? 'main';
+  const matchingSidecarSummary = canUseSidecarSummary ? sidecarSummary : undefined;
+  const featureBranch = nonEmpty(matchingSidecarSummary?.featureBranch) ?? nonEmpty(summary?.featureBranch) ?? `eforge/${setName}`;
+  const baseBranch = nonEmpty(matchingSidecarSummary?.baseBranch) ?? nonEmpty(summary?.baseBranch) ?? options.trunkBranch ?? 'main';
 
   return {
     prdId: options.prdId,
@@ -132,5 +135,11 @@ function nonEmpty(value: string | undefined): string | undefined {
 function assertSafePathSegment(value: string, label: string): void {
   if (!value || value.includes('/') || value.includes('\\') || value.includes('..')) {
     throw new Error(`Invalid ${label}: must not contain path separators or traversal sequences`);
+  }
+}
+
+function validateResumeGitRefName(setName: string): void {
+  if (/^[.-]|[.]$|[\x00-\x20~^:?*[\\{}@]/.test(setName) || setName.endsWith('.lock') || setName.includes('..')) {
+    throw new Error(`Invalid setName: contains characters that are not allowed in a branch ref`);
   }
 }

@@ -380,7 +380,7 @@ Apply the recovery verdict for a failed build plan (requeue, enqueue successor, 
 
 ### `resume`
 
-Resume a compiled build that previously failed
+Queue a compiled build resume for scheduler dispatch
 
 
 **Options:**
@@ -390,9 +390,9 @@ Resume a compiled build that previously failed
 | `--set-name <setName>` | Override the set name; when omitted, resolved from recovery sidecar or derived from the prdId |
 | `--profile <name>` | Override active profile for this resumed build |
 | `--cwd <cwd>` | Working directory override |
-| `--verbose` | Stream agent output |
-| `--no-monitor` | Disable web monitor |
-| `--session-id <uuid>` | Session ID injected by parent scheduler (skips child session:start emission) |
+| `--verbose` | Print additional queued metadata |
+| `--no-monitor` | Accepted for compatibility; the daemon route is still used |
+| `--session-id <uuid>` | Accepted for compatibility; ignored because resume is queued |
 
 ### `playbook`
 
