@@ -33,7 +33,6 @@ export interface NormalizedRecoverySuccessorPrd {
   legacyAcceptanceCriteriaInventory?: CanonicalAcceptanceCriteriaInventory;
 }
 
-// --- eforge:region plan-01-recovery-split-canonical-inventory ---
 export function normalizeRecoverySuccessorPrd(markdown: string): NormalizedRecoverySuccessorPrd {
   const body = markdown
     .replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
@@ -57,7 +56,6 @@ function validateRecoveryInventory(
   if (!result.valid) throw new Error(formatAcceptanceInventoryDiagnostics(result.diagnostics));
   return result.inventory;
 }
-// --- eforge:endregion plan-01-recovery-split-canonical-inventory ---
 
 /**
  * Apply a `retry` verdict: move the failed PRD back to the queue and remove both

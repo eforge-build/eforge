@@ -51,9 +51,7 @@ import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
 import { runPrdValidator } from './agents/prd-validator.js';
-// --- eforge:region plan-02-acceptance-unknown-resolution ---
 import { runAcceptanceUnknownResolver } from './agents/acceptance-unknown-resolver.js';
-// --- eforge:endregion plan-02-acceptance-unknown-resolution ---
 import { buildPrdValidatorDiff } from './prd-validator-diff.js';
 import { runGapCloser } from './agents/gap-closer.js';
 import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser, type AcceptanceUnknownResolver } from './orchestrator.js';
@@ -942,7 +940,6 @@ export class EforgeEngine {
         }
       } : undefined;
 
-      // --- eforge:region plan-02-acceptance-unknown-resolution ---
       const acceptanceUnknownResolver: AcceptanceUnknownResolver | undefined = options.prdFilePath ? async function* (resolverCwd, request) {
         let built: Awaited<ReturnType<typeof buildPrdValidatorDiff>>;
         try { built = await buildPrdValidatorDiff({ cwd: resolverCwd, baseRef: orchConfig.diffBaseRef ?? orchConfig.baseBranch }); }
@@ -955,7 +952,6 @@ export class EforgeEngine {
           resolverTracker.cleanup(); resolverSpan.end(); return result;
         } catch (err) { resolverTracker.cleanup(); resolverSpan.error(err as Error); throw err; }
       } : undefined;
-      // --- eforge:endregion plan-02-acceptance-unknown-resolution ---
 
       // Create gap closer closure
       const gapCloser: GapCloser | undefined = options.prdFilePath ? async function* (gapCloserCwd, gaps, completionPercent) {
@@ -1045,9 +1041,7 @@ export class EforgeEngine {
         maxValidationRetries: config.build.maxValidationRetries,
         mergeResolver,
         prdValidator,
-        // --- eforge:region plan-02-acceptance-unknown-resolution ---
         acceptanceUnknownResolver,
-        // --- eforge:endregion plan-02-acceptance-unknown-resolution ---
         gapCloser,
         mergeWorktreePath,
         shouldCleanup,

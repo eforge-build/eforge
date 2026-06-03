@@ -33,10 +33,8 @@ import { collectBuildArtifactProvenance } from '../provenance.js';
 import type { EforgeConfig, LandingConfig } from '../config.js';
 import type { ValidationConfig } from '../config.js';
 import { synthesizeMissingVerdicts } from '../validation/acceptance-criteria.js';
-// --- eforge:region plan-02-acceptance-unknown-resolution ---
 import { type AcceptanceValidationEvent } from '../validation/acceptance-unknown-resolution.js';
 import { resolveAcceptanceUnknownsIfNeeded } from '../validation/acceptance-unknown-resolution-runner.js';
-// --- eforge:endregion plan-02-acceptance-unknown-resolution ---
 import { buildAcceptanceValidationEvents } from './acceptance-conflict-policy.js';
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
@@ -74,9 +72,7 @@ export interface PhaseContext {
   maxValidationRetries: number;
   mergeResolver?: MergeResolver;
   prdValidator?: PrdValidator;
-  // --- eforge:region plan-02-acceptance-unknown-resolution ---
   acceptanceUnknownResolver?: AcceptanceUnknownResolver;
-  // --- eforge:endregion plan-02-acceptance-unknown-resolution ---
   gapCloser?: GapCloser;
   minCompletionPercent: number;
   gapClosePerformed: boolean;
