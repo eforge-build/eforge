@@ -97,9 +97,12 @@ export async function requeueFailedPrdForCompiledResume(options: RequeueCompiled
     } catch {
       // Return the original blocker below; rollback failure leaves the queue blocked.
     }
-    const restorePath = await exists(parent.filePath) ? parent.filePath : moves[0]?.target;
-    if (restorePath && await exists(restorePath)) {
-      await writeFile(restorePath, originalParentContent, 'utf-8');
+    const parentMove = moves[0];
+    const parentMoveApplied = parentMove !== undefined && appliedMoves.some((move) => move.target === parentMove.target);
+    if (await exists(parent.filePath)) {
+      await writeFile(parent.filePath, originalParentContent, 'utf-8');
+    } else if (parentMove !== undefined && parentMoveApplied && await exists(parentMove.target)) {
+      await writeFile(parentMove.target, originalParentContent, 'utf-8');
     }
     return blockedRequeue(options, `Compiled resume requeue blocked: ${(err as Error).message}`);
   }
