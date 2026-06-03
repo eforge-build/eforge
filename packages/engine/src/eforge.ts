@@ -1229,7 +1229,20 @@ export class EforgeEngine {
         return;
       }
       let stackContext: StackBaseContext | undefined;
-      if (this.config.stacking.enabled) {
+      const hasExplicitStackMetadata = prd.frontmatter.stack_id !== undefined
+        || prd.frontmatter.stack_parent !== undefined
+        || prd.frontmatter.stack_provider !== undefined;
+      if (recoveryContinuation !== undefined && hasExplicitStackMetadata) {
+        const message = 'Recovery continuation PRD cannot also use stack metadata';
+        yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
+        prdResult = { status: 'failed', summary: message };
+        return;
+      }
+      // Recovery continuations resume from their preserved feature branch and
+      // target the original base branch. Do not infer stack context from the
+      // global stacking setting; only explicit stack frontmatter is invalid.
+      if (this.config.stacking.enabled && recoveryContinuation === undefined) {
         try {
           stackContext = await resolveStackBaseContext({ cwd, config: this.config, prd, planSetName });
         } catch (err) {
@@ -1239,13 +1252,6 @@ export class EforgeEngine {
           prdResult = { status: 'failed', summary: message };
           return;
         }
-      }
-      if (recoveryContinuation !== undefined && stackContext !== undefined) {
-        const message = 'Recovery continuation PRD cannot also use stack metadata';
-        yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
-        yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
-        prdResult = { status: 'failed', summary: message };
-        return;
       }
 
       // For stacked PRDs, instantiate the provider and gate on availability
