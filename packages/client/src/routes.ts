@@ -196,6 +196,7 @@ export const API_ROUTES = {
   queueRecoveryAnalyze: '/api/queue/recovery/analyze', queueRecoveryApply: '/api/queue/recovery/apply',
   sessionMetadata: '/api/session-metadata',
   runs: '/api/runs',
+  spend: '/api/spend',
   events: '/api/events/:runId',
   runSummary: '/api/run-summary/:id',
   runState: '/api/run-state/:id',

@@ -3,6 +3,8 @@
  *
  * Covers:
  * - Aggregation across a window emits correct recentTokens/recentCostUsd/recentRunCount.
+ * - Non-final agent:usage events (per-turn deltas) are NOT summed, so tokens
+ *   are not double-counted.
  * - Quota-style failures surface as recentQuotaErrors > 0.
  * - Cooldown derivation in createProfileUsageProvider when recentQuotaErrors > 0.
  * - No rows -> returns null (caller maps to { dataSource: 'none' }).
@@ -59,6 +61,7 @@ function insertAgentUsage(
   output: number,
   total: number,
   timestamp: string,
+  final = true,
 ): void {
   db.insertEvent({
     runId,
@@ -68,6 +71,7 @@ function insertAgentUsage(
       agentId: 'test-agent',
       agent: 'builder',
       usage: { input, output, total, cacheRead: 0, cacheCreation: 0 },
+      final,
       timestamp,
     }),
     timestamp,
@@ -170,6 +174,25 @@ describe('MonitorDB.getProfileUsageSummary', () => {
     expect(result!.recentTokens?.input).toBe(3000);
     expect(result!.recentTokens?.output).toBe(1500);
     expect(result!.recentTokens?.total).toBe(4500);
+  });
+
+  it('counts only the final cumulative usage event, not per-turn deltas', () => {
+    const now = new Date().toISOString();
+
+    insertRun(db, 'run-cadence', 'session-cadence', 'cadence-profile', now);
+    // Realistic cadence: per-turn deltas (final=false) plus one authoritative
+    // cumulative checkpoint (final=true). Only the cumulative must be counted.
+    insertAgentUsage(db, 'run-cadence', 400, 80, 480, now, false);
+    insertAgentUsage(db, 'run-cadence', 600, 120, 720, now, false);
+    insertAgentUsage(db, 'run-cadence', 1000, 200, 1200, now, true);
+
+    const result = db.getProfileUsageSummary('cadence-profile', 24 * 60 * 60 * 1000);
+
+    expect(result).not.toBeNull();
+    // Cumulative values, not cumulative + deltas (which would double them).
+    expect(result!.recentTokens?.input).toBe(1000);
+    expect(result!.recentTokens?.output).toBe(200);
+    expect(result!.recentTokens?.total).toBe(1200);
   });
 
   it('aggregates cost from agent:result events', () => {

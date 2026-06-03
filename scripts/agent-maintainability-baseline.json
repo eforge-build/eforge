@@ -118,7 +118,7 @@
     },
     {
       "path": "packages/monitor/src/db.ts",
-      "noGrowthCeiling": 743,
+      "noGrowthCeiling": 783,
       "category": "implementation"
     },
     {
@@ -168,7 +168,7 @@
     },
     {
       "path": "packages/client/src/routes.ts",
-      "noGrowthCeiling": 626,
+      "noGrowthCeiling": 627,
       "category": "implementation"
     },
     {

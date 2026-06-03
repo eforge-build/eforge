@@ -123,3 +123,18 @@ export function compactTokens(n: number): string {
   if (abs >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return `${Math.round(n)}`;
 }
+
+/**
+ * Format a USD dollar amount. Cents-precision below $1,000; whole-dollar with
+ * thousands separators above (daily/weekly spend totals get large).
+ *
+ * @example
+ * formatUsd(32.18)   // "$32.18"
+ * formatUsd(0)       // "$0.00"
+ * formatUsd(1214.5)  // "$1,215"
+ */
+export function formatUsd(n: number): string {
+  if (!Number.isFinite(n)) return '$0.00';
+  if (Math.abs(n) >= 1_000) return `$${Math.round(n).toLocaleString()}`;
+  return `$${n.toFixed(2)}`;
+}

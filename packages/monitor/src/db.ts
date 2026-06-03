@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DAEMON_EVENT_TYPES } from '@eforge-build/client';
-import type { RunInfo, SessionMetadata } from '@eforge-build/client';
+import type { DailySpend, RunInfo, SessionMetadata } from '@eforge-build/client';
 
 /** Raw DB row shape for the `runs` table — snake_case columns as returned by SQLite. */
 interface RunRow {
@@ -176,6 +176,12 @@ export interface MonitorDB {
     recentCostUsd?: number;
     recentQuotaErrors: number;
   } | null;
+  /**
+   * Token + dollar spend aggregated per local calendar day over the last
+   * `windowDays` days (inclusive of today). Days with no spend are omitted;
+   * callers fill gaps. Ordered oldest -> newest.
+   */
+  getDailySpend(windowDays: number): DailySpend[];
   close(): void;
 }
 
@@ -393,6 +399,26 @@ export function openDatabase(dbPath: string): MonitorDB {
     ),
     getLatestEventTimestamp: db.prepare(
       `SELECT timestamp FROM events ORDER BY id DESC LIMIT 1`,
+    ),
+    // Daily token + cost rollup. Tokens come from the single `final: true`
+    // agent:usage checkpoint per agent — non-final agent:usage events carry
+    // per-turn deltas (unified cadence contract), so summing all would
+    // double-count. Cost comes from agent:result.totalCostUsd (one per agent).
+    // Grouped by local calendar day; the ISO cutoff keeps the index usable.
+    getDailySpend: db.prepare(
+      `SELECT
+         date(timestamp, 'localtime') AS date,
+         COALESCE(SUM(CASE WHEN type = 'agent:usage' AND json_extract(data, '$.final') = 1 THEN json_extract(data, '$.usage.input') END), 0) AS tokensIn,
+         COALESCE(SUM(CASE WHEN type = 'agent:usage' AND json_extract(data, '$.final') = 1 THEN json_extract(data, '$.usage.output') END), 0) AS tokensOut,
+         COALESCE(SUM(CASE WHEN type = 'agent:usage' AND json_extract(data, '$.final') = 1 THEN json_extract(data, '$.usage.total') END), 0) AS tokensTotal,
+         COALESCE(SUM(CASE WHEN type = 'agent:usage' AND json_extract(data, '$.final') = 1 THEN json_extract(data, '$.usage.cacheRead') END), 0) AS cacheRead,
+         COALESCE(SUM(CASE WHEN type = 'agent:usage' AND json_extract(data, '$.final') = 1 THEN json_extract(data, '$.usage.cacheCreation') END), 0) AS cacheCreation,
+         COALESCE(SUM(CASE WHEN type = 'agent:result' THEN json_extract(data, '$.result.totalCostUsd') END), 0) AS costUsd
+       FROM events
+       WHERE type IN ('agent:usage', 'agent:result')
+         AND timestamp >= ?
+       GROUP BY date
+       ORDER BY date ASC`,
     ),
     getMaxEventId: db.prepare(
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events`,
@@ -675,7 +701,10 @@ export function openDatabase(dbPath: string): MonitorDB {
         )
         .get(profileName, ...runIds) as unknown as { lastUsedAt: string | null };
 
-      // Aggregate agent:usage token totals
+      // Aggregate agent:usage token totals. Per the unified cadence contract,
+      // each agent emits per-turn delta usage events plus one final cumulative
+      // checkpoint; only the final row carries the agent's true totals, so
+      // filtering on '$.final' = 1 avoids double-counting (deltas + cumulative).
       const usageRow = db
         .prepare(
           `SELECT
@@ -684,6 +713,7 @@ export function openDatabase(dbPath: string): MonitorDB {
              SUM(json_extract(e.data, '$.usage.total')) as totalTokens
            FROM events e
            WHERE e.type = 'agent:usage'
+             AND json_extract(e.data, '$.final') = 1
              AND e.run_id IN (${placeholders})`,
         )
         .get(...runIds) as unknown as { totalInput: number | null; totalOutput: number | null; totalTokens: number | null };
@@ -733,6 +763,16 @@ export function openDatabase(dbPath: string): MonitorDB {
         recentCostUsd: costRow.totalCost ?? undefined,
         recentQuotaErrors: quotaRow.count ?? 0,
       };
+    },
+    getDailySpend(windowDays) {
+      // Local start-of-day for the oldest day in the window, as an ISO cutoff
+      // so the timestamp filter stays index-friendly. Day grouping itself uses
+      // date(timestamp, 'localtime') so boundaries match the user's wall clock.
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
+      const rows = stmts.getDailySpend.all(start.toISOString()) as unknown as DailySpend[];
+      return rows;
     },
 
     close() {

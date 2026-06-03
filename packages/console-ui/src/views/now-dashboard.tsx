@@ -9,7 +9,10 @@ import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
 import { EnqueueCard } from '@/components/now/enqueue-card';
 import { QueueCard } from '@/components/now/queue-card';
 import { MetricsPanel } from '@/components/now/metrics-panel';
+import { SpendCard } from '@/components/now/spend-card';
 import { BuildHistoryCard } from '@/components/now/build-history-card';
+import { useSpend } from '@/hooks/use-spend';
+import { selectNowSpendPanel } from '@/lib/selectors/spend';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
 import { QueueRecoveryDialog } from '@/components/now/queue-recovery-dialog';
 import { toConsolePath } from '@/lib/navigation';
@@ -54,6 +57,15 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
 
   const now = tick;
   const model = selectNowDashboardModel(projectState, activeSessions, now);
+
+  // Spend is a REST aggregation (GET /api/spend), not part of the SSE snapshot.
+  // Refetch when the run count changes so a completed build updates the totals.
+  const spendSummary = useSpend(7, projectState.runs.length);
+  const spendModel = React.useMemo(() => {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    return selectNowSpendPanel(spendSummary, todayStr);
+  }, [spendSummary, tick]);
 
   // Recovery payload for the failed-PRD item the user chose to recover; opens
   // the dialog hosted at page root. Failures live in the attention strip now,
@@ -119,6 +131,7 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
             not a Now glance widget); the landed-PRD → branch → PR reference also
             lives in System. */}
         <aside className="space-y-4 lg:sticky lg:top-4">
+          <SpendCard model={spendModel} />
           <MetricsPanel model={model.metrics} />
           <BuildHistoryCard builds={model.builds} onNavigate={onNavigate} compact />
         </aside>

@@ -553,6 +553,30 @@ export interface RunInfo {
   pid?: number;
 }
 
+/**
+ * Token + dollar spend aggregated for a single local calendar day, derived from
+ * `agent:usage` (tokens) and `agent:result` (cost) events. `input` follows the
+ * canonical convention `input = uncachedInput + cacheRead + cacheCreation`, so
+ * cache hit rate is `cacheRead / tokensIn`.
+ */
+export interface DailySpend {
+  /** Local calendar day, `YYYY-MM-DD`. */
+  date: string;
+  tokensIn: number;
+  tokensOut: number;
+  tokensTotal: number;
+  cacheRead: number;
+  cacheCreation: number;
+  costUsd: number;
+}
+
+/** Response body for GET /api/spend?days=N. Days are ordered oldest -> newest. */
+export interface SpendSummary {
+  /** Size of the lookback window in days (1-90). */
+  windowDays: number;
+  days: DailySpend[];
+}
+
 // Types used within orchestration and plan endpoints.
 // Single owner: these types cross the daemon HTTP boundary and are re-exported
 // by @eforge-build/engine for engine-internal use. Do not duplicate elsewhere.
