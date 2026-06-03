@@ -1770,8 +1770,9 @@ export function createProgram(abortController?: AbortController, version?: strin
 
         const cwd = options.cwd ? resolve(options.cwd) : process.cwd();
 
+        let monitor: Monitor | undefined;
         try {
-          const monitor = await ensureMonitor(cwd, { noServer: false });
+          monitor = await ensureMonitor(cwd, { noServer: false });
           activeMonitor = monitor;
           const body: ResumeBuildRequest = { prdId };
           if (options.setName !== undefined) body.setName = options.setName;
@@ -1789,7 +1790,16 @@ export function createProgram(abortController?: AbortController, version?: strin
         } catch (err) {
           const { message, exitCode } = formatCliError(err);
           console.error(chalk.red(`Error: ${message}`));
-          process.exit(exitCode);
+          process.exitCode = exitCode;
+          return;
+        } finally {
+          if (monitor) {
+            try {
+              monitor.stop();
+            } finally {
+              if (activeMonitor === monitor) activeMonitor = undefined;
+            }
+          }
         }
       },
     );

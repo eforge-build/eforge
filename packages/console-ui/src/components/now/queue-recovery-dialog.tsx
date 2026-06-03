@@ -226,7 +226,11 @@ export function QueueRecoveryDialog({
     try {
       const response = await startResumeBuild({ prdId, setName: eligibility?.setName });
       setResumeResult(response);
-      await refreshQueue();
+      try {
+        await refreshQueue();
+      } catch (err: unknown) {
+        console.error('Failed to refresh queue after resume build was queued:', err);
+      }
     } catch (err: unknown) {
       setResumeError(errorMessage(err));
     } finally {
